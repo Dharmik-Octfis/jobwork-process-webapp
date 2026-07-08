@@ -1,0 +1,32 @@
+{
+  "name": "jobwork-process-webapp",
+  "version": "1.0.0",
+  "description": "A web application for managing the jobwork process.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepare": "husky"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dharmik-Octfis/jobwork-process-webapp.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Dharmik-Octfis/jobwork-process-webapp/issues"
+  },
+  "homepage": "https://github.com/Dharmik-Octfis/jobwork-process-webapp#readme",
+  "devDependencies": {
+    "@commitlint/cli": "^21.2.0",
+    "@commitlint/config-conventional": "^21.2.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.8",
+    "prettier": "^3.9.4"
+  }
+}
