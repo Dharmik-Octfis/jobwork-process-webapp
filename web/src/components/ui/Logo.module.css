@@ -1,0 +1,30 @@
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mark {
+  flex: none;
+  object-fit: contain;
+  display: block;
+}
+
+/* The hummingbird mark is dark navy and blends into dark surfaces (navy hero /
+   sidebar). Give it a light tile there so it stays legible; on light surfaces
+   it shows transparently with no tile. */
+.onDark .mark {
+  background: #fff;
+  border-radius: 8px;
+  padding: 3px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+/* Official "OCTFIS TECHNO LLP" wordmark image. Height is set inline from the
+   `size` prop; width follows the image aspect ratio. */
+.word {
+  flex: none;
+  width: auto;
+  object-fit: contain;
+  display: block;
+}

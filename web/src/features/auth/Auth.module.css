@@ -1,0 +1,242 @@
+/* Split-screen auth shell: brand panel (left) + form card (right).
+   Collapses to a single centered column on narrow screens (UI/UX §12). */
+
+.page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: var(--color-bg);
+}
+
+@media (max-width: 860px) {
+  .page {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Brand panel ---- */
+.brand {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: var(--space-7);
+  color: #fff;
+  background:
+    radial-gradient(900px 500px at 80% -10%, rgba(28, 124, 140, 0.55), transparent 60%),
+    radial-gradient(700px 600px at -10% 110%, rgba(20, 184, 166, 0.35), transparent 55%),
+    linear-gradient(160deg, var(--navy-800), var(--navy-900));
+  overflow: hidden;
+}
+
+@media (max-width: 860px) {
+  .brand {
+    display: none;
+  }
+}
+
+.brandDecor {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(600px 300px at 80% 10%, rgba(255, 255, 255, 0.14), transparent 60%),
+    radial-gradient(500px 300px at 10% 90%, rgba(255, 255, 255, 0.1), transparent 60%);
+  pointer-events: none;
+}
+
+.brandTop {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 0.2px;
+}
+
+.brandBody {
+  position: relative;
+  max-width: 30ch;
+}
+
+.brandBody h2 {
+  color: #fff;
+  font-size: 32px;
+  line-height: 1.2;
+  margin-bottom: var(--space-3);
+}
+
+.brandBody p {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 17px;
+}
+
+.brandList {
+  position: relative;
+  list-style: none;
+  padding: 0;
+  margin: var(--space-6) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.brandList li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 15px;
+}
+
+.brandList svg {
+  flex-shrink: 0;
+}
+
+/* ---- Form side ---- */
+.formSide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6) var(--space-5);
+}
+
+.card {
+  width: 100%;
+  max-width: 420px;
+}
+
+/* Logo shown above the form on small screens (brand panel is hidden). */
+.mobileBrand {
+  display: none;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--color-text);
+  margin-bottom: var(--space-5);
+}
+
+@media (max-width: 860px) {
+  .mobileBrand {
+    display: flex;
+  }
+}
+
+.header {
+  margin-bottom: var(--space-6);
+}
+
+.header h1 {
+  font-size: 28px;
+  letter-spacing: -0.4px;
+  margin-bottom: var(--space-2);
+}
+
+.header p {
+  color: var(--color-text-muted);
+  font-size: 16px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.row {
+  display: flex;
+  gap: var(--space-4);
+}
+
+.row > * {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 480px) {
+  .row {
+    flex-direction: column;
+  }
+}
+
+.forgot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: calc(-1 * var(--space-2));
+  font-size: 14px;
+}
+
+/* Form-level error banner (e.g. wrong credentials, server unreachable). */
+.formError {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-md);
+}
+
+.formError svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.submit {
+  margin-top: var(--space-2);
+}
+
+.switch {
+  margin-top: var(--space-5);
+  text-align: center;
+  font-size: 15px;
+  color: var(--color-text-muted);
+}
+
+/* Contact footer — real links (site / email / phone), pinned at the bottom of
+   the navy brand panel. Styled for the dark background. */
+.heroContact {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  font-size: 13.5px;
+}
+
+.heroContact a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: rgba(255, 255, 255, 0.82);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.heroContact a svg {
+  flex: none;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.heroContact a:hover {
+  color: #fff;
+  text-decoration: none;
+}
+
+.heroContact a:hover svg {
+  color: #fff;
+}
+
+/* Digits sit at cap-height, so at the same font-size the phone number optically
+   reads larger than the lowercase site/email text. Nudge it down to balance. */
+.phoneLink {
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}

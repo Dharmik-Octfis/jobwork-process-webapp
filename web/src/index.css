@@ -1,109 +1,181 @@
+/* ============================================================================
+   Design tokens + base reset (app-wide)
+   Brand: OCTFIS — petrol blue (#1c7c8c) + deep navy. Typeface: Zoho Puvi.
+   Shared with the Tally_Tool_React_UI project so the whole suite matches.
+   - Neutral-first palette; petrol blue reserved for the primary action + meaning.
+   - 8-point spacing grid (4 / 8 / 16 / 24 / 32 / 48).
+   - Light + dark themes; WCAG AA contrast for body text.
+   Ref: docs/UI-UX-PRINCIPLES.md §4 §5 §6 §10.
+   ========================================================================== */
+
+/* ----------------------------------------------------------------------------
+   Zoho Puvi — primary typeface (bundled locally so it renders offline).
+   Only the weights the UI uses are shipped: 400 / 500 / 600 / 700 / 800.
+   -------------------------------------------------------------------------- */
+@font-face {
+  font-family: 'Zoho Puvi';
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url('./assets/fonts/Zoho_Puvi_Regular.otf') format('opentype');
+}
+@font-face {
+  font-family: 'Zoho Puvi';
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  src: url('./assets/fonts/Zoho_Puvi_Medium.otf') format('opentype');
+}
+@font-face {
+  font-family: 'Zoho Puvi';
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  src: url('./assets/fonts/Zoho_Puvi_Semibold.otf') format('opentype');
+}
+@font-face {
+  font-family: 'Zoho Puvi';
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url('./assets/fonts/Zoho_Puvi_Bold.otf') format('opentype');
+}
+@font-face {
+  font-family: 'Zoho Puvi';
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+  src: url('./assets/fonts/Zoho_Puvi_Extrabold.otf') format('opentype');
+}
+
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow: rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  /* Brand — petrol blue, sampled from the OCTFIS hummingbird mark.
+     The bird is a gradient from deep teal (#023a4e) through petrol blues up to
+     sky blue; these "navy" tones are its darkest end, used for hero surfaces. */
+  --navy-900: #043a4e;
+  --navy-800: #06485d;
+  --navy-700: #0a5568;
+  --color-teal: #14b8a6; /* accent / "live" highlights (bird's light range) */
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  /* Neutral surfaces & text */
+  --color-bg: #f3f5f9;
+  --color-surface: #ffffff;
+  --color-surface-2: #f7f9fc;
+  --color-border: #e3e8ef;
+  --color-border-strong: #cdd9e8;
+  --color-text: #18222e;
+  --color-text-muted: #51607a;
+  --color-text-subtle: #8a97ab;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  /* Primary — the petrol blue we reserve for the primary action / active state */
+  --color-primary: #1c7c8c;
+  --color-primary-hover: #176a79;
+  --color-primary-active: #11525f;
+  --color-primary-contrast: #ffffff;
+  --color-primary-soft: #e8f3fc;
+  --color-focus-ring: rgba(28, 124, 140, 0.35);
 
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
+  /* Semantic (paired with icon/text, never color alone) */
+  --color-danger: #d14343;
+  --color-danger-bg: #fdecec;
+  --color-danger-border: #f6d5d5;
+  --color-success: #16a34a;
+
+  /* Elevation */
+  --shadow-sm: 0 1px 2px rgba(16, 31, 53, 0.06), 0 1px 3px rgba(16, 31, 53, 0.05);
+  --shadow-md: 0 6px 20px rgba(16, 31, 53, 0.1);
+  --shadow-lg: 0 18px 50px rgba(11, 33, 56, 0.22);
+
+  /* Spacing — 8-point grid */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* Radius */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* Typography — Zoho Puvi with a graceful system fallback */
+  --font-sans: 'Zoho Puvi', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+
+  /* Controls: min 48px tall for accessible touch targets */
+  --control-height: 48px;
+
+  /* Light-only, matching the OCTFIS suite (the reference app has no dark theme).
+     This keeps the petrol-blue/navy look consistent regardless of OS setting. */
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow: rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
-}
-
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
+*,
+*::before,
+*::after {
   box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
   margin: 0;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--color-text);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Form controls don't inherit font-family by default — force Zoho Puvi so
+   inputs, selects, textareas and buttons match the rest of the app. */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
 }
 
 h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
+h2,
+h3 {
+  color: var(--color-text);
+  line-height: 1.25;
   margin: 0;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+  font-weight: 500;
 }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+a:hover {
+  text-decoration: underline;
+}
+
+/* Visible focus for keyboard users everywhere (UI/UX §10). */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Respect reduced-motion preferences. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
