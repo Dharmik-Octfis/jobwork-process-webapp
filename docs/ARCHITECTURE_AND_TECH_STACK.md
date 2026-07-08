@@ -275,6 +275,39 @@ maintainability, not novelty.
 
 ---
 
+### 3.17 Shared types across the stack: generated, not hand-mirrored ✅
+
+The frontend and backend must agree on the shape of every request and response. There are three ways
+to keep them in sync; only one avoids drift.
+
+| Option | How | Verdict |
+| --- | --- | --- |
+| **Generate FE types from OpenAPI** | `openapi-typescript` reads the spec (already generated from Zod, §3.7) and emits `web/src/api/schema.d.ts` | **Chosen** |
+| Hand-written mirror types | A central `web/src/types/*.ts` copied from backend DTOs by hand | Rejected (drifts — the exact failure §3.6 rejects Joi for) |
+| Shared types package (monorepo) | A `packages/shared` imported by both | Rejected for now (couples deploys; premature) |
+
+**Decision:** the backend is the **single source of truth** for API types. Zod schemas produce the
+OpenAPI spec (§3.7); `openapi-typescript` turns that spec into frontend types at build time. When a
+backend field changes, the frontend **fails to compile** until it's updated — drift becomes a caught
+error instead of a runtime bug.
+
+**Where types come from (never hand-write what a tool can derive):**
+
+| Layer | Source of truth | How it's obtained |
+| --- | --- | --- |
+| Backend entity/row types | Prisma schema | `import type { Product } from '@prisma/client'` |
+| Backend input/DTO types | Zod schema (`*.schemas.ts`) | `type CreateProductInput = z.infer<typeof createProductSchema>` |
+| Backend response DTO (only when it differs from the row) | `modules/<x>/<x>.types.ts` | hand-written — the **only** per-feature backend type file, and only when needed |
+| Frontend API types | OpenAPI spec | generated → `web/src/api/schema.d.ts` |
+
+**Does this survive deploying FE and BE on different servers?** Yes. Type generation is **build-time**;
+generated types are erased at compile time and ship zero runtime code. The two apps share **no runtime
+coupling** — only the HTTP base URL (`VITE_API_URL`) + CORS. The build's one input is the OpenAPI JSON,
+delivered by committing it, publishing it as a CI artifact, or fetching it from `/openapi.json`. This
+architecture already hosts them separately (backend → AppSail, frontend → Web Hosting, §7).
+
+---
+
 ## 4. Folder structure (full project)
 
 > Two meanings of "schema": the **database table schema** lives once in `prisma/schema/` (split by
@@ -354,17 +387,14 @@ production-monitor/
 │       ├── api/                      # HTTP layer (talks to the Express backend)
 │       │   ├── client.ts             # axios/fetch instance; injects access token
 │       │   ├── interceptors.ts       # 401 → refresh-token retry logic
-│       │   └── endpoints.ts          # centralized API path constants
+│       │   ├── endpoints.ts          # centralized API path constants
+│       │   └── schema.d.ts           # ⭐ GENERATED from OpenAPI — never hand-edit (§3.17)
 │       │
 │       ├── config/
 │       │   └── env.ts                # reads import.meta.env (VITE_API_URL, ...)
 │       │
-│       ├── types/                    # shared TS types (mirror backend DTOs)
-│       │   ├── product.ts
-│       │   ├── inventory.ts
-│       │   ├── job.ts
-│       │   ├── invoice.ts
-│       │   └── user.ts
+│       ├── types/                    # ONLY client-only types (no API DTOs — those are generated)
+│       │   └── ui.ts                 #    theme, table sort dir, toast, etc.
 │       │
 │       ├── lib/                      # framework-agnostic helpers
 │       │   ├── formatDate.ts
@@ -416,6 +446,7 @@ production-monitor/
 │               ├── useProduct.ts           # single-item query hook
 │               ├── useCreateProduct.ts     # create mutation hook
 │               ├── products.api.ts         # calls backend /api/products
+│               ├── products.types.ts       # re-exports Product types from api/schema.d.ts
 │               └── products.schemas.ts     # Zod validation for the product form
 │           #
 │           # The remaining features — auth, dashboard, inventory, machines, jobs,
@@ -435,6 +466,7 @@ production-monitor/
 | `*Form.tsx` / `*Table.tsx` / `*Card.tsx` | Feature-local UI pieces | Props only |
 | `use*.ts` | Data hooks (React Query fetch/mutate) | The API layer, caching |
 | `*.api.ts` | HTTP calls to the backend | `api/client.ts`, endpoint paths |
+| `*.types.ts` | Re-exports this feature's API types from the generated `api/schema.d.ts` | Generated OpenAPI types (§3.17) |
 | `*.schemas.ts` | Zod validation for that feature's forms | Field rules (mirrors server Zod) |
 
 Feature folders **mirror the backend modules** (`features/products/` ↔ `modules/products/`), so
@@ -539,6 +571,7 @@ catalyst deploy                   # pushes API (AppSail) + web (hosting) + cron 
 | Database | PostgreSQL (external managed) | Zoho ZCQL/Data Store |
 | Validation | Zod | Joi |
 | API docs | OpenAPI from Zod | hand-written Swagger |
+| Shared types | Generated from OpenAPI (`schema.d.ts`) | hand-mirrored FE types |
 | Auth | JWT access+refresh (rotating), argon2 | — |
 | Multi-tenancy | Shared DB + tenantId + RLS | schema/db-per-tenant |
 | Jobs | Catalyst Cron + Outbox | BullMQ + Redis |

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { setAccessToken } from '../api/client';
-import type { User } from '../types/user';
+import type { User } from '../features/auth/auth.types';
 import { AuthContext } from './auth-context';
 import type { AuthContextValue } from './auth-context';
 

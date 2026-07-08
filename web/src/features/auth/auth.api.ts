@@ -1,13 +1,7 @@
 import { apiClient } from '../../api/client';
 import { endpoints } from '../../api/endpoints';
-import type { User } from '../../types/user';
+import type { AuthResponse } from './auth.types';
 import type { LoginInput, SignupInput } from './auth.schemas';
-
-/** Backend returns the short-lived access token + the authenticated user. */
-export interface AuthResponse {
-  accessToken: string;
-  user: User;
-}
 
 /** POST /api/auth/login */
 export async function login(input: LoginInput): Promise<AuthResponse> {
