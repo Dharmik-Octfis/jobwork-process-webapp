@@ -5,7 +5,7 @@
 > normalization, and the pre-commit hook (Husky + lint-staged). Applies repo-wide (`web/` now,
 > `backend/` later).
 
-_Last updated: 2026-07-07._
+_Last updated: 2026-07-10._
 
 ---
 
@@ -14,6 +14,7 @@ _Last updated: 2026-07-07._
 | Requirement                                                               | How it's met                                                               |
 | ------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | No unused variables allowed                                               | ESLint rule `@typescript-eslint/no-unused-vars` set to **error**           |
+| Variable names are camelCase                                              | ESLint rule `@typescript-eslint/naming-convention` set to **error**        |
 | Format code before every commit, automatically                            | Husky **pre-commit** hook runs Prettier + ESLint on staged files           |
 | Identical formatting for every developer                                  | One shared **Prettier** config + committed **VS Code settings**            |
 | Saving in one IDE never reformats another dev's lines (clean `git blame`) | Same Prettier config everywhere + **LF** line endings enforced at 3 layers |
@@ -30,7 +31,7 @@ _Last updated: 2026-07-07._
 | **EditorConfig**           | Base editor rules (indent, charset, EOL)                   | `.editorconfig`                                    | —            |
 | **Git attributes**         | Normalize line endings in the repo                         | `.gitattributes`                                   | —            |
 | **Husky**                  | Runs git hooks                                             | `.husky/pre-commit`                                | root         |
-| **lint-staged**            | Runs tools on **staged** files only                        | `web/.lintstagedrc.json`                           | root         |
+| **lint-staged**            | Runs tools on **staged** files only                        | `.lintstagedrc.json`                               | root         |
 | **VS Code (shared)**       | Format-on-save, recommend extensions                       | `.vscode/settings.json`, `.vscode/extensions.json` | —            |
 
 > **Division of labor:** **Prettier formats, ESLint finds problems.** They never overlap because
@@ -58,7 +59,9 @@ listing them; `.prettierignore` only needs the committed-but-unformatted `packag
 
 ---
 
-## 4. The "no unused variables" rule (`web/eslint.config.js`)
+## 4. ESLint rules (`web/eslint.config.js`)
+
+### 4.1 No unused variables
 
 ```js
 '@typescript-eslint/no-unused-vars': [
@@ -71,6 +74,27 @@ listing them; `.prettierignore` only needs the committed-but-unformatted `packag
   can't silently remove them).
 - **Escape hatch:** name an intentionally-unused binding with a leading underscore (e.g. `(_req, res)`)
   to allow it.
+
+### 4.2 camelCase names
+
+`@typescript-eslint/naming-convention` makes camelCase the default for **every** name, then carves out
+the exceptions React and TypeScript force on us. A blanket camelCase check is **not** what you want —
+it rejects `const Input = forwardRef(...)`, `import { QueryClientProvider }`, `type AuthResponse`, and
+the `'Content-Type'` header key, all of which are correct code.
+
+| Selector                                                         | Allowed formats                   | Why                                                                                           |
+| ---------------------------------------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------- |
+| `default`                                                        | camelCase                         | The baseline. Leading `_` allowed, trailing `_` forbidden.                                    |
+| `variable`                                                       | camelCase, PascalCase, UPPER_CASE | PascalCase for components (`const Input = forwardRef(...)`); UPPER_CASE for module constants. |
+| `parameter`                                                      | camelCase                         | Leading `_` allowed, to pair with §4.1's escape hatch.                                        |
+| `function`                                                       | camelCase, PascalCase             | `function Button()`, `function EyeIcon()`.                                                    |
+| `import`                                                         | camelCase, PascalCase             | `import styles from './x.module.css'`, `import { RouterProvider }`.                           |
+| `typeLike`                                                       | PascalCase                        | Interfaces, type aliases, classes, enums.                                                     |
+| `enumMember`                                                     | PascalCase, UPPER_CASE            | —                                                                                             |
+| `objectLiteralProperty` / `typeProperty` **that require quotes** | _(unchecked)_                     | Keys like `'Content-Type'` are dictated by the wire format, not by us.                        |
+
+Ordering note: individual selectors always beat the `default` catch-all, so `default` stays first and
+the exceptions follow.
 
 `eslint-config-prettier` is imported **last** in the config array so it wins over any formatting rules.
 
@@ -97,22 +121,36 @@ exception for `*.md`, where trailing spaces are meaningful).
 **`.husky/pre-commit`:**
 
 ```sh
-cd web && npx lint-staged
+npx --no-install lint-staged
 ```
 
-> ⚠️ **The `cd web` matters.** Husky runs the hook from the **repo root**, but ESLint is installed in
-> `web/`. Running `lint-staged` from `web/` makes ESLint resolve (and Prettier still resolves from the
-> root, since Node searches up the folder tree). Verified: without `cd web`, the hook fails with
-> `'eslint' is not recognized`.
-
-**`web/.lintstagedrc.json`:**
+**`.lintstagedrc.json`** (repo root):
 
 ```json
 {
-  "*.{ts,tsx,js,jsx}": ["prettier --write", "eslint --fix"],
+  "web/**/*.{ts,tsx,js,jsx}": [
+    "prettier --write",
+    "node web/node_modules/eslint/bin/eslint.js --fix"
+  ],
   "*.{json,css,md,html}": ["prettier --write"]
 }
 ```
+
+> ⚠️ **Why ESLint is invoked via `node <path>` and not just `eslint`.** lint-staged runs its tasks
+> from the **repo root**, but ESLint is installed in `web/node_modules`. Plain `eslint --fix` therefore
+> fails with `'eslint' is not recognized`. Spelling out `node web/node_modules/eslint/bin/eslint.js`
+> resolves it deterministically, with no dependence on `PATH`.
+>
+> **Do not "fix" this by prepending `web/node_modules/.bin` to `PATH` in the hook.** That works when
+> you test it in Bash but **fails inside the real hook**: Git's `sh` inherits a Windows-style,
+> `;`-separated `PATH`, so a `:`-joined POSIX entry corrupts it. (Verified both ways.)
+>
+> ESLint still finds `web/eslint.config.js` on its own — since v10 it looks the config up from the
+> **linted file's** directory upward, not from the cwd.
+
+The config lives at the **root**, not in `web/`, because lint-staged resolves the **nearest** config
+file to each staged file. A `web/.lintstagedrc.json` would win for `web/` files and reintroduce the
+unresolvable-`eslint` failure above.
 
 **What happens on `git commit`:**
 
@@ -124,12 +162,18 @@ cd web && npx lint-staged
 
 ### Adding `backend/` later
 
-Give it its **own** `backend/.lintstagedrc.json` and add one line to `.husky/pre-commit`:
+The hook needs **no change**. Give `backend/` its own `eslint.config.js` (the §4.2 naming block is
+copy-pasteable as-is) and add one entry to the root `.lintstagedrc.json`:
 
-```sh
-cd web && npx lint-staged
-cd ../backend && npx lint-staged
+```json
+"backend/**/*.{ts,js}": [
+  "prettier --write",
+  "node backend/node_modules/eslint/bin/eslint.js --fix"
+]
 ```
+
+Expect the naming exceptions to differ slightly: Prisma rows and API DTOs may need `snake_case`
+allowed on `typeProperty` where it mirrors the wire format.
 
 ### Commit message rules (commit-msg hook)
 
@@ -202,13 +246,14 @@ Run inside `web/`:
 
 ## 10. Troubleshooting
 
-| Symptom                                      | Cause / fix                                                                                             |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Commit blocked: `'eslint' is not recognized` | Hook missing `cd web` — see §6                                                                          |
-| Format-on-save does nothing                  | Prettier extension not installed, or `editor.defaultFormatter` not set — see §7                         |
-| Whole file shows as changed by you           | Line-ending drift — confirm `.gitattributes` + `.editorconfig` (§5); run `git add --renormalize .` once |
-| Hooks don't run at all                       | `npm install` not run at root (so `husky` `prepare` never ran) — see §8                                 |
-| Commit blocked: `type may not be empty`      | Message isn't Conventional Commits format (`feat: …`, `fix: …`) — see §6                                |
+| Symptom                                                                | Cause / fix                                                                                                   |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Commit blocked: `'eslint' is not recognized`                           | A `lint-staged` task calls `eslint` directly instead of `node web/node_modules/eslint/bin/eslint.js` — see §6 |
+| Commit blocked: `… must match one of the following formats: camelCase` | A name violates §4.2. Rename it; this is not auto-fixable                                                     |
+| Format-on-save does nothing                                            | Prettier extension not installed, or `editor.defaultFormatter` not set — see §7                               |
+| Whole file shows as changed by you                                     | Line-ending drift — confirm `.gitattributes` + `.editorconfig` (§5); run `git add --renormalize .` once       |
+| Hooks don't run at all                                                 | `npm install` not run at root (so `husky` `prepare` never ran) — see §8                                       |
+| Commit blocked: `type may not be empty`                                | Message isn't Conventional Commits format (`feat: …`, `fix: …`) — see §6                                      |
 
 ---
 
