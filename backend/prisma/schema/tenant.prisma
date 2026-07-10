@@ -1,0 +1,21 @@
+// Tenant domain: Organization, User, Membership, Invitation (architecture §4).
+// Only User exists so far. See docs/PRISMA.md §4.3 for why each attribute is here.
+
+model User {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String   @unique @db.Citext
+  passwordHash String?  @map("password_hash")
+  name         String   @db.VarChar(80)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("users")
+}
+
+// A user is a person who can log in — nothing more. No organizationId, no role,
+// no permissions: those belong on Membership, so one person can join several
+// organizations with different access in each.
+//
+// passwordHash is nullable because invited and SSO users exist before they set
+// one, and is never selected outside the login path.

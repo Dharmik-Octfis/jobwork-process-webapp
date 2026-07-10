@@ -6,7 +6,12 @@ import { z } from 'zod';
  * (architecture §4 "request flow").
  */
 
-const email = z.string().min(1, 'Email is required').email('Enter a valid email address');
+const email = z
+  .string()
+  .trim()
+  .min(1, 'Email is required')
+  .max(254, 'That email address is too long')
+  .email('Enter a valid email address');
 
 export const loginSchema = z.object({
   email,
@@ -15,13 +20,18 @@ export const loginSchema = z.object({
 
 export type LoginInput = z.infer<typeof loginSchema>;
 
+/**
+ * Signup creates a **user**, not a company. The organization is a separate,
+ * later step — a user can also be invited into someone else's organization
+ * rather than founding one, so the two cannot be collapsed into this form.
+ */
 export const signupSchema = z
   .object({
-    name: z.string().min(1, 'Your name is required').max(80, 'Keep your name under 80 characters'),
-    companyName: z
+    name: z
       .string()
-      .min(1, 'Company name is required')
-      .max(120, 'Keep the company name under 120 characters'),
+      .trim()
+      .min(1, 'Your name is required')
+      .max(80, 'Keep your name under 80 characters'),
     email,
     password: z
       .string()

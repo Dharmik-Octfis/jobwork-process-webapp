@@ -2,8 +2,8 @@
 
 > **Purpose.** How this repo enforces **consistent formatting** and **code quality** across every
 > developer and every machine — automatically. Covers Prettier, ESLint, EditorConfig, line-ending
-> normalization, and the pre-commit hook (Husky + lint-staged). Applies repo-wide (`web/` now,
-> `backend/` later).
+> normalization, and the pre-commit hook (Husky + lint-staged). Applies repo-wide (`web/` and
+> `backend/`).
 
 _Last updated: 2026-07-10._
 
@@ -23,16 +23,16 @@ _Last updated: 2026-07-10._
 
 ## 2. The tools
 
-| Tool                       | Job                                                        | Config file                                        | Installed in |
-| -------------------------- | ---------------------------------------------------------- | -------------------------------------------------- | ------------ |
-| **Prettier**               | Formatting (spacing, quotes, semicolons)                   | `.prettierrc.json`, `.prettierignore`              | root         |
-| **ESLint**                 | Code quality (unused vars, bad patterns)                   | `web/eslint.config.js`                             | `web/`       |
-| **eslint-config-prettier** | Turns off ESLint formatting rules that clash with Prettier | (in `eslint.config.js`, last)                      | `web/`       |
-| **EditorConfig**           | Base editor rules (indent, charset, EOL)                   | `.editorconfig`                                    | —            |
-| **Git attributes**         | Normalize line endings in the repo                         | `.gitattributes`                                   | —            |
-| **Husky**                  | Runs git hooks                                             | `.husky/pre-commit`                                | root         |
-| **lint-staged**            | Runs tools on **staged** files only                        | `.lintstagedrc.json`                               | root         |
-| **VS Code (shared)**       | Format-on-save, recommend extensions                       | `.vscode/settings.json`, `.vscode/extensions.json` | —            |
+| Tool                       | Job                                                        | Config file                                        | Installed in       |
+| -------------------------- | ---------------------------------------------------------- | -------------------------------------------------- | ------------------ |
+| **Prettier**               | Formatting (spacing, quotes, semicolons)                   | `.prettierrc.json`, `.prettierignore`              | root               |
+| **ESLint**                 | Code quality (unused vars, bad patterns)                   | `web/eslint.config.js`, `backend/eslint.config.js` | `web/`, `backend/` |
+| **eslint-config-prettier** | Turns off ESLint formatting rules that clash with Prettier | (in each `eslint.config.js`, last)                 | `web/`, `backend/` |
+| **EditorConfig**           | Base editor rules (indent, charset, EOL)                   | `.editorconfig`                                    | —                  |
+| **Git attributes**         | Normalize line endings in the repo                         | `.gitattributes`                                   | —                  |
+| **Husky**                  | Runs git hooks                                             | `.husky/pre-commit`                                | root               |
+| **lint-staged**            | Runs tools on **staged** files only                        | `.lintstagedrc.json`                               | root               |
+| **VS Code (shared)**       | Format-on-save, recommend extensions                       | `.vscode/settings.json`, `.vscode/extensions.json` | —                  |
 
 > **Division of labor:** **Prettier formats, ESLint finds problems.** They never overlap because
 > `eslint-config-prettier` disables ESLint's formatting rules.
@@ -160,10 +160,11 @@ unresolvable-`eslint` failure above.
    working tree is restored to its pre-hook state.
 4. If all clean → formatting fixes are re-staged and the commit proceeds.
 
-### Adding `backend/` later
+### `backend/` (done)
 
-The hook needs **no change**. Give `backend/` its own `eslint.config.js` (the §4.2 naming block is
-copy-pasteable as-is) and add one entry to the root `.lintstagedrc.json`:
+The hook needed **no change**. `backend/` has its own `eslint.config.js` — the §4.2 naming block,
+minus the React carve-outs, plus `UPPER_CASE` allowed on `objectLiteralProperty`/`typeProperty` for
+env-var keys. The root `.lintstagedrc.json` gained one entry:
 
 ```json
 "backend/**/*.{ts,js}": [
@@ -172,8 +173,9 @@ copy-pasteable as-is) and add one entry to the root `.lintstagedrc.json`:
 ]
 ```
 
-Expect the naming exceptions to differ slightly: Prisma rows and API DTOs may need `snake_case`
-allowed on `typeProperty` where it mirrors the wire format.
+Prisma's generated client is excluded everywhere it would otherwise be linted or formatted:
+`globalIgnores(['dist', 'generated'])` in `backend/eslint.config.js`, and `backend/generated` in
+`.prettierignore`. Prettier does not handle `.prisma` files at all — `npx prisma format` does.
 
 ### Commit message rules (commit-msg hook)
 
@@ -206,14 +208,20 @@ commit**. Installed at the **root** (commit messages are a whole-repo concern):
 save**, forces Prettier per-language, and sets 2-space/LF to match. `prettier.requireConfig: true`
 means it only formats inside this project.
 
-`.vscode/extensions.json` (committed) recommends the three required extensions — opening the repo
+`.vscode/extensions.json` (committed) recommends the four required extensions — opening the repo
 prompts teammates to install them:
 
-| Extension    | ID                          |
-| ------------ | --------------------------- |
-| Prettier     | `esbenp.prettier-vscode`    |
-| ESLint       | `dbaeumer.vscode-eslint`    |
-| EditorConfig | `editorconfig.editorconfig` |
+| Extension    | ID                          | Needed for                                              |
+| ------------ | --------------------------- | ------------------------------------------------------- |
+| Prettier     | `esbenp.prettier-vscode`    | Format-on-save                                          |
+| ESLint       | `dbaeumer.vscode-eslint`    | Lint-fix-on-save                                        |
+| EditorConfig | `editorconfig.editorconfig` | Indent, charset, EOL                                    |
+| Prisma       | `Prisma.prisma`             | `.prisma` syntax highlighting, formatting, IntelliSense |
+
+> **Without the Prisma extension, `.prisma` files render as undifferentiated plain text** — VS Code has
+> no built-in language association for them. Prettier does not format `.prisma`; the Prisma extension
+> does, and `settings.json` wires it up with `"[prisma]": { "editor.defaultFormatter": "Prisma.prisma" }`.
+> The CLI equivalent is `npx prisma format`.
 
 > `.vscode/` is intentionally **not** git-ignored so these shared settings travel with the repo. (Many
 > default `.gitignore` templates exclude `.vscode/`; ours deliberately does not.)
@@ -226,9 +234,28 @@ prompts teammates to install them:
 2. From the **root**: `npm install` — this runs the `prepare` script (`husky`), which **activates the
    git hooks** automatically. No manual hook setup.
 3. `cd web && npm install` — install frontend deps (incl. ESLint).
-4. Open in VS Code → accept the **recommended extensions** prompt.
+4. `cd backend && npm install && npm run db:generate` — backend deps + the Prisma client (which is
+   git-ignored, so a fresh clone has none and `npm run typecheck` fails until you generate it).
+5. Open in VS Code → accept the **recommended extensions** prompt, then **reload the window**.
 
 That's it — format-on-save and the pre-commit checks now work for them identically.
+
+> ⚠️ **`extensions.json` only _recommends_; it never installs.** Dismiss the prompt once and you get a
+> workspace where `.prisma` files render as flat white text (no language association) and
+> `editor.codeActionsOnSave` silently does nothing (no ESLint extension to run it) — with no error
+> anywhere to tell you why. Extensions also only attach on window load, so installing without
+> reloading looks identical to not installing. If in doubt, install them explicitly:
+>
+> ```sh
+> code --install-extension esbenp.prettier-vscode
+> code --install-extension dbaeumer.vscode-eslint
+> code --install-extension editorconfig.editorconfig
+> code --install-extension Prisma.prisma
+> ```
+>
+> Verify with `code --list-extensions`. Note the pre-commit hook still catches lint and formatting
+> errors without any extension installed — the extensions only move that feedback from commit time to
+> save time.
 
 ---
 

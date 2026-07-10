@@ -145,22 +145,6 @@
   gap: var(--space-4);
 }
 
-.row {
-  display: flex;
-  gap: var(--space-4);
-}
-
-.row > * {
-  flex: 1;
-  min-width: 0;
-}
-
-@media (max-width: 480px) {
-  .row {
-    flex-direction: column;
-  }
-}
-
 .forgot {
   display: flex;
   justify-content: flex-end;

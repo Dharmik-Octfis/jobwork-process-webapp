@@ -1,0 +1,14 @@
+// Generator + datasource only. Models live in the sibling domain files
+// (tenant.prisma, authz.prisma, …) — architecture §3.4.
+//
+// Prisma 7 note: the connection URL is NOT declared here. It is read from
+// `DATABASE_URL` in `prisma.config.ts`.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}

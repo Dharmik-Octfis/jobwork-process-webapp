@@ -9,7 +9,10 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
   return data;
 }
 
-/** POST /api/auth/signup — creates the tenant + OWNER user. */
+/**
+ * POST /api/auth/signup — creates the user account only. Organization creation
+ * and membership are a separate, later step.
+ */
 export async function signup(input: SignupInput): Promise<AuthResponse> {
   // `confirmPassword` is a client-only field; don't send it.
   const { confirmPassword: _confirmPassword, ...payload } = input;

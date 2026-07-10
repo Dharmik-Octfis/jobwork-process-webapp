@@ -11,7 +11,10 @@ import type { SignupInput } from './auth.schemas';
 import { useSignup } from './useSignup';
 import styles from './Auth.module.css';
 
-/** The sign-up screen — creates a new company (tenant) and its owner account. */
+/**
+ * The sign-up screen — creates the user account and nothing else. Choosing or
+ * creating an organization is a separate step after the first sign-in.
+ */
 export function SignupPage() {
   const {
     register,
@@ -21,7 +24,6 @@ export function SignupPage() {
     resolver: zodResolver(signupSchema),
     defaultValues: {
       name: '',
-      companyName: '',
       email: '',
       password: '',
       confirmPassword: '',
@@ -33,29 +35,20 @@ export function SignupPage() {
   const onSubmit = handleSubmit((values) => signupMutation.mutate(values));
 
   return (
-    <AuthShell title="Create your account" subtitle="Set up your workspace in a minute.">
+    <AuthShell title="Create your account" subtitle="It takes less than a minute.">
       <form className={styles.form} onSubmit={onSubmit} noValidate>
         {signupMutation.isError && (
           <FormErrorBanner message={toApiErrorMessage(signupMutation.error)} />
         )}
 
-        <div className={styles.row}>
-          <Input
-            label="Your name"
-            autoComplete="name"
-            placeholder="Jane Doe"
-            autoFocus
-            error={errors.name?.message}
-            {...register('name')}
-          />
-          <Input
-            label="Company"
-            autoComplete="organization"
-            placeholder="Acme Mfg."
-            error={errors.companyName?.message}
-            {...register('companyName')}
-          />
-        </div>
+        <Input
+          label="Your name"
+          autoComplete="name"
+          placeholder="Jane Doe"
+          autoFocus
+          error={errors.name?.message}
+          {...register('name')}
+        />
 
         <Input
           label="Work email"

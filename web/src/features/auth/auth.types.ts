@@ -9,22 +9,24 @@
  *   export type User = components['schemas']['User'];
  *   export type AuthResponse = components['schemas']['AuthResponse'];
  *
- * The auth backend module and its OpenAPI spec don't exist yet, so the shapes are
- * defined here TEMPORARILY as the single client-side reference (never hand-mirror
- * an API DTO in `src/types/`). Replace them with re-exports from the generated
- * schema once the backend is in place — do not add a second copy elsewhere.
+ * The OpenAPI spec isn't generated yet, so these shapes mirror
+ * `backend/src/modules/auth/auth.types.ts` TEMPORARILY, as the single
+ * client-side reference (never hand-mirror an API DTO in `src/types/`).
+ * Replace them with re-exports once the spec exists — do not add a second copy.
  */
 
-/** Roles per tenant (architecture §3.9). */
-export type Role = 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER';
-
-/** Current authenticated user. */
+/**
+ * The current authenticated user — identity only.
+ *
+ * No `role` and no `tenantId`: a user who has just signed up belongs to no
+ * organization yet. Both are properties of a *membership* (architecture §3.9),
+ * and roles are defined per tenant at runtime, never as a fixed union type.
+ * Those types arrive with the organization feature.
+ */
 export interface User {
   id: string;
   name: string;
   email: string;
-  role: Role;
-  tenantId: string;
 }
 
 /** Response from `POST /auth/login` and `POST /auth/signup`. */
