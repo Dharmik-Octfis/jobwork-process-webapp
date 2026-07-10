@@ -11,27 +11,27 @@ _Last updated: 2026-07-07._
 
 ## 1. Goals (why this exists)
 
-| Requirement | How it's met |
-| --- | --- |
-| No unused variables allowed | ESLint rule `@typescript-eslint/no-unused-vars` set to **error** |
-| Format code before every commit, automatically | Husky **pre-commit** hook runs Prettier + ESLint on staged files |
-| Identical formatting for every developer | One shared **Prettier** config + committed **VS Code settings** |
+| Requirement                                                               | How it's met                                                               |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| No unused variables allowed                                               | ESLint rule `@typescript-eslint/no-unused-vars` set to **error**           |
+| Format code before every commit, automatically                            | Husky **pre-commit** hook runs Prettier + ESLint on staged files           |
+| Identical formatting for every developer                                  | One shared **Prettier** config + committed **VS Code settings**            |
 | Saving in one IDE never reformats another dev's lines (clean `git blame`) | Same Prettier config everywhere + **LF** line endings enforced at 3 layers |
 
 ---
 
 ## 2. The tools
 
-| Tool | Job | Config file | Installed in |
-| --- | --- | --- | --- |
-| **Prettier** | Formatting (spacing, quotes, semicolons) | `.prettierrc.json`, `.prettierignore` | root |
-| **ESLint** | Code quality (unused vars, bad patterns) | `web/eslint.config.js` | `web/` |
-| **eslint-config-prettier** | Turns off ESLint formatting rules that clash with Prettier | (in `eslint.config.js`, last) | `web/` |
-| **EditorConfig** | Base editor rules (indent, charset, EOL) | `.editorconfig` | — |
-| **Git attributes** | Normalize line endings in the repo | `.gitattributes` | — |
-| **Husky** | Runs git hooks | `.husky/pre-commit` | root |
-| **lint-staged** | Runs tools on **staged** files only | `web/.lintstagedrc.json` | root |
-| **VS Code (shared)** | Format-on-save, recommend extensions | `.vscode/settings.json`, `.vscode/extensions.json` | — |
+| Tool                       | Job                                                        | Config file                                        | Installed in |
+| -------------------------- | ---------------------------------------------------------- | -------------------------------------------------- | ------------ |
+| **Prettier**               | Formatting (spacing, quotes, semicolons)                   | `.prettierrc.json`, `.prettierignore`              | root         |
+| **ESLint**                 | Code quality (unused vars, bad patterns)                   | `web/eslint.config.js`                             | `web/`       |
+| **eslint-config-prettier** | Turns off ESLint formatting rules that clash with Prettier | (in `eslint.config.js`, last)                      | `web/`       |
+| **EditorConfig**           | Base editor rules (indent, charset, EOL)                   | `.editorconfig`                                    | —            |
+| **Git attributes**         | Normalize line endings in the repo                         | `.gitattributes`                                   | —            |
+| **Husky**                  | Runs git hooks                                             | `.husky/pre-commit`                                | root         |
+| **lint-staged**            | Runs tools on **staged** files only                        | `web/.lintstagedrc.json`                           | root         |
+| **VS Code (shared)**       | Format-on-save, recommend extensions                       | `.vscode/settings.json`, `.vscode/extensions.json` | —            |
 
 > **Division of labor:** **Prettier formats, ESLint finds problems.** They never overlap because
 > `eslint-config-prettier` disables ESLint's formatting rules.
@@ -81,11 +81,11 @@ listing them; `.prettierignore` only needs the committed-but-unformatted `packag
 LF is enforced at **three layers** so it can never drift (the usual cause of "whole file shows as
 edited by someone else" on Windows vs macOS):
 
-| Layer | File | Setting |
-| --- | --- | --- |
-| Editor | `.editorconfig` | `end_of_line = lf` |
-| Git | `.gitattributes` | `* text=auto eol=lf` |
-| Formatter | `.prettierrc.json` | `"endOfLine": "lf"` |
+| Layer     | File               | Setting              |
+| --------- | ------------------ | -------------------- |
+| Editor    | `.editorconfig`    | `end_of_line = lf`   |
+| Git       | `.gitattributes`   | `* text=auto eol=lf` |
+| Formatter | `.prettierrc.json` | `"endOfLine": "lf"`  |
 
 `.editorconfig` also sets 2-space indent, UTF-8, final newline, and trim-trailing-whitespace (with an
 exception for `*.md`, where trailing spaces are meaningful).
@@ -115,6 +115,7 @@ cd web && npx lint-staged
 ```
 
 **What happens on `git commit`:**
+
 1. lint-staged takes only the **staged** files.
 2. Code files → `prettier --write` (auto-format) → `eslint --fix` (auto-fix + report).
 3. If any **unfixable error** remains (e.g. an unused variable) → the commit is **blocked** and the
@@ -164,10 +165,10 @@ means it only formats inside this project.
 `.vscode/extensions.json` (committed) recommends the three required extensions — opening the repo
 prompts teammates to install them:
 
-| Extension | ID |
-| --- | --- |
-| Prettier | `esbenp.prettier-vscode` |
-| ESLint | `dbaeumer.vscode-eslint` |
+| Extension    | ID                          |
+| ------------ | --------------------------- |
+| Prettier     | `esbenp.prettier-vscode`    |
+| ESLint       | `dbaeumer.vscode-eslint`    |
 | EditorConfig | `editorconfig.editorconfig` |
 
 > `.vscode/` is intentionally **not** git-ignored so these shared settings travel with the repo. (Many
@@ -191,23 +192,23 @@ That's it — format-on-save and the pre-commit checks now work for them identic
 
 Run inside `web/`:
 
-| Command | Purpose |
-| --- | --- |
-| `npm run lint` | Check the whole `web/` for lint errors |
+| Command                  | Purpose                                                        |
+| ------------------------ | -------------------------------------------------------------- |
+| `npm run lint`           | Check the whole `web/` for lint errors                         |
 | `npx prettier --write .` | Format every file (one-off, e.g. after changing `.prettierrc`) |
-| `npx prettier --check .` | Report unformatted files without changing them |
+| `npx prettier --check .` | Report unformatted files without changing them                 |
 
 ---
 
 ## 10. Troubleshooting
 
-| Symptom | Cause / fix |
-| --- | --- |
-| Commit blocked: `'eslint' is not recognized` | Hook missing `cd web` — see §6 |
-| Format-on-save does nothing | Prettier extension not installed, or `editor.defaultFormatter` not set — see §7 |
-| Whole file shows as changed by you | Line-ending drift — confirm `.gitattributes` + `.editorconfig` (§5); run `git add --renormalize .` once |
-| Hooks don't run at all | `npm install` not run at root (so `husky` `prepare` never ran) — see §8 |
-| Commit blocked: `type may not be empty` | Message isn't Conventional Commits format (`feat: …`, `fix: …`) — see §6 |
+| Symptom                                      | Cause / fix                                                                                             |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Commit blocked: `'eslint' is not recognized` | Hook missing `cd web` — see §6                                                                          |
+| Format-on-save does nothing                  | Prettier extension not installed, or `editor.defaultFormatter` not set — see §7                         |
+| Whole file shows as changed by you           | Line-ending drift — confirm `.gitattributes` + `.editorconfig` (§5); run `git add --renormalize .` once |
+| Hooks don't run at all                       | `npm install` not run at root (so `husky` `prepare` never ran) — see §8                                 |
+| Commit blocked: `type may not be empty`      | Message isn't Conventional Commits format (`feat: …`, `fix: …`) — see §6                                |
 
 ---
 

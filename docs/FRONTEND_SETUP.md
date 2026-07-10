@@ -14,10 +14,10 @@ _Last updated: 2026-07-07._
 
 ## 1. Prerequisites
 
-| Tool | Version | Notes |
-| --- | --- | --- |
-| Node.js | 18+ (developed on 24.x) | JavaScript runtime + `npm` |
-| npm | 9+ (developed on 11.x) | Package manager (ships with Node) |
+| Tool    | Version                 | Notes                             |
+| ------- | ----------------------- | --------------------------------- |
+| Node.js | 18+ (developed on 24.x) | JavaScript runtime + `npm`        |
+| npm     | 9+ (developed on 11.x)  | Package manager (ships with Node) |
 
 Check with:
 
@@ -38,7 +38,7 @@ npm create vite@latest web -- --template react-ts
 ```
 
 - `web` = target folder · `--template react-ts` = React + TypeScript.
-- ⚠️ **Gotcha:** run this from the **repo root**. Running it from *inside* `web/` creates a nested
+- ⚠️ **Gotcha:** run this from the **repo root**. Running it from _inside_ `web/` creates a nested
   `web/web/` folder. If that happens, move the contents up one level and delete the nested folder.
 
 This generates: `index.html`, `package.json`, `vite.config.ts`, `tsconfig*.json`, `eslint.config.js`,
@@ -67,25 +67,25 @@ npm install react-router-dom @tanstack/react-query axios zod react-hook-form @ho
 
 ### Runtime (`dependencies`)
 
-| Package | Role | Why we chose it |
-| --- | --- | --- |
-| `react`, `react-dom` | UI library | Team standard (architecture §3.15) |
-| `react-router-dom` | Routing (URL → page) | `/login`, protected routes, redirects |
+| Package                 | Role                                          | Why we chose it                                                                                |
+| ----------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `react`, `react-dom`    | UI library                                    | Team standard (architecture §3.15)                                                             |
+| `react-router-dom`      | Routing (URL → page)                          | `/login`, protected routes, redirects                                                          |
 | `@tanstack/react-query` | **Server state** — fetch/cache/loading/errors | Architecture §3.16: server state ≠ client state. (Package renamed from the old `react-query`.) |
-| `axios` | HTTP client | Talks to the Express API; interceptors for the 401→refresh flow (§3.8) |
-| `zod` | Validation + inferred TS types | One schema → runtime validation **and** static types (§3.6) |
-| `react-hook-form` | Form state management | Efficient field/submit/error handling |
-| `@hookform/resolvers` | Bridge: Zod ↔ react-hook-form | Validate forms with the Zod schema |
+| `axios`                 | HTTP client                                   | Talks to the Express API; interceptors for the 401→refresh flow (§3.8)                         |
+| `zod`                   | Validation + inferred TS types                | One schema → runtime validation **and** static types (§3.6)                                    |
+| `react-hook-form`       | Form state management                         | Efficient field/submit/error handling                                                          |
+| `@hookform/resolvers`   | Bridge: Zod ↔ react-hook-form                 | Validate forms with the Zod schema                                                             |
 
 ### Build tooling (`devDependencies`, from the scaffold)
 
-| Package | Role |
-| --- | --- |
-| `vite` | Dev server + production bundler (fast; over CRA — §3.15) |
-| `@vitejs/plugin-react` | Teaches Vite to compile React/JSX |
-| `typescript` | Type checker (`tsc`) (§3.1) |
-| `@types/react`, `@types/react-dom`, `@types/node` | Type definitions |
-| `eslint` + plugins | Code-style linting |
+| Package                                           | Role                                                     |
+| ------------------------------------------------- | -------------------------------------------------------- |
+| `vite`                                            | Dev server + production bundler (fast; over CRA — §3.15) |
+| `@vitejs/plugin-react`                            | Teaches Vite to compile React/JSX                        |
+| `typescript`                                      | Type checker (`tsc`) (§3.1)                              |
+| `@types/react`, `@types/react-dom`, `@types/node` | Type definitions                                         |
+| `eslint` + plugins                                | Code-style linting                                       |
 
 > **No Redux / Zustand** for now — global client state uses **React Context** (`AuthProvider`,
 > `ThemeProvider`); server state uses React Query. See architecture §3.16.
@@ -96,12 +96,12 @@ npm install react-router-dom @tanstack/react-query axios zod react-hook-form @ho
 
 Run inside `web/`:
 
-| Command | What it does |
-| --- | --- |
-| `npm run dev` | Start the Vite dev server (hot-reload) at `http://localhost:5173`. Stop with `Ctrl+C`. |
-| `npm run build` | Type-check (`tsc -b`) + produce the production build in `dist/` (static files → CDN). |
-| `npm run preview` | Serve the built `dist/` locally to sanity-check the production build. |
-| `npm run lint` | Run ESLint over the codebase. |
+| Command           | What it does                                                                           |
+| ----------------- | -------------------------------------------------------------------------------------- |
+| `npm run dev`     | Start the Vite dev server (hot-reload) at `http://localhost:5173`. Stop with `Ctrl+C`. |
+| `npm run build`   | Type-check (`tsc -b`) + produce the production build in `dist/` (static files → CDN).  |
+| `npm run preview` | Serve the built `dist/` locally to sanity-check the production build.                  |
+| `npm run lint`    | Run ESLint over the codebase.                                                          |
 
 ---
 
@@ -146,13 +146,13 @@ web/src/
 
 ### Naming conventions (per feature)
 
-| Pattern | Role |
-| --- | --- |
-| `*Page.tsx` | A routed screen |
-| `*Form.tsx` / `*Table.tsx` | Feature-local UI pieces |
-| `use*.ts` | Data hooks (React Query fetch/mutate) |
-| `*.api.ts` | HTTP calls to the backend |
-| `*.schemas.ts` | Zod validation for that feature's forms |
+| Pattern                    | Role                                    |
+| -------------------------- | --------------------------------------- |
+| `*Page.tsx`                | A routed screen                         |
+| `*Form.tsx` / `*Table.tsx` | Feature-local UI pieces                 |
+| `use*.ts`                  | Data hooks (React Query fetch/mutate)   |
+| `*.api.ts`                 | HTTP calls to the backend               |
+| `*.schemas.ts`             | Zod validation for that feature's forms |
 
 ---
 
@@ -161,8 +161,8 @@ web/src/
 Vite exposes only vars prefixed `VITE_`, inlined **at build time** (`.env` is git-ignored; commit
 `.env.example`).
 
-| Var | Dev | Prod |
-| --- | --- | --- |
+| Var            | Dev                                 | Prod                  |
+| -------------- | ----------------------------------- | --------------------- |
 | `VITE_API_URL` | `/api` (Vite proxy → local backend) | deployed API base URL |
 
 Changing a `VITE_*` value requires a rebuild + redeploy of the frontend (see deployment doc §7.2).

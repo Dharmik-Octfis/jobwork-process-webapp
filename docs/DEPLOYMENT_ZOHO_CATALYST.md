@@ -30,27 +30,27 @@ several **components**, and our two source folders (`web/` and `backend/`) map o
 
 **Key facts:**
 
-| Question | Answer |
-| --- | --- |
-| One Zoho account for both frontend + backend? | ✅ Yes — one account, one Catalyst project. |
-| Separate accounts/projects for web vs backend? | ❌ No — both are components of the **same** project. |
-| Single command to deploy both? | ✅ `catalyst deploy` (after building the frontend). |
-| Does `docker-compose` deploy to Catalyst? | ❌ No — docker-compose is **local dev only** (see §9). |
-| Common root `package.json`? | ❌ Not required — each folder has its own; the root has `catalyst.json`. |
+| Question                                       | Answer                                                                   |
+| ---------------------------------------------- | ------------------------------------------------------------------------ |
+| One Zoho account for both frontend + backend?  | ✅ Yes — one account, one Catalyst project.                              |
+| Separate accounts/projects for web vs backend? | ❌ No — both are components of the **same** project.                     |
+| Single command to deploy both?                 | ✅ `catalyst deploy` (after building the frontend).                      |
+| Does `docker-compose` deploy to Catalyst?      | ❌ No — docker-compose is **local dev only** (see §9).                   |
+| Common root `package.json`?                    | ❌ Not required — each folder has its own; the root has `catalyst.json`. |
 
 ---
 
 ## 2. Which Catalyst service hosts what
 
-| App part | Catalyst service | What that service is | Why |
-| --- | --- | --- | --- |
-| **Backend** (Express) | **AppSail** | Runs a server app (Node runtime **or** a Docker image) | It executes server code, holds routes, talks to Postgres |
-| **Frontend** (React build) | **Web Client Hosting** | A **static file CDN** — serves HTML/CSS/JS only | After `npm run build` the frontend is just static files |
-| **Background jobs** | **Functions + Cron / Job Scheduling** | Scheduled serverless execution | Outbox delivery, Zoho sync, low-stock alerts (see `ARCHITECTURE §3.11`) |
-| **Cache** | **Catalyst Cache** | Shared key-value store all instances reach | Hot reads (dashboards, product lists) |
-| **Database** | **External managed PostgreSQL** (AWS RDS) | Not a Catalyst service | ACID, RLS, portability (see `DATABASE_DECISION.md`) |
+| App part                   | Catalyst service                          | What that service is                                   | Why                                                                     |
+| -------------------------- | ----------------------------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------- |
+| **Backend** (Express)      | **AppSail**                               | Runs a server app (Node runtime **or** a Docker image) | It executes server code, holds routes, talks to Postgres                |
+| **Frontend** (React build) | **Web Client Hosting**                    | A **static file CDN** — serves HTML/CSS/JS only        | After `npm run build` the frontend is just static files                 |
+| **Background jobs**        | **Functions + Cron / Job Scheduling**     | Scheduled serverless execution                         | Outbox delivery, Zoho sync, low-stock alerts (see `ARCHITECTURE §3.11`) |
+| **Cache**                  | **Catalyst Cache**                        | Shared key-value store all instances reach             | Hot reads (dashboards, product lists)                                   |
+| **Database**               | **External managed PostgreSQL** (AWS RDS) | Not a Catalyst service                                 | ACID, RLS, portability (see `DATABASE_DECISION.md`)                     |
 
-> ⚠️ **The frontend does NOT go on AppSail.** AppSail runs *server code*. A built React app is static
+> ⚠️ **The frontend does NOT go on AppSail.** AppSail runs _server code_. A built React app is static
 > files, so it goes on **Web Client Hosting**. AppSail is for the backend only.
 
 ---
@@ -71,11 +71,11 @@ jobwork-process-webapp/
     └── app-config.json        ← …by THIS file (runtime = node, start command, port)
 ```
 
-| Manifest file | Location | Declares |
-| --- | --- | --- |
-| `catalyst.json` | repo root | The project ID/account and which components the project has |
-| `client-package.json` | the client folder | "This folder is a **web client** → **Web Client Hosting**" |
-| `app-config.json` | the AppSail app folder | "This folder is an **AppSail app**: Node stack, start command, port → **AppSail**" |
+| Manifest file         | Location               | Declares                                                                           |
+| --------------------- | ---------------------- | ---------------------------------------------------------------------------------- |
+| `catalyst.json`       | repo root              | The project ID/account and which components the project has                        |
+| `client-package.json` | the client folder      | "This folder is a **web client** → **Web Client Hosting**"                         |
+| `app-config.json`     | the AppSail app folder | "This folder is an **AppSail app**: Node stack, start command, port → **AppSail**" |
 
 `catalyst deploy` walks `catalyst.json`, finds each declared component, reads its manifest, and pushes
 it to the matching service. That's the entire mechanism.
@@ -88,13 +88,14 @@ Catalyst's defaults expect a folder named `client` (web hosting) and an app fold
 architecture uses `web/` and `backend/`. Reconcile this **once**, at setup, using either option:
 
 **Option A — point the Vite build at Catalyst's client folder (recommended, simplest):**
+
 - Let `catalyst init` create the `client/` folder (with `client-package.json`).
 - In `web/vite.config.ts`, set the build output there:
   ```ts
   // web/vite.config.ts
   export default defineConfig({
     plugins: [react()],
-    build: { outDir: "../client", emptyOutDir: true }, // React build → Catalyst client folder
+    build: { outDir: '../client', emptyOutDir: true }, // React build → Catalyst client folder
   });
   ```
 - Now `npm run build` (inside `web/`) fills `client/`, and `catalyst deploy` ships it.
@@ -146,14 +147,14 @@ Secrets are **never** committed. They are set in the Catalyst console (or via CL
 
 ### 7.1 Backend (AppSail) env vars
 
-| Var | Example | Notes |
-| --- | --- | --- |
-| `DATABASE_URL` | `postgres://user:pass@host:5432/db` | External managed Postgres; **use a connection pooler** (AppSail multiplies instances — see `ARCHITECTURE §6`). Prefer the app's **non-owner** DB role so RLS is enforced. |
-| `JWT_ACCESS_SECRET` | (random 32+ bytes) | Short-lived access token signing (15 min). |
-| `JWT_REFRESH_SECRET` | (random 32+ bytes) | Refresh token signing (7 days, rotating). |
-| `NODE_ENV` | `production` | — |
-| `ZOHO_CLIENT_ID` / `ZOHO_CLIENT_SECRET` | — | Zoho Books integration (set when that module ships). |
-| `CORS_ORIGIN` | the Web Hosting URL | Lock the API to the frontend origin. |
+| Var                                     | Example                             | Notes                                                                                                                                                                     |
+| --------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                          | `postgres://user:pass@host:5432/db` | External managed Postgres; **use a connection pooler** (AppSail multiplies instances — see `ARCHITECTURE §6`). Prefer the app's **non-owner** DB role so RLS is enforced. |
+| `JWT_ACCESS_SECRET`                     | (random 32+ bytes)                  | Short-lived access token signing (15 min).                                                                                                                                |
+| `JWT_REFRESH_SECRET`                    | (random 32+ bytes)                  | Refresh token signing (7 days, rotating).                                                                                                                                 |
+| `NODE_ENV`                              | `production`                        | —                                                                                                                                                                         |
+| `ZOHO_CLIENT_ID` / `ZOHO_CLIENT_SECRET` | —                                   | Zoho Books integration (set when that module ships).                                                                                                                      |
+| `CORS_ORIGIN`                           | the Web Hosting URL                 | Lock the API to the frontend origin.                                                                                                                                      |
 
 `backend/src/config/env.ts` validates these with **Zod at boot** and fails fast if any is missing
 (`ARCHITECTURE §4`).
@@ -163,8 +164,8 @@ Secrets are **never** committed. They are set in the Catalyst console (or via CL
 Vite inlines `VITE_*` vars **at build time**, so they must be set **before `npm run build`**, not in
 the Catalyst console.
 
-| Var | Dev value | Prod value |
-| --- | --- | --- |
+| Var            | Dev value                                         | Prod value                                                                     |
+| -------------- | ------------------------------------------------- | ------------------------------------------------------------------------------ |
 | `VITE_API_URL` | `/api` (Vite dev proxy forwards to local backend) | the deployed API base URL (e.g. `https://<project>.catalyst...appsail.../api`) |
 
 Because these bake into the static bundle, a change to `VITE_API_URL` requires a **rebuild + redeploy**
@@ -205,8 +206,8 @@ the two steps feel like one:
 {
   "private": true,
   "scripts": {
-    "deploy": "cd web && npm run build && cd .. && catalyst deploy"
-  }
+    "deploy": "cd web && npm run build && cd .. && catalyst deploy",
+  },
 }
 ```
 
@@ -220,13 +221,13 @@ Then `npm run deploy` runs build + deploy. The actual Catalyst push is still the
 This is the most common misconception — state it plainly: **Catalyst never reads
 `docker-compose.yml`.**
 
-| | `docker-compose.yml` | `catalyst deploy` |
-| --- | --- | --- |
-| **Purpose** | Run Postgres + the app **on your laptop** for local dev | Ship to production |
-| **Shape** | Multiple long-running containers at once | AppSail takes **one** stateless image (`backend/Dockerfile`), not a compose stack |
-| **Database** | A throwaway local Postgres container | The **external managed** Postgres (RDS) — not in Catalyst |
+|              | `docker-compose.yml`                                    | `catalyst deploy`                                                                 |
+| ------------ | ------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| **Purpose**  | Run Postgres + the app **on your laptop** for local dev | Ship to production                                                                |
+| **Shape**    | Multiple long-running containers at once                | AppSail takes **one** stateless image (`backend/Dockerfile`), not a compose stack |
+| **Database** | A throwaway local Postgres container                    | The **external managed** Postgres (RDS) — not in Catalyst                         |
 
-Why AppSail can't use compose: AppSail is **serverless** — many short-lived, autoscaled copies of *one*
+Why AppSail can't use compose: AppSail is **serverless** — many short-lived, autoscaled copies of _one_
 stateless container. A compose stack (app + DB, long-running, stateful) is the opposite model. In
 production, Postgres is a separate managed service and Catalyst runs only the stateless Express image.
 
