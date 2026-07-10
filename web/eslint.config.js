@@ -31,6 +31,37 @@ export default defineConfig([
           caughtErrorsIgnorePattern: '^_',
         },
       ],
+
+      // Names are camelCase, with the exceptions React and TypeScript force on us.
+      // Later entries win over earlier ones only at equal specificity; individual
+      // selectors always beat the `default` catch-all.
+      '@typescript-eslint/naming-convention': [
+        'error',
+        {
+          selector: 'default',
+          format: ['camelCase'],
+          leadingUnderscore: 'allow',
+          trailingUnderscore: 'forbid',
+        },
+        // Components are PascalCase (`const Input = forwardRef(...)`), module-level
+        // constants are UPPER_CASE.
+        {
+          selector: 'variable',
+          format: ['camelCase', 'PascalCase', 'UPPER_CASE'],
+          leadingUnderscore: 'allow',
+        },
+        { selector: 'parameter', format: ['camelCase'], leadingUnderscore: 'allow' },
+        // `function Button()` / `function EyeIcon()`.
+        { selector: 'function', format: ['camelCase', 'PascalCase'] },
+        // `import { QueryClientProvider }`, `import styles from './x.module.css'`.
+        { selector: 'import', format: ['camelCase', 'PascalCase'] },
+        { selector: 'typeLike', format: ['PascalCase'] },
+        { selector: 'enumMember', format: ['PascalCase', 'UPPER_CASE'] },
+        // Keys that can't be identifiers are dictated by the wire format, not by us:
+        // `{ 'Content-Type': 'application/json' }`.
+        { selector: 'objectLiteralProperty', format: null, modifiers: ['requiresQuotes'] },
+        { selector: 'typeProperty', format: null, modifiers: ['requiresQuotes'] },
+      ],
     },
   },
   // MUST be last: turns OFF ESLint formatting rules that would fight Prettier.

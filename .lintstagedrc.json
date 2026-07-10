@@ -1,0 +1,7 @@
+{
+  "web/**/*.{ts,tsx,js,jsx}": [
+    "prettier --write",
+    "node web/node_modules/eslint/bin/eslint.js --fix"
+  ],
+  "*.{json,css,md,html}": ["prettier --write"]
+}

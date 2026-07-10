@@ -41,12 +41,12 @@ so the decision is auditable and defensible.
 
 ### 3.1 Language: TypeScript ✅
 
-| Pros | Cons |
-| --- | --- |
-| Compile-time safety across a 150-table codebase | Small build step (`tsc` / `tsx`) |
+| Pros                                                                | Cons                              |
+| ------------------------------------------------------------------- | --------------------------------- |
+| Compile-time safety across a 150-table codebase                     | Small build step (`tsc` / `tsx`)  |
 | Prisma generates fully-typed queries — autocomplete on every column | Slight learning curve vs plain JS |
-| Zod infers types from validation schemas (no drift) | — |
-| Safe refactoring as the codebase grows | — |
+| Zod infers types from validation schemas (no drift)                 | —                                 |
+| Safe refactoring as the codebase grows                              | —                                 |
 
 **Decision:** TypeScript everywhere (backend + frontend). For a product we intend to sell and maintain
 for years, shipping plain JavaScript would be a false economy.
@@ -55,11 +55,11 @@ for years, shipping plain JavaScript would be a false economy.
 
 ### 3.2 Backend framework: Express ✅ (over Fastify / NestJS)
 
-| Option | Pros | Cons | Verdict |
-| --- | --- | --- | --- |
-| **Express** | Team already knows it; huge ecosystem; simple; AppSail-supported | Less built-in structure; manual typing of `req.user` | **Chosen** |
-| Fastify | Faster, schema validation built in | Team has no experience — slows delivery | Rejected (skills) |
-| NestJS | Batteries-included structure | Heavy, opinionated, steeper curve | Rejected (overkill now) |
+| Option      | Pros                                                             | Cons                                                 | Verdict                 |
+| ----------- | ---------------------------------------------------------------- | ---------------------------------------------------- | ----------------------- |
+| **Express** | Team already knows it; huge ecosystem; simple; AppSail-supported | Less built-in structure; manual typing of `req.user` | **Chosen**              |
+| Fastify     | Faster, schema validation built in                               | Team has no experience — slows delivery              | Rejected (skills)       |
+| NestJS      | Batteries-included structure                                     | Heavy, opinionated, steeper curve                    | Rejected (overkill now) |
 
 **Decision:** **Express + TypeScript.** Team familiarity outweighs Fastify's marginal performance
 edge. Structure is imposed by our own conventions (Section 4), not the framework.
@@ -68,12 +68,12 @@ edge. Structure is imposed by our own conventions (Section 4), not the framework
 
 ### 3.3 Architecture style: Modular Monolith ✅ (over Microservices)
 
-| Option | Pros | Cons | Verdict |
-| --- | --- | --- | --- |
-| **Modular monolith** | One deployable; simple ops; fast to build; clear domain modules; can split later | Requires discipline to keep modules decoupled | **Chosen** |
-| Microservices | Independent scaling/deploys | Massive ops overhead; distributed transactions; premature for launch | Rejected (too early) |
+| Option               | Pros                                                                             | Cons                                                                 | Verdict              |
+| -------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------- | -------------------- |
+| **Modular monolith** | One deployable; simple ops; fast to build; clear domain modules; can split later | Requires discipline to keep modules decoupled                        | **Chosen**           |
+| Microservices        | Independent scaling/deploys                                                      | Massive ops overhead; distributed transactions; premature for launch | Rejected (too early) |
 
-**Decision:** **Modular monolith.** 150 tables is large, but it's still *one product*. Microservices now
+**Decision:** **Modular monolith.** 150 tables is large, but it's still _one product_. Microservices now
 would multiply operational cost for no benefit. The module boundaries (Section 4) are drawn so any
 domain can be extracted into its own service **later** if it ever needs independent scaling.
 
@@ -84,12 +84,12 @@ module's tables directly. This is what preserves the future option to split.
 
 ### 3.4 ORM: Prisma ✅ (over Sequelize / raw SQL / Drizzle)
 
-| Option | Pros | Cons | Verdict |
-| --- | --- | --- | --- |
-| **Prisma** | Excellent TS types; migrations; readable schema; multi-file schema; raw-SQL escape hatch | Weaker at very complex aggregations (use `$queryRaw`) | **Chosen** |
-| Sequelize | Mature | Poor TypeScript story; boilerplate | Rejected (bad TS fit) |
-| Raw SQL only | Max control/perf | No type safety, no migrations, no tenant guardrails; unmaintainable at 150 tables | Rejected |
-| Drizzle | TS-first, close to SQL | New to team; less mature tooling | Backup option |
+| Option       | Pros                                                                                     | Cons                                                                              | Verdict               |
+| ------------ | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | --------------------- |
+| **Prisma**   | Excellent TS types; migrations; readable schema; multi-file schema; raw-SQL escape hatch | Weaker at very complex aggregations (use `$queryRaw`)                             | **Chosen**            |
+| Sequelize    | Mature                                                                                   | Poor TypeScript story; boilerplate                                                | Rejected (bad TS fit) |
+| Raw SQL only | Max control/perf                                                                         | No type safety, no migrations, no tenant guardrails; unmaintainable at 150 tables | Rejected              |
+| Drizzle      | TS-first, close to SQL                                                                   | New to team; less mature tooling                                                  | Backup option         |
 
 **Decision:** **Prisma for ~95% of queries + `prisma.$queryRaw` for the few heavy reports.**
 Best balance of safety, speed, and maintainability. Raw-SQL-only is unmaintainable at this scale;
@@ -120,10 +120,10 @@ Security, and portability** — all mandatory for inventory + invoicing.
 
 ### 3.6 Validation: Zod ✅ (over Joi)
 
-| Option | Pros | Cons | Verdict |
-| --- | --- | --- | --- |
-| **Zod** | Validation **and** inferred TS types from one schema; no drift | — | **Chosen** |
-| Joi | Mature | Does not infer TS types — validation and types drift apart | Rejected |
+| Option  | Pros                                                           | Cons                                                       | Verdict    |
+| ------- | -------------------------------------------------------------- | ---------------------------------------------------------- | ---------- |
+| **Zod** | Validation **and** inferred TS types from one schema; no drift | —                                                          | **Chosen** |
+| Joi     | Mature                                                         | Does not infer TS types — validation and types drift apart | Rejected   |
 
 **Decision:** **Zod.** In a TypeScript codebase, one schema producing both runtime validation and the
 static type is a decisive advantage over Joi.
@@ -139,33 +139,75 @@ Hand-maintained docs drift from reality; generated docs stay correct.
 
 ### 3.8 Authentication: JWT access + refresh (rotating) ✅
 
-| Element | Choice | Reason |
-| --- | --- | --- |
-| Access token | Short-lived (15 min), kept **in memory** on the client | Limits damage if stolen; not readable by XSS from localStorage |
-| Refresh token | Long-lived (7 days), **httpOnly + Secure cookie** | Not accessible to JavaScript |
-| Refresh storage | **Hashed** in DB, **rotated** on each use | A DB leak can't be replayed; token reuse is detectable → revoke family |
-| Passwords | **argon2id** | Current OWASP-recommended hash |
+| Element         | Choice                                                 | Reason                                                                 |
+| --------------- | ------------------------------------------------------ | ---------------------------------------------------------------------- |
+| Access token    | Short-lived (15 min), kept **in memory** on the client | Limits damage if stolen; not readable by XSS from localStorage         |
+| Refresh token   | Long-lived (7 days), **httpOnly + Secure cookie**      | Not accessible to JavaScript                                           |
+| Refresh storage | **Hashed** in DB, **rotated** on each use              | A DB leak can't be replayed; token reuse is detectable → revoke family |
+| Passwords       | **argon2id**                                           | Current OWASP-recommended hash                                         |
 
 **Decision:** Standard, secure JWT pattern with rotation. Do not store access tokens in localStorage.
 
 ---
 
-### 3.9 Authorization: RBAC ✅
+### 3.9 Authorization: RBAC — Role (hierarchy) × Profile (permissions) ✅
 
-Roles per tenant: **OWNER / ADMIN / OPERATOR / VIEWER**, enforced by a `requireRole` middleware on
-every mutating route. Designed in from day one — bolting on RBAC later is error-prone.
+Authorization has **two independent axes**, following the model our customers already know from
+Zoho CRM and Salesforce. Both are defined **per tenant, by the tenant**, at runtime — neither is a
+hardcoded enum.
+
+| Axis        | Answers                            | Governs                                                     | Stored in                                     |
+| ----------- | ---------------------------------- | ----------------------------------------------------------- | --------------------------------------------- |
+| **Profile** | _What may this user do?_           | Actions & fields — `inventory.stock.adjust`, `invoice.void` | `permission_profiles` + `profile_permissions` |
+| **Role**    | _Which records may they do it to?_ | Data visibility, via an org hierarchy                       | `roles` (`parent_role_id`, `data_scope`)      |
+
+The two are **orthogonal**: two users with the same Role may hold different Profiles, and two users
+with different Roles may share a Profile. A Floor Manager and a Machine Operator can both hold the
+_Inventory Full Access_ profile — the manager sees every machine in her department, the operator
+sees only his own job runs.
+
+| Option                                      | Pros                                                                                             | Cons                                                                           | Verdict    |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ | ---------- |
+| **Role × Profile (2 axes)**                 | Matches Zoho/Salesforce mental model; permissions have exactly one source; hierarchy is reusable | Two concepts to teach                                                          | **Chosen** |
+| Fixed role enum                             | Trivial to implement; zero joins                                                                 | Cannot express "same job title, different access" — a certain migration later  | Rejected   |
+| Roles _and_ profiles both grant permissions | Maximum flexibility                                                                              | Two grant sources ⇒ precedence rules ⇒ undebuggable "why can't I do X" tickets | Rejected   |
+
+**Permissions come from the Profile and nowhere else.** The Role never grants a permission. This is
+the single rule that keeps authorization debuggable.
+
+**Naming:** the permission template is called a **Profile** in the UI (Zoho's term) but is always
+`permissionProfile` / `permission_profiles` in code and schema — never bare `profile`, which is
+reserved for the user's own account page.
+
+**The organization creator is an owner, not a profile.** `memberships.is_owner` short-circuits every
+check (`if (membership.isOwner) return true`). Modelling superadmin as a profile that enumerates all
+permissions would silently go stale the moment a migration adds permission #101. A **deferrable
+constraint trigger** guarantees an org can never reach zero owners (a unique index cannot express
+"at least one") — otherwise a customer can demote their last admin and lock themselves out of their
+own tenant, a state the app's own rules cannot repair.
+
+**Enforcement:**
+
+1. `requirePermission('invoice.void')` middleware on every mutating route — checks the Profile axis.
+2. `scopeToRole()` in the service layer narrows each query by the Role axis (`own` / `subtree` /
+   `organization`) before it reaches the database.
+
+Both axes resolve **once**, at login or organization switch, into the short-lived access token — a
+permission check is a set lookup in memory, never a query. Designed in from day one; bolting on
+authorization later is error-prone.
 
 ---
 
 ### 3.10 Multi-tenancy: shared DB + `tenantId` + Row-Level Security ✅
 
-| Option | Pros | Cons | Verdict |
-| --- | --- | --- | --- |
-| **Shared DB + tenantId + RLS** | Simplest to operate & scale; one migration set; DB-level safety net | Requires discipline + RLS setup | **Chosen** |
-| Schema-per-tenant | Stronger isolation | Migration overhead grows with customers | Rejected (ops cost) |
-| DB-per-tenant | Maximum isolation | Heaviest ops; connection routing | Rejected (premature) |
+| Option                         | Pros                                                                | Cons                                    | Verdict              |
+| ------------------------------ | ------------------------------------------------------------------- | --------------------------------------- | -------------------- |
+| **Shared DB + tenantId + RLS** | Simplest to operate & scale; one migration set; DB-level safety net | Requires discipline + RLS setup         | **Chosen**           |
+| Schema-per-tenant              | Stronger isolation                                                  | Migration overhead grows with customers | Rejected (ops cost)  |
+| DB-per-tenant                  | Maximum isolation                                                   | Heaviest ops; connection routing        | Rejected (premature) |
 
 **Enforcement is two-layered:**
+
 1. **Application layer** — every query is tenant-scoped in the service.
 2. **Database layer** — PostgreSQL **Row-Level Security** policies filter every row by
    `current_setting('app.current_tenant')`, set per request inside a transaction (`SET LOCAL`).
@@ -193,11 +235,11 @@ Cron + Job Scheduling.**
 4. On failure → retry with backoff; every attempt logged in webhook_delivery
 ```
 
-| Pros | Cons |
-| --- | --- |
-| No event ever silently lost | Slight delivery latency (cron interval) |
+| Pros                                                      | Cons                                          |
+| --------------------------------------------------------- | --------------------------------------------- |
+| No event ever silently lost                               | Slight delivery latency (cron interval)       |
 | Survives external API downtime (Zoho rate limits/outages) | Requires idempotency keys to avoid duplicates |
-| Customer-visible delivery status possible | — |
+| Customer-visible delivery status possible                 | —                                             |
 
 **Decision:** Outbox in Postgres + Catalyst Cron worker. This is the single most important reliability
 pattern in the system; everything integration-related hangs off it.
@@ -210,11 +252,11 @@ pattern in the system; everything integration-related hangs off it.
 **On Catalyst (serverless):** instances are short-lived (~5 min) and autoscale, so persistent
 WebSocket connections don't fit.
 
-| Option | Pros | Cons | Verdict |
-| --- | --- | --- | --- |
-| **Short polling / SSE** | Simple; fits serverless; adequate for manual-entry data | Not sub-second live | **Chosen (start here)** |
-| Catalyst Signals / push | Platform-native | Extra integration | Option later |
-| External realtime (Pusher/Ably) | True low-latency push | Added cost/dependency | Only if needed |
+| Option                          | Pros                                                    | Cons                  | Verdict                 |
+| ------------------------------- | ------------------------------------------------------- | --------------------- | ----------------------- |
+| **Short polling / SSE**         | Simple; fits serverless; adequate for manual-entry data | Not sub-second live   | **Chosen (start here)** |
+| Catalyst Signals / push         | Platform-native                                         | Extra integration     | Option later            |
+| External realtime (Pusher/Ably) | True low-latency push                                   | Added cost/dependency | Only if needed          |
 
 **Decision:** Start with **polling**. The data source is manual operator entry — sub-second realtime
 is not required. Don't over-engineer realtime on a serverless host.
@@ -231,8 +273,9 @@ all app instances can reach. Never cache in an instance's memory (instances don'
 ### 3.14 Containerization: Docker ✅ (kept)
 
 AppSail **supports OCI/Docker images**. We keep Docker for:
+
 - consistent local dev (`docker-compose` for Postgres + Redis-equivalent locally),
-- a portable production image deployable to AppSail *or* any other host later.
+- a portable production image deployable to AppSail _or_ any other host later.
 
 **Decision:** Keep Docker. It is not wasted on Catalyst and preserves portability.
 
@@ -240,11 +283,11 @@ AppSail **supports OCI/Docker images**. We keep Docker for:
 
 ### 3.15 Frontend: React + Vite + TypeScript ✅
 
-| Pros | Cons |
-| --- | --- |
-| Team-standard; huge ecosystem | — |
-| Vite = fast builds & dev server (over CRA) | — |
-| Static build hosts on Catalyst Web Client Hosting | — |
+| Pros                                              | Cons |
+| ------------------------------------------------- | ---- |
+| Team-standard; huge ecosystem                     | —    |
+| Vite = fast builds & dev server (over CRA)        | —    |
+| Static build hosts on Catalyst Web Client Hosting | —    |
 
 **Decision:** React + **Vite** (not Create React App). Frontend feature folders **mirror** backend
 modules for consistency.
@@ -256,20 +299,20 @@ modules for consistency.
 Frontend state splits into two kinds, each with a different best tool. Conflating them is why
 teams over-reach for Redux.
 
-| Kind of state | Examples here | Tool |
-| --- | --- | --- |
-| **Server state** — lives in the DB, fetched over HTTP | products, jobs, inventory, invoices, current user | **React Query** (`use*.ts` hooks) |
-| **Client state** — exists only in the browser | access token (in memory), theme, sidebar open/closed, form fields | **React Context** + local `useState` |
+| Kind of state                                         | Examples here                                                     | Tool                                 |
+| ----------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------ |
+| **Server state** — lives in the DB, fetched over HTTP | products, jobs, inventory, invoices, current user                 | **React Query** (`use*.ts` hooks)    |
+| **Client state** — exists only in the browser         | access token (in memory), theme, sidebar open/closed, form fields | **React Context** + local `useState` |
 
-| Option | Pros | Cons | Verdict |
-| --- | --- | --- | --- |
-| **React Query + Context** | ~90% of our state is server state — caching, loading, refetch, invalidation come for free; minimal boilerplate | Discipline to keep client vs server state separate | **Chosen** |
-| Redux (Toolkit) | Powerful for complex *client* state (canvas/editor undo-redo) | Heavy boilerplate; re-implements caching React Query already gives; wrong fit for a forms-over-data app | Rejected (overkill) |
-| Zustand | Tiny (~1 KB), simple global store | Not needed until complex shared *client* state appears | Backup option (later) |
+| Option                    | Pros                                                                                                           | Cons                                                                                                    | Verdict               |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------- |
+| **React Query + Context** | ~90% of our state is server state — caching, loading, refetch, invalidation come for free; minimal boilerplate | Discipline to keep client vs server state separate                                                      | **Chosen**            |
+| Redux (Toolkit)           | Powerful for complex _client_ state (canvas/editor undo-redo)                                                  | Heavy boilerplate; re-implements caching React Query already gives; wrong fit for a forms-over-data app | Rejected (overkill)   |
+| Zustand                   | Tiny (~1 KB), simple global store                                                                              | Not needed until complex shared _client_ state appears                                                  | Backup option (later) |
 
 **Decision:** **No Redux.** **Server state → React Query** (`app/queryClient.ts` + per-feature
 `use*.ts` hooks). **Global client state → React Context** (`AuthProvider` holds the in-memory access
-token per §3.8; `ThemeProvider`). Reach for **Zustand** only if complex shared *client* state (e.g. a
+token per §3.8; `ThemeProvider`). Reach for **Zustand** only if complex shared _client_ state (e.g. a
 multi-step wizard) appears later. This matches guiding principle #2 — optimize for delivery speed and
 maintainability, not novelty.
 
@@ -280,11 +323,11 @@ maintainability, not novelty.
 The frontend and backend must agree on the shape of every request and response. There are three ways
 to keep them in sync; only one avoids drift.
 
-| Option | How | Verdict |
-| --- | --- | --- |
-| **Generate FE types from OpenAPI** | `openapi-typescript` reads the spec (already generated from Zod, §3.7) and emits `web/src/api/schema.d.ts` | **Chosen** |
-| Hand-written mirror types | A central `web/src/types/*.ts` copied from backend DTOs by hand | Rejected (drifts — the exact failure §3.6 rejects Joi for) |
-| Shared types package (monorepo) | A `packages/shared` imported by both | Rejected for now (couples deploys; premature) |
+| Option                             | How                                                                                                        | Verdict                                                    |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **Generate FE types from OpenAPI** | `openapi-typescript` reads the spec (already generated from Zod, §3.7) and emits `web/src/api/schema.d.ts` | **Chosen**                                                 |
+| Hand-written mirror types          | A central `web/src/types/*.ts` copied from backend DTOs by hand                                            | Rejected (drifts — the exact failure §3.6 rejects Joi for) |
+| Shared types package (monorepo)    | A `packages/shared` imported by both                                                                       | Rejected for now (couples deploys; premature)              |
 
 **Decision:** the backend is the **single source of truth** for API types. Zod schemas produce the
 OpenAPI spec (§3.7); `openapi-typescript` turns that spec into frontend types at build time. When a
@@ -293,12 +336,12 @@ error instead of a runtime bug.
 
 **Where types come from (never hand-write what a tool can derive):**
 
-| Layer | Source of truth | How it's obtained |
-| --- | --- | --- |
-| Backend entity/row types | Prisma schema | `import type { Product } from '@prisma/client'` |
-| Backend input/DTO types | Zod schema (`*.schemas.ts`) | `type CreateProductInput = z.infer<typeof createProductSchema>` |
-| Backend response DTO (only when it differs from the row) | `modules/<x>/<x>.types.ts` | hand-written — the **only** per-feature backend type file, and only when needed |
-| Frontend API types | OpenAPI spec | generated → `web/src/api/schema.d.ts` |
+| Layer                                                    | Source of truth             | How it's obtained                                                               |
+| -------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------- |
+| Backend entity/row types                                 | Prisma schema               | `import type { Product } from '@prisma/client'`                                 |
+| Backend input/DTO types                                  | Zod schema (`*.schemas.ts`) | `type CreateProductInput = z.infer<typeof createProductSchema>`                 |
+| Backend response DTO (only when it differs from the row) | `modules/<x>/<x>.types.ts`  | hand-written — the **only** per-feature backend type file, and only when needed |
+| Frontend API types                                       | OpenAPI spec                | generated → `web/src/api/schema.d.ts`                                           |
 
 **Does this survive deploying FE and BE on different servers?** Yes. Type generation is **build-time**;
 generated types are erased at compile time and ship zero runtime code. The two apps share **no runtime
@@ -321,7 +364,9 @@ production-monitor/
 │   ├── prisma/
 │   │   ├── schema/                   # ⭐ table schema split by DOMAIN
 │   │   │   ├── schema.prisma         #    generator + datasource config
-│   │   │   ├── tenant.prisma         #    Tenant, User, Role, RefreshToken, ApiKey
+│   │   │   ├── tenant.prisma         #    Organization, User, Membership, Invitation
+│   │   │   ├── authz.prisma          #    Role, Permission, PermissionProfile, ProfilePermission
+│   │   │   ├── auth.prisma           #    RefreshToken, ApiKey
 │   │   │   ├── catalog.prisma        #    Product, Category, Unit, Bom
 │   │   │   ├── inventory.prisma      #    Warehouse, StockMovement, StockLevel, Batch
 │   │   │   ├── machines.prisma       #    Machine, WorkCenter, MachineStatus
@@ -333,13 +378,13 @@ production-monitor/
 │   │   │   └── audit.prisma          #    AuditLog, ActivityFeed
 │   │   ├── migrations/               #    auto-generated by Prisma — never hand-edit
 │   │   ├── rls.sql                   #    Row-Level Security policies (tenant safety net)
-│   │   └── seed.ts                   #    demo tenant + admin user
+│   │   └── seed.ts                   #    permission catalog + demo org, owner, starter profiles
 │   │
 │   ├── src/
 │   │   ├── config/env.ts             # validate & export env vars (Zod) — fail fast at boot
 │   │   ├── db/prisma.ts              # Prisma client + runAsTenant() (sets RLS context)
 │   │   ├── lib/                      # jwt, password (argon2), crypto, idempotency, apiError
-│   │   ├── middlewares/              # authenticate, requireRole, tenantContext, validate, errorHandler
+│   │   ├── middlewares/              # authenticate, requirePermission, tenantContext, validate, errorHandler
 │   │   │
 │   │   ├── modules/                  # ⭐ one folder PER DOMAIN
 │   │   │   └── products/             #    ── example feature, fully shown ──
@@ -434,7 +479,7 @@ production-monitor/
 │       │
 │       ├── routes/                   # route-level guards
 │       │   ├── ProtectedRoute.tsx    # redirect to /login if unauthenticated
-│       │   └── RoleRoute.tsx         # RBAC: OWNER/ADMIN/OPERATOR/VIEWER
+│       │   └── PermissionRoute.tsx   # gate a route on a permission code from the active profile
 │       │
 │       └── features/                 # ⭐ one folder per feature — MIRRORS backend modules
 │           └── products/             # ── example feature; EVERY other feature follows this shape ──
@@ -460,14 +505,14 @@ production-monitor/
 
 ### Frontend file-naming conventions (per feature)
 
-| File pattern | Role | Knows about |
-| --- | --- | --- |
-| `*Page.tsx` | A routed screen | Composition of components + hooks |
-| `*Form.tsx` / `*Table.tsx` / `*Card.tsx` | Feature-local UI pieces | Props only |
-| `use*.ts` | Data hooks (React Query fetch/mutate) | The API layer, caching |
-| `*.api.ts` | HTTP calls to the backend | `api/client.ts`, endpoint paths |
-| `*.types.ts` | Re-exports this feature's API types from the generated `api/schema.d.ts` | Generated OpenAPI types (§3.17) |
-| `*.schemas.ts` | Zod validation for that feature's forms | Field rules (mirrors server Zod) |
+| File pattern                             | Role                                                                     | Knows about                       |
+| ---------------------------------------- | ------------------------------------------------------------------------ | --------------------------------- |
+| `*Page.tsx`                              | A routed screen                                                          | Composition of components + hooks |
+| `*Form.tsx` / `*Table.tsx` / `*Card.tsx` | Feature-local UI pieces                                                  | Props only                        |
+| `use*.ts`                                | Data hooks (React Query fetch/mutate)                                    | The API layer, caching            |
+| `*.api.ts`                               | HTTP calls to the backend                                                | `api/client.ts`, endpoint paths   |
+| `*.types.ts`                             | Re-exports this feature's API types from the generated `api/schema.d.ts` | Generated OpenAPI types (§3.17)   |
+| `*.schemas.ts`                           | Zod validation for that feature's forms                                  | Field rules (mirrors server Zod)  |
 
 Feature folders **mirror the backend modules** (`features/products/` ↔ `modules/products/`), so
 navigating full-stack is trivial. Truly shared UI lives in `components/ui`; anything specific to one
@@ -527,16 +572,16 @@ before it reaches the controller.
 AppSail runs **many identical instances** of the app behind a load balancer, spawned/killed by
 traffic. Consequences we design around:
 
-| Constraint | Rule | Why |
-| --- | --- | --- |
-| Instances don't share memory | No state in module-level variables | Next request may hit a different instance |
-| Instances are short-lived (~5 min) | No always-on workers | Use Catalyst Cron instead of in-process BullMQ |
-| Connections multiply across instances | Use a **connection pooler** | Avoid exhausting Postgres connections |
-| No persistent sockets | Polling/SSE, not WebSockets | Connections don't survive instance churn |
-| Cold starts | Keep boot fast; cache hot reads | First request to a new instance has latency |
+| Constraint                            | Rule                               | Why                                            |
+| ------------------------------------- | ---------------------------------- | ---------------------------------------------- |
+| Instances don't share memory          | No state in module-level variables | Next request may hit a different instance      |
+| Instances are short-lived (~5 min)    | No always-on workers               | Use Catalyst Cron instead of in-process BullMQ |
+| Connections multiply across instances | Use a **connection pooler**        | Avoid exhausting Postgres connections          |
+| No persistent sockets                 | Polling/SSE, not WebSockets        | Connections don't survive instance churn       |
+| Cold starts                           | Keep boot fast; cache hot reads    | First request to a new instance has latency    |
 
 A well-built stateless Express app satisfies all of these with **no rewrite** — only the jobs and
-realtime *implementations* change (Catalyst SDK instead of BullMQ/Socket.IO).
+realtime _implementations_ change (Catalyst SDK instead of BullMQ/Socket.IO).
 
 ---
 
@@ -562,25 +607,25 @@ catalyst deploy                   # pushes API (AppSail) + web (hosting) + cron 
 
 ## 8. Summary table — final stack
 
-| Concern | Choice | Replaces / over |
-| --- | --- | --- |
-| Language | TypeScript | plain JS |
-| Backend | Express | Fastify, NestJS |
-| Architecture | Modular monolith | microservices |
-| ORM | Prisma (+ `$queryRaw`) | Sequelize, raw-only, Drizzle |
-| Database | PostgreSQL (external managed) | Zoho ZCQL/Data Store |
-| Validation | Zod | Joi |
-| API docs | OpenAPI from Zod | hand-written Swagger |
-| Shared types | Generated from OpenAPI (`schema.d.ts`) | hand-mirrored FE types |
-| Auth | JWT access+refresh (rotating), argon2 | — |
-| Multi-tenancy | Shared DB + tenantId + RLS | schema/db-per-tenant |
-| Jobs | Catalyst Cron + Outbox | BullMQ + Redis |
-| Realtime | Polling/SSE (→ Signals) | Socket.IO |
-| Cache | Catalyst Cache | Redis cache |
-| Container | Docker | — |
-| Frontend | React + Vite | CRA |
-| FE state | React Query + Context | Redux |
-| Host | Catalyst AppSail + Web Hosting | manual VM |
+| Concern       | Choice                                 | Replaces / over              |
+| ------------- | -------------------------------------- | ---------------------------- |
+| Language      | TypeScript                             | plain JS                     |
+| Backend       | Express                                | Fastify, NestJS              |
+| Architecture  | Modular monolith                       | microservices                |
+| ORM           | Prisma (+ `$queryRaw`)                 | Sequelize, raw-only, Drizzle |
+| Database      | PostgreSQL (external managed)          | Zoho ZCQL/Data Store         |
+| Validation    | Zod                                    | Joi                          |
+| API docs      | OpenAPI from Zod                       | hand-written Swagger         |
+| Shared types  | Generated from OpenAPI (`schema.d.ts`) | hand-mirrored FE types       |
+| Auth          | JWT access+refresh (rotating), argon2  | —                            |
+| Multi-tenancy | Shared DB + tenantId + RLS             | schema/db-per-tenant         |
+| Jobs          | Catalyst Cron + Outbox                 | BullMQ + Redis               |
+| Realtime      | Polling/SSE (→ Signals)                | Socket.IO                    |
+| Cache         | Catalyst Cache                         | Redis cache                  |
+| Container     | Docker                                 | —                            |
+| Frontend      | React + Vite                           | CRA                          |
+| FE state      | React Query + Context                  | Redux                        |
+| Host          | Catalyst AppSail + Web Hosting         | manual VM                    |
 
 ---
 
