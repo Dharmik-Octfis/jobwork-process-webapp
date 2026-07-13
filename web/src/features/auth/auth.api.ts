@@ -19,3 +19,13 @@ export async function signup(input: SignupInput): Promise<AuthResponse> {
   const { data } = await apiClient.post<AuthResponse>(endpoints.auth.signup, payload);
   return data;
 }
+
+export async function forgotPassword(input: { email: string }): Promise<{ message: string }> {
+  const { data } = await apiClient.post<{ message: string }>(endpoints.auth.forgotPassword, input);
+  return data;
+}
+
+export async function resetPassword(input: import('./auth.schemas').ResetPasswordInput): Promise<{ message: string }> {
+  const { data } = await apiClient.post<{ message: string }>(endpoints.auth.resetPassword, input);
+  return data;
+}

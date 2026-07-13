@@ -11,6 +11,12 @@ export interface PublicUser {
   email: string;
 }
 
+export interface AuthResult {
+  accessToken: string;
+  refreshToken: string;
+  user: PublicUser;
+}
+
 /**
  * Returned by `POST /auth/signup` and `POST /auth/login`.
  *
@@ -19,6 +25,6 @@ export interface PublicUser {
  * exist (§3.9).
  */
 export interface AuthResponse {
-  accessToken: string;
+  refreshToken: string;
   user: PublicUser;
 }

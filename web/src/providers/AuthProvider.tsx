@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { setAccessToken } from '../api/client';
 import type { User } from '../features/auth/auth.types';
 import { AuthContext } from './auth-context';
 import type { AuthContextValue } from './auth-context';
@@ -12,13 +11,12 @@ import type { AuthContextValue } from './auth-context';
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
 
-  const setSession = useCallback((accessToken: string, nextUser: User) => {
-    setAccessToken(accessToken);
+  const setSession = useCallback((nextUser: User) => {
     setUser(nextUser);
   }, []);
 
   const clearSession = useCallback(() => {
-    setAccessToken(null);
+    localStorage.removeItem('refreshToken');
     setUser(null);
   }, []);
 

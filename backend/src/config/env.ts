@@ -29,9 +29,19 @@ const envSchema = z.object({
   // 32 bytes of entropy, hex-encoded, is 64 characters. Anything shorter is
   // a weak signing key for HS256.
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
-  JWT_ACCESS_TTL: z.string().default('15m'),
+  JWT_ACCESS_TTL: z.string().default('1m'),
+
+  JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
+  JWT_REFRESH_TTL: z.string().default('7d'),
 
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
+
+  // Email Config
+  SMTP_HOST: z.string().default('smtp.gmail.com'),
+  SMTP_PORT: z.coerce.number().default(465),
+  SMTP_USER: z.string().min(1, 'SMTP_USER is required'),
+  SMTP_PASS: z.string().min(1, 'SMTP_PASS is required'),
+  SMTP_FROM: z.string().default('noreply@octfis.com'),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -54,8 +64,17 @@ export const env = {
   jwt: {
     accessSecret: raw.JWT_ACCESS_SECRET,
     accessTtl: raw.JWT_ACCESS_TTL,
+    refreshSecret: raw.JWT_REFRESH_SECRET,
+    refreshTtl: raw.JWT_REFRESH_TTL,
   },
   corsOrigins: raw.CORS_ORIGINS.split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),
+  smtp: {
+    host: raw.SMTP_HOST,
+    port: raw.SMTP_PORT,
+    user: raw.SMTP_USER,
+    pass: raw.SMTP_PASS,
+    from: raw.SMTP_FROM,
+  },
 } as const;

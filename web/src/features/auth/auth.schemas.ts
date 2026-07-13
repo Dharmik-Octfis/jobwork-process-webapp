@@ -45,3 +45,20 @@ export const signupSchema = z
   });
 
 export type SignupInput = z.infer<typeof signupSchema>;
+
+export const forgotPasswordSchema = z.object({
+  email,
+});
+
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+
+export const resetPasswordSchema = z.object({
+  email,
+  otp: z.string().length(6, 'OTP must be exactly 6 characters'),
+  newPassword: z
+    .string()
+    .min(8, 'Use at least 8 characters')
+    .max(72, 'Keep your password under 72 characters'),
+});
+
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

@@ -1,40 +1,26 @@
 import { Prisma } from '../../../generated/prisma/client.ts';
 import { prisma } from '../../db/prisma.ts';
 import { ApiError } from '../../lib/apiError.ts';
-import { signAccessToken } from '../../lib/jwt.ts';
+import { signAccessToken, signRefreshToken, verifyRefreshToken, type AccessTokenPayload } from '../../lib/jwt.ts';
 import { hashPassword, verifyPassword } from '../../lib/password.ts';
-import type { LoginInput, SignupInput } from './auth.schemas.ts';
-import type { AuthResponse, PublicUser } from './auth.types.ts';
+import type { LoginInput, SignupInput, ResetPasswordInput } from './auth.schemas.ts';
+import { sendOtpEmail } from '../../lib/mailer.ts';
+import type { AuthResult, PublicUser } from './auth.types.ts';
+import { env } from '../../config/env.ts';
+import ms from 'ms';
 
 /** Postgres unique-constraint violation, surfaced by Prisma. */
 const UNIQUE_VIOLATION = 'P2002';
 
-/**
- * The columns safe to return. `passwordHash` is opted into explicitly, and
- * only by `login`.
- */
 const publicUserSelect = { id: true, name: true, email: true } as const;
 
-/**
- * A valid argon2id hash of a value nobody knows, verified against whenever the
- * email doesn't exist. Without it, "no such user" returns in ~1 ms while "wrong
- * password" takes ~50 ms of hashing — a timing difference that lets an attacker
- * enumerate which email addresses have accounts.
- */
 let decoyHash: Promise<string> | undefined;
 function getDecoyHash(): Promise<string> {
   decoyHash ??= hashPassword('a-password-that-is-never-correct');
   return decoyHash;
 }
 
-/**
- * Create a user. Nothing else.
- *
- * Deliberately does NOT create an organization: that is the next step, and a
- * user must be able to exist before one (they may be invited into someone
- * else's organization instead of founding their own).
- */
-export async function signup(input: SignupInput): Promise<AuthResponse> {
+export async function signup(input: SignupInput): Promise<AuthResult> {
   const passwordHash = await hashPassword(input.password);
 
   try {
@@ -43,7 +29,7 @@ export async function signup(input: SignupInput): Promise<AuthResponse> {
       select: publicUserSelect,
     });
 
-    return toAuthResponse(user);
+    return await issueTokens(user);
   } catch (error) {
     // Checking `findUnique` first would still race: two concurrent signups for
     // the same email both see "available", and one loses at the index. The
@@ -55,7 +41,7 @@ export async function signup(input: SignupInput): Promise<AuthResponse> {
   }
 }
 
-export async function login(input: LoginInput): Promise<AuthResponse> {
+export async function login(input: LoginInput): Promise<AuthResult> {
   const user = await prisma.user.findUnique({
     where: { email: input.email },
     select: { ...publicUserSelect, passwordHash: true, isActive: true },
@@ -78,10 +64,98 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
     throw new ApiError(403, 'This account has been disabled.');
   }
 
-  return toAuthResponse({ id: user.id, name: user.name, email: user.email });
+  return await issueTokens({ id: user.id, name: user.name, email: user.email });
 }
 
-/** Backs `GET /auth/me` — resolves the token's subject to a user. */
+/**
+ * Shared helper to generate and store tokens.
+ */
+async function issueTokens(user: PublicUser): Promise<AuthResult> {
+  const accessToken = signAccessToken(user.id);
+  const refreshToken = signRefreshToken(user.id);
+  const expiresAt = new Date(Date.now() + ms(env.jwt.refreshTtl as ms.StringValue));
+
+  await prisma.refreshToken.create({
+    data: {
+      token: refreshToken,
+      userId: user.id,
+      expiresAt,
+    },
+  });
+
+  return { accessToken, refreshToken, user };
+}
+
+export async function refresh(oldRefreshToken: string): Promise<AuthResult> {
+  // ✅ 1. Verify JWT signature and expiry FIRST
+  let payload: AccessTokenPayload;
+  try {
+    payload = verifyRefreshToken(oldRefreshToken); // throws if invalid/expired
+  } catch (_error) {
+    // Token is tampered or expired — also clean it up from DB if it exists
+    await prisma.refreshToken.deleteMany({ where: { token: oldRefreshToken } }).catch(() => {});
+    throw new ApiError(401, 'Invalid or expired refresh token.');
+  }
+
+  // ✅ 2. Check if it exists in DB (reuse/revocation check)
+  const storedToken = await prisma.refreshToken.findUnique({
+    where: { token: oldRefreshToken },
+    include: { user: { select: { ...publicUserSelect, isActive: true } } },
+  });
+
+  if (!storedToken) {
+    // Token had valid JWT signature but isn't in DB anymore —
+    // classic sign of token reuse/theft. Revoke ALL tokens for this user.
+    await prisma.refreshToken.deleteMany({ where: { userId: payload.sub } }).catch(() => {});
+    throw new ApiError(401, 'Invalid refresh token. All sessions have been revoked for security.');
+  }
+
+  // ✅ 3. Cross-check: JWT payload userId must match the DB record's userId
+  if (storedToken.userId !== payload.sub) {
+    await prisma.refreshToken.deleteMany({ where: { userId: payload.sub } }).catch(() => {});
+    throw new ApiError(401, 'Token mismatch detected.');
+  }
+
+  // DB expiry check (defense in depth, JWT already checked this)
+  if (storedToken.expiresAt < new Date()) {
+    await prisma.refreshToken.delete({ where: { token: oldRefreshToken } }).catch(() => {});
+    throw new ApiError(401, 'Refresh token has expired.');
+  }
+
+  if (!storedToken.user.isActive) {
+    throw new ApiError(403, 'This account has been disabled.');
+  }
+
+  // ✅ 4. Rotation — do delete + create atomically inside a transaction
+  const publicUser = {
+    id: storedToken.user.id,
+    name: storedToken.user.name,
+    email: storedToken.user.email,
+  };
+
+  const accessToken = signAccessToken(publicUser.id);
+  const newRefreshToken = signRefreshToken(publicUser.id);
+  const expiresAt = new Date(Date.now() + ms(env.jwt.refreshTtl as ms.StringValue));
+
+  await prisma.$transaction([
+    prisma.refreshToken.delete({ where: { token: oldRefreshToken } }),
+    prisma.refreshToken.create({
+      data: {
+        token: newRefreshToken,
+        userId: publicUser.id,
+        expiresAt,
+      },
+    }),
+  ]);
+
+  return { accessToken, refreshToken: newRefreshToken, user: publicUser };
+}
+
+export async function logout(refreshToken: string): Promise<void> {
+  if (!refreshToken) return;
+  await prisma.refreshToken.delete({ where: { token: refreshToken } }).catch(() => {});
+}
+
 export async function getUserById(userId: string): Promise<PublicUser> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -89,13 +163,58 @@ export async function getUserById(userId: string): Promise<PublicUser> {
   });
 
   if (!user) {
-    // The token is validly signed but its user is gone (deleted mid-session).
     throw new ApiError(401, 'Your session is no longer valid. Please sign in again.');
   }
 
   return user;
 }
 
-function toAuthResponse(user: PublicUser): AuthResponse {
-  return { accessToken: signAccessToken(user.id), user };
+export async function requestPasswordReset(email: string): Promise<void> {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) return; // Silent failure to prevent email enumeration
+
+  // Generate a random 6-digit OTP
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  // Upsert to only keep one active OTP per email
+  await prisma.passwordResetToken.deleteMany({ where: { email } });
+  await prisma.passwordResetToken.create({
+    data: { email, otp, expiresAt },
+  });
+
+  await sendOtpEmail(email, otp);
+}
+
+export async function resetPassword(input: ResetPasswordInput): Promise<void> {
+  const token = await prisma.passwordResetToken.findFirst({
+    where: { email: input.email, otp: input.otp },
+  });
+
+  if (!token) {
+    throw new ApiError(400, 'Invalid or expired OTP.');
+  }
+
+  if (token.expiresAt < new Date()) {
+    await prisma.passwordResetToken.delete({ where: { id: token.id } });
+    throw new ApiError(400, 'OTP has expired. Please request a new one.');
+  }
+
+  const passwordHash = await hashPassword(input.newPassword);
+
+  await prisma.$transaction(async (tx) => {
+    // 1. Update user password
+    await tx.user.update({
+      where: { email: input.email },
+      data: { passwordHash },
+    });
+
+    // 2. Invalidate all existing sessions
+    await tx.refreshToken.deleteMany({
+      where: { user: { email: input.email } },
+    });
+
+    // 3. Delete the used OTP token
+    await tx.passwordResetToken.delete({ where: { id: token.id } });
+  });
 }

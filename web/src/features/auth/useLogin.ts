@@ -1,22 +1,28 @@
 import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../providers/auth-context';
+import { toApiErrorMessage } from '../../api/client';
 import { login } from './auth.api';
-import type { LoginInput } from './auth.schemas';
 
 /**
- * Login mutation: calls the API, stores the session, and redirects to the
- * page the user originally wanted (or the app home).
+ * Logs the user in, saves their refresh token in localStorage, and redirects them.
  */
-export function useLogin(redirectTo: string = '/') {
+export function useLogin(redirectTo = '/') {
   const { setSession } = useAuth();
   const navigate = useNavigate();
 
   return useMutation({
-    mutationFn: (input: LoginInput) => login(input),
+    mutationFn: login,
     onSuccess: (data) => {
-      setSession(data.accessToken, data.user);
+      if (data.refreshToken) {
+        localStorage.setItem('refreshToken', data.refreshToken);
+      }
+      setSession(data.user);
       navigate(redirectTo, { replace: true });
+    },
+    onError: (error) => {
+      // Components read this to show the banner.
+      console.error(toApiErrorMessage(error));
     },
   });
 }

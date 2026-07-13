@@ -6,7 +6,7 @@
   "type": "module",
   "main": "dist/src/server.js",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "nodemon --watch src --ext ts,json --exec tsx src/server.ts",
     "build": "prisma generate && tsc",
     "start": "node dist/src/server.js",
     "typecheck": "tsc --noEmit",
@@ -29,6 +29,7 @@
     "express": "^5.2.1",
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.3",
+    "nodemailer": "^9.0.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -38,9 +39,11 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^26.1.1",
+    "@types/nodemailer": "^8.0.1",
     "eslint": "^10.6.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.7.0",
+    "nodemon": "^3.1.14",
     "prisma": "^7.8.0",
     "tsx": "^4.23.0",
     "typescript": "^6.0.3",

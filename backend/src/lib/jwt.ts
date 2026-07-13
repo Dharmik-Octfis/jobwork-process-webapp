@@ -36,3 +36,20 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
 
   return { sub: decoded.sub };
 }
+
+export function signRefreshToken(userId: string): string {
+  const options: SignOptions = {
+    expiresIn: env.jwt.refreshTtl as SignOptions['expiresIn'],
+  };
+  return jwt.sign({}, env.jwt.refreshSecret, { ...options, subject: userId });
+}
+
+export function verifyRefreshToken(token: string): AccessTokenPayload {
+  const decoded = jwt.verify(token, env.jwt.refreshSecret);
+
+  if (typeof decoded === 'string' || typeof decoded.sub !== 'string') {
+    throw new jwt.JsonWebTokenError('Token is missing a subject claim');
+  }
+
+  return { sub: decoded.sub };
+}

@@ -4,28 +4,12 @@ import { env } from '../config/env';
 /**
  * Shared axios instance for the Express API.
  *
- * - `withCredentials: true` so the httpOnly refresh-token cookie is sent (auth §3.8).
- * - The short-lived access token is kept **in memory** (never localStorage) and
- *   attached per request. `AuthProvider` owns the token and calls `setAccessToken`.
+ * - `withCredentials: true` so the httpOnly access & refresh token cookies are sent.
  */
 export const apiClient = axios.create({
   baseURL: env.apiUrl,
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
-});
-
-let accessToken: string | null = null;
-
-/** Set (or clear) the in-memory access token attached to outgoing requests. */
-export function setAccessToken(token: string | null): void {
-  accessToken = token;
-}
-
-apiClient.interceptors.request.use((config) => {
-  if (accessToken) {
-    config.headers.Authorization = `Bearer ${accessToken}`;
-  }
-  return config;
 });
 
 /**

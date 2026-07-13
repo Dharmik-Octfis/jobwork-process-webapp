@@ -5,5 +5,7 @@ export const endpoints = {
     signup: '/auth/signup',
     logout: '/auth/logout',
     me: '/auth/me',
+    forgotPassword: '/auth/forgot-password',
+    resetPassword: '/auth/reset-password',
   },
 } as const;

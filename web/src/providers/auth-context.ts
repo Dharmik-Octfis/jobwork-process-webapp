@@ -4,8 +4,8 @@ import type { User } from '../features/auth/auth.types';
 export interface AuthContextValue {
   user: User | null;
   isAuthenticated: boolean;
-  /** Store the in-memory access token + user after login/signup. */
-  setSession: (accessToken: string, user: User) => void;
+  /** Store the user after login/signup (tokens are handled automatically by cookies). */
+  setSession: (user: User) => void;
   /** Clear the session (logout / refresh failure). */
   clearSession: () => void;
 }

@@ -15,6 +15,7 @@ async function main(): Promise<void> {
   // an unreachable host would sail past it and only surface on the first
   // request. An actual round-trip is the only real check.
   await prisma.$queryRaw`SELECT 1`;
+  console.log('✅ Database connected successfully');
 
   const app = createApp();
 

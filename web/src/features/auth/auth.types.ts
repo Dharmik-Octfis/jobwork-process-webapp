@@ -31,6 +31,6 @@ export interface User {
 
 /** Response from `POST /auth/login` and `POST /auth/signup`. */
 export interface AuthResponse {
-  accessToken: string;
+  refreshToken: string;
   user: User;
 }

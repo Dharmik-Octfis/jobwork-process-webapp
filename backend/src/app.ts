@@ -11,23 +11,21 @@ import { apiRouter } from './routes/index.ts';
 export function createApp(): express.Express {
   const app = express();
 
-  app.use(helmet());
+  app.use(helmet({
+    contentSecurityPolicy: false // Disable CSP for now so frontend assets load without issues
+  }));
 
   app.use(
     cors({
       origin: env.corsOrigins,
-      // The frontend sends the access token in a header today, but §3.8's
-      // refresh cookie will need this, and the client already sets
-      // `withCredentials: true`.
       credentials: true,
     }),
   );
 
-  // A signup body is a few hundred bytes. The default 100kb limit is already
-  // generous; there's no route here that should accept more.
   app.use(express.json({ limit: '100kb' }));
   app.use(cookieParser());
 
+  // API Routes
   app.use('/api', apiRouter);
 
   // The Vite build (web/) is emitted into `public/` so it ships inside the same
@@ -46,8 +44,6 @@ export function createApp(): express.Express {
     res.sendFile(join(publicDir, 'index.html'));
   });
 
-  // Order matters: 404 for unmatched routes, then the error handler last so it
-  // sees everything the routers throw.
   app.use(notFoundHandler);
   app.use(errorHandler);
 

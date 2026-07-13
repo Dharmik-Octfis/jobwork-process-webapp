@@ -10,14 +10,12 @@ import { verifyAccessToken } from '../lib/jwt.ts';
  * permission profiles exist.
  */
 export function authenticate(req: Request, _res: Response, next: NextFunction): void {
-  const header = req.headers.authorization;
+  const token = req.cookies.accessToken;
 
-  if (!header?.startsWith('Bearer ')) {
+  if (!token) {
     next(new ApiError(401, 'Sign in to continue.'));
     return;
   }
-
-  const token = header.slice('Bearer '.length);
 
   try {
     const payload = verifyAccessToken(token);
