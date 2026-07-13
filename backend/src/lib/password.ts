@@ -1,17 +1,23 @@
-import { hash, verify } from '@node-rs/argon2';
+import { argon2id, hash, verify } from 'argon2';
 
 /**
  * Password hashing — argon2id, per architecture §3.8.
  *
- * `@node-rs/argon2` rather than the `argon2` package: it ships prebuilt
- * binaries, so `npm install` doesn't need node-gyp and a C++ toolchain on
- * Windows or in the AppSail build image.
+ * `argon2` rather than `@node-rs/argon2`: the latter ships one prebuilt binary
+ * per platform as optionalDependencies, so npm installs only the host's. AppSail's
+ * managed runtime uploads node_modules rather than installing on the server, so a
+ * Windows build reaches the Linux container with no binary it can load. `argon2`
+ * bundles every platform's prebuild in the one package and picks at runtime.
  *
  * The tuning below is the OWASP second-recommended argon2id configuration
  * (46 MiB, t=1, p=1). The salt is generated per-hash and stored inside the
  * returned string, so there is no separate salt column.
+ *
+ * `type` is set explicitly: argon2id is this library's default, but the package
+ * is 0.x and has changed defaults across minor releases.
  */
 const HASH_OPTIONS = {
+  type: argon2id,
   memoryCost: 47_104,
   timeCost: 1,
   parallelism: 1,

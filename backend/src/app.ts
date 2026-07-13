@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
@@ -28,6 +29,22 @@ export function createApp(): express.Express {
   app.use(cookieParser());
 
   app.use('/api', apiRouter);
+
+  // The Vite build (web/) is emitted into `public/` so it ships inside the same
+  // AppSail bundle as the API. Same origin, so no CORS and no cross-site cookie.
+  const publicDir = join(process.cwd(), 'public');
+
+  app.use(express.static(publicDir));
+
+  // React Router owns every non-API route, so a hard refresh on /login must get
+  // index.html back rather than a 404 from the API's notFoundHandler.
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' || req.path.startsWith('/api')) {
+      next();
+      return;
+    }
+    res.sendFile(join(publicDir, 'index.html'));
+  });
 
   // Order matters: 404 for unmatched routes, then the error handler last so it
   // sees everything the routers throw.

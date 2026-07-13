@@ -10,6 +10,12 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
 
+  /**
+   * AppSail injects the port it wants the app to listen on and ignores `PORT`.
+   * Absent locally, so `PORT` remains the dev default.
+   */
+  X_ZOHO_CATALYST_LISTEN_PORT: z.coerce.number().int().positive().optional(),
+
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
 
   /**
@@ -42,7 +48,7 @@ const raw = parsed.data;
 export const env = {
   nodeEnv: raw.NODE_ENV,
   isProduction: raw.NODE_ENV === 'production',
-  port: raw.PORT,
+  port: raw.X_ZOHO_CATALYST_LISTEN_PORT ?? raw.PORT,
   databaseUrl: raw.DATABASE_URL,
   databaseSslCaPath: raw.DATABASE_SSL_CA_PATH,
   jwt: {
