@@ -2,7 +2,7 @@
 
 **Project:** Production Monitoring & Inventory Management (multi-tenant SaaS)
 **Database:** PostgreSQL 18 on AWS RDS (external managed — _not_ a Catalyst service)
-**Companion docs:** `DEPLOYMENT_ZOHO_CATALYST.md`, `ARCHITECTURE_AND_TECH_STACK.md`, `PRISMA.md`
+**Companion docs:** `CATALYST_DEPLOYMENT_GUIDE.md`, `ARCHITECTURE_AND_TECH_STACK.md`, `PRISMA.md`
 **Last updated:** 2026-07-13
 
 > **Purpose.** How to create an AWS RDS PostgreSQL database from nothing, keep it inside the free
