@@ -432,14 +432,14 @@ the whole file with:**
 
 **Every key explained:**
 
-| Key             | Our value                 | What it means                                                                                                                                                                                                                    |
-| --------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `command`       | `node dist/src/server.js` | The command Catalyst runs to start your app, executed **inside the `backend/` folder**. This path exists because `tsc` compiles `src/server.ts` → `dist/src/server.js`. It matches the `start` script in `backend/package.json`. |
-| `build_path`    | `.`                       | Which sub-folder of `source` to upload. `.` means **all of `backend/`**. We need all of it: `dist/`, `node_modules/`, `public/`, `certs/`, and `generated/` must travel together.                                                |
-| `stack`         | `node24`                  | The Linux runtime image Catalyst boots. Matches your local Node 24.                                                                                                                                                              |
-| `env_variables` | `{}`                      | **Leave empty.** This file is committed to git — putting secrets here would leak your database password. Real secrets go in the Catalyst console (Step 13).                                                                      |
-| `memory`        | `256`                     | RAM in MB for each instance. 256 MB is fine for an Express + Prisma app.                                                                                                                                                         |
-| `scripts`       | `{}`                      | `preserve` / `predeploy` lifecycle hooks. ⚠️ These run **on your machine** before upload — they are _not_ remote build steps (see §1.6). We drive the build from the root `deploy:appsail` script instead, so this stays empty.  |
+| Key             | Our value                 | What it means                                                                                                                                                                                                                                                                                               |
+| --------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `command`       | `node dist/src/server.js` | The command Catalyst runs to start your app, executed **inside the `backend/` folder**. This path exists because `tsc` compiles `src/server.ts` → `dist/src/server.js`. It matches the `start` script in `backend/package.json`.                                                                            |
+| `build_path`    | `.`                       | Which sub-folder of `source` to upload. `.` means **all of `backend/`**. We need all of it: `dist/`, `node_modules/`, `public/`, `certs/`, and `generated/` must travel together.                                                                                                                           |
+| `stack`         | `node24`                  | The Linux runtime image Catalyst boots. Matches your local Node 24.                                                                                                                                                                                                                                         |
+| `env_variables` | generated                 | **Do not hand-edit.** `npm run config:appsail` writes this from git-ignored `backend/.env.production`; the committed template is `app-config.base.json`. `catalyst deploy` ships this key and it **replaces** the AppSail config, so an empty `{}` here silently deletes every variable set in the console. |
+| `memory`        | `256`                     | RAM in MB for each instance. 256 MB is fine for an Express + Prisma app.                                                                                                                                                                                                                                    |
+| `scripts`       | `{}`                      | `preserve` / `predeploy` lifecycle hooks. ⚠️ These run **on your machine** before upload — they are _not_ remote build steps (see §1.6). We drive the build from the root `deploy:appsail` script instead, so this stays empty.                                                                             |
 
 ✅ **Commit this file.**
 
@@ -847,7 +847,15 @@ npm run deploy:appsail
 mv .env.backup backend/.env
 ```
 
-You do **not** need to touch the console again — environment variables persist across deploys.
+You do **not** need to touch the console again — but **not** because the values persist. They do
+not. `catalyst deploy` pushes `app-config.json`, whose `env_variables` **replaces** the AppSail
+configuration wholesale, wiping anything typed into the Configuration tab. (`NODE_ENV` appears to
+survive only because AppSail injects it itself.) The wipe is easy to miss: the container already
+running keeps its environment — a process's env is fixed at spawn — so the app keeps working until
+the next cold start, when a fresh process boots against the emptied config and `env.ts` throws
+`Invalid environment variables`.
+
+The console is therefore **not a store**. `backend/.env.production` is. Add variables there.
 
 > ⚠️ **`deploy:appsail` does NOT move `.env` for you.** The builds are automated; the `.env`
 > exclusion (Step 16) is still **manual**. If you run `npm run deploy:appsail` on its own, you will
@@ -916,9 +924,12 @@ works but the website is blank or shows an old version.
 `node_modules/` must physically exist in `backend/` before you deploy. **Never delete
 `node_modules` to "save upload size".** Symptom: `Cannot find module 'express'`.
 
-### 4. 🟠 Never put secrets in `app-config.json`
+### 4. 🟠 Never commit `app-config.json`
 
-That file is committed to git. `env_variables` must stay `{}`. Secrets belong in the console.
+Secrets **must** live in its `env_variables` — the console does not survive a deploy (Step 18) — so
+the file is git-ignored and generated by `npm run config:appsail` from `backend/.env.production`.
+Edit `app-config.base.json` for non-secret settings (`command`, `stack`, `memory`); never add
+`app-config.json` back to git.
 
 ### 5. 🟠 `.env` gets uploaded unless you move it
 
