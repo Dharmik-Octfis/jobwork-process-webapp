@@ -8,7 +8,10 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "prepare": "husky"
+    "prepare": "husky",
+    "build:web": "cd web && npm install && npm run build",
+    "build:backend": "cd backend && npm install && npm run build",
+    "deploy:appsail": "npm run build:web && npm run build:backend && catalyst deploy"
   },
   "repository": {
     "type": "git",

@@ -3,10 +3,11 @@
 > **Purpose.** Step-by-step reproducible setup for the React frontend, plus the rationale for every
 > dependency. A new developer should be able to recreate `web/` from scratch using only this file.
 > Higher-level design lives in `docs/ARCHITECTURE_AND_TECH_STACK.md` (esp. §3.15,
-> §3.16, §4) and `docs/DEPLOYMENT_ZOHO_CATALYST.md`.
+> §3.16, §4) and `docs/CATALYST_DEPLOYMENT_GUIDE.md`.
 
-**Stack:** React + Vite + TypeScript (a static SPA — see the deployment doc for why it hosts on
-Catalyst **Web Client Hosting**, not AppSail).
+**Stack:** React + Vite + TypeScript (a static SPA). The Vite build is emitted into
+`backend/public` and **served by Express from the same AppSail app as the API** — one origin, so no
+CORS. See `docs/CATALYST_DEPLOYMENT_GUIDE.md` §1.2. (We do **not** use Catalyst Web Client Hosting.)
 
 _Last updated: 2026-07-07._
 
@@ -175,5 +176,5 @@ Changing a `VITE_*` value requires a rebuild + redeploy of the frontend (see dep
   pre-commit hook (Husky + lint-staged) that keep formatting consistent across the team.
 - `docs/ARCHITECTURE_AND_TECH_STACK.md` — full stack decisions (§3.15 frontend,
   §3.16 state management, §4 folder structure).
-- `docs/DEPLOYMENT_ZOHO_CATALYST.md` — how `web/` deploys to Catalyst Web Client
-  Hosting.
+- `docs/CATALYST_DEPLOYMENT_GUIDE.md` — how `web/` is built into `backend/public` and shipped
+  inside the single AppSail app.
