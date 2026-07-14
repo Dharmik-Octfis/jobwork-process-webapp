@@ -11,7 +11,8 @@
     "prepare": "husky",
     "build:web": "cd web && npm install && npm run build",
     "build:backend": "cd backend && npm install && npm run build",
-    "deploy:appsail": "npm run build:web && npm run build:backend && catalyst deploy"
+    "config:appsail": "node scripts/build-app-config.mjs",
+    "deploy:appsail": "npm run build:web && npm run build:backend && npm run config:appsail && catalyst deploy"
   },
   "repository": {
     "type": "git",
