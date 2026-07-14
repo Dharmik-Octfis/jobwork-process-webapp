@@ -32,7 +32,7 @@ export function ForgotPasswordPage() {
 
   const resetForm = useForm<ResetPasswordInput>({
     resolver: zodResolver(resetPasswordSchema),
-    defaultValues: { email: '', otp: '', newPassword: '' },
+    defaultValues: { email: '', otp: '', newPassword: '', confirmPassword: '' },
   });
 
   const onForgotSubmit = forgotForm.handleSubmit((values) => {
@@ -104,6 +104,15 @@ export function ForgotPasswordPage() {
             placeholder="Enter your new password"
             error={resetForm.formState.errors.newPassword?.message}
             {...resetForm.register('newPassword')}
+          />
+
+          <Input
+            label="Confirm Password"
+            type="password"
+            autoComplete="new-password"
+            placeholder="Confirm your new password"
+            error={resetForm.formState.errors.confirmPassword?.message}
+            {...resetForm.register('confirmPassword')}
           />
 
           <Button

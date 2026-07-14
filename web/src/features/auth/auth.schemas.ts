@@ -52,13 +52,19 @@ export const forgotPasswordSchema = z.object({
 
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 
-export const resetPasswordSchema = z.object({
-  email,
-  otp: z.string().length(6, 'OTP must be exactly 6 characters'),
-  newPassword: z
-    .string()
-    .min(8, 'Use at least 8 characters')
-    .max(72, 'Keep your password under 72 characters'),
-});
+export const resetPasswordSchema = z
+  .object({
+    email,
+    otp: z.string().length(6, 'OTP must be exactly 6 characters'),
+    newPassword: z
+      .string()
+      .min(8, 'Use at least 8 characters')
+      .max(72, 'Keep your password under 72 characters'),
+    confirmPassword: z.string().min(1, 'Please confirm your new password'),
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });
 
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

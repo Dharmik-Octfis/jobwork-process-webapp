@@ -26,6 +26,7 @@ export async function forgotPassword(input: { email: string }): Promise<{ messag
 }
 
 export async function resetPassword(input: import('./auth.schemas').ResetPasswordInput): Promise<{ message: string }> {
-  const { data } = await apiClient.post<{ message: string }>(endpoints.auth.resetPassword, input);
+  const { confirmPassword: _confirmPassword, ...payload } = input;
+  const { data } = await apiClient.post<{ message: string }>(endpoints.auth.resetPassword, payload);
   return data;
 }
