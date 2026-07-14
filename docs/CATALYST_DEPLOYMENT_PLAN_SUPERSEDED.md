@@ -1,14 +1,35 @@
-# Deployment & Configuration — Zoho Catalyst
+# Catalyst Deployment Plan (SUPERSEDED — historical)
 
-**Project:** Production Monitoring & Inventory Management (multi-tenant SaaS)
+> # ⛔ DO NOT FOLLOW THIS DOCUMENT
+>
+> **This is a pre-implementation _plan_ from 2026-07-07, not a description of what was built.**
+> The design it proposes was **not** the one we shipped. Following it will produce a deployment
+> that contradicts the live app.
+>
+> ### 👉 The authoritative guide is [`CATALYST_DEPLOYMENT_GUIDE.md`](./CATALYST_DEPLOYMENT_GUIDE.md).
+>
+> **What this plan proposed vs. what we actually built:**
+>
+> | This plan says                                              | What we actually did                                                            |
+> | ----------------------------------------------------------- | ------------------------------------------------------------------------------- |
+> | Frontend → **Web Client Hosting** (a `client/` folder)      | ❌ No `client/` folder. Express serves the React build from `backend/public`.   |
+> | "⚠️ The frontend does **NOT** go on AppSail" (§2)           | ❌ It does. **One** AppSail serves both API and frontend (one origin, no CORS). |
+> | **Functions + Cron** for background jobs                    | ❌ Not used.                                                                    |
+> | **Catalyst Cache**                                          | ❌ Not used.                                                                    |
+> | Vite `outDir: '../client'` (§4 Option A)                    | ❌ It is `../backend/public`.                                                   |
+> | `CORS_ORIGIN` locking the API to a separate frontend origin | ❌ Unnecessary — same origin by design.                                         |
+> | Separate `JWT_REFRESH_SECRET`, Zoho Books creds, pooler     | ⏳ Not in the current deployment.                                               |
+>
+> It also references companion docs that do not exist (`DATABASE_DECISION.md`,
+> `HOSTING_CATALYST_VS_ALTERNATIVES.md`), and its §12 is still a list of open questions.
+>
+> **Kept only as a record of the options considered before the AppSail-only decision.**
+> Safe to delete once nobody needs that history.
+
+**Original project name:** Production Monitoring & Inventory Management (multi-tenant SaaS)
 **Hosting target:** Zoho Catalyst
-**Companion docs:** `ARCHITECTURE_AND_TECH_STACK.md`, `DATABASE_DECISION.md`,
-`AWS-RDS-PostgreSQL-Complete-Guide.md`, `HOSTING_CATALYST_VS_ALTERNATIVES.md`
-**Last updated:** 2026-07-07
-
-> **Purpose.** This is the single source of truth for **how the app is deployed and configured on
-> Zoho Catalyst**. Architecture/tech-stack rationale lives in `ARCHITECTURE_AND_TECH_STACK.md`; this
-> file is the operational "how do we ship it" companion.
+**Status:** Superseded on 2026-07-14 by `CATALYST_DEPLOYMENT_GUIDE.md`
+**Last updated:** 2026-07-07 (frozen — no longer maintained)
 
 ---
 
