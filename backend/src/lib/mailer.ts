@@ -1,37 +1,76 @@
-import nodemailer from 'nodemailer';
+import { SendMailClient } from 'zeptomail';
 import { env } from '../config/env.ts';
 
-const transporter = nodemailer.createTransport({
-  host: env.smtp.host,
-  port: env.smtp.port,
-  secure: env.smtp.port === 465, // true for 465, false for other ports
-  auth: {
-    user: env.smtp.user,
-    pass: env.smtp.pass,
-  },
+// The SDK prefixes the Send Mail token itself only when told to; we pass the
+// full `Zoho-enczapikey <token>` value that the ZeptoMail API expects.
+const client = new SendMailClient({
+  url: env.zepto.apiUrl,
+  token: `Zoho-enczapikey ${env.zepto.token}`,
 });
 
+export interface EmailContact {
+  address: string;
+  /** Display name; falls back to the address when omitted. */
+  name?: string;
+}
+
+export interface SendTemplateEmailParams {
+  /** ZeptoMail template key — console -> Mail Agents -> Templates. */
+  templateKey: string;
+  /** One or more recipients. A bare string is treated as the address. */
+  to: string | EmailContact | Array<string | EmailContact>;
+  /** Values for the template's merge fields, keyed by field name. */
+  mergeInfo?: Record<string, string>;
+  /** Sender override; defaults to the configured Jobwork sender. */
+  from?: EmailContact;
+}
+
+function toContact(value: string | EmailContact): EmailContact {
+  return typeof value === 'string' ? { address: value } : value;
+}
+
 /**
- * Sends a 6-digit OTP to the user's email for password reset.
+ * Sends a templated email through the ZeptoMail template API. This is the
+ * generic building block: pass a template key, recipient(s), the merge values
+ * the template expects, and optionally a sender to override the default.
+ */
+export async function sendTemplateEmail({
+  templateKey,
+  to,
+  mergeInfo,
+  from,
+}: SendTemplateEmailParams): Promise<void> {
+  const recipients = (Array.isArray(to) ? to : [to]).map(toContact);
+  const sender = from ?? { address: env.zepto.from, name: env.zepto.fromName };
+
+  // Keys below are ZeptoMail's snake_case wire format — we don't get to rename them.
+  await client.sendMailWithTemplate({
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- ZeptoMail wire key
+    template_key: templateKey,
+    // ZeptoMail requires a name on every address; reuse the address if none given.
+    from: { address: sender.address, name: sender.name ?? sender.address },
+    to: recipients.map((r) => ({
+      // eslint-disable-next-line @typescript-eslint/naming-convention -- ZeptoMail wire key
+      email_address: { address: r.address, name: r.name ?? r.address },
+    })),
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- ZeptoMail wire key
+    merge_info: mergeInfo,
+  });
+}
+
+/**
+ * Sends a verification OTP using the default OTP template. Thin wrapper over
+ * sendTemplateEmail so callers don't repeat the template key or merge shape.
+ * Used for both sign-up verification and password reset.
  */
 export async function sendOtpEmail(to: string, otp: string): Promise<void> {
-  const mailOptions = {
-    from: `"OCTFIS Support" <${env.smtp.from}>`,
+  await sendTemplateEmail({
+    templateKey: env.zepto.templateKey,
     to,
-    subject: 'Your Password Reset OTP - OCTFIS',
-    text: `Your OTP for resetting your password is: ${otp}\n\nThis OTP is valid for 10 minutes.\nIf you did not request this, please ignore this email.`,
-    html: `
-      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #18222e;">
-        <h2 style="color: #1c7c8c;">Password Reset Request</h2>
-        <p>You requested to reset your password. Use the OTP below to proceed:</p>
-        <div style="font-size: 32px; font-weight: bold; letter-spacing: 4px; padding: 20px; background: #f3f5f9; border-radius: 8px; text-align: center; margin: 20px 0;">
-          ${otp}
-        </div>
-        <p style="color: #51607a; font-size: 14px;">This OTP is valid for 10 minutes.</p>
-        <p style="color: #51607a; font-size: 14px;">If you didn't request a password reset, you can safely ignore this email.</p>
-      </div>
-    `,
-  };
-
-  await transporter.sendMail(mailOptions);
+    mergeInfo: {
+      // eslint-disable-next-line @typescript-eslint/naming-convention -- ZeptoMail merge field
+      product_name: env.zepto.productName,
+      OTP: otp,
+    },
+  });
 }

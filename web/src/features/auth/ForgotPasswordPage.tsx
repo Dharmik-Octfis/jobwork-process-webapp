@@ -47,10 +47,14 @@ export function ForgotPasswordPage() {
     resetMutation.mutate(values);
   });
 
+  const otpField = resetForm.register('otp');
+
   return (
-    <AuthShell 
-      title={step === 1 ? 'Reset your password' : 'Enter OTP'} 
-      subtitle={step === 1 ? 'Enter your email and we will send you an OTP.' : `We sent a code to ${email}`}
+    <AuthShell
+      title={step === 1 ? 'Reset your password' : 'Enter OTP'}
+      subtitle={
+        step === 1 ? 'Enter your email and we will send you an OTP.' : `We sent a code to ${email}`
+      }
     >
       {step === 1 ? (
         <form className={styles.form} onSubmit={onForgotSubmit} noValidate>
@@ -74,7 +78,7 @@ export function ForgotPasswordPage() {
             className={styles.submit}
             isLoading={forgotMutation.isPending}
           >
-            {forgotMutation.isPending ? 'Sending...' : 'Send reset link'}
+            {forgotMutation.isPending ? 'Sending...' : 'Send OTP'}
           </Button>
 
           <p className={styles.switch} style={{ marginTop: 'var(--space-4)', textAlign: 'center' }}>
@@ -90,11 +94,19 @@ export function ForgotPasswordPage() {
           <Input
             label="6-Digit OTP"
             type="text"
+            inputMode="numeric"
             autoComplete="one-time-code"
             placeholder="123456"
+            maxLength={6}
             autoFocus
             error={resetForm.formState.errors.otp?.message}
-            {...resetForm.register('otp')}
+            {...otpField}
+            onChange={(e) => {
+              // Keep digits only, capped at 6 — blocks letters, symbols, and
+              // over-length paste before react-hook-form sees the value.
+              e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
+              void otpField.onChange(e);
+            }}
           />
 
           <Input
@@ -125,10 +137,16 @@ export function ForgotPasswordPage() {
           </Button>
 
           <p className={styles.switch} style={{ marginTop: 'var(--space-4)', textAlign: 'center' }}>
-            <button 
-              type="button" 
-              onClick={() => setStep(1)} 
-              style={{ background: 'none', border: 'none', color: 'var(--color-primary)', cursor: 'pointer', fontWeight: 500 }}
+            <button
+              type="button"
+              onClick={() => setStep(1)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--color-primary)',
+                cursor: 'pointer',
+                fontWeight: 500,
+              }}
             >
               Didn't receive a code? Try again
             </button>

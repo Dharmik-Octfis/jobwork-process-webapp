@@ -36,12 +36,22 @@ const envSchema = z.object({
 
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
 
-  // Email Config
-  SMTP_HOST: z.string().default('smtp.gmail.com'),
-  SMTP_PORT: z.coerce.number().default(465),
+  // Email Config — ZeptoMail. SMTP_PASS is the Send Mail token from the
+  // ZeptoMail console; it doubles as the API token (the SMTP_* names are kept
+  // for continuity, but delivery now goes through the ZeptoMail template API).
+  SMTP_HOST: z.string().default('smtp.zeptomail.com'),
+  SMTP_PORT: z.coerce.number().default(587),
   SMTP_USER: z.string().min(1, 'SMTP_USER is required'),
   SMTP_PASS: z.string().min(1, 'SMTP_PASS is required'),
+  // Must be an address on a domain verified in ZeptoMail, or sends are rejected.
   SMTP_FROM: z.string().default('noreply@octfis.com'),
+  SMTP_FROM_NAME: z.string().default('Jobwork Support'),
+  // ZeptoMail template API. Host only — the SDK appends `v1.1/email/template`.
+  ZEPTO_API_URL: z.string().default('api.zeptomail.com/'),
+  // Template key from ZeptoMail console -> Mail Agents -> Templates.
+  ZEPTO_TEMPLATE_KEY: z.string().min(1, 'ZEPTO_TEMPLATE_KEY is required'),
+  // Value for the template's `product_name` merge field.
+  ZEPTO_PRODUCT_NAME: z.string().default('Jobwork'),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -76,5 +86,14 @@ export const env = {
     user: raw.SMTP_USER,
     pass: raw.SMTP_PASS,
     from: raw.SMTP_FROM,
+    fromName: raw.SMTP_FROM_NAME,
+  },
+  zepto: {
+    apiUrl: raw.ZEPTO_API_URL,
+    token: raw.SMTP_PASS,
+    templateKey: raw.ZEPTO_TEMPLATE_KEY,
+    productName: raw.ZEPTO_PRODUCT_NAME,
+    from: raw.SMTP_FROM,
+    fromName: raw.SMTP_FROM_NAME,
   },
 } as const;
