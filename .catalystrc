@@ -10,27 +10,19 @@
   "projects": [
     {
       "idx": 1,
-      "id": "9867000000485004",
-      "name": "jobwork-test",
+      "id": "69851000000066569",
+      "name": "Jobwork",
       "domain": {
-        "id": "10128926223",
-        "name": "jobwork-test-767455168.development"
+        "id": "10129238775",
+        "name": "jobwork-925638796.development"
       },
       "timezone": "Asia/Kolkata",
       "env": [
         {
           "idx": 1,
-          "id": "767455168",
+          "id": "925638796",
           "name": "Development",
-          "type": 3,
-          "env_status": "Active",
-          "project_details": {
-            "project_name": "jobwork-test",
-            "id": "9867000000485004",
-            "project_type": "Live"
-          },
-          "is_default": true,
-          "action_required": false
+          "type": 3
         }
       ]
     }
