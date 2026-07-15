@@ -8,7 +8,7 @@
 > (see §9), so most tutorials and Stack Overflow answers you find online are for Prisma 5/6 and will
 > not work here.
 
-_Last updated: 2026-07-10._
+_Last updated: 2026-07-15._
 
 > **Before you read a `.prisma` file:** install the **Prisma** VS Code extension (`Prisma.prisma`).
 > VS Code has no built-in language association for `.prisma`, so without it the whole file renders as
@@ -584,7 +584,212 @@ Run from `backend/`.
 
 ---
 
-## 15. Related docs
+## 15. Learning: reading a model line in plain language
+
+> This section is for someone still getting comfortable with `.prisma` syntax. §4.3 lists the
+> attributes tersely; here we slow down and explain _how to decide what to use where_. All examples
+> come from `tenant.prisma` (`User`, `RefreshToken`, `PasswordResetToken`).
+
+### 15.1 A field has three parts
+
+Read every model line left to right — it's always the same shape:
+
+```prisma
+name  String  @db.VarChar(80)
+ │       │            │
+ │       │            └── attributes:  extra rules (0 or more, order doesn't matter)
+ │       └────────────── type:        how your TypeScript code sees the value
+ └────────────────────── field name:  what you call it in code
+```
+
+- **Field name** — always a plain name. Never put anything on it (see 15.5).
+- **Type** — one of Prisma's generic types: `String`, `Int`, `Boolean`, `DateTime`, `Float`,
+  `BigInt`, `Decimal`, `Json`, `Bytes` — **or the name of another model** (that makes it a relation,
+  see 15.4). A trailing `?` means nullable; a trailing `[]` means a list.
+- **Attributes** — the `@...` parts. They add rules like "this is the primary key" or "store it as
+  this exact Postgres type".
+
+### 15.2 Two layers of type: Prisma type vs database type
+
+This trips up everyone at first. There are **two** type systems, and a field can name both:
+
+```prisma
+name  String  @db.VarChar(80)
+      ───┬──   ──────┬───────
+   Prisma type    database column type
+ (how your JS      (how Postgres
+  code sees it)     stores it)
+```
+
+- **`String`** = the **Prisma type**. It only tells your TypeScript code "this is a JS string". It is
+  database-agnostic — it means the same thing on Postgres, MySQL, or SQLite.
+- **`@db.VarChar(80)`** = the **actual Postgres column type**. `VarChar`, `Citext`, `Uuid`,
+  `Timestamptz` are real SQL types — they are **not** Prisma types and can never stand alone.
+
+You always need the Prisma type. The `@db.*` part is **optional**.
+
+**If you omit `@db.*`, the column still gets a type — Prisma picks a default.** Nothing is ever
+untyped. That's why `passwordHash String? @map("password_hash")` has no `@db.*`: Prisma's default for
+`String` on Postgres is `text`, and `text` (unlimited length, exact comparison) is exactly right for
+a password hash. Writing `@db.Text` would just repeat the default.
+
+Defaults Prisma uses on Postgres when you leave `@db.*` off:
+
+| Prisma type | Default column type | Common override with `@db.*`               |
+| ----------- | ------------------- | ------------------------------------------ |
+| `String`    | `text`              | `@db.VarChar(n)`, `@db.Citext`, `@db.Uuid` |
+| `Int`       | `integer`           | `@db.SmallInt`                             |
+| `DateTime`  | `timestamp`         | `@db.Timestamptz(6)`, `@db.Date`           |
+| `Boolean`   | `boolean`           | —                                          |
+
+So all three of these are `String` in your code but **three different columns** in Postgres:
+
+```prisma
+passwordHash String? @map("password_hash")  // → text        (default)
+name         String  @db.VarChar(80)         // → varchar(80) (capped length)
+email        String  @db.Citext              // → citext      (case-insensitive)
+```
+
+Rule of thumb: **add `@db.*` only when the default isn't what you want** — a length cap
+(`VarChar(80)`), case-insensitivity (`Citext`), a UUID column (`Uuid`), or a timezone-aware timestamp
+(`Timestamptz`).
+
+### 15.3 `@` vs `@@` — field rules vs table rules
+
+- A **single `@`** attaches to **one field** and sits on that field's line.
+- A **double `@@`** attaches to **the whole model** and sits on its own line inside the model.
+
+| Attribute          | `@` or `@@` | What it does                                                             |
+| ------------------ | ----------- | ------------------------------------------------------------------------ |
+| `@id`              | field       | Marks the **primary key** (each model needs one identity)                |
+| `@unique`          | field       | No two rows may share this value (emails, tokens)                        |
+| `@default(...)`    | field       | Value used when you don't supply one — `now()`, `true`, a generated UUID |
+| `@updatedAt`       | field       | Prisma auto-sets it to "now" on **every update**                         |
+| `@map("col_name")` | field       | The real **column** name in Postgres (code stays camelCase — §6)         |
+| `@db.*`            | field       | The exact Postgres **column type** (15.2)                                |
+| `@relation(...)`   | field       | Defines how a relation links (15.4)                                      |
+| `@@map("table")`   | model       | The real **table** name in Postgres                                      |
+| `@@index([field])` | model       | A non-unique index to speed up lookups by that column                    |
+| `@@id([a, b])`     | model       | Composite primary key (key made of two+ columns)                         |
+| `@@unique([a, b])` | model       | Composite unique constraint                                              |
+
+`PasswordResetToken` shows a model-level index — the app looks rows up **by email**, so:
+
+```prisma
+@@index([email])   // faster WHERE email = ...
+@@map("password_reset_tokens")
+```
+
+**How to decide what to use:**
+
+1. Primary key? → `@id` (for UUIDs, usually with `@default(dbgenerated("gen_random_uuid()"))`).
+2. Must be unique? → `@unique` (one field) or `@@unique([...])` (a combination).
+3. Should the DB fill it in? → `@default(now())` (created time), `@updatedAt` (modified time),
+   `@default(dbgenerated(...))` (generated id), or `@default(true)`/`@default("...")` (a constant).
+4. Code name ≠ column name? → `@map("snake_case")`. Table name differs? → `@@map`.
+5. Need a specific storage type? → `@db.*` (see the table in 15.2).
+6. Type points to another model? → it's a relation (15.4).
+7. Looked up/sorted by this column a lot (and it's not already `@id`/`@unique`)? → `@@index`.
+
+Note: `@id`, `@unique`, `@default`, `@relation`, `@@index` change **behaviour/constraints**, while
+`@map` and `@db.*` only change **names and storage** — they never affect logic.
+
+### 15.4 Relations: why `refreshTokens` is not a column
+
+Look at the two sides of the User ↔ RefreshToken relationship:
+
+```prisma
+model User {
+  // ...
+  refreshTokens RefreshToken[]                 // (A) the "many" side
+}
+
+model RefreshToken {
+  userId String @map("user_id") @db.Uuid       // (B) the real foreign-key column
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)  // (C)
+}
+```
+
+**How Prisma knows `refreshTokens` isn't a column:** its type is `RefreshToken` — the **name of
+another model**, not a scalar like `String`. Any field whose type is a model is a **relation**, never
+a stored column. The `[]` makes it "many".
+
+A one-to-many link is physically stored in **one place only**: a foreign-key column on the "many"
+side. Here that's `RefreshToken.userId` (line B) — a normal `String`/`Uuid` column. So:
+
+- **(B) `userId`** — a scalar → a real column (`user_id`) holding the foreign key.
+- **(C) `user User @relation(...)`** — the side that **owns** the link. `@relation` says: the local
+  FK column is `userId`, it points at `User.id`, and `onDelete: Cascade` means "if the user is
+  deleted, delete their tokens too." Only this side needs `@relation`.
+- **(A) `refreshTokens RefreshToken[]`** — the **virtual back-reference**. Nothing is stored for it in
+  the `users` table. It exists only so you can navigate from a user to their tokens in queries.
+
+**Using the virtual back-reference** — even though there's no column, you can read it like a property
+and Prisma runs the lookup for you:
+
+```ts
+// Load a user together with their tokens
+const user = await prisma.user.findUnique({
+  where: { email: input.email },
+  include: { refreshTokens: true }, // → user.refreshTokens is an array of RefreshToken rows
+});
+
+// Filter users BY their tokens (only possible because the relation is declared)
+await prisma.user.findMany({
+  where: { refreshTokens: { some: { expiresAt: { gt: new Date() } } } },
+});
+
+// Go the other way, from a token to its owner (the FK side)
+const token = await prisma.refreshToken.findUnique({
+  where: { token: raw },
+  include: { user: true }, // → token.user is the User row
+});
+```
+
+Which side gets `@relation`? The one holding the foreign key (the "belongs to" side). The other side
+just lists the model — with `[]` for many, no `@relation` needed.
+
+### 15.5 Syntax rules that surprise people
+
+**Attribute order doesn't matter.** These are identical:
+
+```prisma
+email String? @unique @db.Citext
+email String? @db.Citext @unique   // same thing
+```
+
+Prisma treats attributes as a set. (A common _style_ is `@id`/`@unique` first, then `@default`, then
+`@map`, then `@db.*` — but it's only convention.)
+
+**`?` and `[]` belong on the type, never the field name.** They are type modifiers — they describe
+the shape of the value:
+
+```prisma
+bio   String?   // ✅ optional (nullable) string
+tags  String[]  // ✅ list of strings
+bio?  String    // ❌ syntax error — never put ? on the name
+```
+
+**Don't confuse "reorder attributes" with "drop the `?`".** Removing `?` changes the column from
+`NULL`-allowed (optional) to `NOT NULL` (required) — a real behaviour change, not a cosmetic one.
+Keep the `?` if the field should stay optional.
+
+### 15.6 See the real SQL for yourself
+
+To prove any of the above — including which default column type Prisma chose — generate the
+`CREATE TABLE` statements without touching the database:
+
+```bash
+cd backend
+npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema --script
+```
+
+You'll see `password_hash text`, `name varchar(80)`, `email citext`, and the `user_id` foreign key —
+confirming that every field has a real column type even when you never wrote one.
+
+---
+
+## 16. Related docs
 
 - `docs/ARCHITECTURE_AND_TECH_STACK.md` — §3.4 (why Prisma), §3.10 (multi-tenancy + RLS), §4 (folder
   structure), §6 (serverless constraints).

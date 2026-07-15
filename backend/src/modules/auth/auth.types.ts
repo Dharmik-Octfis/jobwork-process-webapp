@@ -18,13 +18,16 @@ export interface AuthResult {
 }
 
 /**
- * Returned by `POST /auth/signup` and `POST /auth/login`.
+ * Returned by `POST /auth/signup`, `POST /auth/login`, and
+ * `POST /auth/refresh-token`. The refresh token is NOT here — it's set as an
+ * httpOnly cookie. Only the access token crosses in the body, for the client
+ * to hold in memory and send as a Bearer credential.
  *
  * No `role` or `tenantId`: a freshly signed-up user belongs to no
  * organization. Those arrive on a separate membership DTO once organizations
  * exist (§3.9).
  */
 export interface AuthResponse {
-  refreshToken: string;
+  accessToken: string;
   user: PublicUser;
 }

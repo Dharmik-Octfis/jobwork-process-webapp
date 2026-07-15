@@ -1,7 +1,12 @@
 import { Prisma } from '../../../generated/prisma/client.ts';
 import { prisma } from '../../db/prisma.ts';
 import { ApiError } from '../../lib/apiError.ts';
-import { signAccessToken, signRefreshToken, verifyRefreshToken, type AccessTokenPayload } from '../../lib/jwt.ts';
+import {
+  signAccessToken,
+  signRefreshToken,
+  verifyRefreshToken,
+  type RefreshTokenPayload,
+} from '../../lib/jwt.ts';
 import { hashPassword, verifyPassword } from '../../lib/password.ts';
 import type { LoginInput, SignupInput, ResetPasswordInput } from './auth.schemas.ts';
 import { sendOtpEmail } from '../../lib/mailer.ts';
@@ -71,24 +76,28 @@ export async function login(input: LoginInput): Promise<AuthResult> {
  * Shared helper to generate and store tokens.
  */
 async function issueTokens(user: PublicUser): Promise<AuthResult> {
-  const accessToken = signAccessToken(user.id);
   const refreshToken = signRefreshToken(user.id);
   const expiresAt = new Date(Date.now() + ms(env.jwt.refreshTtl as ms.StringValue));
 
-  await prisma.refreshToken.create({
+  // Create the session row first: its id becomes the access token's `sid`,
+  // so logout can find and delete this exact session by primary key.
+  const session = await prisma.refreshToken.create({
     data: {
       token: refreshToken,
       userId: user.id,
       expiresAt,
     },
+    select: { id: true },
   });
+
+  const accessToken = signAccessToken(user.id, session.id);
 
   return { accessToken, refreshToken, user };
 }
 
 export async function refresh(oldRefreshToken: string): Promise<AuthResult> {
   // ✅ 1. Verify JWT signature and expiry FIRST
-  let payload: AccessTokenPayload;
+  let payload: RefreshTokenPayload;
   try {
     payload = verifyRefreshToken(oldRefreshToken); // throws if invalid/expired
   } catch (_error) {
@@ -133,11 +142,12 @@ export async function refresh(oldRefreshToken: string): Promise<AuthResult> {
     email: storedToken.user.email,
   };
 
-  const accessToken = signAccessToken(publicUser.id);
   const newRefreshToken = signRefreshToken(publicUser.id);
   const expiresAt = new Date(Date.now() + ms(env.jwt.refreshTtl as ms.StringValue));
 
-  await prisma.$transaction([
+  // Rotate atomically. The freshly created row's id is the new session's `sid`,
+  // so the rotated access token points at the row that now backs this device.
+  const [, newSession] = await prisma.$transaction([
     prisma.refreshToken.delete({ where: { token: oldRefreshToken } }),
     prisma.refreshToken.create({
       data: {
@@ -145,13 +155,31 @@ export async function refresh(oldRefreshToken: string): Promise<AuthResult> {
         userId: publicUser.id,
         expiresAt,
       },
+      select: { id: true },
     }),
   ]);
+
+  const accessToken = signAccessToken(publicUser.id, newSession.id);
 
   return { accessToken, refreshToken: newRefreshToken, user: publicUser };
 }
 
-export async function logout(refreshToken: string): Promise<void> {
+/**
+ * End one device's session. `sessionId` is the `sid` claim carried in the
+ * access token (the `refresh_tokens` row id), so we delete exactly that row and
+ * leave the user's other devices logged in. `catch` swallows the case where the
+ * row is already gone (double logout, or the session was rotated meanwhile).
+ */
+export async function logout(sessionId: string): Promise<void> {
+  if (!sessionId) return;
+  await prisma.refreshToken.delete({ where: { id: sessionId } }).catch(() => {});
+}
+
+/**
+ * Fallback used when the client presents no access token at logout: end the
+ * session identified by the refresh token itself (from the httpOnly cookie).
+ */
+export async function logoutByToken(refreshToken: string): Promise<void> {
   if (!refreshToken) return;
   await prisma.refreshToken.delete({ where: { token: refreshToken } }).catch(() => {});
 }

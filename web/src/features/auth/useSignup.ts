@@ -15,9 +15,6 @@ export function useSignup(redirectTo: string = '/') {
   return useMutation({
     mutationFn: (input: SignupInput) => signup(input),
     onSuccess: (data) => {
-      if (data.refreshToken) {
-        localStorage.setItem('refreshToken', data.refreshToken);
-      }
       setSession(data.user);
       navigate(redirectTo, { replace: true });
     },

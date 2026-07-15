@@ -4,7 +4,13 @@ import type { User } from '../features/auth/auth.types';
 export interface AuthContextValue {
   user: User | null;
   isAuthenticated: boolean;
-  /** Store the user after login/signup (tokens are handled automatically by cookies). */
+  /**
+   * True while the initial session-restore (refresh-cookie exchange) is in
+   * flight on app load. Guards route redirects from firing before we know
+   * whether the visitor is already logged in.
+   */
+  isLoading: boolean;
+  /** Store the user after login/signup. The access token is held in memory by the api layer. */
   setSession: (user: User) => void;
   /** Clear the session (logout / refresh failure). */
   clearSession: () => void;

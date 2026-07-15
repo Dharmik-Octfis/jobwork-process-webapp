@@ -29,8 +29,12 @@ export interface User {
   email: string;
 }
 
-/** Response from `POST /auth/login` and `POST /auth/signup`. */
+/**
+ * Response from `POST /auth/login`, `POST /auth/signup`, and
+ * `POST /auth/refresh-token`. Only the access token is in the body — the client
+ * holds it in memory. The refresh token is delivered as an httpOnly cookie.
+ */
 export interface AuthResponse {
-  refreshToken: string;
+  accessToken: string;
   user: User;
 }

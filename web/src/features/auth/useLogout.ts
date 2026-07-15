@@ -12,13 +12,9 @@ export function useLogout() {
   const navigate = useNavigate();
 
   return useMutation({
-    mutationFn: async () => {
-      // Retrieve the token from localStorage
-      const refreshToken = localStorage.getItem('refreshToken');
-      // Always call the API, even if the token isn't found locally, 
-      // just in case we need to clear httpOnly cookies on the backend.
-      return logout({ refreshToken });
-    },
+    // The server ends the session from the Bearer token / refresh cookie and
+    // clears the cookie; nothing to pass from the client.
+    mutationFn: () => logout(),
     onSettled: () => {
       // This runs whether the API call succeeds or fails.
       // We always want to clear local state and force the user out.

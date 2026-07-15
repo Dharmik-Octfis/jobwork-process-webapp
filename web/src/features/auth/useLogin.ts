@@ -5,7 +5,8 @@ import { toApiErrorMessage } from '../../api/client';
 import { login } from './auth.api';
 
 /**
- * Logs the user in, saves their refresh token in localStorage, and redirects them.
+ * Logs the user in and redirects them. The access token is stored in memory by
+ * the api layer; the refresh token is set as an httpOnly cookie by the server.
  */
 export function useLogin(redirectTo = '/') {
   const { setSession } = useAuth();
@@ -14,9 +15,6 @@ export function useLogin(redirectTo = '/') {
   return useMutation({
     mutationFn: login,
     onSuccess: (data) => {
-      if (data.refreshToken) {
-        localStorage.setItem('refreshToken', data.refreshToken);
-      }
       setSession(data.user);
       navigate(redirectTo, { replace: true });
     },
