@@ -1,0 +1,91 @@
+.container {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.svg {
+  width: 100%;
+  height: 100%;
+  opacity: 0.8; /* Let individual groups control opacity */
+  animation: fadeIn 2s ease-out;
+}
+
+/* Base element styles */
+.path {
+  fill: none;
+  stroke: var(--color-teal);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.node {
+  fill: var(--navy-900);
+  stroke: var(--color-teal);
+}
+
+.nodeGlow {
+  fill: var(--color-teal);
+}
+
+.dot {
+  fill: #fff;
+}
+
+.label {
+  fill: rgba(255, 255, 255, 0.7);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  user-select: none;
+}
+
+/* Foreground - Sharp and bright */
+.layerForeground {
+  opacity: 0.35;
+}
+.layerForeground .path {
+  stroke-width: 1.5;
+}
+.layerForeground .node {
+  stroke-width: 2.5;
+}
+.layerForeground .nodeGlow {
+  opacity: 0.5;
+  filter: blur(8px);
+}
+.layerForeground .dot {
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.8));
+}
+.layerForeground .label {
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+}
+
+/* Background - Blurry and dim (Depth effect) */
+.layerBackground {
+  opacity: 0.1;
+  filter: blur(2px);
+}
+.layerBackground .path {
+  stroke-width: 1;
+}
+.layerBackground .node {
+  stroke-width: 1.5;
+}
+.layerBackground .nodeGlow {
+  opacity: 0.3;
+  filter: blur(12px);
+}
+.layerBackground .dot {
+  filter: blur(1px);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 0.8; }
+}

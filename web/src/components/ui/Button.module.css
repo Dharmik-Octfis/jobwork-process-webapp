@@ -8,15 +8,12 @@
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   font-family: inherit;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
   line-height: 1;
   cursor: pointer;
-  transition:
-    background-color 0.15s ease,
-    border-color 0.15s ease,
-    color 0.15s ease,
-    box-shadow 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
   user-select: none;
   white-space: nowrap;
 }
@@ -30,7 +27,7 @@
   opacity: 0.6;
 }
 
-/* Primary — the one dominant action per screen (UI/UX §1). */
+/* Primary */
 .primary {
   background: var(--color-primary);
   color: var(--color-primary-contrast);
@@ -44,7 +41,7 @@
   background: var(--color-primary-active);
 }
 
-/* Secondary — neutral, lower emphasis. */
+/* Secondary */
 .secondary {
   background: var(--color-surface);
   color: var(--color-text);
@@ -53,4 +50,8 @@
 
 .secondary:hover:not(:disabled) {
   background: var(--color-surface-2);
+}
+
+.secondary:active:not(:disabled) {
+  background: var(--color-border);
 }

@@ -1,9 +1,11 @@
 import { Button } from '../../components/ui/Button';
 import { Logo } from '../../components/ui/Logo';
 import { useAuth } from '../../providers/auth-context';
+import { useLogout } from '../auth/useLogout';
 
 export function DashboardPage() {
-  const { user, clearSession } = useAuth();
+  const { user } = useAuth();
+  const logoutMutation = useLogout();
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--color-bg)' }}>
@@ -28,8 +30,13 @@ export function DashboardPage() {
           <span style={{ fontSize: 14, color: 'var(--color-text-muted)', fontWeight: 500 }}>
             {user?.email}
           </span>
-          <Button variant="secondary" onClick={clearSession} style={{ padding: '6px 12px', fontSize: 14, height: 'auto' }}>
-            Sign out
+          <Button 
+            variant="secondary" 
+            onClick={() => logoutMutation.mutate()} 
+            isLoading={logoutMutation.isPending}
+            style={{ padding: '6px 12px', fontSize: 14, height: 'auto' }}
+          >
+            {logoutMutation.isPending ? 'Signing out...' : 'Sign out'}
           </Button>
         </div>
       </header>

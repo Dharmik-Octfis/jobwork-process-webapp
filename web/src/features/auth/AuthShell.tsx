@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Logo } from '../../components/ui/Logo';
+import { LogisticsBackground } from '../../components/ui/LogisticsBackground';
 import styles from './Auth.module.css';
 
 interface AuthShellProps {
@@ -8,55 +9,19 @@ interface AuthShellProps {
   children: ReactNode;
 }
 
-/** Split-screen shell shared by the login and signup screens. */
+/** Centered auth shell shared by the login and signup screens. */
 export function AuthShell({ title, subtitle, children }: AuthShellProps) {
   return (
     <div className={styles.page}>
-      <aside className={styles.brand}>
-        <div className={styles.brandDecor} />
-        <div className={styles.brandTop}>
-          <Logo tone="dark" size={30} />
-        </div>
+      <LogisticsBackground />
 
-        <div className={styles.brandBody}>
-          <h2>Production &amp; inventory, under control.</h2>
-          <p>Track jobs, machines, and stock across your shop floor — in real time.</p>
-
-          <ul className={styles.brandList}>
-            <li>
-              <CheckIcon /> Live production monitoring
-            </li>
-            <li>
-              <CheckIcon /> Accurate inventory &amp; invoicing
-            </li>
-            <li>
-              <CheckIcon /> Built for multi-tenant teams
-            </li>
-          </ul>
-        </div>
-
-        <footer className={styles.heroContact}>
-          <a href="https://www.octfis.com" target="_blank" rel="noreferrer">
-            <GlobeIcon />
-            www.octfis.com
-          </a>
-          <a href="mailto:sales@octfis.com">
-            <MailIcon />
-            sales@octfis.com
-          </a>
-          <a href="tel:+919737042720" className={styles.phoneLink}>
-            <PhoneIcon />
-            9737042720/21
-          </a>
-        </footer>
-      </aside>
+      {/* Centered Logo at the top */}
+      <div className={styles.brandTop}>
+        <Logo tone="dark" size={32} />
+      </div>
 
       <main className={styles.formSide}>
         <div className={styles.card}>
-          <div className={styles.mobileBrand}>
-            <Logo tone="light" size={28} />
-          </div>
-
           <header className={styles.header}>
             <h1>{title}</h1>
             <p>{subtitle}</p>
@@ -65,22 +30,23 @@ export function AuthShell({ title, subtitle, children }: AuthShellProps) {
           {children}
         </div>
       </main>
-    </div>
-  );
-}
 
-function CheckIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="12" cy="12" r="10" fill="rgba(255,255,255,0.18)" />
-      <path
-        d="M8 12.5l2.5 2.5 5.5-6"
-        stroke="#fff"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+      <footer className={styles.heroContact}>
+        <a href="https://www.octfis.com" target="_blank" rel="noreferrer">
+          <GlobeIcon />
+          www.octfis.com
+        </a>
+        <a href="mailto:sales@octfis.com">
+          <MailIcon />
+          sales@octfis.com
+        </a>
+        <a href="tel:+919737042720" className={styles.phoneLink}>
+          <PhoneIcon />
+          9737042720/21
+        </a>
+      </footer>
+
+    </div>
   );
 }
 

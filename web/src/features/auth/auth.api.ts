@@ -30,3 +30,8 @@ export async function resetPassword(input: import('./auth.schemas').ResetPasswor
   const { data } = await apiClient.post<{ message: string }>(endpoints.auth.resetPassword, payload);
   return data;
 }
+
+export async function logout(input: { refreshToken: string | null }): Promise<{ message: string }> {
+  const { data } = await apiClient.post<{ message: string }>(endpoints.auth.logout, input);
+  return data;
+}

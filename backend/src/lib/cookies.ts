@@ -6,7 +6,7 @@ const ACCESS_TOKEN_MAX_AGE = 1 * 60 * 1000;
 const baseCookieOptions: CookieOptions = {
   httpOnly: true,
   secure: env.isProduction,
-  sameSite: 'strict',
+  sameSite: env.isProduction ? 'none' : 'lax',
 };
 
 export function setAccessTokenAsCookie(res: Response, accessToken: string): void {
