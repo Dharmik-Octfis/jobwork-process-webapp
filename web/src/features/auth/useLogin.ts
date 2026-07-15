@@ -1,8 +1,8 @@
 import { useMutation } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../providers/auth-context';
 import { toApiErrorMessage } from '../../api/client';
 import { login } from './auth.api';
+import { useAuthRedirect } from './useAuthRedirect';
 
 /**
  * Logs the user in and redirects them. The access token is stored in memory by
@@ -10,13 +10,15 @@ import { login } from './auth.api';
  */
 export function useLogin(redirectTo = '/') {
   const { setSession } = useAuth();
-  const navigate = useNavigate();
+  const redirectAfterAuth = useAuthRedirect();
 
   return useMutation({
     mutationFn: login,
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       setSession(data.user);
-      navigate(redirectTo, { replace: true });
+
+      // Wait for auth context to settle and then decide where to redirect
+      await redirectAfterAuth(redirectTo);
     },
     onError: (error) => {
       // Components read this to show the banner.
@@ -24,3 +26,4 @@ export function useLogin(redirectTo = '/') {
     },
   });
 }
+

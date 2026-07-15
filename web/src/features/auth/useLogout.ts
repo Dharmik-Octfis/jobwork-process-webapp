@@ -1,4 +1,4 @@
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../providers/auth-context';
 import { logout } from './auth.api';
@@ -10,6 +10,7 @@ import { logout } from './auth.api';
 export function useLogout() {
   const { clearSession } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   return useMutation({
     // The server ends the session from the Bearer token / refresh cookie and
@@ -19,6 +20,7 @@ export function useLogout() {
       // This runs whether the API call succeeds or fails.
       // We always want to clear local state and force the user out.
       clearSession();
+      queryClient.clear();
       navigate('/login', { replace: true });
     },
   });

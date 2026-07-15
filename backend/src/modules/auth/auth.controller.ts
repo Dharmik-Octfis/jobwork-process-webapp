@@ -7,6 +7,7 @@ import type {
   SignupInput,
   ForgotPasswordInput,
   ResetPasswordInput,
+  UpdateProfileInput,
 } from './auth.schemas.ts';
 import * as authService from './auth.service.ts';
 
@@ -69,6 +70,15 @@ export async function me(req: Request, res: Response): Promise<void> {
   }
 
   const user = await authService.getUserById(req.user.id);
+  res.status(200).json({ user });
+}
+
+export async function updateProfile(req: Request, res: Response): Promise<void> {
+  if (!req.user) {
+    throw new ApiError(401, 'Sign in to continue.');
+  }
+
+  const user = await authService.updateProfile(req.user.id, req.body as UpdateProfileInput);
   res.status(200).json({ user });
 }
 

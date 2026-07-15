@@ -27,11 +27,16 @@ export type LoginInput = z.infer<typeof loginSchema>;
  */
 export const signupSchema = z
   .object({
-    name: z
+    firstName: z
       .string()
       .trim()
-      .min(1, 'Your name is required')
-      .max(80, 'Keep your name under 80 characters'),
+      .min(1, 'First name is required')
+      .max(40, 'Keep first name under 40 characters'),
+    lastName: z
+      .string()
+      .trim()
+      .min(1, 'Last name is required')
+      .max(40, 'Keep last name under 40 characters'),
     email,
     password: z
       .string()
@@ -68,3 +73,18 @@ export const resetPasswordSchema = z
   });
 
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
+export const updateProfileSchema = z.object({
+  firstName: z
+    .string()
+    .trim()
+    .min(1, 'First name is required')
+    .max(40, 'Keep first name under 40 characters'),
+  lastName: z
+    .string()
+    .trim()
+    .min(1, 'Last name is required')
+    .max(40, 'Keep last name under 40 characters'),
+});
+
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;

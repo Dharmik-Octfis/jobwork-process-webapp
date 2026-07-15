@@ -1,7 +1,7 @@
 import { apiClient, setAccessToken } from '../../api/client';
 import { endpoints } from '../../api/endpoints';
 import type { AuthResponse } from './auth.types';
-import type { LoginInput, SignupInput } from './auth.schemas';
+import type { LoginInput, SignupInput, UpdateProfileInput } from './auth.schemas';
 
 /** POST /api/auth/login */
 export async function login(input: LoginInput): Promise<AuthResponse> {
@@ -15,10 +15,14 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
  * and membership are a separate, later step.
  */
 export async function signup(input: SignupInput): Promise<AuthResponse> {
-  // `confirmPassword` is a client-only field; don't send it.
   const { confirmPassword: _confirmPassword, ...payload } = input;
   const { data } = await apiClient.post<AuthResponse>(endpoints.auth.signup, payload);
   setAccessToken(data.accessToken);
+  return data;
+}
+
+export async function updateProfile(input: UpdateProfileInput): Promise<{ user: AuthResponse['user'] }> {
+  const { data } = await apiClient.put<{ user: AuthResponse['user'] }>(endpoints.auth.me, input);
   return data;
 }
 

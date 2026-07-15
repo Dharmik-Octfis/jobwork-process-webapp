@@ -25,7 +25,9 @@
  */
 export interface User {
   id: string;
-  name: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
   email: string;
 }
 

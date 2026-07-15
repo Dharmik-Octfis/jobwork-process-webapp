@@ -17,7 +17,17 @@ import ms from 'ms';
 /** Postgres unique-constraint violation, surfaced by Prisma. */
 const UNIQUE_VIOLATION = 'P2002';
 
-const publicUserSelect = { id: true, name: true, email: true } as const;
+const publicUserSelect = { id: true, firstName: true, lastName: true, fullName: true, email: true } as const;
+
+export async function updateProfile(userId: string, input: { firstName: string; lastName: string }): Promise<PublicUser> {
+  const fullName = `${input.firstName} ${input.lastName}`.trim();
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: { firstName: input.firstName, lastName: input.lastName, fullName },
+    select: publicUserSelect,
+  });
+  return user;
+}
 
 let decoyHash: Promise<string> | undefined;
 function getDecoyHash(): Promise<string> {
@@ -27,10 +37,11 @@ function getDecoyHash(): Promise<string> {
 
 export async function signup(input: SignupInput): Promise<AuthResult> {
   const passwordHash = await hashPassword(input.password);
+  const fullName = `${input.firstName} ${input.lastName}`.trim();
 
   try {
     const user = await prisma.user.create({
-      data: { name: input.name, email: input.email, passwordHash },
+      data: { firstName: input.firstName, lastName: input.lastName, fullName, email: input.email, passwordHash },
       select: publicUserSelect,
     });
 
@@ -69,7 +80,7 @@ export async function login(input: LoginInput): Promise<AuthResult> {
     throw new ApiError(403, 'This account has been disabled.');
   }
 
-  return await issueTokens({ id: user.id, name: user.name, email: user.email });
+  return await issueTokens({ id: user.id, firstName: user.firstName, lastName: user.lastName, fullName: user.fullName, email: user.email });
 }
 
 /**
@@ -138,7 +149,9 @@ export async function refresh(oldRefreshToken: string): Promise<AuthResult> {
   // ✅ 4. Rotation — do delete + create atomically inside a transaction
   const publicUser = {
     id: storedToken.user.id,
-    name: storedToken.user.name,
+    firstName: storedToken.user.firstName,
+    lastName: storedToken.user.lastName,
+    fullName: storedToken.user.fullName,
     email: storedToken.user.email,
   };
 

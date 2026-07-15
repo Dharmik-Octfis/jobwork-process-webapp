@@ -23,7 +23,8 @@ export function SignupPage() {
   } = useForm<SignupInput>({
     resolver: zodResolver(signupSchema),
     defaultValues: {
-      name: '',
+      firstName: '',
+      lastName: '',
       email: '',
       password: '',
       confirmPassword: '',
@@ -41,17 +42,27 @@ export function SignupPage() {
           <FormErrorBanner message={toApiErrorMessage(signupMutation.error)} />
         )}
 
-        <Input
-          label="Your name"
-          autoComplete="name"
-          placeholder="Jane Doe"
-          autoFocus
-          error={errors.name?.message}
-          {...register('name')}
-        />
+        <div className={styles.row}>
+          <Input
+            label="First name"
+            autoComplete="given-name"
+            placeholder="Jane"
+            autoFocus
+            error={errors.firstName?.message}
+            {...register('firstName')}
+          />
+
+          <Input
+            label="Last name"
+            autoComplete="family-name"
+            placeholder="Doe"
+            error={errors.lastName?.message}
+            {...register('lastName')}
+          />
+        </div>
 
         <Input
-          label="Work email"
+          label="Email"
           type="email"
           autoComplete="email"
           placeholder="you@company.com"
@@ -64,7 +75,7 @@ export function SignupPage() {
           type="password"
           autoComplete="new-password"
           placeholder="Create a password"
-          hint="At least 8 characters."
+          hint="At least 8 chars."
           error={errors.password?.message}
           {...register('password')}
         />
@@ -73,7 +84,7 @@ export function SignupPage() {
           label="Confirm password"
           type="password"
           autoComplete="new-password"
-          placeholder="Re-enter your password"
+          placeholder="Re-enter password"
           error={errors.confirmPassword?.message}
           {...register('confirmPassword')}
         />

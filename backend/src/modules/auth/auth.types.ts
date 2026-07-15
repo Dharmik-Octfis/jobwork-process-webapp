@@ -7,7 +7,9 @@
 /** The user as the client sees it. */
 export interface PublicUser {
   id: string;
-  name: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
   email: string;
 }
 

@@ -19,11 +19,16 @@ const email = z
 export const signupSchema = z.object({
   // 80 = the `users.name VARCHAR(80)` column width. Rejecting at 81 here beats
   // a Postgres "value too long" error surfacing as a 500.
-  name: z
+  firstName: z
     .string()
     .trim()
-    .min(1, 'Your name is required')
-    .max(80, 'Keep your name under 80 characters'),
+    .min(1, 'First name is required')
+    .max(40, 'Keep first name under 40 characters'),
+  lastName: z
+    .string()
+    .trim()
+    .min(1, 'Last name is required')
+    .max(40, 'Keep last name under 40 characters'),
   email,
   // 72 is the classic bcrypt input ceiling; argon2 has no such limit, but the
   // cap keeps a megabyte-long password from becoming a CPU denial-of-service.
@@ -58,3 +63,18 @@ export const resetPasswordSchema = z.object({
 });
 
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
+export const updateProfileSchema = z.object({
+  firstName: z
+    .string()
+    .trim()
+    .min(1, 'First name is required')
+    .max(40, 'Keep first name under 40 characters'),
+  lastName: z
+    .string()
+    .trim()
+    .min(1, 'Last name is required')
+    .max(40, 'Keep last name under 40 characters'),
+});
+
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;

@@ -34,6 +34,7 @@
   border-radius: var(--radius-lg);
   padding: var(--space-4) var(--space-5); /* Reduced from space-5 space-6 */
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  --control-height: 36px;
 }
 
 .header {
@@ -53,11 +54,26 @@
   font-size: 14px;
 }
 
-/* Form inputs */
 .form {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3); /* Reduced from space-4 */
+  gap: var(--space-2); /* Reduced from space-3 */
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+@media (min-width: 600px) {
+  .row {
+    flex-direction: row;
+  }
+  .row > * {
+    flex: 1;
+    min-width: 0;
+  }
 }
 
 .forgot {
@@ -73,7 +89,7 @@
 }
 
 .submit {
-  margin-top: 0;
+  margin-top: var(--space-4);
 }
 
 .switch {
