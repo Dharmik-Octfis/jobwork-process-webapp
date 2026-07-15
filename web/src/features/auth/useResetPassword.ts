@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { toApiErrorMessage } from '../../api/client';
+import { setAccessToken, toApiErrorMessage } from '../../api/client';
 import { resetPassword } from './auth.api';
 
 export function useResetPassword() {
@@ -9,8 +9,9 @@ export function useResetPassword() {
   return useMutation({
     mutationFn: resetPassword,
     onSuccess: () => {
-      // Clear any stored refresh token since they were deleted from DB
-      localStorage.removeItem('refreshToken');
+      // The reset deleted every session server-side; drop the in-memory access
+      // token too so the app can't keep making authenticated calls.
+      setAccessToken(null);
       navigate('/login', { replace: true });
     },
     onError: (error) => {
