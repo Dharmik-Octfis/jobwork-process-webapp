@@ -36,6 +36,13 @@ const envSchema = z.object({
 
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
 
+  /**
+   * Public base URL of the web app, used to build links we email out (e.g. the
+   * invitation accept link). Must be the origin a recipient's browser can reach
+   * — not the API. Defaults to the local Vite dev server.
+   */
+  APP_URL: z.string().url().default('http://localhost:5173'),
+
   // Email Config — ZeptoMail. SMTP_PASS is the Send Mail token from the
   // ZeptoMail console; it doubles as the API token (the SMTP_* names are kept
   // for continuity, but delivery now goes through the ZeptoMail template API).
@@ -77,6 +84,7 @@ export const env = {
     refreshSecret: raw.JWT_REFRESH_SECRET,
     refreshTtl: raw.JWT_REFRESH_TTL,
   },
+  appUrl: raw.APP_URL.replace(/\/+$/, ''), // no trailing slash, so link building is predictable
   corsOrigins: raw.CORS_ORIGINS.split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),

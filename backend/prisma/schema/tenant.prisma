@@ -12,8 +12,9 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  refreshTokens RefreshToken[]
-  memberships   Membership[]
+  refreshTokens   RefreshToken[]
+  memberships     Membership[]
+  sentInvitations Invitation[]  @relation("InvitedBy")
 
   @@map("users")
 }
@@ -66,6 +67,7 @@ model Organization {
   createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   memberships Membership[]
+  invitations Invitation[]
 
   @@map("organizations")
 }
@@ -83,6 +85,33 @@ model Membership {
 
   @@unique([userId, organizationId])
   @@map("memberships")
+}
+
+// An invitation binds an *email address* (not a User) to an organization, so it
+// can be sent to someone who has no account yet. It becomes a Membership only at
+// accept time — see invitations.service.ts. The row holds all the real data;
+// the emailed token is just a random lookup key (its SHA-256 hash is stored, so
+// a leaked DB row can't be replayed — the raw token lives only in the email).
+model Invitation {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id")
+  email          String    @db.Citext
+  role           String    @default("member") @db.VarChar(50) // admin | member (never owner via invite)
+  tokenHash      String    @unique @map("token_hash")
+  status         String    @default("pending") @db.VarChar(20) // pending | accepted | revoked
+  invitedById    String    @map("invited_by_id") @db.Uuid
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(6)
+  acceptedAt     DateTime? @map("accepted_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User         @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  // One live invite per email per org — re-inviting updates the existing row.
+  @@unique([organizationId, email])
+  @@index([email])
+  @@map("invitations")
 }
 
 model Industry {

@@ -17,9 +17,18 @@ import ms from 'ms';
 /** Postgres unique-constraint violation, surfaced by Prisma. */
 const UNIQUE_VIOLATION = 'P2002';
 
-const publicUserSelect = { id: true, firstName: true, lastName: true, fullName: true, email: true } as const;
+const publicUserSelect = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  fullName: true,
+  email: true,
+} as const;
 
-export async function updateProfile(userId: string, input: { firstName: string; lastName: string }): Promise<PublicUser> {
+export async function updateProfile(
+  userId: string,
+  input: { firstName: string; lastName: string },
+): Promise<PublicUser> {
   const fullName = `${input.firstName} ${input.lastName}`.trim();
   const user = await prisma.user.update({
     where: { id: userId },
@@ -41,7 +50,13 @@ export async function signup(input: SignupInput): Promise<AuthResult> {
 
   try {
     const user = await prisma.user.create({
-      data: { firstName: input.firstName, lastName: input.lastName, fullName, email: input.email, passwordHash },
+      data: {
+        firstName: input.firstName,
+        lastName: input.lastName,
+        fullName,
+        email: input.email,
+        passwordHash,
+      },
       select: publicUserSelect,
     });
 
@@ -80,13 +95,20 @@ export async function login(input: LoginInput): Promise<AuthResult> {
     throw new ApiError(403, 'This account has been disabled.');
   }
 
-  return await issueTokens({ id: user.id, firstName: user.firstName, lastName: user.lastName, fullName: user.fullName, email: user.email });
+  return await issueTokens({
+    id: user.id,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    fullName: user.fullName,
+    email: user.email,
+  });
 }
 
 /**
- * Shared helper to generate and store tokens.
+ * Shared helper to generate and store tokens. Exported so the invitation-accept
+ * flow can sign a brand-new invited user straight in after they set a password.
  */
-async function issueTokens(user: PublicUser): Promise<AuthResult> {
+export async function issueTokens(user: PublicUser): Promise<AuthResult> {
   const refreshToken = signRefreshToken(user.id);
   const expiresAt = new Date(Date.now() + ms(env.jwt.refreshTtl as ms.StringValue));
 
