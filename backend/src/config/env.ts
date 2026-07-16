@@ -56,7 +56,9 @@ const envSchema = z.object({
   // ZeptoMail template API. Host only — the SDK appends `v1.1/email/template`.
   ZEPTO_API_URL: z.string().default('api.zeptomail.com/'),
   // Template key from ZeptoMail console -> Mail Agents -> Templates.
-  ZEPTO_TEMPLATE_KEY: z.string().min(1, 'ZEPTO_TEMPLATE_KEY is required'),
+  ZEPTO_EMAIL_VERIFY_TEMPLATE_KEY: z.string().min(1, 'ZEPTO_EMAIL_VERIFY_TEMPLATE_KEY is required'),
+  // Template used for organization member invitations.
+  ZEPTO_INVITE_TEMPLATE_KEY: z.string().min(1, 'ZEPTO_INVITE_TEMPLATE_KEY is required'),
   // Value for the template's `product_name` merge field.
   ZEPTO_PRODUCT_NAME: z.string().default('Jobwork'),
 });
@@ -99,7 +101,8 @@ export const env = {
   zepto: {
     apiUrl: raw.ZEPTO_API_URL,
     token: raw.SMTP_PASS,
-    templateKey: raw.ZEPTO_TEMPLATE_KEY,
+    emailVerifyTemplateKey: raw.ZEPTO_EMAIL_VERIFY_TEMPLATE_KEY,
+    inviteTemplateKey: raw.ZEPTO_INVITE_TEMPLATE_KEY,
     productName: raw.ZEPTO_PRODUCT_NAME,
     from: raw.SMTP_FROM,
     fromName: raw.SMTP_FROM_NAME,

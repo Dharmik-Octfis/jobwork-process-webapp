@@ -127,7 +127,6 @@ export async function createInvitation(
     to: invite.email,
     inviteLink,
     organizationName: invite.organization.name,
-    invitedByName: invite.invitedBy.fullName,
   });
 
   return toPublicInvitation(invite);

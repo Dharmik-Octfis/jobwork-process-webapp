@@ -65,7 +65,7 @@ export async function sendTemplateEmail({
  */
 export async function sendOtpEmail(to: string, otp: string): Promise<void> {
   await sendTemplateEmail({
-    templateKey: env.zepto.templateKey,
+    templateKey: env.zepto.emailVerifyTemplateKey,
     to,
     mergeInfo: {
       // eslint-disable-next-line @typescript-eslint/naming-convention -- ZeptoMail merge field
@@ -75,82 +75,29 @@ export async function sendOtpEmail(to: string, otp: string): Promise<void> {
   });
 }
 
-export interface SendHtmlEmailParams {
-  to: string | EmailContact | Array<string | EmailContact>;
-  subject: string;
-  html: string;
-  from?: EmailContact;
-}
-
 /**
- * Sends a one-off HTML email (no ZeptoMail template needed). Used where the body
- * is built in code rather than a console template — e.g. the invitation email,
- * which carries a unique per-invite link a static template can't hold.
- */
-export async function sendHtmlEmail({
-  to,
-  subject,
-  html,
-  from,
-}: SendHtmlEmailParams): Promise<void> {
-  const recipients = (Array.isArray(to) ? to : [to]).map(toContact);
-  const sender = from ?? { address: env.zepto.from, name: env.zepto.fromName };
-
-  await client.sendMail({
-    from: { address: sender.address, name: sender.name ?? sender.address },
-    to: recipients.map((r) => ({
-      // eslint-disable-next-line @typescript-eslint/naming-convention -- ZeptoMail wire key
-      email_address: { address: r.address, name: r.name ?? r.address },
-    })),
-    subject,
-    htmlbody: html,
-  });
-}
-
-/** Minimal HTML-escape for the few user-supplied strings we drop into the email. */
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-/**
- * Sends an organization invitation with a one-click accept link. `inviteLink`
- * already carries the raw (unhashed) token as a query param — it is the single
- * secret in this email, so it is never logged.
+ * Sends an organization invitation using the ZeptoMail invite template. The
+ * merge fields below must match the placeholders defined in that template
+ * (console -> Mail Agents -> Templates). `inviteLink` carries the raw (unhashed)
+ * token as a query param — it is the single secret in this email.
  */
 export async function sendInvitationEmail(params: {
   to: string;
   inviteLink: string;
   organizationName: string;
-  invitedByName: string;
 }): Promise<void> {
-  const { to, inviteLink, organizationName, invitedByName } = params;
-  const org = escapeHtml(organizationName);
-  const inviter = escapeHtml(invitedByName);
-  const product = escapeHtml(env.zepto.productName);
+  const { to, inviteLink, organizationName } = params;
 
-  const html = `
-    <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;color:#1f2937;">
-      <h2 style="margin:0 0 16px;font-size:20px;">You've been invited to join ${org}</h2>
-      <p style="margin:0 0 16px;font-size:15px;line-height:1.6;">
-        ${inviter} has invited you to collaborate on <strong>${org}</strong> in ${product}.
-      </p>
-      <p style="margin:0 0 24px;">
-        <a href="${inviteLink}"
-           style="display:inline-block;background:#1d4ed8;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;font-size:15px;">
-          Accept invitation
-        </a>
-      </p>
-      <p style="margin:0 0 8px;font-size:13px;color:#6b7280;line-height:1.6;">
-        This invitation expires in 7 days. If the button doesn't work, copy and paste this link into your browser:
-      </p>
-      <p style="margin:0;font-size:13px;word-break:break-all;color:#6b7280;">${escapeHtml(inviteLink)}</p>
-    </div>
-  `;
-
-  await sendHtmlEmail({ to, subject: `Invitation to join ${organizationName}`, html });
+  await sendTemplateEmail({
+    templateKey: env.zepto.inviteTemplateKey,
+    to,
+    mergeInfo: {
+      // eslint-disable-next-line @typescript-eslint/naming-convention -- ZeptoMail merge field
+      product_name: env.zepto.productName,
+      // eslint-disable-next-line @typescript-eslint/naming-convention -- ZeptoMail merge field
+      invite_link: inviteLink,
+      // eslint-disable-next-line @typescript-eslint/naming-convention -- ZeptoMail merge field
+      organization_name: organizationName,
+    },
+  });
 }
