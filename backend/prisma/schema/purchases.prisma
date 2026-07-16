@@ -1,0 +1,17 @@
+model Vendor {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String       @map("organization_id") @db.Uuid
+  vendorName      String       @map("vendor_name") @db.VarChar(100)
+  vendorNumber    String       @map("vendor_number") @db.VarChar(50)
+  emailAddress    String?      @map("email_address") @db.VarChar(255)
+  phone           String?      @db.VarChar(20)
+  gstTreatment    String       @map("gst_treatment") @db.VarChar(50)
+  sourceOfSupply  String       @map("source_of_supply") @db.VarChar(100)
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, vendorNumber])
+  @@map("vendors")
+}

@@ -35,6 +35,10 @@ apiClient.interceptors.request.use((config) => {
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
   }
+  const activeOrgId = localStorage.getItem('activeOrgId');
+  if (activeOrgId) {
+    config.headers['x-organization-id'] = activeOrgId;
+  }
   return config;
 });
 

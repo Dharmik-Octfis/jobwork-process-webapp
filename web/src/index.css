@@ -97,15 +97,15 @@
   --space-8: 64px;
 
   /* Radius */
-  --radius-sm: 8px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
 
   /* Typography — Zoho Puvi with a graceful system fallback */
   --font-sans: 'Zoho Puvi', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
 
-  /* Controls: min 48px tall for accessible touch targets */
-  --control-height: 48px;
+  /* Controls: dense professional height */
+  --control-height: 36px;
 
   /* Light-only, matching the OCTFIS suite (the reference app has no dark theme).
      This keeps the petrol-blue/navy look consistent regardless of OS setting. */
@@ -127,8 +127,8 @@ body,
 body {
   margin: 0;
   font-family: var(--font-sans);
-  font-size: 16px;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 1.4;
   color: var(--color-text);
   background: var(--color-bg);
   -webkit-font-smoothing: antialiased;

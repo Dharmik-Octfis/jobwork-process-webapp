@@ -50,7 +50,7 @@ model PasswordResetToken {
 }
 
 model Organization {
-  id           String  @id @map("organization_id")
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name         String
   industryType String? @map("industry_type")
 
@@ -68,6 +68,7 @@ model Organization {
   updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   memberships Membership[]
   invitations Invitation[]
+  vendors      Vendor[]
 
   @@map("organizations")
 }
@@ -75,7 +76,7 @@ model Organization {
 model Membership {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId         String   @map("user_id") @db.Uuid
-  organizationId String   @map("organization_id")
+  organizationId String   @map("organization_id") @db.Uuid
   role           String   @default("member") @db.VarChar(50) // owner, admin, member
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -145,4 +146,21 @@ model City {
 
   @@unique([name, stateId])
   @@map("cities")
+}
+
+model AppModule {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code      String   @unique @db.VarChar(50)
+  name      String   @db.VarChar(100)
+  parentId  String?  @map("parent_id") @db.Uuid
+  sortIndex Int      @default(0) @map("sort_index")
+  icon      String?  @db.VarChar(50)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  parent   AppModule?  @relation("ModuleToSubModules", fields: [parentId], references: [id], onDelete: Cascade)
+  children AppModule[] @relation("ModuleToSubModules")
+
+  @@map("app_modules")
 }
