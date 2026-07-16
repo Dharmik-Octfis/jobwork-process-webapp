@@ -1,0 +1,149 @@
+﻿// prisma\schema\purchases.prisma
+model Vendor {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  vendorName     String       @map("vendor_name") @db.VarChar(100)
+  vendorNumber   String       @map("vendor_number") @db.VarChar(50)
+  emailAddress   String?      @map("email_address") @db.VarChar(255)
+  phone          String?      @db.VarChar(20)
+  gstTreatment   String       @map("gst_treatment") @db.VarChar(50)
+  sourceOfSupply String       @map("source_of_supply") @db.VarChar(100)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, vendorNumber])
+  @@map("vendors")
+}
+
+// prisma\schema\schema.prisma
+generator client {
+  provider      = "prisma-client"
+  output        = "../../generated/prisma"
+  binaryTargets = ["native", "debian-openssl-1.1.x", "debian-openssl-3.0.x", "rhel-openssl-1.0.x", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// prisma\schema\tenant.prisma
+model User {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String         @unique @db.Citext
+  passwordHash  String?        @map("password_hash")
+  firstName     String         @default("") @map("first_name") @db.VarChar(40)
+  lastName      String         @default("") @map("last_name") @db.VarChar(40)
+  fullName      String         @default("") @map("full_name") @db.VarChar(80)
+  isActive      Boolean        @default(true) @map("is_active")
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  memberships   Membership[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  token     String   @unique
+  userId    String   @map("user_id") @db.Uuid
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email     String   @db.Citext
+  otp       String   @db.VarChar(6)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([email])
+  @@map("password_reset_tokens")
+}
+
+model Organization {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String
+  industryType String?      @map("industry_type")
+  phone        String?
+  email        String?
+  city         String?
+  state        String?
+  zip          String?
+  orgAddress   String?      @map("org_address")
+  taxIdValue   String?      @map("tax_id_value")
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  memberships  Membership[]
+  vendors      Vendor[]
+
+  @@map("organizations")
+}
+
+model Membership {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  role           String       @default("member") @db.VarChar(50)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@map("memberships")
+}
+
+model Industry {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @unique
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("industries")
+}
+
+model State {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @unique
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  cities    City[]
+
+  @@map("states")
+}
+
+model City {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  stateId   String   @map("state_id") @db.Uuid
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  state     State    @relation(fields: [stateId], references: [id], onDelete: Cascade)
+
+  @@unique([name, stateId])
+  @@map("cities")
+}
+
+model AppModule {
+  id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code      String      @unique @db.VarChar(50)
+  name      String      @db.VarChar(100)
+  parentId  String?     @map("parent_id") @db.Uuid
+  sortIndex Int         @default(0) @map("sort_index")
+  icon      String?     @db.VarChar(50)
+  isActive  Boolean     @default(true) @map("is_active")
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  parent    AppModule?  @relation("ModuleToSubModules", fields: [parentId], references: [id], onDelete: Cascade)
+  children  AppModule[] @relation("ModuleToSubModules")
+
+  @@map("app_modules")
+}
+
+

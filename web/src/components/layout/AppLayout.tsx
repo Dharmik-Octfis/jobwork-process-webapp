@@ -207,7 +207,7 @@ function ModuleNavGroup({ module, depth = 0 }: { module: AppModule; depth?: numb
         
         {isExpanded && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
-            {module.children.map((child) => (
+            {module.children?.map((child) => (
               <ModuleNavGroup key={child.id} module={child} depth={depth + 1} />
             ))}
           </div>
