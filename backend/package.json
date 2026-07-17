@@ -14,7 +14,9 @@
     "db:generate": "prisma generate",
     "db:pull": "prisma db pull",
     "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio"
+    "db:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio",
+    "db:check-drift": "prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code"
   },
   "keywords": [],
   "author": "",

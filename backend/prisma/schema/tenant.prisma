@@ -50,17 +50,18 @@ model PasswordResetToken {
 }
 
 model Organization {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name         String
   industryType String? @map("industry_type")
 
   phone String?
   email String?
 
-  city       String?
-  state      String?
-  zip        String?
-  orgAddress String? @map("org_address")
+  city        String?
+  state       String?
+  zip         String?
+  countryCode String? @map("country_code")
+  orgAddress  String? @map("org_address")
 
   taxIdValue String? @map("tax_id_value")
 
@@ -68,7 +69,7 @@ model Organization {
   updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   memberships Membership[]
   invitations Invitation[]
-  vendors      Vendor[]
+  vendors     Vendor[]
 
   @@map("organizations")
 }
@@ -95,7 +96,7 @@ model Membership {
 // a leaked DB row can't be replayed — the raw token lives only in the email).
 model Invitation {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String    @map("organization_id")
+  organizationId String    @map("organization_id") @db.Uuid
   email          String    @db.Citext
   role           String    @default("member") @db.VarChar(50) // admin | member (never owner via invite)
   tokenHash      String    @unique @map("token_hash")
@@ -122,6 +123,23 @@ model Industry {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@map("industries")
+}
+
+// Master data, like Industry/State/City — read-only reference rows, not tenant-scoped.
+//
+// `code` is ISO 3166-1 alpha-2 ("IN") and is what Organization.countryCode stores.
+// `isoCode` is alpha-3 ("IND"). They are kept separate because alpha-2 is what forms,
+// phone libraries, and payment providers expect, while alpha-3 is what most
+// government and shipping paperwork asks for.
+model Country {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @unique
+  code      String   @unique @db.VarChar(2)
+  isoCode   String   @unique @map("iso_code") @db.VarChar(3)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("countries")
 }
 
 model State {

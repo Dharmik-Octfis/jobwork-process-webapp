@@ -14,8 +14,19 @@ apiRouter.get('/health', (_req, res) => {
 });
 
 apiRouter.use('/auth', authRouter);
+
+// Tenant-scoped modules nest under `/organizations/:orgId/…` so the organization
+// is part of the URL: explicit, bookmarkable, and shareable. `tenantContext`
+// reads `:orgId` and verifies membership before any handler runs.
+//
+// Registered BEFORE `/organizations` deliberately. Express matches in mount
+// order, and `use('/organizations', …)` also matches this longer path — it would
+// hand the request to organizationsRouter, find no route, and fall through here
+// anyway, but only after running that router's `authenticate` a second time.
+// Specific before general keeps the path short and the middleware chain honest.
+apiRouter.use('/organizations/:orgId/purchases/vendors', vendorsRouter);
+
 apiRouter.use('/organizations', organizationsRouter);
 apiRouter.use('/invitations', invitationsRouter);
 apiRouter.use('/master-data', masterDataRouter);
 apiRouter.use('/modules', appModulesRouter);
-apiRouter.use('/purchases/vendors', vendorsRouter);

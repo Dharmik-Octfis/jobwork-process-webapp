@@ -13,7 +13,9 @@ const createVendorSchema = z.object({
 
 export const getVendors = async (req: Request, res: Response) => {
   try {
-    const orgId = req.headers['x-organization-id'] as string;
+    // req.tenantId, not the raw header: `tenantContext` has verified membership
+    // against the database. The header is a client-supplied claim.
+    const orgId = req.tenantId!;
     const vendors = await getVendorsList(orgId);
     res.json(vendors);
   } catch (error) {
@@ -24,9 +26,9 @@ export const getVendors = async (req: Request, res: Response) => {
 
 export const createVendor = async (req: Request, res: Response) => {
   try {
-    const orgId = req.headers['x-organization-id'] as string;
+    const orgId = req.tenantId!;
     const parsedData = createVendorSchema.parse(req.body);
-    
+
     // Convert empty strings to null for optional fields
     const data = {
       ...parsedData,
@@ -40,7 +42,12 @@ export const createVendor = async (req: Request, res: Response) => {
     console.error('Error creating vendor:', error);
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: 'Validation failed', details: error.issues });
-    } else if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') {
+    } else if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'P2002'
+    ) {
       res.status(409).json({ error: 'Vendor number already exists in this organization.' });
     } else {
       res.status(500).json({ error: `Failed to create vendor: ${String(error)}` });

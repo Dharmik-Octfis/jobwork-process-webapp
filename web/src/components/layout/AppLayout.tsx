@@ -1,7 +1,19 @@
 import { useState, useRef, useEffect } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, FileText, Users, LogOut, User as UserIcon, Settings, LayoutDashboard, ShoppingCart, Receipt, ChevronDown, ChevronRight } from 'lucide-react';
+import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import {
+  X,
+  FileText,
+  Users,
+  LogOut,
+  User as UserIcon,
+  Settings,
+  LayoutDashboard,
+  ShoppingCart,
+  Receipt,
+  ChevronDown,
+  ChevronRight,
+} from 'lucide-react';
 import { Logo } from '../ui/Logo';
 import { useAuth } from '../../providers/auth-context';
 import { useLogout } from '../../features/auth/useLogout';
@@ -10,15 +22,27 @@ import type { Organization } from '../../features/organizations/organizations.sc
 import type { User } from '../../features/auth/auth.types';
 import { fetchAppModules } from '../../features/modules/modules.api';
 import type { AppModule } from '../../features/modules/modules.schemas';
+import { LAST_ORG_KEY } from '../../routes/OrgRedirect';
 
 /* eslint-disable @typescript-eslint/naming-convention */
+/**
+ * Nav paths, relative to the organization they belong to. Every tenant-scoped
+ * page hangs off `/organizations/:orgId`, so these are suffixes rather than
+ * absolute paths — see `navPath` below and app/router.tsx.
+ */
 const ROUTE_MAP: Record<string, string> = {
-  DASHBOARD: '/',
+  DASHBOARD: '',
   PURCHASES: '/purchases',
   VENDORS: '/purchases/vendors',
   PO: '/purchases/po',
   BILLS: '/purchases/bills',
 };
+
+function navPath(moduleCode: string, orgId: string | undefined): string {
+  const suffix = ROUTE_MAP[moduleCode];
+  if (suffix === undefined || !orgId) return '#';
+  return `/organizations/${orgId}${suffix}`;
+}
 
 const ICON_MAP: Record<string, React.ElementType> = {
   LayoutDashboard,
@@ -43,25 +67,31 @@ export function AppLayout() {
     queryFn: fetchAppModules,
   });
 
-  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(() =>
-    localStorage.getItem('activeOrgId'),
-  );
+  // The URL is the single source of truth for which organization is active.
+  // Previously this was React state mirrored into localStorage, which meant the
+  // active org was invisible in the URL, unbookmarkable, and impossible to have
+  // two of in two tabs.
+  const { orgId: activeOrgId } = useParams<{ orgId: string }>();
+  const location = useLocation();
+  const navigate = useNavigate();
 
-  const activeOrgId = organizations?.some((o) => o.id === selectedOrgId)
-    ? selectedOrgId
-    : (organizations?.[0]?.id ?? null);
-
-  const queryClient = useQueryClient();
-
+  // Remember it only so `/` can send the user back here next visit (OrgRedirect).
+  // Not an authorization input: the server re-checks membership on every request.
   useEffect(() => {
-    if (activeOrgId) {
-      const prevOrgId = localStorage.getItem('activeOrgId');
-      localStorage.setItem('activeOrgId', activeOrgId);
-      if (prevOrgId && prevOrgId !== activeOrgId) {
-        queryClient.invalidateQueries();
-      }
-    }
-  }, [activeOrgId, queryClient]);
+    if (activeOrgId) localStorage.setItem(LAST_ORG_KEY, activeOrgId);
+  }, [activeOrgId]);
+
+  /**
+   * Switching organization is a *navigation*, not a state change: swap the org
+   * id in the current path and keep the user on the same page. No manual cache
+   * invalidation needed — every tenant query keys on orgId, so React Query
+   * refetches on its own. The old code called `queryClient.invalidateQueries()`
+   * with no key, nuking every cache in the app including master data.
+   */
+  const switchOrg = (nextOrgId: string) => {
+    const rest = activeOrgId ? location.pathname.replace(`/organizations/${activeOrgId}`, '') : '';
+    navigate(`/organizations/${nextOrgId}${rest}`);
+  };
 
   return (
     <div
@@ -130,8 +160,8 @@ export function AppLayout() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
             <OrgDropdown
               organizations={organizations || []}
-              activeOrgId={activeOrgId}
-              onSelectOrg={setSelectedOrgId}
+              activeOrgId={activeOrgId ?? null}
+              onSelectOrg={switchOrg}
             />
             <ProfileDropdown user={user} logoutMutation={logoutMutation} />
           </div>
@@ -148,14 +178,24 @@ export function AppLayout() {
 
 function ModuleNavGroup({ module, depth = 0 }: { module: AppModule; depth?: number }) {
   const Icon = module.icon && ICON_MAP[module.icon] ? ICON_MAP[module.icon] : FileText;
-  const to = ROUTE_MAP[module.code] || '#';
+  // Every nav link is scoped to the organization in the URL, so the sidebar
+  // follows the user across an org switch instead of pointing back at the old one.
+  const { orgId } = useParams<{ orgId: string }>();
+  const to = navPath(module.code, orgId);
 
   const isParent = module.children && module.children.length > 0;
   const [isExpanded, setIsExpanded] = useState(true);
 
   if (isParent) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', marginTop: depth === 0 ? 'var(--space-2)' : 0 }}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 'var(--space-1)',
+          marginTop: depth === 0 ? 'var(--space-2)' : 0,
+        }}
+      >
         {depth === 0 ? (
           <button
             onClick={() => setIsExpanded(!isExpanded)}
@@ -204,7 +244,7 @@ function ModuleNavGroup({ module, depth = 0 }: { module: AppModule; depth?: numb
             {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
         )}
-        
+
         {isExpanded && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
             {module.children?.map((child) => (
@@ -334,9 +374,7 @@ function ProfileDropdown({
                 <div style={{ fontWeight: 500, fontSize: 14, color: '#1e293b' }}>
                   {user?.fullName || 'User'}
                 </div>
-                <div style={{ fontSize: 13, color: '#64748b' }}>
-                  {user?.email || ''}
-                </div>
+                <div style={{ fontSize: 13, color: '#64748b' }}>{user?.email || ''}</div>
               </div>
             </div>
 

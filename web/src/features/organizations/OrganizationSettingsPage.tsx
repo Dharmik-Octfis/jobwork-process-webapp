@@ -15,7 +15,7 @@ type MasterData = {
 };
 
 export function OrganizationSettingsPage() {
-  const { id } = useParams<{ id: string }>();
+  const { orgId: id } = useParams<{ orgId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);

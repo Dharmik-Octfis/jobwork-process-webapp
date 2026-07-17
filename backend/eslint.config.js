@@ -45,8 +45,18 @@ export default defineConfig([
         { selector: 'typeProperty', format: null, modifiers: ['requiresQuotes'] },
         // Env vars are UPPER_CASE by convention (`process.env.DATABASE_URL`),
         // and Zod schemas describing them must use the same keys.
-        { selector: 'objectLiteralProperty', format: ['camelCase', 'UPPER_CASE'] },
-        { selector: 'typeProperty', format: ['camelCase', 'UPPER_CASE'] },
+        // leadingUnderscore matches the `default` selector above; Prisma's
+        // aggregate selectors (`_count`, `_sum`, `_avg`) are spelled that way.
+        {
+          selector: 'objectLiteralProperty',
+          format: ['camelCase', 'UPPER_CASE'],
+          leadingUnderscore: 'allow',
+        },
+        {
+          selector: 'typeProperty',
+          format: ['camelCase', 'UPPER_CASE'],
+          leadingUnderscore: 'allow',
+        },
       ],
     },
   },

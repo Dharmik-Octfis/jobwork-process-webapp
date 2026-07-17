@@ -2,21 +2,50 @@ import { prisma } from '../src/db/prisma.ts';
 
 const INDUSTRIES = ['Technology', 'Manufacturing', 'Retail', 'Healthcare', 'Finance'];
 
+// `code` is ISO 3166-1 alpha-2, `isoCode` is alpha-3. India first — it is the
+// default market and the list is ordered by likelihood of use, not alphabet.
+const COUNTRIES = [
+  { name: 'India', code: 'IN', isoCode: 'IND' },
+  { name: 'United States', code: 'US', isoCode: 'USA' },
+  { name: 'United Kingdom', code: 'GB', isoCode: 'GBR' },
+  { name: 'United Arab Emirates', code: 'AE', isoCode: 'ARE' },
+  { name: 'Singapore', code: 'SG', isoCode: 'SGP' },
+  { name: 'Australia', code: 'AU', isoCode: 'AUS' },
+  { name: 'Canada', code: 'CA', isoCode: 'CAN' },
+  { name: 'Germany', code: 'DE', isoCode: 'DEU' },
+];
+
 const STATES = [
   {
     name: 'Gujarat',
     cities: [
-      'Ahmedabad', 'Surat', 'Vadodara', 'Rajkot', 'Bhavnagar', 
-      'Jamnagar', 'Junagadh', 'Gandhinagar', 'Anand', 'Navsari'
-    ]
+      'Ahmedabad',
+      'Surat',
+      'Vadodara',
+      'Rajkot',
+      'Bhavnagar',
+      'Jamnagar',
+      'Junagadh',
+      'Gandhinagar',
+      'Anand',
+      'Navsari',
+    ],
   },
   {
     name: 'Maharashtra',
     cities: [
-      'Mumbai', 'Pune', 'Nagpur', 'Thane', 'Nashik', 
-      'Kalyan-Dombivli', 'Vasai-Virar', 'Aurangabad', 'Navi Mumbai', 'Solapur'
-    ]
-  }
+      'Mumbai',
+      'Pune',
+      'Nagpur',
+      'Thane',
+      'Nashik',
+      'Kalyan-Dombivli',
+      'Vasai-Virar',
+      'Aurangabad',
+      'Navi Mumbai',
+      'Solapur',
+    ],
+  },
 ];
 
 async function main() {
@@ -32,7 +61,17 @@ async function main() {
   }
   console.log('Seeded industries.');
 
-  // 2. Seed States and Cities
+  // 2. Seed Countries
+  for (const country of COUNTRIES) {
+    await prisma.country.upsert({
+      where: { code: country.code },
+      update: {},
+      create: country,
+    });
+  }
+  console.log('Seeded countries.');
+
+  // 3. Seed States and Cities
   for (const stateObj of STATES) {
     const state = await prisma.state.upsert({
       where: { name: stateObj.name },
@@ -51,7 +90,7 @@ async function main() {
   }
   console.log('Seeded states and cities.');
 
-  // 3. Seed Modules
+  // 4. Seed Modules
   await prisma.appModule.upsert({
     where: { code: 'DASHBOARD' },
     update: {},
@@ -67,13 +106,25 @@ async function main() {
   await prisma.appModule.upsert({
     where: { code: 'VENDORS' },
     update: {},
-    create: { code: 'VENDORS', name: 'Vendors', parentId: purchases.id, sortIndex: 1, icon: 'Users' },
+    create: {
+      code: 'VENDORS',
+      name: 'Vendors',
+      parentId: purchases.id,
+      sortIndex: 1,
+      icon: 'Users',
+    },
   });
 
   await prisma.appModule.upsert({
     where: { code: 'PO' },
     update: {},
-    create: { code: 'PO', name: 'Purchase Orders', parentId: purchases.id, sortIndex: 2, icon: 'FileText' },
+    create: {
+      code: 'PO',
+      name: 'Purchase Orders',
+      parentId: purchases.id,
+      sortIndex: 2,
+      icon: 'FileText',
+    },
   });
 
   await prisma.appModule.upsert({

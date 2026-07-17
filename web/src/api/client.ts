@@ -35,12 +35,13 @@ apiClient.interceptors.request.use((config) => {
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
   }
-  const activeOrgId = localStorage.getItem('activeOrgId');
-  if (activeOrgId) {
-    config.headers['x-organization-id'] = activeOrgId;
-  }
   return config;
 });
+
+// The organization used to be smuggled in here as an `x-organization-id` header
+// read from localStorage. It now travels in the URL — `/organizations/:orgId/…`
+// — so it is visible, bookmarkable, and each call states which organization it
+// means instead of depending on ambient browser state. See api/endpoints.ts.
 
 // --- Silent refresh on 401 -------------------------------------------------
 

@@ -360,57 +360,363 @@ Only `PrismaClientKnownRequestError` has a `.code`. Validation problems throw
 
 ## 8. Migrations
 
-**We have no migrations yet.** The `users` table was created by hand in pgAdmin, so
-`prisma/migrations/` doesn't exist and Postgres has no `_prisma_migrations` bookkeeping table. This is
-a temporary state and needs resolving before a second developer or a second environment appears.
+**Migrations are live.** The database was baselined on **2026-07-16** — `prisma/migrations/0_init/`
+holds the baseline and `_prisma_migrations` exists. The previous hand-managed era (tables created by
+hand in pgAdmin, `prisma/sql/001_invitations.sql` applied manually) is **over**. Do not create tables
+by hand any more; `prisma/sql/` has been removed.
 
-### How migrations normally work
+From here on, every schema change goes through `npm run db:migrate` and the generated SQL is
+committed.
 
-```bash
-# 1. edit prisma/schema/tenant.prisma
-# 2.
-npm run db:migrate -- --name add_last_login_at
+### The rule
+
+> **You never create or alter a table in the database. You edit a schema file, and Prisma changes the
+> database for you.**
+
+The direction of truth is: **schema file → database.** Not the other way round. The schema files in
+`prisma/schema/` are the single source of truth; the database is built to match them.
+
+Think of migrations as **git for your database**. Each migration file is a commit; the database's
+structure is the working tree. Creating a table by hand in pgAdmin is editing files directly on the
+production server instead of committing — it works right up until it doesn't.
+
+### Why not just create it in pgAdmin?
+
+Because it works, which is the trap. On 2026-07-16 a `countries` table was created by hand in the
+shared dev database. It was really there, with real rows in it. And **four places had no idea:**
+
+| Who                         | What they saw                                                          |
+| --------------------------- | ---------------------------------------------------------------------- |
+| `tenant.prisma`             | Nothing — no `Country` model                                           |
+| The Prisma client           | Nothing — `prisma.country` didn't exist, so no TypeScript could use it |
+| Another developer's machine | Nothing — they build from migrations                                   |
+| **Production**              | Nothing — **the first code to touch `countries` crashes**              |
+
+The table existed in exactly one database. That is the failure mode migrations exist to prevent, and
+nobody remembers to run the SQL by hand at 11 PM on release night.
+
+### What actually stops someone creating a table by hand
+
+Two different questions, two different answers.
+
+**Can the _app_ create tables?** No, and this is enforced by Postgres. `jobwork_app` holds `USAGE` on
+schema `public` (reach the objects) but not `CREATE`, plus data rights only — no `rolcreatedb`, no
+`rolcreaterole`. The ACL says it:
+
+```
+{postgres=UC/postgres, jobwork_app=U/postgres}
+       ↑ Usage+Create          ↑ Usage only
 ```
 
-Prisma diffs your schema against the database, writes
-`prisma/migrations/<timestamp>_add_last_login_at/migration.sql`, applies it, records it in
-`_prisma_migrations`, and re-runs `generate`. You **commit** that SQL file. On staging and production
-you run `prisma migrate deploy`, which applies pending migrations and never prompts.
+⚠️ **This is a privilege you take away, not one you hand out.** In PostgreSQL ≤ 14, schema `public`
+grants `CREATE` to the `PUBLIC` pseudo-role — every role in the cluster — by default. PostgreSQL 15
+removed that, and jobwork_dev runs 18.3, so we inherited the safe behaviour. The
+`lock_down_public_schema` migration revokes it explicitly anyway: a no-op on 15+, and the thing that
+saves a developer running 14 locally from a database that does not match production.
 
-`migrate dev` is for your laptop only. It is allowed to reset the database. `migrate deploy` is for
-every other environment.
+**Can a _human_ create a table by hand?** **Yes — if they have the `postgres` password, and you cannot
+prevent it.** `postgres` owns the schema and always may. There is no Postgres setting for "only accept
+DDL from Prisma". That is exactly how a `countries` table appeared by hand on 2026-07-16.
 
-### Adopting the existing table
+So it is enforced two other ways:
 
-Since the database is ahead of the schema, run introspection rather than a migration:
+1. **Don't spread the `postgres` password.** Day-to-day — pgAdmin, psql, the running app — uses
+   `jobwork_app`. `postgres` is for migrations, and belongs in CI's secret store rather than on
+   laptops.
+2. **Drift detection**, below. This is the mechanical enforcement.
+
+### `db:check-drift` — keeping the database and the code honest
 
 ```bash
-npm run db:pull      # rewrites the schema from the real tables
-npm run db:generate
+npm run db:check-drift
+# exit 0 = database matches prisma/schema
+# exit 2 = drift: something exists in one and not the other
 ```
 
-Be aware `db:pull` **overwrites** your schema files and does not preserve `@map` camelCasing or your
-`///` doc comments — it names fields exactly as the columns are named. For a repo already committed to
-camelCase fields, the usual fix is the community tool `prisma-case-format`, run right after the pull.
+**Run it in CI on every pull request, and before every deploy.** It is the only thing that
+mechanically catches a hand-made table, a hand-dropped column, or a migration someone forgot to
+commit. Verified on 2026-07-17: creating a stray table by hand flipped it from 0 to 2 and it printed
+`DROP TABLE "naughty_handmade"`.
 
-To then create a baseline so Prisma believes the current tables are "already migrated", see Prisma's
-baselining guide: generate the initial migration with `--create-only`, then mark it applied with
-`prisma migrate resolve --applied <name>`.
+When it fails, it is telling you the database and `prisma/schema` disagree. **Do not "fix" it by
+running the DROP it suggests** — read the diff and work out which side is wrong. Usually someone made
+a change by hand and it needs to become a real migration instead (add the model to the schema, then
+`npm run db:migrate`).
 
-### The `--create-only` escape hatch
+### Worked example: adding the `countries` table
 
-Two things in our design cannot be expressed in the Prisma schema at all: the `citext` extension, and
-the Row-Level Security policies from architecture §3.10. For those, generate the migration, hand-edit
-the SQL, then apply:
+This is the everyday flow, start to finish. It is the real history — see migration
+`20260716120717_add_countries`.
+
+**1. Edit the schema file.** Not the database.
+
+```prisma
+// prisma/schema/tenant.prisma
+model Country {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @unique
+  code      String   @unique @db.VarChar(2)              // ISO alpha-2: "IN"
+  isoCode   String   @unique @map("iso_code") @db.VarChar(3)  // alpha-3: "IND"
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("countries")
+}
+```
+
+Note `@map("iso_code")`: **camelCase in TypeScript, snake_case in Postgres.** The hand-made version of
+this table had a literal `isoCode` column, breaking the convention every other column follows. `@map`
+is how you avoid that.
+
+**2. Ask Prisma to write the SQL — without applying it.**
 
 ```bash
-npx prisma migrate dev --create-only --name enable_citext
-# paste `CREATE EXTENSION IF NOT EXISTS citext;` into the generated migration.sql
+npx prisma migrate dev --create-only --name add_countries
+```
+
+**3. Read what it wrote** — `prisma/migrations/20260716120717_add_countries/migration.sql`:
+
+```sql
+-- CreateTable
+CREATE TABLE "countries" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "name" TEXT NOT NULL,
+    "code" VARCHAR(2) NOT NULL,
+    "iso_code" VARCHAR(3) NOT NULL,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "countries_pkey" PRIMARY KEY ("id")
+);
+-- CreateIndex
+CREATE UNIQUE INDEX "countries_name_key" ON "countries"("name");
+CREATE UNIQUE INDEX "countries_code_key" ON "countries"("code");
+CREATE UNIQUE INDEX "countries_iso_code_key" ON "countries"("iso_code");
+```
+
+**You wrote a model; Prisma wrote the SQL** — table, types, all three unique indexes, correct column
+names. The `--create-only` step is worth the extra command: you read the plan before it runs.
+
+**4. Apply it.**
+
+```bash
 npx prisma migrate dev
 ```
 
-"Never hand-edit migrations" means never edit one that has **already been applied**. Editing before
-applying is the sanctioned path for raw SQL.
+This applies the SQL, records it in `_prisma_migrations`, and regenerates the client so
+`prisma.country` exists in TypeScript.
+
+**5. Master data goes in the seed, not in an INSERT.** Reference rows (countries, industries, states)
+belong in `prisma/seed.ts` as idempotent `upsert`s, so **every** fresh database gets them:
+
+```ts
+for (const country of COUNTRIES) {
+  await prisma.country.upsert({ where: { code: country.code }, update: {}, create: country });
+}
+```
+
+```bash
+npx tsx prisma/seed.ts
+```
+
+**6. Commit the generated `migration.sql`.** That file _is_ the record. Everyone else runs
+`npx prisma migrate deploy` and gets an identical table — including production, on deploy.
+
+### The two commands
+
+| Command                                | Does                                                                                                    | Where                              |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `migrate dev` (= `npm run db:migrate`) | Diffs schema vs DB, **writes** new SQL, applies it, regenerates the client. **May reset the database.** | Your own machine only              |
+| `migrate deploy`                       | Only applies migration files that already exist. Never prompts, never resets, never writes SQL.         | Staging, production, CI, teammates |
+
+### ⚠️ `migrate dev` and the shared dev database
+
+`migrate dev` is designed for **a database only you own**, because it is allowed to wipe and rebuild
+it. `jobwork_dev` on RDS is **shared** — several developers point at the same one. If someone runs
+`npm run db:migrate` and Prisma finds drift, it may offer to reset, and that resets **everyone's**
+data, not just theirs.
+
+**The fix is one local Postgres per developer.** Each dev owns their database, so `migrate dev` is
+safe by definition (worst case you wipe your own toy data and re-seed). The shared RDS then becomes a
+deployed environment that only ever receives `migrate deploy`. Until that happens, treat
+`npm run db:migrate` against `jobwork_dev` as a loaded gun and check the drift first:
+
+```bash
+npx prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code
+# exit 0 = no drift, safe. exit 2 = drift; find out why BEFORE running migrate dev.
+```
+
+### Gotcha: "Property 'country' does not exist"
+
+If you add a model and TypeScript insists it doesn't exist — or you get
+`Cannot read properties of undefined (reading 'upsert')` at runtime — the **client hasn't been
+regenerated**. The Prisma client is generated code; it only knows models that existed when it was last
+built.
+
+```bash
+npm run db:generate
+```
+
+`migrate dev` normally does this for you, but if you ever bypass it, this is the fix.
+
+### Bootstrapping a fresh database
+
+A new developer, or a new environment, builds the whole schema from the baseline:
+
+```bash
+createdb jobwork_local                  # or CREATE DATABASE in pgAdmin
+
+# The enable_rls migration GRANTs to `jobwork_app`, so that role must exist in
+# the cluster first, or migrate stops with "role jobwork_app does not exist".
+# Roles are cluster-wide, so you only do this once per Postgres server, not per
+# database — see "Turning RLS on" below:
+#   CREATE ROLE jobwork_app LOGIN PASSWORD '<anything, locally>';
+
+# point DATABASE_URL at it, then:
+npx prisma migrate deploy               # applies 0_init and everything after it
+npm run db:generate
+npx tsx prisma/seed.ts                  # optional: master data + app modules
+```
+
+`migrate deploy` never prompts and never resets — it is safe in every environment. **Verified on
+2026-07-16:** a throwaway database built this way produced all 12 tables and matched the schema with
+zero drift.
+
+### How the baseline was created (2026-07-16)
+
+Recorded because baselining happens once and the reasoning is easy to lose.
+
+The database was hand-built and ahead of the schema, holding real dev data (3 organizations, 3 users,
+3 memberships, 3 vendors, 5 app modules). Two constraints shaped the approach:
+
+1. **`migrate dev` was never an option.** It is allowed to reset the database (see above), and this is
+   a _shared_ dev RDS with other people's data on it. The baseline was generated with
+   `migrate diff`, which is entirely offline.
+2. **`db:pull` was avoided.** It overwrites the schema files and destroys our `@map` camelCasing and
+   `///` doc comments. `prisma db pull --print` prints the introspected schema to stdout **without
+   writing anything**, which is the read-only way to compare schema against reality. (If you ever do
+   need a real `db:pull`, the community tool `prisma-case-format` restores camelCase afterwards.)
+
+The steps were:
+
+```bash
+# 1. Compare schema against the real database, read-only.
+npx prisma db pull --print
+
+# 2. Fix any drift found, BY HAND, in the schema files. A baseline records
+#    "the DB already looks like this" — baselining a schema that does not match
+#    reality bakes a lie into every future migration. Two gaps were found:
+#      - Invitation.organizationId was missing @db.Uuid (the column is uuid).
+#        This was a live bug: Prisma sent text to a uuid column and Postgres
+#        rejected it. `prisma validate` passes it, because Prisma only compares
+#        the *Prisma* type (String == String) and never sees the native mismatch.
+#      - Organization.country_code existed in the DB but not in the schema.
+
+# 3. Confirm zero drift. Exit code 0 = schema and database agree.
+npx prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code
+
+# 4. Generate the baseline offline. --from-empty means "assume nothing exists",
+#    so this describes the whole schema. --output avoids the CLI's "Loaded Prisma
+#    config" banner landing inside the .sql file (a `>` redirect includes it).
+npx prisma migrate diff --from-empty --to-schema prisma/schema \
+  --script --output prisma/migrations/0_init/migration.sql
+
+# 5. Hand-add `CREATE EXTENSION IF NOT EXISTS "citext";` — see below.
+
+# 6. Mark it applied WITHOUT running it. The tables already exist here; this only
+#    writes the bookkeeping row.
+npx prisma migrate resolve --applied 0_init
+
+# 7. Verify.
+npx prisma migrate status        # -> "Database schema is up to date!"
+```
+
+**`migrate diff` does not emit `CREATE EXTENSION`.** It writes `CITEXT` columns while assuming the
+extension already exists — true on our dev DB, false on a fresh one, which fails with
+`type citext does not exist`. The line is hand-added at the top of `0_init/migration.sql`. This is the
+sanctioned `--create-only` escape hatch below: editing a migration _before_ it is applied is fine;
+editing one already applied is not. `gen_random_uuid()` needs nothing extra — it is built into
+PostgreSQL 13+ and we run 18.3.
+
+### Turning RLS on (runbook — not yet done)
+
+Migration `20260716183126_enable_rls` is written and **pending**. It is the second
+layer of tenant isolation from architecture §3.10. Read the migration's header comment first; it
+explains every choice.
+
+**Applying the migration changes no behaviour.** `ENABLE ROW LEVEL SECURITY` does not apply to a
+table's _owner_, and the app currently connects as `postgres`, which owns everything. The policies sit
+inert until step 3 below. That is deliberate — it separates "policies exist" from "policies bite", so
+the risky step is one line you can revert.
+
+```bash
+# 1. Create the role BY HAND, as postgres, once per environment. Not in a
+#    migration: a role is a cluster-level object, not part of this database's
+#    schema, and its password must never reach git. Generate the password with
+#    `node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"`
+#    and put it in the secret store before you paste it:
+#
+#      CREATE ROLE jobwork_app LOGIN PASSWORD '<from secret store>';
+#
+#    Verify it is not a superuser and does not bypass RLS — if either is true,
+#    every policy below is decoration:
+#      SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname='jobwork_app';
+#      -- expect: false, false
+
+# 2. Apply the grants + policies. Safe: no behaviour change, app still connects
+#    as postgres (the owner), which is exempt. Fails loudly if step 1 was skipped.
+npm run db:migrate
+
+# 3. THE CUTOVER. Two URLs from here on:
+#      DATABASE_URL=postgresql://jobwork_app:<pw>@<host>/jobwork_dev?sslmode=require
+#      MIGRATE_DATABASE_URL=postgresql://postgres:<pw>@<host>/jobwork_dev?sslmode=require
+#    prisma.config.ts already prefers MIGRATE_DATABASE_URL for the CLI, so `migrate`
+#    keeps its owner rights while the app loses them. Update .env, .env.production,
+#    and the Catalyst environment variables together.
+
+# 4. Prove it. These tests skip themselves until the cutover, then enforce.
+npx vitest run src/db/rls.test.ts
+```
+
+**The failure this prevents, and how to spot it:** if the app still connects as `postgres` after step
+3, every policy is silently a no-op and nothing warns you — RLS that does nothing looks exactly like
+RLS that works. `rls.test.ts` asserts the app is neither the table owner nor a `BYPASSRLS` role
+precisely so that this cannot pass unnoticed.
+
+**Why the app must not own its tables:** an owner can `DROP POLICY` and
+`ALTER TABLE … DISABLE ROW LEVEL SECURITY`. If the app has that power, an SQL-injection bug can switch
+off the protection. `jobwork_app` has data rights only — no DDL, no ownership.
+
+**Which tables are gated, and which deliberately are not:** only tenant _data_ tables (today:
+`vendors`). `organizations`, `memberships`, and `invitations` are excluded on purpose — the tables
+that _establish_ the tenant cannot be tenant-gated, or the lookup that sets the tenant would need the
+tenant already set. `tenantContext` reads `memberships`; "list my organizations" runs before an org is
+chosen; invite links are public. `rls.test.ts` asserts both lists, so adding RLS to `memberships` — an
+easy-looking "improvement" that deadlocks every login — fails a test instead of production.
+
+**Adding a tenant table later:** copy the two statements at the bottom of the `enable_rls` migration,
+and add the table to `TENANT_TABLES` in `rls.test.ts`. **A tenant table with no policy is unprotected
+and nothing will tell you.**
+
+### `--create-only`: two uses
+
+`--create-only` means "write the migration, don't apply it." It has two jobs:
+
+**1. Read the plan before it runs.** Any time, on anything. This is what the `countries` worked example
+does above, and it costs one extra command. Encouraged, not exceptional.
+
+**2. Write raw SQL the Prisma schema cannot express.** Some things have no `model` equivalent — the
+`citext` extension (already handled in `0_init`) and the Row-Level Security policies from architecture
+§3.10 (still to build). For those, generate, hand-edit, then apply:
+
+```bash
+npx prisma migrate dev --create-only --name enable_rls
+# hand-add your CREATE POLICY / ALTER TABLE ... ENABLE ROW LEVEL SECURITY to migration.sql
+npx prisma migrate dev
+```
+
+**"Never hand-edit migrations" means never edit one that has already been applied.** Editing before
+applying is the sanctioned path for raw SQL — it is exactly how the `CREATE EXTENSION citext` line got
+into the baseline.
 
 ---
 

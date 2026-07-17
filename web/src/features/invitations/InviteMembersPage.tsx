@@ -18,7 +18,7 @@ type InviteValues = z.infer<typeof inviteSchema>;
 
 /** Owner/admin screen to invite members to an organization and manage pending invites. */
 export function InviteMembersPage() {
-  const { id } = useParams<{ id: string }>();
+  const { orgId: id } = useParams<{ orgId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);

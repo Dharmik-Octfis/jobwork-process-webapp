@@ -20,4 +20,14 @@ export const endpoints = {
     revoke: (orgId: string, invitationId: string) =>
       `/organizations/${orgId}/invitations/${invitationId}`,
   },
+  purchases: {
+    /**
+     * Tenant-scoped data nests under `/organizations/:orgId/…`, matching the
+     * invitations routes above. The server reads `:orgId` and verifies the
+     * caller's membership (`tenantContext`) before any handler runs, so passing
+     * the id here is not a security decision — forgetting to pass it is a
+     * compile error, which is the point.
+     */
+    vendors: (orgId: string) => `/organizations/${orgId}/purchases/vendors`,
+  },
 } as const;
