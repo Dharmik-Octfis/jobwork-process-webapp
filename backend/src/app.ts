@@ -4,6 +4,8 @@ import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
 import { env } from './config/env.ts';
+import swaggerUi from 'swagger-ui-express';
+import { generateOpenApiDocument } from './config/openapi.ts';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler.ts';
 import { apiRouter } from './routes/index.ts';
 
@@ -27,6 +29,9 @@ export function createApp(): express.Express {
 
   // API Routes
   app.use('/api', apiRouter);
+
+  // Swagger UI Documentation
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(generateOpenApiDocument()));
 
   // The Vite build (web/) is emitted into `public/` so it ships inside the same
   // AppSail bundle as the API. Same origin, so no CORS and no cross-site cookie.

@@ -15,6 +15,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { Logo } from '../ui/Logo';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useAuth } from '../../providers/auth-context';
 import { useLogout } from '../../features/auth/useLogout';
 import { organizationsApi } from '../../features/organizations/organizations.api';
@@ -36,6 +37,7 @@ const ROUTE_MAP: Record<string, string> = {
   VENDORS: '/purchases/vendors',
   PO: '/purchases/po',
   BILLS: '/purchases/bills',
+  ITEMS: '/master-data/items',
 };
 
 function navPath(moduleCode: string, orgId: string | undefined): string {
@@ -97,7 +99,8 @@ export function AppLayout() {
     <div
       style={{
         display: 'flex',
-        minHeight: '100vh',
+        height: '100vh',
+        overflow: 'hidden',
         background: 'var(--color-bg)',
       }}
     >
@@ -154,7 +157,7 @@ export function AppLayout() {
             borderBottom: '1px solid var(--color-border)',
             position: 'sticky',
             top: 0,
-            zIndex: 10,
+            zIndex: 50,
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
@@ -168,7 +171,7 @@ export function AppLayout() {
         </header>
 
         {/* Page Content */}
-        <main style={{ flex: 1, overflow: 'auto' }}>
+        <main style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
           <Outlet />
         </main>
       </div>
@@ -287,6 +290,7 @@ function ProfileDropdown({
   logoutMutation: ReturnType<typeof useLogout>;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isSignoutDialogOpen, setIsSignoutDialogOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
@@ -406,7 +410,7 @@ function ProfileDropdown({
               <button
                 onClick={() => {
                   setIsOpen(false);
-                  logoutMutation.mutate();
+                  setIsSignoutDialogOpen(true);
                 }}
                 style={{
                   background: 'none',
@@ -426,6 +430,18 @@ function ProfileDropdown({
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={isSignoutDialogOpen}
+        title="Sign Out"
+        message="Are you sure you want to sign out?"
+        confirmText="Sign Out"
+        onConfirm={() => {
+          setIsSignoutDialogOpen(false);
+          logoutMutation.mutate();
+        }}
+        onCancel={() => setIsSignoutDialogOpen(false)}
+      />
     </div>
   );
 }

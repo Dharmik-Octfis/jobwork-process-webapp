@@ -13,6 +13,7 @@ import './CreateOrganizationForm.css';
 type MasterData = {
   industries: { id: string; name: string }[];
   states: { id: string; name: string; cities: { id: string; name: string }[] }[];
+  countries: { id: string; name: string; code: string; isoCode: string }[];
 };
 
 export function CreateOrganizationForm() {
@@ -54,6 +55,7 @@ export function CreateOrganizationForm() {
       state: '',
       city: '',
       industryType: '',
+      countryCode: '+91',
     }
   });
 
@@ -69,7 +71,8 @@ export function CreateOrganizationForm() {
   const onSubmit = async (data: CreateOrganizationData) => {
     try {
       setServerError(null);
-      await organizationsApi.createOrganization(data);
+      const submitData = data;
+      await organizationsApi.createOrganization(submitData);
       await queryClient.invalidateQueries({ queryKey: ['organizations'] });
       navigate('/'); // Go back to dashboard or organizations list after onboarding
     } catch (err) {
@@ -180,9 +183,14 @@ export function CreateOrganizationForm() {
             </label>
             <input
               {...register('zip')}
-              className="org-form-input"
+              maxLength={6}
+              className={`org-form-input ${errors.zip ? 'has-error' : ''}`}
               placeholder="e.g. 380001"
+              onInput={(e) => {
+                e.currentTarget.value = e.currentTarget.value.replace(/\D/g, '');
+              }}
             />
+            {errors.zip && <span className="org-form-error-text">{errors.zip.message}</span>}
           </div>
 
           <div className="org-form-grid">
@@ -192,21 +200,39 @@ export function CreateOrganizationForm() {
               </label>
               <input
                 {...register('taxIdValue')}
-                className="org-form-input"
+                maxLength={15}
+                className={`org-form-input ${errors.taxIdValue ? 'has-error' : ''}`}
                 placeholder="22AAAAA0000A1Z5"
+                style={{ textTransform: 'uppercase' }}
               />
+              {errors.taxIdValue && <span className="org-form-error-text">{errors.taxIdValue.message}</span>}
             </div>
 
             <div className="org-form-field">
               <label className="org-form-label">
                 Phone No
               </label>
-              <input
-                {...register('phone')}
-                type="tel"
-                className="org-form-input"
-                placeholder="+91"
-              />
+              <div className={`org-form-input-group ${errors.phone ? 'has-error' : ''}`}>
+                <select {...register('countryCode')} className="org-form-select" style={{ width: 'auto', flexShrink: 0 }}>
+                  {masterData?.countries ? masterData.countries.map(country => (
+                    <option key={country.id} value={country.code}>{country.isoCode} {country.code}</option>
+                  )) : (
+                    <option value="+91">IND +91</option>
+                  )}
+                </select>
+                <div className="divider"></div>
+                <input
+                  {...register('phone')}
+                  type="tel"
+                  maxLength={10}
+                  className="org-form-input"
+                  placeholder="Mobile Number"
+                  onInput={(e) => {
+                    e.currentTarget.value = e.currentTarget.value.replace(/\D/g, '');
+                  }}
+                />
+              </div>
+              {errors.phone && <span className="org-form-error-text">{errors.phone.message}</span>}
             </div>
           </div>
 

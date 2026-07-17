@@ -30,4 +30,7 @@ export const endpoints = {
      */
     vendors: (orgId: string) => `/organizations/${orgId}/purchases/vendors`,
   },
+  masterData: {
+    items: (orgId: string) => `/organizations/${orgId}/master-data/items`,
+  },
 } as const;

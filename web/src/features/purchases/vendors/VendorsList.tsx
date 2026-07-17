@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchVendors } from './vendors.api';
-import { Users, Plus, Building2, Phone, Mail } from 'lucide-react';
+import { Plus, ChevronDown, Building2, Users, Mail, Phone } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 export function VendorsList() {
@@ -48,9 +48,7 @@ export function VendorsList() {
             <Users size={22} color="var(--color-primary)" />
             Vendors
           </h1>
-          <p style={{ color: 'var(--color-text-muted)', margin: 0, fontSize: 13 }}>
-            Manage your vendors and suppliers.
-          </p>
+          <ChevronDown size={20} color="#2563eb" />
         </div>
         <button
           onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/new`)}

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { openApiRegistry } from '../../config/openapi.ts';
 
 /**
  * Authoritative input validation for the auth routes. The client mirrors these
@@ -14,36 +15,44 @@ const email = z
   .trim()
   .min(1, 'Email is required')
   .max(254, 'That email address is too long')
-  .email('Enter a valid email address');
+  .email('Enter a valid email address')
+  .openapi({ example: 'johndoe@example.com' });
 
-export const signupSchema = z.object({
+export const signupSchema = openApiRegistry.register(
+  'SignupRequest',
+  z.object({
   // 80 = the `users.name VARCHAR(80)` column width. Rejecting at 81 here beats
   // a Postgres "value too long" error surfacing as a 500.
   firstName: z
     .string()
     .trim()
     .min(1, 'First name is required')
-    .max(40, 'Keep first name under 40 characters'),
+    .max(40, 'Keep first name under 40 characters')
+    .openapi({ example: 'John' }),
   lastName: z
     .string()
     .trim()
     .min(1, 'Last name is required')
-    .max(40, 'Keep last name under 40 characters'),
+    .max(40, 'Keep last name under 40 characters')
+    .openapi({ example: 'Doe' }),
   email,
   // 72 is the classic bcrypt input ceiling; argon2 has no such limit, but the
   // cap keeps a megabyte-long password from becoming a CPU denial-of-service.
   password: z
     .string()
     .min(8, 'Use at least 8 characters')
-    .max(72, 'Keep your password under 72 characters'),
-});
+    .max(72, 'Keep your password under 72 characters')
+    .openapi({ example: 'SecureP@ss123' }),
+}));
 
 export type SignupInput = z.infer<typeof signupSchema>;
 
-export const loginSchema = z.object({
+export const loginSchema = openApiRegistry.register(
+  'LoginRequest',
+  z.object({
   email,
-  password: z.string().min(1, 'Password is required'),
-});
+  password: z.string().min(1, 'Password is required').openapi({ example: 'SecureP@ss123' }),
+}));
 
 export type LoginInput = z.infer<typeof loginSchema>;
 

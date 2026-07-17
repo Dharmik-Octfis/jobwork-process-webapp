@@ -1,4 +1,4 @@
-import { runAsTenant } from '../../../db/prisma.ts';
+import { runAsTenant, prisma } from '../../../db/prisma.ts';
 import type { Prisma } from '../../../../generated/prisma/client.ts';
 
 /**
@@ -42,4 +42,43 @@ export async function createNewVendor(
       },
     }),
   );
+}
+
+export async function getVendorById(organizationId: string, id: string) {
+  return prisma.vendor.findFirst({
+    where: { id, organizationId },
+  });
+}
+
+export async function updateVendorById(
+  organizationId: string,
+  id: string,
+  data: Partial<Omit<Prisma.VendorUncheckedCreateInput, 'organizationId' | 'id'>>
+) {
+  const existingVendor = await prisma.vendor.findFirst({
+    where: { id, organizationId },
+  });
+  
+  if (!existingVendor) {
+    throw new Error('Vendor not found');
+  }
+
+  return prisma.vendor.update({
+    where: { id },
+    data,
+  });
+}
+
+export async function deleteVendorById(organizationId: string, id: string) {
+  const existingVendor = await prisma.vendor.findFirst({
+    where: { id, organizationId },
+  });
+  
+  if (!existingVendor) {
+    throw new Error('Vendor not found');
+  }
+
+  return prisma.vendor.delete({
+    where: { id },
+  });
 }

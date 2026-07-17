@@ -54,13 +54,13 @@ model Organization {
   name         String
   industryType String? @map("industry_type")
 
+  countryCode String? @map("country_code")
   phone String?
   email String?
 
   city        String?
   state       String?
   zip         String?
-  countryCode String? @map("country_code")
   orgAddress  String? @map("org_address")
 
   taxIdValue String? @map("tax_id_value")
@@ -70,6 +70,7 @@ model Organization {
   memberships Membership[]
   invitations Invitation[]
   vendors     Vendor[]
+  items       Item[]
 
   @@map("organizations")
 }
@@ -152,6 +153,7 @@ model State {
 
   @@map("states")
 }
+
 
 model City {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

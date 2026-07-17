@@ -25,8 +25,8 @@ apiRouter.use('/auth', authRouter);
 // anyway, but only after running that router's `authenticate` a second time.
 // Specific before general keeps the path short and the middleware chain honest.
 apiRouter.use('/organizations/:orgId/purchases/vendors', vendorsRouter);
+apiRouter.use('/organizations/:orgId/master-data', masterDataRouter);
 
 apiRouter.use('/organizations', organizationsRouter);
 apiRouter.use('/invitations', invitationsRouter);
-apiRouter.use('/master-data', masterDataRouter);
 apiRouter.use('/modules', appModulesRouter);

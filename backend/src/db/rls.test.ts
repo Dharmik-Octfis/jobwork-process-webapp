@@ -15,7 +15,7 @@ import { aVendorOf, censusByOrg, totalVendors } from './rls.fixtures.ts';
  */
 
 /** Tenant-data tables that MUST carry a policy. See the enable_rls migration. */
-const TENANT_TABLES = ['vendors'] as const;
+const TENANT_TABLES = ['vendors', 'items'] as const;
 
 /**
  * Deliberately NOT tenant-gated. Gating these deadlocks the app: `tenantContext`

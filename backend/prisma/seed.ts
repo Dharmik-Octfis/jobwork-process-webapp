@@ -48,6 +48,7 @@ const STATES = [
   },
 ];
 
+
 async function main() {
   console.log('Start seeding...');
 
@@ -131,6 +132,12 @@ async function main() {
     where: { code: 'BILLS' },
     update: {},
     create: { code: 'BILLS', name: 'Bills', parentId: purchases.id, sortIndex: 3, icon: 'Receipt' },
+  });
+
+  await prisma.appModule.upsert({
+    where: { code: 'ITEMS' },
+    update: {},
+    create: { code: 'ITEMS', name: 'Items', sortIndex: 3, icon: 'FileText' },
   });
   console.log('Seeded app modules.');
 

@@ -1,0 +1,35 @@
+model Item {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  
+  name            String
+  aliasName       String?   @map("alias_name")
+  type            String    @default("Goods") @db.VarChar(50) // Goods | Service
+  category        String?
+  brand           String?
+  manufacturer    String?
+  hsnCode         String?   @map("hsn_code")
+  taxPreference   String    @default("Taxable") @map("tax_preference") @db.VarChar(50) // Taxable | Non-Taxable
+  
+  itemType        String    @default("Single Item") @map("item_type") @db.VarChar(50) // Single Item | Contains Variants
+  unit            String
+  sku             String
+
+  isSalesInfo     Boolean   @default(false) @map("is_sales_info")
+  sellingPrice    Decimal?  @map("selling_price") @db.Decimal(10, 2)
+  salesAccount    String?   @map("sales_account")
+  
+  isPurchaseInfo  Boolean   @default(false) @map("is_purchase_info")
+  costPrice       Decimal?  @map("cost_price") @db.Decimal(10, 2)
+  purchaseAccount String?   @map("purchase_account")
+  packaging       String?
+  
+  deliveryDate    DateTime? @map("delivery_date") @db.Date
+
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("items")
+}

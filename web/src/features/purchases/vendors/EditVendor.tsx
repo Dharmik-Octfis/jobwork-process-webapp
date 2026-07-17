@@ -1,29 +1,44 @@
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Building2, ArrowLeft } from 'lucide-react';
 import { createVendorSchema, type CreateVendorData } from './vendors.schemas';
-import { createVendor } from './vendors.api';
+import { updateVendor, fetchVendorById } from './vendors.api';
 import type { AxiosError } from 'axios';
 import './vendor-form.css';
 
-export function CreateVendor() {
+export function EditVendor() {
+  const { id, orgId } = useParams<{ id: string; orgId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { orgId } = useParams<{ orgId: string }>();
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-    setError,
-  } = useForm<CreateVendorData>({
+  const { data: vendor, isLoading: isFetching } = useQuery({
+    queryKey: ['vendors', id, orgId],
+    queryFn: () => fetchVendorById(orgId!, id!),
+    enabled: !!id && !!orgId,
+  });
+
+  const { register, handleSubmit, formState: { errors, isSubmitting }, setError, reset } = useForm<CreateVendorData>({
     resolver: zodResolver(createVendorSchema),
   });
 
+  useEffect(() => {
+    if (vendor) {
+      reset({
+        vendorName: vendor.vendorName,
+        vendorNumber: vendor.vendorNumber || '',
+        emailAddress: vendor.emailAddress || '',
+        phone: vendor.phone || '',
+        gstTreatment: vendor.gstTreatment as CreateVendorData['gstTreatment'],
+        sourceOfSupply: vendor.sourceOfSupply,
+      });
+    }
+  }, [vendor, reset]);
+
   const mutation = useMutation({
-    mutationFn: (data: CreateVendorData) => createVendor(orgId!, data),
+    mutationFn: (data: CreateVendorData) => updateVendor({ id: id!, orgId: orgId!, data }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vendors', orgId] });
       navigate(`/organizations/${orgId}/purchases/vendors`);
@@ -33,14 +48,18 @@ export function CreateVendor() {
       if (errorMsg) {
         setError('root', { message: errorMsg });
       } else {
-        setError('root', { message: 'Failed to create vendor' });
+        setError('root', { message: 'Failed to update vendor' });
       }
-    },
+    }
   });
 
   const onSubmit = (data: CreateVendorData) => {
     mutation.mutate(data);
   };
+
+  if (isFetching) {
+    return <div style={{ padding: 'var(--space-6)', textAlign: 'center' }}>Loading vendor data...</div>;
+  }
 
   return (
     <div className="vendor-form-container">
@@ -68,8 +87,8 @@ export function CreateVendor() {
               <Building2 size={24} color="var(--color-primary)" />
             </div>
             <div>
-              <h1>New Vendor</h1>
-              <p>Create a new vendor or supplier profile.</p>
+              <h1>Edit Vendor</h1>
+              <p>Update vendor or supplier profile.</p>
             </div>
           </div>
 
@@ -176,7 +195,7 @@ export function CreateVendor() {
                 disabled={isSubmitting}
                 className="vendor-form-submit-btn"
               >
-                {isSubmitting ? 'Saving...' : 'Save Vendor'}
+                {isSubmitting ? 'Updating...' : 'Update Vendor'}
               </button>
             </div>
           </form>

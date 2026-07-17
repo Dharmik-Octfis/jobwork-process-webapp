@@ -56,17 +56,17 @@ export const LogisticsBackground = memo(function LogisticsBackground() {
           <path className={styles.path} d="M 450 350 C 550 600, 350 800, 100 750" />
           <path className={styles.path} d="M 1050 250 C 950 500, 1150 800, 1400 850" />
           <path className={styles.path} d="M 450 350 L 750 600 L 1050 250" />
-          
+
           {/* Foreground Nodes */}
           {/* Node 1 */}
           <circle cx="450" cy="350" r="32" className={styles.nodeGlow} />
           <circle cx="450" cy="350" r="8" className={styles.node} />
-          <text x="450" y="310" textAnchor="middle" className={styles.label}>Surat Hub</text>
+          <text x="450" y="310" textAnchor="middle" className={styles.label}>WareHouse</text>
 
           {/* Node 2 */}
           <circle cx="1050" cy="250" r="32" className={styles.nodeGlow} />
           <circle cx="1050" cy="250" r="8" className={styles.node} />
-          <text x="1050" y="210" textAnchor="middle" className={styles.label}>Mumbai Port</text>
+          <text x="1050" y="210" textAnchor="middle" className={styles.label}>Hajira Port</text>
 
           {/* Node 3 */}
           <circle cx="750" cy="600" r="32" className={styles.nodeGlow} />
@@ -87,7 +87,7 @@ export const LogisticsBackground = memo(function LogisticsBackground() {
           <circle r="3" className={styles.dot}>
             <animateMotion dur="25s" repeatCount="indefinite" path="M -100 250 C 150 200, 300 400, 450 350 C 600 300, 800 150, 1050 250 C 1300 350, 1400 600, 1550 500" />
           </circle>
-          
+
           <circle r="3" className={styles.dot}>
             <animateMotion dur="20s" repeatCount="indefinite" begin="2s" path="M 100 750 C 350 800, 550 600, 450 350 L 750 600 L 1050 250 C 1150 800, 950 500, 1400 850" />
           </circle>

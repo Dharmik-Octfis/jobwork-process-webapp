@@ -16,6 +16,11 @@ import { InviteMembersPage } from '../features/invitations/InviteMembersPage';
 import { AppLayout } from '../components/layout/AppLayout';
 import { VendorsList } from '../features/purchases/vendors/VendorsList';
 import { CreateVendor } from '../features/purchases/vendors/CreateVendor';
+import { EditVendor } from '../features/purchases/vendors/EditVendor';
+
+import { ItemsList } from '../features/items/ItemsList';
+import { CreateItemPage } from '../features/items/CreateItemPage';
+import { EditItemPage } from '../features/items/EditItemPage';
 
 /**
  * Every page whose data belongs to one organization lives under
@@ -52,8 +57,12 @@ export const router = createBrowserRouter([
               { path: '/organizations/:orgId/purchases', element: <PurchasesPage /> },
               { path: '/organizations/:orgId/purchases/vendors', element: <VendorsList /> },
               { path: '/organizations/:orgId/purchases/vendors/new', element: <CreateVendor /> },
+              { path: '/organizations/:orgId/purchases/vendors/:id/edit', element: <EditVendor /> },
               { path: '/organizations/:orgId/purchases/po', element: <PurchasesPage /> },
               { path: '/organizations/:orgId/purchases/bills', element: <PurchasesPage /> },
+              { path: '/organizations/:orgId/items', element: <ItemsList /> },
+              { path: '/organizations/:orgId/items/new', element: <CreateItemPage /> },
+              { path: '/organizations/:orgId/items/:id/edit', element: <EditItemPage /> },
             ],
           },
           { path: '/profile', element: <ProfilePage /> },

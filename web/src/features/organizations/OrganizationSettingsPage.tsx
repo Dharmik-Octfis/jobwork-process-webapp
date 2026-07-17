@@ -160,6 +160,9 @@ export function OrganizationSettingsPage() {
           display: 'flex',
           alignItems: 'center',
           gap: 'var(--space-4)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
         }}
       >
         <button
@@ -168,12 +171,12 @@ export function OrganizationSettingsPage() {
             background: 'rgba(255,255,255,0.1)',
             border: 'none',
             color: 'white',
-            padding: 8,
+            padding: '8px 14px',
             borderRadius: 'var(--radius-md)',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: 4,
+            gap: 6,
           }}
         >
           <ChevronLeft size={16} /> Back to Dashboard

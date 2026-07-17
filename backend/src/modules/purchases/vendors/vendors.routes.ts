@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getVendors, createVendor } from './vendors.controller.ts';
+import { getVendors, createVendor,updateVendor, deleteVendor } from './vendors.controller.ts';
 import { authenticate } from '../../../middlewares/authenticate.ts';
 import { tenantContext } from '../../../middlewares/tenantContext.ts';
 
@@ -18,5 +18,7 @@ router.use(authenticate, tenantContext);
 
 router.get('/', getVendors);
 router.post('/', createVendor);
+router.put('/:id', updateVendor);
+router.delete('/:id', deleteVendor);
 
 export { router as vendorsRouter };

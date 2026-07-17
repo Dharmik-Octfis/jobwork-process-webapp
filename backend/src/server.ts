@@ -1,4 +1,5 @@
 import { createApp } from './app.ts';
+// Trigger nodemon restart 2
 import { env } from './config/env.ts';
 import { prisma } from './db/prisma.ts';
 

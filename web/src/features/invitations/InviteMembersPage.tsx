@@ -8,6 +8,7 @@ import { ChevronLeft, Mail, Trash2 } from 'lucide-react';
 import { toApiErrorMessage } from '../../api/client';
 import { organizationsApi } from '../organizations/organizations.api';
 import { invitationsApi } from './invitations.api';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import '../organizations/CreateOrganizationForm.css';
 
 const inviteSchema = z.object({
@@ -22,6 +23,7 @@ export function InviteMembersPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [inviteToRevoke, setInviteToRevoke] = useState<string | null>(null);
 
   const { data: organizations } = useQuery({
     queryKey: ['organizations'],
@@ -85,6 +87,9 @@ export function InviteMembersPage() {
           display: 'flex',
           alignItems: 'center',
           gap: 'var(--space-4)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
         }}
       >
         <button
@@ -93,12 +98,12 @@ export function InviteMembersPage() {
             background: 'rgba(255,255,255,0.1)',
             border: 'none',
             color: 'white',
-            padding: 8,
+            padding: '8px 14px',
             borderRadius: 'var(--radius-md)',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: 4,
+            gap: 6,
           }}
         >
           <ChevronLeft size={16} /> Back to Dashboard
@@ -273,7 +278,7 @@ export function InviteMembersPage() {
                       </div>
                     </div>
                     <button
-                      onClick={() => revokeMutation.mutate(inv.id)}
+                      onClick={() => setInviteToRevoke(inv.id)}
                       disabled={revokeMutation.isPending}
                       title="Revoke invitation"
                       style={{
@@ -298,6 +303,21 @@ export function InviteMembersPage() {
           </section>
         </main>
       </div>
+
+      <ConfirmDialog
+        isOpen={!!inviteToRevoke}
+        title="Revoke Invitation"
+        message="Are you sure you want to revoke this invitation? The user will no longer be able to join."
+        confirmText="Revoke"
+        onConfirm={() => {
+          if (inviteToRevoke) {
+            revokeMutation.mutate(inviteToRevoke);
+            setInviteToRevoke(null);
+          }
+        }}
+        onCancel={() => setInviteToRevoke(null)}
+        isConfirming={revokeMutation.isPending}
+      />
     </div>
   );
 }
