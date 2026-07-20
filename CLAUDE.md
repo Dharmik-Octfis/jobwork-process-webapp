@@ -36,8 +36,23 @@ gating them deadlocks every login. Migrations and `seed.ts` run as the owner and
 client chose. On 2026-07-16 a middleware that only checked the header was _present_ let any user read
 and write any organization's vendors — see `vendors.tenant-isolation.test.ts`.
 
-- Routes: `/organizations/:orgId/...`. Nested routers need `Router({ mergeParams: true })` or
-  `req.params.orgId` is silently `undefined`.
+**A route that touches tenant data takes the org from the path — copy `src/modules/purchases/vendors/`:**
+
+```ts
+// routes/index.ts — the org id lives in the URL, never a header or the body
+apiRouter.use('/organizations/:orgId/purchases/vendors', vendorsRouter);
+
+// vendors.routes.ts
+const router = Router({ mergeParams: true }); // without it `:orgId` is undefined → every request 400s
+router.use(authenticate, tenantContext); // authenticate FIRST — tenantContext needs `req.user`
+
+// vendors.controller.ts
+const orgId = req.tenantId!; // NOT `req.params.orgId` — only tenantContext's copy is membership-checked
+```
+
+`:orgId` is what the client typed in the URL bar. `tenantContext` is the only thing that reads it; it
+promotes it to `req.tenantId` after checking `memberships`. Everything downstream reads `req.tenantId`.
+
 - Mount specific paths **before** `/organizations` in `routes/index.ts`.
 - **New tenant table?** Add an RLS policy (copy the two statements at the bottom of
   `migrations/*_enable_rls`) **and** add it to `TENANT_TABLES` in `src/db/rls.test.ts`.
