@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ChevronLeft, Mail, Trash2 } from 'lucide-react';
+import { Mail, Trash2 } from 'lucide-react';
 import { toApiErrorMessage } from '../../api/client';
 import { organizationsApi } from '../organizations/organizations.api';
 import { invitationsApi } from './invitations.api';
@@ -20,7 +20,6 @@ type InviteValues = z.infer<typeof inviteSchema>;
 /** Owner/admin screen to invite members to an organization and manage pending invites. */
 export function InviteMembersPage() {
   const { orgId: id } = useParams<{ orgId: string }>();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
   const [inviteToRevoke, setInviteToRevoke] = useState<string | null>(null);
@@ -73,42 +72,11 @@ export function InviteMembersPage() {
   return (
     <div
       style={{
-        minHeight: '100vh',
-        background: 'var(--color-bg)',
         display: 'flex',
         flexDirection: 'column',
       }}
     >
-      <header
-        style={{
-          background: 'var(--navy-900)',
-          padding: 'var(--space-3) var(--space-5)',
-          color: 'white',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--space-4)',
-          position: 'sticky',
-          top: 0,
-          zIndex: 10,
-        }}
-      >
-        <button
-          onClick={() => navigate('/')}
-          style={{
-            background: 'rgba(255,255,255,0.1)',
-            border: 'none',
-            color: 'white',
-            padding: '8px 14px',
-            borderRadius: 'var(--radius-md)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-          }}
-        >
-          <ChevronLeft size={16} /> Back to Dashboard
-        </button>
-      </header>
+
 
       <div
         style={{

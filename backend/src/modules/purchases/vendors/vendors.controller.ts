@@ -1,23 +1,50 @@
 import type { Request, Response } from 'express';
-import { getVendorsList, createNewVendor, getVendorById, updateVendorById, deleteVendorById } from './vendors.service.ts';
+import { getVendorsList, createNewVendor, getVendorById, updateVendorById, deleteVendorById, getVendorActivities, getVendorComments, createVendorComment, deleteVendorComment } from './vendors.service.ts';
 import { z } from 'zod';
 import { openApiRegistry } from '../../../config/openapi.ts';
+
+const vendorAddressSchema = z.object({
+  id: z.string().optional(),
+  addressType: z.string().min(1),
+  attention: z.string().nullable().optional(),
+  country: z.string().nullable().optional(),
+  street1: z.string().nullable().optional(),
+  street2: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
+  state: z.string().nullable().optional(),
+  pinCode: z.string().nullable().optional(),
+  phone: z.string().nullable().optional(),
+});
+
+const vendorContactPersonSchema = z.object({
+  id: z.string().optional(),
+  salutation: z.string().nullable().optional(),
+  firstName: z.string().nullable().optional(),
+  lastName: z.string().nullable().optional(),
+  emailAddress: z.string().email().or(z.literal('')).nullable().optional(),
+  workPhone: z.string().nullable().optional(),
+  mobilePhone: z.string().nullable().optional(),
+});
 
 const createVendorSchema = openApiRegistry.register(
   'CreateVendorRequest',
   z.object({
-    vendorName: z.string().min(1).openapi({ example: 'Acme Corp' }),
-    vendorNumber: z.string().min(1).openapi({ example: 'V-001' }),
-    emailAddress: z
-      .string()
-      .email()
-      .optional()
-      .or(z.literal(''))
-      .openapi({ example: 'contact@acme.com' }),
-    phone: z.string().optional().or(z.literal('')).openapi({ example: '+1234567890' }),
-    gstTreatment: z.string().min(1).openapi({ example: 'Registered' }),
-    sourceOfSupply: z.string().min(1).openapi({ example: 'State' }),
-  }),
+    primaryContactSalutation: z.string().nullable().optional(),
+    primaryContactFirstName: z.string().nullable().optional(),
+    primaryContactLastName: z.string().nullable().optional(),
+    companyName: z.string().nullable().optional(),
+    displayName: z.string(),
+    vendorNumber: z.string(),
+    emailAddress: z.string().email().or(z.literal('')).nullable().optional(),
+    workPhone: z.string().or(z.literal('')).nullable().optional(),
+    mobilePhone: z.string().or(z.literal('')).nullable().optional(),
+    currency: z.string().nullable().optional(),
+    paymentTerms: z.string().nullable().optional(),
+    status: z.string().optional(),
+
+    addresses: z.array(vendorAddressSchema).optional(),
+    contactPersons: z.array(vendorContactPersonSchema).optional(),
+  })
 );
 
 // Register GET route
@@ -129,14 +156,12 @@ export const createVendor = async (req: Request, res: Response) => {
     const orgId = req.tenantId!;
     const parsedData = createVendorSchema.parse(req.body);
 
-    // Convert empty strings to null for optional fields
     const data = {
       ...parsedData,
-      emailAddress: parsedData.emailAddress || null,
-      phone: parsedData.phone || null,
     };
 
-    const newVendor = await createNewVendor(orgId, data);
+    const userId = req.user?.id;
+    const newVendor = await createNewVendor(orgId, data, userId);
     res.status(201).json(newVendor);
   } catch (error: unknown) {
     console.error('Error creating vendor:', error);
@@ -160,18 +185,18 @@ export const getVendor = async (req: Request, res: Response) => {
     const orgId = req.tenantId!;
     const vendorId = req.params.id as string;
     const vendor = await getVendorById(orgId, vendorId);
-    
+
     if (!vendor) {
       return res.status(404).json({ error: 'Vendor not found' });
     }
-    
+
     res.json(vendor);
   } catch (error) {
     console.error('Error fetching vendor:', error);
     res.status(500).json({ error: 'Failed to fetch vendor' });
   }
 };
-export const updateVendor = async (req: Request, res: Response) => {
+export const updateVendor = async (req: Request, res: Response) => {  
   try {
     const orgId = req.tenantId!;
     const vendorId = req.params.id as string;
@@ -179,11 +204,10 @@ export const updateVendor = async (req: Request, res: Response) => {
 
     const data = {
       ...parsedData,
-      emailAddress: parsedData.emailAddress || null,
-      phone: parsedData.phone || null,
     };
 
-    const updatedVendor = await updateVendorById(orgId, vendorId, data);
+    const userId = req.user?.id;
+    const updatedVendor = await updateVendorById(orgId, vendorId, data, userId);
     res.json(updatedVendor);
   } catch (error: unknown) {
     console.error('Error updating vendor:', error);
@@ -216,6 +240,61 @@ export const deleteVendor = async (req: Request, res: Response) => {
       res.status(404).json({ error: 'Vendor not found' });
     } else {
       res.status(500).json({ error: 'Failed to delete vendor' });
+    }
+  }
+};
+
+export const getVendorActivitiesRoute = async (req: Request, res: Response) => {
+  try {
+    const orgId = req.tenantId!;
+    const vendorId = req.params.id as string;
+    const activities = await getVendorActivities(orgId, vendorId);
+    res.json(activities);
+  } catch (error) {
+    console.error('Error fetching activities:', error);
+    res.status(500).json({ error: 'Failed to fetch activities' });
+  }
+};
+
+export const getVendorCommentsRoute = async (req: Request, res: Response) => {
+  try {
+    const orgId = req.tenantId!;
+    const vendorId = req.params.id as string;
+    const comments = await getVendorComments(orgId, vendorId);
+    res.json(comments);
+  } catch (error) {
+    console.error('Error fetching comments:', error);
+    res.status(500).json({ error: 'Failed to fetch comments' });
+  }
+};
+
+export const createVendorCommentRoute = async (req: Request, res: Response) => {
+  try {
+    const orgId = req.tenantId!;
+    const vendorId = req.params.id as string;
+    const content = req.body.content;
+    const userId = req.user?.id || null;
+    const newComment = await createVendorComment(orgId, vendorId, content, userId);
+    res.status(201).json(newComment);
+  } catch (error) {
+    console.error('Error creating comment:', error);
+    res.status(500).json({ error: 'Failed to create comment' });
+  }
+};
+
+export const deleteVendorCommentRoute = async (req: Request, res: Response) => {
+  try {
+    const orgId = req.tenantId!;
+    const vendorId = req.params.id as string;
+    const commentId = req.params.commentId as string;
+    await deleteVendorComment(orgId, vendorId, commentId);
+    res.status(204).send();
+  } catch (error) {
+    console.error('Error deleting comment:', error);
+    if (error instanceof Error && error.message === 'Comment not found') {
+      res.status(404).json({ error: 'Comment not found' });
+    } else {
+      res.status(500).json({ error: 'Failed to delete comment' });
     }
   }
 };

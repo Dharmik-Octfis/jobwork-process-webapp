@@ -1,271 +1,259 @@
-import { useQuery } from '@tanstack/react-query';
-import { fetchVendors } from './vendors.api';
-import { Plus, ChevronDown, Building2, Users, Mail, Phone } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { fetchVendors, deleteVendor } from './vendors.api';
+import { Plus, ChevronDown, Building2} from 'lucide-react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useState } from 'react';
+import { VendorDetail } from './VendorDetail';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
+
+// removed formatGstTreatment
 
 export function VendorsList() {
   const navigate = useNavigate();
-  // The organization comes from the URL, so this page is bookmarkable and two
-  // tabs can show two different organizations at once.
   const { orgId } = useParams<{ orgId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedVendorId = searchParams.get('id');
+
   const { data: vendors = [], isLoading } = useQuery({
-    // orgId is in the key: switching organization must refetch, not reuse the
-    // previous organization's cached list.
     queryKey: ['vendors', orgId],
     queryFn: () => fetchVendors(orgId!),
     enabled: Boolean(orgId),
   });
 
+  const queryClient = useQueryClient();
+  const [vendorToDelete, setVendorToDelete] = useState<string | null>(null);
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteVendor(orgId!, id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['vendors', orgId] });
+      setVendorToDelete(null);
+    },
+  });
+
+  const headerStyle = {
+    padding: '12px 16px',
+    fontWeight: 600,
+    fontSize: 11,
+    color: '#64748b',
+    textTransform: 'uppercase' as const,
+  };
+
   return (
     <div
       style={{
-        padding: 'var(--space-6) var(--space-5)',
-        maxWidth: 1200,
-        margin: '0 auto',
         width: '100%',
+        height: '100%',
+        background: '#fff',
+        display: 'flex',
+        flexDirection: 'column',
       }}
     >
-      <header
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 'var(--space-6)',
-        }}
-      >
-        <div>
-          <h1
+
+
+      {/* Main Content Area */}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+        <div style={{ flex: selectedVendorId ? '0 0 320px' : 1, borderRight: selectedVendorId ? '1px solid #eef0f3' : 'none', display: 'flex', flexDirection: 'column', background: '#fff' }}>
+          
+          {/* Page Header */}
+          <header
             style={{
-              fontSize: 22,
-              fontWeight: 600,
-              color: 'var(--color-text)',
-              margin: '0 0 4px 0',
               display: 'flex',
+              justifyContent: 'space-between',
               alignItems: 'center',
-              gap: '8px',
+              padding: '16px 24px',
+              background: '#fff',
+              borderBottom: '1px solid #eef0f3',
             }}
           >
-            <Users size={22} color="var(--color-primary)" />
-            Vendors
-          </h1>
-          <ChevronDown size={20} color="#2563eb" />
-        </div>
-        <button
-          onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/new`)}
-          style={{
-            background: 'var(--color-primary)',
-            color: 'white',
-            border: 'none',
-            padding: '8px 16px',
-            borderRadius: 'var(--radius-sm)',
-            fontWeight: 500,
-            fontSize: 13,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            boxShadow: 'var(--shadow-sm)',
-            transition: 'background 0.2s',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-primary-dark)')}
-          onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--color-primary)')}
-        >
-          <Plus size={18} /> New Vendor
-        </button>
-      </header>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <h1 style={{ fontSize: '18px', fontWeight: 600, color: '#000', margin: 0 }}>
+                All Vendors
+              </h1>
+              <ChevronDown size={16} color="#0062ff" strokeWidth={2.5} />
+            </div>
 
-      {isLoading ? (
-        <div
-          style={{
-            padding: 'var(--space-8)',
-            textAlign: 'center',
-            color: 'var(--color-text-muted)',
-          }}
-        >
-          Loading vendors...
-        </div>
-      ) : vendors.length === 0 ? (
-        <div
-          style={{
-            background: 'var(--color-surface)',
-            borderRadius: 'var(--radius-lg)',
-            border: '1px dashed var(--color-border)',
-            padding: 'var(--space-8) var(--space-6)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            textAlign: 'center',
-            minHeight: 400,
-          }}
-        >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              {!selectedVendorId && (
+                <button
+                  onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/new`)}
+                  style={{
+                    background: '#0062ff',
+                    color: 'white',
+                    border: 'none',
+                    padding: '6px 12px',
+                    borderRadius: '4px',
+                    fontWeight: 500,
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                  }}
+                >
+                  <Plus size={16} /> New
+                </button>
+              )}
+            </div>
+          </header>
+
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {isLoading ? (
+          <div style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
+            Loading vendors...
+          </div>
+        ) : vendors.length === 0 ? (
           <div
             style={{
-              width: 80,
-              height: 80,
-              borderRadius: '50%',
-              background: 'var(--color-bg)',
+              padding: '64px 32px',
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: 'var(--space-4)',
+              textAlign: 'center',
             }}
           >
-            <Building2 size={40} color="var(--color-text-muted)" />
+            <div
+              style={{
+                width: 80,
+                height: 80,
+                borderRadius: '50%',
+                background: '#f1f5f9',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '16px',
+              }}
+            >
+              <Building2 size={40} color="#94a3b8" />
+            </div>
+            <h2 style={{ fontSize: 20, fontWeight: 600, color: '#1e293b', margin: '0 0 8px 0' }}>
+              No Vendors Yet
+            </h2>
+            <p style={{ color: '#64748b', maxWidth: 400, margin: '0 0 24px 0', lineHeight: 1.5 }}>
+              You haven't added any vendors yet. Create your first vendor to start creating purchase
+              orders and bills.
+            </p>
+            <button
+              onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/new`)}
+              style={{
+                background: '#28a745',
+                color: 'white',
+                border: 'none',
+                padding: '10px 24px',
+                borderRadius: '4px',
+                fontWeight: 600,
+                fontSize: 14,
+                cursor: 'pointer',
+              }}
+            >
+              Create Vendor
+            </button>
           </div>
-          <h2
-            style={{
-              fontSize: 20,
-              fontWeight: 600,
-              color: 'var(--color-text)',
-              margin: '0 0 var(--space-2) 0',
-            }}
-          >
-            No Vendors Yet
-          </h2>
-          <p
-            style={{
-              color: 'var(--color-text-muted)',
-              maxWidth: 400,
-              margin: '0 0 var(--space-5) 0',
-              lineHeight: 1.5,
-            }}
-          >
-            You haven't added any vendors yet. Create your first vendor to start creating purchase
-            orders and bills.
-          </p>
-          <button
-            onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/new`)}
-            style={{
-              background: 'white',
-              color: 'var(--color-primary)',
-              border: '1px solid var(--color-primary)',
-              padding: '10px 24px',
-              borderRadius: 'var(--radius-md)',
-              fontWeight: 600,
-              fontSize: 14,
-              cursor: 'pointer',
-            }}
-          >
-            Create Vendor
-          </button>
-        </div>
-      ) : (
-        <div
-          style={{
-            background: 'white',
-            borderRadius: 'var(--radius-lg)',
-            border: '1px solid var(--color-border)',
-            overflow: 'hidden',
-            boxShadow: 'var(--shadow-sm)',
-          }}
-        >
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr
-                style={{
-                  background: 'var(--color-bg)',
-                  borderBottom: '1px solid var(--color-border)',
-                }}
-              >
-                <th
-                  style={{
-                    padding: '8px 12px',
-                    fontWeight: 600,
-                    fontSize: 12,
-                    color: 'var(--color-text-muted)',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  Vendor Name
-                </th>
-                <th
-                  style={{
-                    padding: '8px 12px',
-                    fontWeight: 600,
-                    fontSize: 12,
-                    color: 'var(--color-text-muted)',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  Vendor Number
-                </th>
-                <th
-                  style={{
-                    padding: '8px 12px',
-                    fontWeight: 600,
-                    fontSize: 12,
-                    color: 'var(--color-text-muted)',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  Contact
-                </th>
-                <th
-                  style={{
-                    padding: '8px 12px',
-                    fontWeight: 600,
-                    fontSize: 12,
-                    color: 'var(--color-text-muted)',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  GST Treatment
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {vendors.map((vendor) => (
-                <tr key={vendor.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                  <td style={{ padding: '10px 12px', fontWeight: 500, color: 'var(--color-text)' }}>
-                    {vendor.vendorName}
-                  </td>
-                  <td style={{ padding: '10px 12px', color: 'var(--color-text)' }}>
-                    {vendor.vendorNumber}
-                  </td>
-                  <td style={{ padding: '10px 12px', color: 'var(--color-text)' }}>
-                    {vendor.emailAddress && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-                        <Mail size={14} color="var(--color-text-muted)" /> {vendor.emailAddress}
-                      </div>
-                    )}
-                    {vendor.phone && (
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          fontSize: 13,
-                          marginTop: 4,
-                        }}
-                      >
-                        <Phone size={14} color="var(--color-text-muted)" /> {vendor.phone}
-                      </div>
-                    )}
-                    {!vendor.emailAddress && !vendor.phone && (
-                      <span style={{ color: 'var(--color-text-muted)' }}>-</span>
-                    )}
-                  </td>
-                  <td style={{ padding: '10px 12px' }}>
-                    <span
-                      style={{
-                        padding: '2px 6px',
-                        borderRadius: 4,
-                        background: 'var(--color-bg)',
-                        fontSize: 12,
-                        fontWeight: 500,
-                        color: 'var(--color-text)',
-                      }}
+        ) : (
+          <div>
+            {selectedVendorId ? (
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <div style={{ padding: '8px 16px', fontSize: '12px', fontWeight: 600, color: '#64748b', background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
+                  All Vendors
+                </div>
+                {vendors.map((vendor) => (
+                  <div
+                    key={vendor.id}
+                    onClick={() => setSearchParams({ id: vendor.id })}
+                    style={{
+                      padding: '12px 16px',
+                      borderBottom: '1px solid #eef0f3',
+                      cursor: 'pointer',
+                      background: selectedVendorId === vendor.id ? '#f1f5f9' : 'transparent',
+                      transition: 'background 0.1s',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (selectedVendorId !== vendor.id) e.currentTarget.style.background = '#f8fafc';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (selectedVendorId !== vendor.id) e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    <div style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b', marginBottom: '4px' }}>
+                      {vendor.displayName}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#64748b' }}>
+                      {vendor.companyName || vendor.emailAddress || 'No email'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr
+                    style={{
+                      background: '#f9f9fb',
+                      borderTop: '1px solid #eef0f3',
+                      borderBottom: '1px solid #eef0f3',
+                    }}
+                  >
+                    <th style={headerStyle}>NAME</th>
+                    <th style={headerStyle}>COMPANY NAME</th>
+                    <th style={headerStyle}>VENDOR NUMBER</th>
+                    <th style={headerStyle}>WORK PHONE</th>
+                    <th style={headerStyle}>EMAIL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {vendors.map((vendor) => (
+                    <tr
+                      key={vendor.id}
+                      onClick={() => setSearchParams({ id: vendor.id })}
+                      style={{ borderBottom: '1px solid #eef0f3', transition: 'background 0.1s', cursor: 'pointer' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                     >
-                      {vendor.gstTreatment}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                      <td style={{ padding: '12px 16px', color: '#0062ff', fontSize: 13, fontWeight: 500 }}>
+                        {vendor.displayName}
+                      </td>
+                      <td style={{ padding: '12px 16px', color: '#333', fontSize: 13 }}>
+                        {vendor.companyName || '-'}
+                      </td>
+                      <td style={{ padding: '12px 16px', color: '#333', fontSize: 13 }}>
+                        {vendor.vendorNumber}
+                      </td>
+                      <td style={{ padding: '12px 16px', color: '#333', fontSize: 13 }}>
+                        {vendor.workPhone || '-'}
+                      </td>
+                      <td style={{ padding: '12px 16px', color: '#333', fontSize: 13 }}>
+                        {vendor.emailAddress || '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+            )}
+          </div>
         </div>
-      )}
+        
+        {/* Right Panel - Detail */}
+        {selectedVendorId && (
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            <VendorDetail vendorId={selectedVendorId} onClose={() => setSearchParams({})} />
+          </div>
+        )}
+      </div>
+
+      <ConfirmDialog
+        isOpen={!!vendorToDelete}
+        title="Delete Vendor"
+        message="Are you sure you want to delete this vendor? This action cannot be undone."
+        confirmText={deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+        onConfirm={() => {
+          if (vendorToDelete) {
+            deleteMutation.mutate(vendorToDelete);
+          }
+        }}
+        onCancel={() => setVendorToDelete(null)}
+      />
     </div>
   );
 }

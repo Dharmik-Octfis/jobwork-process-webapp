@@ -37,7 +37,7 @@ const ROUTE_MAP: Record<string, string> = {
   VENDORS: '/purchases/vendors',
   PO: '/purchases/po',
   BILLS: '/purchases/bills',
-  ITEMS: '/master-data/items',
+  ITEMS: '/items',
 };
 
 function navPath(moduleCode: string, orgId: string | undefined): string {
@@ -142,6 +142,29 @@ export function AppLayout() {
             <ModuleNavGroup key={module.id} module={module} />
           ))}
         </nav>
+
+        {activeOrgId && (
+          <div style={{ padding: 'var(--space-3)', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+            <NavLink
+              to={`/organizations/${activeOrgId}/settings`}
+              style={({ isActive }) => ({
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-3)',
+                padding: '8px 14px',
+                borderRadius: 'var(--radius-md)',
+                textDecoration: 'none',
+                color: isActive ? 'white' : 'rgba(255,255,255,0.7)',
+                background: isActive ? 'rgba(255,255,255,0.1)' : 'transparent',
+                fontWeight: isActive ? 600 : 500,
+                transition: 'all 0.2s ease',
+              })}
+            >
+              <Settings size={18} />
+              <span style={{ fontSize: 13 }}>Settings</span>
+            </NavLink>
+          </div>
+        )}
       </aside>
 
       {/* Main Container */}
@@ -150,7 +173,7 @@ export function AppLayout() {
         <header
           style={{
             display: 'flex',
-            justifyContent: 'flex-end',
+            justifyContent: 'space-between',
             alignItems: 'center',
             padding: '8px 16px',
             background: 'white',
@@ -160,6 +183,24 @@ export function AppLayout() {
             zIndex: 50,
           }}
         >
+          {/* Global Search */}
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+            <input
+              type="text"
+              placeholder="Search..."
+              style={{
+                padding: '8px 16px',
+                border: '1px solid #e2e8f0',
+                borderRadius: '6px',
+                fontSize: '13px',
+                width: '300px',
+                outline: 'none',
+                background: '#f8fafc',
+                color: '#0f172a'
+              }}
+            />
+          </div>
+
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
             <OrgDropdown
               organizations={organizations || []}
@@ -604,33 +645,6 @@ function OrgDropdown({
                   <div style={{ fontWeight: 500, fontSize: 13, color: 'var(--color-text)' }}>
                     {org.name}
                   </div>
-                  {org.id === activeOrgId && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsOpen(false);
-                        navigate(`/organizations/${org.id}/settings`);
-                      }}
-                      title="Organization Settings"
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        color: 'var(--color-text-muted)',
-                        padding: 4,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        borderRadius: 'var(--radius-sm)',
-                      }}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.background = 'var(--color-border)')
-                      }
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
-                    >
-                      <Settings size={16} />
-                    </button>
-                  )}
                 </div>
               </div>
             ))}

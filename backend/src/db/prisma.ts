@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { PrismaPg } from '@prisma/adapter-pg';
-import type { PoolConfig } from 'pg';
+import { Pool, type PoolConfig } from 'pg';
 import { PrismaClient } from '../../generated/prisma/client.ts';
 import { env } from '../config/env.ts';
 
@@ -60,11 +60,13 @@ function toPoolConnectionString(databaseUrl: string): string {
   return url.toString();
 }
 
-const adapter = new PrismaPg({
+const pool = new Pool({
   connectionString: toPoolConnectionString(env.databaseUrl),
   ssl: resolveSsl(),
   max: 5,
 });
+
+const adapter = new PrismaPg(pool);
 
 export const prisma = new PrismaClient({
   adapter,

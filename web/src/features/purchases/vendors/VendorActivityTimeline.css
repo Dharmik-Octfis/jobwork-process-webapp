@@ -1,0 +1,101 @@
+.timeline-loading,
+.timeline-empty {
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--color-gray-500);
+}
+
+.vendor-timeline {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4);
+  font-family: inherit;
+}
+
+.timeline-item {
+  display: flex;
+  position: relative;
+  margin-bottom: var(--space-6);
+}
+
+.timeline-item:last-child {
+  margin-bottom: 0;
+}
+
+.timeline-time {
+  width: 95px;
+  flex-shrink: 0;
+  text-align: center;
+  padding-right: var(--space-5);
+  color: var(--color-gray-600);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.timeline-date {
+  font-weight: 400;
+  color: var(--color-gray-900);
+  white-space: nowrap; /* Ensures date stays on one line */
+}
+
+.timeline-line {
+  position: absolute;
+  left: 95px; 
+  top: 0;
+  bottom: calc(-1 * var(--space-6)); 
+  width: 1px;
+  background-color: #3b82f6; /* Blue line */
+  transform: translateX(-50%);
+  z-index: 0;
+}
+
+.timeline-item:last-child .timeline-line {
+  display: none;
+}
+
+.timeline-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background-color: white;
+  border: 1px solid #bfdbfe; /* Light blue border */
+  position: absolute;
+  left: 95px;
+  transform: translateX(-50%);
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #3b82f6; /* Blue icon */
+}
+
+.timeline-content {
+  flex-grow: 1;
+  padding-left: var(--space-5);
+  margin-top: -4px; /* Align card properly with icon */
+}
+
+.timeline-card {
+  background: white;
+  border: 1px solid var(--color-gray-200);
+  border-radius: 6px;
+  padding: 12px 16px;
+  box-shadow: none; /* Flatter look */
+}
+
+.timeline-card h4 {
+  margin: 0 0 8px 0;
+  font-size: 14px; /* Smaller title */
+  color: var(--color-gray-900);
+  font-weight: 400;
+}
+
+.timeline-card p {
+  margin: 0;
+  font-size: 13px; /* Smaller description */
+  color: #6b7280; /* Gray 500 for softer look */
+  line-height: 1.5;
+}

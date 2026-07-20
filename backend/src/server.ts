@@ -27,12 +27,31 @@ async function main(): Promise<void> {
   const shutdown = (signal: string): void => {
     console.log(`\n${signal} received — shutting down.`);
     server.close(() => {
-      void prisma.$disconnect().then(() => process.exit(0));
+      console.log('HTTP server closed.');
+    });
+
+    // Close Prisma immediately instead of waiting for `server.close` to drain 
+    // all keep-alive connections. This prevents connection leaks on fast restarts.
+    prisma.$disconnect().then(() => {
+      console.log('Database disconnected.');
+      if (signal === 'SIGUSR2') {
+        process.kill(process.pid, 'SIGUSR2');
+      } else {
+        process.exit(0);
+      }
+    }).catch((err) => {
+      console.error('Error disconnecting database:', err);
+      if (signal === 'SIGUSR2') {
+        process.kill(process.pid, 'SIGUSR2');
+      } else {
+        process.exit(1);
+      }
     });
   };
 
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.once('SIGUSR2', () => shutdown('SIGUSR2'));
 }
 
 main().catch((error: unknown) => {

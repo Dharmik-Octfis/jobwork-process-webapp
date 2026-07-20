@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { updateOrganizationSchema, type UpdateOrganizationData } from './organizations.schemas';
 import { organizationsApi } from './organizations.api';
 import { toApiErrorMessage } from '../../api/client';
-import { ChevronLeft, Trash2, AlertTriangle, Users } from 'lucide-react';
+import { Trash2, AlertTriangle } from 'lucide-react';
 import './CreateOrganizationForm.css'; // Re-use styles
 
 type MasterData = {
@@ -145,61 +145,11 @@ export function OrganizationSettingsPage() {
   return (
     <div
       style={{
-        minHeight: '100vh',
-        background: 'var(--color-bg)',
         display: 'flex',
         flexDirection: 'column',
       }}
     >
-      {/* Header */}
-      <header
-        style={{
-          background: 'var(--navy-900)',
-          padding: 'var(--space-3) var(--space-5)',
-          color: 'white',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--space-4)',
-          position: 'sticky',
-          top: 0,
-          zIndex: 10,
-        }}
-      >
-        <button
-          onClick={() => navigate('/')}
-          style={{
-            background: 'rgba(255,255,255,0.1)',
-            border: 'none',
-            color: 'white',
-            padding: '8px 14px',
-            borderRadius: 'var(--radius-md)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-          }}
-        >
-          <ChevronLeft size={16} /> Back to Dashboard
-        </button>
 
-        <button
-          onClick={() => navigate(`/organizations/${id}/members`)}
-          style={{
-            marginLeft: 'auto',
-            background: 'rgba(255,255,255,0.1)',
-            border: 'none',
-            color: 'white',
-            padding: '8px 14px',
-            borderRadius: 'var(--radius-md)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-          }}
-        >
-          <Users size={16} /> Members & Invites
-        </button>
-      </header>
 
       <div
         style={{

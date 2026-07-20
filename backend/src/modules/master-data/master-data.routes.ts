@@ -4,11 +4,12 @@ import { itemsRouter } from './items/items.routes.ts';
 import { authenticate } from '../../middlewares/authenticate.ts';
 import { tenantContext } from '../../middlewares/tenantContext.ts';
 
-const masterDataRouter = Router({ mergeParams: true });
+const globalMasterDataRouter = Router();
+globalMasterDataRouter.use(authenticate);
+globalMasterDataRouter.get('/', getMasterData);
 
-masterDataRouter.use(authenticate, tenantContext);
+const tenantMasterDataRouter = Router({ mergeParams: true });
+tenantMasterDataRouter.use(authenticate, tenantContext);
+tenantMasterDataRouter.use('/items', itemsRouter);
 
-masterDataRouter.get('/', getMasterData);
-masterDataRouter.use('/items', itemsRouter);
-
-export { masterDataRouter };
+export { globalMasterDataRouter, tenantMasterDataRouter };

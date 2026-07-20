@@ -61,6 +61,15 @@ export default defineConfig([
         // `{ 'Content-Type': 'application/json' }`.
         { selector: 'objectLiteralProperty', format: null, modifiers: ['requiresQuotes'] },
         { selector: 'typeProperty', format: null, modifiers: ['requiresQuotes'] },
+        // Allow the React __html property for dangerouslySetInnerHTML
+        {
+          selector: ['objectLiteralProperty', 'typeProperty'],
+          filter: {
+            regex: '^__html$',
+            match: true,
+          },
+          format: null,
+        },
       ],
     },
   },

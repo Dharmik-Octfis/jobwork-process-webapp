@@ -183,7 +183,7 @@ export async function refresh(oldRefreshToken: string): Promise<AuthResult> {
   // Rotate atomically. The freshly created row's id is the new session's `sid`,
   // so the rotated access token points at the row that now backs this device.
   const [, newSession] = await prisma.$transaction([
-    prisma.refreshToken.delete({ where: { token: oldRefreshToken } }),
+    prisma.refreshToken.deleteMany({ where: { token: oldRefreshToken } }),
     prisma.refreshToken.create({
       data: {
         token: newRefreshToken,

@@ -187,7 +187,7 @@ describe('row-level security', () => {
     const affected = await runAsTenant(
       attacker.id,
       async (tx) =>
-        tx.$executeRaw`UPDATE vendors SET vendor_name = 'hacked' WHERE id = ${victimVendorId}::uuid`,
+        tx.$executeRaw`UPDATE vendors SET display_name = 'hacked' WHERE id = ${victimVendorId}::uuid`,
     );
 
     expect(affected, 'RLS must make another tenant’s row unreachable').toBe(0);
@@ -199,10 +199,10 @@ describe('row-level security', () => {
     const name = await runAsTenant(victim.id, (tx) =>
       tx.vendor.findFirst({
         where: { id: victimVendorId, organizationId: victim.id },
-        select: { vendorName: true },
+        select: { displayName: true },
       }),
     );
-    expect(name?.vendorName, 'the victim’s row was actually modified').not.toBe('hacked');
+    expect(name?.displayName, 'the victim’s row was actually modified').not.toBe('hacked');
   });
 
   it('the tenant setting does not leak to the next query on the same connection', async (ctx) => {

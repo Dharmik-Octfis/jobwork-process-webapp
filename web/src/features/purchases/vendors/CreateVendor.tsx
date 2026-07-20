@@ -1,26 +1,16 @@
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Building2, ArrowLeft } from 'lucide-react';
-import { createVendorSchema, type CreateVendorData } from './vendors.schemas';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { type CreateVendorData } from './vendors.schemas';
 import { createVendor } from './vendors.api';
 import type { AxiosError } from 'axios';
-import './vendor-form.css';
+import { VendorForm } from './VendorForm';
 
 export function CreateVendor() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const { orgId } = useParams<{ orgId: string }>();
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-    setError,
-  } = useForm<CreateVendorData>({
-    resolver: zodResolver(createVendorSchema),
-  });
+  const initialData = location.state?.vendorToClone as Partial<CreateVendorData> | undefined;
 
   const mutation = useMutation({
     mutationFn: (data: CreateVendorData) => createVendor(orgId!, data),
@@ -30,11 +20,7 @@ export function CreateVendor() {
     },
     onError: (error: AxiosError<{ error?: string; message?: string }>) => {
       const errorMsg = error.response?.data?.error || error.response?.data?.message;
-      if (errorMsg) {
-        setError('root', { message: errorMsg });
-      } else {
-        setError('root', { message: 'Failed to create vendor' });
-      }
+      alert(errorMsg || 'Failed to create vendor');
     },
   });
 
@@ -43,145 +29,13 @@ export function CreateVendor() {
   };
 
   return (
-    <div className="vendor-form-container">
-      <div className="vendor-form-wrapper">
-        <button
-          className="vendor-form-back-btn"
-          onClick={() => navigate(`/organizations/${orgId}/purchases/vendors`)}
-        >
-          <ArrowLeft size={16} /> Back to Vendors
-        </button>
-
-        <div className="vendor-form-card">
-          <div className="vendor-form-header" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-            <div
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: '50%',
-                background: 'var(--color-primary-50)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Building2 size={24} color="var(--color-primary)" />
-            </div>
-            <div>
-              <h1>New Vendor</h1>
-              <p>Create a new vendor or supplier profile.</p>
-            </div>
-          </div>
-
-          <form onSubmit={handleSubmit(onSubmit)}>
-            {errors.root && <div className="vendor-form-error">{errors.root.message}</div>}
-
-            <div className="vendor-form-grid">
-              <div className="vendor-form-field">
-                <label className="vendor-form-label">
-                  Vendor Name <span className="required">*</span>
-                </label>
-                <input
-                  {...register('vendorName')}
-                  className={`vendor-form-input ${errors.vendorName ? 'has-error' : ''}`}
-                  placeholder="e.g. Acme Corp"
-                />
-                {errors.vendorName && <span className="vendor-form-error-text">{errors.vendorName.message}</span>}
-              </div>
-
-              <div className="vendor-form-field">
-                <label className="vendor-form-label">
-                  Vendor Number <span className="required">*</span>
-                </label>
-                <input
-                  {...register('vendorNumber')}
-                  className={`vendor-form-input ${errors.vendorNumber ? 'has-error' : ''}`}
-                  placeholder="e.g. VEN-001"
-                />
-                {errors.vendorNumber && <span className="vendor-form-error-text">{errors.vendorNumber.message}</span>}
-              </div>
-            </div>
-
-            <div className="vendor-form-grid">
-              <div className="vendor-form-field">
-                <label className="vendor-form-label">Email Address</label>
-                <input
-                  {...register('emailAddress')}
-                  type="email"
-                  className={`vendor-form-input ${errors.emailAddress ? 'has-error' : ''}`}
-                  placeholder="contact@example.com"
-                />
-                {errors.emailAddress && <span className="vendor-form-error-text">{errors.emailAddress.message}</span>}
-              </div>
-
-              <div className="vendor-form-field">
-                <label className="vendor-form-label">Phone Number</label>
-                <input
-                  {...register('phone')}
-                  className={`vendor-form-input ${errors.phone ? 'has-error' : ''}`}
-                  placeholder="+1 234 567 8900"
-                />
-                {errors.phone && <span className="vendor-form-error-text">{errors.phone.message}</span>}
-              </div>
-            </div>
-
-            <hr
-              style={{
-                border: 'none',
-                borderTop: '1px solid var(--color-border)',
-                margin: 'var(--space-2) 0 var(--space-4)',
-              }}
-            />
-
-            <div className="vendor-form-grid">
-              <div className="vendor-form-field">
-                <label className="vendor-form-label">
-                  GST Treatment <span className="required">*</span>
-                </label>
-                <select
-                  {...register('gstTreatment')}
-                  className={`vendor-form-select ${errors.gstTreatment ? 'has-error' : ''}`}
-                >
-                  <option value="">Select an option</option>
-                  <option value="REGISTERED_BUSINESS">Registered Business</option>
-                  <option value="UNREGISTERED_BUSINESS">Unregistered Business</option>
-                  <option value="OVERSEAS">Overseas</option>
-                </select>
-                {errors.gstTreatment && <span className="vendor-form-error-text">{errors.gstTreatment.message}</span>}
-              </div>
-
-              <div className="vendor-form-field">
-                <label className="vendor-form-label">
-                  Source of Supply <span className="required">*</span>
-                </label>
-                <input
-                  {...register('sourceOfSupply')}
-                  className={`vendor-form-input ${errors.sourceOfSupply ? 'has-error' : ''}`}
-                  placeholder="e.g. Gujarat"
-                />
-                {errors.sourceOfSupply && <span className="vendor-form-error-text">{errors.sourceOfSupply.message}</span>}
-              </div>
-            </div>
-
-            <div className="vendor-form-actions">
-              <button
-                type="button"
-                className="vendor-form-cancel-btn"
-                onClick={() => navigate(`/organizations/${orgId}/purchases/vendors`)}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="vendor-form-submit-btn"
-              >
-                {isSubmitting ? 'Saving...' : 'Save Vendor'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
+    <div>
+      <VendorForm
+        initialData={initialData}
+        onSubmit={onSubmit}
+        isSubmitting={mutation.isPending}
+        isEdit={false}
+      />
     </div>
   );
 }

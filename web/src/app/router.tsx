@@ -14,6 +14,7 @@ import { OrganizationSettingsPage } from '../features/organizations/Organization
 import { AcceptInvitePage } from '../features/invitations/AcceptInvitePage';
 import { InviteMembersPage } from '../features/invitations/InviteMembersPage';
 import { AppLayout } from '../components/layout/AppLayout';
+import { SettingsLayout } from '../components/layout/SettingsLayout';
 import { VendorsList } from '../features/purchases/vendors/VendorsList';
 import { CreateVendor } from '../features/purchases/vendors/CreateVendor';
 import { EditVendor } from '../features/purchases/vendors/EditVendor';
@@ -67,14 +68,18 @@ export const router = createBrowserRouter([
           },
           { path: '/profile', element: <ProfilePage /> },
           { path: '/organizations', element: <OrganizationsList /> },
-          // Inside AppLayout so settings keeps the sidebar. This path was
-          // previously listed both here and below; React Router took this one
-          // and the duplicate never rendered.
-          { path: '/organizations/:orgId/settings', element: <OrganizationSettingsPage /> },
+          // Inside AppLayout so settings keeps the sidebar, but we wrap it in SettingsLayout
+          {
+            path: '/organizations/:orgId/settings',
+            element: <SettingsLayout />,
+            children: [
+              { index: true, element: <OrganizationSettingsPage /> },
+              { path: 'members', element: <InviteMembersPage /> },
+            ],
+          },
         ],
       },
       { path: '/organizations/new', element: <CreateOrganizationForm /> },
-      { path: '/organizations/:orgId/members', element: <InviteMembersPage /> },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

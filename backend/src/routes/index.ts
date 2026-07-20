@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authRouter } from '../modules/auth/auth.routes.ts';
 import { organizationsRouter } from '../modules/organizations/organizations.routes.ts';
 import { invitationsRouter } from '../modules/invitations/invitations.routes.ts';
-import { masterDataRouter } from '../modules/master-data/master-data.routes.ts';
+import { globalMasterDataRouter, tenantMasterDataRouter } from '../modules/master-data/master-data.routes.ts';
 import { appModulesRouter } from '../modules/app-modules/app-modules.routes.ts';
 import { vendorsRouter } from '../modules/purchases/vendors/vendors.routes.ts';
 
@@ -25,7 +25,8 @@ apiRouter.use('/auth', authRouter);
 // anyway, but only after running that router's `authenticate` a second time.
 // Specific before general keeps the path short and the middleware chain honest.
 apiRouter.use('/organizations/:orgId/purchases/vendors', vendorsRouter);
-apiRouter.use('/organizations/:orgId/master-data', masterDataRouter);
+apiRouter.use('/organizations/:orgId/master-data', tenantMasterDataRouter);
+apiRouter.use('/master-data', globalMasterDataRouter);
 
 apiRouter.use('/organizations', organizationsRouter);
 apiRouter.use('/invitations', invitationsRouter);
