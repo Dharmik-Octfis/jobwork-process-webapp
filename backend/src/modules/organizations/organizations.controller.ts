@@ -22,10 +22,15 @@ export async function createOrganization(req: Request, res: Response, next: Next
       data: {
         id: crypto.randomUUID(),
         ...data,
+        // Audit columns: the creating user stamps both created_by and updated_by.
+        createdBy: userId,
+        updatedBy: userId,
         memberships: {
           create: {
             userId,
             role: 'owner',
+            createdBy: userId,
+            updatedBy: userId,
           },
         },
       },
@@ -47,12 +52,15 @@ export async function getOrganizations(req: Request, res: Response, next: NextFu
 
     const organizations = await prisma.organization.findMany({
       where: {
+        isDeleted: false,
         memberships: {
           some: {
             userId,
           },
         },
       },
+      // industryCode is a stable slug; join the label for display.
+      include: { industry: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -72,7 +80,7 @@ export async function updateOrganization(req: Request, res: Response, next: Next
     }
 
     const membership = await prisma.membership.findFirst({
-      where: { userId, organizationId: orgId, role: 'owner' }
+      where: { userId, organizationId: orgId, role: 'owner', organization: { isDeleted: false } },
     });
 
     if (!membership) {
@@ -88,7 +96,7 @@ export async function updateOrganization(req: Request, res: Response, next: Next
 
     const updatedOrg = await prisma.organization.update({
       where: { id: orgId },
-      data: parsedData.data,
+      data: { ...parsedData.data, updatedBy: userId },
     });
 
     res.status(200).json(updatedOrg);
@@ -107,7 +115,7 @@ export async function deleteOrganization(req: Request, res: Response, next: Next
     }
 
     const membership = await prisma.membership.findFirst({
-      where: { userId, organizationId: orgId, role: 'owner' }
+      where: { userId, organizationId: orgId, role: 'owner', organization: { isDeleted: false } },
     });
 
     if (!membership) {
@@ -115,8 +123,11 @@ export async function deleteOrganization(req: Request, res: Response, next: Next
       return;
     }
 
-    await prisma.organization.delete({
-      where: { id: orgId }
+    // Soft delete: keep the row, flip isDeleted, and record who removed it.
+    // getOrganizations filters isDeleted=false, so it disappears from listings.
+    await prisma.organization.update({
+      where: { id: orgId },
+      data: { isDeleted: true, updatedBy: userId },
     });
 
     res.status(200).json({ message: 'Organization deleted successfully' });

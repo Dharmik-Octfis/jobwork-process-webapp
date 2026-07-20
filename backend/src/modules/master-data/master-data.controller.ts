@@ -6,7 +6,7 @@ export async function getMasterData(_req: Request, res: Response, next: NextFunc
     const [industries, states] = await Promise.all([
       prisma.industry.findMany({
         where: { isActive: true },
-        select: { id: true, name: true },
+        select: { id: true, code: true, name: true },
         orderBy: { name: 'asc' },
       }),
       prisma.state.findMany({
@@ -32,7 +32,7 @@ export async function getMasterData(_req: Request, res: Response, next: NextFunc
       { id: 'can', name: 'Canada', code: '+1', isoCode: 'CAN' },
       { id: 'chn', name: 'China', code: '+86', isoCode: 'CHN' },
       { id: 'fra', name: 'France', code: '+33', isoCode: 'FRA' },
-      { id: 'deu', name: 'Germany', code: '+49', isoCode: 'DEU' }
+      { id: 'deu', name: 'Germany', code: '+49', isoCode: 'DEU' },
     ];
 
     res.status(200).json({ industries, states, countries });

@@ -1,6 +1,14 @@
 import { prisma } from '../src/db/prisma.ts';
 
-const INDUSTRIES = ['Technology', 'Manufacturing', 'Retail', 'Healthcare', 'Finance'];
+// `code` is the stable, space-free key organizations reference (Organization.industryCode
+// -> Industry.code). `name` is the display label. Renaming a label never touches org rows.
+const INDUSTRIES = [
+  { code: 'technology', name: 'Technology' },
+  { code: 'manufacturing', name: 'Manufacturing' },
+  { code: 'retail', name: 'Retail' },
+  { code: 'healthcare', name: 'Healthcare' },
+  { code: 'finance', name: 'Finance' },
+];
 
 // `code` is ISO 3166-1 alpha-2, `isoCode` is alpha-3. India first — it is the
 // default market and the list is ordered by likelihood of use, not alphabet.
@@ -48,16 +56,15 @@ const STATES = [
   },
 ];
 
-
 async function main() {
   console.log('Start seeding...');
 
   // 1. Seed Industries
-  for (const industryName of INDUSTRIES) {
+  for (const industry of INDUSTRIES) {
     await prisma.industry.upsert({
-      where: { name: industryName },
-      update: {},
-      create: { name: industryName },
+      where: { code: industry.code },
+      update: { name: industry.name },
+      create: industry,
     });
   }
   console.log('Seeded industries.');

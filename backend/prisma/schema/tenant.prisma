@@ -2,19 +2,52 @@
 // Only User exists so far. See docs/PRISMA.md §4.3 for why each attribute is here.
 
 model User {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email        String   @unique @db.Citext
-  passwordHash String?  @map("password_hash")
-  firstName    String   @default("") @map("first_name") @db.VarChar(40)
-  lastName     String   @default("") @map("last_name") @db.VarChar(40)
-  fullName     String   @default("") @map("full_name") @db.VarChar(80)
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String  @unique @db.Citext
+  passwordHash String? @map("password_hash")
+  firstName    String  @default("") @map("first_name") @db.VarChar(40)
+  lastName     String  @default("") @map("last_name") @db.VarChar(40)
+  fullName     String  @default("") @map("full_name") @db.VarChar(80)
+  isActive     Boolean @default(true) @map("is_active")
+
+  // Standard audit columns — see CLAUDE.md "Default columns". createdBy/updatedBy
+  // are self-referential here (the actor is also a User).
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   refreshTokens   RefreshToken[]
   memberships     Membership[]
-  sentInvitations Invitation[]  @relation("InvitedBy")
+  sentInvitations Invitation[]   @relation("InvitedBy")
+
+  createdByUser User? @relation("UserCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("UserUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  // Back-relations for every domain table's createdBy/updatedBy audit FK.
+  createdUsers                User[]                @relation("UserCreatedBy")
+  updatedUsers                User[]                @relation("UserUpdatedBy")
+  createdOrganizations        Organization[]        @relation("OrganizationCreatedBy")
+  updatedOrganizations        Organization[]        @relation("OrganizationUpdatedBy")
+  createdMemberships          Membership[]          @relation("MembershipCreatedBy")
+  updatedMemberships          Membership[]          @relation("MembershipUpdatedBy")
+  createdInvitations          Invitation[]          @relation("InvitationCreatedBy")
+  updatedInvitations          Invitation[]          @relation("InvitationUpdatedBy")
+  createdVendors              Vendor[]              @relation("VendorCreatedBy")
+  updatedVendors              Vendor[]              @relation("VendorUpdatedBy")
+  createdVendorContactPersons VendorContactPerson[] @relation("VendorContactPersonCreatedBy")
+  updatedVendorContactPersons VendorContactPerson[] @relation("VendorContactPersonUpdatedBy")
+  createdVendorActivities     VendorActivity[]      @relation("VendorActivityCreatedBy")
+  updatedVendorActivities     VendorActivity[]      @relation("VendorActivityUpdatedBy")
+  createdVendorComments       VendorComment[]       @relation("VendorCommentCreatedBy")
+  updatedVendorComments       VendorComment[]       @relation("VendorCommentUpdatedBy")
+  createdVendorAddresses      VendorAddress[]       @relation("VendorAddressCreatedBy")
+  updatedVendorAddresses      VendorAddress[]       @relation("VendorAddressUpdatedBy")
+  createdNumberSequences      NumberSequence[]      @relation("NumberSequenceCreatedBy")
+  updatedNumberSequences      NumberSequence[]      @relation("NumberSequenceUpdatedBy")
+  createdItems                Item[]                @relation("ItemCreatedBy")
+  updatedItems                Item[]                @relation("ItemUpdatedBy")
 
   @@map("users")
 }
@@ -52,25 +85,33 @@ model PasswordResetToken {
 model Organization {
   id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name         String
-  industryType String? @map("industry_type")
+  industryCode String? @map("industry_code") @db.VarChar(64)
 
-  countryCode String? @map("country_code")
-  phone String?
-  email String?
+  dialCode String? @map("dial_code")
+  phone    String?
+  email    String?
 
-  city        String?
-  state       String?
-  zip         String?
-  orgAddress  String? @map("org_address")
+  city       String?
+  state      String?
+  zip        String?
+  orgAddress String? @map("org_address")
 
   taxIdValue String? @map("tax_id_value")
 
-  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  memberships Membership[]
-  invitations Invitation[]
-  vendors     Vendor[]
-  items       Item[]
+  isDeleted       Boolean          @default(false) @map("is_deleted")
+  createdBy       String?          @map("created_by") @db.Uuid
+  updatedBy       String?          @map("updated_by") @db.Uuid
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  industry        Industry?        @relation(fields: [industryCode], references: [code])
+  memberships     Membership[]
+  invitations     Invitation[]
+  vendors         Vendor[]
+  items           Item[]
+  numberSequences NumberSequence[]
+
+  createdByUser User? @relation("OrganizationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("OrganizationUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   @@map("organizations")
 }
@@ -80,11 +121,17 @@ model Membership {
   userId         String   @map("user_id") @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
   role           String   @default("member") @db.VarChar(50) // owner, admin, member
+  isDeleted      Boolean  @default(false) @map("is_deleted")
+  createdBy      String?  @map("created_by") @db.Uuid
+  updatedBy      String?  @map("updated_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdByUser User? @relation("MembershipCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("MembershipUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   @@unique([userId, organizationId])
   @@map("memberships")
@@ -105,11 +152,17 @@ model Invitation {
   invitedById    String    @map("invited_by_id") @db.Uuid
   expiresAt      DateTime  @map("expires_at") @db.Timestamptz(6)
   acceptedAt     DateTime? @map("accepted_at") @db.Timestamptz(6)
+  isDeleted      Boolean   @default(false) @map("is_deleted")
+  createdBy      String?   @map("created_by") @db.Uuid
+  updatedBy      String?   @map("updated_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invitedBy    User         @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  createdByUser User? @relation("InvitationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("InvitationUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   // One live invite per email per org — re-inviting updates the existing row.
   @@unique([organizationId, email])
@@ -119,19 +172,23 @@ model Invitation {
 
 model Industry {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code      String   @unique @db.VarChar(64) // technology | manufacturing | oil_and_gas | ... — stable FK target, no spaces
   name      String   @unique
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organizations Organization[]
 
   @@map("industries")
 }
 
 // Master data, like Industry/State/City — read-only reference rows, not tenant-scoped.
 //
-// `code` is ISO 3166-1 alpha-2 ("IN") and is what Organization.countryCode stores.
-// `isoCode` is alpha-3 ("IND"). They are kept separate because alpha-2 is what forms,
-// phone libraries, and payment providers expect, while alpha-3 is what most
-// government and shipping paperwork asks for.
+// `code` is ISO 3166-1 alpha-2 ("IN"); `isoCode` is alpha-3 ("IND"). They are kept
+// separate because alpha-2 is what forms, phone libraries, and payment providers
+// expect, while alpha-3 is what most government and shipping paperwork asks for.
+// (Not to be confused with Organization.dialCode, which stores a phone calling
+// code like "+91" — that is a phone-number prefix, not a country identifier.)
 model Country {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name      String   @unique
@@ -153,7 +210,6 @@ model State {
 
   @@map("states")
 }
-
 
 model City {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

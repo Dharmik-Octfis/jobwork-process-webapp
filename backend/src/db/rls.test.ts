@@ -14,8 +14,18 @@ import { aVendorOf, censusByOrg, totalVendors } from './rls.fixtures.ts';
  * is done, so they do not fail the suite while the migration is still pending.
  */
 
-/** Tenant-data tables that MUST carry a policy. See the enable_rls migration. */
-const TENANT_TABLES = ['vendors', 'items'] as const;
+/** Tenant-data tables that MUST carry a policy. See the enable_rls migration.
+ * The vendor_* children scope through their parent vendor, number_sequences on
+ * its own organization_id — see 20260720120100_rename_dial_code_and_enable_vendor_rls. */
+const TENANT_TABLES = [
+  'vendors',
+  'items',
+  'number_sequences',
+  'vendor_contact_persons',
+  'vendor_activities',
+  'vendor_comments',
+  'vendor_addresses',
+] as const;
 
 /**
  * Deliberately NOT tenant-gated. Gating these deadlocks the app: `tenantContext`

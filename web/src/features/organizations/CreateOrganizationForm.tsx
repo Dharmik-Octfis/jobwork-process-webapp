@@ -11,7 +11,7 @@ import { useLogout } from '../auth/useLogout';
 import './CreateOrganizationForm.css';
 
 type MasterData = {
-  industries: { id: string; name: string }[];
+  industries: { id: string; code: string; name: string }[];
   states: { id: string; name: string; cities: { id: string; name: string }[] }[];
   countries: { id: string; name: string; code: string; isoCode: string }[];
 };
@@ -21,7 +21,7 @@ export function CreateOrganizationForm() {
   const logoutMutation = useLogout();
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
-  
+
   const { data: organizations } = useQuery({
     queryKey: ['organizations'],
     queryFn: () => organizationsApi.getOrganizations(),
@@ -36,9 +36,10 @@ export function CreateOrganizationForm() {
     }
   };
   const [masterData, setMasterData] = useState<MasterData | null>(null);
-  
+
   useEffect(() => {
-    organizationsApi.getMasterData()
+    organizationsApi
+      .getMasterData()
       .then(setMasterData)
       .catch((err) => console.error('Failed to load master data:', err));
   }, []);
@@ -54,9 +55,9 @@ export function CreateOrganizationForm() {
     defaultValues: {
       state: '',
       city: '',
-      industryType: '',
-      countryCode: '+91',
-    }
+      industryCode: '',
+      dialCode: '+91',
+    },
   });
 
   const selectedState = watch('state');
@@ -80,16 +81,15 @@ export function CreateOrganizationForm() {
     }
   };
 
-  const availableCities = selectedState && masterData ? masterData.states.find(s => s.name === selectedState)?.cities || [] : [];
+  const availableCities =
+    selectedState && masterData
+      ? masterData.states.find((s) => s.name === selectedState)?.cities || []
+      : [];
 
   return (
     <div className="org-form-container">
       <div className="org-form-card">
-        <button
-          onClick={handleClose}
-          className="org-form-close-btn"
-          aria-label="Close"
-        >
+        <button onClick={handleClose} className="org-form-close-btn" aria-label="Close">
           <X size={20} />
         </button>
 
@@ -98,9 +98,7 @@ export function CreateOrganizationForm() {
           <p>Enter the details of your new organization.</p>
         </div>
 
-        {serverError && (
-          <div className="org-form-error">{serverError}</div>
-        )}
+        {serverError && <div className="org-form-error">{serverError}</div>}
 
         <form onSubmit={handleSubmit(onSubmit)}>
           <div className="org-form-grid">
@@ -121,22 +119,26 @@ export function CreateOrganizationForm() {
                 Industry Type <span className="required">*</span>
               </label>
               <select
-                {...register('industryType')}
-                className={`org-form-select ${errors.industryType ? 'has-error' : ''}`}
+                {...register('industryCode')}
+                className={`org-form-select ${errors.industryCode ? 'has-error' : ''}`}
               >
-                <option value="" disabled>Select Industry</option>
-                {masterData?.industries.map(ind => (
-                  <option key={ind.id} value={ind.name}>{ind.name}</option>
+                <option value="" disabled>
+                  Select Industry
+                </option>
+                {masterData?.industries.map((ind) => (
+                  <option key={ind.id} value={ind.code}>
+                    {ind.name}
+                  </option>
                 ))}
               </select>
-              {errors.industryType && <span className="org-form-error-text">{errors.industryType.message}</span>}
+              {errors.industryCode && (
+                <span className="org-form-error-text">{errors.industryCode.message}</span>
+              )}
             </div>
           </div>
 
           <div className="org-form-field org-form-full-width">
-            <label className="org-form-label">
-              Address
-            </label>
+            <label className="org-form-label">Address</label>
             <textarea
               {...register('orgAddress')}
               className="org-form-textarea"
@@ -146,41 +148,36 @@ export function CreateOrganizationForm() {
 
           <div className="org-form-grid">
             <div className="org-form-field">
-              <label className="org-form-label">
-                State
-              </label>
-              <select
-                {...register('state')}
-                className="org-form-select"
-              >
-                <option value="" disabled>Select State</option>
-                {masterData?.states.map(stateObj => (
-                  <option key={stateObj.id} value={stateObj.name}>{stateObj.name}</option>
+              <label className="org-form-label">State</label>
+              <select {...register('state')} className="org-form-select">
+                <option value="" disabled>
+                  Select State
+                </option>
+                {masterData?.states.map((stateObj) => (
+                  <option key={stateObj.id} value={stateObj.name}>
+                    {stateObj.name}
+                  </option>
                 ))}
               </select>
             </div>
 
             <div className="org-form-field">
-              <label className="org-form-label">
-                City
-              </label>
-              <select
-                {...register('city')}
-                disabled={!selectedState}
-                className="org-form-select"
-              >
-                <option value="" disabled>Select City</option>
-                {availableCities.map(city => (
-                  <option key={city.id} value={city.name}>{city.name}</option>
+              <label className="org-form-label">City</label>
+              <select {...register('city')} disabled={!selectedState} className="org-form-select">
+                <option value="" disabled>
+                  Select City
+                </option>
+                {availableCities.map((city) => (
+                  <option key={city.id} value={city.name}>
+                    {city.name}
+                  </option>
                 ))}
               </select>
             </div>
           </div>
 
           <div className="org-form-field org-form-full-width">
-            <label className="org-form-label">
-              Pincode
-            </label>
+            <label className="org-form-label">Pincode</label>
             <input
               {...register('zip')}
               maxLength={6}
@@ -195,9 +192,7 @@ export function CreateOrganizationForm() {
 
           <div className="org-form-grid">
             <div className="org-form-field">
-              <label className="org-form-label">
-                GST Number
-              </label>
+              <label className="org-form-label">GST Number</label>
               <input
                 {...register('taxIdValue')}
                 maxLength={15}
@@ -205,18 +200,26 @@ export function CreateOrganizationForm() {
                 placeholder="22AAAAA0000A1Z5"
                 style={{ textTransform: 'uppercase' }}
               />
-              {errors.taxIdValue && <span className="org-form-error-text">{errors.taxIdValue.message}</span>}
+              {errors.taxIdValue && (
+                <span className="org-form-error-text">{errors.taxIdValue.message}</span>
+              )}
             </div>
 
             <div className="org-form-field">
-              <label className="org-form-label">
-                Phone No
-              </label>
+              <label className="org-form-label">Phone No</label>
               <div className={`org-form-input-group ${errors.phone ? 'has-error' : ''}`}>
-                <select {...register('countryCode')} className="org-form-select" style={{ width: 'auto', flexShrink: 0 }}>
-                  {masterData?.countries ? masterData.countries.map(country => (
-                    <option key={country.id} value={country.code}>{country.isoCode} {country.code}</option>
-                  )) : (
+                <select
+                  {...register('dialCode')}
+                  className="org-form-select"
+                  style={{ width: 'auto', flexShrink: 0 }}
+                >
+                  {masterData?.countries ? (
+                    masterData.countries.map((country) => (
+                      <option key={country.id} value={country.code}>
+                        {country.isoCode} {country.code}
+                      </option>
+                    ))
+                  ) : (
                     <option value="+91">IND +91</option>
                   )}
                 </select>
@@ -237,9 +240,7 @@ export function CreateOrganizationForm() {
           </div>
 
           <div className="org-form-field org-form-full-width">
-             <label className="org-form-label">
-              Email
-            </label>
+            <label className="org-form-label">Email</label>
             <input
               {...register('email')}
               type="email"
@@ -250,11 +251,7 @@ export function CreateOrganizationForm() {
           </div>
 
           <div className="org-form-actions">
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="org-form-submit-btn"
-            >
+            <button type="submit" disabled={isSubmitting} className="org-form-submit-btn">
               {isSubmitting ? 'Creating...' : 'Create Organization'}
             </button>
           </div>

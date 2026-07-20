@@ -30,7 +30,9 @@ export function OrganizationsList() {
     };
 
     fetchOrganizations();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   if (isLoading) {
@@ -41,8 +43,8 @@ export function OrganizationsList() {
     <div className="p-8 max-w-4xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Your Organizations</h1>
-        <Link 
-          to="/organizations/new" 
+        <Link
+          to="/organizations/new"
           className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition"
         >
           Create Organization
@@ -61,9 +63,14 @@ export function OrganizationsList() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {organizations.map((org) => (
-            <div key={org.id} className="bg-white border rounded-lg p-6 shadow-sm hover:shadow-md transition">
+            <div
+              key={org.id}
+              className="bg-white border rounded-lg p-6 shadow-sm hover:shadow-md transition"
+            >
               <h3 className="font-semibold text-lg mb-2">{org.name}</h3>
-              {org.industryType && <p className="text-sm text-gray-500 mb-1">Industry: {org.industryType}</p>}
+              {org.industry?.name && (
+                <p className="text-sm text-gray-500 mb-1">Industry: {org.industry.name}</p>
+              )}
               {org.portalName && <p className="text-sm text-gray-500">Portal: {org.portalName}</p>}
             </div>
           ))}

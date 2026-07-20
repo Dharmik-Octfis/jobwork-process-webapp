@@ -100,6 +100,8 @@ export async function createInvitation(
       tokenHash,
       invitedById: inviterId,
       expiresAt,
+      createdBy: inviterId,
+      updatedBy: inviterId,
     },
     // Re-invite: reset everything a stale/revoked/accepted row might carry.
     update: {
@@ -109,6 +111,7 @@ export async function createInvitation(
       invitedById: inviterId,
       expiresAt,
       acceptedAt: null,
+      updatedBy: inviterId,
     },
     select: {
       id: true,
@@ -169,7 +172,7 @@ export async function revokeInvitation(
   // by guessing an id.
   await prisma.invitation.updateMany({
     where: { id: invitationId, organizationId, status: 'pending' },
-    data: { status: 'revoked' },
+    data: { status: 'revoked', updatedBy: userId },
   });
 }
 
@@ -289,12 +292,14 @@ export async function acceptInvitation(
           userId: currentUser.id,
           organizationId: invite.organizationId,
           role: invite.role,
+          createdBy: currentUser.id,
+          updatedBy: currentUser.id,
         },
         update: {}, // already a member → leave their existing role untouched
       }),
       prisma.invitation.update({
         where: { id: invite.id },
-        data: { status: 'accepted', acceptedAt: new Date() },
+        data: { status: 'accepted', acceptedAt: new Date(), updatedBy: currentUser.id },
       }),
     ]);
 
@@ -339,12 +344,19 @@ export async function acceptInvitation(
     });
 
     await tx.membership.create({
-      data: { userId: created.id, organizationId: invite.organizationId, role: invite.role },
+      data: {
+        userId: created.id,
+        organizationId: invite.organizationId,
+        role: invite.role,
+        // Self-service accept: the new user is the actor for their own membership.
+        createdBy: created.id,
+        updatedBy: created.id,
+      },
     });
 
     await tx.invitation.update({
       where: { id: invite.id },
-      data: { status: 'accepted', acceptedAt: new Date() },
+      data: { status: 'accepted', acceptedAt: new Date(), updatedBy: created.id },
     });
 
     return created;

@@ -5,8 +5,8 @@
 // `DATABASE_URL` in `prisma.config.ts`.
 
 generator client {
-  provider = "prisma-client"
-  output   = "../../generated/prisma"
+  provider      = "prisma-client"
+  output        = "../../generated/prisma"
   binaryTargets = ["native", "debian-openssl-1.1.x", "debian-openssl-3.0.x", "rhel-openssl-1.0.x", "rhel-openssl-3.0.x"]
 }
 

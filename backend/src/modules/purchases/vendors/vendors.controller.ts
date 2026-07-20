@@ -1,5 +1,15 @@
 import type { Request, Response } from 'express';
-import { getVendorsList, createNewVendor, getVendorById, updateVendorById, deleteVendorById, getVendorActivities, getVendorComments, createVendorComment, deleteVendorComment } from './vendors.service.ts';
+import {
+  getVendorsList,
+  createNewVendor,
+  getVendorById,
+  updateVendorById,
+  deleteVendorById,
+  getVendorActivities,
+  getVendorComments,
+  createVendorComment,
+  deleteVendorComment,
+} from './vendors.service.ts';
 import { z } from 'zod';
 import { openApiRegistry } from '../../../config/openapi.ts';
 
@@ -44,7 +54,7 @@ const createVendorSchema = openApiRegistry.register(
 
     addresses: z.array(vendorAddressSchema).optional(),
     contactPersons: z.array(vendorContactPersonSchema).optional(),
-  })
+  }),
 );
 
 // Register GET route
@@ -102,8 +112,8 @@ openApiRegistry.registerPath({
   },
   responses: {
     200: { description: 'Vendor object' },
-    404: { description: 'Vendor not found' }
-  }
+    404: { description: 'Vendor not found' },
+  },
 });
 
 openApiRegistry.registerPath({
@@ -115,14 +125,14 @@ openApiRegistry.registerPath({
     params: z.object({ orgId: z.string(), id: z.string() }),
     body: {
       content: { 'application/json': { schema: createVendorSchema } },
-    }
+    },
   },
   responses: {
     200: { description: 'Vendor updated successfully' },
     400: { description: 'Validation failed' },
     404: { description: 'Vendor not found' },
-    409: { description: 'Vendor number already exists' }
-  }
+    409: { description: 'Vendor number already exists' },
+  },
 });
 
 openApiRegistry.registerPath({
@@ -135,8 +145,8 @@ openApiRegistry.registerPath({
   },
   responses: {
     204: { description: 'Vendor deleted successfully' },
-    404: { description: 'Vendor not found' }
-  }
+    404: { description: 'Vendor not found' },
+  },
 });
 export const getVendors = async (req: Request, res: Response) => {
   try {
@@ -196,7 +206,7 @@ export const getVendor = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to fetch vendor' });
   }
 };
-export const updateVendor = async (req: Request, res: Response) => {  
+export const updateVendor = async (req: Request, res: Response) => {
   try {
     const orgId = req.tenantId!;
     const vendorId = req.params.id as string;
@@ -232,7 +242,7 @@ export const deleteVendor = async (req: Request, res: Response) => {
   try {
     const orgId = req.tenantId!;
     const vendorId = req.params.id as string;
-    await deleteVendorById(orgId, vendorId);
+    await deleteVendorById(orgId, vendorId, req.user?.id);
     res.status(204).send();
   } catch (error) {
     console.error('Error deleting vendor:', error);
@@ -287,7 +297,7 @@ export const deleteVendorCommentRoute = async (req: Request, res: Response) => {
     const orgId = req.tenantId!;
     const vendorId = req.params.id as string;
     const commentId = req.params.commentId as string;
-    await deleteVendorComment(orgId, vendorId, commentId);
+    await deleteVendorComment(orgId, vendorId, commentId, req.user?.id);
     res.status(204).send();
   } catch (error) {
     console.error('Error deleting comment:', error);

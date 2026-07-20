@@ -83,6 +83,54 @@ promotes it to `req.tenantId` after checking `memberships`. Everything downstrea
 and never sees `uuid` vs `text`. Postgres fails at runtime with `operator does not exist: uuid = text`,
 which reads like a query bug. **When you change a PK's native type, grep every FK that references it.**
 
+### Default columns — every domain table carries these five
+
+Added in `migrations/20260720120300_add_default_audit_columns`. Copy this block into
+every new **domain** table (business/tenant data). **Exclude** ephemeral token tables
+(`refresh_tokens`, `password_reset_tokens`) and master-data reference tables
+(`countries`, `states`, `cities`, `industries`, `app_modules`).
+
+```prisma
+  isDeleted     Boolean  @default(false) @map("is_deleted")           // soft-delete flag
+  createdBy     String?  @map("created_by") @db.Uuid                  // acting user
+  updatedBy     String?  @map("updated_by") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  createdByUser User? @relation("<Model>CreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("<Model>UpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+```
+
+And the two back-relations on `User` (relation names must be globally unique):
+
+```prisma
+  created<Model>s <Model>[] @relation("<Model>CreatedBy")
+  updated<Model>s <Model>[] @relation("<Model>UpdatedBy")
+```
+
+- `createdBy`/`updatedBy` are **nullable** — migrations, `seed.ts`, and self-signup have
+  no acting user. `onDelete: SetNull` so deleting a user never cascades into business
+  data. FK checks bypass RLS in Postgres, so these are safe on tenant tables.
+- **Populate them in the service layer** from `req.user.id` — `createdBy` + `updatedBy` on
+  create, `updatedBy` on update. Never let the client send them; omit from the input type
+  (see `vendors.service.ts` `VendorInput`).
+- **Soft delete is enforced** — a "delete" is an `update`, not a `DELETE`:
+  ```ts
+  // deletes NEVER call tx.x.delete(...). They stamp the flag as an update:
+  tx.vendor.update({ where: { id }, data: { isDeleted: true, updatedBy: userId } });
+  ```
+  `createdBy` stays the original creator; `updatedBy`/`updatedAt` record who removed it, so
+  the row reads as "last modified by the deleter". **Every read must filter `isDeleted: false`**
+  — list queries, single-row fetches, and the existence check inside update/delete (a
+  soft-deleted row must 404, not resurrect). `tenantContext` also filters `organization.isDeleted`,
+  so a deleted org is unreachable through any tenant route even though the membership row remains.
+  See `vendors.service.ts`, `items.service.ts`, `organizations.controller.ts`.
+- ⚠️ **Unique constraints + soft delete:** a soft-deleted row still occupies its unique key
+  (`@@unique([organizationId, vendorNumber])`, `@@unique([userId, organizationId])`, …). If you
+  ever need to re-create a key a soft-deleted row holds, either reactivate that row
+  (`isDeleted: false`) or add a **partial unique index** (`WHERE is_deleted = false`). None are
+  needed today (vendor numbers come from a sequence; membership accept upserts the existing row).
+
 ## Module conventions
 
 - **Copy `src/modules/invitations/`**: `.routes` / `.controller` / `.service` / `.schemas` / `.types`,

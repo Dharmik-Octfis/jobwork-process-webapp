@@ -54,18 +54,22 @@ export async function tenantContext(
     return;
   }
 
-  const membership = await prisma.membership.findUnique({
+  // The `organization.isDeleted` filter makes a soft-deleted org behave exactly
+  // like one you're not a member of — it can't be read or written through any
+  // tenant route once deleted, even though the membership row still exists.
+  const membership = await prisma.membership.findFirst({
     where: {
-      // eslint-disable-next-line @typescript-eslint/naming-convention -- Prisma compound-unique key
-      userId_organizationId: { userId: req.user.id, organizationId },
+      userId: req.user.id,
+      organizationId,
+      organization: { isDeleted: false },
     },
     select: { role: true },
   });
 
   if (!membership) {
-    // Deliberately the same error whether the organization does not exist or
-    // the caller simply is not in it. Distinguishing the two would let someone
-    // enumerate which organization ids are real.
+    // Deliberately the same error whether the organization does not exist, is
+    // soft-deleted, or the caller simply is not in it. Distinguishing them would
+    // let someone enumerate which organization ids are real.
     next(NO_ACCESS);
     return;
   }

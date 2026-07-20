@@ -6,7 +6,7 @@ describe('Organizations Schemas', () => {
     const payload = {
       name: 'Acme Corp',
       portalName: 'acmecorp',
-      industryType: 'Technology'
+      industryCode: 'technology',
     };
 
     const result = createOrganizationSchema.safeParse(payload);
@@ -15,7 +15,7 @@ describe('Organizations Schemas', () => {
 
   it('rejects payload missing name', () => {
     const payload = {
-      portalName: 'acmecorp'
+      portalName: 'acmecorp',
     };
 
     const result = createOrganizationSchema.safeParse(payload);

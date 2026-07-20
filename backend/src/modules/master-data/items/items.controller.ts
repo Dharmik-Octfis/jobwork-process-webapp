@@ -35,7 +35,7 @@ export class ItemsController {
     try {
       const organizationId = req.tenantId!;
       const data = createItemSchema.parse(req.body);
-      const item = await itemsService.create(organizationId, data);
+      const item = await itemsService.create(organizationId, data, req.user?.id);
       res.status(201).json(item);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -52,7 +52,7 @@ export class ItemsController {
       const organizationId = req.tenantId!;
       const id = req.params.id as string;
       const data = updateItemSchema.parse(req.body);
-      const item = await itemsService.update(id, organizationId, data);
+      const item = await itemsService.update(id, organizationId, data, req.user?.id);
       res.json(item);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -70,7 +70,7 @@ export class ItemsController {
     try {
       const organizationId = req.tenantId!;
       const id = req.params.id as string;
-      await itemsService.delete(id, organizationId);
+      await itemsService.delete(id, organizationId, req.user?.id);
       res.status(204).send();
     } catch (error) {
       if (error instanceof Error && error.message === 'Item not found') {

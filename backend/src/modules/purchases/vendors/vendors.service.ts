@@ -1,9 +1,24 @@
-import { runAsTenant} from '../../../db/prisma.ts';
+import { runAsTenant } from '../../../db/prisma.ts';
 import type { Prisma } from '../../../../generated/prisma/client.ts';
 
-export type VendorInput = Omit<Prisma.VendorUncheckedCreateInput, 'id' | 'organizationId' | 'createdAt' | 'updatedAt' | 'contactPersons' | 'addresses'> & {
-  contactPersons?: Array<Omit<Prisma.VendorContactPersonUncheckedCreateInput, 'id' | 'vendorId'> & { id?: string }>;
-  addresses?: Array<Omit<Prisma.VendorAddressUncheckedCreateInput, 'id' | 'vendorId'> & { id?: string }>;
+export type VendorInput = Omit<
+  Prisma.VendorUncheckedCreateInput,
+  | 'id'
+  | 'organizationId'
+  | 'isDeleted'
+  | 'createdBy'
+  | 'updatedBy'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'contactPersons'
+  | 'addresses'
+> & {
+  contactPersons?: Array<
+    Omit<Prisma.VendorContactPersonUncheckedCreateInput, 'id' | 'vendorId'> & { id?: string }
+  >;
+  addresses?: Array<
+    Omit<Prisma.VendorAddressUncheckedCreateInput, 'id' | 'vendorId'> & { id?: string }
+  >;
 };
 
 /**
@@ -29,18 +44,15 @@ export type VendorInput = Omit<Prisma.VendorUncheckedCreateInput, 'id' | 'organi
 export async function getVendorsList(organizationId: string) {
   return runAsTenant(organizationId, (tx) =>
     tx.vendor.findMany({
-      where: { organizationId },
+      // isDeleted: false — soft-deleted vendors are hidden from every read.
+      where: { organizationId, isDeleted: false },
       orderBy: { createdAt: 'desc' },
       include: { contactPersons: true, addresses: true },
     }),
   );
 }
 
-export async function createNewVendor(
-  organizationId: string,
-  data: VendorInput,
-  userId?: string,
-) {
+export async function createNewVendor(organizationId: string, data: VendorInput, userId?: string) {
   const { contactPersons, addresses, ...vendorData } = data;
   return runAsTenant(organizationId, async (tx) => {
     let performedBy = 'System';
@@ -55,25 +67,37 @@ export async function createNewVendor(
       data: {
         ...vendorData,
         organizationId,
-        contactPersons: contactPersons && contactPersons.length > 0 ? {
-          create: contactPersons.map((cp) => {
-            const { id: _id, ...rest } = cp;
-            return rest;
-          })
-        } : undefined,
-        addresses: addresses && addresses.length > 0 ? {
-          create: addresses.map((addr) => {
-            const { id: _id, ...rest } = addr;
-            return rest;
-          })
-        } : undefined,
+        createdBy: userId ?? null,
+        updatedBy: userId ?? null,
+        contactPersons:
+          contactPersons && contactPersons.length > 0
+            ? {
+                create: contactPersons.map((cp) => {
+                  const { id: _id, ...rest } = cp;
+                  return { ...rest, createdBy: userId ?? null, updatedBy: userId ?? null };
+                }),
+              }
+            : undefined,
+        addresses:
+          addresses && addresses.length > 0
+            ? {
+                create: addresses.map((addr) => {
+                  const { id: _id, ...rest } = addr;
+                  return { ...rest, createdBy: userId ?? null, updatedBy: userId ?? null };
+                }),
+              }
+            : undefined,
         activities: {
-          create: [{
-            title: 'Vendor created',
-            description: `Vendor ${vendorData.displayName} has been created by ${performedBy}`,
-            performedBy,
-          }]
-        }
+          create: [
+            {
+              title: 'Vendor created',
+              description: `Vendor ${vendorData.displayName} has been created by ${performedBy}`,
+              performedBy,
+              createdBy: userId ?? null,
+              updatedBy: userId ?? null,
+            },
+          ],
+        },
       },
       include: { contactPersons: true, addresses: true },
     });
@@ -83,9 +107,9 @@ export async function createNewVendor(
 export async function getVendorById(organizationId: string, id: string) {
   return runAsTenant(organizationId, (tx) =>
     tx.vendor.findFirst({
-      where: { id, organizationId },
+      where: { id, organizationId, isDeleted: false },
       include: { contactPersons: true, addresses: true },
-    })
+    }),
   );
 }
 
@@ -97,7 +121,7 @@ export async function updateVendorById(
 ) {
   return runAsTenant(organizationId, async (tx) => {
     const existingVendor = await tx.vendor.findFirst({
-      where: { id, organizationId },
+      where: { id, organizationId, isDeleted: false },
     });
 
     if (!existingVendor) {
@@ -116,10 +140,10 @@ export async function updateVendorById(
 
     let activityTitle = 'Vendor updated';
     let activityDesc = `Vendor details were updated by ${performedBy}`;
-    
+
     if (contactPersons !== undefined) {
       await tx.vendorContactPerson.deleteMany({
-        where: { vendorId: id }
+        where: { vendorId: id },
       });
       activityTitle = 'Contact updated';
       activityDesc = `Contact persons were updated by ${performedBy}`;
@@ -127,7 +151,7 @@ export async function updateVendorById(
 
     if (addresses !== undefined) {
       await tx.vendorAddress.deleteMany({
-        where: { vendorId: id }
+        where: { vendorId: id },
       });
     }
 
@@ -135,43 +159,57 @@ export async function updateVendorById(
       where: { id },
       data: {
         ...vendorData,
-        contactPersons: contactPersons !== undefined && contactPersons.length > 0 ? {
-          create: contactPersons.map((cp) => {
-            const { id: _id, ...rest } = cp;
-            return rest;
-          })
-        } : undefined,
-        addresses: addresses !== undefined && addresses.length > 0 ? {
-          create: addresses.map((addr) => {
-            const { id: _id, ...rest } = addr;
-            return rest;
-          })
-        } : undefined,
+        updatedBy: userId ?? null,
+        contactPersons:
+          contactPersons !== undefined && contactPersons.length > 0
+            ? {
+                create: contactPersons.map((cp) => {
+                  const { id: _id, ...rest } = cp;
+                  return { ...rest, createdBy: userId ?? null, updatedBy: userId ?? null };
+                }),
+              }
+            : undefined,
+        addresses:
+          addresses !== undefined && addresses.length > 0
+            ? {
+                create: addresses.map((addr) => {
+                  const { id: _id, ...rest } = addr;
+                  return { ...rest, createdBy: userId ?? null, updatedBy: userId ?? null };
+                }),
+              }
+            : undefined,
         activities: {
-          create: [{
-            title: activityTitle,
-            description: activityDesc,
-            performedBy,
-          }]
-        }
+          create: [
+            {
+              title: activityTitle,
+              description: activityDesc,
+              performedBy,
+              createdBy: userId ?? null,
+              updatedBy: userId ?? null,
+            },
+          ],
+        },
       },
       include: { contactPersons: true, addresses: true },
     });
   });
 }
 
-export async function deleteVendorById(organizationId: string, id: string) {
+export async function deleteVendorById(organizationId: string, id: string, userId?: string) {
   return runAsTenant(organizationId, async (tx) => {
     const existingVendor = await tx.vendor.findFirst({
-      where: { id, organizationId },
+      where: { id, organizationId, isDeleted: false },
     });
 
     if (!existingVendor) {
       throw new Error('Vendor not found');
     }
 
-    return tx.vendor.delete({
+    // Soft delete: the row stays, `isDeleted` is flipped and the delete is
+    // recorded as an update — `updatedBy`/`updatedAt` stamp who removed it.
+    return tx.vendor.update({
       where: { id },
+      data: { isDeleted: true, updatedBy: userId ?? null },
     });
   });
 }
@@ -182,11 +220,12 @@ export async function getVendorActivities(organizationId: string, id: string) {
       where: {
         vendorId: id,
         vendor: {
-          organizationId
-        }
+          organizationId,
+          isDeleted: false,
+        },
       },
       orderBy: { createdAt: 'desc' },
-    })
+    }),
   );
 }
 
@@ -195,16 +234,23 @@ export async function getVendorComments(organizationId: string, id: string) {
     tx.vendorComment.findMany({
       where: {
         vendorId: id,
+        isDeleted: false,
         vendor: {
-          organizationId
-        }
+          organizationId,
+          isDeleted: false,
+        },
       },
       orderBy: { createdAt: 'desc' },
-    })
+    }),
   );
 }
 
-export async function createVendorComment(organizationId: string, id: string, content: string, userId: string | null) {
+export async function createVendorComment(
+  organizationId: string,
+  id: string,
+  content: string,
+  userId: string | null,
+) {
   return runAsTenant(organizationId, async (tx) => {
     let performedBy = 'System';
     if (userId) {
@@ -219,23 +265,31 @@ export async function createVendorComment(organizationId: string, id: string, co
         vendorId: id,
         content,
         performedBy,
+        createdBy: userId ?? null,
+        updatedBy: userId ?? null,
       },
     });
   });
 }
 
-export async function deleteVendorComment(organizationId: string, vendorId: string, commentId: string) {
+export async function deleteVendorComment(
+  organizationId: string,
+  vendorId: string,
+  commentId: string,
+  userId?: string,
+) {
   return runAsTenant(organizationId, async (tx) => {
     const existingComment = await tx.vendorComment.findFirst({
-      where: { id: commentId, vendorId, vendor: { organizationId } },
+      where: { id: commentId, vendorId, isDeleted: false, vendor: { organizationId } },
     });
 
     if (!existingComment) {
       throw new Error('Comment not found');
     }
 
-    return tx.vendorComment.delete({
+    return tx.vendorComment.update({
       where: { id: commentId },
+      data: { isDeleted: true, updatedBy: userId ?? null },
     });
   });
 }

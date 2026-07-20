@@ -10,7 +10,7 @@ import { Trash2, AlertTriangle } from 'lucide-react';
 import './CreateOrganizationForm.css'; // Re-use styles
 
 type MasterData = {
-  industries: { id: string; name: string }[];
+  industries: { id: string; code: string; name: string }[];
   states: { id: string; name: string; cities: { id: string; name: string }[] }[];
 };
 
@@ -57,7 +57,7 @@ export function OrganizationSettingsPage() {
       state: '',
       city: '',
       zip: '',
-      industryType: '',
+      industryCode: '',
       taxIdValue: '',
     },
   });
@@ -73,7 +73,7 @@ export function OrganizationSettingsPage() {
         state: activeOrg.state || '',
         city: activeOrg.city || '',
         zip: activeOrg.zip || '',
-        industryType: activeOrg.industryType || '',
+        industryCode: activeOrg.industryCode || '',
         taxIdValue: activeOrg.taxIdValue || '',
       });
     }
@@ -149,8 +149,6 @@ export function OrganizationSettingsPage() {
         flexDirection: 'column',
       }}
     >
-
-
       <div
         style={{
           display: 'flex',
@@ -224,19 +222,19 @@ export function OrganizationSettingsPage() {
                   Industry Type <span className="org-form-required">*</span>
                 </label>
                 <select
-                  className={`org-form-select ${errors.industryType ? 'error' : ''}`}
-                  {...register('industryType')}
+                  className={`org-form-select ${errors.industryCode ? 'error' : ''}`}
+                  {...register('industryCode')}
                   disabled={!masterData}
                 >
                   <option value="">Select Industry</option>
                   {masterData?.industries.map((i) => (
-                    <option key={i.id} value={i.name}>
+                    <option key={i.id} value={i.code}>
                       {i.name}
                     </option>
                   ))}
                 </select>
-                {errors.industryType && (
-                  <p className="org-form-error-msg">{errors.industryType.message}</p>
+                {errors.industryCode && (
+                  <p className="org-form-error-msg">{errors.industryCode.message}</p>
                 )}
               </div>
 

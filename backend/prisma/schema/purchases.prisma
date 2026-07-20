@@ -1,98 +1,157 @@
 model Vendor {
-  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId  String       @map("organization_id") @db.Uuid
-  
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
   // Primary Contact
   primaryContactSalutation String? @map("primary_contact_salutation") @db.VarChar(20)
   primaryContactFirstName  String? @map("primary_contact_first_name") @db.VarChar(100)
   primaryContactLastName   String? @map("primary_contact_last_name") @db.VarChar(100)
 
   // Main Fields
-  companyName     String?      @map("company_name") @db.VarChar(255)
-  displayName     String       @default("") @map("display_name") @db.VarChar(255)
-  vendorNumber    String       @map("vendor_number") @db.VarChar(50)
-  emailAddress    String?      @map("email_address") @db.VarChar(255)
-  workPhone       String?      @map("work_phone") @db.VarChar(50)
-  mobilePhone     String?      @map("mobile_phone") @db.VarChar(50)
+  companyName  String? @map("company_name") @db.VarChar(255)
+  displayName  String  @default("") @map("display_name") @db.VarChar(255)
+  vendorNumber String  @map("vendor_number") @db.VarChar(50)
+  emailAddress String? @map("email_address") @db.VarChar(255)
+  workPhone    String? @map("work_phone") @db.VarChar(50)
+  mobilePhone  String? @map("mobile_phone") @db.VarChar(50)
 
   // Other Details
-  currency        String?      @db.VarChar(10)
-  paymentTerms    String?      @map("payment_terms") @db.VarChar(100)
+  currency     String? @db.VarChar(10)
+  paymentTerms String? @map("payment_terms") @db.VarChar(100)
+  remarks      String?
 
-  addresses       VendorAddress[]
+  addresses VendorAddress[]
 
-  status          String       @default("active") @db.VarChar(20)
+  status String @default("active") @db.VarChar(20)
 
-  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  contactPersons  VendorContactPerson[]
-  activities      VendorActivity[]
-  comments        VendorComment[]
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactPersons VendorContactPerson[]
+  activities     VendorActivity[]
+  comments       VendorComment[]
+
+  createdByUser User? @relation("VendorCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("VendorUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, vendorNumber])
   @@map("vendors")
 }
 
 model VendorContactPerson {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  vendorId        String   @map("vendor_id") @db.Uuid
-  salutation      String?  @db.VarChar(20)
-  firstName       String?  @map("first_name") @db.VarChar(100)
-  lastName        String?  @map("last_name") @db.VarChar(100)
-  emailAddress    String?  @map("email_address") @db.VarChar(255)
-  workPhone       String?  @map("work_phone") @db.VarChar(50)
-  mobilePhone     String?  @map("mobile_phone") @db.VarChar(50)
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  vendorId     String  @map("vendor_id") @db.Uuid
+  salutation   String? @db.VarChar(20)
+  firstName    String? @map("first_name") @db.VarChar(100)
+  lastName     String? @map("last_name") @db.VarChar(100)
+  emailAddress String? @map("email_address") @db.VarChar(255)
+  workPhone    String? @map("work_phone") @db.VarChar(50)
+  mobilePhone  String? @map("mobile_phone") @db.VarChar(50)
 
-  vendor          Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  createdByUser User? @relation("VendorContactPersonCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("VendorContactPersonUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   @@map("vendor_contact_persons")
 }
 
 model VendorActivity {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  vendorId        String   @map("vendor_id") @db.Uuid
-  title           String   @db.VarChar(255)
-  description     String?
-  performedBy     String?  @map("performed_by") @db.VarChar(255)
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  vendorId    String   @map("vendor_id") @db.Uuid
+  title       String   @db.VarChar(255)
+  description String?
+  performedBy String?  @map("performed_by") @db.VarChar(255)
+  isDeleted   Boolean  @default(false) @map("is_deleted")
+  createdBy   String?  @map("created_by") @db.Uuid
+  updatedBy   String?  @map("updated_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  vendor          Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  createdByUser User? @relation("VendorActivityCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("VendorActivityUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   @@map("vendor_activities")
 }
 
 model VendorComment {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  vendorId        String   @map("vendor_id") @db.Uuid
-  content         String
-  performedBy     String?  @map("performed_by") @db.VarChar(255)
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  vendorId    String   @map("vendor_id") @db.Uuid
+  content     String
+  performedBy String?  @map("performed_by") @db.VarChar(255)
+  isDeleted   Boolean  @default(false) @map("is_deleted")
+  createdBy   String?  @map("created_by") @db.Uuid
+  updatedBy   String?  @map("updated_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  vendor          Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  createdByUser User? @relation("VendorCommentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("VendorCommentUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   @@map("vendor_comments")
 }
 
 model VendorAddress {
-  id              String   @id @default(uuid()) @db.Uuid
-  vendorId        String   @map("vendor_id") @db.Uuid
-  addressType     String   @map("address_type") @db.VarChar(50) // e.g., 'billing', 'shipping', 'additional'
-  
-  attention       String?  @db.VarChar(255)
-  country         String?  @db.VarChar(100)
-  street1         String?
-  street2         String?
-  city            String?  @db.VarChar(100)
-  state           String?  @db.VarChar(100)
-  pinCode         String?  @map("pin_code") @db.VarChar(20)
-  phone           String?  @db.VarChar(50)
+  id          String @id @default(uuid()) @db.Uuid
+  vendorId    String @map("vendor_id") @db.Uuid
+  addressType String @map("address_type") @db.VarChar(50) // e.g., 'billing', 'shipping', 'additional'
 
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  attention String? @db.VarChar(255)
+  country   String? @db.VarChar(100)
+  street1   String?
+  street2   String?
+  city      String? @db.VarChar(100)
+  state     String? @db.VarChar(100)
+  pinCode   String? @map("pin_code") @db.VarChar(20)
+  phone     String? @db.VarChar(50)
 
-  vendor          Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  createdByUser User? @relation("VendorAddressCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("VendorAddressUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   @@map("vendor_addresses")
+}
+
+// Per-tenant auto-numbering counters for PO / Invoice / Vendor etc.
+// `entityType` picks the sequence; `prefix` + `nextNumber` build the human number.
+model NumberSequence {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  entityType     String   @map("entity_type") @db.VarChar(50)
+  prefix         String   @db.VarChar(20)
+  nextNumber     Int      @default(1) @map("next_number")
+  isDeleted      Boolean  @default(false) @map("is_deleted")
+  createdBy      String?  @map("created_by") @db.Uuid
+  updatedBy      String?  @map("updated_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdByUser User? @relation("NumberSequenceCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("NumberSequenceUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, entityType])
+  @@map("number_sequences")
 }
