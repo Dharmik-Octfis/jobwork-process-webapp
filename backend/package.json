@@ -34,6 +34,7 @@
     "jsonwebtoken": "^9.0.3",
     "nodemailer": "^9.0.3",
     "swagger-ui-express": "^5.0.1",
+    "zcatalyst-sdk-node": "^3.4.0",
     "zeptomail": "^8.0.1",
     "zod": "^4.4.3"
   },

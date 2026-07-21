@@ -61,6 +61,21 @@ const envSchema = z.object({
   ZEPTO_INVITE_TEMPLATE_KEY: z.string().min(1, 'ZEPTO_INVITE_TEMPLATE_KEY is required'),
   // Value for the template's `product_name` merge field.
   ZEPTO_PRODUCT_NAME: z.string().default('Jobwork'),
+
+  // Catalyst Stratus (object storage) — credentials for the zcatalyst-sdk-node
+  // SDK initialized outside a Catalyst request context (see lib/storage.ts).
+  // All optional: storage is provisioned lazily, so a deployment that never
+  // uploads a file must still boot. lib/storage.ts fails loudly at call time
+  // if any of these is missing. Console -> Settings for the ids; API Console
+  // self-client for the OAuth pair + refresh token.
+  CATALYST_PROJECT_ID: z.string().optional(),
+  CATALYST_PROJECT_KEY: z.string().optional(), // ZAID
+  CATALYST_ENVIRONMENT: z.enum(['Development', 'Production']).default('Development'),
+  CATALYST_CLIENT_ID: z.string().optional(),
+  CATALYST_CLIENT_SECRET: z.string().optional(),
+  CATALYST_REFRESH_TOKEN: z.string().optional(),
+  // Default Stratus bucket every upload lands in unless a call overrides it.
+  CATALYST_STRATUS_BUCKET: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -106,5 +121,24 @@ export const env = {
     productName: raw.ZEPTO_PRODUCT_NAME,
     from: raw.SMTP_FROM,
     fromName: raw.SMTP_FROM_NAME,
+  },
+  catalyst: {
+    projectId: raw.CATALYST_PROJECT_ID,
+    projectKey: raw.CATALYST_PROJECT_KEY,
+    environment: raw.CATALYST_ENVIRONMENT,
+    clientId: raw.CATALYST_CLIENT_ID,
+    clientSecret: raw.CATALYST_CLIENT_SECRET,
+    refreshToken: raw.CATALYST_REFRESH_TOKEN,
+    stratusBucket: raw.CATALYST_STRATUS_BUCKET,
+    // True only when every credential the SDK needs is present. lib/storage.ts
+    // reads this to fail with a clear message instead of a cryptic SDK error.
+    configured: Boolean(
+      raw.CATALYST_PROJECT_ID &&
+      raw.CATALYST_PROJECT_KEY &&
+      raw.CATALYST_CLIENT_ID &&
+      raw.CATALYST_CLIENT_SECRET &&
+      raw.CATALYST_REFRESH_TOKEN &&
+      raw.CATALYST_STRATUS_BUCKET,
+    ),
   },
 } as const;
