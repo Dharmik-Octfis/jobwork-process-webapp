@@ -1,4 +1,14 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { prisma } from '../src/db/prisma.ts';
+
+// Geography reference data is generated from the dr5hn dataset by
+// prisma/data/generate-geo.ts (run it once and commit the JSON). Countries and
+// states cover the whole world; cities are India-only to keep the table lean.
+function loadGeo<T>(file: string): T {
+  const path = fileURLToPath(new URL(`./data/${file}`, import.meta.url));
+  return JSON.parse(readFileSync(path, 'utf8')) as T;
+}
 
 // `code` is the stable, space-free key organizations reference (Organization.industryCode
 // -> Industry.code). `name` is the display label. Renaming a label never touches org rows.
@@ -8,52 +18,6 @@ const INDUSTRIES = [
   { code: 'retail', name: 'Retail' },
   { code: 'healthcare', name: 'Healthcare' },
   { code: 'finance', name: 'Finance' },
-];
-
-// `code` is ISO 3166-1 alpha-2, `isoCode` is alpha-3. India first — it is the
-// default market and the list is ordered by likelihood of use, not alphabet.
-const COUNTRIES = [
-  { name: 'India', code: 'IN', isoCode: 'IND' },
-  { name: 'United States', code: 'US', isoCode: 'USA' },
-  { name: 'United Kingdom', code: 'GB', isoCode: 'GBR' },
-  { name: 'United Arab Emirates', code: 'AE', isoCode: 'ARE' },
-  { name: 'Singapore', code: 'SG', isoCode: 'SGP' },
-  { name: 'Australia', code: 'AU', isoCode: 'AUS' },
-  { name: 'Canada', code: 'CA', isoCode: 'CAN' },
-  { name: 'Germany', code: 'DE', isoCode: 'DEU' },
-];
-
-const STATES = [
-  {
-    name: 'Gujarat',
-    cities: [
-      'Ahmedabad',
-      'Surat',
-      'Vadodara',
-      'Rajkot',
-      'Bhavnagar',
-      'Jamnagar',
-      'Junagadh',
-      'Gandhinagar',
-      'Anand',
-      'Navsari',
-    ],
-  },
-  {
-    name: 'Maharashtra',
-    cities: [
-      'Mumbai',
-      'Pune',
-      'Nagpur',
-      'Thane',
-      'Nashik',
-      'Kalyan-Dombivli',
-      'Vasai-Virar',
-      'Aurangabad',
-      'Navi Mumbai',
-      'Solapur',
-    ],
-  },
 ];
 
 async function main() {
@@ -69,34 +33,31 @@ async function main() {
   }
   console.log('Seeded industries.');
 
-  // 2. Seed Countries
-  for (const country of COUNTRIES) {
+  // 2. Seed Countries (whole world). Upsert so re-runs refresh name/dialCode.
+  const countries =
+    loadGeo<{ name: string; code: string; isoCode: string; dialCode: string }[]>('countries.json');
+  for (const country of countries) {
     await prisma.country.upsert({
       where: { code: country.code },
-      update: {},
+      update: { name: country.name, isoCode: country.isoCode, dialCode: country.dialCode },
       create: country,
     });
   }
-  console.log('Seeded countries.');
+  console.log(`Seeded ${countries.length} countries.`);
 
-  // 3. Seed States and Cities
-  for (const stateObj of STATES) {
-    const state = await prisma.state.upsert({
-      where: { name: stateObj.name },
-      update: {},
-      create: { name: stateObj.name },
-    });
-
-    for (const cityName of stateObj.cities) {
-      await prisma.city.upsert({
-        // eslint-disable-next-line @typescript-eslint/naming-convention
-        where: { name_stateId: { name: cityName, stateId: state.id } },
-        update: {},
-        create: { name: cityName, stateId: state.id },
-      });
-    }
+  // 3. Seed States (whole world), then India Cities. These are large, so bulk
+  // insert in chunks and skip rows already present (createMany can't upsert).
+  const states = loadGeo<{ code: string; name: string; countryCode: string }[]>('states.json');
+  for (let i = 0; i < states.length; i += 2000) {
+    await prisma.state.createMany({ data: states.slice(i, i + 2000), skipDuplicates: true });
   }
-  console.log('Seeded states and cities.');
+  console.log(`Seeded ${states.length} states.`);
+
+  const cities = loadGeo<{ name: string; stateCode: string }[]>('cities-in.json');
+  for (let i = 0; i < cities.length; i += 5000) {
+    await prisma.city.createMany({ data: cities.slice(i, i + 5000), skipDuplicates: true });
+  }
+  console.log(`Seeded ${cities.length} India cities.`);
 
   // 4. Seed Modules
   await prisma.appModule.upsert({

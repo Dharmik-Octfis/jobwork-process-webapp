@@ -11,6 +11,10 @@ export async function createOrganization(req: Request, res: Response, next: Next
       return;
     }
     const data = parsedData.data;
+    // Empty select -> null so the state_code / city_id FKs are cleared, not fed ''
+    // (which is not a valid uuid and matches no state).
+    if (!data.stateCode) data.stateCode = null;
+    if (!data.cityId) data.cityId = null;
 
     const userId = req.user?.id;
     if (!userId) {
@@ -94,9 +98,15 @@ export async function updateOrganization(req: Request, res: Response, next: Next
       return;
     }
 
+    const data = parsedData.data;
+    // Present-but-empty select -> null (clear the FK); absent -> left undefined so
+    // Prisma leaves the column unchanged.
+    if (data.stateCode === '') data.stateCode = null;
+    if (data.cityId === '') data.cityId = null;
+
     const updatedOrg = await prisma.organization.update({
       where: { id: orgId },
-      data: { ...parsedData.data, updatedBy: userId },
+      data: { ...data, updatedBy: userId },
     });
 
     res.status(200).json(updatedOrg);

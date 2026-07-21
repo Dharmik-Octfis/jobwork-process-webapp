@@ -25,8 +25,15 @@ export const createOrganizationSchema = openApiRegistry.register(
       .or(z.literal(''))
       .openapi({ example: 'contact@acmecorp.in' }),
 
-    city: z.string().optional().openapi({ example: 'Ahmedabad' }),
-    state: z.string().optional().openapi({ example: 'Gujarat' }),
+    // stateCode is an ISO 3166-2 code (State.code); cityId is a City uuid. Both are
+    // nullable so the org form can clear them; '' from the form is normalised to
+    // null in the controller before the FK write.
+    stateCode: z.string().nullable().optional().openapi({ example: 'IN-GJ' }),
+    cityId: z
+      .string()
+      .nullable()
+      .optional()
+      .openapi({ example: '3f2a1c4e-8b7d-4e2a-9c11-2b6f0a5d9e88' }),
     zip: z
       .string()
       .regex(/^\d{6}$/, 'Pincode must be exactly 6 digits')

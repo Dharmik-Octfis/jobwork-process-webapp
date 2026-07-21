@@ -11,7 +11,7 @@ import './CreateOrganizationForm.css'; // Re-use styles
 
 type MasterData = {
   industries: { id: string; code: string; name: string }[];
-  states: { id: string; name: string; cities: { id: string; name: string }[] }[];
+  states: { code: string; name: string; cities: { id: string; name: string }[] }[];
 };
 
 export function OrganizationSettingsPage() {
@@ -54,8 +54,8 @@ export function OrganizationSettingsPage() {
       email: '',
       phone: '',
       orgAddress: '',
-      state: '',
-      city: '',
+      stateCode: '',
+      cityId: '',
       zip: '',
       industryCode: '',
       taxIdValue: '',
@@ -70,8 +70,8 @@ export function OrganizationSettingsPage() {
         email: activeOrg.email || '',
         phone: activeOrg.phone || '',
         orgAddress: activeOrg.orgAddress || '',
-        state: activeOrg.state || '',
-        city: activeOrg.city || '',
+        stateCode: activeOrg.stateCode || '',
+        cityId: activeOrg.cityId || '',
         zip: activeOrg.zip || '',
         industryCode: activeOrg.industryCode || '',
         taxIdValue: activeOrg.taxIdValue || '',
@@ -79,7 +79,7 @@ export function OrganizationSettingsPage() {
     }
   }, [activeOrg, reset]);
 
-  const selectedState = watch('state');
+  const selectedStateCode = watch('stateCode');
 
   // Clear city when state changes, unless we are just initializing
   const [isInitializing, setIsInitializing] = useState(true);
@@ -88,10 +88,10 @@ export function OrganizationSettingsPage() {
       setIsInitializing(false);
       return;
     }
-    if (selectedState && !isInitializing) {
-      setValue('city', '');
+    if (selectedStateCode && !isInitializing) {
+      setValue('cityId', '');
     }
-  }, [selectedState, setValue, activeOrg, isInitializing]);
+  }, [selectedStateCode, setValue, activeOrg, isInitializing]);
 
   const onSubmit = async (data: UpdateOrganizationData) => {
     if (!id) return;
@@ -122,8 +122,8 @@ export function OrganizationSettingsPage() {
   };
 
   const availableCities =
-    selectedState && masterData
-      ? masterData.states.find((s) => s.name === selectedState)?.cities || []
+    selectedStateCode && masterData
+      ? masterData.states.find((s) => s.code === selectedStateCode)?.cities || []
       : [];
 
   if (!activeOrg) {
@@ -288,13 +288,13 @@ export function OrganizationSettingsPage() {
                 <div className="org-form-group">
                   <label>State</label>
                   <select
-                    className={`org-form-select ${errors.state ? 'error' : ''}`}
-                    {...register('state')}
+                    className={`org-form-select ${errors.stateCode ? 'error' : ''}`}
+                    {...register('stateCode')}
                     disabled={!masterData}
                   >
                     <option value="">Select State</option>
                     {masterData?.states.map((s) => (
-                      <option key={s.id} value={s.name}>
+                      <option key={s.code} value={s.code}>
                         {s.name}
                       </option>
                     ))}
@@ -304,13 +304,13 @@ export function OrganizationSettingsPage() {
                 <div className="org-form-group">
                   <label>City</label>
                   <select
-                    className={`org-form-select ${errors.city ? 'error' : ''}`}
-                    {...register('city')}
-                    disabled={!selectedState}
+                    className={`org-form-select ${errors.cityId ? 'error' : ''}`}
+                    {...register('cityId')}
+                    disabled={!selectedStateCode}
                   >
                     <option value="">Select City</option>
                     {availableCities.map((c) => (
-                      <option key={c.id} value={c.name}>
+                      <option key={c.id} value={c.id}>
                         {c.name}
                       </option>
                     ))}

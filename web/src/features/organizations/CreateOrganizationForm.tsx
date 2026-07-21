@@ -12,8 +12,8 @@ import './CreateOrganizationForm.css';
 
 type MasterData = {
   industries: { id: string; code: string; name: string }[];
-  states: { id: string; name: string; cities: { id: string; name: string }[] }[];
-  countries: { id: string; name: string; code: string; isoCode: string }[];
+  states: { code: string; name: string; cities: { id: string; name: string }[] }[];
+  countries: { id: string; name: string; code: string; isoCode: string; dialCode: string }[];
 };
 
 export function CreateOrganizationForm() {
@@ -37,13 +37,6 @@ export function CreateOrganizationForm() {
   };
   const [masterData, setMasterData] = useState<MasterData | null>(null);
 
-  useEffect(() => {
-    organizationsApi
-      .getMasterData()
-      .then(setMasterData)
-      .catch((err) => console.error('Failed to load master data:', err));
-  }, []);
-
   const {
     register,
     handleSubmit,
@@ -53,21 +46,33 @@ export function CreateOrganizationForm() {
   } = useForm<CreateOrganizationData>({
     resolver: zodResolver(createOrganizationSchema),
     defaultValues: {
-      state: '',
-      city: '',
+      stateCode: '',
+      cityId: '',
       industryCode: '',
       dialCode: '+91',
     },
   });
 
-  const selectedState = watch('state');
+  useEffect(() => {
+    organizationsApi
+      .getMasterData()
+      .then((data) => {
+        setMasterData(data);
+        // Re-assert India (+91) once the country options exist: an uncontrolled
+        // <select> can drop its selection when its options load in asynchronously.
+        setValue('dialCode', '+91');
+      })
+      .catch((err) => console.error('Failed to load master data:', err));
+  }, [setValue]);
+
+  const selectedStateCode = watch('stateCode');
 
   // Clear city when state changes to avoid invalid combinations
   useEffect(() => {
-    if (selectedState) {
-      setValue('city', '');
+    if (selectedStateCode) {
+      setValue('cityId', '');
     }
-  }, [selectedState, setValue]);
+  }, [selectedStateCode, setValue]);
 
   const onSubmit = async (data: CreateOrganizationData) => {
     try {
@@ -82,8 +87,8 @@ export function CreateOrganizationForm() {
   };
 
   const availableCities =
-    selectedState && masterData
-      ? masterData.states.find((s) => s.name === selectedState)?.cities || []
+    selectedStateCode && masterData
+      ? masterData.states.find((s) => s.code === selectedStateCode)?.cities || []
       : [];
 
   return (
@@ -149,12 +154,12 @@ export function CreateOrganizationForm() {
           <div className="org-form-grid">
             <div className="org-form-field">
               <label className="org-form-label">State</label>
-              <select {...register('state')} className="org-form-select">
+              <select {...register('stateCode')} className="org-form-select">
                 <option value="" disabled>
                   Select State
                 </option>
                 {masterData?.states.map((stateObj) => (
-                  <option key={stateObj.id} value={stateObj.name}>
+                  <option key={stateObj.code} value={stateObj.code}>
                     {stateObj.name}
                   </option>
                 ))}
@@ -163,12 +168,16 @@ export function CreateOrganizationForm() {
 
             <div className="org-form-field">
               <label className="org-form-label">City</label>
-              <select {...register('city')} disabled={!selectedState} className="org-form-select">
+              <select
+                {...register('cityId')}
+                disabled={!selectedStateCode}
+                className="org-form-select"
+              >
                 <option value="" disabled>
                   Select City
                 </option>
                 {availableCities.map((city) => (
-                  <option key={city.id} value={city.name}>
+                  <option key={city.id} value={city.id}>
                     {city.name}
                   </option>
                 ))}
@@ -215,8 +224,8 @@ export function CreateOrganizationForm() {
                 >
                   {masterData?.countries ? (
                     masterData.countries.map((country) => (
-                      <option key={country.id} value={country.code}>
-                        {country.isoCode} {country.code}
+                      <option key={country.id} value={country.dialCode}>
+                        {country.isoCode} {country.dialCode}
                       </option>
                     ))
                   ) : (

@@ -91,8 +91,8 @@ model Organization {
   phone    String?
   email    String?
 
-  city       String?
-  state      String?
+  stateCode  String? @map("state_code") @db.VarChar(6)
+  cityId     String? @map("city_id") @db.Uuid
   zip        String?
   orgAddress String? @map("org_address")
 
@@ -104,6 +104,8 @@ model Organization {
   createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   industry        Industry?        @relation(fields: [industryCode], references: [code])
+  state           State?           @relation(fields: [stateCode], references: [code], onDelete: SetNull, onUpdate: Cascade)
+  city            City?            @relation(fields: [cityId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   memberships     Membership[]
   invitations     Invitation[]
   vendors         Vendor[]
@@ -187,40 +189,61 @@ model Industry {
 // `code` is ISO 3166-1 alpha-2 ("IN"); `isoCode` is alpha-3 ("IND"). They are kept
 // separate because alpha-2 is what forms, phone libraries, and payment providers
 // expect, while alpha-3 is what most government and shipping paperwork asks for.
-// (Not to be confused with Organization.dialCode, which stores a phone calling
-// code like "+91" — that is a phone-number prefix, not a country identifier.)
+// `dialCode` is the ITU calling-code prefix ("+91") the phone-number dropdown binds
+// to — a phone prefix, NOT a country identifier, and deliberately NOT unique (US and
+// Canada both share "+1"), which is why it is its own column, not `code`/`isoCode`.
+// (Organization.dialCode stores the value the user picked from this list.)
 model Country {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name      String   @unique
   code      String   @unique @db.VarChar(2)
   isoCode   String   @unique @map("iso_code") @db.VarChar(3)
+  dialCode  String   @map("dial_code") @db.VarChar(8)
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  states State[]
 
   @@map("countries")
 }
 
+// A state's identity is its ISO 3166-2 subdivision code ("IN-GJ"), NOT a surrogate
+// uuid — the code is already a stable, globally-unique standard key, so it is the
+// PK and what other rows reference. `name` can be relabelled without touching a
+// single referencing row. States belong to a country (countryCode -> Country.code).
 model State {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name      String   @unique
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  code        String   @id @db.VarChar(6)
+  name        String
+  countryCode String   @map("country_code") @db.VarChar(2)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  cities City[]
+  country       Country        @relation(fields: [countryCode], references: [code], onDelete: Restrict, onUpdate: Cascade)
+  cities        City[]
+  organizations Organization[]
 
+  // `name` is only unique *within* a country — two countries may both have a
+  // "Georgia"-like name. Uniqueness is the (country, name) pair.
+  @@unique([countryCode, name])
   @@map("states")
 }
 
+// A city has NO global standard code, so it keeps a surrogate uuid PK. `geonamesId`
+// is the stable external anchor (from the GeoNames dataset) used to upsert on
+// re-import so the uuid is generated once and never orphans a referencing row; it
+// is nullable until a real dataset is imported. Cities link to states by code.
 model City {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name      String
-  stateId   String   @map("state_id") @db.Uuid
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  geonamesId Int?     @unique @map("geonames_id")
+  name       String
+  stateCode  String   @map("state_code") @db.VarChar(6)
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  state State @relation(fields: [stateId], references: [id], onDelete: Cascade)
+  state         State          @relation(fields: [stateCode], references: [code], onDelete: Cascade, onUpdate: Cascade)
+  organizations Organization[]
 
-  @@unique([name, stateId])
+  @@unique([name, stateCode])
   @@map("cities")
 }
 

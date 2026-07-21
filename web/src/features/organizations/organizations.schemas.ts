@@ -11,8 +11,8 @@ const baseOrganizationSchema = z.object({
     .optional()
     .or(z.literal('')),
   orgAddress: z.string().optional(),
-  state: z.string().optional(),
-  city: z.string().optional(),
+  stateCode: z.string().optional(),
+  cityId: z.string().optional(),
   zip: z
     .string()
     .regex(/^\d{6}$/, 'Pincode must be exactly 6 digits')
@@ -48,8 +48,8 @@ export interface Organization {
   dialCode?: string;
   phone?: string;
   orgAddress?: string;
-  state?: string;
-  city?: string;
+  stateCode?: string;
+  cityId?: string;
   zip?: string;
   taxIdValue?: string;
   createdAt: string;
