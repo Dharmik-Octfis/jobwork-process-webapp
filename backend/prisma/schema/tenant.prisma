@@ -26,34 +26,36 @@ model User {
   updatedByUser User? @relation("UserUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   // Back-relations for every domain table's createdBy/updatedBy audit FK.
-  createdUsers                User[]                @relation("UserCreatedBy")
-  updatedUsers                User[]                @relation("UserUpdatedBy")
-  createdOrganizations        Organization[]        @relation("OrganizationCreatedBy")
-  updatedOrganizations        Organization[]        @relation("OrganizationUpdatedBy")
-  createdMemberships          Membership[]          @relation("MembershipCreatedBy")
-  updatedMemberships          Membership[]          @relation("MembershipUpdatedBy")
-  createdInvitations          Invitation[]          @relation("InvitationCreatedBy")
-  updatedInvitations          Invitation[]          @relation("InvitationUpdatedBy")
-  createdVendors              Vendor[]              @relation("VendorCreatedBy")
-  updatedVendors              Vendor[]              @relation("VendorUpdatedBy")
-  createdVendorContactPersons VendorContactPerson[] @relation("VendorContactPersonCreatedBy")
-  updatedVendorContactPersons VendorContactPerson[] @relation("VendorContactPersonUpdatedBy")
-  createdVendorActivities     VendorActivity[]      @relation("VendorActivityCreatedBy")
-  updatedVendorActivities     VendorActivity[]      @relation("VendorActivityUpdatedBy")
-  createdVendorComments       VendorComment[]       @relation("VendorCommentCreatedBy")
-  updatedVendorComments       VendorComment[]       @relation("VendorCommentUpdatedBy")
-  createdVendorAddresses      VendorAddress[]       @relation("VendorAddressCreatedBy")
-  updatedVendorAddresses      VendorAddress[]       @relation("VendorAddressUpdatedBy")
-  createdNumberSequences      NumberSequence[]      @relation("NumberSequenceCreatedBy")
-  updatedNumberSequences      NumberSequence[]      @relation("NumberSequenceUpdatedBy")
-  createdItems                Item[]                @relation("ItemCreatedBy")
-  updatedItems                Item[]                @relation("ItemUpdatedBy")
-  createdItemActivities       ItemActivity[]        @relation("ItemActivityCreatedBy")
-  updatedItemActivities       ItemActivity[]        @relation("ItemActivityUpdatedBy")
-  createdUnitsOfMeasurement   UnitOfMeasurement[]   @relation("UomCreatedBy")
-  updatedUnitsOfMeasurement   UnitOfMeasurement[]   @relation("UomUpdatedBy")
-  createdCurrencies           Currency[]            @relation("CurrencyCreatedBy")
-  updatedCurrencies           Currency[]            @relation("CurrencyUpdatedBy")
+  createdUsers                  User[]                  @relation("UserCreatedBy")
+  updatedUsers                  User[]                  @relation("UserUpdatedBy")
+  createdOrganizations          Organization[]          @relation("OrganizationCreatedBy")
+  updatedOrganizations          Organization[]          @relation("OrganizationUpdatedBy")
+  createdMemberships            Membership[]            @relation("MembershipCreatedBy")
+  updatedMemberships            Membership[]            @relation("MembershipUpdatedBy")
+  createdInvitations            Invitation[]            @relation("InvitationCreatedBy")
+  updatedInvitations            Invitation[]            @relation("InvitationUpdatedBy")
+  createdVendors                Vendor[]                @relation("VendorCreatedBy")
+  updatedVendors                Vendor[]                @relation("VendorUpdatedBy")
+  createdVendorContactPersons   VendorContactPerson[]   @relation("VendorContactPersonCreatedBy")
+  updatedVendorContactPersons   VendorContactPerson[]   @relation("VendorContactPersonUpdatedBy")
+  createdVendorActivities       VendorActivity[]        @relation("VendorActivityCreatedBy")
+  updatedVendorActivities       VendorActivity[]        @relation("VendorActivityUpdatedBy")
+  createdVendorComments         VendorComment[]         @relation("VendorCommentCreatedBy")
+  updatedVendorComments         VendorComment[]         @relation("VendorCommentUpdatedBy")
+  createdVendorAddresses        VendorAddress[]         @relation("VendorAddressCreatedBy")
+  updatedVendorAddresses        VendorAddress[]         @relation("VendorAddressUpdatedBy")
+  createdNumberSequences        NumberSequence[]        @relation("NumberSequenceCreatedBy")
+  updatedNumberSequences        NumberSequence[]        @relation("NumberSequenceUpdatedBy")
+  createdItems                  Item[]                  @relation("ItemCreatedBy")
+  updatedItems                  Item[]                  @relation("ItemUpdatedBy")
+  createdItemActivities         ItemActivity[]          @relation("ItemActivityCreatedBy")
+  updatedItemActivities         ItemActivity[]          @relation("ItemActivityUpdatedBy")
+  createdUnitsOfMeasurement     UnitOfMeasurement[]     @relation("UomCreatedBy")
+  updatedUnitsOfMeasurement     UnitOfMeasurement[]     @relation("UomUpdatedBy")
+  createdCurrencies             Currency[]              @relation("CurrencyCreatedBy")
+  updatedCurrencies             Currency[]              @relation("CurrencyUpdatedBy")
+  createdCustomFieldDefinitions CustomFieldDefinition[] @relation("CustomFieldDefinitionCreatedBy")
+  updatedCustomFieldDefinitions CustomFieldDefinition[] @relation("CustomFieldDefinitionUpdatedBy")
 
   @@map("users")
 }
@@ -98,29 +100,30 @@ model Organization {
   email    String?
 
   countryCode String? @map("country_code") @db.VarChar(2)
-  stateCode  String? @map("state_code") @db.VarChar(6)
-  cityId     String? @map("city_id") @db.Uuid
-  zip        String?
-  orgAddress String? @map("org_address")
+  stateCode   String? @map("state_code") @db.VarChar(6)
+  cityId      String? @map("city_id") @db.Uuid
+  zip         String?
+  orgAddress  String? @map("org_address")
 
   taxIdValue String? @map("tax_id_value")
 
-  isDeleted       Boolean          @default(false) @map("is_deleted")
-  createdBy       String?          @map("created_by") @db.Uuid
-  updatedBy       String?          @map("updated_by") @db.Uuid
-  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  industry        Industry?        @relation(fields: [industryCode], references: [code])
-  country         Country?         @relation(fields: [countryCode], references: [code], onDelete: SetNull, onUpdate: Cascade)
-  state           State?           @relation(fields: [stateCode], references: [code], onDelete: SetNull, onUpdate: Cascade)
-  city            City?            @relation(fields: [cityId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  memberships     Membership[]
-  invitations     Invitation[]
-  vendors         Vendor[]
-  items           Item[]
-  numberSequences NumberSequence[]
-  unitsOfMeasurement UnitOfMeasurement[]
-  currencies      Currency[]
+  isDeleted              Boolean                 @default(false) @map("is_deleted")
+  createdBy              String?                 @map("created_by") @db.Uuid
+  updatedBy              String?                 @map("updated_by") @db.Uuid
+  createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  industry               Industry?               @relation(fields: [industryCode], references: [code])
+  country                Country?                @relation(fields: [countryCode], references: [code], onDelete: SetNull, onUpdate: Cascade)
+  state                  State?                  @relation(fields: [stateCode], references: [code], onDelete: SetNull, onUpdate: Cascade)
+  city                   City?                   @relation(fields: [cityId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  memberships            Membership[]
+  invitations            Invitation[]
+  vendors                Vendor[]
+  items                  Item[]
+  numberSequences        NumberSequence[]
+  unitsOfMeasurement     UnitOfMeasurement[]
+  currencies             Currency[]
+  customFieldDefinitions CustomFieldDefinition[]
 
   createdByUser User? @relation("OrganizationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User? @relation("OrganizationUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
@@ -212,7 +215,7 @@ model Country {
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  states State[]
+  states        State[]
   organizations Organization[]
 
   @@map("countries")
@@ -274,8 +277,6 @@ model AppModule {
 
   @@map("app_modules")
 }
-
-
 
 // Per-tenant auto-numbering counters for PO / Invoice / Vendor etc.
 // `entityType` picks the sequence; `prefix` + `nextNumber` build the human number.

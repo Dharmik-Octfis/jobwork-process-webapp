@@ -25,8 +25,9 @@ function hashToken(rawToken: string): string {
   return createHash('sha256').update(rawToken).digest('hex');
 }
 
-/** Throw 403 unless `userId` is an owner/admin of `organizationId`. */
-async function assertOrgAdmin(userId: string, organizationId: string): Promise<void> {
+/** Throw 403 unless `userId` is an owner/admin of `organizationId`.
+ * Exported so other admin-only features (e.g. custom fields) reuse one gate. */
+export async function assertOrgAdmin(userId: string, organizationId: string): Promise<void> {
   const membership = await prisma.membership.findUnique({
     where: {
       // eslint-disable-next-line @typescript-eslint/naming-convention -- Prisma compound-unique key

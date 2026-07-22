@@ -14,6 +14,7 @@ import {
 } from './vendors.service.ts';
 import { z } from 'zod';
 import { openApiRegistry } from '../../../config/openapi.ts';
+import { ApiError } from '../../../lib/apiError.ts';
 
 const vendorAddressSchema = z.object({
   id: z.string().optional(),
@@ -55,6 +56,10 @@ const createVendorSchema = openApiRegistry.register(
     remarks: z.string().nullable().optional(),
 
     status: z.string().optional(),
+
+    // Per-org dynamic custom fields — validated against this org's definitions in
+    // the service (customFields.engine.ts), so the shape is intentionally open here.
+    customFields: z.record(z.string(), z.unknown()).optional(),
 
     addresses: z.array(vendorAddressSchema).optional(),
     contactPersons: z.array(vendorContactPersonSchema).optional(),
@@ -150,7 +155,7 @@ openApiRegistry.registerPath({
   responses: {
     204: { description: 'Vendor deleted successfully' },
     404: { description: 'Vendor not found' },
-  }
+  },
 });
 
 // Register preferences routes
@@ -160,7 +165,7 @@ openApiRegistry.registerPath({
   tags: ['Vendors'],
   summary: 'Get vendor number sequence preferences',
   request: { params: z.object({ orgId: z.string() }) },
-  responses: { 200: { description: 'Number sequence preferences' } }
+  responses: { 200: { description: 'Number sequence preferences' } },
 });
 
 openApiRegistry.registerPath({
@@ -173,12 +178,12 @@ openApiRegistry.registerPath({
     body: {
       content: {
         'application/json': {
-          schema: z.object({ prefix: z.string(), nextNumber: z.number().int().positive() })
-        }
-      }
-    }
+          schema: z.object({ prefix: z.string(), nextNumber: z.number().int().positive() }),
+        },
+      },
+    },
   },
-  responses: { 200: { description: 'Updated number sequence preferences' } }
+  responses: { 200: { description: 'Updated number sequence preferences' } },
 });
 
 // Register preferences routes
@@ -188,7 +193,7 @@ openApiRegistry.registerPath({
   tags: ['Vendors'],
   summary: 'Get vendor number sequence preferences',
   request: { params: z.object({ orgId: z.string() }) },
-  responses: { 200: { description: 'Number sequence preferences' } }
+  responses: { 200: { description: 'Number sequence preferences' } },
 });
 
 openApiRegistry.registerPath({
@@ -201,12 +206,12 @@ openApiRegistry.registerPath({
     body: {
       content: {
         'application/json': {
-          schema: z.object({ prefix: z.string(), nextNumber: z.number().int().positive() })
-        }
-      }
-    }
+          schema: z.object({ prefix: z.string(), nextNumber: z.number().int().positive() }),
+        },
+      },
+    },
   },
-  responses: { 200: { description: 'Updated number sequence preferences' } }
+  responses: { 200: { description: 'Updated number sequence preferences' } },
 });
 export const getVendors = async (req: Request, res: Response) => {
   try {
@@ -237,6 +242,11 @@ export const createVendor = async (req: Request, res: Response) => {
     console.error('Error creating vendor:', error);
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: 'Validation failed', details: error.issues });
+    } else if (error instanceof ApiError) {
+      // e.g. custom-field validation from the service — keep status + field details.
+      res
+        .status(error.status)
+        .json({ error: error.message, message: error.message, details: error.details });
     } else if (
       typeof error === 'object' &&
       error !== null &&
@@ -283,6 +293,10 @@ export const updateVendor = async (req: Request, res: Response) => {
     console.error('Error updating vendor:', error);
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: 'Validation failed', details: error.issues });
+    } else if (error instanceof ApiError) {
+      res
+        .status(error.status)
+        .json({ error: error.message, message: error.message, details: error.details });
     } else if (error instanceof Error && error.message === 'Vendor not found') {
       res.status(404).json({ error: 'Vendor not found' });
     } else if (
@@ -383,10 +397,12 @@ export const getNumberPreferenceRoute = async (req: Request, res: Response) => {
 export const updateNumberPreferenceRoute = async (req: Request, res: Response) => {
   try {
     const orgId = req.tenantId!;
-    const { prefix, nextNumber } = z.object({
-      prefix: z.string(),
-      nextNumber: z.number().int().positive()
-    }).parse(req.body);
+    const { prefix, nextNumber } = z
+      .object({
+        prefix: z.string(),
+        nextNumber: z.number().int().positive(),
+      })
+      .parse(req.body);
 
     const pref = await updateVendorNumberPreference(orgId, prefix, nextNumber);
     res.json(pref);

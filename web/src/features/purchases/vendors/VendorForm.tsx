@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createVendorSchema, type CreateVendorData } from './vendors.schemas';
 import { fetchVendorNumberPreference, updateVendorNumberPreference } from './vendors.api';
 import { VendorNumberConfigModal } from './VendorNumberConfigModal';
+import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
 import './vendor-form.css';
 
 interface VendorFormProps {
@@ -14,6 +15,7 @@ interface VendorFormProps {
   onSubmit: (data: CreateVendorData) => void;
   isSubmitting: boolean;
   isEdit?: boolean;
+  customFieldErrors?: Record<string, string>;
 }
 
 export function VendorForm({
@@ -21,6 +23,7 @@ export function VendorForm({
   onSubmit,
   isSubmitting,
   isEdit = false,
+  customFieldErrors,
 }: VendorFormProps) {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
@@ -64,7 +67,7 @@ export function VendorForm({
     if (preference && !isEdit) {
       const generatedNumber = `${preference.prefix}${preference.nextNumber.toString().padStart(5, '0')}`;
       const currentValue = watch('vendorNumber');
-      
+
       if (!currentValue || currentValue === lastPrefilledNumber) {
         setValue('vendorNumber', generatedNumber);
         setLastPrefilledNumber(generatedNumber);
@@ -73,7 +76,8 @@ export function VendorForm({
   }, [preference, isEdit, setValue, watch, lastPrefilledNumber]);
 
   const updatePreferenceMutation = useMutation({
-    mutationFn: (data: { prefix: string; nextNumber: number }) => updateVendorNumberPreference(orgId!, data),
+    mutationFn: (data: { prefix: string; nextNumber: number }) =>
+      updateVendorNumberPreference(orgId!, data),
     onSuccess: (data) => {
       queryClient.setQueryData(['vendor-number-preference', orgId], data);
       setValue('vendorNumber', `${data.prefix}${data.nextNumber.toString().padStart(5, '0')}`);
@@ -234,10 +238,17 @@ export function VendorForm({
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <input {...register('vendorNumber')} style={{ ...inputStyle, flex: 1 }} />
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => setIsNumberConfigOpen(true)}
-                style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: '4px', display: 'flex' }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#888',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                }}
               >
                 <Settings size={18} />
               </button>
@@ -640,10 +651,15 @@ export function VendorForm({
             </div>
           )}
 
-          {activeTab === 'custom' && (
-            <div style={{ padding: '40px', textAlign: 'center', color: '#888', fontSize: '14px' }}>
-              This section is coming soon.
-            </div>
+          {activeTab === 'custom' && orgId && (
+            <CustomFieldsSection
+              orgId={orgId}
+              entityType="vendor"
+              values={(watch('customFields') as Record<string, unknown>) ?? {}}
+              onChange={(v) => setValue('customFields', v, { shouldDirty: true })}
+              errors={customFieldErrors}
+              applyDefaults={!isEdit}
+            />
           )}
 
           {activeTab === 'remarks' && (

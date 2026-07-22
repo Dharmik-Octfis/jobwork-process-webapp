@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { type CreateVendorData } from './vendors.schemas';
@@ -11,6 +12,7 @@ export function CreateVendor() {
   const queryClient = useQueryClient();
   const { orgId } = useParams<{ orgId: string }>();
   const initialData = location.state?.vendorToClone as Partial<CreateVendorData> | undefined;
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const mutation = useMutation({
     mutationFn: (data: CreateVendorData) => createVendor(orgId!, data),
@@ -19,13 +21,22 @@ export function CreateVendor() {
       queryClient.invalidateQueries({ queryKey: ['vendor-number-preference', orgId] });
       navigate(`/organizations/${orgId}/purchases/vendors`);
     },
-    onError: (error: AxiosError<{ error?: string; message?: string }>) => {
+    onError: (
+      error: AxiosError<{ error?: string; message?: string; details?: Record<string, string> }>,
+    ) => {
+      const details = error.response?.data?.details;
+      // Field-level custom-field errors are keyed `customFields.<key>`.
+      if (details && typeof details === 'object' && !Array.isArray(details)) {
+        setFieldErrors(details);
+        return;
+      }
       const errorMsg = error.response?.data?.error || error.response?.data?.message;
       alert(errorMsg || 'Failed to create vendor');
     },
   });
 
   const onSubmit = (data: CreateVendorData) => {
+    setFieldErrors({});
     mutation.mutate(data);
   };
 
@@ -36,6 +47,7 @@ export function CreateVendor() {
         onSubmit={onSubmit}
         isSubmitting={mutation.isPending}
         isEdit={false}
+        customFieldErrors={fieldErrors}
       />
     </div>
   );

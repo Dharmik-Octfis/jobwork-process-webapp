@@ -1,4 +1,8 @@
 import { runAsTenant } from '../../../db/prisma.ts';
+import {
+  loadActiveDefinitions,
+  validateCustomFields,
+} from '../../custom-fields/customFields.engine.ts';
 import type { Prisma } from '../../../../generated/prisma/client.ts';
 
 export type VendorInput = Omit<
@@ -12,7 +16,10 @@ export type VendorInput = Omit<
   | 'updatedAt'
   | 'contactPersons'
   | 'addresses'
+  | 'customFields'
 > & {
+  // Raw client input — validated & narrowed to InputJsonValue in the service.
+  customFields?: Record<string, unknown>;
   contactPersons?: Array<
     Omit<Prisma.VendorContactPersonUncheckedCreateInput, 'id' | 'vendorId'> & { id?: string }
   >;
@@ -53,8 +60,15 @@ export async function getVendorsList(organizationId: string) {
 }
 
 export async function createNewVendor(organizationId: string, data: VendorInput, userId?: string) {
-  const { contactPersons, addresses, ...vendorData } = data;
+  const { contactPersons, addresses, customFields: rawCustomFields, ...vendorData } = data;
   return runAsTenant(organizationId, async (tx) => {
+    const defs = await loadActiveDefinitions(tx, organizationId, 'vendor');
+    const customFields = validateCustomFields({
+      defs,
+      input: rawCustomFields,
+      mode: 'create',
+    }) as Prisma.InputJsonValue;
+
     let performedBy = 'System';
     if (userId) {
       const user = await tx.user.findUnique({ where: { id: userId } });
@@ -65,25 +79,26 @@ export async function createNewVendor(organizationId: string, data: VendorInput,
 
     const seq = await tx.numberSequence.findUnique({
       // eslint-disable-next-line @typescript-eslint/naming-convention
-      where: { organizationId_entityType: { organizationId, entityType: 'vendor' } }
+      where: { organizationId_entityType: { organizationId, entityType: 'vendor' } },
     });
-    
+
     if (seq) {
       // Basic padding to match frontend (e.g. 00727). Assuming length 5.
-      // Wait, frontend didn't have padding logic yet. We need to agree on padding. 
+      // Wait, frontend didn't have padding logic yet. We need to agree on padding.
       // Let's just compare without padding if it's not strictly padded, or assume it's directly from frontend.
       // Actually, if we just blindly increment, it might be safer, but only if they start with the prefix.
       if (vendorData.vendorNumber.startsWith(seq.prefix)) {
-         await tx.numberSequence.update({
-           where: { id: seq.id },
-           data: { nextNumber: seq.nextNumber + 1 }
-         });
+        await tx.numberSequence.update({
+          where: { id: seq.id },
+          data: { nextNumber: seq.nextNumber + 1 },
+        });
       }
     }
 
     return tx.vendor.create({
       data: {
         ...vendorData,
+        customFields,
         organizationId,
         createdBy: userId ?? null,
         updatedBy: userId ?? null,
@@ -154,7 +169,20 @@ export async function updateVendorById(
       }
     }
 
-    const { contactPersons, addresses, ...vendorData } = data;
+    const { contactPersons, addresses, customFields: rawCustomFields, ...vendorData } = data;
+
+    // Re-validate custom fields only when the client sends them; required policy
+    // (b) uses the existing stored values so old records stay editable.
+    let customFields: Prisma.InputJsonValue | undefined;
+    if (rawCustomFields !== undefined) {
+      const defs = await loadActiveDefinitions(tx, organizationId, 'vendor');
+      customFields = validateCustomFields({
+        defs,
+        input: rawCustomFields,
+        mode: 'update',
+        existing: existingVendor.customFields,
+      }) as Prisma.InputJsonValue;
+    }
 
     let activityTitle = 'Vendor updated';
     let activityDesc = `Vendor details were updated by ${performedBy}`;
@@ -177,6 +205,7 @@ export async function updateVendorById(
       where: { id },
       data: {
         ...vendorData,
+        ...(customFields !== undefined ? { customFields } : {}),
         updatedBy: userId ?? null,
         contactPersons:
           contactPersons !== undefined && contactPersons.length > 0
@@ -316,25 +345,29 @@ export async function getVendorNumberPreference(organizationId: string) {
   return runAsTenant(organizationId, async (tx) => {
     let seq = await tx.numberSequence.findUnique({
       // eslint-disable-next-line @typescript-eslint/naming-convention
-      where: { organizationId_entityType: { organizationId, entityType: 'vendor' } }
+      where: { organizationId_entityType: { organizationId, entityType: 'vendor' } },
     });
-    
+
     if (!seq) {
       seq = await tx.numberSequence.create({
         data: {
           organizationId,
           entityType: 'vendor',
           prefix: 'VEN-',
-          nextNumber: 1
-        }
+          nextNumber: 1,
+        },
       });
     }
-    
+
     return seq;
   });
 }
 
-export async function updateVendorNumberPreference(organizationId: string, prefix: string, nextNumber: number) {
+export async function updateVendorNumberPreference(
+  organizationId: string,
+  prefix: string,
+  nextNumber: number,
+) {
   return runAsTenant(organizationId, async (tx) => {
     return tx.numberSequence.upsert({
       // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -343,13 +376,12 @@ export async function updateVendorNumberPreference(organizationId: string, prefi
         organizationId,
         entityType: 'vendor',
         prefix,
-        nextNumber
+        nextNumber,
       },
       update: {
         prefix,
-        nextNumber
-      }
+        nextNumber,
+      },
     });
   });
 }
-

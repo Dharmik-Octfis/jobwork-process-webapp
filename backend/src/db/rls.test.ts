@@ -28,6 +28,7 @@ const TENANT_TABLES = [
   'vendor_addresses',
   'units_of_measurement',
   'currencies',
+  'custom_field_definitions',
 ] as const;
 
 /**

@@ -1,6 +1,10 @@
 import { runAsTenant } from '../../../db/prisma.ts';
 import type { CreateItemDto, UpdateItemDto } from './items.schemas.ts';
 import { uploadFile } from '../../../lib/storage.ts';
+import {
+  loadActiveDefinitions,
+  validateCustomFields,
+} from '../../custom-fields/customFields.engine.ts';
 import type { Prisma } from '../../../../generated/prisma/client.ts';
 
 export class ItemsService {
@@ -9,7 +13,7 @@ export class ItemsService {
       tx.item.findMany({
         where: { organizationId, isDeleted: false },
         orderBy: { createdAt: 'desc' },
-      })
+      }),
     );
   }
 
@@ -46,6 +50,15 @@ export class ItemsService {
 
   async create(organizationId: string, data: CreateItemDto, userId?: string) {
     return runAsTenant(organizationId, async (tx) => {
+      const { customFields: rawCustomFields, ...rest } = data;
+
+      const defs = await loadActiveDefinitions(tx, organizationId, 'item');
+      const customFields = validateCustomFields({
+        defs,
+        input: rawCustomFields,
+        mode: 'create',
+      }) as Prisma.InputJsonValue;
+
       let performedBy = 'System';
       if (userId) {
         const user = await tx.user.findUnique({ where: { id: userId } });
@@ -56,8 +69,9 @@ export class ItemsService {
 
       const item = await tx.item.create({
         data: {
-          ...data,
-          deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : null,
+          ...rest,
+          customFields,
+          deliveryDate: rest.deliveryDate ? new Date(rest.deliveryDate) : null,
           organizationId,
           createdBy: userId ?? null,
           updatedBy: userId ?? null,
@@ -88,6 +102,21 @@ export class ItemsService {
         throw new Error('Item not found');
       }
 
+      const { customFields: rawCustomFields, ...rest } = data;
+
+      // Only re-validate when the client sends custom fields; otherwise leave the
+      // stored blob untouched. Required policy (b) uses the existing values.
+      let customFields: Prisma.InputJsonValue | undefined;
+      if (rawCustomFields !== undefined) {
+        const defs = await loadActiveDefinitions(tx, organizationId, 'item');
+        customFields = validateCustomFields({
+          defs,
+          input: rawCustomFields,
+          mode: 'update',
+          existing: item.customFields,
+        }) as Prisma.InputJsonValue;
+      }
+
       let performedBy = 'System';
       if (userId) {
         const user = await tx.user.findUnique({ where: { id: userId } });
@@ -99,10 +128,11 @@ export class ItemsService {
       const updatedItem = await tx.item.update({
         where: { id },
         data: {
-          ...data,
-          deliveryDate: data.deliveryDate
-            ? new Date(data.deliveryDate)
-            : data.deliveryDate === null
+          ...rest,
+          ...(customFields !== undefined ? { customFields } : {}),
+          deliveryDate: rest.deliveryDate
+            ? new Date(rest.deliveryDate)
+            : rest.deliveryDate === null
               ? null
               : undefined,
           updatedBy: userId ?? null,
@@ -164,84 +194,88 @@ export class ItemsService {
     id: string,
     organizationId: string,
     files: { [fieldname: string]: Express.Multer.File[] },
-    userId?: string
+    userId?: string,
   ) {
-    return runAsTenant(organizationId, async (tx) => {
-      const item = await tx.item.findFirst({
-        where: { id, organizationId, isDeleted: false },
-      });
-      if (!item) {
-        throw new Error('Item not found');
-      }
-
-      let performedBy = 'System';
-      if (userId) {
-        const user = await tx.user.findUnique({ where: { id: userId } });
-        if (user) {
-          performedBy = user.fullName;
-        }
-      }
-
-      const updateData: Prisma.ItemUncheckedUpdateInput = {};
-      
-      const processFile = async (file: Express.Multer.File) => {
-        const timestamp = Date.now();
-        const originalName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
-        const key = `items/${organizationId}/${id}/${timestamp}-${originalName}`;
-        
-        await uploadFile({
-          key,
-          body: file.buffer,
-          contentType: file.mimetype,
+    return runAsTenant(
+      organizationId,
+      async (tx) => {
+        const item = await tx.item.findFirst({
+          where: { id, organizationId, isDeleted: false },
         });
-        
-        return key;
-      };
+        if (!item) {
+          throw new Error('Item not found');
+        }
 
-      if (files.frontImage && files.frontImage.length > 0 && files.frontImage[0]) {
-        updateData.frontImage = await processFile(files.frontImage[0]);
-      }
-      
-      if (files.rearImage && files.rearImage.length > 0 && files.rearImage[0]) {
-        updateData.rearImage = await processFile(files.rearImage[0]);
-      }
-      
-      if (files.images && files.images.length > 0) {
-        const uploadedImageKeys = await Promise.all(
-          files.images.filter(Boolean).map((file) => processFile(file))
-        );
-        
-        // Append to existing images array if it exists
-        const existingImages = item.images || [];
-        // Cap the total extra images at 3 if needed, or simply append them.
-        // User requested "upload img 3 in short 5 img". Multer limits to 3 per request.
-        updateData.images = [...existingImages, ...uploadedImageKeys];
-      }
-      
-      if (Object.keys(updateData).length === 0) {
-        return item; // Nothing to update
-      }
+        let performedBy = 'System';
+        if (userId) {
+          const user = await tx.user.findUnique({ where: { id: userId } });
+          if (user) {
+            performedBy = user.fullName;
+          }
+        }
 
-      updateData.updatedBy = userId ?? null;
+        const updateData: Prisma.ItemUncheckedUpdateInput = {};
 
-      const updatedItem = await tx.item.update({
-        where: { id },
-        data: updateData,
-      });
+        const processFile = async (file: Express.Multer.File) => {
+          const timestamp = Date.now();
+          const originalName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+          const key = `items/${organizationId}/${id}/${timestamp}-${originalName}`;
 
-      await tx.itemActivity.create({
-        data: {
-          itemId: item.id,
-          title: 'Item Images Uploaded',
-          description: `Images for item ${item.name} were uploaded.`,
-          performedBy,
-          createdBy: userId ?? null,
-          updatedBy: userId ?? null,
-        },
-      });
+          await uploadFile({
+            key,
+            body: file.buffer,
+            contentType: file.mimetype,
+          });
 
-      return updatedItem;
-    }, { timeout: 60000 });
+          return key;
+        };
+
+        if (files.frontImage && files.frontImage.length > 0 && files.frontImage[0]) {
+          updateData.frontImage = await processFile(files.frontImage[0]);
+        }
+
+        if (files.rearImage && files.rearImage.length > 0 && files.rearImage[0]) {
+          updateData.rearImage = await processFile(files.rearImage[0]);
+        }
+
+        if (files.images && files.images.length > 0) {
+          const uploadedImageKeys = await Promise.all(
+            files.images.filter(Boolean).map((file) => processFile(file)),
+          );
+
+          // Append to existing images array if it exists
+          const existingImages = item.images || [];
+          // Cap the total extra images at 3 if needed, or simply append them.
+          // User requested "upload img 3 in short 5 img". Multer limits to 3 per request.
+          updateData.images = [...existingImages, ...uploadedImageKeys];
+        }
+
+        if (Object.keys(updateData).length === 0) {
+          return item; // Nothing to update
+        }
+
+        updateData.updatedBy = userId ?? null;
+
+        const updatedItem = await tx.item.update({
+          where: { id },
+          data: updateData,
+        });
+
+        await tx.itemActivity.create({
+          data: {
+            itemId: item.id,
+            title: 'Item Images Uploaded',
+            description: `Images for item ${item.name} were uploaded.`,
+            performedBy,
+            createdBy: userId ?? null,
+            updatedBy: userId ?? null,
+          },
+        });
+
+        return updatedItem;
+      },
+      { timeout: 60000 },
+    );
   }
 }
 

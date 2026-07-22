@@ -30,6 +30,7 @@ export const itemSchema = z.object({
   inventoryTracking: z.string().nullable().optional(),
   inventoryAccount: z.string().nullable().optional(),
   inventoryValuationMethod: z.string().nullable().optional(),
+  customFields: z.record(z.string(), z.unknown()).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -45,16 +46,16 @@ export const itemFormSchema = z.object({
   itemType: z.enum(['Single Item', 'Contains Variants']).default('Single Item'),
   unit: z.string().min(1, 'Unit is required'),
   sku: z.string().min(1, 'SKU is required'),
-  
+
   isSalesInfo: z.boolean().default(false),
   sellingPrice: z.number().optional().nullable(),
   salesAccount: z.string().optional().nullable(),
-  
+
   isPurchaseInfo: z.boolean().default(false),
   costPrice: z.number().optional().nullable(),
   purchaseAccount: z.string().optional().nullable(),
   packaging: z.string().optional().nullable(),
-  
+
   deliveryDate: z.string().optional().nullable(),
 
   frontImage: z.string().nullable().optional(),
@@ -66,6 +67,9 @@ export const itemFormSchema = z.object({
   inventoryTracking: z.string().nullable().optional(),
   inventoryAccount: z.string().nullable().optional(),
   inventoryValuationMethod: z.string().nullable().optional(),
+
+  // Dynamic per-org custom fields; validated server-side against the org's definitions.
+  customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type Item = z.infer<typeof itemSchema>;

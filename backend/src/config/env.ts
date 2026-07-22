@@ -68,14 +68,20 @@ const envSchema = z.object({
   // uploads a file must still boot. lib/storage.ts fails loudly at call time
   // if any of these is missing. Console -> Settings for the ids; API Console
   // self-client for the OAuth pair + refresh token.
-  CATALYST_PROJECT_ID: z.string().optional(),
-  CATALYST_PROJECT_KEY: z.string().optional(), // ZAID
-  CATALYST_ENVIRONMENT: z.enum(['Development', 'Production']).default('Development'),
-  CATALYST_CLIENT_ID: z.string().optional(),
-  CATALYST_CLIENT_SECRET: z.string().optional(),
-  CATALYST_REFRESH_TOKEN: z.string().optional(),
+  //
+  // ⚠️ These use a `ZC_` prefix, not `CATALYST_`. AppSail reserves the
+  // `CATALYST_` env-variable prefix (it injects its own `CATALYST_PROJECT_ID`
+  // etc. into the container) and rejects the whole deploy with
+  // "environment_variables must not contain reserved keywords" if the config
+  // sets any `CATALYST_*` key. Keep our own credentials out of that namespace.
+  ZC_PROJECT_ID: z.string().optional(),
+  ZC_PROJECT_KEY: z.string().optional(), // ZAID
+  ZC_ENVIRONMENT: z.enum(['Development', 'Production']).default('Development'),
+  ZC_CLIENT_ID: z.string().optional(),
+  ZC_CLIENT_SECRET: z.string().optional(),
+  ZC_REFRESH_TOKEN: z.string().optional(),
   // Default Stratus bucket every upload lands in unless a call overrides it.
-  CATALYST_STRATUS_BUCKET: z.string().optional(),
+  ZC_STRATUS_BUCKET: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -123,22 +129,22 @@ export const env = {
     fromName: raw.SMTP_FROM_NAME,
   },
   catalyst: {
-    projectId: raw.CATALYST_PROJECT_ID,
-    projectKey: raw.CATALYST_PROJECT_KEY,
-    environment: raw.CATALYST_ENVIRONMENT,
-    clientId: raw.CATALYST_CLIENT_ID,
-    clientSecret: raw.CATALYST_CLIENT_SECRET,
-    refreshToken: raw.CATALYST_REFRESH_TOKEN,
-    stratusBucket: raw.CATALYST_STRATUS_BUCKET,
+    projectId: raw.ZC_PROJECT_ID,
+    projectKey: raw.ZC_PROJECT_KEY,
+    environment: raw.ZC_ENVIRONMENT,
+    clientId: raw.ZC_CLIENT_ID,
+    clientSecret: raw.ZC_CLIENT_SECRET,
+    refreshToken: raw.ZC_REFRESH_TOKEN,
+    stratusBucket: raw.ZC_STRATUS_BUCKET,
     // True only when every credential the SDK needs is present. lib/storage.ts
     // reads this to fail with a clear message instead of a cryptic SDK error.
     configured: Boolean(
-      raw.CATALYST_PROJECT_ID &&
-      raw.CATALYST_PROJECT_KEY &&
-      raw.CATALYST_CLIENT_ID &&
-      raw.CATALYST_CLIENT_SECRET &&
-      raw.CATALYST_REFRESH_TOKEN &&
-      raw.CATALYST_STRATUS_BUCKET,
+      raw.ZC_PROJECT_ID &&
+      raw.ZC_PROJECT_KEY &&
+      raw.ZC_CLIENT_ID &&
+      raw.ZC_CLIENT_SECRET &&
+      raw.ZC_REFRESH_TOKEN &&
+      raw.ZC_STRATUS_BUCKET,
     ),
   },
 } as const;

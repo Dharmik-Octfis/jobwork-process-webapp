@@ -16,7 +16,7 @@ import { env } from '../config/env.ts';
  * (`initializeApp` + a refresh-token credential). One credential set, identical
  * behaviour locally and in production, no `req` threaded through every service.
  *
- * Credentials live in env (`CATALYST_*`) and are optional — a deployment that
+ * Credentials live in env (`ZC_*`) and are optional — a deployment that
  * never uploads still boots. Every entry point calls `getBucket`, which throws
  * a clear error if storage was never configured, rather than letting a cryptic
  * SDK failure surface at the call site.
@@ -33,9 +33,9 @@ function getStratus() {
   if (!env.catalyst.configured) {
     // Fail closed and loud: a silent no-op upload is worse than a 500.
     throw new Error(
-      'Catalyst Stratus is not configured. Set CATALYST_PROJECT_ID, ' +
-        'CATALYST_PROJECT_KEY, CATALYST_CLIENT_ID, CATALYST_CLIENT_SECRET, ' +
-        'CATALYST_REFRESH_TOKEN and CATALYST_STRATUS_BUCKET.',
+      'Catalyst Stratus is not configured. Set ZC_PROJECT_ID, ' +
+        'ZC_PROJECT_KEY, ZC_CLIENT_ID, ZC_CLIENT_SECRET, ' +
+        'ZC_REFRESH_TOKEN and ZC_STRATUS_BUCKET.',
     );
   }
 

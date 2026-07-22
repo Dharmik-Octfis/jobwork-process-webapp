@@ -24,6 +24,8 @@ import { CreateItemPage } from '../features/items/CreateItemPage';
 import { EditItemPage } from '../features/items/EditItemPage';
 import { UnitOfMeasurementPage } from '../features/inventory/uom/UnitOfMeasurementPage';
 import { CurrenciesPage } from '../features/configuration/currencies/CurrenciesPage';
+import { ModulesListPage } from '../features/custom-fields/ModulesListPage';
+import { ModuleFieldsPage } from '../features/custom-fields/ModuleFieldsPage';
 
 /**
  * Every page whose data belongs to one organization lives under
@@ -81,6 +83,8 @@ export const router = createBrowserRouter([
           { path: 'members', element: <InviteMembersPage /> },
           { path: 'inventory/uom', element: <UnitOfMeasurementPage /> },
           { path: 'configuration/currencies', element: <CurrenciesPage /> },
+          { path: 'modules', element: <ModulesListPage /> },
+          { path: 'modules/:entityType', element: <ModuleFieldsPage /> },
         ],
       },
       { path: '/organizations/new', element: <CreateOrganizationForm /> },

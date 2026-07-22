@@ -1,9 +1,23 @@
-import { NavLink, Outlet, useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeft, Building2, Users, Package, Coins } from 'lucide-react';
+import { useState } from 'react';
+import { NavLink, Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
+import {
+  ChevronLeft,
+  Building2,
+  Users,
+  Package,
+  Coins,
+  LayoutGrid,
+  ChevronDown,
+  ChevronRight,
+} from 'lucide-react';
+import { CUSTOM_FIELD_MODULES } from '../../features/custom-fields/customFields.schemas';
 
 export function SettingsLayout() {
   const { orgId } = useParams<{ orgId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const onModulesRoute = location.pathname.includes('/settings/modules');
+  const [modulesOpen, setModulesOpen] = useState(onModulesRoute);
 
   return (
     <div
@@ -51,7 +65,7 @@ export function SettingsLayout() {
           >
             <ChevronLeft size={16} /> Back to Dashboard
           </button>
-          
+
           <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: 'var(--color-text)' }}>
             Settings
           </h2>
@@ -67,10 +81,20 @@ export function SettingsLayout() {
             overflowY: 'auto',
           }}
         >
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-text-muted)', padding: '0 12px', marginBottom: 4, letterSpacing: '0.05em' }}>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              color: 'var(--color-text-muted)',
+              padding: '0 12px',
+              marginBottom: 4,
+              letterSpacing: '0.05em',
+            }}
+          >
             Organization
           </div>
-          
+
           <NavLink
             to={`/organizations/${orgId}/settings`}
             end
@@ -110,10 +134,21 @@ export function SettingsLayout() {
             <span style={{ fontSize: 14 }}>Members & Invites</span>
           </NavLink>
 
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-text-muted)', padding: '0 12px', marginTop: 16, marginBottom: 4, letterSpacing: '0.05em' }}>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              color: 'var(--color-text-muted)',
+              padding: '0 12px',
+              marginTop: 16,
+              marginBottom: 4,
+              letterSpacing: '0.05em',
+            }}
+          >
             Inventory
           </div>
-          
+
           <NavLink
             to={`/organizations/${orgId}/settings/inventory/uom`}
             style={({ isActive }) => ({
@@ -132,10 +167,21 @@ export function SettingsLayout() {
             <Package size={18} />
             <span style={{ fontSize: 14 }}>Unit of Measurement</span>
           </NavLink>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-text-muted)', padding: '0 12px', marginTop: 16, marginBottom: 4, letterSpacing: '0.05em' }}>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              color: 'var(--color-text-muted)',
+              padding: '0 12px',
+              marginTop: 16,
+              marginBottom: 4,
+              letterSpacing: '0.05em',
+            }}
+          >
             Configuration
           </div>
-          
+
           <NavLink
             to={`/organizations/${orgId}/settings/configuration/currencies`}
             style={({ isActive }) => ({
@@ -154,6 +200,68 @@ export function SettingsLayout() {
             <Coins size={18} />
             <span style={{ fontSize: 14 }}>Currencies</span>
           </NavLink>
+
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              color: 'var(--color-text-muted)',
+              padding: '0 12px',
+              marginTop: 16,
+              marginBottom: 4,
+              letterSpacing: '0.05em',
+            }}
+          >
+            Customization
+          </div>
+
+          {/* Modules — expandable dropdown listing the modules that support custom fields. */}
+          <button
+            type="button"
+            onClick={() => setModulesOpen((o) => !o)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-3)',
+              padding: '8px 12px',
+              borderRadius: 'var(--radius-md)',
+              border: 'none',
+              background: onModulesRoute ? 'var(--primary-50)' : 'transparent',
+              color: onModulesRoute ? 'var(--color-primary)' : 'var(--color-text)',
+              fontWeight: onModulesRoute ? 600 : 500,
+              cursor: 'pointer',
+              width: '100%',
+              textAlign: 'left',
+            }}
+          >
+            <LayoutGrid size={18} />
+            <span style={{ fontSize: 14, flex: 1 }}>Modules</span>
+            {modulesOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          </button>
+
+          {modulesOpen &&
+            CUSTOM_FIELD_MODULES.map((m) => (
+              <NavLink
+                key={m.entityType}
+                to={`/organizations/${orgId}/settings/modules/${m.entityType}`}
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-3)',
+                  padding: '7px 12px 7px 40px',
+                  borderRadius: 'var(--radius-md)',
+                  textDecoration: 'none',
+                  color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
+                  background: isActive ? 'var(--primary-50)' : 'transparent',
+                  fontWeight: isActive ? 600 : 500,
+                  fontSize: 13,
+                  transition: 'all 0.2s ease',
+                })}
+              >
+                {m.label}
+              </NavLink>
+            ))}
         </nav>
       </aside>
 

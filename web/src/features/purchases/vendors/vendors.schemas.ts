@@ -109,6 +109,10 @@ export const createVendorSchema = z.object({
 
   contactPersons: z.array(vendorContactPersonSchema).optional(),
   addresses: z.array(vendorAddressSchema).optional(),
+
+  // Dynamic per-org custom fields. Kept loose here; validated server-side against
+  // this org's field definitions.
+  customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type CreateVendorData = z.infer<typeof createVendorSchema>;

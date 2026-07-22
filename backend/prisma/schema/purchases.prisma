@@ -2,7 +2,6 @@ model Vendor {
   id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String @map("organization_id") @db.Uuid
 
-
   // Primary Contact
   primaryContactSalutation String? @map("primary_contact_salutation") @db.VarChar(20)
   primaryContactFirstName  String? @map("primary_contact_first_name") @db.VarChar(100)
@@ -16,7 +15,6 @@ model Vendor {
   workPhone    String? @map("work_phone") @db.VarChar(50)
   mobilePhone  String? @map("mobile_phone") @db.VarChar(50)
 
-
   // Other Details
   currency     String? @db.VarChar(10)
   paymentTerms String? @map("payment_terms") @db.VarChar(100)
@@ -25,6 +23,9 @@ model Vendor {
   addresses VendorAddress[]
 
   status String @default("active") @db.VarChar(20)
+
+  // Per-org dynamic custom fields — keyed by CustomFieldDefinition.key. See customfields.prisma.
+  customFields Json @default("{}") @map("custom_fields")
 
   isDeleted Boolean  @default(false) @map("is_deleted")
   createdBy String?  @map("created_by") @db.Uuid
@@ -112,14 +113,14 @@ model VendorAddress {
   vendorId    String @map("vendor_id") @db.Uuid
   addressType String @map("address_type") @db.VarChar(50) // e.g., 'billing', 'shipping', 'additional'
 
-  attention String? @db.VarChar(255)
-  country   String? @db.VarChar(100)
+  attention String?  @db.VarChar(255)
+  country   String?  @db.VarChar(100)
   street1   String?
   street2   String?
-  city      String? @db.VarChar(100)
-  state     String? @db.VarChar(100)
-  pinCode   String? @map("pin_code") @db.VarChar(20)
-  phone     String? @db.VarChar(50)
+  city      String?  @db.VarChar(100)
+  state     String?  @db.VarChar(100)
+  pinCode   String?  @map("pin_code") @db.VarChar(20)
+  phone     String?  @db.VarChar(50)
   isDeleted Boolean  @default(false) @map("is_deleted")
   createdBy String?  @map("created_by") @db.Uuid
   updatedBy String?  @map("updated_by") @db.Uuid
@@ -133,5 +134,3 @@ model VendorAddress {
 
   @@map("vendor_addresses")
 }
-
-

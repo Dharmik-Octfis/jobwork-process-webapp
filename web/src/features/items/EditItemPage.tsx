@@ -7,6 +7,7 @@ import type { ItemFormData } from './items.schemas.ts';
 import { itemFormSchema } from './items.schemas.ts';
 import { z } from 'zod';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog.tsx';
+import { CustomFieldsSection } from '../custom-fields/CustomFieldsSection.tsx';
 
 export function EditItemPage() {
   const { id, orgId } = useParams<{ id: string; orgId: string }>();
@@ -40,9 +41,11 @@ export function EditItemPage() {
     inventoryTracking: 'None',
     inventoryAccount: '',
     inventoryValuationMethod: 'FIFO (First In, First Out)',
+    customFields: {},
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [customFieldErrors, setCustomFieldErrors] = useState<Record<string, string>>({});
   const [initializedId, setInitializedId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -92,6 +95,7 @@ export function EditItemPage() {
       inventoryTracking: item.inventoryTracking || 'None',
       inventoryAccount: item.inventoryAccount || '',
       inventoryValuationMethod: item.inventoryValuationMethod || 'FIFO (First In, First Out)',
+      customFields: (item.customFields as Record<string, unknown>) || {},
     });
   }
 
@@ -103,7 +107,7 @@ export function EditItemPage() {
         const formDataUpload = new FormData();
         if (frontImageFile) formDataUpload.append('frontImage', frontImageFile);
         if (rearImageFile) formDataUpload.append('rearImage', rearImageFile);
-        otherImageFiles.forEach(file => formDataUpload.append('images', file));
+        otherImageFiles.forEach((file) => formDataUpload.append('images', file));
         try {
           await itemsApi.uploadImages(orgId!, id!, formDataUpload);
         } catch (error) {
@@ -116,8 +120,16 @@ export function EditItemPage() {
       navigate(`/organizations/${orgId}/items`);
     },
     onError: (error) => {
+      const err = error as {
+        response?: { data?: { error?: string; message?: string; details?: unknown } };
+      };
+      const details = err.response?.data?.details;
+      if (details && typeof details === 'object' && !Array.isArray(details)) {
+        setCustomFieldErrors(details as Record<string, string>);
+        return;
+      }
       console.error('Failed to update item:', error);
-      alert('Failed to update item.');
+      alert(err.response?.data?.error || err.response?.data?.message || 'Failed to update item.');
     },
   });
 
@@ -185,6 +197,7 @@ export function EditItemPage() {
     try {
       itemFormSchema.parse(formData);
       setErrors({});
+      setCustomFieldErrors({});
       updateMutation.mutate(formData);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -452,7 +465,13 @@ export function EditItemPage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
                 <div>
                   <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b' }}>Front View</div>
-                  <input type="file" ref={frontImageRef} onChange={handleFrontImageChange} style={{ display: 'none' }} accept="image/*" />
+                  <input
+                    type="file"
+                    ref={frontImageRef}
+                    onChange={handleFrontImageChange}
+                    style={{ display: 'none' }}
+                    accept="image/*"
+                  />
                   <button
                     type="button"
                     onClick={() => frontImageRef.current?.click()}
@@ -470,12 +489,24 @@ export function EditItemPage() {
                       cursor: 'pointer',
                     }}
                   >
-                    <span>{frontImageFile ? frontImageFile.name : (formData.frontImage ? 'Change Front Image' : '↑ Upload Front Image')}</span>
+                    <span>
+                      {frontImageFile
+                        ? frontImageFile.name
+                        : formData.frontImage
+                          ? 'Change Front Image'
+                          : '↑ Upload Front Image'}
+                    </span>
                   </button>
                 </div>
                 <div>
                   <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b' }}>Rear View</div>
-                  <input type="file" ref={rearImageRef} onChange={handleRearImageChange} style={{ display: 'none' }} accept="image/*" />
+                  <input
+                    type="file"
+                    ref={rearImageRef}
+                    onChange={handleRearImageChange}
+                    style={{ display: 'none' }}
+                    accept="image/*"
+                  />
                   <button
                     type="button"
                     onClick={() => rearImageRef.current?.click()}
@@ -493,13 +524,26 @@ export function EditItemPage() {
                       cursor: 'pointer',
                     }}
                   >
-                    <span>{rearImageFile ? rearImageFile.name : (formData.rearImage ? 'Change Rear Image' : '↑ Upload Rear Image')}</span>
+                    <span>
+                      {rearImageFile
+                        ? rearImageFile.name
+                        : formData.rearImage
+                          ? 'Change Rear Image'
+                          : '↑ Upload Rear Image'}
+                    </span>
                   </button>
                 </div>
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b' }}>Other Images</div>
-                <input type="file" ref={otherImagesRef} onChange={handleOtherImagesChange} style={{ display: 'none' }} accept="image/*" multiple />
+                <input
+                  type="file"
+                  ref={otherImagesRef}
+                  onChange={handleOtherImagesChange}
+                  style={{ display: 'none' }}
+                  accept="image/*"
+                  multiple
+                />
                 <button
                   type="button"
                   onClick={() => otherImagesRef.current?.click()}
@@ -533,7 +577,11 @@ export function EditItemPage() {
                     ↑
                   </div>
                   <div style={{ fontWeight: 500, fontSize: 12, color: '#1e293b' }}>
-                    {otherImageFiles.length > 0 ? `${otherImageFiles.length} files selected` : (formData.images && formData.images.length > 0 ? `${formData.images.length} existing images (Click to replace)` : 'Drag & Drop Images')}
+                    {otherImageFiles.length > 0
+                      ? `${otherImageFiles.length} files selected`
+                      : formData.images && formData.images.length > 0
+                        ? `${formData.images.length} existing images (Click to replace)`
+                        : 'Drag & Drop Images'}
                   </div>
                   <div
                     style={{ fontSize: 11, color: '#64748b', textAlign: 'center', lineHeight: 1.5 }}
@@ -1033,6 +1081,31 @@ export function EditItemPage() {
               </div>
             )}
           </div>
+
+          <hr style={{ border: 'none', borderTop: '1px solid #cbd5e1' }} />
+
+          {/* Custom Fields */}
+          {orgId && (
+            <div>
+              <h3
+                style={{
+                  fontSize: '16px',
+                  fontWeight: 500,
+                  marginBottom: '12px',
+                  color: '#1e293b',
+                }}
+              >
+                Custom Fields
+              </h3>
+              <CustomFieldsSection
+                orgId={orgId}
+                entityType="item"
+                values={(formData.customFields as Record<string, unknown>) ?? {}}
+                onChange={(v) => setFormData((prev) => ({ ...prev, customFields: v }))}
+                errors={customFieldErrors}
+              />
+            </div>
+          )}
 
           <div
             style={{

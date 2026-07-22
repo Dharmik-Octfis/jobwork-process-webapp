@@ -2,11 +2,15 @@ import { Router } from 'express';
 import { authRouter } from '../modules/auth/auth.routes.ts';
 import { organizationsRouter } from '../modules/organizations/organizations.routes.ts';
 import { invitationsRouter } from '../modules/invitations/invitations.routes.ts';
-import { globalMasterDataRouter, tenantMasterDataRouter } from '../modules/master-data/master-data.routes.ts';
+import {
+  globalMasterDataRouter,
+  tenantMasterDataRouter,
+} from '../modules/master-data/master-data.routes.ts';
 import { appModulesRouter } from '../modules/app-modules/app-modules.routes.ts';
 import { vendorsRouter } from '../modules/purchases/vendors/vendors.routes.ts';
 import { uomRouter } from '../modules/inventory/uom/uom.routes.ts';
 import { currenciesRouter } from '../modules/configuration/currencies/currencies.routes.ts';
+import { customFieldsRouter } from '../modules/custom-fields/custom-fields.routes.ts';
 
 /** Mounts every module router under `/api` (architecture §4). */
 export const apiRouter = Router();
@@ -29,6 +33,7 @@ apiRouter.use('/auth', authRouter);
 apiRouter.use('/organizations/:orgId/purchases/vendors', vendorsRouter);
 apiRouter.use('/organizations/:orgId/inventory/uom', uomRouter);
 apiRouter.use('/organizations/:orgId/configuration/currencies', currenciesRouter);
+apiRouter.use('/organizations/:orgId/custom-fields', customFieldsRouter);
 apiRouter.use('/organizations/:orgId/master-data', tenantMasterDataRouter);
 apiRouter.use('/master-data', globalMasterDataRouter);
 

@@ -1,4 +1,4 @@
-# ANTIGRAVITY.md
+# CLAUDE.md
 
 Multi-tenant SaaS (production monitoring / inventory). **Express 5 + TypeScript** modular monolith,
 **React 19 + Vite** front end, **PostgreSQL 18 via Prisma 7**, deployed to **Zoho Catalyst AppSail**.
@@ -70,50 +70,6 @@ promotes it to `req.tenantId` after checking `memberships`. Everything downstrea
 
 ## Schema conventions — copy `prisma/schema/tenant.prisma`, not Prisma defaults
 
-**Every table MUST include these 5 audit fields:**
-
-```prisma
-  isDeleted      Boolean  @default(false) @map("is_deleted")
-  createdBy      String?  @map("created_by") @db.Uuid
-  updatedBy      String?  @map("updated_by") @db.Uuid
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-```
-
-When creating new tables and APIs, always consider these keys and take reference from old APIs and tables.
-
-**Every domain table also carries a `custom_fields` JSONB** — per-org dynamic fields live in one
-column, never extra tables or per-tenant columns (same exclusions as the 5 audit fields: no token
-or master-data reference tables):
-
-```prisma
-  customFields Json @default("{}") @map("custom_fields")
-```
-
-- **Migration time:** add the column when the table is first created (free on an empty table, a
-  midnight migration on a large one). Field _definitions_ live once in `custom_field_definitions`;
-  a new module needs **no new table** — only its `custom_fields` column and an `entityType` string.
-- **Validation time (create + update):** never trust the client's shape. Inside the same
-  `runAsTenant` tx, load the org's active definitions and validate through the engine, then persist
-  the cleaned object — copy `vendors.service.ts` / `items.service.ts`:
-  ```ts
-  const defs = await loadActiveDefinitions(tx, organizationId, 'vendor');
-  const customFields = validateCustomFields({
-    defs,
-    input: rawCustomFields,
-    mode: 'create' /* or 'update', existing */,
-  });
-  ```
-  The engine (`src/modules/custom-fields/customFields.engine.ts`) strips unknown keys, type-checks
-  values, stores decimals as strings + select/multi-select as option **ids**, and enforces required
-  **only on create, or on update when the field already had a value**. It throws `ApiError(400)` with
-  `details` keyed `customFields.<key>` — the controller **needs an `ApiError` branch** or those
-  become a 500.
-- **Read time:** unchanged — it's a column, so queries keep their shape. Accept
-  `customFields: z.record(z.string(), z.unknown()).optional()` on the module schema, and set the
-  **validated** value (never the raw input). Register new modules in `ENTITY_TYPES` (backend) +
-  `CUSTOM_FIELD_MODULES` (frontend); `helpText`/`defaultValue`/`options` live in the `config` JSONB.
-
 |                  | This repo                                                 | **Not**                                   |
 | ---------------- | --------------------------------------------------------- | ----------------------------------------- |
 | UUID PK          | `@id @default(dbgenerated("gen_random_uuid()")) @db.Uuid` | `@default(uuid())`                        |
@@ -126,6 +82,94 @@ or master-data reference tables):
 **`prisma validate` will NOT catch a mismatch** — it compares _Prisma_ types (`String` == `String`)
 and never sees `uuid` vs `text`. Postgres fails at runtime with `operator does not exist: uuid = text`,
 which reads like a query bug. **When you change a PK's native type, grep every FK that references it.**
+
+### Default columns — every domain table carries these five
+
+Added in `migrations/20260720120300_add_default_audit_columns`. Copy this block into
+every new **domain** table (business/tenant data). **Exclude** ephemeral token tables
+(`refresh_tokens`, `password_reset_tokens`) and master-data reference tables
+(`countries`, `states`, `cities`, `industries`, `app_modules`).
+
+```prisma
+  isDeleted     Boolean  @default(false) @map("is_deleted")           // soft-delete flag
+  createdBy     String?  @map("created_by") @db.Uuid                  // acting user
+  updatedBy     String?  @map("updated_by") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  createdByUser User? @relation("<Model>CreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("<Model>UpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+```
+
+And the two back-relations on `User` (relation names must be globally unique):
+
+```prisma
+  created<Model>s <Model>[] @relation("<Model>CreatedBy")
+  updated<Model>s <Model>[] @relation("<Model>UpdatedBy")
+```
+
+- `createdBy`/`updatedBy` are **nullable** — migrations, `seed.ts`, and self-signup have
+  no acting user. `onDelete: SetNull` so deleting a user never cascades into business
+  data. FK checks bypass RLS in Postgres, so these are safe on tenant tables.
+- **Populate them in the service layer** from `req.user.id` — `createdBy` + `updatedBy` on
+  create, `updatedBy` on update. Never let the client send them; omit from the input type
+  (see `vendors.service.ts` `VendorInput`).
+- **Soft delete is enforced** — a "delete" is an `update`, not a `DELETE`:
+  ```ts
+  // deletes NEVER call tx.x.delete(...). They stamp the flag as an update:
+  tx.vendor.update({ where: { id }, data: { isDeleted: true, updatedBy: userId } });
+  ```
+  `createdBy` stays the original creator; `updatedBy`/`updatedAt` record who removed it, so
+  the row reads as "last modified by the deleter". **Every read must filter `isDeleted: false`**
+  — list queries, single-row fetches, and the existence check inside update/delete (a
+  soft-deleted row must 404, not resurrect). `tenantContext` also filters `organization.isDeleted`,
+  so a deleted org is unreachable through any tenant route even though the membership row remains.
+  See `vendors.service.ts`, `items.service.ts`, `organizations.controller.ts`.
+- ⚠️ **Unique constraints + soft delete:** a soft-deleted row still occupies its unique key
+  (`@@unique([organizationId, vendorNumber])`, `@@unique([userId, organizationId])`, …). If you
+  ever need to re-create a key a soft-deleted row holds, either reactivate that row
+  (`isDeleted: false`) or add a **partial unique index** (`WHERE is_deleted = false`). None are
+  needed today (vendor numbers come from a sequence; membership accept upserts the existing row).
+
+### Custom fields — every domain table also carries `custom_fields`
+
+Per-org dynamic fields live in **one JSONB column**, never extra tables or per-tenant columns.
+Copy this into every new **domain** table (same exclusions as the five audit columns above — no
+ephemeral token tables, no master-data reference tables):
+
+```prisma
+  customFields Json @default("{}") @map("custom_fields") // per-org dynamic fields
+```
+
+- **Migration time:** add the column when you first create the table. Empty JSONB on an empty
+  table is free; bolting it onto a million-row table later is a midnight migration. Field
+  _definitions_ live once in `custom_field_definitions` (`prisma/schema/customfields.prisma`), so a
+  new module needs **no new table** — only its `custom_fields` column and an `entityType` string.
+- **Validation time (create + update):** never trust the client's `customFields` shape. Inside the
+  **same `runAsTenant` tx**, load the org's active definitions and validate through the engine, then
+  persist the cleaned object — copy `vendors.service.ts` / `items.service.ts`:
+  ```ts
+  const defs = await loadActiveDefinitions(tx, organizationId, 'vendor');
+  const customFields = validateCustomFields({
+    defs,
+    input: rawCustomFields,
+    mode: 'create', // or 'update' with `existing: row.customFields`
+  });
+  ```
+  The engine (`src/modules/custom-fields/customFields.engine.ts`) strips unknown keys, type-checks
+  each value, stores decimals as **strings** and select/multi-select as option **ids**, preserves
+  hidden/archived values, and enforces required **only on create, or on update when the field
+  already held a value** (old records stay editable). It throws `ApiError(400)` with `details` keyed
+  `customFields.<key>` — so the controller **must have an `ApiError` branch** (the vendor/item
+  controllers do) or those field errors collapse into a generic 500.
+- **Read time:** nothing changes — `custom_fields` rides along like any column, so list/detail
+  queries keep their shape. Accept it on the module's create/update schema
+  (`customFields: z.record(z.string(), z.unknown()).optional()`), then destructure it out of the
+  Prisma write and set the **validated** value, never the raw input.
+- **Register a new module** in the allowlist both sides: backend `ENTITY_TYPES`
+  (`customFields.constants.ts`) and frontend `CUSTOM_FIELD_MODULES` (`customFields.schemas.ts`).
+  `helpText`, `defaultValue`, and dropdown `options` live inside the definition's `config` JSONB —
+  no migration to add or change them.
 
 ## Module conventions
 

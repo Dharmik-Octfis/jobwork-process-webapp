@@ -1,4 +1,3 @@
-
 interface Activity {
   id: string;
   title: string;
@@ -30,15 +29,11 @@ function formatDate(dateString: string) {
 
 export function ItemActivityHistory({ activities, isLoading }: ItemActivityHistoryProps) {
   if (isLoading) {
-    return (
-      <div style={{ padding: '24px', color: '#64748b' }}>Loading history...</div>
-    );
+    return <div style={{ padding: '24px', color: '#64748b' }}>Loading history...</div>;
   }
 
   if (!activities || activities.length === 0) {
-    return (
-      <div style={{ padding: '24px', color: '#64748b' }}>No activity history found.</div>
-    );
+    return <div style={{ padding: '24px', color: '#64748b' }}>No activity history found.</div>;
   }
 
   return (
@@ -46,10 +41,27 @@ export function ItemActivityHistory({ activities, isLoading }: ItemActivityHisto
       <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
         <thead>
           <tr style={{ borderBottom: '1px solid #eef0f3' }}>
-            <th style={{ padding: '12px 16px', color: '#64748b', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', width: '220px' }}>
+            <th
+              style={{
+                padding: '12px 16px',
+                color: '#64748b',
+                fontSize: '11px',
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                width: '220px',
+              }}
+            >
               Date
             </th>
-            <th style={{ padding: '12px 16px', color: '#64748b', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase' }}>
+            <th
+              style={{
+                padding: '12px 16px',
+                color: '#64748b',
+                fontSize: '11px',
+                fontWeight: 600,
+                textTransform: 'uppercase',
+              }}
+            >
               Details
             </th>
           </tr>
@@ -57,10 +69,24 @@ export function ItemActivityHistory({ activities, isLoading }: ItemActivityHisto
         <tbody>
           {activities.map((activity) => (
             <tr key={activity.id} style={{ borderBottom: '1px solid #eef0f3' }}>
-              <td style={{ padding: '8px 16px', color: '#475569', fontSize: '13px', verticalAlign: 'top' }}>
+              <td
+                style={{
+                  padding: '8px 16px',
+                  color: '#475569',
+                  fontSize: '13px',
+                  verticalAlign: 'top',
+                }}
+              >
                 {formatDate(activity.createdAt)}
               </td>
-              <td style={{ padding: '8px 16px', color: '#333', fontSize: '13px', verticalAlign: 'top' }}>
+              <td
+                style={{
+                  padding: '8px 16px',
+                  color: '#333',
+                  fontSize: '13px',
+                  verticalAlign: 'top',
+                }}
+              >
                 <span style={{ fontWeight: 500 }}>{activity.description}</span>
                 {activity.performedBy && (
                   <span style={{ color: '#64748b', marginLeft: '4px', fontSize: '13px' }}>
