@@ -84,7 +84,7 @@ export function refreshAccessToken(): Promise<string | null> {
     });
 
   if (typeof navigator !== 'undefined' && navigator.locks) {
-    refreshInFlight = navigator.locks.request('auth_refresh', doRefresh).finally(() => {
+    refreshInFlight = (navigator.locks.request('auth_refresh', doRefresh) as unknown as Promise<string | null>).finally(() => {
       refreshInFlight = null;
     });
   } else {
@@ -96,7 +96,18 @@ export function refreshAccessToken(): Promise<string | null> {
 }
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Unwrap the standardized API response wrapper if present
+    if (
+      response.data &&
+      typeof response.data === 'object' &&
+      'statusCode' in response.data &&
+      'data' in response.data
+    ) {
+      return { ...response, data: response.data.data };
+    }
+    return response;
+  },
   async (error) => {
     const original = error.config as RetriableConfig | undefined;
     const status = axios.isAxiosError(error) ? error.response?.status : undefined;

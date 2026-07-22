@@ -7,6 +7,7 @@ import { env } from './config/env.ts';
 import swaggerUi from 'swagger-ui-express';
 import { generateOpenApiDocument } from './config/openapi.ts';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler.ts';
+import { responseFormatter } from './middlewares/responseFormatter.ts';
 import { apiRouter } from './routes/index.ts';
 
 /** Builds the Express app: middleware, then routes, then error handling. */
@@ -28,7 +29,7 @@ export function createApp(): express.Express {
   app.use(cookieParser());
 
   // API Routes
-  app.use('/api', apiRouter);
+  app.use('/api', responseFormatter, apiRouter);
 
   // Swagger UI Documentation
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(generateOpenApiDocument()));
