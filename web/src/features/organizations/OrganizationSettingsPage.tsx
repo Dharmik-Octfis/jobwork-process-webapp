@@ -37,7 +37,7 @@ export function OrganizationSettingsPage() {
 
   useEffect(() => {
     organizationsApi
-      .getMasterData()
+      .getSeedData()
       .then(setMasterData)
       .catch((err) => console.error('Failed to load master data:', err));
   }, []);

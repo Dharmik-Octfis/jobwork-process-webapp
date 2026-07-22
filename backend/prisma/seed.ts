@@ -105,8 +105,8 @@ async function main() {
 
   const inventory = await prisma.appModule.upsert({
     where: { code: 'INVENTORY' },
-    update: { name: 'Inventory', sortIndex: 2 },
-    create: { code: 'INVENTORY', name: 'Inventory', sortIndex: 2, icon: 'FileText' },
+    update: { name: 'Item', sortIndex: 2 },
+    create: { code: 'INVENTORY', name: 'Item', sortIndex: 2, icon: 'FileText' },
   });
 
   await prisma.appModule.upsert({

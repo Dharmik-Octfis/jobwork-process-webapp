@@ -58,7 +58,7 @@ export function CreateOrganizationForm() {
 
   useEffect(() => {
     organizationsApi
-      .getMasterData()
+      .getSeedData()
       .then((data) => {
         setMasterData(data);
         // Re-assert India once the country options exist: an uncontrolled

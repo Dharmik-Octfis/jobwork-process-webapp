@@ -31,7 +31,7 @@ export const endpoints = {
     vendors: (orgId: string) => `/organizations/${orgId}/purchases/vendors`,
     vendorPreferences: (orgId: string) => `/organizations/${orgId}/purchases/vendors/preferences/number-sequence`,
   },
-  masterData: {
-    items: (orgId: string) => `/organizations/${orgId}/master-data/items`,
+  seedData: {
+    items: (orgId: string) => `/organizations/${orgId}/items`,
   },
 } as const;

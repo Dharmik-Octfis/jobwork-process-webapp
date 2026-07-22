@@ -1,16 +1,17 @@
 import { Router } from 'express';
 import { authRouter } from '../modules/auth/auth.routes.ts';
-import { organizationsRouter } from '../modules/organizations/organizations.routes.ts';
-import { invitationsRouter } from '../modules/invitations/invitations.routes.ts';
+import { organizationsRouter } from '../modules/settings/organization/organizations/organizations.routes.ts';
+import { invitationsRouter } from '../modules/settings/organization/invitations/invitations.routes.ts';
 import {
-  globalMasterDataRouter,
-  tenantMasterDataRouter,
-} from '../modules/master-data/master-data.routes.ts';
-import { appModulesRouter } from '../modules/app-modules/app-modules.routes.ts';
+  globalSeedDataRouter,
+  tenantSeedDataRouter,
+} from '../modules/seed-data/seed-data.routes.ts';
+import { appModulesRouter } from '../modules/settings/customization/app-modules/app-modules.routes.ts';
 import { vendorsRouter } from '../modules/purchases/vendors/vendors.routes.ts';
-import { uomRouter } from '../modules/inventory/uom/uom.routes.ts';
-import { currenciesRouter } from '../modules/configuration/currencies/currencies.routes.ts';
-import { customFieldsRouter } from '../modules/custom-fields/custom-fields.routes.ts';
+import { uomRouter } from '../modules/settings/inventory/uom/uom.routes.ts';
+import { currenciesRouter } from '../modules/settings/configuration/currencies/currencies.routes.ts';
+import { customFieldsRouter } from '../modules/settings/customization/custom-fields/custom-fields.routes.ts';
+import { itemsRouter } from '../modules/items/items.routes.ts';
 
 /** Mounts every module router under `/api` (architecture §4). */
 export const apiRouter = Router();
@@ -34,8 +35,9 @@ apiRouter.use('/organizations/:orgId/purchases/vendors', vendorsRouter);
 apiRouter.use('/organizations/:orgId/inventory/uom', uomRouter);
 apiRouter.use('/organizations/:orgId/configuration/currencies', currenciesRouter);
 apiRouter.use('/organizations/:orgId/custom-fields', customFieldsRouter);
-apiRouter.use('/organizations/:orgId/master-data', tenantMasterDataRouter);
-apiRouter.use('/master-data', globalMasterDataRouter);
+apiRouter.use('/organizations/:orgId/items', itemsRouter);
+apiRouter.use('/organizations/:orgId/seed-data', tenantSeedDataRouter);
+apiRouter.use('/seed-data', globalSeedDataRouter);
 
 apiRouter.use('/organizations', organizationsRouter);
 apiRouter.use('/invitations', invitationsRouter);

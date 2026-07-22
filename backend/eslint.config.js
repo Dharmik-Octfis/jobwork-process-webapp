@@ -6,7 +6,7 @@ import { defineConfig, globalIgnores } from 'eslint/config';
 
 export default defineConfig([
   // `generated/` is Prisma's output — never hand-edited, never linted.
-  globalIgnores(['dist', 'generated']),
+  globalIgnores(['dist', 'generated', 'public']),
   {
     files: ['**/*.{ts,js}'],
     extends: [js.configs.recommended, tseslint.configs.recommended],

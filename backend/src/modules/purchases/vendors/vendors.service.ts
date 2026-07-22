@@ -2,7 +2,7 @@ import { runAsTenant } from '../../../db/prisma.ts';
 import {
   loadActiveDefinitions,
   validateCustomFields,
-} from '../../custom-fields/customFields.engine.ts';
+} from '../../settings/customization/custom-fields/customFields.engine.ts';
 import type { Prisma } from '../../../../generated/prisma/client.ts';
 
 export type VendorInput = Omit<

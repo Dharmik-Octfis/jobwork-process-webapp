@@ -21,8 +21,8 @@ export const organizationsApi = {
     await apiClient.delete(`/organizations/${id}`);
   },
 
-  getMasterData: async () => {
-    const response = await apiClient.get('/master-data');
+  getSeedData: async () => {
+    const response = await apiClient.get('/seed-data');
     return response.data;
   },
 };
