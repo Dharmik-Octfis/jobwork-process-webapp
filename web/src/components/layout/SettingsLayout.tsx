@@ -7,7 +7,6 @@ import {
   Package,
   Coins,
   LayoutGrid,
-  ChevronDown,
   ChevronRight,
 } from 'lucide-react';
 import { CUSTOM_FIELD_MODULES } from '../../features/custom-fields/customFields.schemas';
@@ -237,31 +236,57 @@ export function SettingsLayout() {
           >
             <LayoutGrid size={18} />
             <span style={{ fontSize: 14, flex: 1 }}>Modules</span>
-            {modulesOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            {/* Rotating chevron — same effect as the main sidebar's module groups. */}
+            <span
+              style={{
+                display: 'flex',
+                transform: modulesOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s ease',
+              }}
+            >
+              <ChevronRight size={16} />
+            </span>
           </button>
 
-          {modulesOpen &&
-            CUSTOM_FIELD_MODULES.map((m) => (
-              <NavLink
-                key={m.entityType}
-                to={`/organizations/${orgId}/settings/modules/${m.entityType}`}
-                style={({ isActive }) => ({
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-3)',
-                  padding: '7px 12px 7px 40px',
-                  borderRadius: 'var(--radius-md)',
-                  textDecoration: 'none',
-                  color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
-                  background: isActive ? 'var(--primary-50)' : 'transparent',
-                  fontWeight: isActive ? 600 : 500,
-                  fontSize: 13,
-                  transition: 'all 0.2s ease',
-                })}
-              >
-                {m.label}
-              </NavLink>
-            ))}
+          {/* Grid-rows height animation — identical to AppLayout's ModuleNavGroup. */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateRows: modulesOpen ? '1fr' : '0fr',
+              transition: 'grid-template-rows 0.2s ease',
+            }}
+          >
+            <div
+              style={{
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--space-1)',
+              }}
+            >
+              {CUSTOM_FIELD_MODULES.map((m) => (
+                <NavLink
+                  key={m.entityType}
+                  to={`/organizations/${orgId}/settings/modules/${m.entityType}`}
+                  style={({ isActive }) => ({
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-3)',
+                    padding: '7px 12px 7px 40px',
+                    borderRadius: 'var(--radius-md)',
+                    textDecoration: 'none',
+                    color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
+                    background: isActive ? 'var(--primary-50)' : 'transparent',
+                    fontWeight: isActive ? 600 : 500,
+                    fontSize: 13,
+                    transition: 'all 0.2s ease',
+                  })}
+                >
+                  {m.label}
+                </NavLink>
+              ))}
+            </div>
+          </div>
         </nav>
       </aside>
 

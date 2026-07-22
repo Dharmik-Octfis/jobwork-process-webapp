@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeft, Plus, Edit2, Archive, ArrowUp, ArrowDown } from 'lucide-react';
+import { ChevronLeft, Plus, Edit2, Archive, GripVertical } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import {
   useCustomFieldDefinitions,
@@ -42,20 +42,32 @@ export function ModuleFieldsPage() {
   const [view, setView] = useState<'list' | 'form'>('list');
   const [fieldToEdit, setFieldToEdit] = useState<CustomFieldDefinition | null>(null);
   const [fieldToArchive, setFieldToArchive] = useState<CustomFieldDefinition | null>(null);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  // Optimistic order while a reorder mutation is in flight, so the row jumps to its
+  // new spot immediately (drag can span any distance, not just one step).
+  const [optimistic, setOptimistic] = useState<CustomFieldDefinition[] | null>(null);
 
   if (!known) {
     return <div style={{ padding: 32, color: '#dc2626' }}>Unknown module.</div>;
   }
 
   const forbidden = (error as { response?: { status?: number } })?.response?.status === 403;
+  const rows = optimistic ?? fields;
 
-  const move = (index: number, dir: -1 | 1) => {
-    const target = index + dir;
-    if (target < 0 || target >= fields.length) return;
-    const reordered = [...fields];
-    const [moved] = reordered.splice(index, 1);
-    reordered.splice(target, 0, moved);
-    reorderMutation.mutate(reordered.map((f, i) => ({ id: f.id, displayOrder: i })));
+  const handleDrop = (to: number) => {
+    const from = dragIndex;
+    setDragIndex(null);
+    setDragOverIndex(null);
+    if (from === null || from === to) return;
+    const next = [...rows];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setOptimistic(next);
+    reorderMutation.mutate(
+      next.map((f, i) => ({ id: f.id, displayOrder: i })),
+      { onSettled: () => setOptimistic(null) },
+    );
   };
 
   const openCreate = () => {
@@ -201,7 +213,7 @@ export function ModuleFieldsPage() {
               >
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '1px solid #eef0f3' }}>
-                    <th style={{ ...th, width: 60 }}>Order</th>
+                    <th style={{ ...th, width: 44 }}></th>
                     <th style={th}>Label</th>
                     <th style={th}>Type</th>
                     <th style={th}>Required</th>
@@ -210,39 +222,32 @@ export function ModuleFieldsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {fields.map((f, i) => (
-                    <tr key={f.id} style={{ borderBottom: '1px solid #eef0f3' }}>
-                      <td style={td}>
-                        <div style={{ display: 'flex', gap: 2 }}>
-                          <button
-                            onClick={() => move(i, -1)}
-                            disabled={i === 0 || reorderMutation.isPending}
-                            title="Move up"
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              cursor: i === 0 ? 'default' : 'pointer',
-                              color: i === 0 ? '#cbd5e1' : '#64748b',
-                              padding: 2,
-                            }}
-                          >
-                            <ArrowUp size={14} />
-                          </button>
-                          <button
-                            onClick={() => move(i, 1)}
-                            disabled={i === fields.length - 1 || reorderMutation.isPending}
-                            title="Move down"
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              cursor: i === fields.length - 1 ? 'default' : 'pointer',
-                              color: i === fields.length - 1 ? '#cbd5e1' : '#64748b',
-                              padding: 2,
-                            }}
-                          >
-                            <ArrowDown size={14} />
-                          </button>
-                        </div>
+                  {rows.map((f, i) => (
+                    <tr
+                      key={f.id}
+                      draggable
+                      onDragStart={() => setDragIndex(i)}
+                      onDragEnter={() => setDragOverIndex(i)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => handleDrop(i)}
+                      onDragEnd={() => {
+                        setDragIndex(null);
+                        setDragOverIndex(null);
+                      }}
+                      style={{
+                        borderBottom: '1px solid #eef0f3',
+                        borderTop:
+                          dragOverIndex === i && dragIndex !== null && dragIndex !== i
+                            ? '2px solid var(--color-primary)'
+                            : '2px solid transparent',
+                        background: dragIndex === i ? '#eff6ff' : '#fff',
+                      }}
+                    >
+                      <td
+                        style={{ ...td, cursor: 'grab', color: '#94a3b8', textAlign: 'center' }}
+                        title="Drag to reorder"
+                      >
+                        <GripVertical size={16} />
                       </td>
                       <td style={{ ...td, fontWeight: 500 }}>{f.label}</td>
                       <td style={td}>{dataTypeLabel(f.dataType)}</td>

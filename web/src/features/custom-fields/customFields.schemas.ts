@@ -70,7 +70,6 @@ export const DATA_TYPE_OPTIONS: Array<{
   { value: 'phone', label: 'Phone' },
   { value: 'select', label: 'Dropdown (select one)', hasOptions: true },
   { value: 'multi_select', label: 'Multi-select', hasOptions: true },
-  { value: 'attachment', label: 'Attachment (coming soon)', disabled: true },
 ];
 
 export function dataTypeLabel(value: DataType): string {

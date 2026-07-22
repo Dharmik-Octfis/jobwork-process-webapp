@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { GripVertical, Plus, Trash2 } from 'lucide-react';
 import { CustomFieldInput } from './CustomFieldInput';
+import { SearchableSelect } from '../../components/ui/SearchableSelect';
 import {
   useCreateCustomField,
   useUpdateCustomField,
@@ -205,21 +206,21 @@ export function FieldForm({
         <div style={rowStyle}>
           <label style={requiredCol}>Data Type*</label>
           <div>
-            <select
+            <SearchableSelect
+              options={DATA_TYPE_OPTIONS.map((t) => ({
+                label: t.label,
+                value: t.value,
+                disabled: t.disabled,
+              }))}
               value={dataType}
               disabled={isEdit}
-              onChange={(e) => {
-                setDataType(e.target.value as DataType);
+              placeholder="Select a data type"
+              style={{ maxWidth: 440 }}
+              onChange={(val) => {
+                setDataType(val as DataType);
                 setDefaultValue(undefined);
               }}
-              style={{ ...input, background: isEdit ? '#f1f5f9' : '#fff' }}
-            >
-              {DATA_TYPE_OPTIONS.map((t) => (
-                <option key={t.value} value={t.value} disabled={t.disabled}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
+            />
             {isEdit && (
               <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
                 Type can't change — archive this field and create a new one instead.
