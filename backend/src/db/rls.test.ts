@@ -23,8 +23,11 @@ const TENANT_TABLES = [
   'number_sequences',
   'vendor_contact_persons',
   'vendor_activities',
+  'item_activities',
   'vendor_comments',
   'vendor_addresses',
+  'units_of_measurement',
+  'currencies',
 ] as const;
 
 /**

@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Package } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { itemsApi } from './items.api.ts';
 import type { ItemFormData } from './items.schemas.ts';
 import { itemFormSchema } from './items.schemas.ts';
@@ -13,7 +13,7 @@ export function CreateItemPage() {
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState<ItemFormData>({
     name: '',
-    aliasName: '',
+    
     type: 'Goods',
     category: '',
     brand: '',
@@ -31,31 +31,64 @@ export function CreateItemPage() {
     purchaseAccount: '',
     packaging: '',
     deliveryDate: '',
+    frontImage: null,
+    rearImage: null,
+    images: [],
+    trackInventory: false,
+    binLocationTracking: 'No',
+    inventoryTracking: 'None',
+    inventoryAccount: '',
+    inventoryValuationMethod: 'FIFO (First In, First Out)',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  const frontImageRef = useRef<HTMLInputElement>(null);
+  const rearImageRef = useRef<HTMLInputElement>(null);
+  const otherImagesRef = useRef<HTMLInputElement>(null);
+
+  const [frontImageFile, setFrontImageFile] = useState<File | null>(null);
+  const [rearImageFile, setRearImageFile] = useState<File | null>(null);
+  const [otherImageFiles, setOtherImageFiles] = useState<File[]>([]);
+
   const createMutation = useMutation({
     mutationFn: (data: ItemFormData) => itemsApi.createItem(orgId!, data),
-    onSuccess: () => {
+    onSuccess: async (createdItem) => {
+      // Upload images if there are any
+      if (frontImageFile || rearImageFile || otherImageFiles.length > 0) {
+        const formDataUpload = new FormData();
+        if (frontImageFile) formDataUpload.append('frontImage', frontImageFile);
+        if (rearImageFile) formDataUpload.append('rearImage', rearImageFile);
+        otherImageFiles.forEach(file => formDataUpload.append('images', file));
+        try {
+          await itemsApi.uploadImages(orgId!, createdItem.id, formDataUpload);
+        } catch (error: unknown) {
+          const err = error as { response?: { data?: unknown; status?: number }; message?: string };
+          console.error('Failed to upload images. Server response:', err.response?.data, 'Status:', err.response?.status);
+          alert(`Image upload failed: ${JSON.stringify(err.response?.data || err.message)}`);
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
       navigate(`/organizations/${orgId}/items`);
     },
-    onError: (error) => {
-      console.error('Failed to create item:', error);
-      alert('Failed to create item.');
+    onError: (error: unknown) => {
+      const err = error as { response?: { data?: { error?: string; message?: string; details?: unknown } } };
+      const errorMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to create item.';
+      const details = err.response?.data?.details;
+      console.error('Failed to create item:', errorMsg, details);
+      alert(`${errorMsg}${details ? '\n' + JSON.stringify(details, null, 2) : ''}`);
     }
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target as HTMLInputElement;
     const val = type === 'checkbox' ? (e.target as HTMLInputElement).checked : type === 'number' ? parseFloat(value) || null : value;
-    
+
     setFormData(prev => ({
       ...prev,
       [name]: val
     }));
-    
+
     if (errors[name]) {
       setErrors(prev => {
         const newErrors = { ...prev };
@@ -67,6 +100,24 @@ export function CreateItemPage() {
 
   const handleRadioChange = (name: string, value: string) => {
     setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleFrontImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setFrontImageFile(e.target.files[0]);
+    }
+  };
+
+  const handleRearImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setRearImageFile(e.target.files[0]);
+    }
+  };
+
+  const handleOtherImagesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setOtherImageFiles(Array.from(e.target.files));
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -89,265 +140,335 @@ export function CreateItemPage() {
   };
 
   return (
-    <div style={{ padding: 'var(--space-6) var(--space-5)', maxWidth: 900, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
-      <button
-        type="button"
-        onClick={() => navigate(`/organizations/${orgId}/items`)}
-        style={{ background: 'none', border: 'none', color: 'var(--color-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, padding: 0, marginBottom: 'var(--space-4)', fontSize: 14, fontWeight: 500 }}
-      >
-        <ArrowLeft size={16} /> Back to Items
-      </button>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
-        <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--color-primary-50)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Package size={24} color="var(--color-primary)" />
-        </div>
-        <div>
-          <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0, color: 'var(--color-text)' }}>New Item</h1>
-          <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 13 }}>Create a new inventory item or service.</p>
-        </div>
+    <div
+      style={{
+        padding: 0,
+        margin: 0,
+        background: '#fff',
+        width: '100%',
+        minHeight: '100vh',
+        display: 'block',
+        paddingBottom: '80px',
+      }}
+    >
+      <div style={{ padding: '16px 24px' }}>
+        <button
+          type="button"
+          onClick={() => navigate(`/organizations/${orgId}/items`)}
+          style={{ background: 'none', border: 'none', color: '#0062ff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, padding: 0, marginBottom: '12px', fontSize: 12, fontWeight: 500 }}
+        >
+          <ArrowLeft size={14} /> Back to Items
+        </button>
+        <h1 style={{ fontSize: '22px', fontWeight: 400, margin: 0, color: '#000' }}>
+          New Item
+        </h1>
       </div>
 
-      <div style={{ background: 'white', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)', padding: 'var(--space-6)', boxShadow: 'var(--shadow-sm)' }}>
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
-          
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4, color: 'var(--color-text)' }}>Item Name <span style={{color: 'red'}}>*</span></label>
-              <input
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', fontSize: 13 }}
-                placeholder="e.g. Laptop"
-              />
-              {errors.name && <span style={{ color: 'red', fontSize: 12, marginTop: 4, display: 'block' }}>{errors.name}</span>}
-            </div>
-            
-            <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4, color: 'var(--color-text)' }}>SKU <span style={{color: 'red'}}>*</span></label>
-              <input
-                name="sku"
-                value={formData.sku}
-                onChange={handleChange}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', fontSize: 13 }}
-                placeholder="e.g. LPT-001"
-              />
-              {errors.sku && <span style={{ color: 'red', fontSize: 12, marginTop: 4, display: 'block' }}>{errors.sku}</span>}
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4, color: 'var(--color-text)' }}>Unit <span style={{color: 'red'}}>*</span></label>
-              <select
-                name="unit"
-                value={formData.unit}
-                onChange={handleChange}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', fontSize: 13, background: 'white' }}
-              >
-                <option value="">Select Unit</option>
-                <option value="pcs">pcs</option>
-                <option value="kg">kg</option>
-                <option value="box">box</option>
-              </select>
-              {errors.unit && <span style={{ color: 'red', fontSize: 12, marginTop: 4, display: 'block' }}>{errors.unit}</span>}
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4, color: 'var(--color-text)' }}>Category</label>
-              <select
-                name="category"
-                value={formData.category || ''}
-                onChange={handleChange}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', fontSize: 13, background: 'white' }}
-              >
-                <option value="">Select Category</option>
-                <option value="Electronics">Electronics</option>
-                <option value="Furniture">Furniture</option>
-              </select>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4, color: 'var(--color-text)' }}>Brand</label>
-              <select
-                name="brand"
-                value={formData.brand || ''}
-                onChange={handleChange}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', fontSize: 13, background: 'white' }}
-              >
-                <option value="">Select Brand</option>
-                <option value="Apple">Apple</option>
-                <option value="Samsung">Samsung</option>
-              </select>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4, color: 'var(--color-text)' }}>Manufacturer</label>
-              <select
-                name="manufacturer"
-                value={formData.manufacturer || ''}
-                onChange={handleChange}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', fontSize: 13, background: 'white' }}
-              >
-                <option value="">Select Manufacturer</option>
-                <option value="Foxconn">Foxconn</option>
-              </select>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4, color: 'var(--color-text)' }}>Type</label>
-              <div style={{ display: 'flex', gap: 16, marginTop: 6 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-                  <input type="radio" name="type" value="Goods" checked={formData.type === 'Goods'} onChange={() => handleRadioChange('type', 'Goods')} /> Goods
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-                  <input type="radio" name="type" value="Service" checked={formData.type === 'Service'} onChange={() => handleRadioChange('type', 'Service')} /> Service
-                </label>
+      <div style={{ padding: '0 24px 24px' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {/* Top Section: Basic Info & Images */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'max-content 360px', gap: '64px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: '#f8fafc', padding: '24px', borderRadius: '8px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '140px 400px', alignItems: 'center' }}>
+                <label style={{ fontSize: 12, color: '#dc2626' }}>Name*</label>
+                <div>
+                  <input
+                    name="name"
+                    value={formData.name}
+                    onChange={handleChange}
+                    style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: 12 }}
+                  />
+                  {errors.name && <span style={{ color: 'red', fontSize: 12, marginTop: 4, display: 'block' }}>{errors.name}</span>}
+                </div>
               </div>
-            </div>
 
-            <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4, color: 'var(--color-text)' }}>Item Type</label>
-              <div style={{ display: 'flex', gap: 16, marginTop: 6 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-                  <input type="radio" name="itemType" value="Single Item" checked={formData.itemType === 'Single Item'} onChange={() => handleRadioChange('itemType', 'Single Item')} /> Single Item
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-                  <input type="radio" name="itemType" value="Contains Variants" checked={formData.itemType === 'Contains Variants'} onChange={() => handleRadioChange('itemType', 'Contains Variants')} /> Contains Variants
-                </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '140px 400px', alignItems: 'center' }}>
+                <label style={{ fontSize: 12, color: '#4b5563' }}>Type</label>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                    <input type="radio" name="type" value="Goods" checked={formData.type === 'Goods'} onChange={() => handleRadioChange('type', 'Goods')} /> Goods
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                    <input type="radio" name="type" value="Service" checked={formData.type === 'Service'} onChange={() => handleRadioChange('type', 'Service')} /> Service
+                  </label>
+                </div>
               </div>
-            </div>
-          </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4, color: 'var(--color-text)' }}>Tax Preference <span style={{color: 'red'}}>*</span></label>
-              <div style={{ display: 'flex', gap: 16, marginTop: 6 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-                  <input type="radio" name="taxPreference" value="Taxable" checked={formData.taxPreference === 'Taxable'} onChange={() => handleRadioChange('taxPreference', 'Taxable')} /> Taxable
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-                  <input type="radio" name="taxPreference" value="Non-Taxable" checked={formData.taxPreference === 'Non-Taxable'} onChange={() => handleRadioChange('taxPreference', 'Non-Taxable')} /> Non-Taxable
-                </label>
-              </div>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4, color: 'var(--color-text)' }}>HSN Code</label>
-              <input
-                name="hsnCode"
-                value={formData.hsnCode || ''}
-                onChange={handleChange}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', fontSize: 13 }}
-                placeholder="e.g. 8471"
-              />
-            </div>
-          </div>
-
-          <hr style={{ border: 'none', borderTop: '1px solid var(--color-border)', margin: 'var(--space-2) 0' }} />
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <input type="checkbox" name="isSalesInfo" checked={formData.isSalesInfo} onChange={handleChange} />
-            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--color-text)' }}>Sales Information</h3>
-          </div>
-          
-          {formData.isSalesInfo && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', paddingLeft: 24, marginBottom: 16 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4, color: 'var(--color-text)' }}>Selling Price (INR)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  name="sellingPrice"
-                  value={formData.sellingPrice || ''}
+              <div style={{ display: 'grid', gridTemplateColumns: '140px 400px', alignItems: 'center' }}>
+                <label style={{ fontSize: 12, color: '#4b5563' }}>Category</label>
+                <select
+                  name="category"
+                  value={formData.category || ''}
                   onChange={handleChange}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', fontSize: 13 }}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: 12, background: 'white' }}
+                >
+                  <option value="">Select a category</option>
+                  <option value="Electronics">Electronics</option>
+                  <option value="Furniture">Furniture</option>
+                  <option value="Foot wear">Foot wear</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '140px 400px', alignItems: 'center' }}>
+                <label style={{ fontSize: 12, color: '#4b5563' }}>Brand</label>
+                <select
+                  name="brand"
+                  value={formData.brand || ''}
+                  onChange={handleChange}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: 12, background: 'white' }}
+                >
+                  <option value="">Select or Add Brand</option>
+                  <option value="Apple">Apple</option>
+                  <option value="Samsung">Samsung</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '140px 400px', alignItems: 'center' }}>
+                <label style={{ fontSize: 12, color: '#4b5563' }}>Manufacturer</label>
+                <select
+                  name="manufacturer"
+                  value={formData.manufacturer || ''}
+                  onChange={handleChange}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: 12, background: 'white' }}
+                >
+                  <option value="">Select or Add Manufacturer</option>
+                  <option value="Foxconn">Foxconn</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '140px 400px', alignItems: 'center' }}>
+                <label style={{ fontSize: 12, color: '#4b5563' }}>HSN Code</label>
+                <input
+                  name="hsnCode"
+                  value={formData.hsnCode || ''}
+                  onChange={handleChange}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: 12 }}
                 />
               </div>
+            </div>
+
+            {/* Image Upload Area */}
+            <div style={{ border: '1px solid #eef0f3', borderRadius: '8px', padding: '12px', display: 'flex', gap: '12px', background: '#f8fafc' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
+                <div>
+                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b' }}>Front View</div>
+                  <input type="file" ref={frontImageRef} onChange={handleFrontImageChange} style={{ display: 'none' }} accept="image/*" />
+                  <button type="button" onClick={() => frontImageRef.current?.click()} style={{ width: '100%', padding: '16px', border: '1px dashed #cbd5e1', borderRadius: '6px', background: '#ffffff', color: '#0062ff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                    <span style={{ fontSize: 12 }}>{frontImageFile ? frontImageFile.name : '↑ Upload Front Image'}</span>
+                  </button>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b' }}>Rear View</div>
+                  <input type="file" ref={rearImageRef} onChange={handleRearImageChange} style={{ display: 'none' }} accept="image/*" />
+                  <button type="button" onClick={() => rearImageRef.current?.click()} style={{ width: '100%', padding: '16px', border: '1px dashed #cbd5e1', borderRadius: '6px', background: '#ffffff', color: '#0062ff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                    <span style={{ fontSize: 12 }}>{rearImageFile ? rearImageFile.name : '↑ Upload Rear Image'}</span>
+                  </button>
+                </div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b' }}>Other Images</div>
+                <input type="file" ref={otherImagesRef} onChange={handleOtherImagesChange} style={{ display: 'none' }} accept="image/*" multiple />
+                <button type="button" onClick={() => otherImagesRef.current?.click()} style={{ width: '100%', height: 'calc(100% - 24px)', padding: '16px', border: '1px dashed #cbd5e1', borderRadius: '6px', background: '#ffffff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer' }}>
+                  <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#0062ff', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>↑</div>
+                  <div style={{ fontWeight: 500, fontSize: 12, color: '#1e293b', textAlign: 'center' }}>{otherImageFiles.length > 0 ? `${otherImageFiles.length} files selected` : 'Drag & Drop Images'}</div>
+                  <div style={{ fontSize: 10, color: '#64748b', textAlign: 'center', lineHeight: 1.4 }}>You can add up to 3 images, each not exceeding 2 MB.</div>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <hr style={{ border: 'none', borderTop: '1px solid #cbd5e1' }} />
+
+          {/* Item Details Section */}
+          <div>
+            <h3 style={{ fontSize: '16px', fontWeight: 500, marginBottom: '12px', color: '#1e293b' }}>Item Details</h3>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '140px 400px', alignItems: 'center', marginBottom: 12 }}>
+              <label style={{ fontSize: 12, color: '#4b5563' }}>Item Type</label>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '8px 16px', border: formData.itemType === 'Single Item' ? '1px solid #0062ff' : '1px solid #eef0f3', borderRadius: 6, background: formData.itemType === 'Single Item' ? '#f0f6ff' : 'white', color: formData.itemType === 'Single Item' ? '#0062ff' : '#4b5563', cursor: 'pointer' }}>
+                  <input type="radio" name="itemType" value="Single Item" checked={formData.itemType === 'Single Item'} onChange={() => handleRadioChange('itemType', 'Single Item')} style={{ display: 'none' }} />
+                  <div style={{ width: 16, height: 16, borderRadius: '50%', background: formData.itemType === 'Single Item' ? '#0062ff' : '#eef0f3', border: '2px solid white', boxShadow: '0 0 0 1px ' + (formData.itemType === 'Single Item' ? '#0062ff' : '#d1d5db'), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {formData.itemType === 'Single Item' && <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'white' }} />}
+                  </div>
+                  Single Item
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '8px 16px', border: formData.itemType === 'Contains Variants' ? '1px solid #0062ff' : '1px solid #eef0f3', borderRadius: 6, background: formData.itemType === 'Contains Variants' ? '#f0f6ff' : 'white', color: formData.itemType === 'Contains Variants' ? '#0062ff' : '#4b5563', cursor: 'pointer' }}>
+                  <input type="radio" name="itemType" value="Contains Variants" checked={formData.itemType === 'Contains Variants'} onChange={() => handleRadioChange('itemType', 'Contains Variants')} style={{ display: 'none' }} />
+                  <div style={{ width: 16, height: 16, borderRadius: '50%', background: formData.itemType === 'Contains Variants' ? '#0062ff' : '#eef0f3', border: '2px solid white', boxShadow: '0 0 0 1px ' + (formData.itemType === 'Contains Variants' ? '#0062ff' : '#d1d5db'), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {formData.itemType === 'Contains Variants' && <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'white' }} />}
+                  </div>
+                  Contains Variants
+                </label>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '130px 240px 130px 240px', alignItems: 'center', gap: '12px 16px' }}>
+              <label style={{ fontSize: 12, color: '#dc2626' }}>Unit*</label>
+              <div style={{ display: 'flex', border: '1px solid #d1d5db', borderRadius: '4px', overflow: 'hidden' }}>
+                <select style={{ padding: '6px 10px', border: 'none', borderRight: '1px solid #d1d5db', background: '#f8fafc', fontSize: 12, outline: 'none' }}>
+                  <option>Unit Group</option>
+                </select>
+                <select name="unit" value={formData.unit} onChange={handleChange} style={{ flex: 1, padding: '6px 10px', border: 'none', fontSize: 12, outline: 'none', background: 'white' }}>
+                  <option value="">Select Unit</option>
+                  <option value="pcs">pcs</option>
+                  <option value="kg">kg</option>
+                  <option value="box">box</option>
+                </select>
+              </div>
+
+              <label style={{ fontSize: 12, color: '#dc2626' }}>SKU*</label>
+              <input name="sku" value={formData.sku} onChange={handleChange} style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: 12 }} />
+            </div>
+            {errors.unit && <div style={{ color: 'red', fontSize: 12, marginTop: 4, marginLeft: 150 }}>{errors.unit}</div>}
+            {errors.sku && <div style={{ color: 'red', fontSize: 12, marginTop: 4, marginLeft: 'calc(150px * 2 + 1fr + 48px)' }}>{errors.sku}</div>}
+          </div>
+
+          <hr style={{ border: 'none', borderTop: '1px solid #cbd5e1' }} />
+
+          {/* Inventory Tracking */}
+          <div>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 13, fontWeight: 500, color: '#1e293b', cursor: 'pointer' }}>
+              <input type="checkbox" name="trackInventory" checked={formData.trackInventory} onChange={handleChange} style={{ marginTop: 2 }} />
               <div>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4, color: 'var(--color-text)' }}>Sales Account</label>
-                <select
-                  name="salesAccount"
-                  value={formData.salesAccount || ''}
-                  onChange={handleChange}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', fontSize: 13, background: 'white' }}
-                >
+                Track Inventory for this item
+                <div style={{ fontSize: 12, color: '#64748b', fontWeight: 400, marginTop: 4 }}>You cannot enable/disable inventory tracking once you've created transactions for this item</div>
+              </div>
+            </label>
+
+            {formData.trackInventory && (
+              <div style={{ marginTop: 12, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', alignItems: 'center' }}>
+                  <label style={{ fontSize: 12, color: '#4b5563' }}>Bin Location Tracking</label>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                      <input type="radio" name="binLocationTracking" value="Yes" checked={formData.binLocationTracking === 'Yes'} onChange={() => handleRadioChange('binLocationTracking', 'Yes')} /> Yes
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                      <input type="radio" name="binLocationTracking" value="No" checked={formData.binLocationTracking === 'No'} onChange={() => handleRadioChange('binLocationTracking', 'No')} /> No
+                    </label>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', alignItems: 'center' }}>
+                  <label style={{ fontSize: 12, color: '#4b5563' }}>Inventory Tracking</label>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                      <input type="radio" name="inventoryTracking" value="None" checked={formData.inventoryTracking === 'None'} onChange={() => handleRadioChange('inventoryTracking', 'None')} /> None
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                      <input type="radio" name="inventoryTracking" value="Serial" checked={formData.inventoryTracking === 'Serial'} onChange={() => handleRadioChange('inventoryTracking', 'Serial')} /> Serial
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                      <input type="radio" name="inventoryTracking" value="Batch" checked={formData.inventoryTracking === 'Batch'} onChange={() => handleRadioChange('inventoryTracking', 'Batch')} /> Batch
+                    </label>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr 160px 1fr', alignItems: 'center', gap: '12px 16px', marginTop: 12 }}>
+                  <label style={{ fontSize: 12, color: '#dc2626' }}>Inventory Account*</label>
+                  <select name="inventoryAccount" value={formData.inventoryAccount || ''} onChange={handleChange} style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: 12, background: 'white' }}>
+                    <option value="">Select an account</option>
+                    <option value="Inventory Asset">Inventory Asset</option>
+                  </select>
+
+                  <label style={{ fontSize: 12, color: '#dc2626' }}>Inventory Valuation Method*</label>
+                  <select name="inventoryValuationMethod" value={formData.inventoryValuationMethod || ''} onChange={handleChange} style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: 12, background: 'white' }}>
+                    <option value="FIFO (First In, First Out)">FIFO (First In, First Out)</option>
+                    <option value="Moving Average">Moving Average</option>
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <hr style={{ border: 'none', borderTop: '1px solid #cbd5e1' }} />
+
+          {/* Sales and Purchase Information */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+              <input type="checkbox" name="isSalesInfo" checked={formData.isSalesInfo} onChange={handleChange} />
+              <h3 style={{ margin: 0, fontSize: 13, fontWeight: 500, color: '#1e293b' }}>Sales Information</h3>
+            </div>
+            {formData.isSalesInfo && (
+              <div style={{ display: 'grid', gridTemplateColumns: '130px 240px 130px 240px', alignItems: 'center', gap: '12px 16px', paddingLeft: 16, marginBottom: 12 }}>
+                <label style={{ fontSize: 12, color: '#4b5563' }}>Selling Price</label>
+                <input type="number" step="0.01" name="sellingPrice" value={formData.sellingPrice || ''} onChange={handleChange} style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: 12 }} />
+                
+                <label style={{ fontSize: 12, color: '#4b5563' }}>Sales Account</label>
+                <select name="salesAccount" value={formData.salesAccount || ''} onChange={handleChange} style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: 12, background: 'white' }}>
                   <option value="">Select Account</option>
                   <option value="Sales">Sales</option>
                   <option value="General Income">General Income</option>
                 </select>
               </div>
+            )}
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+              <input type="checkbox" name="isPurchaseInfo" checked={formData.isPurchaseInfo} onChange={handleChange} />
+              <h3 style={{ margin: 0, fontSize: 13, fontWeight: 500, color: '#1e293b' }}>Purchase Information</h3>
             </div>
-          )}
-
-          <hr style={{ border: 'none', borderTop: '1px solid var(--color-border)', margin: 'var(--space-2) 0' }} />
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <input type="checkbox" name="isPurchaseInfo" checked={formData.isPurchaseInfo} onChange={handleChange} />
-            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--color-text)' }}>Purchase Information</h3>
-          </div>
-
-          {formData.isPurchaseInfo && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', paddingLeft: 24 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4, color: 'var(--color-text)' }}>Cost Price (INR)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  name="costPrice"
-                  value={formData.costPrice || ''}
-                  onChange={handleChange}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', fontSize: 13 }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4, color: 'var(--color-text)' }}>Purchase Account</label>
-                <select
-                  name="purchaseAccount"
-                  value={formData.purchaseAccount || ''}
-                  onChange={handleChange}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', fontSize: 13, background: 'white' }}
-                >
+            {formData.isPurchaseInfo && (
+              <div style={{ display: 'grid', gridTemplateColumns: '130px 240px 130px 240px', alignItems: 'center', gap: '12px 16px', paddingLeft: 16 }}>
+                <label style={{ fontSize: 12, color: '#4b5563' }}>Cost Price</label>
+                <input type="number" step="0.01" name="costPrice" value={formData.costPrice || ''} onChange={handleChange} style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: 12 }} />
+                
+                <label style={{ fontSize: 12, color: '#4b5563' }}>Purchase Account</label>
+                <select name="purchaseAccount" value={formData.purchaseAccount || ''} onChange={handleChange} style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: 12, background: 'white' }}>
                   <option value="">Select Account</option>
                   <option value="Cost of Goods Sold">Cost of Goods Sold</option>
                   <option value="Inventory">Inventory</option>
                 </select>
               </div>
-              <div>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4, color: 'var(--color-text)' }}>Packaging</label>
-                <select
-                  name="packaging"
-                  value={formData.packaging || ''}
-                  onChange={handleChange}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', fontSize: 13, background: 'white' }}
-                >
-                  <option value="">Select Packaging</option>
-                  <option value="Box">Box</option>
-                  <option value="Carton">Carton</option>
-                </select>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', marginTop: 'var(--space-4)' }}>
-            <button
-              type="button"
-              onClick={() => navigate(`/organizations/${orgId}/items`)}
-              style={{ background: 'white', color: 'var(--color-text)', border: '1px solid var(--color-border)', padding: '6px 16px', borderRadius: 'var(--radius-sm)', fontWeight: 500, fontSize: 13, cursor: 'pointer' }}
-            >
-              Cancel
-            </button>
+          <div
+            style={{
+              position: 'fixed',
+              bottom: 0,
+              left: 220,
+              right: 0,
+              background: '#fff',
+              padding: '16px 32px',
+              borderTop: '1px solid #cbd5e1',
+              display: 'flex',
+              gap: '12px',
+              zIndex: 100,
+            }}
+          >
             <button
               type="submit"
               disabled={createMutation.isPending}
-              style={{ background: 'var(--color-primary)', color: 'white', border: 'none', padding: '6px 16px', borderRadius: 'var(--radius-sm)', fontWeight: 500, fontSize: 13, cursor: createMutation.isPending ? 'not-allowed' : 'pointer', opacity: createMutation.isPending ? 0.7 : 1 }}
+              style={{
+                padding: '8px 24px',
+                background: '#0062ff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: createMutation.isPending ? 'not-allowed' : 'pointer',
+                fontWeight: 500,
+                fontSize: '12px',
+                opacity: createMutation.isPending ? 0.7 : 1
+              }}
             >
               {createMutation.isPending ? 'Saving...' : 'Save Item'}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate(`/organizations/${orgId}/items`)}
+              style={{
+                padding: '8px 24px',
+                background: 'white',
+                color: '#333',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: 500,
+                fontSize: '12px',
+              }}
+            >
+              Cancel
             </button>
           </div>
         </form>

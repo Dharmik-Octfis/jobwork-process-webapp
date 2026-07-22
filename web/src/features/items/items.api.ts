@@ -27,4 +27,21 @@ export const itemsApi = {
   deleteItem: async (orgId: string, id: string): Promise<void> => {
     await apiClient.delete(`${endpoints.masterData.items(orgId)}/${id}`);
   },
+
+  fetchItemActivities: async (orgId: string, id: string) => {
+    const response = await apiClient.get(`${endpoints.masterData.items(orgId)}/${id}/activities`);
+    return response.data;
+  },
+
+  uploadImages: async (orgId: string, id: string, formData: FormData): Promise<Item> => {
+    const response = await apiClient.post(`${endpoints.masterData.items(orgId)}/${id}/images`, formData, {
+      transformRequest: [
+        (data, headers) => {
+          delete headers['Content-Type'];
+          return data;
+        }
+      ]
+    });
+    return response.data;
+  },
 };

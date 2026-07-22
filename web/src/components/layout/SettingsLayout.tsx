@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeft, Building2, Users } from 'lucide-react';
+import { ChevronLeft, Building2, Users, Package, Coins } from 'lucide-react';
 
 export function SettingsLayout() {
   const { orgId } = useParams<{ orgId: string }>();
@@ -108,6 +108,51 @@ export function SettingsLayout() {
           >
             <Users size={18} />
             <span style={{ fontSize: 14 }}>Members & Invites</span>
+          </NavLink>
+
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-text-muted)', padding: '0 12px', marginTop: 16, marginBottom: 4, letterSpacing: '0.05em' }}>
+            Inventory
+          </div>
+          
+          <NavLink
+            to={`/organizations/${orgId}/settings/inventory/uom`}
+            style={({ isActive }) => ({
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-3)',
+              padding: '8px 12px',
+              borderRadius: 'var(--radius-md)',
+              textDecoration: 'none',
+              color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
+              background: isActive ? 'var(--primary-50)' : 'transparent',
+              fontWeight: isActive ? 600 : 500,
+              transition: 'all 0.2s ease',
+            })}
+          >
+            <Package size={18} />
+            <span style={{ fontSize: 14 }}>Unit of Measurement</span>
+          </NavLink>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-text-muted)', padding: '0 12px', marginTop: 16, marginBottom: 4, letterSpacing: '0.05em' }}>
+            Configuration
+          </div>
+          
+          <NavLink
+            to={`/organizations/${orgId}/settings/configuration/currencies`}
+            style={({ isActive }) => ({
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-3)',
+              padding: '8px 12px',
+              borderRadius: 'var(--radius-md)',
+              textDecoration: 'none',
+              color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
+              background: isActive ? 'var(--primary-50)' : 'transparent',
+              fontWeight: isActive ? 600 : 500,
+              transition: 'all 0.2s ease',
+            })}
+          >
+            <Coins size={18} />
+            <span style={{ fontSize: 14 }}>Currencies</span>
           </NavLink>
         </nav>
       </aside>

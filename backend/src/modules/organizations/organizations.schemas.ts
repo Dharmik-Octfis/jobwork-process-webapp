@@ -28,6 +28,7 @@ export const createOrganizationSchema = openApiRegistry.register(
     // stateCode is an ISO 3166-2 code (State.code); cityId is a City uuid. Both are
     // nullable so the org form can clear them; '' from the form is normalised to
     // null in the controller before the FK write.
+    countryCode: z.string().nullable().optional().openapi({ example: 'IN' }),
     stateCode: z.string().nullable().optional().openapi({ example: 'IN-GJ' }),
     cityId: z
       .string()

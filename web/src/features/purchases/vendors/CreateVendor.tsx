@@ -16,6 +16,7 @@ export function CreateVendor() {
     mutationFn: (data: CreateVendorData) => createVendor(orgId!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vendors', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['vendor-number-preference', orgId] });
       navigate(`/organizations/${orgId}/purchases/vendors`);
     },
     onError: (error: AxiosError<{ error?: string; message?: string }>) => {

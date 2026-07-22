@@ -10,7 +10,6 @@ export const itemSchema = openApiRegistry.register(
     id: z.string().uuid().openapi({ example: '123e4567-e89b-12d3-a456-426614174000' }),
     organizationId: z.string().uuid().openapi({ example: '123e4567-e89b-12d3-a456-426614174001' }),
     name: z.string().min(1, 'Name is required').max(200).openapi({ example: 'Apple MacBook Pro M3' }),
-    aliasName: z.string().max(200).nullable().optional().openapi({ example: 'MBP 14-inch' }),
     type: z.enum(['Goods', 'Service']).default('Goods').openapi({ example: 'Goods' }),
     category: z.string().max(100).nullable().optional().openapi({ example: 'Electronics' }),
     brand: z.string().max(100).nullable().optional().openapi({ example: 'Apple' }),
@@ -28,6 +27,16 @@ export const itemSchema = openApiRegistry.register(
     purchaseAccount: z.string().max(100).nullable().optional().openapi({ example: 'Cost of Goods Sold' }),
     packaging: z.string().max(100).nullable().optional().openapi({ example: 'Box' }),
     deliveryDate: z.string().datetime().nullable().optional().openapi({ example: '2026-07-20T10:00:00Z' }),
+    
+    frontImage: z.string().nullable().optional(),
+    rearImage: z.string().nullable().optional(),
+    images: z.array(z.string()).default([]),
+
+    trackInventory: z.boolean().default(false),
+    binLocationTracking: z.string().nullable().optional(),
+    inventoryTracking: z.string().nullable().optional(),
+    inventoryAccount: z.string().nullable().optional(),
+    inventoryValuationMethod: z.string().nullable().optional(),
     createdAt: z.string().datetime().openapi({ example: '2026-07-17T12:00:00Z' }),
     updatedAt: z.string().datetime().openapi({ example: '2026-07-17T12:00:00Z' }),
   })

@@ -29,6 +29,7 @@ export const endpoints = {
      * compile error, which is the point.
      */
     vendors: (orgId: string) => `/organizations/${orgId}/purchases/vendors`,
+    vendorPreferences: (orgId: string) => `/organizations/${orgId}/purchases/vendors/preferences/number-sequence`,
   },
   masterData: {
     items: (orgId: string) => `/organizations/${orgId}/master-data/items`,

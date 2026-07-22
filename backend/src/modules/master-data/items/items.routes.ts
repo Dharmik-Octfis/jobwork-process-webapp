@@ -3,6 +3,14 @@ import { itemsController } from './items.controller.ts';
 import { openApiRegistry } from '../../../config/openapi.ts';
 import { itemSchema, createItemSchema, updateItemSchema } from './items.schemas.ts';
 import { z } from 'zod';
+import multer from 'multer';
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 2 * 1024 * 1024, // 2 MB
+  },
+});
 
 openApiRegistry.registerPath({
   method: 'get',
@@ -116,12 +124,55 @@ openApiRegistry.registerPath({
   },
 });
 
+openApiRegistry.registerPath({
+  method: 'post',
+  path: '/organizations/{orgId}/master-data/items/{id}/images',
+  tags: ['Items'],
+  summary: 'Upload images for an item',
+  request: {
+    params: z.object({ orgId: z.string().uuid(), id: z.string().uuid() }),
+    body: {
+      content: {
+        'multipart/form-data': {
+          schema: z.object({
+            frontImage: z.any().optional(),
+            rearImage: z.any().optional(),
+            images: z.array(z.any()).optional(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Images uploaded successfully',
+      content: {
+        'application/json': {
+          schema: itemSchema,
+        },
+      },
+    },
+    404: { description: 'Item not found' },
+  },
+});
+
 const router = Router({ mergeParams: true });
 
 router.get('/', itemsController.getItems);
 router.post('/', itemsController.createItem);
 router.get('/:id', itemsController.getItem);
+router.get('/:id/activities', itemsController.getItemActivities);
 router.put('/:id', itemsController.updateItem);
 router.delete('/:id', itemsController.deleteItem);
+
+router.post(
+  '/:id/images',
+  upload.fields([
+    { name: 'frontImage', maxCount: 1 },
+    { name: 'rearImage', maxCount: 1 },
+    { name: 'images', maxCount: 3 },
+  ]),
+  itemsController.uploadImages
+);
 
 export const itemsRouter = router;

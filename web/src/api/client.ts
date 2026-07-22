@@ -68,7 +68,9 @@ type RetriableConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 let refreshInFlight: Promise<string | null> | null = null;
 
 export function refreshAccessToken(): Promise<string | null> {
-  refreshInFlight ??= axios
+  if (refreshInFlight) return refreshInFlight;
+
+  const doRefresh = () => axios
     .post<{ accessToken: string }>(`${env.apiUrl}${endpoints.auth.refresh}`, null, {
       withCredentials: true,
     })
@@ -79,10 +81,17 @@ export function refreshAccessToken(): Promise<string | null> {
     .catch(() => {
       setAccessToken(null);
       return null;
-    })
-    .finally(() => {
+    });
+
+  if (typeof navigator !== 'undefined' && navigator.locks) {
+    refreshInFlight = navigator.locks.request('auth_refresh', doRefresh).finally(() => {
       refreshInFlight = null;
     });
+  } else {
+    refreshInFlight = doRefresh().finally(() => {
+      refreshInFlight = null;
+    });
+  }
   return refreshInFlight;
 }
 

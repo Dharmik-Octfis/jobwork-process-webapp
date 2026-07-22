@@ -1,18 +1,19 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { createOrganizationSchema, type CreateOrganizationData } from './organizations.schemas';
 import { organizationsApi } from './organizations.api';
 import { toApiErrorMessage } from '../../api/client';
 import { X } from 'lucide-react';
 import { useLogout } from '../auth/useLogout';
+import { SearchableSelect } from '../../components/ui/SearchableSelect';
 import './CreateOrganizationForm.css';
 
 type MasterData = {
   industries: { id: string; code: string; name: string }[];
-  states: { code: string; name: string; cities: { id: string; name: string }[] }[];
+  states: { code: string; name: string; countryCode: string; cities: { id: string; name: string }[] }[];
   countries: { id: string; name: string; code: string; isoCode: string; dialCode: string }[];
 };
 
@@ -42,11 +43,13 @@ export function CreateOrganizationForm() {
     handleSubmit,
     watch,
     setValue,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<CreateOrganizationData>({
     resolver: zodResolver(createOrganizationSchema),
     defaultValues: {
-      stateCode: '',
+      stateCode: 'IN-GJ',
+      countryCode: 'IN',
       cityId: '',
       industryCode: '',
       dialCode: '+91',
@@ -58,21 +61,40 @@ export function CreateOrganizationForm() {
       .getMasterData()
       .then((data) => {
         setMasterData(data);
-        // Re-assert India (+91) once the country options exist: an uncontrolled
+        // Re-assert India once the country options exist: an uncontrolled
         // <select> can drop its selection when its options load in asynchronously.
         setValue('dialCode', '+91');
+        setValue('countryCode', 'IN');
+        setValue('stateCode', 'IN-GJ');
       })
       .catch((err) => console.error('Failed to load master data:', err));
   }, [setValue]);
 
+  const selectedCountryCode = watch('countryCode');
   const selectedStateCode = watch('stateCode');
+
+  // Filter states by selected country
+  const availableStates = masterData?.states.filter((s) => !selectedCountryCode || s.countryCode === selectedCountryCode) || [];
+
+  const [isInitializing, setIsInitializing] = useState(true);
+  useEffect(() => {
+    if (isInitializing) {
+      setIsInitializing(false);
+      return;
+    }
+    if (selectedCountryCode && !isInitializing) {
+      setValue('stateCode', '');
+      setValue('cityId', '');
+    }
+  }, [selectedCountryCode, setValue, isInitializing]);
 
   // Clear city when state changes to avoid invalid combinations
   useEffect(() => {
-    if (selectedStateCode) {
+    if (isInitializing) return;
+    if (selectedStateCode && !isInitializing) {
       setValue('cityId', '');
     }
-  }, [selectedStateCode, setValue]);
+  }, [selectedStateCode, setValue, isInitializing]);
 
   const onSubmit = async (data: CreateOrganizationData) => {
     try {
@@ -123,19 +145,18 @@ export function CreateOrganizationForm() {
               <label className="org-form-label">
                 Industry Type <span className="required">*</span>
               </label>
-              <select
-                {...register('industryCode')}
-                className={`org-form-select ${errors.industryCode ? 'has-error' : ''}`}
-              >
-                <option value="" disabled>
-                  Select Industry
-                </option>
-                {masterData?.industries.map((ind) => (
-                  <option key={ind.id} value={ind.code}>
-                    {ind.name}
-                  </option>
-                ))}
-              </select>
+              <Controller
+                name="industryCode"
+                control={control}
+                render={({ field }) => (
+                  <SearchableSelect
+                    options={masterData?.industries.map(ind => ({ label: ind.name, value: ind.code })) || []}
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="Select Industry"
+                  />
+                )}
+              />
               {errors.industryCode && (
                 <span className="org-form-error-text">{errors.industryCode.message}</span>
               )}
@@ -153,50 +174,69 @@ export function CreateOrganizationForm() {
 
           <div className="org-form-grid">
             <div className="org-form-field">
+              <label className="org-form-label">Country</label>
+              <Controller
+                name="countryCode"
+                control={control}
+                render={({ field }) => (
+                  <SearchableSelect
+                    options={masterData?.countries.map(c => ({ label: c.name, value: c.code })) || []}
+                    value={field.value}
+                    onChange={field.onChange}
+                    disabled={!masterData}
+                    placeholder="Select Country"
+                  />
+                )}
+              />
+            </div>
+
+            <div className="org-form-field">
               <label className="org-form-label">State</label>
-              <select {...register('stateCode')} className="org-form-select">
-                <option value="" disabled>
-                  Select State
-                </option>
-                {masterData?.states.map((stateObj) => (
-                  <option key={stateObj.code} value={stateObj.code}>
-                    {stateObj.name}
-                  </option>
-                ))}
-              </select>
+              <Controller
+                name="stateCode"
+                control={control}
+                render={({ field }) => (
+                  <SearchableSelect
+                    options={availableStates.map(s => ({ label: s.name, value: s.code }))}
+                    value={field.value}
+                    onChange={field.onChange}
+                    disabled={!selectedCountryCode}
+                    placeholder="Select State"
+                  />
+                )}
+              />
             </div>
 
             <div className="org-form-field">
               <label className="org-form-label">City</label>
-              <select
-                {...register('cityId')}
-                disabled={!selectedStateCode}
-                className="org-form-select"
-              >
-                <option value="" disabled>
-                  Select City
-                </option>
-                {availableCities.map((city) => (
-                  <option key={city.id} value={city.id}>
-                    {city.name}
-                  </option>
-                ))}
-              </select>
+              <Controller
+                name="cityId"
+                control={control}
+                render={({ field }) => (
+                  <SearchableSelect
+                    options={availableCities.map(c => ({ label: c.name, value: c.id }))}
+                    value={field.value}
+                    onChange={field.onChange}
+                    disabled={!selectedStateCode}
+                    placeholder="Select City"
+                  />
+                )}
+              />
             </div>
-          </div>
 
-          <div className="org-form-field org-form-full-width">
-            <label className="org-form-label">Pincode</label>
-            <input
-              {...register('zip')}
-              maxLength={6}
-              className={`org-form-input ${errors.zip ? 'has-error' : ''}`}
-              placeholder="e.g. 380001"
-              onInput={(e) => {
-                e.currentTarget.value = e.currentTarget.value.replace(/\D/g, '');
-              }}
-            />
-            {errors.zip && <span className="org-form-error-text">{errors.zip.message}</span>}
+            <div className="org-form-field">
+              <label className="org-form-label">Pincode</label>
+              <input
+                {...register('zip')}
+                maxLength={6}
+                className={`org-form-input ${errors.zip ? 'has-error' : ''}`}
+                placeholder="e.g. 380001"
+                onInput={(e) => {
+                  e.currentTarget.value = e.currentTarget.value.replace(/\D/g, '');
+                }}
+              />
+              {errors.zip && <span className="org-form-error-text">{errors.zip.message}</span>}
+            </div>
           </div>
 
           <div className="org-form-grid">
@@ -217,21 +257,20 @@ export function CreateOrganizationForm() {
             <div className="org-form-field">
               <label className="org-form-label">Phone No</label>
               <div className={`org-form-input-group ${errors.phone ? 'has-error' : ''}`}>
-                <select
-                  {...register('dialCode')}
-                  className="org-form-select"
-                  style={{ width: 'auto', flexShrink: 0 }}
-                >
-                  {masterData?.countries ? (
-                    masterData.countries.map((country) => (
-                      <option key={country.id} value={country.dialCode}>
-                        {country.isoCode} {country.dialCode}
-                      </option>
-                    ))
-                  ) : (
-                    <option value="+91">IND +91</option>
+                <Controller
+                  name="dialCode"
+                  control={control}
+                  render={({ field }) => (
+                    <SearchableSelect
+                      options={masterData?.countries ? masterData.countries.map(c => ({ label: `${c.isoCode} ${c.dialCode}`, value: c.dialCode })) : [{ label: 'IND +91', value: '+91' }]}
+                      value={field.value}
+                      onChange={field.onChange}
+                      style={{ width: '130px', flexShrink: 0 }}
+                      className="org-form-select"
+                      placeholder="Code"
+                    />
                   )}
-                </select>
+                />
                 <div className="divider"></div>
                 <input
                   {...register('phone')}

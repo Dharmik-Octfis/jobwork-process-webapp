@@ -5,6 +5,8 @@ import { invitationsRouter } from '../modules/invitations/invitations.routes.ts'
 import { globalMasterDataRouter, tenantMasterDataRouter } from '../modules/master-data/master-data.routes.ts';
 import { appModulesRouter } from '../modules/app-modules/app-modules.routes.ts';
 import { vendorsRouter } from '../modules/purchases/vendors/vendors.routes.ts';
+import { uomRouter } from '../modules/inventory/uom/uom.routes.ts';
+import { currenciesRouter } from '../modules/configuration/currencies/currencies.routes.ts';
 
 /** Mounts every module router under `/api` (architecture §4). */
 export const apiRouter = Router();
@@ -25,6 +27,8 @@ apiRouter.use('/auth', authRouter);
 // anyway, but only after running that router's `authenticate` a second time.
 // Specific before general keeps the path short and the middleware chain honest.
 apiRouter.use('/organizations/:orgId/purchases/vendors', vendorsRouter);
+apiRouter.use('/organizations/:orgId/inventory/uom', uomRouter);
+apiRouter.use('/organizations/:orgId/configuration/currencies', currenciesRouter);
 apiRouter.use('/organizations/:orgId/master-data', tenantMasterDataRouter);
 apiRouter.use('/master-data', globalMasterDataRouter);
 

@@ -22,6 +22,8 @@ import { EditVendor } from '../features/purchases/vendors/EditVendor';
 import { ItemsList } from '../features/items/ItemsList';
 import { CreateItemPage } from '../features/items/CreateItemPage';
 import { EditItemPage } from '../features/items/EditItemPage';
+import { UnitOfMeasurementPage } from '../features/inventory/uom/UnitOfMeasurementPage';
+import { CurrenciesPage } from '../features/configuration/currencies/CurrenciesPage';
 
 /**
  * Every page whose data belongs to one organization lives under
@@ -68,15 +70,17 @@ export const router = createBrowserRouter([
           },
           { path: '/profile', element: <ProfilePage /> },
           { path: '/organizations', element: <OrganizationsList /> },
-          // Inside AppLayout so settings keeps the sidebar, but we wrap it in SettingsLayout
-          {
-            path: '/organizations/:orgId/settings',
-            element: <SettingsLayout />,
-            children: [
-              { index: true, element: <OrganizationSettingsPage /> },
-              { path: 'members', element: <InviteMembersPage /> },
-            ],
-          },
+        ],
+      },
+      // Moved outside AppLayout so settings takes the full page
+      {
+        path: '/organizations/:orgId/settings',
+        element: <SettingsLayout />,
+        children: [
+          { index: true, element: <OrganizationSettingsPage /> },
+          { path: 'members', element: <InviteMembersPage /> },
+          { path: 'inventory/uom', element: <UnitOfMeasurementPage /> },
+          { path: 'configuration/currencies', element: <CurrenciesPage /> },
         ],
       },
       { path: '/organizations/new', element: <CreateOrganizationForm /> },

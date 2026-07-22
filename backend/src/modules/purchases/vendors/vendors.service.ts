@@ -63,6 +63,24 @@ export async function createNewVendor(organizationId: string, data: VendorInput,
       }
     }
 
+    const seq = await tx.numberSequence.findUnique({
+      // eslint-disable-next-line @typescript-eslint/naming-convention
+      where: { organizationId_entityType: { organizationId, entityType: 'vendor' } }
+    });
+    
+    if (seq) {
+      // Basic padding to match frontend (e.g. 00727). Assuming length 5.
+      // Wait, frontend didn't have padding logic yet. We need to agree on padding. 
+      // Let's just compare without padding if it's not strictly padded, or assume it's directly from frontend.
+      // Actually, if we just blindly increment, it might be safer, but only if they start with the prefix.
+      if (vendorData.vendorNumber.startsWith(seq.prefix)) {
+         await tx.numberSequence.update({
+           where: { id: seq.id },
+           data: { nextNumber: seq.nextNumber + 1 }
+         });
+      }
+    }
+
     return tx.vendor.create({
       data: {
         ...vendorData,
@@ -293,3 +311,45 @@ export async function deleteVendorComment(
     });
   });
 }
+
+export async function getVendorNumberPreference(organizationId: string) {
+  return runAsTenant(organizationId, async (tx) => {
+    let seq = await tx.numberSequence.findUnique({
+      // eslint-disable-next-line @typescript-eslint/naming-convention
+      where: { organizationId_entityType: { organizationId, entityType: 'vendor' } }
+    });
+    
+    if (!seq) {
+      seq = await tx.numberSequence.create({
+        data: {
+          organizationId,
+          entityType: 'vendor',
+          prefix: 'VEN-',
+          nextNumber: 1
+        }
+      });
+    }
+    
+    return seq;
+  });
+}
+
+export async function updateVendorNumberPreference(organizationId: string, prefix: string, nextNumber: number) {
+  return runAsTenant(organizationId, async (tx) => {
+    return tx.numberSequence.upsert({
+      // eslint-disable-next-line @typescript-eslint/naming-convention
+      where: { organizationId_entityType: { organizationId, entityType: 'vendor' } },
+      create: {
+        organizationId,
+        entityType: 'vendor',
+        prefix,
+        nextNumber
+      },
+      update: {
+        prefix,
+        nextNumber
+      }
+    });
+  });
+}
+

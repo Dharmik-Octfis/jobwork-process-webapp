@@ -148,3 +148,13 @@ export async function addVendorComment(orgId: string, id: string, content: strin
 export async function deleteVendorComment(orgId: string, vendorId: string, commentId: string): Promise<void> {
   await apiClient.delete(`${endpoints.purchases.vendors(orgId)}/${vendorId}/comments/${commentId}`);
 }
+
+export async function fetchVendorNumberPreference(orgId: string): Promise<{ prefix: string; nextNumber: number }> {
+  const response = await apiClient.get(endpoints.purchases.vendorPreferences(orgId));
+  return z.object({ prefix: z.string(), nextNumber: z.number() }).parse(response.data);
+}
+
+export async function updateVendorNumberPreference(orgId: string, data: { prefix: string; nextNumber: number }): Promise<{ prefix: string; nextNumber: number }> {
+  const response = await apiClient.put(endpoints.purchases.vendorPreferences(orgId), data);
+  return z.object({ prefix: z.string(), nextNumber: z.number() }).parse(response.data);
+}

@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { updateOrganizationSchema, type UpdateOrganizationData } from './organizations.schemas';
 import { organizationsApi } from './organizations.api';
 import { toApiErrorMessage } from '../../api/client';
 import { Trash2, AlertTriangle } from 'lucide-react';
+import { SearchableSelect } from '../../components/ui/SearchableSelect';
 import './CreateOrganizationForm.css'; // Re-use styles
 
 type MasterData = {
   industries: { id: string; code: string; name: string }[];
-  states: { code: string; name: string; cities: { id: string; name: string }[] }[];
+  states: { code: string; name: string; countryCode: string; cities: { id: string; name: string }[] }[];
+  countries: { id: string; code: string; name: string; dialCode: string }[];
 };
 
 export function OrganizationSettingsPage() {
@@ -46,6 +48,7 @@ export function OrganizationSettingsPage() {
     watch,
     setValue,
     reset,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<UpdateOrganizationData>({
     resolver: zodResolver(updateOrganizationSchema),
@@ -54,7 +57,8 @@ export function OrganizationSettingsPage() {
       email: '',
       phone: '',
       orgAddress: '',
-      stateCode: '',
+      countryCode: 'IN',
+      stateCode: 'IN-GJ',
       cityId: '',
       zip: '',
       industryCode: '',
@@ -70,7 +74,8 @@ export function OrganizationSettingsPage() {
         email: activeOrg.email || '',
         phone: activeOrg.phone || '',
         orgAddress: activeOrg.orgAddress || '',
-        stateCode: activeOrg.stateCode || '',
+        countryCode: activeOrg.countryCode || 'IN',
+        stateCode: activeOrg.stateCode || 'IN-GJ',
         cityId: activeOrg.cityId || '',
         zip: activeOrg.zip || '',
         industryCode: activeOrg.industryCode || '',
@@ -79,13 +84,28 @@ export function OrganizationSettingsPage() {
     }
   }, [activeOrg, reset]);
 
+  const selectedCountryCode = watch('countryCode');
   const selectedStateCode = watch('stateCode');
+
+  // Filter states by selected country
+  const availableStates = masterData?.states.filter((s) => !selectedCountryCode || s.countryCode === selectedCountryCode) || [];
+
 
   // Clear city when state changes, unless we are just initializing
   const [isInitializing, setIsInitializing] = useState(true);
   useEffect(() => {
     if (activeOrg && isInitializing) {
       setIsInitializing(false);
+      return;
+    }
+    if (selectedCountryCode && !isInitializing) {
+      setValue('stateCode', '');
+      setValue('cityId', '');
+    }
+  }, [selectedCountryCode, setValue, activeOrg, isInitializing]);
+
+  useEffect(() => {
+    if (activeOrg && isInitializing) {
       return;
     }
     if (selectedStateCode && !isInitializing) {
@@ -219,20 +239,22 @@ export function OrganizationSettingsPage() {
               {/* Industry */}
               <div className="org-form-group">
                 <label>
-                  Industry Type <span className="org-form-required">*</span>
+                  Industry Type <span className="required">*</span>
                 </label>
-                <select
-                  className={`org-form-select ${errors.industryCode ? 'error' : ''}`}
-                  {...register('industryCode')}
-                  disabled={!masterData}
-                >
-                  <option value="">Select Industry</option>
-                  {masterData?.industries.map((i) => (
-                    <option key={i.id} value={i.code}>
-                      {i.name}
-                    </option>
-                  ))}
-                </select>
+                <Controller
+                  name="industryCode"
+                  control={control}
+                  render={({ field }) => (
+                    <div className={errors.industryCode ? 'error' : ''}>
+                      <SearchableSelect
+                        options={masterData?.industries.map(ind => ({ label: ind.name, value: ind.code })) || []}
+                        value={field.value}
+                        onChange={field.onChange}
+                        placeholder="Select Industry"
+                      />
+                    </div>
+                  )}
+                />
                 {errors.industryCode && (
                   <p className="org-form-error-msg">{errors.industryCode.message}</p>
                 )}
@@ -281,40 +303,65 @@ export function OrganizationSettingsPage() {
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '1fr 1fr 1fr',
+                  gridTemplateColumns: '1fr 1fr',
                   gap: 'var(--space-4)',
                 }}
               >
                 <div className="org-form-group">
+                  <label>Country</label>
+                  <Controller
+                    name="countryCode"
+                    control={control}
+                    render={({ field }) => (
+                      <div className={errors.countryCode ? 'error' : ''}>
+                        <SearchableSelect
+                          options={masterData?.countries.map(c => ({ label: c.name, value: c.code })) || []}
+                          value={field.value}
+                          onChange={field.onChange}
+                          disabled={!masterData}
+                          placeholder="Select Country"
+                        />
+                      </div>
+                    )}
+                  />
+                </div>
+
+                <div className="org-form-group">
                   <label>State</label>
-                  <select
-                    className={`org-form-select ${errors.stateCode ? 'error' : ''}`}
-                    {...register('stateCode')}
-                    disabled={!masterData}
-                  >
-                    <option value="">Select State</option>
-                    {masterData?.states.map((s) => (
-                      <option key={s.code} value={s.code}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
+                  <Controller
+                    name="stateCode"
+                    control={control}
+                    render={({ field }) => (
+                      <div className={errors.stateCode ? 'error' : ''}>
+                        <SearchableSelect
+                          options={availableStates.map(s => ({ label: s.name, value: s.code }))}
+                          value={field.value}
+                          onChange={field.onChange}
+                          disabled={!selectedCountryCode}
+                          placeholder="Select State"
+                        />
+                      </div>
+                    )}
+                  />
                 </div>
 
                 <div className="org-form-group">
                   <label>City</label>
-                  <select
-                    className={`org-form-select ${errors.cityId ? 'error' : ''}`}
-                    {...register('cityId')}
-                    disabled={!selectedStateCode}
-                  >
-                    <option value="">Select City</option>
-                    {availableCities.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
+                  <Controller
+                    name="cityId"
+                    control={control}
+                    render={({ field }) => (
+                      <div className={errors.cityId ? 'error' : ''}>
+                        <SearchableSelect
+                          options={availableCities.map(c => ({ label: c.name, value: c.id }))}
+                          value={field.value}
+                          onChange={field.onChange}
+                          disabled={!selectedStateCode}
+                          placeholder="Select City"
+                        />
+                      </div>
+                    )}
+                  />
                 </div>
 
                 <div className="org-form-group">

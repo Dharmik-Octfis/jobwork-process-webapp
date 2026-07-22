@@ -11,6 +11,7 @@ const baseOrganizationSchema = z.object({
     .optional()
     .or(z.literal('')),
   orgAddress: z.string().optional(),
+  countryCode: z.string().optional(),
   stateCode: z.string().optional(),
   cityId: z.string().optional(),
   zip: z
@@ -48,6 +49,7 @@ export interface Organization {
   dialCode?: string;
   phone?: string;
   orgAddress?: string;
+  countryCode?: string;
   stateCode?: string;
   cityId?: string;
   zip?: string;

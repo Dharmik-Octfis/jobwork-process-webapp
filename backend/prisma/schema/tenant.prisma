@@ -48,6 +48,12 @@ model User {
   updatedNumberSequences      NumberSequence[]      @relation("NumberSequenceUpdatedBy")
   createdItems                Item[]                @relation("ItemCreatedBy")
   updatedItems                Item[]                @relation("ItemUpdatedBy")
+  createdItemActivities       ItemActivity[]        @relation("ItemActivityCreatedBy")
+  updatedItemActivities       ItemActivity[]        @relation("ItemActivityUpdatedBy")
+  createdUnitsOfMeasurement   UnitOfMeasurement[]   @relation("UomCreatedBy")
+  updatedUnitsOfMeasurement   UnitOfMeasurement[]   @relation("UomUpdatedBy")
+  createdCurrencies           Currency[]            @relation("CurrencyCreatedBy")
+  updatedCurrencies           Currency[]            @relation("CurrencyUpdatedBy")
 
   @@map("users")
 }
@@ -91,6 +97,7 @@ model Organization {
   phone    String?
   email    String?
 
+  countryCode String? @map("country_code") @db.VarChar(2)
   stateCode  String? @map("state_code") @db.VarChar(6)
   cityId     String? @map("city_id") @db.Uuid
   zip        String?
@@ -104,6 +111,7 @@ model Organization {
   createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   industry        Industry?        @relation(fields: [industryCode], references: [code])
+  country         Country?         @relation(fields: [countryCode], references: [code], onDelete: SetNull, onUpdate: Cascade)
   state           State?           @relation(fields: [stateCode], references: [code], onDelete: SetNull, onUpdate: Cascade)
   city            City?            @relation(fields: [cityId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   memberships     Membership[]
@@ -111,6 +119,8 @@ model Organization {
   vendors         Vendor[]
   items           Item[]
   numberSequences NumberSequence[]
+  unitsOfMeasurement UnitOfMeasurement[]
+  currencies      Currency[]
 
   createdByUser User? @relation("OrganizationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User? @relation("OrganizationUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
@@ -203,6 +213,7 @@ model Country {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   states State[]
+  organizations Organization[]
 
   @@map("countries")
 }
@@ -262,4 +273,54 @@ model AppModule {
   children AppModule[] @relation("ModuleToSubModules")
 
   @@map("app_modules")
+}
+
+
+
+// Per-tenant auto-numbering counters for PO / Invoice / Vendor etc.
+// `entityType` picks the sequence; `prefix` + `nextNumber` build the human number.
+model NumberSequence {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  entityType     String   @map("entity_type") @db.VarChar(50)
+  prefix         String   @db.VarChar(20)
+  nextNumber     Int      @default(1) @map("next_number")
+  isDeleted      Boolean  @default(false) @map("is_deleted")
+  createdBy      String?  @map("created_by") @db.Uuid
+  updatedBy      String?  @map("updated_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdByUser User? @relation("NumberSequenceCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("NumberSequenceUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, entityType])
+  @@map("number_sequences")
+}
+
+model Currency {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  currencyCode  String @map("currency_code")
+  currencyName  String @map("currency_name")
+  symbol        String
+  decimalPlaces Int    @default(2) @map("decimal_places")
+  format        String @default("1,234,567.89")
+
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdByUser User? @relation("CurrencyCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("CurrencyUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, currencyCode])
+  @@map("currencies")
 }

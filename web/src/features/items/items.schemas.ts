@@ -3,7 +3,6 @@ import { z } from 'zod';
 export const itemSchema = z.object({
   id: z.string(),
   name: z.string().min(1, 'Name is required').max(200),
-  aliasName: z.string().max(200).nullable().optional(),
   type: z.enum(['Goods', 'Service']).default('Goods'),
   category: z.string().max(100).nullable().optional(),
   brand: z.string().max(100).nullable().optional(),
@@ -21,13 +20,22 @@ export const itemSchema = z.object({
   purchaseAccount: z.string().max(100).nullable().optional(),
   packaging: z.string().max(100).nullable().optional(),
   deliveryDate: z.string().nullable().optional(),
+
+  frontImage: z.string().nullable().optional(),
+  rearImage: z.string().nullable().optional(),
+  images: z.array(z.string()).default([]),
+
+  trackInventory: z.boolean().default(false),
+  binLocationTracking: z.string().nullable().optional(),
+  inventoryTracking: z.string().nullable().optional(),
+  inventoryAccount: z.string().nullable().optional(),
+  inventoryValuationMethod: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
 
 export const itemFormSchema = z.object({
   name: z.string().min(1, 'Name is required'),
-  aliasName: z.string().optional().nullable(),
   type: z.enum(['Goods', 'Service']).default('Goods'),
   category: z.string().optional().nullable(),
   brand: z.string().optional().nullable(),
@@ -48,6 +56,16 @@ export const itemFormSchema = z.object({
   packaging: z.string().optional().nullable(),
   
   deliveryDate: z.string().optional().nullable(),
+
+  frontImage: z.string().nullable().optional(),
+  rearImage: z.string().nullable().optional(),
+  images: z.array(z.string()).default([]),
+
+  trackInventory: z.boolean().default(false),
+  binLocationTracking: z.string().nullable().optional(),
+  inventoryTracking: z.string().nullable().optional(),
+  inventoryAccount: z.string().nullable().optional(),
+  inventoryValuationMethod: z.string().nullable().optional(),
 });
 
 export type Item = z.infer<typeof itemSchema>;

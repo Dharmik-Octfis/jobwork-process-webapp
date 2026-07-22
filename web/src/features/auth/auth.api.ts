@@ -56,12 +56,19 @@ export async function logout(): Promise<{ message: string }> {
  * in memory as a side effect.
  */
 export async function restoreSession(): Promise<{ user: AuthResponse['user'] } | null> {
-  try {
-    const { data } = await apiClient.post<AuthResponse>(endpoints.auth.refresh);
-    setAccessToken(data.accessToken);
-    return { user: data.user };
-  } catch {
-    setAccessToken(null);
-    return null;
+  const doRestore = async () => {
+    try {
+      const { data } = await apiClient.post<AuthResponse>(endpoints.auth.refresh);
+      setAccessToken(data.accessToken);
+      return { user: data.user };
+    } catch {
+      setAccessToken(null);
+      return null;
+    }
+  };
+
+  if (typeof navigator !== 'undefined' && navigator.locks) {
+    return navigator.locks.request('auth_refresh', doRestore);
   }
+  return doRestore();
 }

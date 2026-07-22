@@ -117,7 +117,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
 
   if (isLoading) {
     return (
-      <div style={{ padding: '24px', display: 'flex', justifyContent: 'center', color: '#64748b' }}>
+      <div style={{ padding: '16px', display: 'flex', justifyContent: 'center', color: '#64748b' }}>
         Loading vendor details...
       </div>
     );
@@ -125,7 +125,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
 
   if (!vendor) {
     return (
-      <div style={{ padding: '24px', display: 'flex', justifyContent: 'center', color: '#64748b' }}>
+      <div style={{ padding: '16px', display: 'flex', justifyContent: 'center', color: '#64748b' }}>
         Vendor not found.
       </div>
     );
@@ -138,22 +138,22 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
     fontWeight: 600,
     color: '#64748b',
     textTransform: 'uppercase' as const,
-    marginBottom: '16px',
+    marginBottom: '12px',
     borderBottom: '1px solid #eef0f3',
     paddingBottom: '8px',
   };
 
   const labelStyle = {
-    fontSize: '12px',
+    fontSize: '11px',
     color: '#64748b',
-    marginBottom: '4px',
+    marginBottom: '2px',
   };
 
   const valueStyle = {
-    fontSize: '13px',
+    fontSize: '12px',
     color: '#1e293b',
     fontWeight: 500,
-    marginBottom: '16px',
+    marginBottom: '12px',
   };
 
   const hasPrimaryContact = vendor.primaryContactFirstName || vendor.primaryContactLastName;
@@ -423,22 +423,22 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
             {/* Left Column */}
             <div
               style={{
-                flex: '0 0 320px',
+                flex: '0 0 300px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '32px',
+                gap: '24px',
                 background: '#f1f5f9',
-                padding: '24px',
+                padding: '16px',
                 borderRight: '1px solid #e2e8f0',
               }}
             >
               <div>
                 <div style={sectionHeaderStyle}>Address</div>
 
-                <div style={{ marginBottom: '24px' }}>
+                <div style={{ marginBottom: '16px' }}>
                   <div style={labelStyle}>Billing Address</div>
                   {vendor.billingStreet1 ? (
-                    <div style={{ fontSize: '13px', color: '#333' }}>
+                    <div style={{ fontSize: '12px', color: '#333' }}>
                       {vendor.billingStreet1}
                       <br />
                       {vendor.billingStreet2 && (
@@ -453,7 +453,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                       {vendor.billingCountry} {vendor.billingPinCode}
                     </div>
                   ) : (
-                    <div style={{ fontSize: '13px', color: '#94a3b8' }}>
+                    <div style={{ fontSize: '12px', color: '#94a3b8' }}>
                       No Billing Address -{' '}
                       <a href="#" style={{ color: '#0062ff', textDecoration: 'none' }}>
                         New Address
@@ -465,7 +465,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                 <div>
                   <div style={labelStyle}>Shipping Address</div>
                   {vendor.shippingStreet1 ? (
-                    <div style={{ fontSize: '13px', color: '#333' }}>
+                    <div style={{ fontSize: '12px', color: '#333' }}>
                       {vendor.shippingStreet1}
                       <br />
                       {vendor.shippingStreet2 && (
@@ -480,7 +480,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                       {vendor.shippingCountry} {vendor.shippingPinCode}
                     </div>
                   ) : (
-                    <div style={{ fontSize: '13px', color: '#94a3b8' }}>
+                    <div style={{ fontSize: '12px', color: '#94a3b8' }}>
                       No Shipping Address -{' '}
                       <a href="#" style={{ color: '#0062ff', textDecoration: 'none' }}>
                         New Address
@@ -490,9 +490,9 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                 </div>
 
                 {vendor.addresses?.filter((a: VendorAddress) => a.addressType !== 'billing' && a.addressType !== 'shipping').map((addr: VendorAddress, index: number) => (
-                  <div key={index} style={{ marginTop: '24px' }}>
+                  <div key={index} style={{ marginTop: '12px' }}>
                     <div style={labelStyle}>Additional Address</div>
-                    <div style={{ fontSize: '13px', color: '#333' }}>
+                    <div style={{ fontSize: '12px', color: '#333' }}>
                       {addr.attention && <>{addr.attention}<br/></>}
                       {addr.street1 && <>{addr.street1}<br/></>}
                       {addr.street2 && <>{addr.street2}<br/></>}
@@ -505,7 +505,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                   </div>
                 ))}
 
-                <div style={{ marginTop: '16px' }}>
+                <div style={{ marginTop: '12px' }}>
                   <button
                     onClick={() => setIsAdditionalAddressModalOpen(true)}
                     style={{ background: 'none', border: 'none', color: '#0062ff', cursor: 'pointer', padding: 0, fontSize: '13px' }}
@@ -517,7 +517,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
 
               <div>
                 <div style={sectionHeaderStyle}>Other Details</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div>
                     <div style={labelStyle}>Vendor Number</div>
                     <div style={valueStyle}>{vendor.vendorNumber}</div>
@@ -548,7 +548,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                 background: 'white',
               }}
             >
-              <div style={{ padding: '24px', borderBottom: '1px solid #eef0f3' }}>
+              <div style={{ padding: '16px', borderBottom: '1px solid #eef0f3' }}>
                 <div style={sectionHeaderStyle}>Payables</div>
 
                 <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '16px' }}>
@@ -573,13 +573,13 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                   </thead>
                   <tbody>
                     <tr style={{ borderBottom: '1px solid #eef0f3' }}>
-                      <td style={{ padding: '12px 0', fontSize: '13px', color: '#333' }}>
+                      <td style={{ padding: '12px 0', fontSize: '12px', color: '#333' }}>
                         {vendor.currency || 'INR'} - Indian Rupee
                       </td>
                       <td
                         style={{
                           padding: '12px 0',
-                          fontSize: '13px',
+                          fontSize: '12px',
                           color: '#0062ff',
                           textAlign: 'right',
                           fontWeight: 500,
@@ -590,7 +590,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                       <td
                         style={{
                           padding: '12px 0',
-                          fontSize: '13px',
+                          fontSize: '12px',
                           color: '#333',
                           textAlign: 'right',
                           fontWeight: 500,
@@ -607,7 +607,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                     fontSize: '13px',
                     color: '#0062ff',
                     cursor: 'pointer',
-                    marginBottom: '24px',
+                    marginBottom: '16px',
                   }}
                 >
                   View Opening Balance
@@ -629,17 +629,17 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                 </div>
               </div>
 
-              <div style={{ padding: '24px' }}>
+              <div style={{ padding: '16px' }}>
                 <div
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    marginBottom: '24px',
+                    marginBottom: '16px',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b' }}>
+                    <div style={{ fontSize: '15px', fontWeight: 500, color: '#1e293b' }}>
                       Recent Activity
                     </div>
                   </div>
@@ -665,7 +665,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
           style={{
             display: activeTab === 'Transactions' ? 'block' : 'none',
             color: '#64748b',
-            padding: '24px',
+            padding: '16px',
           }}
         >
           No transactions found.

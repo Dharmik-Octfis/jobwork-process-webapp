@@ -9,6 +9,8 @@ import {
   getVendorComments,
   createVendorComment,
   deleteVendorComment,
+  getVendorNumberPreference,
+  updateVendorNumberPreference,
 } from './vendors.service.ts';
 import { z } from 'zod';
 import { openApiRegistry } from '../../../config/openapi.ts';
@@ -50,6 +52,8 @@ const createVendorSchema = openApiRegistry.register(
     mobilePhone: z.string().or(z.literal('')).nullable().optional(),
     currency: z.string().nullable().optional(),
     paymentTerms: z.string().nullable().optional(),
+    remarks: z.string().nullable().optional(),
+
     status: z.string().optional(),
 
     addresses: z.array(vendorAddressSchema).optional(),
@@ -146,7 +150,63 @@ openApiRegistry.registerPath({
   responses: {
     204: { description: 'Vendor deleted successfully' },
     404: { description: 'Vendor not found' },
+  }
+});
+
+// Register preferences routes
+openApiRegistry.registerPath({
+  method: 'get',
+  path: '/organizations/{orgId}/purchases/vendors/preferences/number-sequence',
+  tags: ['Vendors'],
+  summary: 'Get vendor number sequence preferences',
+  request: { params: z.object({ orgId: z.string() }) },
+  responses: { 200: { description: 'Number sequence preferences' } }
+});
+
+openApiRegistry.registerPath({
+  method: 'put',
+  path: '/organizations/{orgId}/purchases/vendors/preferences/number-sequence',
+  tags: ['Vendors'],
+  summary: 'Update vendor number sequence preferences',
+  request: {
+    params: z.object({ orgId: z.string() }),
+    body: {
+      content: {
+        'application/json': {
+          schema: z.object({ prefix: z.string(), nextNumber: z.number().int().positive() })
+        }
+      }
+    }
   },
+  responses: { 200: { description: 'Updated number sequence preferences' } }
+});
+
+// Register preferences routes
+openApiRegistry.registerPath({
+  method: 'get',
+  path: '/organizations/{orgId}/purchases/vendors/preferences/number-sequence',
+  tags: ['Vendors'],
+  summary: 'Get vendor number sequence preferences',
+  request: { params: z.object({ orgId: z.string() }) },
+  responses: { 200: { description: 'Number sequence preferences' } }
+});
+
+openApiRegistry.registerPath({
+  method: 'put',
+  path: '/organizations/{orgId}/purchases/vendors/preferences/number-sequence',
+  tags: ['Vendors'],
+  summary: 'Update vendor number sequence preferences',
+  request: {
+    params: z.object({ orgId: z.string() }),
+    body: {
+      content: {
+        'application/json': {
+          schema: z.object({ prefix: z.string(), nextNumber: z.number().int().positive() })
+        }
+      }
+    }
+  },
+  responses: { 200: { description: 'Updated number sequence preferences' } }
 });
 export const getVendors = async (req: Request, res: Response) => {
   try {
@@ -306,5 +366,32 @@ export const deleteVendorCommentRoute = async (req: Request, res: Response) => {
     } else {
       res.status(500).json({ error: 'Failed to delete comment' });
     }
+  }
+};
+
+export const getNumberPreferenceRoute = async (req: Request, res: Response) => {
+  try {
+    const orgId = req.tenantId!;
+    const pref = await getVendorNumberPreference(orgId);
+    res.json(pref);
+  } catch (error) {
+    console.error('Error fetching number preference:', error);
+    res.status(500).json({ error: 'Failed to fetch number preference' });
+  }
+};
+
+export const updateNumberPreferenceRoute = async (req: Request, res: Response) => {
+  try {
+    const orgId = req.tenantId!;
+    const { prefix, nextNumber } = z.object({
+      prefix: z.string(),
+      nextNumber: z.number().int().positive()
+    }).parse(req.body);
+
+    const pref = await updateVendorNumberPreference(orgId, prefix, nextNumber);
+    res.json(pref);
+  } catch (error) {
+    console.error('Error updating number preference:', error);
+    res.status(500).json({ error: 'Failed to update number preference' });
   }
 };

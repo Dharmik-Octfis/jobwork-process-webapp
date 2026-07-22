@@ -31,6 +31,22 @@ export class ItemsController {
     }
   }
 
+  async getItemActivities(req: Request, res: Response) {
+    try {
+      const organizationId = req.tenantId!;
+      const id = req.params.id as string;
+      const activities = await itemsService.getActivities(id, organizationId);
+      res.json(activities);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Item not found') {
+        res.status(404).json({ error: error.message });
+      } else {
+        console.error('Error fetching item activities:', error);
+        res.status(500).json({ error: 'Failed to fetch item activities' });
+      }
+    }
+  }
+
   async createItem(req: Request, res: Response) {
     try {
       const organizationId = req.tenantId!;
@@ -78,6 +94,30 @@ export class ItemsController {
       } else {
         console.error('Error deleting item:', error);
         res.status(500).json({ error: 'Failed to delete item' });
+      }
+    }
+  }
+  async uploadImages(req: Request, res: Response) {
+    try {
+      const organizationId = req.tenantId!;
+      const id = req.params.id as string;
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+
+      if (!files) {
+         res.status(400).json({ error: 'No files provided' });
+         return;
+      }
+
+      const item = await itemsService.uploadImages(id, organizationId, files, req.user?.id);
+      res.json(item);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Item not found') {
+        const organizationId = req.tenantId!;
+        const id = req.params.id as string;
+        res.status(404).json({ error: error.message, debug: { orgId: organizationId, itemId: id } });
+      } else {
+        console.error('Error uploading item images:', error);
+        res.status(500).json({ error: 'Failed to upload item images', details: error instanceof Error ? error.message : String(error) });
       }
     }
   }

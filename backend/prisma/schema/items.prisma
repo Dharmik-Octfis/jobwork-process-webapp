@@ -26,6 +26,16 @@ model Item {
 
   deliveryDate DateTime? @map("delivery_date") @db.Date
 
+  frontImage String? @map("front_image")
+  rearImage  String? @map("rear_image")
+  images     String[]
+
+  trackInventory           Boolean @default(false) @map("track_inventory")
+  binLocationTracking      String? @map("bin_location_tracking")
+  inventoryTracking        String? @map("inventory_tracking")
+  inventoryAccount         String? @map("inventory_account")
+  inventoryValuationMethod String? @map("inventory_valuation_method")
+
   isDeleted Boolean  @default(false) @map("is_deleted")
   createdBy String?  @map("created_by") @db.Uuid
   updatedBy String?  @map("updated_by") @db.Uuid
@@ -37,5 +47,52 @@ model Item {
   createdByUser User? @relation("ItemCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User? @relation("ItemUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
+  activities ItemActivity[]
+
   @@map("items")
+}
+
+model UnitOfMeasurement {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  unitName      String  @map("unit_name") // e.g., Kilograms
+  symbol        String
+  uqc           String  @default("OTH") // e.g., KGS
+  unitPrecision Int     @default(2) @map("unit_precision")
+
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdByUser User? @relation("UomCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("UomUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, unitName])
+  @@map("units_of_measurement")
+}
+
+model ItemActivity {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  itemId      String   @map("item_id") @db.Uuid
+  title       String   @db.VarChar(255)
+  description String?
+  performedBy String?  @map("performed_by") @db.VarChar(255)
+  
+  isDeleted   Boolean  @default(false) @map("is_deleted")
+  createdBy   String?  @map("created_by") @db.Uuid
+  updatedBy   String?  @map("updated_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  createdByUser User? @relation("ItemActivityCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("ItemActivityUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("item_activities")
 }

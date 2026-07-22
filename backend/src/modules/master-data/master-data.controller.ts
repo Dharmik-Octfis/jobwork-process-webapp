@@ -14,6 +14,7 @@ export async function getMasterData(_req: Request, res: Response, next: NextFunc
         select: {
           code: true,
           name: true,
+          countryCode: true,
           cities: {
             where: { isActive: true },
             select: { id: true, name: true },

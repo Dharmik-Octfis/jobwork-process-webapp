@@ -1,4 +1,4 @@
-# CLAUDE.md
+# ANTIGRAVITY.md
 
 Multi-tenant SaaS (production monitoring / inventory). **Express 5 + TypeScript** modular monolith,
 **React 19 + Vite** front end, **PostgreSQL 18 via Prisma 7**, deployed to **Zoho Catalyst AppSail**.
@@ -69,6 +69,16 @@ promotes it to `req.tenantId` after checking `memberships`. Everything downstrea
 - Cross-tenant admin views need a **separate read-only role and client**, never the app's connection.
 
 ## Schema conventions — copy `prisma/schema/tenant.prisma`, not Prisma defaults
+
+**Every table MUST include these 5 audit fields:**
+```prisma
+  isDeleted      Boolean  @default(false) @map("is_deleted")
+  createdBy      String?  @map("created_by") @db.Uuid
+  updatedBy      String?  @map("updated_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+```
+When creating new tables and APIs, always consider these keys and take reference from old APIs and tables.
 
 |                  | This repo                                                 | **Not**                                   |
 | ---------------- | --------------------------------------------------------- | ----------------------------------------- |

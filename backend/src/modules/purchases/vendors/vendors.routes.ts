@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getVendors, createVendor, updateVendor, deleteVendor, getVendor, getVendorActivitiesRoute, getVendorCommentsRoute, createVendorCommentRoute, deleteVendorCommentRoute } from './vendors.controller.ts';
+import { getVendors, createVendor, updateVendor, deleteVendor, getVendor, getVendorActivitiesRoute, getVendorCommentsRoute, createVendorCommentRoute, deleteVendorCommentRoute, getNumberPreferenceRoute, updateNumberPreferenceRoute } from './vendors.controller.ts';
 import { authenticate } from '../../../middlewares/authenticate.ts';
 import { tenantContext } from '../../../middlewares/tenantContext.ts';
 
@@ -18,6 +18,10 @@ router.use(authenticate, tenantContext);
 
 router.get('/', getVendors);
 router.post('/', createVendor);
+
+router.get('/preferences/number-sequence', getNumberPreferenceRoute);
+router.put('/preferences/number-sequence', updateNumberPreferenceRoute);
+
 router.get('/:id', getVendor);
 router.get('/:id/activities', getVendorActivitiesRoute);
 router.get('/:id/comments', getVendorCommentsRoute);
