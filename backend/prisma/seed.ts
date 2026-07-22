@@ -60,16 +60,17 @@ async function main() {
   console.log(`Seeded ${cities.length} India cities.`);
 
   // 4. Seed Modules
+
   await prisma.appModule.upsert({
     where: { code: 'DASHBOARD' },
-    update: {},
-    create: { code: 'DASHBOARD', name: 'Dashboard', sortIndex: 1, icon: 'LayoutDashboard' },
+    update: { name: 'Home', icon: 'Home' },
+    create: { code: 'DASHBOARD', name: 'Home', sortIndex: 1, icon: 'Home' },
   });
 
   const purchases = await prisma.appModule.upsert({
     where: { code: 'PURCHASES' },
-    update: {},
-    create: { code: 'PURCHASES', name: 'Purchases', sortIndex: 2, icon: 'ShoppingCart' },
+    update: { sortIndex: 3 },
+    create: { code: 'PURCHASES', name: 'Purchases', sortIndex: 3, icon: 'ShoppingCart' },
   });
 
   await prisma.appModule.upsert({
@@ -102,10 +103,16 @@ async function main() {
     create: { code: 'BILLS', name: 'Bills', parentId: purchases.id, sortIndex: 3, icon: 'Receipt' },
   });
 
+  const inventory = await prisma.appModule.upsert({
+    where: { code: 'INVENTORY' },
+    update: { name: 'Inventory', sortIndex: 2 },
+    create: { code: 'INVENTORY', name: 'Inventory', sortIndex: 2, icon: 'FileText' },
+  });
+
   await prisma.appModule.upsert({
     where: { code: 'ITEMS' },
-    update: {},
-    create: { code: 'ITEMS', name: 'Items', sortIndex: 3, icon: 'FileText' },
+    update: { parentId: inventory.id },
+    create: { code: 'ITEMS', name: 'Items', parentId: inventory.id, sortIndex: 1, icon: 'FileText' },
   });
   console.log('Seeded app modules.');
 

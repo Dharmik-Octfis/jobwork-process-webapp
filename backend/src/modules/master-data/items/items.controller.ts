@@ -121,6 +121,26 @@ export class ItemsController {
       }
     }
   }
+
+  async getSignedUrl(req: Request, res: Response) {
+    try {
+      const { key } = req.query;
+      if (!key || typeof key !== 'string') {
+        return res.status(400).json({ error: 'Missing or invalid key' });
+      }
+      const organizationId = req.tenantId!;
+      if (!key.startsWith(`items/${organizationId}/`)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      
+      const { getFileUrl } = await import('../../../lib/storage.ts');
+      const url = await getFileUrl(key);
+      res.json({ url });
+    } catch (error) {
+      console.error('Error generating signed url:', error);
+      res.status(500).json({ error: 'Failed to generate signed url' });
+    }
+  }
 }
 
 export const itemsController = new ItemsController();

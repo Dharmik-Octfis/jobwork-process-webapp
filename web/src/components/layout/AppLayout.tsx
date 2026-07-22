@@ -9,9 +9,9 @@ import {
   User as UserIcon,
   Settings,
   LayoutDashboard,
+  Home,
   ShoppingCart,
   Receipt,
-  ChevronDown,
   ChevronRight,
 } from 'lucide-react';
 import { Logo } from '../ui/Logo';
@@ -48,6 +48,7 @@ function navPath(moduleCode: string, orgId: string | undefined): string {
 
 const ICON_MAP: Record<string, React.ElementType> = {
   LayoutDashboard,
+  Home,
   ShoppingCart,
   Users,
   FileText,
@@ -76,6 +77,8 @@ export function AppLayout() {
   const { orgId: activeOrgId } = useParams<{ orgId: string }>();
   const location = useLocation();
   const navigate = useNavigate();
+
+  const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
 
   // Remember it only so `/` can send the user back here next visit (OrgRedirect).
   // Not an authorization input: the server re-checks membership on every request.
@@ -139,7 +142,12 @@ export function AppLayout() {
           }}
         >
           {modules.map((module) => (
-            <ModuleNavGroup key={module.id} module={module} />
+            <ModuleNavGroup
+              key={module.id}
+              module={module}
+              expandedId={expandedModuleId}
+              onToggle={(id) => setExpandedModuleId(prev => prev === id ? null : id)}
+            />
           ))}
         </nav>
 
@@ -220,15 +228,30 @@ export function AppLayout() {
   );
 }
 
-function ModuleNavGroup({ module, depth = 0 }: { module: AppModule; depth?: number }) {
+function ModuleNavGroup({
+  module,
+  depth = 0,
+  expandedId,
+  onToggle
+}: {
+  module: AppModule;
+  depth?: number;
+  expandedId?: string | null;
+  onToggle?: (id: string) => void;
+}) {
   const Icon = module.icon && ICON_MAP[module.icon] ? ICON_MAP[module.icon] : FileText;
-  // Every nav link is scoped to the organization in the URL, so the sidebar
-  // follows the user across an org switch instead of pointing back at the old one.
   const { orgId } = useParams<{ orgId: string }>();
   const to = navPath(module.code, orgId);
 
   const isParent = module.children && module.children.length > 0;
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [localExpanded, setLocalExpanded] = useState(false);
+
+  const isExpanded = onToggle ? expandedId === module.id : localExpanded;
+
+  const handleToggle = () => {
+    if (onToggle) onToggle(module.id);
+    else setLocalExpanded(!localExpanded);
+  };
 
   if (isParent) {
     return (
@@ -237,65 +260,56 @@ function ModuleNavGroup({ module, depth = 0 }: { module: AppModule; depth?: numb
           display: 'flex',
           flexDirection: 'column',
           gap: 'var(--space-1)',
-          marginTop: depth === 0 ? 'var(--space-2)' : 0,
         }}
       >
-        {depth === 0 ? (
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              background: 'none',
-              border: 'none',
-              padding: '8px 14px 4px',
-              cursor: 'pointer',
-              color: 'rgba(255,255,255,0.5)',
-              fontWeight: 700,
-              fontSize: '10px',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-            }}
-          >
-            <span>{module.name}</span>
-            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          </button>
-        ) : (
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 'var(--space-2)',
-              padding: '8px 14px',
-              paddingLeft: 14 + depth * 12,
-              borderRadius: 'var(--radius-md)',
-              background: 'none',
-              border: 'none',
-              color: 'rgba(255,255,255,0.7)',
-              fontWeight: 500,
-              cursor: 'pointer',
-              width: '100%',
-              textAlign: 'left',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-              <Icon size={16} />
-              <span style={{ fontSize: 13 }}>{module.name}</span>
+        <button
+          onClick={handleToggle}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            padding: '8px 14px',
+            paddingLeft: 14 + depth * 12,
+            borderRadius: 'var(--radius-md)',
+            background: 'none',
+            border: 'none',
+            color: 'rgba(255,255,255,0.7)',
+            fontWeight: 500,
+            cursor: 'pointer',
+            width: '100%',
+            textAlign: 'left',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', width: '100%' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 16,
+                transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s ease',
+              }}
+            >
+              <ChevronRight size={14} />
             </div>
-            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          </button>
-        )}
+            <Icon size={16} />
+            <span style={{ fontSize: 13, marginLeft: 4 }}>{module.name}</span>
+          </div>
+        </button>
 
-        {isExpanded && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateRows: isExpanded ? '1fr' : '0fr',
+            transition: 'grid-template-rows 0.2s ease',
+          }}
+        >
+          <div style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
             {module.children?.map((child) => (
               <ModuleNavGroup key={child.id} module={child} depth={depth + 1} />
             ))}
           </div>
-        )}
+        </div>
       </div>
     );
   }
@@ -303,12 +317,12 @@ function ModuleNavGroup({ module, depth = 0 }: { module: AppModule; depth?: numb
   return (
     <NavLink
       to={to}
+      end={module.code === 'DASHBOARD'}
       style={({ isActive }) => ({
         display: 'flex',
         alignItems: 'center',
-        gap: 'var(--space-3)',
         padding: '8px 14px',
-        paddingLeft: depth > 0 ? 14 + depth * 12 : 14,
+        paddingLeft: 14 + depth * 12,
         borderRadius: 'var(--radius-md)',
         textDecoration: 'none',
         color: isActive ? 'white' : 'rgba(255,255,255,0.7)',
@@ -317,8 +331,11 @@ function ModuleNavGroup({ module, depth = 0 }: { module: AppModule; depth?: numb
         transition: 'all 0.2s ease',
       })}
     >
-      <Icon size={depth === 0 ? 18 : 16} />
-      <span style={{ fontSize: 13 }}>{module.name}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', width: '100%' }}>
+        <div style={{ width: 16 }}></div>
+        <Icon size={16} />
+        <span style={{ fontSize: 13, marginLeft: 4 }}>{module.name}</span>
+      </div>
     </NavLink>
   );
 }

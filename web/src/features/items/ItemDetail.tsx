@@ -5,6 +5,7 @@ import { X, Edit, ChevronDown, Plus } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { ItemActivityHistory } from './ItemActivityHistory';
+import { ItemImageGallery } from './components/ItemImageGallery';
 
 interface ItemDetailProps {
   itemId: string;
@@ -365,31 +366,8 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
           {/* Right Column: Images & Stock */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
 
-            {/* Image Upload Area */}
-            <div style={{ border: '1px solid #eef0f3', borderRadius: '8px', padding: '12px', display: 'flex', gap: '12px', background: '#f8fafc' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
-                <div>
-                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b' }}>Front View</div>
-                  <button type="button" style={{ width: '100%', padding: '16px', border: '1px dashed #cbd5e1', borderRadius: '6px', background: '#ffffff', color: '#0062ff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                    <span style={{ fontSize: 12 }}>↑ Upload Front Image</span>
-                  </button>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b' }}>Rear View</div>
-                  <button type="button" style={{ width: '100%', padding: '16px', border: '1px dashed #cbd5e1', borderRadius: '6px', background: '#ffffff', color: '#0062ff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                    <span style={{ fontSize: 12 }}>↑ Upload Rear Image</span>
-                  </button>
-                </div>
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b' }}>Other Images</div>
-                <button type="button" style={{ width: '100%', height: 'calc(100% - 24px)', padding: '16px', border: '1px dashed #cbd5e1', borderRadius: '6px', background: '#ffffff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer' }}>
-                  <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#0062ff', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>↑</div>
-                  <div style={{ fontWeight: 500, fontSize: 12, color: '#1e293b', textAlign: 'center' }}>Drag & Drop Images</div>
-                  <div style={{ fontSize: 10, color: '#64748b', textAlign: 'center', lineHeight: 1.4 }}>You can add up to 15 images including front, rear and other images, each not exceeding 5 MB.</div>
-                </button>
-              </div>
-            </div>
+            {/* Image Gallery & Upload */}
+            <ItemImageGallery orgId={orgId!} itemId={itemId} item={item} />
 
             {/* Opening Stock */}
             <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px' }}>

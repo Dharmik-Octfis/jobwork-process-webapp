@@ -19,7 +19,7 @@ export const itemsApi = {
     return response.data;
   },
 
-  updateItem: async ({ orgId, id, data }: { orgId: string; id: string; data: ItemFormData }): Promise<Item> => {
+  updateItem: async ({ orgId, id, data }: { orgId: string; id: string; data: Partial<ItemFormData> }): Promise<Item> => {
     const response = await apiClient.put(`${endpoints.masterData.items(orgId)}/${id}`, data);
     return response.data;
   },
@@ -43,5 +43,12 @@ export const itemsApi = {
       ]
     });
     return response.data;
+  },
+
+  getSignedUrl: async (orgId: string, id: string, key: string): Promise<string> => {
+    const response = await apiClient.get<{ url: string }>(`${endpoints.masterData.items(orgId)}/${id}/signed-url`, {
+      params: { key }
+    });
+    return response.data.url;
   },
 };

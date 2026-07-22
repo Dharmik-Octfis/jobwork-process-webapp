@@ -241,7 +241,7 @@ export class ItemsService {
       });
 
       return updatedItem;
-    });
+    }, { timeout: 60000 });
   }
 }
 

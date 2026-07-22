@@ -162,6 +162,7 @@ router.get('/', itemsController.getItems);
 router.post('/', itemsController.createItem);
 router.get('/:id', itemsController.getItem);
 router.get('/:id/activities', itemsController.getItemActivities);
+router.get('/:id/signed-url', itemsController.getSignedUrl);
 router.put('/:id', itemsController.updateItem);
 router.delete('/:id', itemsController.deleteItem);
 

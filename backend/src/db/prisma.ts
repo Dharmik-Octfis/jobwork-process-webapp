@@ -112,9 +112,10 @@ export type TenantClient = Omit<
 export async function runAsTenant<T>(
   tenantId: string,
   fn: (tx: TenantClient) => Promise<T>,
+  options?: { maxWait?: number; timeout?: number }
 ): Promise<T> {
   return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT set_config('app.current_tenant', ${tenantId}, true)`;
     return fn(tx as TenantClient);
-  });
+  }, options);
 }
