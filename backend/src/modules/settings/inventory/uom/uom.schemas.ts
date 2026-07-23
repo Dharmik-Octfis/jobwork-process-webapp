@@ -8,3 +8,6 @@ export const createUomSchema = z.object({
 });
 
 export const updateUomSchema = createUomSchema.partial();
+
+export type CreateUomInput = z.infer<typeof createUomSchema>;
+export type UpdateUomInput = z.infer<typeof updateUomSchema>;

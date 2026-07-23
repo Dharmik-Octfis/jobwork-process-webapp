@@ -1,4 +1,8 @@
 import { runAsTenant } from '../../../db/prisma.ts';
+import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
+
+/** Message for the (organizationId, vendorNumber) unique index. */
+const DUPLICATE_NUMBER = 'Vendor number already exists in this organization.';
 import {
   loadActiveDefinitions,
   validateCustomFields,
@@ -95,45 +99,47 @@ export async function createNewVendor(organizationId: string, data: VendorInput,
       }
     }
 
-    return tx.vendor.create({
-      data: {
-        ...vendorData,
-        customFields,
-        organizationId,
-        createdBy: userId ?? null,
-        updatedBy: userId ?? null,
-        contactPersons:
-          contactPersons && contactPersons.length > 0
-            ? {
-                create: contactPersons.map((cp) => {
-                  const { id: _id, ...rest } = cp;
-                  return { ...rest, createdBy: userId ?? null, updatedBy: userId ?? null };
-                }),
-              }
-            : undefined,
-        addresses:
-          addresses && addresses.length > 0
-            ? {
-                create: addresses.map((addr) => {
-                  const { id: _id, ...rest } = addr;
-                  return { ...rest, createdBy: userId ?? null, updatedBy: userId ?? null };
-                }),
-              }
-            : undefined,
-        activities: {
-          create: [
-            {
-              title: 'Vendor created',
-              description: `Vendor ${vendorData.displayName} has been created by ${performedBy}`,
-              performedBy,
-              createdBy: userId ?? null,
-              updatedBy: userId ?? null,
-            },
-          ],
+    return withUniqueViolation(DUPLICATE_NUMBER, () =>
+      tx.vendor.create({
+        data: {
+          ...vendorData,
+          customFields,
+          organizationId,
+          createdBy: userId ?? null,
+          updatedBy: userId ?? null,
+          contactPersons:
+            contactPersons && contactPersons.length > 0
+              ? {
+                  create: contactPersons.map((cp) => {
+                    const { id: _id, ...rest } = cp;
+                    return { ...rest, createdBy: userId ?? null, updatedBy: userId ?? null };
+                  }),
+                }
+              : undefined,
+          addresses:
+            addresses && addresses.length > 0
+              ? {
+                  create: addresses.map((addr) => {
+                    const { id: _id, ...rest } = addr;
+                    return { ...rest, createdBy: userId ?? null, updatedBy: userId ?? null };
+                  }),
+                }
+              : undefined,
+          activities: {
+            create: [
+              {
+                title: 'Vendor created',
+                description: `Vendor ${vendorData.displayName} has been created by ${performedBy}`,
+                performedBy,
+                createdBy: userId ?? null,
+                updatedBy: userId ?? null,
+              },
+            ],
+          },
         },
-      },
-      include: { contactPersons: true, addresses: true },
-    });
+        include: { contactPersons: true, addresses: true },
+      }),
+    );
   });
 }
 
@@ -158,7 +164,7 @@ export async function updateVendorById(
     });
 
     if (!existingVendor) {
-      throw new Error('Vendor not found');
+      throw ApiError.notFound('Vendor not found');
     }
 
     let performedBy = 'System';
@@ -249,7 +255,7 @@ export async function deleteVendorById(organizationId: string, id: string, userI
     });
 
     if (!existingVendor) {
-      throw new Error('Vendor not found');
+      throw ApiError.notFound('Vendor not found');
     }
 
     // Soft delete: the row stays, `isDeleted` is flipped and the delete is
@@ -331,7 +337,7 @@ export async function deleteVendorComment(
     });
 
     if (!existingComment) {
-      throw new Error('Comment not found');
+      throw ApiError.notFound('Comment not found');
     }
 
     return tx.vendorComment.update({

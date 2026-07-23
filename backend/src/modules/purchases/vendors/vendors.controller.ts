@@ -15,6 +15,7 @@ import {
 import { z } from 'zod';
 import { openApiRegistry } from '../../../config/openapi.ts';
 import { ApiError } from '../../../lib/apiError.ts';
+import { sendSuccess } from '../../../lib/apiResponse.ts';
 
 const vendorAddressSchema = z.object({
   id: z.string().optional(),
@@ -39,7 +40,7 @@ const vendorContactPersonSchema = z.object({
   mobilePhone: z.string().nullable().optional(),
 });
 
-const createVendorSchema = openApiRegistry.register(
+export const createVendorSchema = openApiRegistry.register(
   'CreateVendorRequest',
   z.object({
     primaryContactSalutation: z.string().nullable().optional(),
@@ -65,6 +66,15 @@ const createVendorSchema = openApiRegistry.register(
     contactPersons: z.array(vendorContactPersonSchema).optional(),
   }),
 );
+
+export type CreateVendorInput = z.infer<typeof createVendorSchema>;
+
+/** Body for the number-sequence preference endpoint. */
+export const numberPreferenceSchema = z.object({
+  prefix: z.string(),
+  nextNumber: z.number().int().positive(),
+});
+export type NumberPreferenceInput = z.infer<typeof numberPreferenceSchema>;
 
 // Register GET route
 openApiRegistry.registerPath({
@@ -213,201 +223,92 @@ openApiRegistry.registerPath({
   },
   responses: { 200: { description: 'Updated number sequence preferences' } },
 });
+/**
+ * Handlers do not catch-and-respond: Express 5 forwards a rejected promise to
+ * `errorHandler`, the single place an error becomes a response. What remains is
+ * translation only — a known failure becomes an `ApiError` and is rethrown.
+ *
+ * The previous catches returned `Failed to update vendor: ${String(error)}` to
+ * the client, which can leak a connection string or file path. errorHandler logs
+ * the real error server-side and returns a flat message.
+ */
 export const getVendors = async (req: Request, res: Response) => {
-  try {
-    // req.tenantId, not the raw header: `tenantContext` has verified membership
-    // against the database. The header is a client-supplied claim.
-    const orgId = req.tenantId!;
-    const vendors = await getVendorsList(orgId);
-    res.json(vendors);
-  } catch (error) {
-    console.error('Error fetching vendors:', error);
-    res.status(500).json({ error: 'Failed to fetch vendors' });
-  }
+  // req.tenantId, not the raw header: `tenantContext` has verified membership
+  // against the database. The header is a client-supplied claim.
+  const vendors = await getVendorsList(req.tenantId!);
+  sendSuccess(res, vendors);
 };
 
 export const createVendor = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const parsedData = createVendorSchema.parse(req.body);
-
-    const data = {
-      ...parsedData,
-    };
-
-    const userId = req.user?.id;
-    const newVendor = await createNewVendor(orgId, data, userId);
-    res.status(201).json(newVendor);
-  } catch (error: unknown) {
-    console.error('Error creating vendor:', error);
-    if (error instanceof z.ZodError) {
-      res.status(400).json({ error: 'Validation failed', details: error.issues });
-    } else if (error instanceof ApiError) {
-      // e.g. custom-field validation from the service — keep status + field details.
-      res
-        .status(error.status)
-        .json({ error: error.message, message: error.message, details: error.details });
-    } else if (
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      error.code === 'P2002'
-    ) {
-      res.status(409).json({ error: 'Vendor number already exists in this organization.' });
-    } else {
-      res.status(500).json({ error: `Failed to create vendor: ${String(error)}` });
-    }
-  }
+  const newVendor = await createNewVendor(
+    req.tenantId!,
+    req.body as CreateVendorInput,
+    req.user?.id,
+  );
+  sendSuccess(res, newVendor, 'Vendor created.', 201);
 };
 
 export const getVendor = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const vendorId = req.params.id as string;
-    const vendor = await getVendorById(orgId, vendorId);
-
-    if (!vendor) {
-      return res.status(404).json({ error: 'Vendor not found' });
-    }
-
-    res.json(vendor);
-  } catch (error) {
-    console.error('Error fetching vendor:', error);
-    res.status(500).json({ error: 'Failed to fetch vendor' });
-  }
+  const vendor = await getVendorById(req.tenantId!, req.params.id as string);
+  if (!vendor) throw new ApiError(404, 'Vendor not found');
+  sendSuccess(res, vendor);
 };
+
 export const updateVendor = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const vendorId = req.params.id as string;
-    const parsedData = createVendorSchema.parse(req.body);
-
-    const data = {
-      ...parsedData,
-    };
-
-    const userId = req.user?.id;
-    const updatedVendor = await updateVendorById(orgId, vendorId, data, userId);
-    res.json(updatedVendor);
-  } catch (error: unknown) {
-    console.error('Error updating vendor:', error);
-    if (error instanceof z.ZodError) {
-      res.status(400).json({ error: 'Validation failed', details: error.issues });
-    } else if (error instanceof ApiError) {
-      res
-        .status(error.status)
-        .json({ error: error.message, message: error.message, details: error.details });
-    } else if (error instanceof Error && error.message === 'Vendor not found') {
-      res.status(404).json({ error: 'Vendor not found' });
-    } else if (
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      error.code === 'P2002'
-    ) {
-      res.status(409).json({ error: 'Vendor number already exists in this organization.' });
-    } else {
-      res.status(500).json({ error: `Failed to update vendor: ${String(error)}` });
-    }
-  }
+  const updatedVendor = await updateVendorById(
+    req.tenantId!,
+    req.params.id as string,
+    req.body as CreateVendorInput,
+    req.user?.id,
+  );
+  sendSuccess(res, updatedVendor, 'Vendor updated.');
 };
 
 export const deleteVendor = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const vendorId = req.params.id as string;
-    await deleteVendorById(orgId, vendorId, req.user?.id);
-    res.status(204).send();
-  } catch (error) {
-    console.error('Error deleting vendor:', error);
-    if (error instanceof Error && error.message === 'Vendor not found') {
-      res.status(404).json({ error: 'Vendor not found' });
-    } else {
-      res.status(500).json({ error: 'Failed to delete vendor' });
-    }
-  }
+  await deleteVendorById(req.tenantId!, req.params.id as string, req.user?.id);
+  // 200 with data:null, not 204 — a 204 carries no body, so it cannot express
+  // the standard envelope.
+  sendSuccess(res, null, 'Vendor deleted.');
 };
 
 export const getVendorActivitiesRoute = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const vendorId = req.params.id as string;
-    const activities = await getVendorActivities(orgId, vendorId);
-    res.json(activities);
-  } catch (error) {
-    console.error('Error fetching activities:', error);
-    res.status(500).json({ error: 'Failed to fetch activities' });
-  }
+  const activities = await getVendorActivities(req.tenantId!, req.params.id as string);
+  sendSuccess(res, activities);
 };
 
 export const getVendorCommentsRoute = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const vendorId = req.params.id as string;
-    const comments = await getVendorComments(orgId, vendorId);
-    res.json(comments);
-  } catch (error) {
-    console.error('Error fetching comments:', error);
-    res.status(500).json({ error: 'Failed to fetch comments' });
-  }
+  const comments = await getVendorComments(req.tenantId!, req.params.id as string);
+  sendSuccess(res, comments);
 };
 
 export const createVendorCommentRoute = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const vendorId = req.params.id as string;
-    const content = req.body.content;
-    const userId = req.user?.id || null;
-    const newComment = await createVendorComment(orgId, vendorId, content, userId);
-    res.status(201).json(newComment);
-  } catch (error) {
-    console.error('Error creating comment:', error);
-    res.status(500).json({ error: 'Failed to create comment' });
-  }
+  const newComment = await createVendorComment(
+    req.tenantId!,
+    req.params.id as string,
+    req.body.content,
+    req.user?.id ?? null,
+  );
+  sendSuccess(res, newComment, 'Comment added.', 201);
 };
 
 export const deleteVendorCommentRoute = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const vendorId = req.params.id as string;
-    const commentId = req.params.commentId as string;
-    await deleteVendorComment(orgId, vendorId, commentId, req.user?.id);
-    res.status(204).send();
-  } catch (error) {
-    console.error('Error deleting comment:', error);
-    if (error instanceof Error && error.message === 'Comment not found') {
-      res.status(404).json({ error: 'Comment not found' });
-    } else {
-      res.status(500).json({ error: 'Failed to delete comment' });
-    }
-  }
+  await deleteVendorComment(
+    req.tenantId!,
+    req.params.id as string,
+    req.params.commentId as string,
+    req.user?.id,
+  );
+  sendSuccess(res, null, 'Comment deleted.');
 };
 
 export const getNumberPreferenceRoute = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const pref = await getVendorNumberPreference(orgId);
-    res.json(pref);
-  } catch (error) {
-    console.error('Error fetching number preference:', error);
-    res.status(500).json({ error: 'Failed to fetch number preference' });
-  }
+  const pref = await getVendorNumberPreference(req.tenantId!);
+  sendSuccess(res, pref);
 };
 
 export const updateNumberPreferenceRoute = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const { prefix, nextNumber } = z
-      .object({
-        prefix: z.string(),
-        nextNumber: z.number().int().positive(),
-      })
-      .parse(req.body);
+  const { prefix, nextNumber } = req.body as NumberPreferenceInput;
 
-    const pref = await updateVendorNumberPreference(orgId, prefix, nextNumber);
-    res.json(pref);
-  } catch (error) {
-    console.error('Error updating number preference:', error);
-    res.status(500).json({ error: 'Failed to update number preference' });
-  }
+  const pref = await updateVendorNumberPreference(req.tenantId!, prefix, nextNumber);
+  sendSuccess(res, pref, 'Number preference updated.');
 };

@@ -15,6 +15,8 @@ import {
 import { authenticate } from '../../../middlewares/authenticate.ts';
 import { tenantContext } from '../../../middlewares/tenantContext.ts';
 import { requirePermission } from '../../../middlewares/authorize.ts';
+import { validateBody } from '../../../middlewares/validate.ts';
+import { createVendorSchema, numberPreferenceSchema } from './vendors.controller.ts';
 
 /**
  * Mounted at `/organizations/:orgId/purchases/vendors` (routes/index.ts).
@@ -33,7 +35,12 @@ router.use(authenticate, tenantContext);
 // `vendor:read`; writes need the specific action. Comments/activities are part of
 // a vendor, so they ride on vendor:read (view) / vendor:update (annotate).
 router.get('/', requirePermission('vendor:read'), getVendors);
-router.post('/', requirePermission('vendor:create'), createVendor);
+router.post(
+  '/',
+  requirePermission('vendor:create'),
+  validateBody(createVendorSchema),
+  createVendor,
+);
 
 router.get(
   '/preferences/number-sequence',
@@ -43,6 +50,7 @@ router.get(
 router.put(
   '/preferences/number-sequence',
   requirePermission('vendor:update'),
+  validateBody(numberPreferenceSchema),
   updateNumberPreferenceRoute,
 );
 
@@ -55,7 +63,12 @@ router.delete(
   requirePermission('vendor:update'),
   deleteVendorCommentRoute,
 );
-router.put('/:id', requirePermission('vendor:update'), updateVendor);
+router.put(
+  '/:id',
+  requirePermission('vendor:update'),
+  validateBody(createVendorSchema),
+  updateVendor,
+);
 router.delete('/:id', requirePermission('vendor:delete'), deleteVendor);
 
 export { router as vendorsRouter };

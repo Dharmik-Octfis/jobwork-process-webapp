@@ -1,6 +1,8 @@
 import type { Request, Response, NextFunction } from 'express';
 import crypto from 'node:crypto';
 import { prisma, runAsTenant } from '../../../../db/prisma.ts';
+import { ApiError } from '../../../../lib/apiError.ts';
+import { sendSuccess } from '../../../../lib/apiResponse.ts';
 import { createOrganizationSchema, updateOrganizationSchema } from './organizations.schemas.ts';
 import { seedSystemTemplates } from '../permission-templates/permission-templates.service.ts';
 
@@ -8,8 +10,7 @@ export async function createOrganization(req: Request, res: Response, next: Next
   try {
     const parsedData = createOrganizationSchema.safeParse(req.body);
     if (!parsedData.success) {
-      res.status(400).json({ errors: parsedData.error.issues });
-      return;
+      throw ApiError.badRequest('Validation failed', parsedData.error.issues);
     }
     const data = parsedData.data;
     // Empty select -> null so the state_code / city_id FKs are cleared, not fed ''
@@ -19,8 +20,7 @@ export async function createOrganization(req: Request, res: Response, next: Next
 
     const userId = req.user?.id;
     if (!userId) {
-      res.status(401).json({ message: 'Unauthorized' });
-      return;
+      throw new ApiError(401, 'Sign in to continue.');
     }
 
     // The org id is generated up front so the whole bootstrap can run inside a
@@ -59,7 +59,7 @@ export async function createOrganization(req: Request, res: Response, next: Next
       return created;
     });
 
-    res.status(201).json(organization);
+    sendSuccess(res, organization, 'Organization created.', 201);
   } catch (error) {
     next(error);
   }
@@ -69,8 +69,7 @@ export async function getOrganizations(req: Request, res: Response, next: NextFu
   try {
     const userId = req.user?.id;
     if (!userId) {
-      res.status(401).json({ message: 'Unauthorized' });
-      return;
+      throw new ApiError(401, 'Sign in to continue.');
     }
 
     const organizations = await prisma.organization.findMany({
@@ -87,7 +86,7 @@ export async function getOrganizations(req: Request, res: Response, next: NextFu
       orderBy: { createdAt: 'desc' },
     });
 
-    res.status(200).json(organizations);
+    sendSuccess(res, organizations);
   } catch (error) {
     next(error);
   }
@@ -98,8 +97,7 @@ export async function updateOrganization(req: Request, res: Response, next: Next
     const userId = req.user?.id;
     const orgId = req.params.id as string;
     if (!userId) {
-      res.status(401).json({ message: 'Unauthorized' });
-      return;
+      throw new ApiError(401, 'Sign in to continue.');
     }
 
     const membership = await prisma.membership.findFirst({
@@ -113,14 +111,12 @@ export async function updateOrganization(req: Request, res: Response, next: Next
     });
 
     if (!membership) {
-      res.status(403).json({ message: 'Forbidden: Only owners can update this organization' });
-      return;
+      throw new ApiError(403, 'Only owners can update this organization.');
     }
 
     const parsedData = updateOrganizationSchema.safeParse(req.body);
     if (!parsedData.success) {
-      res.status(400).json({ errors: parsedData.error.issues });
-      return;
+      throw ApiError.badRequest('Validation failed', parsedData.error.issues);
     }
 
     const data = parsedData.data;
@@ -134,7 +130,7 @@ export async function updateOrganization(req: Request, res: Response, next: Next
       data: { ...data, updatedBy: userId },
     });
 
-    res.status(200).json(updatedOrg);
+    sendSuccess(res, updatedOrg, 'Organization updated.');
   } catch (error) {
     next(error);
   }
@@ -145,8 +141,7 @@ export async function deleteOrganization(req: Request, res: Response, next: Next
     const userId = req.user?.id;
     const orgId = req.params.id as string;
     if (!userId) {
-      res.status(401).json({ message: 'Unauthorized' });
-      return;
+      throw new ApiError(401, 'Sign in to continue.');
     }
 
     const membership = await prisma.membership.findFirst({
@@ -160,8 +155,7 @@ export async function deleteOrganization(req: Request, res: Response, next: Next
     });
 
     if (!membership) {
-      res.status(403).json({ message: 'Forbidden: Only owners can delete this organization' });
-      return;
+      throw new ApiError(403, 'Only owners can delete this organization.');
     }
 
     // Soft delete: keep the row, flip isDeleted, and record who removed it.
@@ -171,7 +165,7 @@ export async function deleteOrganization(req: Request, res: Response, next: Next
       data: { isDeleted: true, updatedBy: userId },
     });
 
-    res.status(200).json({ message: 'Organization deleted successfully' });
+    sendSuccess(res, null, 'Organization deleted successfully');
   } catch (error) {
     next(error);
   }

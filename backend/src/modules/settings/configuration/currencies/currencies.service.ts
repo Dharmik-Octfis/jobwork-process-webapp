@@ -1,4 +1,8 @@
 import { runAsTenant } from '../../../../db/prisma.ts';
+import { ApiError, withUniqueViolation } from '../../../../lib/apiError.ts';
+
+/** Message for the (organizationId, currencyCode) unique index. */
+const DUPLICATE_CODE = 'Currency code already exists in this organization.';
 
 interface CreateCurrencyData {
   currencyCode: string;
@@ -24,23 +28,29 @@ export const getCurrencyList = async (orgId: string) => {
       orderBy: {
         currencyCode: 'asc',
       },
-    })
+    }),
   );
 };
 
-export const createNewCurrency = async (orgId: string, data: CreateCurrencyData, userId?: string) => {
+export const createNewCurrency = async (
+  orgId: string,
+  data: CreateCurrencyData,
+  userId?: string,
+) => {
   return runAsTenant(orgId, (tx) =>
-    tx.currency.create({
-      data: {
-        organizationId: orgId,
-        currencyCode: data.currencyCode,
-        currencyName: data.currencyName,
-        symbol: data.symbol,
-        decimalPlaces: data.decimalPlaces,
-        createdBy: userId,
-        updatedBy: userId,
-      },
-    })
+    withUniqueViolation(DUPLICATE_CODE, () =>
+      tx.currency.create({
+        data: {
+          organizationId: orgId,
+          currencyCode: data.currencyCode,
+          currencyName: data.currencyName,
+          symbol: data.symbol,
+          decimalPlaces: data.decimalPlaces,
+          createdBy: userId,
+          updatedBy: userId,
+        },
+      }),
+    ),
   );
 };
 
@@ -52,7 +62,7 @@ export const getCurrencyById = async (orgId: string, id: string) => {
         organizationId: orgId,
         isDeleted: false,
       },
-    })
+    }),
   );
 };
 
@@ -66,18 +76,20 @@ export const updateCurrencyById = async (
     const existingCurrency = await tx.currency.findFirst({
       where: { id, organizationId: orgId, isDeleted: false },
     });
-    
+
     if (!existingCurrency) {
-      throw new Error('Currency not found');
+      throw ApiError.notFound('Currency not found');
     }
 
-    return tx.currency.update({
-      where: { id },
-      data: {
-        ...data,
-        updatedBy: userId,
-      },
-    });
+    return withUniqueViolation(DUPLICATE_CODE, () =>
+      tx.currency.update({
+        where: { id },
+        data: {
+          ...data,
+          updatedBy: userId,
+        },
+      }),
+    );
   });
 };
 
@@ -86,9 +98,9 @@ export const deleteCurrencyById = async (orgId: string, id: string, userId?: str
     const existingCurrency = await tx.currency.findFirst({
       where: { id, organizationId: orgId, isDeleted: false },
     });
-    
+
     if (!existingCurrency) {
-      throw new Error('Currency not found');
+      throw ApiError.notFound('Currency not found');
     }
 
     return tx.currency.update({

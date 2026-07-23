@@ -1,4 +1,8 @@
 import { runAsTenant } from '../../../db/prisma.ts';
+import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
+
+/** Message for the (organizationId, customerNumber) unique index. */
+const DUPLICATE_NUMBER = 'Customer number already exists in this organization.';
 import {
   loadActiveDefinitions,
   validateCustomFields,
@@ -59,7 +63,11 @@ export async function getCustomersList(organizationId: string) {
   );
 }
 
-export async function createNewCustomer(organizationId: string, data: CustomerInput, userId?: string) {
+export async function createNewCustomer(
+  organizationId: string,
+  data: CustomerInput,
+  userId?: string,
+) {
   const { contactPersons, addresses, customFields: rawCustomFields, ...customerData } = data;
   return runAsTenant(organizationId, async (tx) => {
     const defs = await loadActiveDefinitions(tx, organizationId, 'customer');
@@ -95,45 +103,47 @@ export async function createNewCustomer(organizationId: string, data: CustomerIn
       }
     }
 
-    return tx.customer.create({
-      data: {
-        ...customerData,
-        customFields,
-        organizationId,
-        createdBy: userId ?? null,
-        updatedBy: userId ?? null,
-        contactPersons:
-          contactPersons && contactPersons.length > 0
-            ? {
-                create: contactPersons.map((cp) => {
-                  const { id: _id, ...rest } = cp;
-                  return { ...rest, createdBy: userId ?? null, updatedBy: userId ?? null };
-                }),
-              }
-            : undefined,
-        addresses:
-          addresses && addresses.length > 0
-            ? {
-                create: addresses.map((addr) => {
-                  const { id: _id, ...rest } = addr;
-                  return { ...rest, createdBy: userId ?? null, updatedBy: userId ?? null };
-                }),
-              }
-            : undefined,
-        activities: {
-          create: [
-            {
-              title: 'Customer created',
-              description: `Customer ${customerData.displayName} has been created by ${performedBy}`,
-              performedBy,
-              createdBy: userId ?? null,
-              updatedBy: userId ?? null,
-            },
-          ],
+    return withUniqueViolation(DUPLICATE_NUMBER, () =>
+      tx.customer.create({
+        data: {
+          ...customerData,
+          customFields,
+          organizationId,
+          createdBy: userId ?? null,
+          updatedBy: userId ?? null,
+          contactPersons:
+            contactPersons && contactPersons.length > 0
+              ? {
+                  create: contactPersons.map((cp) => {
+                    const { id: _id, ...rest } = cp;
+                    return { ...rest, createdBy: userId ?? null, updatedBy: userId ?? null };
+                  }),
+                }
+              : undefined,
+          addresses:
+            addresses && addresses.length > 0
+              ? {
+                  create: addresses.map((addr) => {
+                    const { id: _id, ...rest } = addr;
+                    return { ...rest, createdBy: userId ?? null, updatedBy: userId ?? null };
+                  }),
+                }
+              : undefined,
+          activities: {
+            create: [
+              {
+                title: 'Customer created',
+                description: `Customer ${customerData.displayName} has been created by ${performedBy}`,
+                performedBy,
+                createdBy: userId ?? null,
+                updatedBy: userId ?? null,
+              },
+            ],
+          },
         },
-      },
-      include: { contactPersons: true, addresses: true },
-    });
+        include: { contactPersons: true, addresses: true },
+      }),
+    );
   });
 }
 
@@ -158,7 +168,7 @@ export async function updateCustomerById(
     });
 
     if (!existingCustomer) {
-      throw new Error('Customer not found');
+      throw ApiError.notFound('Customer not found');
     }
 
     let performedBy = 'System';
@@ -249,7 +259,7 @@ export async function deleteCustomerById(organizationId: string, id: string, use
     });
 
     if (!existingCustomer) {
-      throw new Error('Customer not found');
+      throw ApiError.notFound('Customer not found');
     }
 
     // Soft delete: the row stays, `isDeleted` is flipped and the delete is
@@ -331,7 +341,7 @@ export async function deleteCustomerComment(
     });
 
     if (!existingComment) {
-      throw new Error('Comment not found');
+      throw ApiError.notFound('Comment not found');
     }
 
     return tx.customerComment.update({

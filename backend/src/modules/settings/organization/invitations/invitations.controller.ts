@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { ApiError } from '../../../../lib/apiError.ts';
+import { sendSuccess } from '../../../../lib/apiResponse.ts';
 import { setRefreshTokenAsCookie } from '../../../../lib/cookies.ts';
 import * as invitationsService from './invitations.service.ts';
 import type { CreateInvitationInput, AcceptInvitationInput } from './invitations.schemas.ts';
@@ -16,7 +17,9 @@ export async function createInvitation(req: Request, res: Response): Promise<voi
     req.body as CreateInvitationInput,
   );
 
-  res.status(201).json({ invitation });
+  // `data` keeps the { invitation } shape the client already reads — the web
+  // interceptor unwraps the envelope and hands this inner object to feature code.
+  sendSuccess(res, { invitation }, 'Invitation sent.', 201);
 }
 
 export async function listInvitations(req: Request, res: Response): Promise<void> {
@@ -24,7 +27,7 @@ export async function listInvitations(req: Request, res: Response): Promise<void
   const organizationId = req.params.id as string;
 
   const invitations = await invitationsService.listInvitations(req.user.id, organizationId);
-  res.status(200).json({ invitations });
+  sendSuccess(res, { invitations });
 }
 
 export async function revokeInvitation(req: Request, res: Response): Promise<void> {
@@ -33,7 +36,7 @@ export async function revokeInvitation(req: Request, res: Response): Promise<voi
   const invitationId = req.params.invitationId as string;
 
   await invitationsService.revokeInvitation(req.user.id, organizationId, invitationId);
-  res.status(200).json({ message: 'Invitation revoked.' });
+  sendSuccess(res, null, 'Invitation revoked.');
 }
 
 // ── Public accept flow (mounted under /invitations/:token) ────────────────────
@@ -41,7 +44,7 @@ export async function revokeInvitation(req: Request, res: Response): Promise<voi
 export async function getByToken(req: Request, res: Response): Promise<void> {
   const token = req.params.token as string;
   const invitation = await invitationsService.getInvitationByToken(token);
-  res.status(200).json({ invitation });
+  sendSuccess(res, { invitation });
 }
 
 // ── The recipient's inbox (mounted under /me/invitations, requires auth) ──────
@@ -53,20 +56,24 @@ export async function getByToken(req: Request, res: Response): Promise<void> {
 export async function listMine(req: Request, res: Response): Promise<void> {
   if (!req.user) throw new ApiError(401, 'Sign in to continue.');
   const invitations = await invitationsService.listMyInvitations(req.user.id);
-  res.status(200).json({ invitations });
+  sendSuccess(res, { invitations });
 }
 
 export async function acceptMine(req: Request, res: Response): Promise<void> {
   if (!req.user) throw new ApiError(401, 'Sign in to continue.');
   const result = await invitationsService.acceptMyInvitation(req.user.id, req.params.id as string);
   // Always already signed in here, so there is never an autoLogin to issue.
-  res.status(200).json({ organization: result.organization, roleName: result.roleName });
+  sendSuccess(
+    res,
+    { organization: result.organization, roleName: result.roleName },
+    'Invitation accepted.',
+  );
 }
 
 export async function declineMine(req: Request, res: Response): Promise<void> {
   if (!req.user) throw new ApiError(401, 'Sign in to continue.');
   await invitationsService.declineMyInvitation(req.user.id, req.params.id as string);
-  res.status(204).send();
+  sendSuccess(res, null, 'Invitation declined.');
 }
 
 /** Decline an invite. Public — the raw token is the credential, and the invitee
@@ -74,7 +81,7 @@ export async function declineMine(req: Request, res: Response): Promise<void> {
 export async function decline(req: Request, res: Response): Promise<void> {
   const token = req.params.token as string;
   await invitationsService.declineInvitation(token);
-  res.status(204).send();
+  sendSuccess(res, null, 'Invitation declined.');
 }
 
 export async function accept(req: Request, res: Response): Promise<void> {
@@ -92,14 +99,23 @@ export async function accept(req: Request, res: Response): Promise<void> {
   // refresh token as httpOnly cookie, access token in the body.
   if (result.autoLogin) {
     setRefreshTokenAsCookie(res, result.autoLogin.refreshToken);
-    res.status(201).json({
-      organization: result.organization,
-      roleName: result.roleName,
-      user: result.autoLogin.user,
-      accessToken: result.autoLogin.accessToken,
-    });
+    sendSuccess(
+      res,
+      {
+        organization: result.organization,
+        roleName: result.roleName,
+        user: result.autoLogin.user,
+        accessToken: result.autoLogin.accessToken,
+      },
+      'Invitation accepted.',
+      201,
+    );
     return;
   }
 
-  res.status(200).json({ organization: result.organization, roleName: result.roleName });
+  sendSuccess(
+    res,
+    { organization: result.organization, roleName: result.roleName },
+    'Invitation accepted.',
+  );
 }

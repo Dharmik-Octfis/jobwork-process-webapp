@@ -6,3 +6,5 @@ export const createPaymentTermSchema = z.object({
 });
 
 export type CreatePaymentTermData = z.infer<typeof createPaymentTermSchema>;
+
+export type CreatePaymentTermInput = z.infer<typeof createPaymentTermSchema>;

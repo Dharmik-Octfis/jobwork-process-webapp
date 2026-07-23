@@ -1,4 +1,5 @@
 import { runAsTenant } from '../../db/prisma.ts';
+import { ApiError } from '../../lib/apiError.ts';
 import type { CreateItemDto, UpdateItemDto } from './items.schemas.ts';
 import { uploadFile } from '../../lib/storage.ts';
 import {
@@ -23,7 +24,7 @@ export class ItemsService {
         where: { id, organizationId, isDeleted: false },
       });
       if (!item) {
-        throw new Error('Item not found');
+        throw ApiError.notFound('Item not found');
       }
       return item;
     });
@@ -37,7 +38,7 @@ export class ItemsService {
         select: { id: true },
       });
       if (!item) {
-        throw new Error('Item not found');
+        throw ApiError.notFound('Item not found');
       }
 
       // Then fetch its activities
@@ -99,7 +100,7 @@ export class ItemsService {
         where: { id, organizationId, isDeleted: false },
       });
       if (!item) {
-        throw new Error('Item not found');
+        throw ApiError.notFound('Item not found');
       }
 
       const { customFields: rawCustomFields, ...rest } = data;
@@ -160,7 +161,7 @@ export class ItemsService {
         where: { id, organizationId, isDeleted: false },
       });
       if (!item) {
-        throw new Error('Item not found');
+        throw ApiError.notFound('Item not found');
       }
 
       let performedBy = 'System';
@@ -203,7 +204,7 @@ export class ItemsService {
           where: { id, organizationId, isDeleted: false },
         });
         if (!item) {
-          throw new Error('Item not found');
+          throw ApiError.notFound('Item not found');
         }
 
         let performedBy = 'System';

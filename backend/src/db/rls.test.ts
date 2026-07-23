@@ -33,6 +33,7 @@ const TENANT_TABLES = [
   'customer_addresses',
   'units_of_measurement',
   'currencies',
+  'payment_terms',
   'custom_field_definitions',
   'permission_templates',
 ] as const;

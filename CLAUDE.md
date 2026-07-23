@@ -188,6 +188,49 @@ ephemeral token tables, no master-data reference tables):
   table with no RLS policy). A module's routes are not done until each carries a `requirePermission`.
   Copy `src/modules/purchases/vendors/`. Full model in `docs/ROLES_AND_PERMISSIONS.md`.
 
+## 🔴 API responses — one envelope, one error path
+
+**Every endpoint returns `{ statusCode, message, data }`.** Successes go through
+`sendSuccess()` (`src/lib/apiResponse.ts`); failures go through `errorHandler`, which emits the
+same three keys with `data: null`. New endpoint? Use them — do not hand-roll `res.json`.
+
+```ts
+sendSuccess(res, vendors); // 200 "Success"
+sendSuccess(res, vendor, 'Vendor created.', 201); // 201
+sendSuccess(res, null, 'Vendor deleted.'); // 200, no payload
+```
+
+- 🔴 **Controllers contain NO try/catch.** Express 5 forwards a rejected promise from an async
+  handler straight to `errorHandler`. Each layer owns one job:
+
+  | Layer          | Job                                                     | Produces              |
+  | -------------- | ------------------------------------------------------- | --------------------- |
+  | route          | `validateBody(schema)`                                  | 400 + field `details` |
+  | service        | business rules → `throw ApiError` / `ApiError.notFound` | 404                   |
+  | service        | writes wrapped in `withUniqueViolation(msg, fn)`        | 409, domain message   |
+  | controller     | happy path → `sendSuccess`                              | 2xx                   |
+  | `errorHandler` | turns anything thrown into the envelope                 | the response          |
+
+  `withUniqueViolation` (`lib/apiError.ts`) belongs in the **service**, which knows which
+  constraint it is writing against — that's how you keep "Vendor number already exists in this
+  organization" instead of a generic 409.
+  The only legitimate `catch` left is one that **changes behaviour** and writes no response —
+  see `auth.logout`, which deliberately swallows a forged token but still clears the cookie.
+  `catch { res.status(500).json({ error: String(err) }) }` duplicates the handler, downgrades real
+  404s/403s to 500s, and leaks internals — it really did echo connection strings to the client.
+
+- **`data` must keep the shape the client already reads.** `web/src/api/client.ts` unwraps the
+  envelope in one interceptor and hands the inner value to feature code, so changing that shape
+  is a breaking API change. A call that **bypasses** `apiClient` (raw `axios`, e.g.
+  `refreshAccessToken`) must read `res.data.data` itself.
+- **No 204.** A 204 carries no body, so it can't express the envelope — return 200 with
+  `data: null` and a message.
+- `details` stays a **top-level** key beside `message`, not inside `data`: it's error metadata,
+  and the client reads `response.data.details` to highlight fields.
+- _A `responseFormatter` middleware used to monkey-patch `res.json` and infer the envelope. It had
+  to guess which key was the message, and guessed wrong — it buried `details`, relabelled real
+  errors "Server Error", and `delete`d any payload field named `message`. Don't reintroduce it._
+
 ## Frontend
 
 - `web/src/features/<name>/` with `.api.ts` + `.schemas.ts` + components. Paths in `api/endpoints.ts`.

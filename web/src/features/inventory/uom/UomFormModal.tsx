@@ -116,8 +116,14 @@ export function UomFormModal({ orgId, isOpen, onClose, uomToEdit }: UomFormModal
       }
       onClose();
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { error?: string } } };
-      setError('root', { type: 'manual', message: error.response?.data?.error || 'Failed to save Unit of Measurement' });
+      // The API returns { statusCode, message, data } — the reason is in
+      // `message`. This used to read `data.error`, which no longer exists, so
+      // every failure showed the generic fallback instead of the real cause.
+      const error = err as { response?: { data?: { message?: string } } };
+      setError('root', {
+        type: 'manual',
+        message: error.response?.data?.message || 'Failed to save Unit of Measurement',
+      });
     }
   };
 
@@ -163,206 +169,221 @@ export function UomFormModal({ orgId, isOpen, onClose, uomToEdit }: UomFormModal
             animation: 'uomModalSlideDown 0.3s ease-out forwards',
           }}
         >
-        {/* Header */}
-        <div
-          style={{
-            padding: 'var(--space-4) var(--space-5)',
-            borderBottom: '1px solid var(--color-border)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>
-            {uomToEdit ? 'Edit Unit of Measurement' : 'New Unit of Measurement'}
-          </h2>
-          <button
-            onClick={onClose}
+          {/* Header */}
+          <div
             style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--color-text-muted)',
-              cursor: 'pointer',
-              padding: 4,
+              padding: 'var(--space-4) var(--space-5)',
+              borderBottom: '1px solid var(--color-border)',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
+              justifyContent: 'space-between',
             }}
           >
-            <X size={20} />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div style={{ padding: 'var(--space-5)', overflowY: 'visible' }}>
-          {errors.root && (
-            <div
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>
+              {uomToEdit ? 'Edit Unit of Measurement' : 'New Unit of Measurement'}
+            </h2>
+            <button
+              onClick={onClose}
               style={{
-                padding: 'var(--space-3)',
-                background: '#FEF2F2',
-                color: '#DC2626',
+                background: 'none',
+                border: 'none',
+                color: 'var(--color-text-muted)',
+                cursor: 'pointer',
+                padding: 4,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Body */}
+          <div style={{ padding: 'var(--space-5)', overflowY: 'visible' }}>
+            {errors.root && (
+              <div
+                style={{
+                  padding: 'var(--space-3)',
+                  background: '#FEF2F2',
+                  color: '#DC2626',
+                  borderRadius: 'var(--radius-md)',
+                  marginBottom: 'var(--space-4)',
+                  fontSize: 14,
+                }}
+              >
+                {errors.root.message}
+              </div>
+            )}
+
+            <form
+              id="uom-form"
+              onSubmit={handleSubmit(onSubmit)}
+              style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: 13, fontWeight: 500 }}>
+                  Name <span style={{ color: 'var(--color-danger)' }}>*</span>
+                </label>
+                <input
+                  {...register('unitName')}
+                  placeholder="e.g. Kilograms"
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--color-border)',
+                    fontSize: 13,
+                  }}
+                />
+                {errors.unitName && (
+                  <span style={{ color: 'var(--color-danger)', fontSize: 11 }}>
+                    {errors.unitName.message}
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: 13, fontWeight: 500 }}>
+                  Symbol <span style={{ color: 'var(--color-danger)' }}>*</span>
+                </label>
+                <input
+                  {...register('symbol')}
+                  placeholder="e.g. KGS"
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--color-border)',
+                    fontSize: 13,
+                  }}
+                />
+                {errors.symbol && (
+                  <span style={{ color: 'var(--color-danger)', fontSize: 11 }}>
+                    {errors.symbol.message}
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: 13, fontWeight: 500 }}>Unique Quantity Code (UQC)</label>
+                <Controller
+                  name="uqc"
+                  control={control}
+                  render={({ field }) => (
+                    <SearchableSelect
+                      options={UQC_OPTIONS}
+                      value={field.value}
+                      onChange={field.onChange}
+                    />
+                  )}
+                />
+                {errors.uqc && (
+                  <span style={{ color: 'var(--color-danger)', fontSize: 11 }}>
+                    {errors.uqc.message}
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: 13, fontWeight: 500 }}>
+                  Unit Precision <span style={{ color: 'var(--color-danger)' }}>*</span>
+                </label>
+                <Controller
+                  name="unitPrecision"
+                  control={control}
+                  render={({ field }) => (
+                    <SearchableSelect
+                      options={[0, 1, 2, 3, 4, 5, 6].map((num) => ({
+                        label: num.toString(),
+                        value: num.toString(),
+                        disabled: !!uomToEdit && num < uomToEdit.unitPrecision,
+                      }))}
+                      value={field.value?.toString()}
+                      onChange={(val) => field.onChange(Number(val))}
+                    />
+                  )}
+                />
+                {errors.unitPrecision && (
+                  <span style={{ color: 'var(--color-danger)', fontSize: 11 }}>
+                    {errors.unitPrecision.message}
+                  </span>
+                )}
+              </div>
+
+              <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                Note : Once you've selected a unit precision, you will only be able to increase the
+                value the next time you edit it.
+              </div>
+
+              <div
+                style={{
+                  backgroundColor: '#FFF7ED',
+                  color: '#4b5563',
+                  padding: '10px',
+                  borderRadius: '6px',
+                  fontSize: 12,
+                  display: 'flex',
+                  gap: '6px',
+                }}
+              >
+                <span style={{ color: '#F97316' }}>⚠️</span>
+                <span>
+                  As per e-Invoice System's API standards, UQC is required for all units. If you
+                  don't enter an UQC, we will use 'OTH (Others)' as the UQC while e-invoicing
+                  transactions.
+                </span>
+              </div>
+            </form>
+          </div>
+
+          {/* Footer */}
+          <div
+            style={{
+              padding: 'var(--space-4) var(--space-5)',
+              borderTop: '1px solid var(--color-border)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 'var(--space-3)',
+              background: 'var(--color-bg)',
+              borderBottomLeftRadius: 'var(--radius-lg)',
+              borderBottomRightRadius: 'var(--radius-lg)',
+            }}
+          >
+            <button
+              onClick={onClose}
+              type="button"
+              style={{
+                padding: '8px 16px',
                 borderRadius: 'var(--radius-md)',
-                marginBottom: 'var(--space-4)',
+                border: '1px solid var(--color-border)',
+                background: 'white',
+                cursor: 'pointer',
+                fontWeight: 500,
                 fontSize: 14,
               }}
             >
-              {errors.root.message}
-            </div>
-          )}
-
-          <form id="uom-form" onSubmit={handleSubmit(onSubmit)} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ fontSize: 13, fontWeight: 500 }}>
-                Name <span style={{ color: 'var(--color-danger)' }}>*</span>
-              </label>
-              <input
-                {...register('unitName')}
-                placeholder="e.g. Kilograms"
-                style={{
-                  padding: '6px 10px',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border)',
-                  fontSize: 13,
-                }}
-              />
-              {errors.unitName && (
-                <span style={{ color: 'var(--color-danger)', fontSize: 11 }}>{errors.unitName.message}</span>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ fontSize: 13, fontWeight: 500 }}>
-                Symbol <span style={{ color: 'var(--color-danger)' }}>*</span>
-              </label>
-              <input
-                {...register('symbol')}
-                placeholder="e.g. KGS"
-                style={{
-                  padding: '6px 10px',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border)',
-                  fontSize: 13,
-                }}
-              />
-              {errors.symbol && (
-                <span style={{ color: 'var(--color-danger)', fontSize: 11 }}>{errors.symbol.message}</span>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ fontSize: 13, fontWeight: 500 }}>
-                Unique Quantity Code (UQC)
-              </label>
-              <Controller
-                name="uqc"
-                control={control}
-                render={({ field }) => (
-                  <SearchableSelect
-                    options={UQC_OPTIONS}
-                    value={field.value}
-                    onChange={field.onChange}
-                  />
-                )}
-              />
-              {errors.uqc && (
-                <span style={{ color: 'var(--color-danger)', fontSize: 11 }}>{errors.uqc.message}</span>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ fontSize: 13, fontWeight: 500 }}>
-                Unit Precision <span style={{ color: 'var(--color-danger)' }}>*</span>
-              </label>
-              <Controller
-                name="unitPrecision"
-                control={control}
-                render={({ field }) => (
-                  <SearchableSelect
-                    options={[0, 1, 2, 3, 4, 5, 6].map(num => ({
-                      label: num.toString(),
-                      value: num.toString(),
-                      disabled: !!uomToEdit && num < uomToEdit.unitPrecision
-                    }))}
-                    value={field.value?.toString()}
-                    onChange={(val) => field.onChange(Number(val))}
-                  />
-                )}
-              />
-              {errors.unitPrecision && (
-                <span style={{ color: 'var(--color-danger)', fontSize: 11 }}>{errors.unitPrecision.message}</span>
-              )}
-            </div>
-
-            <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-              Note : Once you've selected a unit precision, you will only be able to increase the value the next time you edit it.
-            </div>
-
-            <div style={{ 
-              backgroundColor: '#FFF7ED', 
-              color: '#4b5563', 
-              padding: '10px', 
-              borderRadius: '6px', 
-              fontSize: 12,
-              display: 'flex',
-              gap: '6px'
-            }}>
-              <span style={{ color: '#F97316' }}>⚠️</span>
-              <span>
-                As per e-Invoice System's API standards, UQC is required for all units. If you don't enter an UQC, we will use 'OTH (Others)' as the UQC while e-invoicing transactions.
-              </span>
-            </div>
-          </form>
-        </div>
-
-        {/* Footer */}
-        <div
-          style={{
-            padding: 'var(--space-4) var(--space-5)',
-            borderTop: '1px solid var(--color-border)',
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: 'var(--space-3)',
-            background: 'var(--color-bg)',
-            borderBottomLeftRadius: 'var(--radius-lg)',
-            borderBottomRightRadius: 'var(--radius-lg)',
-          }}
-        >
-          <button
-            onClick={onClose}
-            type="button"
-            style={{
-              padding: '8px 16px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--color-border)',
-              background: 'white',
-              cursor: 'pointer',
-              fontWeight: 500,
-              fontSize: 14,
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            form="uom-form"
-            type="submit"
-            disabled={isSubmitting}
-            style={{
-              padding: '8px 16px',
-              borderRadius: 'var(--radius-md)',
-              border: 'none',
-              background: 'var(--color-primary)',
-              color: 'white',
-              cursor: isSubmitting ? 'not-allowed' : 'pointer',
-              fontWeight: 500,
-              fontSize: 14,
-              opacity: isSubmitting ? 0.7 : 1,
-            }}
-          >
-            {isSubmitting ? 'Saving...' : 'Save'}
-          </button>
+              Cancel
+            </button>
+            <button
+              form="uom-form"
+              type="submit"
+              disabled={isSubmitting}
+              style={{
+                padding: '8px 16px',
+                borderRadius: 'var(--radius-md)',
+                border: 'none',
+                background: 'var(--color-primary)',
+                color: 'white',
+                cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                fontWeight: 500,
+                fontSize: 14,
+                opacity: isSubmitting ? 0.7 : 1,
+              }}
+            >
+              {isSubmitting ? 'Saving...' : 'Save'}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  </>
-);
+    </>
+  );
 }

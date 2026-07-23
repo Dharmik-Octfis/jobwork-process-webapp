@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { ApiError } from '../../../../lib/apiError.ts';
+import { sendSuccess } from '../../../../lib/apiResponse.ts';
 import { isEntityType } from './customFields.constants.ts';
 import type {
   CreateDefinitionInput,
@@ -23,7 +24,7 @@ export async function getActiveDefinitions(req: Request, res: Response): Promise
   const orgId = req.tenantId!;
   const entityType = requireEntityType(req);
   const fields = await service.listActiveDefinitions(orgId, entityType);
-  res.status(200).json({ fields });
+  sendSuccess(res, { fields });
 }
 
 // GET /definitions — all non-archived fields for the admin manager (admin only).
@@ -32,7 +33,7 @@ export async function getDefinitions(req: Request, res: Response): Promise<void>
   const orgId = req.tenantId!;
   const entityType = requireEntityType(req);
   const fields = await service.listDefinitions(req.user.id, orgId, entityType);
-  res.status(200).json({ fields });
+  sendSuccess(res, { fields });
 }
 
 export async function createDefinition(req: Request, res: Response): Promise<void> {
@@ -43,7 +44,7 @@ export async function createDefinition(req: Request, res: Response): Promise<voi
     orgId,
     req.body as CreateDefinitionInput,
   );
-  res.status(201).json({ field });
+  sendSuccess(res, { field }, 'Field created.', 201);
 }
 
 export async function updateDefinition(req: Request, res: Response): Promise<void> {
@@ -56,14 +57,14 @@ export async function updateDefinition(req: Request, res: Response): Promise<voi
     id,
     req.body as UpdateDefinitionInput,
   );
-  res.status(200).json({ field });
+  sendSuccess(res, { field }, 'Field updated.');
 }
 
 export async function reorderDefinitions(req: Request, res: Response): Promise<void> {
   if (!req.user) throw new ApiError(401, 'Sign in to continue.');
   const orgId = req.tenantId!;
   await service.reorderDefinitions(req.user.id, orgId, (req.body as ReorderInput).items);
-  res.status(200).json({ message: 'Order updated.' });
+  sendSuccess(res, null, 'Order updated.');
 }
 
 export async function archiveDefinition(req: Request, res: Response): Promise<void> {
@@ -71,5 +72,5 @@ export async function archiveDefinition(req: Request, res: Response): Promise<vo
   const orgId = req.tenantId!;
   const id = req.params['id'] as string;
   await service.archiveDefinition(req.user.id, orgId, id);
-  res.status(200).json({ message: 'Field archived.' });
+  sendSuccess(res, null, 'Field archived.');
 }

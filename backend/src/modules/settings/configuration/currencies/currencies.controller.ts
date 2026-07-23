@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
-import { z } from 'zod';
+import { ApiError } from '../../../../lib/apiError.ts';
+import { sendSuccess } from '../../../../lib/apiResponse.ts';
 import {
   getCurrencyList,
   createNewCurrency,
@@ -7,97 +8,50 @@ import {
   updateCurrencyById,
   deleteCurrencyById,
 } from './currencies.service.ts';
-import { createCurrencySchema, updateCurrencySchema } from './currencies.schemas.ts';
+import type { CreateCurrencyInput, UpdateCurrencyInput } from './currencies.schemas.ts';
+
+/**
+ * Handlers describe the happy path only — no try/catch anywhere.
+ *
+ *   route     validates the body (`validateBody`)        → 400 + field details
+ *   service   enforces rules and throws `ApiError`       → 404 / 409
+ *   handler   sends the success envelope
+ *   errorHandler turns any thrown error into a response
+ *
+ * See CLAUDE.md "API responses — one envelope, one error path".
+ */
 
 export const getCurrencies = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const currencies = await getCurrencyList(orgId);
-    res.json(currencies);
-  } catch (error) {
-    console.error('Error fetching Currencies:', error);
-    res.status(500).json({ error: 'Failed to fetch Currencies' });
-  }
+  const currencies = await getCurrencyList(req.tenantId!);
+  sendSuccess(res, currencies);
 };
 
 export const createCurrency = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const parsedData = createCurrencySchema.parse(req.body);
-
-    const userId = req.user?.id;
-    const newCurrency = await createNewCurrency(orgId, parsedData, userId);
-    res.status(201).json(newCurrency);
-  } catch (error: unknown) {
-    console.error('Error creating Currency:', error);
-    if (error instanceof z.ZodError) {
-      res.status(400).json({ error: 'Validation failed', details: error.issues });
-    } else if (
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      error.code === 'P2002'
-    ) {
-      res.status(409).json({ error: 'Currency code already exists in this organization.' });
-    } else {
-      res.status(500).json({ error: `Failed to create Currency: ${String(error)}` });
-    }
-  }
+  const newCurrency = await createNewCurrency(
+    req.tenantId!,
+    req.body as CreateCurrencyInput,
+    req.user?.id,
+  );
+  sendSuccess(res, newCurrency, 'Currency created.', 201);
 };
 
 export const getCurrency = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const id = req.params.id as string;
-    const currency = await getCurrencyById(orgId, id);
-
-    if (!currency) {
-      return res.status(404).json({ error: 'Currency not found' });
-    }
-
-    res.json(currency);
-  } catch (error) {
-    console.error('Error fetching Currency:', error);
-    res.status(500).json({ error: 'Failed to fetch Currency' });
-  }
+  const currency = await getCurrencyById(req.tenantId!, req.params.id as string);
+  if (!currency) throw ApiError.notFound('Currency not found');
+  sendSuccess(res, currency);
 };
 
 export const updateCurrency = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const id = req.params.id as string;
-    const parsedData = updateCurrencySchema.parse(req.body);
-
-    const userId = req.user?.id;
-    const updatedCurrency = await updateCurrencyById(orgId, id, parsedData, userId);
-    res.json(updatedCurrency);
-  } catch (error: unknown) {
-    console.error('Error updating Currency:', error);
-    if (error instanceof z.ZodError) {
-      res.status(400).json({ error: 'Validation failed', details: error.issues });
-    } else if (error instanceof Error && error.message === 'Currency not found') {
-      res.status(404).json({ error: 'Currency not found' });
-    } else if (
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      error.code === 'P2002'
-    ) {
-      res.status(409).json({ error: 'Currency code already exists in this organization.' });
-    } else {
-      res.status(500).json({ error: `Failed to update Currency: ${String(error)}` });
-    }
-  }
+  const updatedCurrency = await updateCurrencyById(
+    req.tenantId!,
+    req.params.id as string,
+    req.body as UpdateCurrencyInput,
+    req.user?.id,
+  );
+  sendSuccess(res, updatedCurrency, 'Currency updated.');
 };
 
 export const deleteCurrency = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const id = req.params.id as string;
-    await deleteCurrencyById(orgId, id, req.user?.id);
-    res.status(204).send();
-  } catch (error) {
-    console.error('Error deleting Currency:', error);
-    res.status(500).json({ error: 'Failed to delete Currency' });
-  }
+  await deleteCurrencyById(req.tenantId!, req.params.id as string, req.user?.id);
+  sendSuccess(res, null, 'Currency deleted.');
 };

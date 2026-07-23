@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { ApiError } from '../../lib/apiError.ts';
+import { sendSuccess } from '../../lib/apiResponse.ts';
 import { clearTokenCookies, setRefreshTokenAsCookie } from '../../lib/cookies.ts';
 import { readSessionId } from '../../lib/jwt.ts';
 import type {
@@ -15,14 +16,14 @@ export async function signup(req: Request, res: Response): Promise<void> {
   const { accessToken, refreshToken, user } = await authService.signup(req.body as SignupInput);
 
   setRefreshTokenAsCookie(res, refreshToken);
-  res.status(201).json({ user, accessToken });
+  sendSuccess(res, { user, accessToken }, 'Account created.', 201);
 }
 
 export async function login(req: Request, res: Response): Promise<void> {
   const { accessToken, refreshToken, user } = await authService.login(req.body as LoginInput);
 
   setRefreshTokenAsCookie(res, refreshToken);
-  res.status(200).json({ user, accessToken });
+  sendSuccess(res, { user, accessToken }, 'Signed in.');
 }
 
 export async function refresh(req: Request, res: Response): Promise<void> {
@@ -35,7 +36,7 @@ export async function refresh(req: Request, res: Response): Promise<void> {
   const { accessToken, refreshToken, user } = await authService.refresh(oldRefreshToken);
 
   setRefreshTokenAsCookie(res, refreshToken);
-  res.status(200).json({ user, accessToken });
+  sendSuccess(res, { user, accessToken }, 'Session refreshed.');
 }
 
 export async function logout(req: Request, res: Response): Promise<void> {
@@ -61,7 +62,7 @@ export async function logout(req: Request, res: Response): Promise<void> {
   }
 
   clearTokenCookies(res);
-  res.status(200).json({ message: 'Logged out successfully' });
+  sendSuccess(res, null, 'Logged out successfully');
 }
 
 export async function me(req: Request, res: Response): Promise<void> {
@@ -70,7 +71,7 @@ export async function me(req: Request, res: Response): Promise<void> {
   }
 
   const user = await authService.getUserById(req.user.id);
-  res.status(200).json({ user });
+  sendSuccess(res, { user });
 }
 
 export async function updateProfile(req: Request, res: Response): Promise<void> {
@@ -79,18 +80,20 @@ export async function updateProfile(req: Request, res: Response): Promise<void> 
   }
 
   const user = await authService.updateProfile(req.user.id, req.body as UpdateProfileInput);
-  res.status(200).json({ user });
+  sendSuccess(res, { user });
 }
 
 export async function forgotPassword(req: Request, res: Response): Promise<void> {
   const { email } = req.body as ForgotPasswordInput;
   await authService.requestPasswordReset(email);
-  res
-    .status(200)
-    .json({ message: 'If an account with that email exists, we sent you a password reset link.' });
+  sendSuccess(
+    res,
+    null,
+    'If an account with that email exists, we sent you a password reset link.',
+  );
 }
 
 export async function resetPassword(req: Request, res: Response): Promise<void> {
   await authService.resetPassword(req.body as ResetPasswordInput);
-  res.status(200).json({ message: 'Your password has been successfully reset.' });
+  sendSuccess(res, null, 'Your password has been successfully reset.');
 }

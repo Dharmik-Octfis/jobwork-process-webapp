@@ -15,6 +15,7 @@ import {
 import { z } from 'zod';
 import { openApiRegistry } from '../../../config/openapi.ts';
 import { ApiError } from '../../../lib/apiError.ts';
+import { sendSuccess } from '../../../lib/apiResponse.ts';
 
 const customerAddressSchema = z.object({
   id: z.string().optional(),
@@ -39,7 +40,7 @@ const customerContactPersonSchema = z.object({
   mobilePhone: z.string().nullable().optional(),
 });
 
-const createCustomerSchema = openApiRegistry.register(
+export const createCustomerSchema = openApiRegistry.register(
   'CreateCustomerRequest',
   z.object({
     customerType: z.enum(['business', 'individual']).optional().default('business'),
@@ -66,6 +67,15 @@ const createCustomerSchema = openApiRegistry.register(
     contactPersons: z.array(customerContactPersonSchema).optional(),
   }),
 );
+
+export type CreateCustomerInput = z.infer<typeof createCustomerSchema>;
+
+/** Body for the number-sequence preference endpoint. */
+export const numberPreferenceSchema = z.object({
+  prefix: z.string(),
+  nextNumber: z.number().int().positive(),
+});
+export type NumberPreferenceInput = z.infer<typeof numberPreferenceSchema>;
 
 // Register GET route
 openApiRegistry.registerPath({
@@ -214,201 +224,87 @@ openApiRegistry.registerPath({
   },
   responses: { 200: { description: 'Updated number sequence preferences' } },
 });
+/**
+ * Handlers do not catch-and-respond: Express 5 forwards a rejected promise to
+ * `errorHandler`, the single place an error becomes a response. What remains is
+ * translation only — a known failure becomes an `ApiError` and is rethrown.
+ * Mirrors vendors.controller.ts.
+ */
 export const getCustomers = async (req: Request, res: Response) => {
-  try {
-    // req.tenantId, not the raw header: `tenantContext` has verified membership
-    // against the database. The header is a client-supplied claim.
-    const orgId = req.tenantId!;
-    const customers = await getCustomersList(orgId);
-    res.json(customers);
-  } catch (error) {
-    console.error('Error fetching customers:', error);
-    res.status(500).json({ error: 'Failed to fetch customers' });
-  }
+  const customers = await getCustomersList(req.tenantId!);
+  sendSuccess(res, customers);
 };
 
 export const createCustomer = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const parsedData = createCustomerSchema.parse(req.body);
-
-    const data = {
-      ...parsedData,
-    };
-
-    const userId = req.user?.id;
-    const newCustomer = await createNewCustomer(orgId, data, userId);
-    res.status(201).json(newCustomer);
-  } catch (error: unknown) {
-    console.error('Error creating customer:', error);
-    if (error instanceof z.ZodError) {
-      res.status(400).json({ error: 'Validation failed', details: error.issues });
-    } else if (error instanceof ApiError) {
-      // e.g. custom-field validation from the service — keep status + field details.
-      res
-        .status(error.status)
-        .json({ error: error.message, message: error.message, details: error.details });
-    } else if (
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      error.code === 'P2002'
-    ) {
-      res.status(409).json({ error: 'Customer number already exists in this organization.' });
-    } else {
-      res.status(500).json({ error: `Failed to create customer: ${String(error)}` });
-    }
-  }
+  const newCustomer = await createNewCustomer(
+    req.tenantId!,
+    req.body as CreateCustomerInput,
+    req.user?.id,
+  );
+  sendSuccess(res, newCustomer, 'Customer created.', 201);
 };
 
 export const getCustomer = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const customerId = req.params.id as string;
-    const customer = await getCustomerById(orgId, customerId);
-
-    if (!customer) {
-      return res.status(404).json({ error: 'Customer not found' });
-    }
-
-    res.json(customer);
-  } catch (error) {
-    console.error('Error fetching customer:', error);
-    res.status(500).json({ error: 'Failed to fetch customer' });
-  }
+  const customer = await getCustomerById(req.tenantId!, req.params.id as string);
+  if (!customer) throw new ApiError(404, 'Customer not found');
+  sendSuccess(res, customer);
 };
+
 export const updateCustomer = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const customerId = req.params.id as string;
-    const parsedData = createCustomerSchema.parse(req.body);
-
-    const data = {
-      ...parsedData,
-    };
-
-    const userId = req.user?.id;
-    const updatedCustomer = await updateCustomerById(orgId, customerId, data, userId);
-    res.json(updatedCustomer);
-  } catch (error: unknown) {
-    console.error('Error updating customer:', error);
-    if (error instanceof z.ZodError) {
-      res.status(400).json({ error: 'Validation failed', details: error.issues });
-    } else if (error instanceof ApiError) {
-      res
-        .status(error.status)
-        .json({ error: error.message, message: error.message, details: error.details });
-    } else if (error instanceof Error && error.message === 'Customer not found') {
-      res.status(404).json({ error: 'Customer not found' });
-    } else if (
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      error.code === 'P2002'
-    ) {
-      res.status(409).json({ error: 'Customer number already exists in this organization.' });
-    } else {
-      res.status(500).json({ error: `Failed to update customer: ${String(error)}` });
-    }
-  }
+  const updatedCustomer = await updateCustomerById(
+    req.tenantId!,
+    req.params.id as string,
+    req.body as CreateCustomerInput,
+    req.user?.id,
+  );
+  sendSuccess(res, updatedCustomer, 'Customer updated.');
 };
 
 export const deleteCustomer = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const customerId = req.params.id as string;
-    await deleteCustomerById(orgId, customerId, req.user?.id);
-    res.status(204).send();
-  } catch (error) {
-    console.error('Error deleting customer:', error);
-    if (error instanceof Error && error.message === 'Customer not found') {
-      res.status(404).json({ error: 'Customer not found' });
-    } else {
-      res.status(500).json({ error: 'Failed to delete customer' });
-    }
-  }
+  await deleteCustomerById(req.tenantId!, req.params.id as string, req.user?.id);
+  // 200 with data:null, not 204 — a 204 carries no body, so it cannot express
+  // the standard envelope.
+  sendSuccess(res, null, 'Customer deleted.');
 };
 
 export const getCustomerActivitiesRoute = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const customerId = req.params.id as string;
-    const activities = await getCustomerActivities(orgId, customerId);
-    res.json(activities);
-  } catch (error) {
-    console.error('Error fetching activities:', error);
-    res.status(500).json({ error: 'Failed to fetch activities' });
-  }
+  const activities = await getCustomerActivities(req.tenantId!, req.params.id as string);
+  sendSuccess(res, activities);
 };
 
 export const getCustomerCommentsRoute = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const customerId = req.params.id as string;
-    const comments = await getCustomerComments(orgId, customerId);
-    res.json(comments);
-  } catch (error) {
-    console.error('Error fetching comments:', error);
-    res.status(500).json({ error: 'Failed to fetch comments' });
-  }
+  const comments = await getCustomerComments(req.tenantId!, req.params.id as string);
+  sendSuccess(res, comments);
 };
 
 export const createCustomerCommentRoute = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const customerId = req.params.id as string;
-    const content = req.body.content;
-    const userId = req.user?.id || null;
-    const newComment = await createCustomerComment(orgId, customerId, content, userId);
-    res.status(201).json(newComment);
-  } catch (error) {
-    console.error('Error creating comment:', error);
-    res.status(500).json({ error: 'Failed to create comment' });
-  }
+  const newComment = await createCustomerComment(
+    req.tenantId!,
+    req.params.id as string,
+    req.body.content,
+    req.user?.id ?? null,
+  );
+  sendSuccess(res, newComment, 'Comment added.', 201);
 };
 
 export const deleteCustomerCommentRoute = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const customerId = req.params.id as string;
-    const commentId = req.params.commentId as string;
-    await deleteCustomerComment(orgId, customerId, commentId, req.user?.id);
-    res.status(204).send();
-  } catch (error) {
-    console.error('Error deleting comment:', error);
-    if (error instanceof Error && error.message === 'Comment not found') {
-      res.status(404).json({ error: 'Comment not found' });
-    } else {
-      res.status(500).json({ error: 'Failed to delete comment' });
-    }
-  }
+  await deleteCustomerComment(
+    req.tenantId!,
+    req.params.id as string,
+    req.params.commentId as string,
+    req.user?.id,
+  );
+  sendSuccess(res, null, 'Comment deleted.');
 };
 
 export const getNumberPreferenceRoute = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const pref = await getCustomerNumberPreference(orgId);
-    res.json(pref);
-  } catch (error) {
-    console.error('Error fetching number preference:', error);
-    res.status(500).json({ error: 'Failed to fetch number preference' });
-  }
+  const pref = await getCustomerNumberPreference(req.tenantId!);
+  sendSuccess(res, pref);
 };
 
 export const updateNumberPreferenceRoute = async (req: Request, res: Response) => {
-  try {
-    const orgId = req.tenantId!;
-    const { prefix, nextNumber } = z
-      .object({
-        prefix: z.string(),
-        nextNumber: z.number().int().positive(),
-      })
-      .parse(req.body);
+  const { prefix, nextNumber } = req.body as NumberPreferenceInput;
 
-    const pref = await updateCustomerNumberPreference(orgId, prefix, nextNumber);
-    res.json(pref);
-  } catch (error) {
-    console.error('Error updating number preference:', error);
-    res.status(500).json({ error: 'Failed to update number preference' });
-  }
+  const pref = await updateCustomerNumberPreference(req.tenantId!, prefix, nextNumber);
+  sendSuccess(res, pref, 'Number preference updated.');
 };

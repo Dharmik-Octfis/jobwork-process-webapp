@@ -46,8 +46,10 @@ function crud(resource: string): PermissionAction[] {
 /** The resources that carry permissions. One row per module in the admin grid. */
 const RESOURCES: readonly { resource: string; label: string }[] = [
   { resource: 'vendor', label: 'Vendors' },
+  { resource: 'customer', label: 'Customers' },
   { resource: 'item', label: 'Items' },
   { resource: 'currency', label: 'Currencies' },
+  { resource: 'payment_term', label: 'Payment Terms' },
   { resource: 'uom', label: 'Units of Measurement' },
   { resource: 'custom_field', label: 'Custom Fields' },
   { resource: 'member', label: 'Members & Invitations' },

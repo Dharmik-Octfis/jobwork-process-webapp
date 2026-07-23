@@ -1,4 +1,8 @@
 import { runAsTenant } from '../../../../db/prisma.ts';
+import { ApiError, withUniqueViolation } from '../../../../lib/apiError.ts';
+
+/** Message for the (organizationId, unitName) unique index. */
+const DUPLICATE_NAME = 'Unit name already exists in this organization.';
 
 interface CreateUomData {
   unitName: string;
@@ -24,23 +28,25 @@ export const getUomList = async (orgId: string) => {
       orderBy: {
         unitName: 'asc',
       },
-    })
+    }),
   );
 };
 
 export const createNewUom = async (orgId: string, data: CreateUomData, userId?: string) => {
   return runAsTenant(orgId, (tx) =>
-    tx.unitOfMeasurement.create({
-      data: {
-        organizationId: orgId,
-        unitName: data.unitName,
-        symbol: data.symbol,
-        uqc: data.uqc,
-        unitPrecision: data.unitPrecision,
-        createdBy: userId,
-        updatedBy: userId,
-      },
-    })
+    withUniqueViolation(DUPLICATE_NAME, () =>
+      tx.unitOfMeasurement.create({
+        data: {
+          organizationId: orgId,
+          unitName: data.unitName,
+          symbol: data.symbol,
+          uqc: data.uqc,
+          unitPrecision: data.unitPrecision,
+          createdBy: userId,
+          updatedBy: userId,
+        },
+      }),
+    ),
   );
 };
 
@@ -52,7 +58,7 @@ export const getUomById = async (orgId: string, id: string) => {
         organizationId: orgId,
         isDeleted: false,
       },
-    })
+    }),
   );
 };
 
@@ -66,18 +72,20 @@ export const updateUomById = async (
     const existingUom = await tx.unitOfMeasurement.findFirst({
       where: { id, organizationId: orgId, isDeleted: false },
     });
-    
+
     if (!existingUom) {
-      throw new Error('UOM not found');
+      throw ApiError.notFound('UOM not found');
     }
 
-    return tx.unitOfMeasurement.update({
-      where: { id },
-      data: {
-        ...data,
-        updatedBy: userId,
-      },
-    });
+    return withUniqueViolation(DUPLICATE_NAME, () =>
+      tx.unitOfMeasurement.update({
+        where: { id },
+        data: {
+          ...data,
+          updatedBy: userId,
+        },
+      }),
+    );
   });
 };
 
@@ -86,9 +94,9 @@ export const deleteUomById = async (orgId: string, id: string, userId?: string) 
     const existingUom = await tx.unitOfMeasurement.findFirst({
       where: { id, organizationId: orgId, isDeleted: false },
     });
-    
+
     if (!existingUom) {
-      throw new Error('UOM not found');
+      throw ApiError.notFound('UOM not found');
     }
 
     return tx.unitOfMeasurement.update({

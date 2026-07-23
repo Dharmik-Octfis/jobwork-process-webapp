@@ -159,15 +159,26 @@ openApiRegistry.registerPath({
 import { authenticate } from '../../middlewares/authenticate.ts';
 import { tenantContext } from '../../middlewares/tenantContext.ts';
 import { requirePermission } from '../../middlewares/authorize.ts';
+import { validateBody } from '../../middlewares/validate.ts';
 
 const router = Router({ mergeParams: true });
 router.use(authenticate, tenantContext);
 router.get('/', requirePermission('item:read'), itemsController.getItems);
-router.post('/', requirePermission('item:create'), itemsController.createItem);
+router.post(
+  '/',
+  requirePermission('item:create'),
+  validateBody(createItemSchema),
+  itemsController.createItem,
+);
 router.get('/:id', requirePermission('item:read'), itemsController.getItem);
 router.get('/:id/activities', requirePermission('item:read'), itemsController.getItemActivities);
 router.get('/:id/signed-url', requirePermission('item:read'), itemsController.getSignedUrl);
-router.put('/:id', requirePermission('item:update'), itemsController.updateItem);
+router.put(
+  '/:id',
+  requirePermission('item:update'),
+  validateBody(updateItemSchema),
+  itemsController.updateItem,
+);
 router.delete('/:id', requirePermission('item:delete'), itemsController.deleteItem);
 
 router.post(

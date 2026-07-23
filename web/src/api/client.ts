@@ -70,21 +70,33 @@ let refreshInFlight: Promise<string | null> | null = null;
 export function refreshAccessToken(): Promise<string | null> {
   if (refreshInFlight) return refreshInFlight;
 
-  const doRefresh = () => axios
-    .post<{ accessToken: string }>(`${env.apiUrl}${endpoints.auth.refresh}`, null, {
-      withCredentials: true,
-    })
-    .then((res) => {
-      setAccessToken(res.data.accessToken);
-      return res.data.accessToken;
-    })
-    .catch(() => {
-      setAccessToken(null);
-      return null;
-    });
+  // NOTE: this uses the raw `axios` export, not `apiClient`, so it deliberately
+  // skips the interceptors (otherwise a 401 here would recurse into itself).
+  // That also means the response envelope is NOT unwrapped for us — read
+  // `data.data` explicitly. Getting this wrong is silent: the access token comes
+  // back undefined, every silent refresh fails, and users appear to be randomly
+  // logged out.
+  const doRefresh = () =>
+    axios
+      .post<{ statusCode: number; message: string; data: { accessToken: string } }>(
+        `${env.apiUrl}${endpoints.auth.refresh}`,
+        null,
+        { withCredentials: true },
+      )
+      .then((res) => {
+        const { accessToken } = res.data.data;
+        setAccessToken(accessToken);
+        return accessToken;
+      })
+      .catch(() => {
+        setAccessToken(null);
+        return null;
+      });
 
   if (typeof navigator !== 'undefined' && navigator.locks) {
-    refreshInFlight = (navigator.locks.request('auth_refresh', doRefresh) as unknown as Promise<string | null>).finally(() => {
+    refreshInFlight = (
+      navigator.locks.request('auth_refresh', doRefresh) as unknown as Promise<string | null>
+    ).finally(() => {
       refreshInFlight = null;
     });
   } else {

@@ -21,38 +21,40 @@ const email = z
 export const signupSchema = openApiRegistry.register(
   'SignupRequest',
   z.object({
-  // 80 = the `users.name VARCHAR(80)` column width. Rejecting at 81 here beats
-  // a Postgres "value too long" error surfacing as a 500.
-  firstName: z
-    .string()
-    .trim()
-    .min(1, 'First name is required')
-    .max(40, 'Keep first name under 40 characters')
-    .openapi({ example: 'John' }),
-  lastName: z
-    .string()
-    .trim()
-    .min(1, 'Last name is required')
-    .max(40, 'Keep last name under 40 characters')
-    .openapi({ example: 'Doe' }),
-  email,
-  // 72 is the classic bcrypt input ceiling; argon2 has no such limit, but the
-  // cap keeps a megabyte-long password from becoming a CPU denial-of-service.
-  password: z
-    .string()
-    .min(8, 'Use at least 8 characters')
-    .max(72, 'Keep your password under 72 characters')
-    .openapi({ example: 'SecureP@ss123' }),
-}));
+    // 80 = the `users.name VARCHAR(80)` column width. Rejecting at 81 here beats
+    // a Postgres "value too long" error surfacing as a 500.
+    firstName: z
+      .string()
+      .trim()
+      .min(1, 'First name is required')
+      .max(40, 'Keep first name under 40 characters')
+      .openapi({ example: 'John' }),
+    lastName: z
+      .string()
+      .trim()
+      .min(1, 'Last name is required')
+      .max(40, 'Keep last name under 40 characters')
+      .openapi({ example: 'Doe' }),
+    email,
+    // 72 is the classic bcrypt input ceiling; argon2 has no such limit, but the
+    // cap keeps a megabyte-long password from becoming a CPU denial-of-service.
+    password: z
+      .string()
+      .min(8, 'Use at least 8 characters')
+      .max(72, 'Keep your password under 72 characters')
+      .openapi({ example: 'SecureP@ss123' }),
+  }),
+);
 
 export type SignupInput = z.infer<typeof signupSchema>;
 
 export const loginSchema = openApiRegistry.register(
   'LoginRequest',
   z.object({
-  email,
-  password: z.string().min(1, 'Password is required').openapi({ example: 'SecureP@ss123' }),
-}));
+    email,
+    password: z.string().min(1, 'Password is required').openapi({ example: 'SecureP@ss123' }),
+  }),
+);
 
 export type LoginInput = z.infer<typeof loginSchema>;
 

@@ -1,7 +1,22 @@
 import { Router } from 'express';
-import { getCustomers, createCustomer, updateCustomer, deleteCustomer, getCustomer, getCustomerActivitiesRoute, getCustomerCommentsRoute, createCustomerCommentRoute, deleteCustomerCommentRoute, getNumberPreferenceRoute, updateNumberPreferenceRoute } from './customers.controller.ts';
+import {
+  getCustomers,
+  createCustomer,
+  updateCustomer,
+  deleteCustomer,
+  getCustomer,
+  getCustomerActivitiesRoute,
+  getCustomerCommentsRoute,
+  createCustomerCommentRoute,
+  deleteCustomerCommentRoute,
+  getNumberPreferenceRoute,
+  updateNumberPreferenceRoute,
+} from './customers.controller.ts';
 import { authenticate } from '../../../middlewares/authenticate.ts';
 import { tenantContext } from '../../../middlewares/tenantContext.ts';
+import { requirePermission } from '../../../middlewares/authorize.ts';
+import { validateBody } from '../../../middlewares/validate.ts';
+import { createCustomerSchema, numberPreferenceSchema } from './customers.controller.ts';
 
 /**
  * Mounted at `/organizations/:orgId/sales/customers` (routes/index.ts).
@@ -16,18 +31,45 @@ const router = Router({ mergeParams: true });
 // proves you belong to the organization named in the URL before any handler runs.
 router.use(authenticate, tenantContext);
 
-router.get('/', getCustomers);
-router.post('/', createCustomer);
+// Every route carries a permission. Without these the module has NO gate and any
+// member can do anything — it fails open and silently (CLAUDE.md "Module
+// conventions"). Comments/activities belong to a customer, so they ride on
+// customer:read (view) / customer:update (annotate).
+router.get('/', requirePermission('customer:read'), getCustomers);
+router.post(
+  '/',
+  requirePermission('customer:create'),
+  validateBody(createCustomerSchema),
+  createCustomer,
+);
 
-router.get('/preferences/number-sequence', getNumberPreferenceRoute);
-router.put('/preferences/number-sequence', updateNumberPreferenceRoute);
+router.get(
+  '/preferences/number-sequence',
+  requirePermission('customer:read'),
+  getNumberPreferenceRoute,
+);
+router.put(
+  '/preferences/number-sequence',
+  requirePermission('customer:update'),
+  validateBody(numberPreferenceSchema),
+  updateNumberPreferenceRoute,
+);
 
-router.get('/:id', getCustomer);
-router.get('/:id/activities', getCustomerActivitiesRoute);
-router.get('/:id/comments', getCustomerCommentsRoute);
-router.post('/:id/comments', createCustomerCommentRoute);
-router.delete('/:id/comments/:commentId', deleteCustomerCommentRoute);
-router.put('/:id', updateCustomer);
-router.delete('/:id', deleteCustomer);
+router.get('/:id', requirePermission('customer:read'), getCustomer);
+router.get('/:id/activities', requirePermission('customer:read'), getCustomerActivitiesRoute);
+router.get('/:id/comments', requirePermission('customer:read'), getCustomerCommentsRoute);
+router.post('/:id/comments', requirePermission('customer:update'), createCustomerCommentRoute);
+router.delete(
+  '/:id/comments/:commentId',
+  requirePermission('customer:update'),
+  deleteCustomerCommentRoute,
+);
+router.put(
+  '/:id',
+  requirePermission('customer:update'),
+  validateBody(createCustomerSchema),
+  updateCustomer,
+);
+router.delete('/:id', requirePermission('customer:delete'), deleteCustomer);
 
 export { router as customersRouter };
