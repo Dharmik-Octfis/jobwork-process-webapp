@@ -1,7 +1,20 @@
 import { Router } from 'express';
-import { getVendors, createVendor, updateVendor, deleteVendor, getVendor, getVendorActivitiesRoute, getVendorCommentsRoute, createVendorCommentRoute, deleteVendorCommentRoute, getNumberPreferenceRoute, updateNumberPreferenceRoute } from './vendors.controller.ts';
+import {
+  getVendors,
+  createVendor,
+  updateVendor,
+  deleteVendor,
+  getVendor,
+  getVendorActivitiesRoute,
+  getVendorCommentsRoute,
+  createVendorCommentRoute,
+  deleteVendorCommentRoute,
+  getNumberPreferenceRoute,
+  updateNumberPreferenceRoute,
+} from './vendors.controller.ts';
 import { authenticate } from '../../../middlewares/authenticate.ts';
 import { tenantContext } from '../../../middlewares/tenantContext.ts';
+import { requirePermission } from '../../../middlewares/authorize.ts';
 
 /**
  * Mounted at `/organizations/:orgId/purchases/vendors` (routes/index.ts).
@@ -16,18 +29,33 @@ const router = Router({ mergeParams: true });
 // proves you belong to the organization named in the URL before any handler runs.
 router.use(authenticate, tenantContext);
 
-router.get('/', getVendors);
-router.post('/', createVendor);
+// Each mutating/reading route is gated on the matching permission. Reads need
+// `vendor:read`; writes need the specific action. Comments/activities are part of
+// a vendor, so they ride on vendor:read (view) / vendor:update (annotate).
+router.get('/', requirePermission('vendor:read'), getVendors);
+router.post('/', requirePermission('vendor:create'), createVendor);
 
-router.get('/preferences/number-sequence', getNumberPreferenceRoute);
-router.put('/preferences/number-sequence', updateNumberPreferenceRoute);
+router.get(
+  '/preferences/number-sequence',
+  requirePermission('vendor:read'),
+  getNumberPreferenceRoute,
+);
+router.put(
+  '/preferences/number-sequence',
+  requirePermission('vendor:update'),
+  updateNumberPreferenceRoute,
+);
 
-router.get('/:id', getVendor);
-router.get('/:id/activities', getVendorActivitiesRoute);
-router.get('/:id/comments', getVendorCommentsRoute);
-router.post('/:id/comments', createVendorCommentRoute);
-router.delete('/:id/comments/:commentId', deleteVendorCommentRoute);
-router.put('/:id', updateVendor);
-router.delete('/:id', deleteVendor);
+router.get('/:id', requirePermission('vendor:read'), getVendor);
+router.get('/:id/activities', requirePermission('vendor:read'), getVendorActivitiesRoute);
+router.get('/:id/comments', requirePermission('vendor:read'), getVendorCommentsRoute);
+router.post('/:id/comments', requirePermission('vendor:update'), createVendorCommentRoute);
+router.delete(
+  '/:id/comments/:commentId',
+  requirePermission('vendor:update'),
+  deleteVendorCommentRoute,
+);
+router.put('/:id', requirePermission('vendor:update'), updateVendor);
+router.delete('/:id', requirePermission('vendor:delete'), deleteVendor);
 
 export { router as vendorsRouter };

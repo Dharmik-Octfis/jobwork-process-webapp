@@ -44,6 +44,39 @@ export async function getByToken(req: Request, res: Response): Promise<void> {
   res.status(200).json({ invitation });
 }
 
+// ── The recipient's inbox (mounted under /me/invitations, requires auth) ──────
+//
+// Addressed by invitation id, not token: the raw token lives only in the email
+// and cannot be recovered from its hash. Authorization is the session plus an
+// email match, enforced in the service.
+
+export async function listMine(req: Request, res: Response): Promise<void> {
+  if (!req.user) throw new ApiError(401, 'Sign in to continue.');
+  const invitations = await invitationsService.listMyInvitations(req.user.id);
+  res.status(200).json({ invitations });
+}
+
+export async function acceptMine(req: Request, res: Response): Promise<void> {
+  if (!req.user) throw new ApiError(401, 'Sign in to continue.');
+  const result = await invitationsService.acceptMyInvitation(req.user.id, req.params.id as string);
+  // Always already signed in here, so there is never an autoLogin to issue.
+  res.status(200).json({ organization: result.organization, roleName: result.roleName });
+}
+
+export async function declineMine(req: Request, res: Response): Promise<void> {
+  if (!req.user) throw new ApiError(401, 'Sign in to continue.');
+  await invitationsService.declineMyInvitation(req.user.id, req.params.id as string);
+  res.status(204).send();
+}
+
+/** Decline an invite. Public — the raw token is the credential, and the invitee
+ * may have no account (so no session to authenticate). */
+export async function decline(req: Request, res: Response): Promise<void> {
+  const token = req.params.token as string;
+  await invitationsService.declineInvitation(token);
+  res.status(204).send();
+}
+
 export async function accept(req: Request, res: Response): Promise<void> {
   const token = req.params.token as string;
   // `optionalAuthenticate` sets req.user when a valid Bearer token is present.
@@ -61,12 +94,12 @@ export async function accept(req: Request, res: Response): Promise<void> {
     setRefreshTokenAsCookie(res, result.autoLogin.refreshToken);
     res.status(201).json({
       organization: result.organization,
-      role: result.role,
+      roleName: result.roleName,
       user: result.autoLogin.user,
       accessToken: result.autoLogin.accessToken,
     });
     return;
   }
 
-  res.status(200).json({ organization: result.organization, role: result.role });
+  res.status(200).json({ organization: result.organization, roleName: result.roleName });
 }

@@ -66,6 +66,8 @@ model User {
   updatedCurrencies             Currency[]              @relation("CurrencyUpdatedBy")
   createdCustomFieldDefinitions CustomFieldDefinition[] @relation("CustomFieldDefinitionCreatedBy")
   updatedCustomFieldDefinitions CustomFieldDefinition[] @relation("CustomFieldDefinitionUpdatedBy")
+  createdPermissionTemplates    PermissionTemplate[]    @relation("PermissionTemplateCreatedBy")
+  updatedPermissionTemplates    PermissionTemplate[]    @relation("PermissionTemplateUpdatedBy")
   createdPaymentTerms           PaymentTerm[]           @relation("PaymentTermCreatedBy")
   updatedPaymentTerms           PaymentTerm[]           @relation("PaymentTermUpdatedBy")
 
@@ -137,6 +139,7 @@ model Organization {
   unitsOfMeasurement     UnitOfMeasurement[]
   currencies             Currency[]
   customFieldDefinitions CustomFieldDefinition[]
+  permissionTemplates    PermissionTemplate[]
   paymentTerms           PaymentTerm[]
 
   createdByUser User? @relation("OrganizationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
@@ -146,18 +149,25 @@ model Organization {
 }
 
 model Membership {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId         String   @map("user_id") @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  role           String   @default("member") @db.VarChar(50) // owner, admin, member
-  isDeleted      Boolean  @default(false) @map("is_deleted")
-  createdBy      String?  @map("created_by") @db.Uuid
-  updatedBy      String?  @map("updated_by") @db.Uuid
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId               String   @map("user_id") @db.Uuid
+  organizationId       String   @map("organization_id") @db.Uuid
+  role                 String   @default("member") @db.VarChar(50) // owner, admin, member — legacy label; authorization now comes from permissionTemplate
+  // The permission template that grants this membership its access. Nullable:
+  // legacy rows created before this module predate it, and tenantContext falls
+  // back to `role` (permissionsForRole) when it is null. SetNull, not Cascade —
+  // deleting a template must never delete memberships (the service also blocks
+  // deleting a template still in use).
+  permissionTemplateId String?  @map("permission_template_id") @db.Uuid
+  isDeleted            Boolean  @default(false) @map("is_deleted")
+  createdBy            String?  @map("created_by") @db.Uuid
+  updatedBy            String?  @map("updated_by") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  permissionTemplate PermissionTemplate? @relation(fields: [permissionTemplateId], references: [id], onDelete: SetNull)
 
   createdByUser User? @relation("MembershipCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User? @relation("MembershipUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
@@ -172,29 +182,43 @@ model Membership {
 // the emailed token is just a random lookup key (its SHA-256 hash is stored, so
 // a leaked DB row can't be replayed — the raw token lives only in the email).
 model Invitation {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String    @map("organization_id") @db.Uuid
-  email          String    @db.Citext
-  role           String    @default("member") @db.VarChar(50) // admin | member (never owner via invite)
-  tokenHash      String    @unique @map("token_hash")
-  status         String    @default("pending") @db.VarChar(20) // pending | accepted | revoked
-  invitedById    String    @map("invited_by_id") @db.Uuid
-  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(6)
-  acceptedAt     DateTime? @map("accepted_at") @db.Timestamptz(6)
-  isDeleted      Boolean   @default(false) @map("is_deleted")
-  createdBy      String?   @map("created_by") @db.Uuid
-  updatedBy      String?   @map("updated_by") @db.Uuid
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String    @map("organization_id") @db.Uuid
+  email                String    @db.Citext
+  // The role (permission template) the invitee gets on accept. Required — an org
+  // has no default roles, so the Owner must create one before inviting anyone.
+  // The Owner template itself is never invitable (enforced in the service):
+  // ownership comes from creating the org, not from an invite.
+  permissionTemplateId String    @map("permission_template_id") @db.Uuid
+  tokenHash            String    @unique @map("token_hash")
+  status               String    @default("pending") @db.VarChar(20) // pending | accepted | revoked | declined
+  invitedById          String    @map("invited_by_id") @db.Uuid
+  expiresAt            DateTime  @map("expires_at") @db.Timestamptz(6)
+  acceptedAt           DateTime? @map("accepted_at") @db.Timestamptz(6)
+  declinedAt           DateTime? @map("declined_at") @db.Timestamptz(6)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  invitedBy    User         @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+  // Send throttling. The row is RECYCLED on re-invite (see @@unique below), so
+  // there is no row-per-send to count — these two columns are the send record.
+  // `lastSentAt` drives both the per-recipient cooldown and the per-org hourly cap.
+  sendCount  Int       @default(0) @map("send_count")
+  lastSentAt DateTime? @map("last_sent_at") @db.Timestamptz(6)
+  isDeleted  Boolean   @default(false) @map("is_deleted")
+  createdBy  String?   @map("created_by") @db.Uuid
+  updatedBy  String?   @map("updated_by") @db.Uuid
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy          User               @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+  permissionTemplate PermissionTemplate @relation(fields: [permissionTemplateId], references: [id], onDelete: Restrict)
 
   createdByUser User? @relation("InvitationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User? @relation("InvitationUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   // One live invite per email per org — re-inviting updates the existing row.
   @@unique([organizationId, email])
+  // Serves the per-org hourly send cap (see assertSendAllowed).
+  @@index([organizationId, lastSentAt])
   @@index([email])
   @@map("invitations")
 }

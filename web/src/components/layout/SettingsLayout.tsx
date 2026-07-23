@@ -8,6 +8,7 @@ import {
   Coins,
   LayoutGrid,
   ChevronRight,
+  ShieldCheck,
 } from 'lucide-react';
 import { CUSTOM_FIELD_MODULES } from '../../features/custom-fields/customFields.schemas';
 
@@ -131,6 +132,25 @@ export function SettingsLayout() {
           >
             <Users size={18} />
             <span style={{ fontSize: 14 }}>Members & Invites</span>
+          </NavLink>
+
+          <NavLink
+            to={`/organizations/${orgId}/settings/roles`}
+            style={({ isActive }) => ({
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-3)',
+              padding: '8px 12px',
+              borderRadius: 'var(--radius-md)',
+              textDecoration: 'none',
+              color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
+              background: isActive ? 'var(--primary-50)' : 'transparent',
+              fontWeight: isActive ? 600 : 500,
+              transition: 'all 0.2s ease',
+            })}
+          >
+            <ShieldCheck size={18} />
+            <span style={{ fontSize: 14 }}>Roles & Permissions</span>
           </NavLink>
 
           <div

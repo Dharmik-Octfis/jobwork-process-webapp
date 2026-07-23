@@ -13,6 +13,7 @@ import { ProfilePage } from '../features/profile/ProfilePage';
 import { OrganizationSettingsPage } from '../features/organizations/OrganizationSettingsPage';
 import { AcceptInvitePage } from '../features/invitations/AcceptInvitePage';
 import { InviteMembersPage } from '../features/invitations/InviteMembersPage';
+import { RolesPage } from '../features/roles/RolesPage';
 import { AppLayout } from '../components/layout/AppLayout';
 import { SettingsLayout } from '../components/layout/SettingsLayout';
 import { VendorsList } from '../features/purchases/vendors/VendorsList';
@@ -87,6 +88,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <OrganizationSettingsPage /> },
           { path: 'members', element: <InviteMembersPage /> },
+          { path: 'roles', element: <RolesPage /> },
           { path: 'inventory/uom', element: <UnitOfMeasurementPage /> },
           { path: 'configuration/currencies', element: <CurrenciesPage /> },
           { path: 'modules', element: <ModulesListPage /> },

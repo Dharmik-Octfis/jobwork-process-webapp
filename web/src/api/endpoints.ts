@@ -14,11 +14,36 @@ export const endpoints = {
     byToken: (token: string) => `/invitations/${encodeURIComponent(token)}`,
     /** Public: accept an invite (optionally authenticated). */
     accept: (token: string) => `/invitations/${encodeURIComponent(token)}/accept`,
+    /** Public: decline an invite — the token is the credential, no session needed. */
+    decline: (token: string) => `/invitations/${encodeURIComponent(token)}/decline`,
+    /**
+     * The signed-in user's own invitation inbox. Addressed by invitation **id**,
+     * not by token — the emailed token is unrecoverable (only its hash is stored),
+     * so these routes authorize by session + email match instead. This is what
+     * answers "I lost the invitation email".
+     */
+    mine: '/me/invitations',
+    acceptMine: (invitationId: string) => `/me/invitations/${invitationId}/accept`,
+    declineMine: (invitationId: string) => `/me/invitations/${invitationId}/decline`,
     /** Org admin: list/create invitations for an organization. */
     forOrg: (orgId: string) => `/organizations/${orgId}/invitations`,
     /** Org admin: revoke a pending invitation. */
     revoke: (orgId: string, invitationId: string) =>
       `/organizations/${orgId}/invitations/${invitationId}`,
+  },
+  /** Roles = permission templates. An org starts with only "Owner"; the owner
+   * creates the rest before anyone can be invited. */
+  permissionTemplates: {
+    forOrg: (orgId: string) => `/organizations/${orgId}/permission-templates`,
+    byId: (orgId: string, id: string) => `/organizations/${orgId}/permission-templates/${id}`,
+    /** The permission vocabulary the role editor renders as checkboxes. */
+    catalog: (orgId: string) => `/organizations/${orgId}/permission-templates/catalog`,
+  },
+  members: {
+    forOrg: (orgId: string) => `/organizations/${orgId}/members`,
+    /** PUT to change a member's role; DELETE to remove them. `id` is a membership id. */
+    byId: (orgId: string, membershipId: string) =>
+      `/organizations/${orgId}/members/${membershipId}`,
   },
   purchases: {
     /**
@@ -29,11 +54,13 @@ export const endpoints = {
      * compile error, which is the point.
      */
     vendors: (orgId: string) => `/organizations/${orgId}/purchases/vendors`,
-    vendorPreferences: (orgId: string) => `/organizations/${orgId}/purchases/vendors/preferences/number-sequence`,
+    vendorPreferences: (orgId: string) =>
+      `/organizations/${orgId}/purchases/vendors/preferences/number-sequence`,
   },
   sales: {
     customers: (orgId: string) => `/organizations/${orgId}/sales/customers`,
-    customerPreferences: (orgId: string) => `/organizations/${orgId}/sales/customers/preferences/number-sequence`,
+    customerPreferences: (orgId: string) =>
+      `/organizations/${orgId}/sales/customers/preferences/number-sequence`,
   },
   seedData: {
     items: (orgId: string) => `/organizations/${orgId}/items`,

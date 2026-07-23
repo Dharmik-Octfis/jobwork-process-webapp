@@ -34,6 +34,7 @@ const TENANT_TABLES = [
   'units_of_measurement',
   'currencies',
   'custom_field_definitions',
+  'permission_templates',
 ] as const;
 
 /**

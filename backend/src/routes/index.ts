@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import { authRouter } from '../modules/auth/auth.routes.ts';
 import { organizationsRouter } from '../modules/settings/organization/organizations/organizations.routes.ts';
-import { invitationsRouter } from '../modules/settings/organization/invitations/invitations.routes.ts';
+import {
+  invitationsRouter,
+  myInvitationsRouter,
+} from '../modules/settings/organization/invitations/invitations.routes.ts';
 import {
   globalSeedDataRouter,
   tenantSeedDataRouter,
@@ -13,6 +16,8 @@ import { uomRouter } from '../modules/settings/inventory/uom/uom.routes.ts';
 import { currenciesRouter } from '../modules/settings/configuration/currencies/currencies.routes.ts';
 import { paymentTermsRouter } from '../modules/settings/configuration/payment-terms/payment-terms.routes.ts';
 import { customFieldsRouter } from '../modules/settings/customization/custom-fields/custom-fields.routes.ts';
+import { permissionTemplatesRouter } from '../modules/settings/organization/permission-templates/permission-templates.routes.ts';
+import { membersRouter } from '../modules/settings/organization/members/members.routes.ts';
 import { itemsRouter } from '../modules/items/items.routes.ts';
 
 /** Mounts every module router under `/api` (architecture §4). */
@@ -39,10 +44,15 @@ apiRouter.use('/organizations/:orgId/inventory/uom', uomRouter);
 apiRouter.use('/organizations/:orgId/configuration/currencies', currenciesRouter);
 apiRouter.use('/organizations/:orgId/configuration/payment-terms', paymentTermsRouter);
 apiRouter.use('/organizations/:orgId/custom-fields', customFieldsRouter);
+apiRouter.use('/organizations/:orgId/permission-templates', permissionTemplatesRouter);
+apiRouter.use('/organizations/:orgId/members', membersRouter);
 apiRouter.use('/organizations/:orgId/items', itemsRouter);
 apiRouter.use('/organizations/:orgId/seed-data', tenantSeedDataRouter);
 apiRouter.use('/seed-data', globalSeedDataRouter);
 
 apiRouter.use('/organizations', organizationsRouter);
 apiRouter.use('/invitations', invitationsRouter);
+// The recipient's own inbox — authenticated, addressed by invitation id. Distinct
+// from `/invitations/:token` above, which is public and token-addressed.
+apiRouter.use('/me/invitations', myInvitationsRouter);
 apiRouter.use('/modules', appModulesRouter);

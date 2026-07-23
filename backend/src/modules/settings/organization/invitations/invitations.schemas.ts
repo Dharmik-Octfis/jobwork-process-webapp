@@ -12,13 +12,15 @@ const email = z
   .max(254, 'That email address is too long')
   .email('Enter a valid email address');
 
-/** Roles an invite may grant. `owner` is deliberately excluded — ownership is
- * conferred by creating the org, never by invitation. */
-const invitableRole = z.enum(['admin', 'member']);
-
+/**
+ * An invite grants a permission template (role) the Owner created. There is no
+ * default — an org ships with only the Owner role, so a role must exist before
+ * anyone can be invited. The Owner template itself is not invitable: ownership is
+ * conferred by creating the org, never by invitation (enforced in the service).
+ */
 export const createInvitationSchema = z.object({
   email,
-  role: invitableRole.default('member'),
+  permissionTemplateId: z.string().uuid('Select a role for this member.'),
 });
 
 export type CreateInvitationInput = z.infer<typeof createInvitationSchema>;

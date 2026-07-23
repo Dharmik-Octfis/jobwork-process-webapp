@@ -179,6 +179,14 @@ ephemeral token tables, no master-data reference tables):
   client, membership checks in the controller, no service file. It predates the convention.
 - Reuse `assertOrgAdmin` (`invitations.service.ts`) for admin-only actions.
 - Scope mutations: `updateMany({ where: { id, organizationId } })`, never `update({ where: { id } })`.
+- 🔴 **New module with protected routes? Two steps, both required.** (1) Register its resource in
+  `permissions.catalog.ts` `RESOURCES` — one line adds `<resource>:read/create/update/delete` to the
+  catalog, the role editor's grid, and the computed Owner role. (2) Gate **every** route with
+  `requirePermission('<resource>:<action>')`, mounted after `authenticate, tenantContext`. Forgetting
+  step 1 fails **closed** (nobody can act — loud). Forgetting step 2 fails **open and silently** — the
+  module has no gate, every member can do everything, and nothing warns you (same shape as a tenant
+  table with no RLS policy). A module's routes are not done until each carries a `requirePermission`.
+  Copy `src/modules/purchases/vendors/`. Full model in `docs/ROLES_AND_PERMISSIONS.md`.
 
 ## Frontend
 
@@ -212,4 +220,5 @@ npx tsc -b               # ⚠️ THE typecheck. `tsc --noEmit` checks ZERO file
 | `docs/ARCHITECTURE_AND_TECH_STACK.md`                     | every tech decision + rejected alternatives                  |
 | `docs/DYNAMIC_CUSTOM_FIELDS_EXPLAINED.md`                 | per-org custom fields — concepts                             |
 | `docs/DYNAMIC_CUSTOM_FIELDS_IMPLEMENTATION_PROMPT.md`     | …and the ordered build plan                                  |
+| `docs/ROLES_AND_PERMISSIONS.md`                           | permission templates, `requirePermission`, the code catalog  |
 | `docs/AUTHENTICATION.md` · `CATALYST_DEPLOYMENT_GUIDE.md` | auth model · deploy                                          |

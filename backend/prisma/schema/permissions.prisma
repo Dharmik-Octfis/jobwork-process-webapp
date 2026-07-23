@@ -1,0 +1,56 @@
+// Access control — permission templates (a.k.a. "profiles").
+//
+// A user's Membership points at exactly ONE template; that template's permission
+// set IS the user's authorization in the org. There are deliberately NO per-user
+// permission grants: to vary one person's access you assign a different template
+// (create one if none fits). That keeps "what can this user do?" answerable by
+// reading a single row, and keeps enforcement to one set-membership check.
+//
+// System templates (Owner / Admin / Member) are seeded into every org and are
+// immutable — isSystem rows cannot be edited or deleted (enforced in the service).
+// The Owner template (isOwner) grants ALL permissions, COMPUTED at runtime from
+// the code catalog (permissions.catalog.ts) — it stores an empty `permissions`
+// array, so a permission added in a later release applies to every Owner with no
+// data migration. See CLAUDE.md "custom fields" for the same code-not-data idea.
+model PermissionTemplate {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  name           String  @db.VarChar(100)
+  description    String? @db.VarChar(255)
+
+  // Seeded Owner/Admin/Member — cannot be edited or deleted.
+  isSystem Boolean @default(false) @map("is_system")
+  // Grants every permission, computed from ALL_PERMISSIONS. Never stored as keys,
+  // so new permissions apply automatically. Only ever true on the system Owner.
+  isOwner  Boolean @default(false) @map("is_owner")
+
+  // Permission keys from the code catalog (permissions.catalog.ts). Edited
+  // wholesale — the whole set is replaced on update, never one key at a time.
+  // Empty for the Owner template (computed) and for a brand-new custom template.
+  permissions String[] @default([])
+
+  // Standard audit columns (CLAUDE.md "Default columns"). No custom_fields column
+  // on purpose: a permission template is control-plane config, not business data —
+  // same exclusion custom_field_definitions makes.
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberships  Membership[]
+  // Restrict on the invitation side: a template with a pending invite cannot be
+  // deleted out from under it.
+  invitations  Invitation[]
+
+  createdByUser User? @relation("PermissionTemplateCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("PermissionTemplateUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  // One template name per org. Spans soft-deleted rows; a deleted name is freed
+  // only by hard cleanup — acceptable, template churn is low (see CLAUDE.md note
+  // on unique constraints + soft delete).
+  @@unique([organizationId, name])
+  @@index([organizationId, isDeleted])
+  @@map("permission_templates")
+}

@@ -158,25 +158,27 @@ openApiRegistry.registerPath({
 
 import { authenticate } from '../../middlewares/authenticate.ts';
 import { tenantContext } from '../../middlewares/tenantContext.ts';
+import { requirePermission } from '../../middlewares/authorize.ts';
 
 const router = Router({ mergeParams: true });
 router.use(authenticate, tenantContext);
-router.get('/', itemsController.getItems);
-router.post('/', itemsController.createItem);
-router.get('/:id', itemsController.getItem);
-router.get('/:id/activities', itemsController.getItemActivities);
-router.get('/:id/signed-url', itemsController.getSignedUrl);
-router.put('/:id', itemsController.updateItem);
-router.delete('/:id', itemsController.deleteItem);
+router.get('/', requirePermission('item:read'), itemsController.getItems);
+router.post('/', requirePermission('item:create'), itemsController.createItem);
+router.get('/:id', requirePermission('item:read'), itemsController.getItem);
+router.get('/:id/activities', requirePermission('item:read'), itemsController.getItemActivities);
+router.get('/:id/signed-url', requirePermission('item:read'), itemsController.getSignedUrl);
+router.put('/:id', requirePermission('item:update'), itemsController.updateItem);
+router.delete('/:id', requirePermission('item:delete'), itemsController.deleteItem);
 
 router.post(
   '/:id/images',
+  requirePermission('item:update'),
   upload.fields([
     { name: 'frontImage', maxCount: 1 },
     { name: 'rearImage', maxCount: 1 },
     { name: 'images', maxCount: 3 },
   ]),
-  itemsController.uploadImages
+  itemsController.uploadImages,
 );
 
 export const itemsRouter = router;

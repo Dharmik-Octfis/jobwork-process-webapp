@@ -3,13 +3,15 @@ import { endpoints } from '../../api/endpoints';
 import type { User } from '../auth/auth.types';
 
 /** Lifecycle state the accept page resolves a token to (mirrors the backend). */
-export type InvitationLookupStatus = 'valid' | 'expired' | 'accepted' | 'revoked' | 'invalid';
+export type InvitationLookupStatus =
+  'valid' | 'expired' | 'accepted' | 'revoked' | 'declined' | 'invalid';
 
 export interface InvitationLookup {
   status: InvitationLookupStatus;
   organizationName: string | null;
   email: string | null;
-  role: string | null;
+  /** Name of the role this invite grants. */
+  roleName: string | null;
   /** Whether an account already exists for the invited email. */
   accountExists: boolean;
 }
@@ -18,8 +20,21 @@ export interface InvitationLookup {
 export interface Invitation {
   id: string;
   email: string;
-  role: string;
+  permissionTemplateId: string;
+  roleName: string;
   status: string;
+  invitedByName: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+/** An invitation as the RECIPIENT sees it in their inbox. No token — the inbox
+ * acts by id, authorized by being signed in as the invited email. */
+export interface MyInvitation {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  roleName: string;
   invitedByName: string;
   expiresAt: string;
   createdAt: string;
@@ -33,7 +48,7 @@ export interface AcceptInvitationBody {
 
 export interface AcceptInvitationResult {
   organization: { id: string; name: string };
-  role: string;
+  roleName: string;
   /** Present only when a brand-new account was created during accept. */
   user?: User;
   accessToken?: string;
@@ -65,7 +80,38 @@ export const invitationsApi = {
     return data;
   },
 
-  /** GET /organizations/:orgId/invitations — pending invites (owner/admin). */
+  /** POST /invitations/:token/decline — say no, so the admin sees it rather than
+   * watching the invite expire silently. No auth: the token is the credential. */
+  decline: async (token: string): Promise<void> => {
+    await apiClient.post(endpoints.invitations.decline(token));
+  },
+
+  // ── The recipient's inbox (authenticated, addressed by id) ──────────────────
+
+  /** GET /me/invitations — live invitations addressed to the signed-in user. */
+  listMine: async (): Promise<MyInvitation[]> => {
+    const { data } = await apiClient.get<{ invitations: MyInvitation[] }>(
+      endpoints.invitations.mine,
+    );
+    return data.invitations;
+  },
+
+  /** POST /me/invitations/:id/accept — no token needed; the session proves it. */
+  acceptMine: async (
+    invitationId: string,
+  ): Promise<{ organization: { id: string; name: string } }> => {
+    const { data } = await apiClient.post<{ organization: { id: string; name: string } }>(
+      endpoints.invitations.acceptMine(invitationId),
+    );
+    return data;
+  },
+
+  /** POST /me/invitations/:id/decline — records WHO declined, unlike the token flow. */
+  declineMine: async (invitationId: string): Promise<void> => {
+    await apiClient.post(endpoints.invitations.declineMine(invitationId));
+  },
+
+  /** GET /organizations/:orgId/invitations — pending + declined (owner/admin). */
   listForOrg: async (orgId: string): Promise<Invitation[]> => {
     const { data } = await apiClient.get<{ invitations: Invitation[] }>(
       endpoints.invitations.forOrg(orgId),
@@ -73,10 +119,11 @@ export const invitationsApi = {
     return data.invitations;
   },
 
-  /** POST /organizations/:orgId/invitations — send an invite (owner/admin). */
+  /** POST /organizations/:orgId/invitations — send an invite (owner/admin). The
+   * role must be one the owner created; there are no default roles. */
   create: async (
     orgId: string,
-    body: { email: string; role: 'admin' | 'member' },
+    body: { email: string; permissionTemplateId: string },
   ): Promise<Invitation> => {
     const { data } = await apiClient.post<{ invitation: Invitation }>(
       endpoints.invitations.forOrg(orgId),

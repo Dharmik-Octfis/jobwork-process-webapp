@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { organizationsApi } from './organizations.api';
 import type { Organization } from './organizations.schemas';
+import { PendingInvitationsPanel } from '../invitations/PendingInvitationsPanel';
 
 export function OrganizationsList() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -52,6 +53,10 @@ export function OrganizationsList() {
       </div>
 
       {error && <div className="bg-red-50 text-red-600 p-4 rounded-md mb-6">{error}</div>}
+
+      {/* Invitations addressed to this user. Renders nothing when there are none,
+          so it only appears when there is actually something to act on. */}
+      <PendingInvitationsPanel />
 
       {organizations.length === 0 && !error ? (
         <div className="bg-white border rounded-lg p-8 text-center text-gray-500">

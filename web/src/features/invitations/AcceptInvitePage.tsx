@@ -51,6 +51,13 @@ export function AcceptInvitePage() {
     },
   });
 
+  // Declining just re-runs the lookup, which now resolves to 'declined' and
+  // renders the "you declined this" screen — no separate local state needed.
+  const declineMutation = useMutation({
+    mutationFn: () => invitationsApi.decline(token),
+    onSuccess: () => lookup.refetch(),
+  });
+
   const {
     register,
     handleSubmit,
@@ -88,6 +95,7 @@ export function AcceptInvitePage() {
       expired: 'This invitation has expired. Ask the organization to send a new one.',
       accepted: 'This invitation has already been accepted.',
       revoked: 'This invitation has been revoked.',
+      declined: 'You declined this invitation. Ask the organization to send a new one.',
       invalid: 'This invitation link is not valid.',
     };
     return (
@@ -120,7 +128,7 @@ export function AcceptInvitePage() {
     }
 
     return (
-      <Shell title={`Join ${orgName}`} subtitle={`You're invited as ${invite.role}.`}>
+      <Shell title={`Join ${orgName}`} subtitle={`You're invited as ${invite.roleName}.`}>
         {serverError && <FormErrorBanner message={serverError} />}
         <Button
           fullWidth
@@ -130,6 +138,10 @@ export function AcceptInvitePage() {
         >
           {acceptMutation.isPending ? 'Joining…' : `Join ${orgName}`}
         </Button>
+        <DeclineButton
+          isPending={declineMutation.isPending}
+          onDecline={() => declineMutation.mutate()}
+        />
       </Shell>
     );
   }
@@ -150,7 +162,10 @@ export function AcceptInvitePage() {
   const onSubmit = handleSubmit((values) => acceptMutation.mutate(values));
 
   return (
-    <Shell title={`Join ${orgName}`} subtitle={`Create your account to accept as ${invite.role}.`}>
+    <Shell
+      title={`Join ${orgName}`}
+      subtitle={`Create your account to accept as ${invite.roleName}.`}
+    >
       <form className={styles.form} onSubmit={onSubmit} noValidate>
         {serverError && <FormErrorBanner message={serverError} />}
 
@@ -194,10 +209,42 @@ export function AcceptInvitePage() {
         </Button>
       </form>
 
+      <DeclineButton
+        isPending={declineMutation.isPending}
+        onDecline={() => declineMutation.mutate()}
+      />
+
       <p className={styles.switch}>
         Already have an account? <Link to="/login">Sign in</Link>
       </p>
     </Shell>
+  );
+}
+
+/** "No thanks" — tells the inviting admin the person said no, instead of leaving
+ * the invite to expire silently a week later. Deliberately understated: declining
+ * is a secondary action next to Join. */
+function DeclineButton({ isPending, onDecline }: { isPending: boolean; onDecline: () => void }) {
+  return (
+    <p className={styles.switch}>
+      Not expecting this?{' '}
+      <button
+        type="button"
+        onClick={onDecline}
+        disabled={isPending}
+        style={{
+          background: 'none',
+          border: 'none',
+          padding: 0,
+          font: 'inherit',
+          color: 'var(--color-text-muted)',
+          textDecoration: 'underline',
+          cursor: isPending ? 'not-allowed' : 'pointer',
+        }}
+      >
+        {isPending ? 'Declining…' : 'Decline invitation'}
+      </button>
+    </p>
   );
 }
 

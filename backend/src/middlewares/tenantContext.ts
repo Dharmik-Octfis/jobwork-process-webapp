@@ -1,6 +1,10 @@
 import type { NextFunction, Request, Response } from 'express';
-import { prisma } from '../db/prisma.ts';
+import { prisma, runAsTenant } from '../db/prisma.ts';
 import { ApiError } from '../lib/apiError.ts';
+import {
+  ALL_PERMISSIONS,
+  permissionsForRole,
+} from '../modules/settings/organization/permission-templates/permissions.catalog.ts';
 
 /**
  * Resolve which organization this request acts inside, and prove the caller
@@ -57,13 +61,19 @@ export async function tenantContext(
   // The `organization.isDeleted` filter makes a soft-deleted org behave exactly
   // like one you're not a member of — it can't be read or written through any
   // tenant route once deleted, even though the membership row still exists.
+  // `isDeleted: false` on the membership is load-bearing: removing a member is a
+  // SOFT delete, so without it a removed person still resolves a tenant and keeps
+  // every permission their old role granted — invisible in the members list, but
+  // fully able to read and write. The `organization.isDeleted` filter does the
+  // same job for a deleted org.
   const membership = await prisma.membership.findFirst({
     where: {
       userId: req.user.id,
       organizationId,
+      isDeleted: false,
       organization: { isDeleted: false },
     },
-    select: { role: true },
+    select: { role: true, permissionTemplateId: true },
   });
 
   if (!membership) {
@@ -74,9 +84,56 @@ export async function tenantContext(
     return;
   }
 
+  // Resolve the caller's permission set (what they may DO). This is separate from
+  // tenant isolation (whose data they can touch) — routes still runAsTenant. The
+  // permission template lives in an RLS-protected table, so it must be read
+  // inside a tenant context; membership above is on the un-gated control plane.
+  let permissions: Set<string>;
+  try {
+    permissions = await resolvePermissions(organizationId, membership);
+  } catch (error) {
+    next(error);
+    return;
+  }
+
   req.tenantId = organizationId;
-  req.membership = { role: membership.role };
+  req.membership = {
+    role: membership.role,
+    permissionTemplateId: membership.permissionTemplateId,
+    permissions,
+  };
   next();
+}
+
+/**
+ * Turn a membership into the set of permission keys it grants.
+ *  - Owner template (isOwner) → every permission in the catalog, computed, so a
+ *    newly-shipped permission needs no backfill.
+ *  - Any other template → exactly its stored keys.
+ *  - No template (legacy row, pre-dating this module) → fall back to the old
+ *    `role` string mapped onto the equivalent seeded set, so access keeps working
+ *    even before the data backfill runs.
+ */
+async function resolvePermissions(
+  organizationId: string,
+  membership: { role: string; permissionTemplateId: string | null },
+): Promise<Set<string>> {
+  if (!membership.permissionTemplateId) {
+    return new Set(permissionsForRole(membership.role));
+  }
+
+  const template = await runAsTenant(organizationId, (tx) =>
+    tx.permissionTemplate.findFirst({
+      where: { id: membership.permissionTemplateId!, organizationId, isDeleted: false },
+      select: { isOwner: true, permissions: true },
+    }),
+  );
+
+  // Template missing/archived out from under the membership → fall back to role
+  // rather than silently granting nothing.
+  if (!template) return new Set(permissionsForRole(membership.role));
+  if (template.isOwner) return new Set(ALL_PERMISSIONS);
+  return new Set(template.permissions);
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

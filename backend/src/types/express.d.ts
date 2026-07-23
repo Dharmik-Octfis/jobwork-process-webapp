@@ -14,7 +14,13 @@ declare global {
     interface Request {
       user?: { id: string; sid: string };
       tenantId?: string;
-      membership?: { role: string };
+      membership?: {
+        role: string;
+        permissionTemplateId: string | null;
+        /** Permission keys this member holds — from their template (Owner = all).
+         * `requirePermission()` checks this set. */
+        permissions: Set<string>;
+      };
     }
   }
 }

@@ -1,7 +1,8 @@
 import type { Request, Response, NextFunction } from 'express';
 import crypto from 'node:crypto';
-import { prisma } from '../../../../db/prisma.ts';
+import { prisma, runAsTenant } from '../../../../db/prisma.ts';
 import { createOrganizationSchema, updateOrganizationSchema } from './organizations.schemas.ts';
+import { seedSystemTemplates } from '../permission-templates/permission-templates.service.ts';
 
 export async function createOrganization(req: Request, res: Response, next: NextFunction) {
   try {
@@ -22,22 +23,40 @@ export async function createOrganization(req: Request, res: Response, next: Next
       return;
     }
 
-    const organization = await prisma.organization.create({
-      data: {
-        id: crypto.randomUUID(),
-        ...data,
-        // Audit columns: the creating user stamps both created_by and updated_by.
-        createdBy: userId,
-        updatedBy: userId,
-        memberships: {
-          create: {
-            userId,
-            role: 'owner',
-            createdBy: userId,
-            updatedBy: userId,
-          },
+    // The org id is generated up front so the whole bootstrap can run inside a
+    // single tenant transaction: permission_templates is RLS-protected, so its
+    // INSERTs are only allowed once `app.current_tenant` is set to this org
+    // (runAsTenant does that). The organizations table itself is not RLS-gated,
+    // so creating it in here is fine.
+    const orgId = crypto.randomUUID();
+
+    const organization = await runAsTenant(orgId, async (tx) => {
+      const created = await tx.organization.create({
+        data: {
+          id: orgId,
+          ...data,
+          // Audit columns: the creating user stamps both created_by and updated_by.
+          createdBy: userId,
+          updatedBy: userId,
         },
-      },
+      });
+
+      // Seed the immutable Owner/Admin/Member templates, then make the creator an
+      // Owner pointing at the Owner template (all permissions, computed).
+      const { ownerTemplateId } = await seedSystemTemplates(tx, orgId, userId);
+
+      await tx.membership.create({
+        data: {
+          userId,
+          organizationId: orgId,
+          role: 'owner',
+          permissionTemplateId: ownerTemplateId,
+          createdBy: userId,
+          updatedBy: userId,
+        },
+      });
+
+      return created;
     });
 
     res.status(201).json(organization);
@@ -84,7 +103,13 @@ export async function updateOrganization(req: Request, res: Response, next: Next
     }
 
     const membership = await prisma.membership.findFirst({
-      where: { userId, organizationId: orgId, role: 'owner', organization: { isDeleted: false } },
+      where: {
+        userId,
+        organizationId: orgId,
+        role: 'owner',
+        isDeleted: false,
+        organization: { isDeleted: false },
+      },
     });
 
     if (!membership) {
@@ -125,7 +150,13 @@ export async function deleteOrganization(req: Request, res: Response, next: Next
     }
 
     const membership = await prisma.membership.findFirst({
-      where: { userId, organizationId: orgId, role: 'owner', organization: { isDeleted: false } },
+      where: {
+        userId,
+        organizationId: orgId,
+        role: 'owner',
+        isDeleted: false,
+        organization: { isDeleted: false },
+      },
     });
 
     if (!membership) {
