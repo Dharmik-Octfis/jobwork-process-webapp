@@ -13,6 +13,7 @@ import {
   ShoppingCart,
   Receipt,
   ChevronRight,
+  Plus,
 } from 'lucide-react';
 import { Logo } from '../ui/Logo';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
@@ -24,6 +25,7 @@ import type { User } from '../../features/auth/auth.types';
 import { fetchAppModules } from '../../features/modules/modules.api';
 import type { AppModule } from '../../features/modules/modules.schemas';
 import { LAST_ORG_KEY } from '../../routes/OrgRedirect';
+import { PaymentTermModal } from '../../features/sales/customers/PaymentTermModal';
 
 /* eslint-disable @typescript-eslint/naming-convention */
 /**
@@ -81,6 +83,7 @@ export function AppLayout() {
   const navigate = useNavigate();
 
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
+  const [isPaymentTermModalOpen, setIsPaymentTermModalOpen] = useState(false);
 
   // Remember it only so `/` can send the user back here next visit (OrgRedirect).
   // Not an authorization input: the server re-checks membership on every request.
@@ -212,6 +215,26 @@ export function AppLayout() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
+            {activeOrgId && (
+              <button
+                onClick={() => setIsPaymentTermModalOpen(true)}
+                title="Add Payment Term"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  border: '1px solid #eef0f3',
+                  background: 'white',
+                  cursor: 'pointer',
+                  color: '#64748b'
+                }}
+              >
+                <Plus size={18} />
+              </button>
+            )}
             <OrgDropdown
               organizations={organizations || []}
               activeOrgId={activeOrgId ?? null}
@@ -226,6 +249,15 @@ export function AppLayout() {
           <Outlet />
         </main>
       </div>
+
+      {activeOrgId && (
+        <PaymentTermModal
+          orgId={activeOrgId}
+          isOpen={isPaymentTermModalOpen}
+          onClose={() => setIsPaymentTermModalOpen(false)}
+          onSuccess={() => setIsPaymentTermModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -31,7 +31,7 @@ export function CustomerNumberConfigModal({
 
   return (
     <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.4)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000 }}>
-      <div style={{ backgroundColor: 'white', borderRadius: '8px', width: '600px', maxWidth: '90%', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', marginTop: '80px' }}>
+      <div style={{ backgroundColor: 'white', borderRadius: '0 0 8px 8px', width: '600px', maxWidth: '90%', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}>
         
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid #eef0f3' }}>

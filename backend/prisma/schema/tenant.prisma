@@ -66,6 +66,8 @@ model User {
   updatedCurrencies             Currency[]              @relation("CurrencyUpdatedBy")
   createdCustomFieldDefinitions CustomFieldDefinition[] @relation("CustomFieldDefinitionCreatedBy")
   updatedCustomFieldDefinitions CustomFieldDefinition[] @relation("CustomFieldDefinitionUpdatedBy")
+  createdPaymentTerms           PaymentTerm[]           @relation("PaymentTermCreatedBy")
+  updatedPaymentTerms           PaymentTerm[]           @relation("PaymentTermUpdatedBy")
 
   @@map("users")
 }
@@ -135,6 +137,7 @@ model Organization {
   unitsOfMeasurement     UnitOfMeasurement[]
   currencies             Currency[]
   customFieldDefinitions CustomFieldDefinition[]
+  paymentTerms           PaymentTerm[]
 
   createdByUser User? @relation("OrganizationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User? @relation("OrganizationUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
@@ -335,4 +338,26 @@ model Currency {
 
   @@unique([organizationId, currencyCode])
   @@map("currencies")
+}
+
+model PaymentTerm {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  termName     String @map("term_name")
+  dueAfterDays Int    @map("due_after_days")
+
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdByUser User? @relation("PaymentTermCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("PaymentTermUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, termName])
+  @@map("payment_terms")
 }

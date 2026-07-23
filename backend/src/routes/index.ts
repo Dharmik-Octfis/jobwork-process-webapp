@@ -11,6 +11,7 @@ import { vendorsRouter } from '../modules/purchases/vendors/vendors.routes.ts';
 import { customersRouter } from '../modules/sales/customers/customers.routes.ts';
 import { uomRouter } from '../modules/settings/inventory/uom/uom.routes.ts';
 import { currenciesRouter } from '../modules/settings/configuration/currencies/currencies.routes.ts';
+import { paymentTermsRouter } from '../modules/settings/configuration/payment-terms/payment-terms.routes.ts';
 import { customFieldsRouter } from '../modules/settings/customization/custom-fields/custom-fields.routes.ts';
 import { itemsRouter } from '../modules/items/items.routes.ts';
 
@@ -36,6 +37,7 @@ apiRouter.use('/organizations/:orgId/purchases/vendors', vendorsRouter);
 apiRouter.use('/organizations/:orgId/sales/customers', customersRouter);
 apiRouter.use('/organizations/:orgId/inventory/uom', uomRouter);
 apiRouter.use('/organizations/:orgId/configuration/currencies', currenciesRouter);
+apiRouter.use('/organizations/:orgId/configuration/payment-terms', paymentTermsRouter);
 apiRouter.use('/organizations/:orgId/custom-fields', customFieldsRouter);
 apiRouter.use('/organizations/:orgId/items', itemsRouter);
 apiRouter.use('/organizations/:orgId/seed-data', tenantSeedDataRouter);

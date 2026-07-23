@@ -47,14 +47,14 @@ export function AdditionalAddressModal({ isOpen, onClose, onSubmit }: Additional
     bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.4)',
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'center',
     zIndex: 1000,
   };
 
   const modalStyle: React.CSSProperties = {
     backgroundColor: '#fff',
-    borderRadius: '8px',
+    borderRadius: '0 0 8px 8px',
     width: '400px',
     maxWidth: '90vw',
     boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',

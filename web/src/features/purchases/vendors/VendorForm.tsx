@@ -9,6 +9,10 @@ import { fetchVendorNumberPreference, updateVendorNumberPreference } from './ven
 import { VendorNumberConfigModal } from './VendorNumberConfigModal';
 import { useCurrencies } from '../../configuration/currencies/currencies.api';
 import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
+import { usePaymentTerms } from '../../sales/customers/payment-terms.api';
+import { PaymentTermModal } from '../../sales/customers/PaymentTermModal';
+import { PaymentTermDropdown } from '../../sales/customers/PaymentTermDropdown';
+import { CurrencyDropdown } from '../../sales/customers/CurrencyDropdown';
 import './vendor-form.css';
 
 interface VendorFormProps {
@@ -62,6 +66,8 @@ export function VendorForm({
   });
 
   const { data: currencies } = useCurrencies(orgId!);
+  const { data: paymentTerms } = usePaymentTerms(orgId!);
+  const [isPaymentTermModalOpen, setIsPaymentTermModalOpen] = useState(false);
 
   const [lastPrefilledNumber, setLastPrefilledNumber] = useState('');
 
@@ -369,24 +375,21 @@ export function VendorForm({
               }}
             >
               <label style={labelStyle}>Currency</label>
-              <select {...register('currency')} style={selectStyle}>
-                <option value="">Select Currency</option>
-                {currencies?.map((c) => (
-                  <option key={c.id} value={c.currencyCode}>
-                    {c.currencyCode} - {c.currencyName}
-                  </option>
-                ))}
-              </select>
+              <CurrencyDropdown
+                value={watch('currency')}
+                onChange={(val) => setValue('currency', val, { shouldValidate: true, shouldDirty: true })}
+                currencies={currencies || []}
+                style={{ maxWidth: '440px' }}
+              />
 
               <label style={labelStyle}>Payment Terms</label>
-              <select {...register('paymentTerms')} style={selectStyle}>
-                <option value="">Select Terms</option>
-                <option value="Due on Receipt">Due on Receipt</option>
-                <option value="Net 15">Net 15</option>
-                <option value="Net 30">Net 30</option>
-                <option value="Net 45">Net 45</option>
-                <option value="Net 60">Net 60</option>
-              </select>
+              <PaymentTermDropdown
+                value={watch('paymentTerms')}
+                onChange={(val) => setValue('paymentTerms', val, { shouldValidate: true, shouldDirty: true })}
+                paymentTerms={paymentTerms || []}
+                onAddNew={() => setIsPaymentTermModalOpen(true)}
+                style={{ maxWidth: '440px' }}
+              />
             </div>
           )}
 
@@ -737,6 +740,15 @@ export function VendorForm({
         initialNextNumber={preference?.nextNumber?.toString().padStart(5, '0')}
         onSave={(prefix, nextNumber) => {
           updatePreferenceMutation.mutate({ prefix, nextNumber: parseInt(nextNumber, 10) || 1 });
+        }}
+      />
+      <PaymentTermModal 
+        orgId={orgId!}
+        isOpen={isPaymentTermModalOpen} 
+        onClose={() => setIsPaymentTermModalOpen(false)} 
+        onSuccess={(newTerm) => {
+          setIsPaymentTermModalOpen(false);
+          setValue('paymentTerms', newTerm.termName);
         }}
       />
     </div>

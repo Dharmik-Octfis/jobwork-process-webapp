@@ -9,6 +9,10 @@ import { fetchCustomerNumberPreference, updateCustomerNumberPreference } from '.
 import { CustomerNumberConfigModal } from './CustomerNumberConfigModal';
 import { useCurrencies } from '../../configuration/currencies/currencies.api';
 import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
+import { usePaymentTerms } from './payment-terms.api';
+import { PaymentTermModal } from './PaymentTermModal';
+import { PaymentTermDropdown } from './PaymentTermDropdown';
+import { CurrencyDropdown } from './CurrencyDropdown';
 import './customer-form.css';
 
 interface CustomerFormProps {
@@ -30,6 +34,7 @@ export function CustomerForm({
   const { orgId } = useParams<{ orgId: string }>();
   const [activeTab, setActiveTab] = useState('other');
   const [isNumberConfigOpen, setIsNumberConfigOpen] = useState(false);
+  const [isPaymentTermModalOpen, setIsPaymentTermModalOpen] = useState(false);
   const queryClient = useQueryClient();
 
   const {
@@ -63,8 +68,17 @@ export function CustomerForm({
   });
 
   const { data: currencies } = useCurrencies(orgId!);
+  const { data: paymentTerms } = usePaymentTerms(orgId!);
 
   const [lastPrefilledNumber, setLastPrefilledNumber] = useState('');
+
+  const paymentTermsValue = watch('paymentTerms');
+  useEffect(() => {
+    if (paymentTermsValue === 'ADD_NEW') {
+      setIsPaymentTermModalOpen(true);
+      setValue('paymentTerms', '');
+    }
+  }, [paymentTermsValue, setValue]);
 
   // Pre-fill customer number if it's empty and we have a preference (typically only on new customer creation)
   useEffect(() => {
@@ -384,24 +398,21 @@ export function CustomerForm({
               }}
             >
               <label style={labelStyle}>Currency</label>
-              <select {...register('currency')} style={selectStyle}>
-                <option value="">Select Currency</option>
-                {currencies?.map((c) => (
-                  <option key={c.id} value={c.currencyCode}>
-                    {c.currencyCode} - {c.currencyName}
-                  </option>
-                ))}
-              </select>
+              <CurrencyDropdown
+                value={watch('currency')}
+                onChange={(val) => setValue('currency', val, { shouldValidate: true, shouldDirty: true })}
+                currencies={currencies || []}
+                style={{ maxWidth: '440px' }}
+              />
 
               <label style={labelStyle}>Payment Terms</label>
-              <select {...register('paymentTerms')} style={selectStyle}>
-                <option value="">Select Terms</option>
-                <option value="Due on Receipt">Due on Receipt</option>
-                <option value="Net 15">Net 15</option>
-                <option value="Net 30">Net 30</option>
-                <option value="Net 45">Net 45</option>
-                <option value="Net 60">Net 60</option>
-              </select>
+              <PaymentTermDropdown
+                value={watch('paymentTerms')}
+                onChange={(val) => setValue('paymentTerms', val, { shouldValidate: true, shouldDirty: true })}
+                paymentTerms={paymentTerms || []}
+                onAddNew={() => setIsPaymentTermModalOpen(true)}
+                style={{ maxWidth: '440px' }}
+              />
             </div>
           )}
 
@@ -752,6 +763,16 @@ export function CustomerForm({
         initialNextNumber={preference?.nextNumber?.toString().padStart(5, '0')}
         onSave={(prefix, nextNumber) => {
           updatePreferenceMutation.mutate({ prefix, nextNumber: parseInt(nextNumber, 10) || 1 });
+        }}
+      />
+
+      <PaymentTermModal
+        orgId={orgId!}
+        isOpen={isPaymentTermModalOpen}
+        onClose={() => setIsPaymentTermModalOpen(false)}
+        onSuccess={(newTerm) => {
+          setIsPaymentTermModalOpen(false);
+          setValue('paymentTerms', newTerm.termName);
         }}
       />
     </div>
