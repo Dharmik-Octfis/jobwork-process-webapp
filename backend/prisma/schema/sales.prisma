@@ -1,0 +1,137 @@
+model Customer {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  // Primary Contact
+  primaryContactSalutation String? @map("primary_contact_salutation") @db.VarChar(20)
+  primaryContactFirstName  String? @map("primary_contact_first_name") @db.VarChar(100)
+  primaryContactLastName   String? @map("primary_contact_last_name") @db.VarChar(100)
+
+  // Main Fields
+  customerType   String  @default("business") @map("customer_type") @db.VarChar(20)
+  companyName    String? @map("company_name") @db.VarChar(255)
+  displayName    String  @default("") @map("display_name") @db.VarChar(255)
+  customerNumber String  @map("customer_number") @db.VarChar(50)
+  emailAddress   String? @map("email_address") @db.VarChar(255)
+  workPhone      String? @map("work_phone") @db.VarChar(50)
+  mobilePhone    String? @map("mobile_phone") @db.VarChar(50)
+
+  // Other Details
+  currency     String? @db.VarChar(10)
+  paymentTerms String? @map("payment_terms") @db.VarChar(100)
+  remarks      String?
+
+  addresses CustomerAddress[]
+
+  status String @default("active") @db.VarChar(20)
+
+  // Per-org dynamic custom fields — keyed by CustomFieldDefinition.key. See customfields.prisma.
+  customFields Json @default("{}") @map("custom_fields")
+
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactPersons CustomerContactPerson[]
+  activities     CustomerActivity[]
+  comments       CustomerComment[]
+
+  createdByUser User? @relation("CustomerCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("CustomerUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, customerNumber])
+  @@map("customers")
+}
+
+model CustomerContactPerson {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId   String  @map("customer_id") @db.Uuid
+  salutation   String? @db.VarChar(20)
+  firstName    String? @map("first_name") @db.VarChar(100)
+  lastName     String? @map("last_name") @db.VarChar(100)
+  emailAddress String? @map("email_address") @db.VarChar(255)
+  workPhone    String? @map("work_phone") @db.VarChar(50)
+  mobilePhone  String? @map("mobile_phone") @db.VarChar(50)
+
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  createdByUser User? @relation("CustomerContactPersonCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("CustomerContactPersonUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("customer_contact_persons")
+}
+
+model CustomerActivity {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId  String   @map("customer_id") @db.Uuid
+  title       String   @db.VarChar(255)
+  description String?
+  performedBy String?  @map("performed_by") @db.VarChar(255)
+  isDeleted   Boolean  @default(false) @map("is_deleted")
+  createdBy   String?  @map("created_by") @db.Uuid
+  updatedBy   String?  @map("updated_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  createdByUser User? @relation("CustomerActivityCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("CustomerActivityUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("customer_activities")
+}
+
+model CustomerComment {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId  String   @map("customer_id") @db.Uuid
+  content     String
+  performedBy String?  @map("performed_by") @db.VarChar(255)
+  isDeleted   Boolean  @default(false) @map("is_deleted")
+  createdBy   String?  @map("created_by") @db.Uuid
+  updatedBy   String?  @map("updated_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  createdByUser User? @relation("CustomerCommentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("CustomerCommentUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("customer_comments")
+}
+
+model CustomerAddress {
+  id          String @id @default(uuid()) @db.Uuid
+  customerId  String @map("customer_id") @db.Uuid
+  addressType String @map("address_type") @db.VarChar(50) // e.g., 'billing', 'shipping', 'additional'
+
+  attention String?  @db.VarChar(255)
+  country   String?  @db.VarChar(100)
+  street1   String?
+  street2   String?
+  city      String?  @db.VarChar(100)
+  state     String?  @db.VarChar(100)
+  pinCode   String?  @map("pin_code") @db.VarChar(20)
+  phone     String?  @db.VarChar(50)
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  createdByUser User? @relation("CustomerAddressCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("CustomerAddressUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("customer_addresses")
+}

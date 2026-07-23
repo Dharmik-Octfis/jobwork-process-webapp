@@ -31,6 +31,10 @@ export const endpoints = {
     vendors: (orgId: string) => `/organizations/${orgId}/purchases/vendors`,
     vendorPreferences: (orgId: string) => `/organizations/${orgId}/purchases/vendors/preferences/number-sequence`,
   },
+  sales: {
+    customers: (orgId: string) => `/organizations/${orgId}/sales/customers`,
+    customerPreferences: (orgId: string) => `/organizations/${orgId}/sales/customers/preferences/number-sequence`,
+  },
   seedData: {
     items: (orgId: string) => `/organizations/${orgId}/items`,
   },

@@ -73,6 +73,12 @@ async function main() {
     create: { code: 'PURCHASES', name: 'Purchases', sortIndex: 3, icon: 'ShoppingCart' },
   });
 
+  const sales = await prisma.appModule.upsert({
+    where: { code: 'SALES' },
+    update: { sortIndex: 4 },
+    create: { code: 'SALES', name: 'Sales', sortIndex: 4, icon: 'ShoppingBag' },
+  });
+
   await prisma.appModule.upsert({
     where: { code: 'VENDORS' },
     update: {},
@@ -80,6 +86,18 @@ async function main() {
       code: 'VENDORS',
       name: 'Vendors',
       parentId: purchases.id,
+      sortIndex: 1,
+      icon: 'Users',
+    },
+  });
+
+  await prisma.appModule.upsert({
+    where: { code: 'CUSTOMERS' },
+    update: {},
+    create: {
+      code: 'CUSTOMERS',
+      name: 'Customers',
+      parentId: sales.id,
       sortIndex: 1,
       icon: 'Users',
     },

@@ -32,6 +32,7 @@ export interface OrgCensus {
   name: string;
   /** Vendors visible from inside this organization's own tenant context. */
   vendors: number;
+  customers: number;
   /** Ids of the users holding a membership in this organization. */
   memberIds: string[];
 }
@@ -59,11 +60,15 @@ export async function censusByOrg(): Promise<OrgCensus[]> {
       // silently return every tenant's rows.
       tx.vendor.count({ where: { organizationId: org.id } }),
     );
+    const customers = await runAsTenant(org.id, (tx) =>
+      tx.customer.count({ where: { organizationId: org.id } }),
+    );
 
     census.push({
       id: org.id,
       name: org.name,
       vendors,
+      customers,
       memberIds: org.memberships.map((m) => m.userId),
     });
   }
@@ -82,4 +87,11 @@ export async function aVendorOf(organizationId: string): Promise<string | undefi
     tx.vendor.findFirst({ where: { organizationId }, select: { id: true } }),
   );
   return vendor?.id;
+}
+
+export async function aCustomerOf(organizationId: string): Promise<string | undefined> {
+  const customer = await runAsTenant(organizationId, (tx) =>
+    tx.customer.findFirst({ where: { organizationId }, select: { id: true } }),
+  );
+  return customer?.id;
 }

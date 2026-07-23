@@ -8,6 +8,7 @@ import {
 } from '../modules/seed-data/seed-data.routes.ts';
 import { appModulesRouter } from '../modules/settings/customization/app-modules/app-modules.routes.ts';
 import { vendorsRouter } from '../modules/purchases/vendors/vendors.routes.ts';
+import { customersRouter } from '../modules/sales/customers/customers.routes.ts';
 import { uomRouter } from '../modules/settings/inventory/uom/uom.routes.ts';
 import { currenciesRouter } from '../modules/settings/configuration/currencies/currencies.routes.ts';
 import { customFieldsRouter } from '../modules/settings/customization/custom-fields/custom-fields.routes.ts';
@@ -32,6 +33,7 @@ apiRouter.use('/auth', authRouter);
 // anyway, but only after running that router's `authenticate` a second time.
 // Specific before general keeps the path short and the middleware chain honest.
 apiRouter.use('/organizations/:orgId/purchases/vendors', vendorsRouter);
+apiRouter.use('/organizations/:orgId/sales/customers', customersRouter);
 apiRouter.use('/organizations/:orgId/inventory/uom', uomRouter);
 apiRouter.use('/organizations/:orgId/configuration/currencies', currenciesRouter);
 apiRouter.use('/organizations/:orgId/custom-fields', customFieldsRouter);

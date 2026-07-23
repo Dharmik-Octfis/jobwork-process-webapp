@@ -18,6 +18,9 @@ import { SettingsLayout } from '../components/layout/SettingsLayout';
 import { VendorsList } from '../features/purchases/vendors/VendorsList';
 import { CreateVendor } from '../features/purchases/vendors/CreateVendor';
 import { EditVendor } from '../features/purchases/vendors/EditVendor';
+import { CustomersList } from '../features/sales/customers/CustomersList';
+import { CreateCustomer } from '../features/sales/customers/CreateCustomer';
+import { EditCustomer } from '../features/sales/customers/EditCustomer';
 
 import { ItemsList } from '../features/items/ItemsList';
 import { CreateItemPage } from '../features/items/CreateItemPage';
@@ -63,6 +66,9 @@ export const router = createBrowserRouter([
               { path: '/organizations/:orgId/purchases/vendors', element: <VendorsList /> },
               { path: '/organizations/:orgId/purchases/vendors/new', element: <CreateVendor /> },
               { path: '/organizations/:orgId/purchases/vendors/:id/edit', element: <EditVendor /> },
+              { path: '/organizations/:orgId/sales/customers', element: <CustomersList /> },
+              { path: '/organizations/:orgId/sales/customers/new', element: <CreateCustomer /> },
+              { path: '/organizations/:orgId/sales/customers/:id/edit', element: <EditCustomer /> },
               { path: '/organizations/:orgId/purchases/po', element: <PurchasesPage /> },
               { path: '/organizations/:orgId/purchases/bills', element: <PurchasesPage /> },
               { path: '/organizations/:orgId/items', element: <ItemsList /> },

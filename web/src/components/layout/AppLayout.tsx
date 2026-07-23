@@ -37,6 +37,8 @@ const ROUTE_MAP: Record<string, string> = {
   VENDORS: '/purchases/vendors',
   PO: '/purchases/po',
   BILLS: '/purchases/bills',
+  SALES: '/sales',
+  CUSTOMERS: '/sales/customers',
   ITEMS: '/items',
 };
 

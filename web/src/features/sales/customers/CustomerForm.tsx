@@ -4,28 +4,28 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, Trash2, Info, Settings } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { createVendorSchema, type CreateVendorData } from './vendors.schemas';
-import { fetchVendorNumberPreference, updateVendorNumberPreference } from './vendors.api';
-import { VendorNumberConfigModal } from './VendorNumberConfigModal';
+import { createCustomerSchema, type CreateCustomerData } from './customers.schemas';
+import { fetchCustomerNumberPreference, updateCustomerNumberPreference } from './customers.api';
+import { CustomerNumberConfigModal } from './CustomerNumberConfigModal';
 import { useCurrencies } from '../../configuration/currencies/currencies.api';
 import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
-import './vendor-form.css';
+import './customer-form.css';
 
-interface VendorFormProps {
-  initialData?: Partial<CreateVendorData>;
-  onSubmit: (data: CreateVendorData) => void;
+interface CustomerFormProps {
+  initialData?: Partial<CreateCustomerData>;
+  onSubmit: (data: CreateCustomerData) => void;
   isSubmitting: boolean;
   isEdit?: boolean;
   customFieldErrors?: Record<string, string>;
 }
 
-export function VendorForm({
+export function CustomerForm({
   initialData,
   onSubmit,
   isSubmitting,
   isEdit = false,
   customFieldErrors,
-}: VendorFormProps) {
+}: CustomerFormProps) {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
   const [activeTab, setActiveTab] = useState('other');
@@ -39,9 +39,10 @@ export function VendorForm({
     watch,
     setValue,
     formState: { errors },
-  } = useForm<CreateVendorData>({
-    resolver: zodResolver(createVendorSchema),
+  } = useForm<CreateCustomerData>({
+    resolver: zodResolver(createCustomerSchema),
     defaultValues: initialData || {
+      customerType: 'business',
       contactPersons: [
         {
           salutation: '',
@@ -56,8 +57,8 @@ export function VendorForm({
   });
 
   const { data: preference } = useQuery({
-    queryKey: ['vendor-number-preference', orgId],
-    queryFn: () => fetchVendorNumberPreference(orgId!),
+    queryKey: ['customer-number-preference', orgId],
+    queryFn: () => fetchCustomerNumberPreference(orgId!),
     enabled: !!orgId,
   });
 
@@ -65,14 +66,14 @@ export function VendorForm({
 
   const [lastPrefilledNumber, setLastPrefilledNumber] = useState('');
 
-  // Pre-fill vendor number if it's empty and we have a preference (typically only on new vendor creation)
+  // Pre-fill customer number if it's empty and we have a preference (typically only on new customer creation)
   useEffect(() => {
     if (preference && !isEdit) {
       const generatedNumber = `${preference.prefix}${preference.nextNumber.toString().padStart(5, '0')}`;
-      const currentValue = watch('vendorNumber');
+      const currentValue = watch('customerNumber');
 
       if (!currentValue || currentValue === lastPrefilledNumber) {
-        setValue('vendorNumber', generatedNumber);
+        setValue('customerNumber', generatedNumber);
         setLastPrefilledNumber(generatedNumber);
       }
     }
@@ -80,10 +81,10 @@ export function VendorForm({
 
   const updatePreferenceMutation = useMutation({
     mutationFn: (data: { prefix: string; nextNumber: number }) =>
-      updateVendorNumberPreference(orgId!, data),
+      updateCustomerNumberPreference(orgId!, data),
     onSuccess: (data) => {
-      queryClient.setQueryData(['vendor-number-preference', orgId], data);
-      setValue('vendorNumber', `${data.prefix}${data.nextNumber.toString().padStart(5, '0')}`);
+      queryClient.setQueryData(['customer-number-preference', orgId], data);
+      setValue('customerNumber', `${data.prefix}${data.nextNumber.toString().padStart(5, '0')}`);
       setIsNumberConfigOpen(false);
     },
   });
@@ -138,7 +139,7 @@ export function VendorForm({
 
   return (
     <div
-      className="vendor-form-container"
+      className="customer-form-container"
       style={{
         padding: 0,
         margin: 0,
@@ -152,7 +153,7 @@ export function VendorForm({
       {/* Header */}
       <div style={{ padding: '24px 32px' }}>
         <h1 style={{ fontSize: '22px', fontWeight: 400, margin: 0, color: '#000' }}>
-          {isEdit ? 'Edit Vendor' : 'New Vendor'}
+          {isEdit ? 'Edit Customer' : 'New Customer'}
         </h1>
       </div>
 
@@ -169,6 +170,20 @@ export function VendorForm({
             fontSize: '13px',
           }}
         >
+          <label style={labelStyle}>
+            Customer Type <Info size={14} color="#888" />
+          </label>
+          <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+              <input type="radio" value="business" defaultChecked {...register('customerType')} style={{ accentColor: '#0062ff' }} />
+              Business
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+              <input type="radio" value="individual" {...register('customerType')} style={{ accentColor: '#0062ff' }} />
+              Individual
+            </label>
+          </div>
+
           <label style={labelStyle}>
             Primary Contact <Info size={14} color="#888" />
           </label>
@@ -237,10 +252,10 @@ export function VendorForm({
             />
           </div>
 
-          <label style={labelRequiredStyle}>Vendor Number*</label>
+          <label style={labelRequiredStyle}>Customer Number*</label>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input {...register('vendorNumber')} style={{ ...inputStyle, flex: 1 }} />
+              <input {...register('customerNumber')} style={{ ...inputStyle, flex: 1 }} />
               <button
                 type="button"
                 onClick={() => setIsNumberConfigOpen(true)}
@@ -256,9 +271,9 @@ export function VendorForm({
                 <Settings size={18} />
               </button>
             </div>
-            {errors.vendorNumber && (
+            {errors.customerNumber && (
               <div style={{ color: 'red', fontSize: '12px', marginTop: '4px' }}>
-                {errors.vendorNumber.message}
+                {errors.customerNumber.message}
               </div>
             )}
           </div>
@@ -659,7 +674,7 @@ export function VendorForm({
           {activeTab === 'custom' && orgId && (
             <CustomFieldsSection
               orgId={orgId}
-              entityType="vendor"
+              entityType="customer"
               values={(watch('customFields') as Record<string, unknown>) ?? {}}
               onChange={(v) => setValue('customFields', v, { shouldDirty: true })}
               errors={customFieldErrors}
@@ -713,7 +728,7 @@ export function VendorForm({
           </button>
           <button
             type="button"
-            onClick={() => navigate(`/organizations/${orgId}/purchases/vendors`)}
+            onClick={() => navigate(`/organizations/${orgId}/sales/customers`)}
             style={{
               padding: '8px 24px',
               background: 'white',
@@ -730,7 +745,7 @@ export function VendorForm({
         </div>
       </form>
 
-      <VendorNumberConfigModal
+      <CustomerNumberConfigModal
         isOpen={isNumberConfigOpen}
         onClose={() => setIsNumberConfigOpen(false)}
         initialPrefix={preference?.prefix}

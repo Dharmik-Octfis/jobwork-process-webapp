@@ -44,6 +44,16 @@ model User {
   updatedVendorComments         VendorComment[]         @relation("VendorCommentUpdatedBy")
   createdVendorAddresses        VendorAddress[]         @relation("VendorAddressCreatedBy")
   updatedVendorAddresses        VendorAddress[]         @relation("VendorAddressUpdatedBy")
+  createdCustomers              Customer[]              @relation("CustomerCreatedBy")
+  updatedCustomers              Customer[]              @relation("CustomerUpdatedBy")
+  createdCustomerContactPersons CustomerContactPerson[] @relation("CustomerContactPersonCreatedBy")
+  updatedCustomerContactPersons CustomerContactPerson[] @relation("CustomerContactPersonUpdatedBy")
+  createdCustomerActivities     CustomerActivity[]      @relation("CustomerActivityCreatedBy")
+  updatedCustomerActivities     CustomerActivity[]      @relation("CustomerActivityUpdatedBy")
+  createdCustomerComments       CustomerComment[]       @relation("CustomerCommentCreatedBy")
+  updatedCustomerComments       CustomerComment[]       @relation("CustomerCommentUpdatedBy")
+  createdCustomerAddresses      CustomerAddress[]       @relation("CustomerAddressCreatedBy")
+  updatedCustomerAddresses      CustomerAddress[]       @relation("CustomerAddressUpdatedBy")
   createdNumberSequences        NumberSequence[]        @relation("NumberSequenceCreatedBy")
   updatedNumberSequences        NumberSequence[]        @relation("NumberSequenceUpdatedBy")
   createdItems                  Item[]                  @relation("ItemCreatedBy")
@@ -119,6 +129,7 @@ model Organization {
   memberships            Membership[]
   invitations            Invitation[]
   vendors                Vendor[]
+  customers              Customer[]
   items                  Item[]
   numberSequences        NumberSequence[]
   unitsOfMeasurement     UnitOfMeasurement[]

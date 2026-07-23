@@ -91,6 +91,11 @@ export const CUSTOM_FIELD_MODULES: Array<{
     label: 'Vendor',
     description: 'Add fields to the vendor create & edit form.',
   },
+  {
+    entityType: 'customer',
+    label: 'Customer',
+    description: 'Add fields to the customer create & edit form.',
+  },
   { entityType: 'item', label: 'Item', description: 'Add fields to the item create & edit form.' },
 ];
 
