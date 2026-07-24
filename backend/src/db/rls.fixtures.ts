@@ -30,9 +30,11 @@ import { prisma, runAsTenant } from './prisma.ts';
 export interface OrgCensus {
   id: string;
   name: string;
-  /** Vendors visible from inside this organization's own tenant context. */
+  /** Rows visible from inside this org's context, matching the list endpoints
+   *  (which all filter `isDeleted: false`). */
   vendors: number;
   customers: number;
+  items: number;
   /** Ids of the users holding a membership in this organization. */
   memberIds: string[];
 }
@@ -57,11 +59,15 @@ export async function censusByOrg(): Promise<OrgCensus[]> {
       // Both layers, exactly as the app does it: runAsTenant for the policy,
       // `where` for the app filter. The `where` also keeps this count honest if
       // it ever runs as a role that bypasses RLS, where the bare count would
-      // silently return every tenant's rows.
-      tx.vendor.count({ where: { organizationId: org.id } }),
+      // silently return every tenant's rows. `isDeleted: false` mirrors the list
+      // endpoints, so this count equals what a list read returns.
+      tx.vendor.count({ where: { organizationId: org.id, isDeleted: false } }),
     );
     const customers = await runAsTenant(org.id, (tx) =>
-      tx.customer.count({ where: { organizationId: org.id } }),
+      tx.customer.count({ where: { organizationId: org.id, isDeleted: false } }),
+    );
+    const items = await runAsTenant(org.id, (tx) =>
+      tx.item.count({ where: { organizationId: org.id, isDeleted: false } }),
     );
 
     census.push({
@@ -69,6 +75,7 @@ export async function censusByOrg(): Promise<OrgCensus[]> {
       name: org.name,
       vendors,
       customers,
+      items,
       memberIds: org.memberships.map((m) => m.userId),
     });
   }

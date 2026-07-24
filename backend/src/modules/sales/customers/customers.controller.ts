@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { openApiRegistry } from '../../../config/openapi.ts';
 import { ApiError } from '../../../lib/apiError.ts';
 import { sendSuccess } from '../../../lib/apiResponse.ts';
+import { listQuerySchema } from '../../../lib/pagination.ts';
 
 const customerAddressSchema = z.object({
   id: z.string().optional(),
@@ -82,13 +83,18 @@ openApiRegistry.registerPath({
   method: 'get',
   path: '/organizations/{orgId}/sales/customers',
   tags: ['Customers'],
-  summary: 'Get all customers',
+  summary: 'Get all customers (paginated, searchable)',
   request: {
     params: z.object({ orgId: z.string() }),
+    query: z.object({
+      search: z.string().optional(),
+      page: z.string().optional(),
+      perPage: z.string().optional(),
+    }),
   },
   responses: {
     200: {
-      description: 'List of customers',
+      description: 'Paginated list of customers: { results, pageContext }',
     },
   },
 });
@@ -231,8 +237,10 @@ openApiRegistry.registerPath({
  * Mirrors vendors.controller.ts.
  */
 export const getCustomers = async (req: Request, res: Response) => {
-  const customers = await getCustomersList(req.tenantId!);
-  sendSuccess(res, customers);
+  const parsed = listQuerySchema.safeParse(req.query);
+  if (!parsed.success) throw ApiError.badRequest('Invalid search parameters.');
+  const data = await getCustomersList(req.tenantId!, parsed.data);
+  sendSuccess(res, data);
 };
 
 export const createCustomer = async (req: Request, res: Response) => {

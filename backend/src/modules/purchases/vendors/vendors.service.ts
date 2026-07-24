@@ -8,6 +8,7 @@ import {
   validateCustomFields,
 } from '../../settings/customization/custom-fields/customFields.engine.ts';
 import type { Prisma } from '../../../../generated/prisma/client.ts';
+import { searchWhere, pageContext, type ListQuery } from '../../../lib/pagination.ts';
 
 export type VendorInput = Omit<
   Prisma.VendorUncheckedCreateInput,
@@ -52,15 +53,43 @@ export type VendorInput = Omit<
  * closed and loudly, which is the point of having both layers.
  */
 
-export async function getVendorsList(organizationId: string) {
-  return runAsTenant(organizationId, (tx) =>
-    tx.vendor.findMany({
-      // isDeleted: false — soft-deleted vendors are hidden from every read.
-      where: { organizationId, isDeleted: false },
+/**
+ * One paginated list endpoint that also does search — the term fans out across a
+ * handful of columns via the shared `searchWhere` helper. Response carries a
+ * `pageContext`. See `lib/pagination.ts` and memory: list-search-pagination-pattern.
+ */
+export async function getVendorsList(organizationId: string, opts: ListQuery) {
+  const { search, page, perPage } = opts;
+  return runAsTenant(organizationId, async (tx) => {
+    const where: Prisma.VendorWhereInput = {
+      // The `where` is what the query *means*; RLS is the net under it. Both stay.
+      organizationId,
+      // isDeleted: false — soft-deleted vendors never surface, search included.
+      isDeleted: false,
+      ...searchWhere<Prisma.VendorWhereInput>(search, [
+        'displayName',
+        'companyName',
+        'emailAddress',
+        'vendorNumber',
+        'workPhone',
+        'mobilePhone',
+      ]),
+    };
+
+    // count + page share this one transaction (and its one pooled connection).
+    // Run sequentially, not Promise.all: an interactive transaction multiplexes a
+    // single connection, so concurrent queries on `tx` can error.
+    const total = await tx.vendor.count({ where });
+    const results = await tx.vendor.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * perPage,
+      take: perPage,
       include: { contactPersons: true, addresses: true },
-    }),
-  );
+    });
+
+    return { results, pageContext: pageContext(page, perPage, total) };
+  });
 }
 
 export async function createNewVendor(organizationId: string, data: VendorInput, userId?: string) {

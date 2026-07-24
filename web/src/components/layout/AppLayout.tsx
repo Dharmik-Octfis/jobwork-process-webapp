@@ -1,5 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
+import {
+  NavLink,
+  Outlet,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router-dom';
+import { Search } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import {
   X,
@@ -26,6 +34,9 @@ import { fetchAppModules } from '../../features/modules/modules.api';
 import type { AppModule } from '../../features/modules/modules.schemas';
 import { LAST_ORG_KEY } from '../../routes/OrgRedirect';
 import { PaymentTermModal } from '../../features/sales/customers/PaymentTermModal';
+import { fetchVendors } from '../../features/purchases/vendors/vendors.api';
+import { fetchCustomers } from '../../features/sales/customers/customers.api';
+import { itemsApi } from '../../features/items/items.api';
 
 /* eslint-disable @typescript-eslint/naming-convention */
 /**
@@ -59,6 +70,244 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Receipt,
 };
 /* eslint-enable @typescript-eslint/naming-convention */
+
+/**
+ * Which routes the global search box acts on, and how it labels itself there.
+ * The box is one shared input in the top bar; the term travels in the URL as
+ * `?search=` and each module's list page reads it — so criteria and results stay
+ * per-module while the box stays global. To make a new module searchable, add its
+ * path fragment here and have its list page read `?search=`.
+ */
+interface SearchHit {
+  id: string;
+  title: string;
+  subtitle?: string;
+}
+
+interface SearchModule {
+  /** Path fragment that marks this module as the active one. */
+  match: string;
+  label: string;
+  /** A few suggestions for the typeahead dropdown, adapted to {id,title,subtitle}. */
+  fetch: (orgId: string, term: string) => Promise<SearchHit[]>;
+  /** Where clicking a suggestion navigates. */
+  to: (orgId: string, id: string) => string;
+}
+
+/**
+ * One shared box, but context-aware: it searches whichever module you're in. Each
+ * entry adapts that module's paginated list endpoint into a common suggestion and
+ * knows where a hit navigates. The term also rides the URL as `?search=` so the
+ * underlying list filters in step. Add a module here (and have its list read
+ * `?search=`) to make it searchable.
+ */
+const SEARCHABLE_ROUTES: SearchModule[] = [
+  {
+    match: '/purchases/vendors',
+    label: 'Vendors',
+    fetch: async (orgId, term) =>
+      (await fetchVendors(orgId, { search: term, perPage: 6 })).results.map((v) => ({
+        id: v.id,
+        title: v.displayName,
+        subtitle: v.companyName || v.emailAddress || undefined,
+      })),
+    to: (orgId, id) => `/organizations/${orgId}/purchases/vendors?id=${id}`,
+  },
+  {
+    match: '/sales/customers',
+    label: 'Customers',
+    fetch: async (orgId, term) =>
+      (await fetchCustomers(orgId, { search: term, perPage: 6 })).results.map((c) => ({
+        id: c.id,
+        title: c.displayName,
+        subtitle: c.companyName || c.emailAddress || undefined,
+      })),
+    to: (orgId, id) => `/organizations/${orgId}/sales/customers?id=${id}`,
+  },
+  {
+    match: '/items',
+    label: 'Items',
+    fetch: async (orgId, term) =>
+      (await itemsApi.getItems(orgId, { search: term, perPage: 6 })).results.map((i) => ({
+        id: i.id,
+        title: i.name,
+        subtitle: i.sku ? `SKU: ${i.sku}` : undefined,
+      })),
+    to: (orgId, id) => `/organizations/${orgId}/items?id=${id}`,
+  },
+];
+
+/** Minimum characters before a search fires — a common standard (2–3) that keeps
+ *  single-character queries (huge, useless result sets) off the server. */
+const MIN_SEARCH_CHARS = 3;
+
+const dropdownRowStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+  alignItems: 'flex-start',
+  width: '100%',
+  textAlign: 'left',
+  padding: '10px 14px',
+  border: 'none',
+  borderBottom: '1px solid #f1f5f9',
+  background: 'transparent',
+  cursor: 'pointer',
+};
+
+function GlobalSearch() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { orgId } = useParams<{ orgId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const context = SEARCHABLE_ROUTES.find((r) => location.pathname.includes(r.match));
+  const [value, setValue] = useState(searchParams.get('search') ?? '');
+  const [debounced, setDebounced] = useState(value.trim());
+  const [open, setOpen] = useState(false);
+
+  // Re-seed the box only when the *module* changes (or on first load of a
+  // bookmarked `?search=` URL). Done during render via a previous-value guard —
+  // React's pattern for "reset state when a value changes" — not an effect. We
+  // deliberately do NOT mirror the URL back into the input on every keystroke:
+  // dropping below the threshold clears the URL param, and a continuous mirror
+  // would then wipe what the user is still typing.
+  const [prevMatch, setPrevMatch] = useState(context?.match);
+  if (context?.match !== prevMatch) {
+    setPrevMatch(context?.match);
+    setValue(searchParams.get('search') ?? '');
+  }
+
+  // Debounce the raw input; `debounced` feeds both the dropdown query and the URL.
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value.trim()), 300);
+    return () => clearTimeout(t);
+  }, [value]);
+
+  // Mirror the term into the URL so the underlying list filters in step. Below the
+  // threshold the param is removed. `replace` so searching doesn't stack history.
+  useEffect(() => {
+    if (!context) return;
+    const desired = debounced.length >= MIN_SEARCH_CHARS ? debounced : '';
+    if (desired === (searchParams.get('search') ?? '')) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (desired) next.set('search', desired);
+        else next.delete('search');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [debounced, context, searchParams, setSearchParams]);
+
+  // Close the dropdown on an outside click.
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, []);
+
+  const canSearch = Boolean(context) && debounced.length >= MIN_SEARCH_CHARS;
+
+  // Suggestions for the dropdown — a small page fetched only while it's open.
+  const { data: hits = [], isFetching } = useQuery({
+    queryKey: ['global-search', context?.match, orgId, debounced],
+    queryFn: () => context!.fetch(orgId!, debounced),
+    enabled: canSearch && open && Boolean(orgId),
+    placeholderData: (prev) => prev,
+  });
+
+  const disabled = !context;
+  const showDropdown = open && canSearch;
+
+  const selectHit = (id: string) => {
+    setOpen(false);
+    setValue('');
+    if (context && orgId) navigate(context.to(orgId, id));
+  };
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', width: 320 }}>
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+        <Search
+          size={16}
+          color="#94a3b8"
+          style={{ position: 'absolute', left: 12, pointerEvents: 'none' }}
+        />
+        <input
+          type="text"
+          value={value}
+          disabled={disabled}
+          onFocus={() => setOpen(true)}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setOpen(false);
+          }}
+          placeholder={context ? `Search in ${context.label}...` : 'Search...'}
+          title={disabled ? 'Open a list to search' : undefined}
+          style={{
+            padding: '8px 16px 8px 34px',
+            border: '1px solid #e2e8f0',
+            borderRadius: '6px',
+            fontSize: '13px',
+            width: '100%',
+            outline: 'none',
+            background: disabled ? '#f1f5f9' : '#f8fafc',
+            color: disabled ? '#94a3b8' : '#0f172a',
+          }}
+        />
+      </div>
+
+      {showDropdown && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 6px)',
+            left: 0,
+            right: 0,
+            background: '#fff',
+            border: '1px solid #e2e8f0',
+            borderRadius: 8,
+            boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+            zIndex: 60,
+            overflow: 'hidden',
+            maxHeight: 320,
+            overflowY: 'auto',
+          }}
+        >
+          {isFetching && hits.length === 0 ? (
+            <div style={{ padding: '12px 14px', fontSize: 13, color: '#64748b' }}>Searching…</div>
+          ) : hits.length === 0 ? (
+            <div style={{ padding: '12px 14px', fontSize: 13, color: '#64748b' }}>
+              No {context!.label.toLowerCase()} match “{debounced}”.
+            </div>
+          ) : (
+            hits.map((hit) => (
+              <button
+                key={hit.id}
+                onClick={() => selectHit(hit.id)}
+                style={dropdownRowStyle}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span style={{ fontSize: 13, fontWeight: 500, color: '#1e293b' }}>{hit.title}</span>
+                {hit.subtitle && (
+                  <span style={{ fontSize: 12, color: '#64748b' }}>{hit.subtitle}</span>
+                )}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function AppLayout() {
   const { user } = useAuth();
@@ -151,7 +400,7 @@ export function AppLayout() {
               key={module.id}
               module={module}
               expandedId={expandedModuleId}
-              onToggle={(id) => setExpandedModuleId(prev => prev === id ? null : id)}
+              onToggle={(id) => setExpandedModuleId((prev) => (prev === id ? null : id))}
             />
           ))}
         </nav>
@@ -196,22 +445,9 @@ export function AppLayout() {
             zIndex: 50,
           }}
         >
-          {/* Global Search */}
+          {/* Global Search — one box, context-aware per module (see GlobalSearch) */}
           <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-            <input
-              type="text"
-              placeholder="Search..."
-              style={{
-                padding: '8px 16px',
-                border: '1px solid #e2e8f0',
-                borderRadius: '6px',
-                fontSize: '13px',
-                width: '300px',
-                outline: 'none',
-                background: '#f8fafc',
-                color: '#0f172a'
-              }}
-            />
+            <GlobalSearch />
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
@@ -229,7 +465,7 @@ export function AppLayout() {
                   border: '1px solid #eef0f3',
                   background: 'white',
                   cursor: 'pointer',
-                  color: '#64748b'
+                  color: '#64748b',
                 }}
               >
                 <Plus size={18} />
@@ -266,7 +502,7 @@ function ModuleNavGroup({
   module,
   depth = 0,
   expandedId,
-  onToggle
+  onToggle,
 }: {
   module: AppModule;
   depth?: number;
@@ -313,7 +549,9 @@ function ModuleNavGroup({
             textAlign: 'left',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', width: '100%' }}>
+          <div
+            style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', width: '100%' }}
+          >
             <div
               style={{
                 display: 'flex',
@@ -338,7 +576,14 @@ function ModuleNavGroup({
             transition: 'grid-template-rows 0.2s ease',
           }}
         >
-          <div style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+          <div
+            style={{
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 'var(--space-1)',
+            }}
+          >
             {module.children?.map((child) => (
               <ModuleNavGroup key={child.id} module={child} depth={depth + 1} />
             ))}

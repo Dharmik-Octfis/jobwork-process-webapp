@@ -7,15 +7,43 @@ import {
   validateCustomFields,
 } from '../settings/customization/custom-fields/customFields.engine.ts';
 import type { Prisma } from '../../../generated/prisma/client.ts';
+import { searchWhere, pageContext, type ListQuery } from '../../lib/pagination.ts';
 
 export class ItemsService {
-  async findMany(organizationId: string) {
-    return runAsTenant(organizationId, (tx) =>
-      tx.item.findMany({
-        where: { organizationId, isDeleted: false },
+  /**
+   * One paginated list endpoint that also does search — same shape as vendors /
+   * customers, via the shared `searchWhere`/`pageContext` helpers. See
+   * `lib/pagination.ts` and memory: list-search-pagination-pattern.
+   */
+  async findMany(organizationId: string, opts: ListQuery) {
+    const { search, page, perPage } = opts;
+    return runAsTenant(organizationId, async (tx) => {
+      const where: Prisma.ItemWhereInput = {
+        // The `where` is what the query *means*; RLS is the net under it. Both stay.
+        organizationId,
+        // isDeleted: false — soft-deleted items never surface, search included.
+        isDeleted: false,
+        ...searchWhere<Prisma.ItemWhereInput>(search, [
+          'name',
+          'sku',
+          'aliasName',
+          'category',
+          'brand',
+          'hsnCode',
+        ]),
+      };
+
+      // count + page share this one transaction; run sequentially.
+      const total = await tx.item.count({ where });
+      const results = await tx.item.findMany({
+        where,
         orderBy: { createdAt: 'desc' },
-      }),
-    );
+        skip: (page - 1) * perPage,
+        take: perPage,
+      });
+
+      return { results, pageContext: pageContext(page, perPage, total) };
+    });
   }
 
   async findUnique(id: string, organizationId: string) {

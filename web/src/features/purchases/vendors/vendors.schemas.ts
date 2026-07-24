@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { paginatedSchema, type Paginated } from '../../../lib/pagination';
 
 export const vendorContactPersonSchema = z.object({
   id: z.string().optional(),
@@ -133,3 +134,7 @@ export const vendorCommentSchema = z.object({
 export type VendorComment = z.infer<typeof vendorCommentSchema>;
 
 export const vendorsResponseSchema = z.array(vendorSchema);
+
+/** The paginated + searchable list payload: `data` = { results, pageContext }. */
+export const vendorsPageSchema = paginatedSchema(vendorSchema);
+export type VendorsPage = Paginated<Vendor>;

@@ -1,12 +1,18 @@
 import { apiClient } from '../../api/client';
 import type { Item, ItemFormData } from './items.schemas.ts';
+import type { Paginated, PageParams } from '../../lib/pagination';
 
 import { endpoints } from '../../api/endpoints';
 
+/** The paginated + searchable list payload: `data` = { results, pageContext }. */
+export type ItemsPage = Paginated<Item>;
+
 export const itemsApi = {
-  getItems: async (orgId: string): Promise<Item[]> => {
-    const response = await apiClient.get(endpoints.seedData.items(orgId));
-    return response.data;
+  getItems: async (orgId: string, params: PageParams = {}): Promise<ItemsPage> => {
+    // The client interceptor already unwrapped the envelope, so `response.data`
+    // is the inner `{ results, pageContext }`. Empty params are dropped by axios.
+    const response = await apiClient.get(endpoints.seedData.items(orgId), { params });
+    return response.data as ItemsPage;
   },
 
   getItem: async (orgId: string, id: string): Promise<Item> => {
@@ -19,7 +25,15 @@ export const itemsApi = {
     return response.data;
   },
 
-  updateItem: async ({ orgId, id, data }: { orgId: string; id: string; data: Partial<ItemFormData> }): Promise<Item> => {
+  updateItem: async ({
+    orgId,
+    id,
+    data,
+  }: {
+    orgId: string;
+    id: string;
+    data: Partial<ItemFormData>;
+  }): Promise<Item> => {
     const response = await apiClient.put(`${endpoints.seedData.items(orgId)}/${id}`, data);
     return response.data;
   },
@@ -34,21 +48,28 @@ export const itemsApi = {
   },
 
   uploadImages: async (orgId: string, id: string, formData: FormData): Promise<Item> => {
-    const response = await apiClient.post(`${endpoints.seedData.items(orgId)}/${id}/images`, formData, {
-      transformRequest: [
-        (data, headers) => {
-          delete headers['Content-Type'];
-          return data;
-        }
-      ]
-    });
+    const response = await apiClient.post(
+      `${endpoints.seedData.items(orgId)}/${id}/images`,
+      formData,
+      {
+        transformRequest: [
+          (data, headers) => {
+            delete headers['Content-Type'];
+            return data;
+          },
+        ],
+      },
+    );
     return response.data;
   },
 
   getSignedUrl: async (orgId: string, id: string, key: string): Promise<string> => {
-    const response = await apiClient.get<{ url: string }>(`${endpoints.seedData.items(orgId)}/${id}/signed-url`, {
-      params: { key }
-    });
+    const response = await apiClient.get<{ url: string }>(
+      `${endpoints.seedData.items(orgId)}/${id}/signed-url`,
+      {
+        params: { key },
+      },
+    );
     return response.data.url;
   },
 };

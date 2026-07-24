@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { itemsService } from './items.service.ts';
 import { ApiError } from '../../lib/apiError.ts';
 import { sendSuccess } from '../../lib/apiResponse.ts';
+import { listQuerySchema } from '../../lib/pagination.ts';
 import type { CreateItemDto, UpdateItemDto } from './items.schemas.ts';
 
 /**
@@ -12,7 +13,9 @@ import type { CreateItemDto, UpdateItemDto } from './items.schemas.ts';
  */
 export class ItemsController {
   async getItems(req: Request, res: Response) {
-    sendSuccess(res, await itemsService.findMany(req.tenantId!));
+    const parsed = listQuerySchema.safeParse(req.query);
+    if (!parsed.success) throw ApiError.badRequest('Invalid search parameters.');
+    sendSuccess(res, await itemsService.findMany(req.tenantId!, parsed.data));
   }
 
   async getItem(req: Request, res: Response) {

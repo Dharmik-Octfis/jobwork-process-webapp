@@ -1,11 +1,13 @@
 import { apiClient } from '../../../api/client';
 import { endpoints } from '../../../api/endpoints';
+import type { PageParams } from '../../../lib/pagination';
 import {
   type Customer,
   type CreateCustomerData,
   type UpdateCustomerData,
   type CustomerActivity,
-  customersResponseSchema,
+  type CustomersPage,
+  customersPageSchema,
   customerSchema,
   customerActivitySchema,
   type CustomerComment,
@@ -14,11 +16,17 @@ import {
 } from './customers.schemas';
 import { z } from 'zod';
 
-function mapAddressesToFlat(data: Record<string, unknown> & { addresses?: CustomerAddress[] }): Record<string, unknown> {
+function mapAddressesToFlat(
+  data: Record<string, unknown> & { addresses?: CustomerAddress[] },
+): Record<string, unknown> {
   if (!data || !data.addresses) return data;
-  
-  const billing = data.addresses.find((a: CustomerAddress) => a.addressType === 'billing') || {} as Partial<CustomerAddress>;
-  const shipping = data.addresses.find((a: CustomerAddress) => a.addressType === 'shipping') || {} as Partial<CustomerAddress>;
+
+  const billing =
+    data.addresses.find((a: CustomerAddress) => a.addressType === 'billing') ||
+    ({} as Partial<CustomerAddress>);
+  const shipping =
+    data.addresses.find((a: CustomerAddress) => a.addressType === 'shipping') ||
+    ({} as Partial<CustomerAddress>);
 
   return {
     ...data,
@@ -43,12 +51,24 @@ function mapAddressesToFlat(data: Record<string, unknown> & { addresses?: Custom
 
 function mapFlatToAddresses(data: Record<string, unknown>): Record<string, unknown> {
   if (!data) return data;
-  
+
   const {
-    billingAttention, billingCountry, billingStreet1, billingStreet2,
-    billingCity, billingState, billingPinCode, billingPhone,
-    shippingAttention, shippingCountry, shippingStreet1, shippingStreet2,
-    shippingCity, shippingState, shippingPinCode, shippingPhone,
+    billingAttention,
+    billingCountry,
+    billingStreet1,
+    billingStreet2,
+    billingCity,
+    billingState,
+    billingPinCode,
+    billingPhone,
+    shippingAttention,
+    shippingCountry,
+    shippingStreet1,
+    shippingStreet2,
+    shippingCity,
+    shippingState,
+    shippingPinCode,
+    shippingPhone,
     addresses: existingAddresses,
     ...rest
   } = data as Record<string, unknown> & {
@@ -71,9 +91,19 @@ function mapFlatToAddresses(data: Record<string, unknown>): Record<string, unkno
     addresses?: CustomerAddress[];
   };
 
-  const addresses = (existingAddresses || []).filter(a => a.addressType !== 'billing' && a.addressType !== 'shipping');
+  const addresses = (existingAddresses || []).filter(
+    (a) => a.addressType !== 'billing' && a.addressType !== 'shipping',
+  );
 
-  if (billingStreet1 || billingCity || billingState || billingCountry || billingPinCode || billingPhone || billingAttention) {
+  if (
+    billingStreet1 ||
+    billingCity ||
+    billingState ||
+    billingCountry ||
+    billingPinCode ||
+    billingPhone ||
+    billingAttention
+  ) {
     addresses.push({
       addressType: 'billing',
       attention: billingAttention,
@@ -87,7 +117,15 @@ function mapFlatToAddresses(data: Record<string, unknown>): Record<string, unkno
     });
   }
 
-  if (shippingStreet1 || shippingCity || shippingState || shippingCountry || shippingPinCode || shippingPhone || shippingAttention) {
+  if (
+    shippingStreet1 ||
+    shippingCity ||
+    shippingState ||
+    shippingCountry ||
+    shippingPinCode ||
+    shippingPhone ||
+    shippingAttention
+  ) {
     addresses.push({
       addressType: 'shipping',
       attention: shippingAttention,
@@ -104,9 +142,20 @@ function mapFlatToAddresses(data: Record<string, unknown>): Record<string, unkno
   return { ...rest, addresses };
 }
 
-export async function fetchCustomers(orgId: string): Promise<Customer[]> {
-  const response = await apiClient.get(endpoints.sales.customers(orgId));
-  return customersResponseSchema.parse(response.data.map(mapAddressesToFlat));
+export async function fetchCustomers(
+  orgId: string,
+  params: PageParams = {},
+): Promise<CustomersPage> {
+  // The client interceptor unwraps the envelope, so `response.data` is already
+  // the inner `{ results, pageContext }`. Empty params are dropped by axios.
+  const response = await apiClient.get(endpoints.sales.customers(orgId), { params });
+  const raw = response.data as { results: unknown[]; pageContext: unknown };
+  return customersPageSchema.parse({
+    results: raw.results.map((c) =>
+      mapAddressesToFlat(c as Record<string, unknown> & { addresses?: CustomerAddress[] }),
+    ),
+    pageContext: raw.pageContext,
+  });
 }
 
 export async function createCustomer(orgId: string, data: CreateCustomerData): Promise<Customer> {
@@ -120,7 +169,15 @@ export async function fetchCustomerById(orgId: string, id: string): Promise<Cust
   return customerSchema.parse(mapAddressesToFlat(response.data));
 }
 
-export async function updateCustomer({ orgId, id, data }: { orgId: string; id: string; data: UpdateCustomerData }): Promise<Customer> {
+export async function updateCustomer({
+  orgId,
+  id,
+  data,
+}: {
+  orgId: string;
+  id: string;
+  data: UpdateCustomerData;
+}): Promise<Customer> {
   const payload = mapFlatToAddresses(data);
   const response = await apiClient.put(`${endpoints.sales.customers(orgId)}/${id}`, payload);
   return customerSchema.parse(mapAddressesToFlat(response.data));
@@ -130,7 +187,10 @@ export async function deleteCustomer(orgId: string, id: string): Promise<void> {
   await apiClient.delete(`${endpoints.sales.customers(orgId)}/${id}`);
 }
 
-export async function fetchCustomerActivities(orgId: string, id: string): Promise<CustomerActivity[]> {
+export async function fetchCustomerActivities(
+  orgId: string,
+  id: string,
+): Promise<CustomerActivity[]> {
   const response = await apiClient.get(`${endpoints.sales.customers(orgId)}/${id}/activities`);
   return z.array(customerActivitySchema).parse(response.data);
 }
@@ -140,21 +200,36 @@ export async function fetchCustomerComments(orgId: string, id: string): Promise<
   return z.array(customerCommentSchema).parse(response.data);
 }
 
-export async function addCustomerComment(orgId: string, id: string, content: string): Promise<CustomerComment> {
-  const response = await apiClient.post(`${endpoints.sales.customers(orgId)}/${id}/comments`, { content });
+export async function addCustomerComment(
+  orgId: string,
+  id: string,
+  content: string,
+): Promise<CustomerComment> {
+  const response = await apiClient.post(`${endpoints.sales.customers(orgId)}/${id}/comments`, {
+    content,
+  });
   return customerCommentSchema.parse(response.data);
 }
 
-export async function deleteCustomerComment(orgId: string, customerId: string, commentId: string): Promise<void> {
+export async function deleteCustomerComment(
+  orgId: string,
+  customerId: string,
+  commentId: string,
+): Promise<void> {
   await apiClient.delete(`${endpoints.sales.customers(orgId)}/${customerId}/comments/${commentId}`);
 }
 
-export async function fetchCustomerNumberPreference(orgId: string): Promise<{ prefix: string; nextNumber: number }> {
+export async function fetchCustomerNumberPreference(
+  orgId: string,
+): Promise<{ prefix: string; nextNumber: number }> {
   const response = await apiClient.get(endpoints.sales.customerPreferences(orgId));
   return z.object({ prefix: z.string(), nextNumber: z.number() }).parse(response.data);
 }
 
-export async function updateCustomerNumberPreference(orgId: string, data: { prefix: string; nextNumber: number }): Promise<{ prefix: string; nextNumber: number }> {
+export async function updateCustomerNumberPreference(
+  orgId: string,
+  data: { prefix: string; nextNumber: number },
+): Promise<{ prefix: string; nextNumber: number }> {
   const response = await apiClient.put(endpoints.sales.customerPreferences(orgId), data);
   return z.object({ prefix: z.string(), nextNumber: z.number() }).parse(response.data);
 }

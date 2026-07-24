@@ -8,6 +8,7 @@ import {
   validateCustomFields,
 } from '../../settings/customization/custom-fields/customFields.engine.ts';
 import type { Prisma } from '../../../../generated/prisma/client.ts';
+import { searchWhere, pageContext, type ListQuery } from '../../../lib/pagination.ts';
 
 export type CustomerInput = Omit<
   Prisma.CustomerUncheckedCreateInput,
@@ -52,15 +53,42 @@ export type CustomerInput = Omit<
  * closed and loudly, which is the point of having both layers.
  */
 
-export async function getCustomersList(organizationId: string) {
-  return runAsTenant(organizationId, (tx) =>
-    tx.customer.findMany({
-      // isDeleted: false — soft-deleted customers are hidden from every read.
-      where: { organizationId, isDeleted: false },
+/**
+ * One paginated list endpoint that also does search — same shape as the vendors
+ * list, via the shared `searchWhere`/`pageContext` helpers. See `lib/pagination.ts`
+ * and memory: list-search-pagination-pattern.
+ */
+export async function getCustomersList(organizationId: string, opts: ListQuery) {
+  const { search, page, perPage } = opts;
+  return runAsTenant(organizationId, async (tx) => {
+    const where: Prisma.CustomerWhereInput = {
+      // The `where` is what the query *means*; RLS is the net under it. Both stay.
+      organizationId,
+      // isDeleted: false — soft-deleted customers never surface, search included.
+      isDeleted: false,
+      ...searchWhere<Prisma.CustomerWhereInput>(search, [
+        'displayName',
+        'companyName',
+        'emailAddress',
+        'customerNumber',
+        'workPhone',
+        'mobilePhone',
+      ]),
+    };
+
+    // count + page share this one transaction; run sequentially (an interactive
+    // transaction multiplexes a single connection).
+    const total = await tx.customer.count({ where });
+    const results = await tx.customer.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * perPage,
+      take: perPage,
       include: { contactPersons: true, addresses: true },
-    }),
-  );
+    });
+
+    return { results, pageContext: pageContext(page, perPage, total) };
+  });
 }
 
 export async function createNewCustomer(

@@ -39,10 +39,12 @@ describe('customers — cross-tenant isolation', () => {
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    // Exactly their own customers — not "some", not "all of everyone's".
-    expect(res.body.length).toBe(org.customers);
-    for (const customer of res.body) expect(customer.organizationId).toBe(org.id);
+    // The list now returns { results, pageContext } inside the envelope's `data`.
+    const { results, pageContext } = res.body.data;
+    expect(Array.isArray(results)).toBe(true);
+    // pageContext.total is the full count; `results` is one (default) page of it.
+    expect(pageContext.total).toBe(org.customers);
+    for (const customer of results) expect(customer.organizationId).toBe(org.id);
   });
 
   it('a malformed organization id is rejected, not 500', async () => {
@@ -95,10 +97,11 @@ describe('customers — cross-tenant isolation', () => {
     // Either refuse (403/404) or return nothing. Returning another org's
     // customers is a cross-tenant data breach.
     if (res.status === 200) {
+      const { results } = res.body.data;
       expect(
-        res.body,
+        results,
         `LEAK: user ${outsider.id} is not a member of "${victimOrg.name}" ` +
-          `yet read ${Array.isArray(res.body) ? res.body.length : '?'} of its ` +
+          `yet read ${Array.isArray(results) ? results.length : '?'} of its ` +
           `${victimOrg.customers} customers by editing the URL.`,
       ).toEqual([]);
     } else {
@@ -162,5 +165,74 @@ describe('customers — cross-tenant isolation', () => {
         `an organization they are not a member of.`,
     ).toBeNull();
     expect([401, 403, 404]).toContain(res.status);
+  });
+
+  // Search is just another read: it must be scoped to the caller's tenant exactly
+  // like the plain list. A `?search=` that reaches across tenants is the same leak.
+  it('a member’s ?search= returns only their own organisation’s matching rows', async (ctx) => {
+    const census = await censusByOrg();
+    const org = census.find((o) => o.customers > 0 && o.memberIds.length > 0);
+    const memberId = org?.memberIds[0];
+    if (!org || !memberId) {
+      ctx.skip('no organization has both customers and a member');
+      return;
+    }
+
+    const sample = await runAsTenant(org.id, (tx) =>
+      tx.customer.findFirst({
+        where: { organizationId: org.id, isDeleted: false },
+        select: { displayName: true },
+      }),
+    );
+    if (!sample?.displayName || sample.displayName.length < 2) {
+      ctx.skip('no named customer to derive a search term from');
+      return;
+    }
+    const term = sample.displayName.slice(0, 3);
+    const token = signAccessToken(memberId, 'session-for-test');
+
+    const res = await request(createApp())
+      .get(`${customersUrl(org.id)}?search=${encodeURIComponent(term)}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    const { results } = res.body.data;
+    expect(results.length).toBeGreaterThan(0);
+    for (const customer of results) expect(customer.organizationId).toBe(org.id);
+  });
+
+  it('a user cannot search another organisation’s customers', async (ctx) => {
+    const census = await censusByOrg();
+    const victimOrg = census.find((o) => o.customers > 0);
+    if (!victimOrg) {
+      ctx.skip('no organization has customers to leak');
+      return;
+    }
+
+    const outsider = await prisma.user.findFirst({
+      where: { memberships: { none: { organizationId: victimOrg.id } } },
+      select: { id: true },
+    });
+    if (!outsider) {
+      ctx.skip(`every user is already a member of "${victimOrg.name}"`);
+      return;
+    }
+
+    const token = signAccessToken(outsider.id, 'session-for-test');
+
+    const res = await request(createApp())
+      .get(`${customersUrl(victimOrg.id)}?search=a`)
+      .set('Authorization', `Bearer ${token}`);
+
+    if (res.status === 200) {
+      const { results, pageContext } = res.body.data;
+      expect(
+        results,
+        `LEAK via search: outsider ${outsider.id} matched rows in "${victimOrg.name}".`,
+      ).toEqual([]);
+      expect(pageContext.total).toBe(0);
+    } else {
+      expect([401, 403, 404]).toContain(res.status);
+    }
   });
 });
