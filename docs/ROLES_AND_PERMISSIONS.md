@@ -68,19 +68,39 @@ table can't:
 ## 3. Every resource has exactly four actions
 
 The catalog is uniform: **Read, Create, Update, Delete** — nothing else. No `manage`, no one-off
-actions. The whole catalog is generated from a `crud(resource)` helper over a `RESOURCES` list, so
-a resource _cannot_ drift outside those four. This keeps the admin UI a clean 4-column grid and
-makes a new module a one-row change.
+actions. The whole catalog is generated from a `crud(resource)` helper, so a resource _cannot_
+drift outside those four. This keeps the admin UI a clean 4-column grid and makes a new module a
+one-line change.
+
+Resources are filed under the **main module** they belong to — the same grouping the sidebar shows
+on the home screen (`app_modules`) plus Settings — so the role editor's tree matches the tree the
+admin navigates.
 
 ```ts
 // permissions.catalog.ts (shape)
-const RESOURCES = [
-  { resource: 'vendor', label: 'Vendors' },
-  { resource: 'item', label: 'Items' },
+const MODULE_GROUPS = [
+  { key: 'purchases', label: 'Purchases', resources: [{ resource: 'vendor', label: 'Vendors' }] },
+  { key: 'sales', label: 'Sales', resources: [{ resource: 'customer', label: 'Customers' }] },
   // ...
 ];
-// → vendor:read, vendor:create, vendor:update, vendor:delete, item:read, ...
+// → vendor:read, vendor:create, vendor:update, vendor:delete, customer:read, ...
 ```
+
+The catalog endpoint serves that tree (`{ groups: [{ key, label, modules: [{ resource, label,
+actions }] }] }`). A main module carries **no permission of its own** — its checkboxes in the editor
+are a bulk toggle over every module beneath it (ticking "Create" on Purchases ticks Create for every
+purchases module; the box shows indeterminate when only some are on).
+
+### `read` is implied by every other action
+
+`vendor:create` without `vendor:read` isn't a stricter role, it's a broken one — the create button
+lives on a page the user would be 403'd out of. So **granting create/update/delete grants read**,
+and revoking read revokes the rest of that module.
+
+The editor ticks View for you and locks it while another action needs it, but the rule is enforced
+server-side too — `withImpliedRead()` runs in the write schema (so a hand-rolled API call normalizes
+the same way) and again in `tenantContext.resolvePermissions` (so rows written before the rule
+existed resolve correctly without a backfill).
 
 ---
 
@@ -119,7 +139,7 @@ authenticate ──► tenantContext ──► requirePermission('vendor:create'
 2. **`tenantContext`** — verifies you're a member of `:orgId`, then resolves your permission set
    into `req.membership.permissions` (a `Set<string>`):
    - Owner template (`isOwner`) → **all** catalog permissions, computed.
-   - Any other template → exactly its stored keys.
+   - Any other template → its stored keys, plus the `:read` each one implies (§3).
    - **No template** → only the org owner keeps access (`permissionsForRole()`); everyone else
      gets an empty set until a role is assigned. Fails closed.
    - The template lives in an RLS-protected table, so it is read inside a `runAsTenant` block.
@@ -135,15 +155,19 @@ When you build a new module that needs access control, do **both** of these:
 
 ### Step 1 — register the resource in the catalog
 
-Add one line to `RESOURCES` in
-`src/modules/settings/organization/permission-templates/permissions.catalog.ts`:
+Add one line to the right group's `resources` in `MODULE_GROUPS`
+(`src/modules/settings/organization/permission-templates/permissions.catalog.ts`) — the group being
+the main module the sidebar files it under:
 
 ```ts
-{ resource: 'purchase_order', label: 'Purchase Orders' },
+{ key: 'purchases', label: 'Purchases', resources: [
+  { resource: 'vendor', label: 'Vendors' },
+  { resource: 'purchase_order', label: 'Purchase Orders' },   // ← the new line
+]},
 ```
 
-That instantly creates `purchase_order:read/create/update/delete`, a new row in the role editor's
-checkbox grid, and Owner coverage (computed). Existing custom roles do **not** get the new
+That instantly creates `purchase_order:read/create/update/delete`, a new row under Purchases in the
+role editor's checkbox grid (covered by that group's bulk toggles), and Owner coverage (computed). Existing custom roles do **not** get the new
 permissions — an Owner ticks them on deliberately, which is the point.
 
 ### Step 2 — gate every route with `requirePermission`

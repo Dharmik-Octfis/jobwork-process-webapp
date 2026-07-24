@@ -11,8 +11,8 @@
  * *all* permissions, computed at runtime — automatically covers the new one with
  * zero backfill. See CLAUDE.md and docs.
  *
- * Naming is `resource:action`. `read` is "view"; `manage` bundles create/edit/
- * delete for the smaller modules where finer granularity isn't worth the UI.
+ * Naming is `resource:action`. `read` is "view", and it is implied by every other
+ * action — see `withImpliedRead`.
  */
 
 export interface PermissionAction {
@@ -20,10 +20,22 @@ export interface PermissionAction {
   label: string;
 }
 
-export interface PermissionGroup {
+/** One leaf module — the thing a permission is actually granted on. */
+export interface PermissionModule {
   resource: string;
   label: string;
   actions: readonly PermissionAction[];
+}
+
+/**
+ * A main module, as the sidebar shows it on the home screen (Purchases, Sales,
+ * …). It owns no permissions of its own — its checkboxes in the editor are a
+ * bulk toggle over the modules beneath it.
+ */
+export interface PermissionGroup {
+  key: string;
+  label: string;
+  modules: readonly PermissionModule[];
 }
 
 /**
@@ -43,30 +55,62 @@ function crud(resource: string): PermissionAction[] {
   return ACTIONS.map(({ action, label }) => ({ key: `${resource}:${action}`, label }));
 }
 
-/** The resources that carry permissions. One row per module in the admin grid. */
-const RESOURCES: readonly { resource: string; label: string }[] = [
-  { resource: 'vendor', label: 'Vendors' },
-  { resource: 'customer', label: 'Customers' },
-  { resource: 'item', label: 'Items' },
-  { resource: 'currency', label: 'Currencies' },
-  { resource: 'payment_term', label: 'Payment Terms' },
-  { resource: 'uom', label: 'Units of Measurement' },
-  { resource: 'custom_field', label: 'Custom Fields' },
-  { resource: 'member', label: 'Members & Invitations' },
-  { resource: 'role', label: 'Roles & Permissions' },
-  { resource: 'organization', label: 'Organization' },
+/**
+ * The resources that carry permissions, filed under the main module they live in.
+ * The grouping deliberately mirrors the app's own navigation — the sidebar groups
+ * on the home screen (`app_modules`: Item, Purchases, Sales) plus the Settings
+ * sidebar — so an admin ticking boxes sees the same tree they navigate. Adding a
+ * module means one line in the right group; a new main module means one entry.
+ */
+const MODULE_GROUPS: readonly {
+  key: string;
+  label: string;
+  resources: { resource: string; label: string }[];
+}[] = [
+  {
+    key: 'inventory',
+    label: 'Item',
+    resources: [{ resource: 'item', label: 'Items' }],
+  },
+  {
+    key: 'purchases',
+    label: 'Purchases',
+    resources: [{ resource: 'vendor', label: 'Vendors' }],
+  },
+  {
+    key: 'sales',
+    label: 'Sales',
+    resources: [{ resource: 'customer', label: 'Customers' }],
+  },
+  {
+    key: 'settings',
+    label: 'Settings',
+    resources: [
+      { resource: 'organization', label: 'Organization Profile' },
+      { resource: 'member', label: 'Members & Invitations' },
+      { resource: 'role', label: 'Roles & Permissions' },
+      { resource: 'uom', label: 'Units of Measurement' },
+      { resource: 'currency', label: 'Currencies' },
+      { resource: 'payment_term', label: 'Payment Terms' },
+      { resource: 'custom_field', label: 'Custom Fields' },
+    ],
+  },
 ];
 
 /** Grouped for the admin UI. Flattened into `ALL_PERMISSIONS` below. */
-export const PERMISSION_CATALOG: readonly PermissionGroup[] = RESOURCES.map((r) => ({
-  resource: r.resource,
-  label: r.label,
-  actions: crud(r.resource),
+export const PERMISSION_CATALOG: readonly PermissionGroup[] = MODULE_GROUPS.map((g) => ({
+  key: g.key,
+  label: g.label,
+  modules: g.resources.map((r) => ({
+    resource: r.resource,
+    label: r.label,
+    actions: crud(r.resource),
+  })),
 }));
 
 /** Every permission key, flattened. The Owner template resolves to exactly this. */
 export const ALL_PERMISSIONS: readonly string[] = PERMISSION_CATALOG.flatMap((g) =>
-  g.actions.map((a) => a.key),
+  g.modules.flatMap((m) => m.actions.map((a) => a.key)),
 );
 
 const PERMISSION_SET = new Set(ALL_PERMISSIONS);
@@ -74,6 +118,28 @@ const PERMISSION_SET = new Set(ALL_PERMISSIONS);
 /** True if `key` is a real permission in the catalog (rejects typos from clients). */
 export function isPermissionKey(key: string): boolean {
   return PERMISSION_SET.has(key);
+}
+
+/**
+ * `read` is implied by every other action: you cannot create, edit or delete a
+ * record you are not allowed to see — every one of those flows opens the list or
+ * the detail page first. So `vendor:create` without `vendor:read` is not a
+ * stricter role, it's a broken one (the UI 403s on the page the button lives on).
+ *
+ * The editor ticks View for you, but the rule is enforced here as well: the
+ * client is a claim, and a template written by a script or an older build must
+ * resolve the same way. Applied on write (schemas) and again on read
+ * (`tenantContext.resolvePermissions`) so stored rows predating this are fixed
+ * up too.
+ */
+export function withImpliedRead(keys: readonly string[]): string[] {
+  const out = new Set(keys);
+  for (const key of keys) {
+    const resource = key.slice(0, key.lastIndexOf(':'));
+    const readKey = `${resource}:read`;
+    if (PERMISSION_SET.has(readKey)) out.add(readKey);
+  }
+  return [...out];
 }
 
 /**

@@ -180,8 +180,9 @@ ephemeral token tables, no master-data reference tables):
 - Reuse `assertOrgAdmin` (`invitations.service.ts`) for admin-only actions.
 - Scope mutations: `updateMany({ where: { id, organizationId } })`, never `update({ where: { id } })`.
 - 🔴 **New module with protected routes? Two steps, both required.** (1) Register its resource in
-  `permissions.catalog.ts` `RESOURCES` — one line adds `<resource>:read/create/update/delete` to the
-  catalog, the role editor's grid, and the computed Owner role. (2) Gate **every** route with
+  `permissions.catalog.ts` `MODULE_GROUPS`, under the main module the sidebar files it beneath — one
+  line adds `<resource>:read/create/update/delete` to the catalog, the role editor's grid, and the
+  computed Owner role. (`read` is implied by the other three — `withImpliedRead`.) (2) Gate **every** route with
   `requirePermission('<resource>:<action>')`, mounted after `authenticate, tenantContext`. Forgetting
   step 1 fails **closed** (nobody can act — loud). Forgetting step 2 fails **open and silently** — the
   module has no gate, every member can do everything, and nothing warns you (same shape as a tenant

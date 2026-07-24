@@ -1,11 +1,19 @@
 import { apiClient } from '../../api/client';
 import { endpoints } from '../../api/endpoints';
 
-/** One resource's four actions, as the backend catalog defines them. */
-export interface PermissionGroup {
+/** One leaf module and its four actions, as the backend catalog defines them. */
+export interface PermissionModule {
   resource: string;
   label: string;
   actions: { key: string; label: string }[];
+}
+
+/** A main module from the home-screen sidebar; its modules hang beneath it. The
+ * group itself holds no permissions — its checkboxes bulk-toggle the children. */
+export interface PermissionGroup {
+  key: string;
+  label: string;
+  modules: PermissionModule[];
 }
 
 /** A role (permission template). Permissions are always edited as a whole set —

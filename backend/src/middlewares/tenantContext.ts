@@ -4,6 +4,7 @@ import { ApiError } from '../lib/apiError.ts';
 import {
   ALL_PERMISSIONS,
   permissionsForRole,
+  withImpliedRead,
 } from '../modules/settings/organization/permission-templates/permissions.catalog.ts';
 
 /**
@@ -133,7 +134,9 @@ async function resolvePermissions(
   // rather than silently granting nothing.
   if (!template) return new Set(permissionsForRole(membership.role));
   if (template.isOwner) return new Set(ALL_PERMISSIONS);
-  return new Set(template.permissions);
+  // Rows written before `read` became implied (or by anything but the editor) get
+  // the same treatment as a fresh save — see `withImpliedRead`.
+  return new Set(withImpliedRead(template.permissions));
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

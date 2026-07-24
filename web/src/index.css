@@ -75,6 +75,13 @@
   --color-primary-soft: #e8f3fc;
   --color-focus-ring: rgba(28, 124, 140, 0.35);
 
+  /* Granted — the deep green a ticked checkbox carries. Kept distinct from
+     --color-primary so "this is switched on" never reads as "this is the button
+     to press", and from --color-success so a grant isn't mistaken for a result. */
+  --color-check: #186337;
+  --color-check-soft: #edf6f0;
+  --color-check-border: #c9e2d3;
+
   /* Semantic (paired with icon/text, never color alone) */
   --color-danger: #d14343;
   --color-danger-bg: #fdecec;

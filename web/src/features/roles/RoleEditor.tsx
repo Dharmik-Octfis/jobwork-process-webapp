@@ -1,9 +1,56 @@
-import { useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { toApiErrorMessage } from '../../api/client';
 import { rolesApi, type Role } from './roles.api';
 import '../organizations/CreateOrganizationForm.css';
+
+/** `vendor:create` → `vendor` / `create`. Resources may contain no colon, actions never do. */
+const resourceOf = (key: string) => key.slice(0, key.lastIndexOf(':'));
+const actionOf = (key: string) => key.slice(key.lastIndexOf(':') + 1);
+
+/**
+ * A checkbox that can also be "some of the below are ticked". `indeterminate` is
+ * a DOM property, not an attribute, so React can't set it declaratively — hence
+ * the ref. Used for the main-module rows, which summarise their children.
+ */
+function TriCheckbox({
+  checked,
+  indeterminate = false,
+  disabled = false,
+  title,
+  onChange,
+}: {
+  checked: boolean;
+  indeterminate?: boolean;
+  disabled?: boolean;
+  title?: string;
+  onChange: () => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = !checked && indeterminate;
+  }, [checked, indeterminate]);
+
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={checked}
+      disabled={disabled}
+      title={title}
+      onChange={onChange}
+      style={{
+        width: 16,
+        height: 16,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        // Ticked = granted, in the deep green reserved for it (see index.css).
+        accentColor: 'var(--color-check)',
+        opacity: disabled ? 0.65 : 1,
+      }}
+    />
+  );
+}
 
 interface Props {
   orgId: string;
@@ -21,8 +68,23 @@ interface Props {
 export function RoleEditor({ orgId, role, onDone, onCancel }: Props) {
   const [name, setName] = useState(role?.name ?? '');
   const [description, setDescription] = useState(role?.description ?? '');
-  const [selected, setSelected] = useState<Set<string>>(new Set(role?.permissions ?? []));
+  // Seed with View already implied, so a role saved before that rule existed shows
+  // the same ticks it will have once saved again.
+  const [selected, setSelected] = useState<Set<string>>(() => {
+    const keys = role?.permissions ?? [];
+    return new Set([...keys, ...keys.map((k) => `${resourceOf(k)}:read`)]);
+  });
   const [error, setError] = useState<string | null>(null);
+  /** Main modules folded shut, by group key. Everything starts open — a collapsed
+   *  group would hide ticks the admin is reviewing. */
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  const toggleCollapsed = (key: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
 
   const { data: groups, isLoading } = useQuery({
     queryKey: ['permission-catalog', orgId],
@@ -43,22 +105,29 @@ export function RoleEditor({ orgId, role, onDone, onCancel }: Props) {
     onError: (err) => setError(toApiErrorMessage(err)),
   });
 
-  const toggle = (key: string) => {
+  /**
+   * Tick or untick a set of permission keys, keeping View consistent: granting
+   * Create/Edit/Delete grants View too (you can't act on a record you may not
+   * open — the backend applies the same rule on save), and revoking View revokes
+   * the rest of that module. Every checkbox on the grid — leaf, row, main module
+   * — routes through here, so one rule covers them all.
+   */
+  const setKeys = (keys: string[], on: boolean) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  /** Tick/untick a whole resource row at once. */
-  const toggleRow = (keys: string[], on: boolean) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      for (const k of keys) {
-        if (on) next.add(k);
-        else next.delete(k);
+      for (const key of keys) {
+        const resource = resourceOf(key);
+        if (on) {
+          next.add(key);
+          next.add(`${resource}:read`);
+        } else {
+          next.delete(key);
+          if (actionOf(key) === 'read') {
+            for (const action of ['create', 'update', 'delete']) {
+              next.delete(`${resource}:${action}`);
+            }
+          }
+        }
       }
       return next;
     });
@@ -151,6 +220,10 @@ export function RoleEditor({ orgId, role, onDone, onCancel }: Props) {
           }}
         >
           <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Permissions</h3>
+          <p style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: '4px 0 0 0' }}>
+            Ticking a main module applies that permission to every module under it. View is granted
+            automatically whenever Create, Edit or Delete is — untick those first to remove it.
+          </p>
         </div>
 
         {isLoading ? (
@@ -163,7 +236,9 @@ export function RoleEditor({ orgId, role, onDone, onCancel }: Props) {
               <thead>
                 <tr style={{ background: 'var(--color-bg)' }}>
                   <th style={thStyle('left')}>Module</th>
-                  {(groups?.[0]?.actions ?? []).map((a) => (
+                  {/* Every module exposes the same four actions, so one module's
+                      list names the columns for the whole grid. */}
+                  {(groups?.[0]?.modules?.[0]?.actions ?? []).map((a) => (
                     <th key={a.key} style={thStyle('center')}>
                       {a.label}
                     </th>
@@ -172,31 +247,195 @@ export function RoleEditor({ orgId, role, onDone, onCancel }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {groups?.map((g) => {
-                  const keys = g.actions.map((a) => a.key);
-                  const allOn = keys.every((k) => selected.has(k));
+                {groups?.map((group) => {
+                  const groupKeys = group.modules.flatMap((m) => m.actions.map((a) => a.key));
+                  const groupAllOn = groupKeys.every((k) => selected.has(k));
+                  const groupAnyOn = groupKeys.some((k) => selected.has(k));
+                  // View can't be cleared while something else in the group needs it.
+                  const groupReadLocked = group.modules.some((m) =>
+                    ['create', 'update', 'delete'].some((a) => selected.has(`${m.resource}:${a}`)),
+                  );
+                  const isCollapsed = collapsed.has(group.key);
+                  const grantedModules = group.modules.filter((m) =>
+                    m.actions.some((a) => selected.has(a.key)),
+                  ).length;
+
                   return (
-                    <tr key={g.resource} style={{ borderTop: '1px solid var(--color-border)' }}>
-                      <td style={{ padding: '10px var(--space-6)', fontWeight: 500 }}>{g.label}</td>
-                      {g.actions.map((a) => (
-                        <td key={a.key} style={{ padding: '10px 0', textAlign: 'center' }}>
-                          <input
-                            type="checkbox"
-                            checked={selected.has(a.key)}
-                            onChange={() => toggle(a.key)}
-                            style={{ width: 16, height: 16, cursor: 'pointer' }}
+                    <Fragment key={group.key}>
+                      {/* Main module — as it appears in the sidebar. Holds no
+                          permission of its own; its checkboxes drive the rows below. */}
+                      <tr
+                        style={{
+                          borderTop: '1px solid var(--color-border)',
+                          // The band tints green once the group grants anything, so
+                          // an admin can scan which main modules a role touches
+                          // without reading a single checkbox.
+                          background: groupAnyOn
+                            ? 'var(--color-check-soft)'
+                            : 'var(--color-surface-2)',
+                        }}
+                      >
+                        <td
+                          style={{
+                            padding: 0,
+                            fontWeight: 600,
+                            // Left accent bar — the same on/off signal, at the edge
+                            // where the eye tracks down the column.
+                            boxShadow: `inset 3px 0 0 ${
+                              groupAnyOn ? 'var(--color-check)' : 'var(--color-border-strong)'
+                            }`,
+                          }}
+                        >
+                          {/* The label is the collapse handle; the checkboxes in
+                              the cells beside it stay independent of it. */}
+                          <button
+                            type="button"
+                            onClick={() => toggleCollapsed(group.key)}
+                            aria-expanded={!isCollapsed}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              width: '100%',
+                              padding: '10px var(--space-6)',
+                              background: 'none',
+                              border: 'none',
+                              font: 'inherit',
+                              fontWeight: 600,
+                              fontSize: 14,
+                              letterSpacing: '0.01em',
+                              color: groupAnyOn ? 'var(--color-check)' : 'var(--color-text)',
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {/* Rotating chevron — same affordance as the sidebar's
+                                module groups (AppLayout.ModuleNavGroup). */}
+                            <span
+                              style={{
+                                display: 'flex',
+                                transform: isCollapsed ? 'rotate(0deg)' : 'rotate(90deg)',
+                                transition: 'transform 0.2s ease',
+                              }}
+                            >
+                              <ChevronRight size={14} />
+                            </span>
+                            {group.label}
+                            {/* How much of the group is granted — the one number
+                                worth keeping visible when the group is folded. */}
+                            <span
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 600,
+                                padding: '2px 8px',
+                                borderRadius: 999,
+                                color: groupAnyOn
+                                  ? 'var(--color-check)'
+                                  : 'var(--color-text-muted)',
+                                background: groupAnyOn ? 'var(--color-surface)' : 'transparent',
+                                border: `1px solid ${
+                                  groupAnyOn ? 'var(--color-check-border)' : 'var(--color-border)'
+                                }`,
+                              }}
+                            >
+                              {grantedModules} / {group.modules.length}
+                            </span>
+                          </button>
+                        </td>
+                        {group.modules[0]?.actions.map((a) => {
+                          const action = actionOf(a.key);
+                          const keys = group.modules.map((m) => `${m.resource}:${action}`);
+                          const on = keys.every((k) => selected.has(k));
+                          const some = keys.some((k) => selected.has(k));
+                          // Only lock View when clicking it would *clear* it —
+                          // a partly-ticked group must stay tickable.
+                          const locked = action === 'read' && on && groupReadLocked;
+                          return (
+                            <td key={a.key} style={{ padding: '10px 0', textAlign: 'center' }}>
+                              <TriCheckbox
+                                checked={on}
+                                indeterminate={some}
+                                disabled={locked}
+                                title={
+                                  locked
+                                    ? 'View is required by Create, Edit or Delete in this module.'
+                                    : `${a.label} — all of ${group.label}`
+                                }
+                                onChange={() => setKeys(keys, !on)}
+                              />
+                            </td>
+                          );
+                        })}
+                        <td style={{ padding: '10px 0', textAlign: 'center' }}>
+                          <TriCheckbox
+                            checked={groupAllOn}
+                            indeterminate={groupAnyOn}
+                            title={`Full access to ${group.label}`}
+                            onChange={() => setKeys(groupKeys, !groupAllOn)}
                           />
                         </td>
-                      ))}
-                      <td style={{ padding: '10px 0', textAlign: 'center' }}>
-                        <input
-                          type="checkbox"
-                          checked={allOn}
-                          onChange={() => toggleRow(keys, !allOn)}
-                          style={{ width: 16, height: 16, cursor: 'pointer' }}
-                        />
-                      </td>
-                    </tr>
+                      </tr>
+
+                      {/* Collapsed hides the rows, never the state — the main
+                          module's own checkboxes still summarise what's ticked. */}
+                      {!isCollapsed &&
+                        group.modules.map((module) => {
+                          const keys = module.actions.map((a) => a.key);
+                          const allOn = keys.every((k) => selected.has(k));
+                          const readLocked = ['create', 'update', 'delete'].some((a) =>
+                            selected.has(`${module.resource}:${a}`),
+                          );
+                          return (
+                            <tr
+                              key={module.resource}
+                              style={{ borderTop: '1px solid var(--color-border)' }}
+                            >
+                              <td
+                                style={{
+                                  padding: '10px var(--space-6) 10px calc(var(--space-6) + 20px)',
+                                  fontWeight: 500,
+                                  // Modules the role can't touch recede; the ones it
+                                  // can read at full contrast.
+                                  color: keys.some((k) => selected.has(k))
+                                    ? 'var(--color-text)'
+                                    : 'var(--color-text-muted)',
+                                }}
+                              >
+                                {module.label}
+                              </td>
+                              {module.actions.map((a) => {
+                                const locked =
+                                  actionOf(a.key) === 'read' && selected.has(a.key) && readLocked;
+                                return (
+                                  <td
+                                    key={a.key}
+                                    style={{ padding: '10px 0', textAlign: 'center' }}
+                                  >
+                                    <TriCheckbox
+                                      checked={selected.has(a.key)}
+                                      disabled={locked}
+                                      title={
+                                        locked
+                                          ? 'View is required by Create, Edit or Delete.'
+                                          : undefined
+                                      }
+                                      onChange={() => setKeys([a.key], !selected.has(a.key))}
+                                    />
+                                  </td>
+                                );
+                              })}
+                              <td style={{ padding: '10px 0', textAlign: 'center' }}>
+                                <TriCheckbox
+                                  checked={allOn}
+                                  indeterminate={keys.some((k) => selected.has(k))}
+                                  title={`Full access to ${module.label}`}
+                                  onChange={() => setKeys(keys, !allOn)}
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </Fragment>
                   );
                 })}
               </tbody>
