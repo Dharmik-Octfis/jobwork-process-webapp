@@ -66,6 +66,10 @@ model User {
   updatedCurrencies             Currency[]              @relation("CurrencyUpdatedBy")
   createdCustomFieldDefinitions CustomFieldDefinition[] @relation("CustomFieldDefinitionCreatedBy")
   updatedCustomFieldDefinitions CustomFieldDefinition[] @relation("CustomFieldDefinitionUpdatedBy")
+
+  listViewPreferences           ListViewPreference[]    @relation("ListViewPreferenceUser")
+  createdListViewPreferences    ListViewPreference[]    @relation("ListViewPreferenceCreatedBy")
+  updatedListViewPreferences    ListViewPreference[]    @relation("ListViewPreferenceUpdatedBy")
   createdPermissionTemplates    PermissionTemplate[]    @relation("PermissionTemplateCreatedBy")
   updatedPermissionTemplates    PermissionTemplate[]    @relation("PermissionTemplateUpdatedBy")
   createdPaymentTerms           PaymentTerm[]           @relation("PaymentTermCreatedBy")
@@ -139,6 +143,7 @@ model Organization {
   unitsOfMeasurement     UnitOfMeasurement[]
   currencies             Currency[]
   customFieldDefinitions CustomFieldDefinition[]
+  listViewPreferences    ListViewPreference[]
   permissionTemplates    PermissionTemplate[]
   paymentTerms           PaymentTerm[]
 
@@ -384,4 +389,48 @@ model PaymentTerm {
 
   @@unique([organizationId, termName])
   @@map("payment_terms")
+}
+
+/// Per-user, per-organization column layout for one module's list view — which
+/// columns are shown and in what order ("Customize Columns").
+///
+/// Per USER, not per org: a layout is a personal preference, so two members of
+/// the same organization can see different columns. The unique key is
+/// (user, organization, entityType).
+///
+/// No `custom_fields` column: this is a preferences row, not a domain entity an
+/// org adds fields to (same exclusion reasoning as the token/reference tables).
+/// Per-org custom FIELDS can still be *chosen* as columns — they're stored in
+/// `columns` as `cf:<key>`.
+model ListViewPreference {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  userId         String @map("user_id") @db.Uuid
+
+  /// vendor | customer | item — the module whose list this layout belongs to.
+  entityType String @map("entity_type") @db.VarChar(50)
+
+  /// Ordered array of visible column keys; position in the array IS the column
+  /// order. Built-in columns are plain keys ("displayName"); custom fields are
+  /// prefixed ("cf:truck_no"). Locked columns are re-asserted server-side on
+  /// save, so a tampered payload can't drop or move them.
+  columns Json @default("[]")
+
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation("ListViewPreferenceUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  createdByUser User? @relation("ListViewPreferenceCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("ListViewPreferenceUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  /// One layout per user per module per org. Saves upsert onto this key (and set
+  /// isDeleted:false), which is the documented way to live with soft-delete
+  /// holding a unique key.
+  @@unique([userId, organizationId, entityType])
+  @@map("list_view_preferences")
 }

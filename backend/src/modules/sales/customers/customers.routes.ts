@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   getCustomers,
+  getCustomerCount,
   createCustomer,
   updateCustomer,
   deleteCustomer,
@@ -42,6 +43,9 @@ router.post(
   validateBody(createCustomerSchema),
   createCustomer,
 );
+
+// Before '/:id' — otherwise '/count' is captured as a customer id.
+router.get('/count', requirePermission('customer:read'), getCustomerCount);
 
 router.get(
   '/preferences/number-sequence',

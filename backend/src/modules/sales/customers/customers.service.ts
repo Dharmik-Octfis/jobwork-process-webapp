@@ -8,7 +8,8 @@ import {
   validateCustomFields,
 } from '../../settings/customization/custom-fields/customFields.engine.ts';
 import type { Prisma } from '../../../../generated/prisma/client.ts';
-import { searchWhere, pageContext, type ListQuery } from '../../../lib/pagination.ts';
+import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
+import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 
 export type CustomerInput = Omit<
   Prisma.CustomerUncheckedCreateInput,
@@ -58,37 +59,47 @@ export type CustomerInput = Omit<
  * list, via the shared `searchWhere`/`pageContext` helpers. See `lib/pagination.ts`
  * and memory: list-search-pagination-pattern.
  */
-export async function getCustomersList(organizationId: string, opts: ListQuery) {
-  const { search, page, perPage } = opts;
-  return runAsTenant(organizationId, async (tx) => {
-    const where: Prisma.CustomerWhereInput = {
-      // The `where` is what the query *means*; RLS is the net under it. Both stay.
-      organizationId,
-      // isDeleted: false — soft-deleted customers never surface, search included.
-      isDeleted: false,
-      ...searchWhere<Prisma.CustomerWhereInput>(search, [
-        'displayName',
-        'companyName',
-        'emailAddress',
-        'customerNumber',
-        'workPhone',
-        'mobilePhone',
-      ]),
-    };
+/** The one `where` both the list and the count are built from — see vendors. */
+function customerListWhere(organizationId: string, opts: ListQuery): Prisma.CustomerWhereInput {
+  return {
+    // The `where` is what the query *means*; RLS is the net under it. Both stay.
+    organizationId,
+    // isDeleted: false — soft-deleted customers never surface, search included.
+    isDeleted: false,
+    // Preset view ("Active Customers"), spread in so it narrows rather than replaces.
+    ...filterWhere<Prisma.CustomerWhereInput>('customer', opts.filter),
+    ...searchWhere<Prisma.CustomerWhereInput>(opts.search, [
+      'displayName',
+      'companyName',
+      'emailAddress',
+      'customerNumber',
+      'workPhone',
+      'mobilePhone',
+    ]),
+  };
+}
 
-    // count + page share this one transaction; run sequentially (an interactive
-    // transaction multiplexes a single connection).
-    const total = await tx.customer.count({ where });
-    const results = await tx.customer.findMany({
-      where,
+export async function getCustomersList(organizationId: string, opts: ListQuery) {
+  const { page, perPage } = opts;
+  return runAsTenant(organizationId, async (tx) => {
+    // No COUNT here — one row beyond the page answers "is there a next page?".
+    const rows = await tx.customer.findMany({
+      where: customerListWhere(organizationId, opts),
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * perPage,
-      take: perPage,
+      take: takeForPage(perPage),
       include: { contactPersons: true, addresses: true },
     });
 
-    return { results, pageContext: pageContext(page, perPage, total) };
+    return pageSlice(rows, page, perPage);
   });
+}
+
+/** Total matching customers — only run when the client explicitly asks for it. */
+export async function countCustomers(organizationId: string, opts: ListQuery): Promise<number> {
+  return runAsTenant(organizationId, (tx) =>
+    tx.customer.count({ where: customerListWhere(organizationId, opts) }),
+  );
 }
 
 export async function createNewCustomer(

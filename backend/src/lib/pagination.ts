@@ -15,16 +15,26 @@ import { z } from 'zod';
  */
 export const listQuerySchema = z.object({
   search: z.string().trim().min(1).max(100).optional(),
+  /** Preset view key — see listFilters.catalog.ts. Omitted means "all". */
+  filter: z.string().trim().min(1).max(50).optional(),
   page: z.coerce.number().int().positive().default(1),
-  perPage: z.coerce.number().int().positive().max(100).default(20),
+  // Cap mirrors the client's largest page-size option (500). It exists so a
+  // hand-edited URL can't ask for the whole table in one query.
+  perPage: z.coerce.number().int().positive().max(500).default(25),
 });
 
 export type ListQuery = z.infer<typeof listQuerySchema>;
 
+/**
+ * NOTE: no `total`. Counting is deliberately NOT part of a list request — on a
+ * large tenant `COUNT(*)` over a filtered set is the most expensive part of the
+ * page, and it is only needed when someone actually wants the number. The client
+ * asks for it explicitly via each module's `/count` route (the "Total count: view"
+ * link). `hasMore` is derived instead by asking for one row more than the page.
+ */
 export interface PageContext {
   page: number;
   perPage: number;
-  total: number;
   hasMore: boolean;
 }
 
@@ -45,7 +55,24 @@ export function searchWhere<TWhere>(
   } as TWhere;
 }
 
-/** Pagination metadata to return beside `results`. */
-export function pageContext(page: number, perPage: number, total: number): PageContext {
-  return { page, perPage, total, hasMore: page * perPage < total };
+/**
+ * How many rows to actually fetch for a page: one more than asked. The extra row
+ * is never returned — its presence is what tells us another page exists, which is
+ * why the list needs no COUNT at all.
+ */
+export function takeForPage(perPage: number): number {
+  return perPage + 1;
+}
+
+/** Split the `perPage + 1` rows into the page and its `hasMore` flag. */
+export function pageSlice<T>(
+  rows: T[],
+  page: number,
+  perPage: number,
+): { results: T[]; pageContext: PageContext } {
+  const hasMore = rows.length > perPage;
+  return {
+    results: hasMore ? rows.slice(0, perPage) : rows,
+    pageContext: { page, perPage, hasMore },
+  };
 }

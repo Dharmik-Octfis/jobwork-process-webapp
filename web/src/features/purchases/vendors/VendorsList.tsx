@@ -1,12 +1,36 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchVendors, deleteVendor } from './vendors.api';
-import { Plus, ChevronDown, Building2 } from 'lucide-react';
+import { fetchVendors, fetchVendorCount, deleteVendor } from './vendors.api';
+import { Plus, Building2, SlidersHorizontal } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
 import { VendorDetail } from './VendorDetail';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Pagination } from '../../../components/ui/Pagination';
 import { useListSearch } from '../../../hooks/useListSearch';
+import { useListCount } from '../../../hooks/useListCount';
+import { useListColumns } from '../../../hooks/useListColumns';
+import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
+import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
+import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
+import type { Vendor } from './vendors.schemas';
+
+/**
+ * How each selectable column renders. Keys match the backend catalog
+ * (listViews.catalog.ts); anything prefixed `cf:` is a per-org custom field read
+ * out of the row's `customFields` blob, so a new custom field needs no code here.
+ */
+function renderVendorCell(vendor: Vendor, key: string): string {
+  if (key.startsWith(CUSTOM_FIELD_PREFIX)) {
+    const value = vendor.customFields?.[key.slice(CUSTOM_FIELD_PREFIX.length)];
+    if (value === null || value === undefined || value === '') return '-';
+    return Array.isArray(value) ? value.join(', ') : String(value);
+  }
+  const value = (vendor as unknown as Record<string, unknown>)[key];
+  if (value === null || value === undefined || value === '') return '-';
+  if (key === 'createdAt' || key === 'updatedAt')
+    return new Date(String(value)).toLocaleDateString();
+  return String(value);
+}
 
 // removed formatGstTreatment
 
@@ -18,13 +42,13 @@ export function VendorsList() {
 
   // Search term (from the global top-bar box, via `?search=`) + page cursor, both
   // from the shared hook so every list wires this the same way.
-  const { search, page, setPage } = useListSearch();
+  const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch();
 
   const { data, isLoading } = useQuery({
     // orgId in the key or an org switch serves the previous tenant's cache;
     // search + page so each term/page is cached separately.
-    queryKey: ['vendors', orgId, search, page],
-    queryFn: () => fetchVendors(orgId!, { search: search || undefined, page }),
+    queryKey: ['vendors', orgId, search, filter, page, perPage],
+    queryFn: () => fetchVendors(orgId!, { search: search || undefined, filter, page, perPage }),
     enabled: Boolean(orgId),
     // Keep the current page visible while the next one loads (v5 keepPreviousData).
     placeholderData: (prev) => prev,
@@ -32,6 +56,19 @@ export function VendorsList() {
 
   const vendors = data?.results ?? [];
   const pageContext = data?.pageContext;
+
+  // Total row count — fetched only when the user clicks "view".
+  const {
+    total,
+    isCounting,
+    request: requestCount,
+  } = useListCount(['vendors-count', orgId, search, filter], () =>
+    fetchVendorCount(orgId!, { search: search || undefined, filter }),
+  );
+
+  // Column layout ("Customize Columns") — per user, per org, per module.
+  const { catalog, visible, filters, columns, save: saveColumns } = useListColumns(orgId, 'vendor');
+  const [isColumnsOpen, setIsColumnsOpen] = useState(false);
 
   const queryClient = useQueryClient();
   const [vendorToDelete, setVendorToDelete] = useState<string | null>(null);
@@ -84,14 +121,35 @@ export function VendorsList() {
               borderBottom: '1px solid #eef0f3',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-              <h1 style={{ fontSize: '18px', fontWeight: 600, color: '#000', margin: 0 }}>
-                All Vendors
-              </h1>
-              <ChevronDown size={16} color="#0062ff" strokeWidth={2.5} />
-            </div>
+            <ListFilterDropdown
+              filters={filters}
+              value={filter}
+              onChange={setFilter}
+              fallbackLabel="All Vendors"
+            />
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              {!selectedVendorId && (
+                <button
+                  onClick={() => setIsColumnsOpen(true)}
+                  title="Customize Columns"
+                  aria-label="Customize Columns"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 30,
+                    height: 30,
+                    borderRadius: 4,
+                    border: '1px solid #e2e8f0',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    color: '#64748b',
+                  }}
+                >
+                  <SlidersHorizontal size={15} />
+                </button>
+              )}
               {!selectedVendorId && (
                 <button
                   onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/new`)}
@@ -237,11 +295,11 @@ export function VendorsList() {
                           borderBottom: '1px solid #eef0f3',
                         }}
                       >
-                        <th style={headerStyle}>NAME</th>
-                        <th style={headerStyle}>COMPANY NAME</th>
-                        <th style={headerStyle}>VENDOR NUMBER</th>
-                        <th style={headerStyle}>WORK PHONE</th>
-                        <th style={headerStyle}>EMAIL</th>
+                        {columns.map((col) => (
+                          <th key={col.key} style={headerStyle}>
+                            {col.label}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
@@ -257,28 +315,20 @@ export function VendorsList() {
                           onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
-                          <td
-                            style={{
-                              padding: '12px 16px',
-                              color: '#0062ff',
-                              fontSize: 13,
-                              fontWeight: 500,
-                            }}
-                          >
-                            {vendor.displayName}
-                          </td>
-                          <td style={{ padding: '12px 16px', color: '#333', fontSize: 13 }}>
-                            {vendor.companyName || '-'}
-                          </td>
-                          <td style={{ padding: '12px 16px', color: '#333', fontSize: 13 }}>
-                            {vendor.vendorNumber}
-                          </td>
-                          <td style={{ padding: '12px 16px', color: '#333', fontSize: 13 }}>
-                            {vendor.workPhone || '-'}
-                          </td>
-                          <td style={{ padding: '12px 16px', color: '#333', fontSize: 13 }}>
-                            {vendor.emailAddress || '-'}
-                          </td>
+                          {columns.map((col) => (
+                            <td
+                              key={col.key}
+                              style={{
+                                padding: '12px 16px',
+                                fontSize: 13,
+                                // The locked column is the identity you click through on.
+                                color: col.locked ? '#0062ff' : '#333',
+                                fontWeight: col.locked ? 500 : 400,
+                              }}
+                            >
+                              {renderVendorCell(vendor, col.key)}
+                            </td>
+                          ))}
                         </tr>
                       ))}
                     </tbody>
@@ -290,7 +340,16 @@ export function VendorsList() {
 
           {/* Pagination — hidden while a vendor is selected (narrow master pane) */}
           {!selectedVendorId && (
-            <Pagination pageContext={pageContext} page={page} onPageChange={setPage} />
+            <Pagination
+              pageContext={pageContext}
+              page={page}
+              onPageChange={setPage}
+              perPage={perPage}
+              onPerPageChange={setPerPage}
+              total={total}
+              isCounting={isCounting}
+              onRequestCount={() => void requestCount()}
+            />
           )}
         </div>
 
@@ -301,6 +360,15 @@ export function VendorsList() {
           </div>
         )}
       </div>
+
+      <CustomizeColumnsModal
+        isOpen={isColumnsOpen}
+        onClose={() => setIsColumnsOpen(false)}
+        catalog={catalog}
+        visible={visible}
+        isSaving={saveColumns.isPending}
+        onSave={(cols) => saveColumns.mutate(cols, { onSuccess: () => setIsColumnsOpen(false) })}
+      />
 
       <ConfirmDialog
         isOpen={!!vendorToDelete}

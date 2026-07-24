@@ -63,6 +63,10 @@ export const customerSchema = z.object({
   updatedAt: z.string(),
   contactPersons: z.array(customerContactPersonSchema).optional(),
   addresses: z.array(customerAddressSchema).optional(),
+
+  // Kept on the response so `cf:<key>` columns chosen in Customize Columns can be
+  // rendered. Without it zod would strip the blob and those columns render blank.
+  customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type Customer = z.infer<typeof customerSchema>;

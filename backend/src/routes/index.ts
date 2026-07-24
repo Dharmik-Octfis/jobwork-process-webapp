@@ -19,6 +19,7 @@ import { customFieldsRouter } from '../modules/settings/customization/custom-fie
 import { permissionTemplatesRouter } from '../modules/settings/organization/permission-templates/permission-templates.routes.ts';
 import { membersRouter } from '../modules/settings/organization/members/members.routes.ts';
 import { itemsRouter } from '../modules/items/items.routes.ts';
+import { listViewsRouter } from '../modules/settings/list-views/listViews.routes.ts';
 
 /** Mounts every module router under `/api` (architecture §4). */
 export const apiRouter = Router();
@@ -47,6 +48,7 @@ apiRouter.use('/organizations/:orgId/custom-fields', customFieldsRouter);
 apiRouter.use('/organizations/:orgId/permission-templates', permissionTemplatesRouter);
 apiRouter.use('/organizations/:orgId/members', membersRouter);
 apiRouter.use('/organizations/:orgId/items', itemsRouter);
+apiRouter.use('/organizations/:orgId/list-views', listViewsRouter);
 apiRouter.use('/organizations/:orgId/seed-data', tenantSeedDataRouter);
 apiRouter.use('/seed-data', globalSeedDataRouter);
 

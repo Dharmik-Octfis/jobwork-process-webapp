@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Mail, Trash2, ShieldAlert } from 'lucide-react';
@@ -11,6 +11,7 @@ import { invitationsApi } from './invitations.api';
 import { rolesApi } from '../roles/roles.api';
 import { membersApi } from '../members/members.api';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { Select } from '../../components/ui/Select';
 import '../organizations/CreateOrganizationForm.css';
 
 const inviteSchema = z.object({
@@ -69,6 +70,10 @@ export function InviteMembersPage() {
     register,
     handleSubmit,
     reset,
+    // The role field is a hand-built <Select>, not an <input>, so it can't be
+    // `register`ed — it goes through <Controller> (react-hook-form's supported
+    // path for custom controls) rather than watch/setValue.
+    control,
     formState: { errors, isSubmitting },
   } = useForm<InviteValues>({
     resolver: zodResolver(inviteSchema),
@@ -225,14 +230,20 @@ export function InviteMembersPage() {
 
                 <div className="org-form-group" style={{ flex: '0 0 180px', margin: 0 }}>
                   <label>Role</label>
-                  <select className="org-form-select" {...register('permissionTemplateId')}>
-                    <option value="">Select a role…</option>
-                    {assignableRoles.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.name}
-                      </option>
-                    ))}
-                  </select>
+                  <Controller
+                    name="permissionTemplateId"
+                    control={control}
+                    render={({ field }) => (
+                      <Select
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        options={assignableRoles.map((r) => ({ value: r.id, label: r.name }))}
+                        placeholder="Select a role…"
+                        hasError={Boolean(errors.permissionTemplateId)}
+                        ariaLabel="Role"
+                      />
+                    )}
+                  />
                   {errors.permissionTemplateId && (
                     <p className="org-form-error-msg">{errors.permissionTemplateId.message}</p>
                   )}
@@ -254,16 +265,21 @@ export function InviteMembersPage() {
                     type="submit"
                     disabled={isSubmitting || createMutation.isPending}
                     style={{
+                      // 32px + var(--radius-sm) + 13px text: the same box the
+                      // email and role controls beside it are, so the row lines up.
+                      height: 32,
+                      padding: '0 16px',
                       background: 'var(--color-primary)',
-                      color: 'white',
-                      border: 'none',
-                      padding: '10px 20px',
-                      borderRadius: 'var(--radius-md)',
+                      color: 'var(--color-primary-contrast)',
+                      border: '1px solid var(--color-primary)',
+                      borderRadius: 'var(--radius-sm)',
+                      fontFamily: 'var(--font-sans)',
+                      fontSize: 13,
                       fontWeight: 600,
                       cursor: createMutation.isPending ? 'not-allowed' : 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 8,
+                      gap: 6,
                       whiteSpace: 'nowrap',
                       opacity: createMutation.isPending ? 0.7 : 1,
                     }}
@@ -341,25 +357,20 @@ export function InviteMembersPage() {
                         </span>
                       ) : (
                         <>
-                          <select
-                            className="org-form-select"
-                            style={{ minWidth: 160 }}
+                          <Select
                             value={m.permissionTemplateId ?? ''}
                             disabled={assignRoleMutation.isPending || !hasRoles}
-                            onChange={(e) =>
-                              assignRoleMutation.mutate({
-                                membershipId: m.id,
-                                roleId: e.target.value,
-                              })
+                            minWidth={160}
+                            fullWidth={false}
+                            ariaLabel={`Role for ${m.email}`}
+                            // Shown when the member has no role yet — the old
+                            // markup used an empty <option>No role</option>.
+                            placeholder="No role"
+                            options={assignableRoles.map((r) => ({ value: r.id, label: r.name }))}
+                            onChange={(roleId) =>
+                              assignRoleMutation.mutate({ membershipId: m.id, roleId })
                             }
-                          >
-                            {!m.permissionTemplateId && <option value="">No role</option>}
-                            {assignableRoles.map((r) => (
-                              <option key={r.id} value={r.id}>
-                                {r.name}
-                              </option>
-                            ))}
-                          </select>
+                          />
                           <button
                             onClick={() => setMemberToRemove(m.id)}
                             title="Remove member"

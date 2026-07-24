@@ -36,6 +36,7 @@ const TENANT_TABLES = [
   'payment_terms',
   'custom_field_definitions',
   'permission_templates',
+  'list_view_preferences',
 ] as const;
 
 /**

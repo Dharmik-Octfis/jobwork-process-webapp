@@ -8,7 +8,8 @@ import {
   validateCustomFields,
 } from '../../settings/customization/custom-fields/customFields.engine.ts';
 import type { Prisma } from '../../../../generated/prisma/client.ts';
-import { searchWhere, pageContext, type ListQuery } from '../../../lib/pagination.ts';
+import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
+import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 
 export type VendorInput = Omit<
   Prisma.VendorUncheckedCreateInput,
@@ -58,38 +59,51 @@ export type VendorInput = Omit<
  * handful of columns via the shared `searchWhere` helper. Response carries a
  * `pageContext`. See `lib/pagination.ts` and memory: list-search-pagination-pattern.
  */
-export async function getVendorsList(organizationId: string, opts: ListQuery) {
-  const { search, page, perPage } = opts;
-  return runAsTenant(organizationId, async (tx) => {
-    const where: Prisma.VendorWhereInput = {
-      // The `where` is what the query *means*; RLS is the net under it. Both stay.
-      organizationId,
-      // isDeleted: false — soft-deleted vendors never surface, search included.
-      isDeleted: false,
-      ...searchWhere<Prisma.VendorWhereInput>(search, [
-        'displayName',
-        'companyName',
-        'emailAddress',
-        'vendorNumber',
-        'workPhone',
-        'mobilePhone',
-      ]),
-    };
+/**
+ * The one `where` both the list and the count are built from — so "12 results"
+ * can never disagree with the rows on screen because the two queries drifted.
+ */
+function vendorListWhere(organizationId: string, opts: ListQuery): Prisma.VendorWhereInput {
+  return {
+    // The `where` is what the query *means*; RLS is the net under it. Both stay.
+    organizationId,
+    // isDeleted: false — soft-deleted vendors never surface, search included.
+    isDeleted: false,
+    // Preset view ("Active Vendors"), spread in so it narrows rather than replaces.
+    ...filterWhere<Prisma.VendorWhereInput>('vendor', opts.filter),
+    ...searchWhere<Prisma.VendorWhereInput>(opts.search, [
+      'displayName',
+      'companyName',
+      'emailAddress',
+      'vendorNumber',
+      'workPhone',
+      'mobilePhone',
+    ]),
+  };
+}
 
-    // count + page share this one transaction (and its one pooled connection).
-    // Run sequentially, not Promise.all: an interactive transaction multiplexes a
-    // single connection, so concurrent queries on `tx` can error.
-    const total = await tx.vendor.count({ where });
-    const results = await tx.vendor.findMany({
-      where,
+export async function getVendorsList(organizationId: string, opts: ListQuery) {
+  const { page, perPage } = opts;
+  return runAsTenant(organizationId, async (tx) => {
+    // No COUNT here — fetch one row beyond the page and let its presence answer
+    // "is there a next page?". The total is a separate, opt-in request.
+    const rows = await tx.vendor.findMany({
+      where: vendorListWhere(organizationId, opts),
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * perPage,
-      take: perPage,
+      take: takeForPage(perPage),
       include: { contactPersons: true, addresses: true },
     });
 
-    return { results, pageContext: pageContext(page, perPage, total) };
+    return pageSlice(rows, page, perPage);
   });
+}
+
+/** Total matching vendors — only run when the client explicitly asks for it. */
+export async function countVendors(organizationId: string, opts: ListQuery): Promise<number> {
+  return runAsTenant(organizationId, (tx) =>
+    tx.vendor.count({ where: vendorListWhere(organizationId, opts) }),
+  );
 }
 
 export async function createNewVendor(organizationId: string, data: VendorInput, userId?: string) {
