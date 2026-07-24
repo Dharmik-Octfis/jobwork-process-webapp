@@ -7,7 +7,8 @@ import {
   validateCustomFields,
 } from '../settings/customization/custom-fields/customFields.engine.ts';
 import type { Prisma } from '../../../generated/prisma/client.ts';
-import { searchWhere, pageContext, type ListQuery } from '../../lib/pagination.ts';
+import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../lib/pagination.ts';
+import { filterWhere } from '../settings/list-views/listFilters.catalog.ts';
 
 export class ItemsService {
   /**
@@ -15,35 +16,46 @@ export class ItemsService {
    * customers, via the shared `searchWhere`/`pageContext` helpers. See
    * `lib/pagination.ts` and memory: list-search-pagination-pattern.
    */
-  async findMany(organizationId: string, opts: ListQuery) {
-    const { search, page, perPage } = opts;
-    return runAsTenant(organizationId, async (tx) => {
-      const where: Prisma.ItemWhereInput = {
-        // The `where` is what the query *means*; RLS is the net under it. Both stay.
-        organizationId,
-        // isDeleted: false — soft-deleted items never surface, search included.
-        isDeleted: false,
-        ...searchWhere<Prisma.ItemWhereInput>(search, [
-          'name',
-          'sku',
-          'aliasName',
-          'category',
-          'brand',
-          'hsnCode',
-        ]),
-      };
+  /** The one `where` both the list and the count are built from — see vendors. */
+  private listWhere(organizationId: string, opts: ListQuery): Prisma.ItemWhereInput {
+    return {
+      // The `where` is what the query *means*; RLS is the net under it. Both stay.
+      organizationId,
+      // isDeleted: false — soft-deleted items never surface, search included.
+      isDeleted: false,
+      // Preset view ("Goods"), spread in so it narrows rather than replaces.
+      ...filterWhere<Prisma.ItemWhereInput>('item', opts.filter),
+      ...searchWhere<Prisma.ItemWhereInput>(opts.search, [
+        'name',
+        'sku',
+        'aliasName',
+        'category',
+        'brand',
+        'hsnCode',
+      ]),
+    };
+  }
 
-      // count + page share this one transaction; run sequentially.
-      const total = await tx.item.count({ where });
-      const results = await tx.item.findMany({
-        where,
+  async findMany(organizationId: string, opts: ListQuery) {
+    const { page, perPage } = opts;
+    return runAsTenant(organizationId, async (tx) => {
+      // No COUNT here — one row beyond the page answers "is there a next page?".
+      const rows = await tx.item.findMany({
+        where: this.listWhere(organizationId, opts),
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * perPage,
-        take: perPage,
+        take: takeForPage(perPage),
       });
 
-      return { results, pageContext: pageContext(page, perPage, total) };
+      return pageSlice(rows, page, perPage);
     });
+  }
+
+  /** Total matching items — only run when the client explicitly asks for it. */
+  async count(organizationId: string, opts: ListQuery): Promise<number> {
+    return runAsTenant(organizationId, (tx) =>
+      tx.item.count({ where: this.listWhere(organizationId, opts) }),
+    );
   }
 
   async findUnique(id: string, organizationId: string) {

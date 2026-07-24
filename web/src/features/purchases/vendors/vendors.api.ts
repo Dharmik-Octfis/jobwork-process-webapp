@@ -155,6 +155,12 @@ export async function fetchVendors(orgId: string, params: PageParams = {}): Prom
   });
 }
 
+/** Total matching vendors — only called when the user clicks "view". */
+export async function fetchVendorCount(orgId: string, params: PageParams = {}): Promise<number> {
+  const response = await apiClient.get(`${endpoints.purchases.vendors(orgId)}/count`, { params });
+  return (response.data as { total: number }).total;
+}
+
 export async function createVendor(orgId: string, data: CreateVendorData): Promise<Vendor> {
   const payload = mapFlatToAddresses(data);
   const response = await apiClient.post(endpoints.purchases.vendors(orgId), payload);

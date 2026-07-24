@@ -18,6 +18,13 @@ export class ItemsController {
     sendSuccess(res, await itemsService.findMany(req.tenantId!, parsed.data));
   }
 
+  /** Total matching items — the "Total count: view" link. */
+  async getItemCount(req: Request, res: Response) {
+    const parsed = listQuerySchema.safeParse(req.query);
+    if (!parsed.success) throw ApiError.badRequest('Invalid search parameters.');
+    sendSuccess(res, { total: await itemsService.count(req.tenantId!, parsed.data) });
+  }
+
   async getItem(req: Request, res: Response) {
     sendSuccess(res, await itemsService.findUnique(req.params.id as string, req.tenantId!));
   }

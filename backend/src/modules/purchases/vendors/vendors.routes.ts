@@ -10,6 +10,7 @@ import {
   createVendorCommentRoute,
   deleteVendorCommentRoute,
   getNumberPreferenceRoute,
+  getVendorCount,
   updateNumberPreferenceRoute,
 } from './vendors.controller.ts';
 import { authenticate } from '../../../middlewares/authenticate.ts';
@@ -41,6 +42,9 @@ router.post(
   validateBody(createVendorSchema),
   createVendor,
 );
+
+// Before '/:id' — otherwise '/count' is captured as a vendor id.
+router.get('/count', requirePermission('vendor:read'), getVendorCount);
 
 router.get(
   '/preferences/number-sequence',

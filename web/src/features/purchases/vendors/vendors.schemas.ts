@@ -62,6 +62,10 @@ export const vendorSchema = z.object({
   updatedAt: z.string(),
   contactPersons: z.array(vendorContactPersonSchema).optional(),
   addresses: z.array(vendorAddressSchema).optional(),
+
+  // Kept on the response so `cf:<key>` columns chosen in Customize Columns can be
+  // rendered. Without it zod would strip the blob and those columns render blank.
+  customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type Vendor = z.infer<typeof vendorSchema>;

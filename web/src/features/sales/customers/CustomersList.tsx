@@ -1,12 +1,36 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchCustomers, deleteCustomer } from './customers.api';
-import { Plus, ChevronDown, Building2 } from 'lucide-react';
+import { fetchCustomers, fetchCustomerCount, deleteCustomer } from './customers.api';
+import { Plus, Building2, SlidersHorizontal } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
 import { CustomerDetail } from './CustomerDetail';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Pagination } from '../../../components/ui/Pagination';
 import { useListSearch } from '../../../hooks/useListSearch';
+import { useListCount } from '../../../hooks/useListCount';
+import { useListColumns } from '../../../hooks/useListColumns';
+import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
+import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
+import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
+import type { Customer } from './customers.schemas';
+
+/**
+ * How each selectable column renders. Keys match the backend catalog
+ * (listViews.catalog.ts); anything prefixed `cf:` is a per-org custom field read
+ * out of the row's `customFields` blob, so a new custom field needs no code here.
+ */
+function renderCustomerCell(customer: Customer, key: string): string {
+  if (key.startsWith(CUSTOM_FIELD_PREFIX)) {
+    const value = customer.customFields?.[key.slice(CUSTOM_FIELD_PREFIX.length)];
+    if (value === null || value === undefined || value === '') return '-';
+    return Array.isArray(value) ? value.join(', ') : String(value);
+  }
+  const value = (customer as unknown as Record<string, unknown>)[key];
+  if (value === null || value === undefined || value === '') return '-';
+  if (key === 'createdAt' || key === 'updatedAt')
+    return new Date(String(value)).toLocaleDateString();
+  return String(value);
+}
 
 // removed formatGstTreatment
 
@@ -17,17 +41,36 @@ export function CustomersList() {
   const selectedCustomerId = searchParams.get('id');
 
   // Search term (from the global top-bar box, via `?search=`) + page cursor.
-  const { search, page, setPage } = useListSearch();
+  const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['customers', orgId, search, page],
-    queryFn: () => fetchCustomers(orgId!, { search: search || undefined, page }),
+    queryKey: ['customers', orgId, search, filter, page, perPage],
+    queryFn: () => fetchCustomers(orgId!, { search: search || undefined, filter, page, perPage }),
     enabled: Boolean(orgId),
     placeholderData: (prev) => prev,
   });
 
   const customers = data?.results ?? [];
   const pageContext = data?.pageContext;
+
+  // Total row count — fetched only when the user clicks "view".
+  const {
+    total,
+    isCounting,
+    request: requestCount,
+  } = useListCount(['customers-count', orgId, search, filter], () =>
+    fetchCustomerCount(orgId!, { search: search || undefined, filter }),
+  );
+
+  // Column layout ("Customize Columns") — per user, per org, per module.
+  const {
+    catalog,
+    visible,
+    filters,
+    columns,
+    save: saveColumns,
+  } = useListColumns(orgId, 'customer');
+  const [isColumnsOpen, setIsColumnsOpen] = useState(false);
 
   const queryClient = useQueryClient();
   const [customerToDelete, setCustomerToDelete] = useState<string | null>(null);
@@ -80,14 +123,35 @@ export function CustomersList() {
               borderBottom: '1px solid #eef0f3',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-              <h1 style={{ fontSize: '18px', fontWeight: 600, color: '#000', margin: 0 }}>
-                All Customers
-              </h1>
-              <ChevronDown size={16} color="#0062ff" strokeWidth={2.5} />
-            </div>
+            <ListFilterDropdown
+              filters={filters}
+              value={filter}
+              onChange={setFilter}
+              fallbackLabel="All Customers"
+            />
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              {!selectedCustomerId && (
+                <button
+                  onClick={() => setIsColumnsOpen(true)}
+                  title="Customize Columns"
+                  aria-label="Customize Columns"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 30,
+                    height: 30,
+                    borderRadius: 4,
+                    border: '1px solid #e2e8f0',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    color: '#64748b',
+                  }}
+                >
+                  <SlidersHorizontal size={15} />
+                </button>
+              )}
               {!selectedCustomerId && (
                 <button
                   onClick={() => navigate(`/organizations/${orgId}/sales/customers/new`)}
@@ -234,11 +298,11 @@ export function CustomersList() {
                           borderBottom: '1px solid #eef0f3',
                         }}
                       >
-                        <th style={headerStyle}>NAME</th>
-                        <th style={headerStyle}>COMPANY NAME</th>
-                        <th style={headerStyle}>VENDOR NUMBER</th>
-                        <th style={headerStyle}>WORK PHONE</th>
-                        <th style={headerStyle}>EMAIL</th>
+                        {columns.map((col) => (
+                          <th key={col.key} style={headerStyle}>
+                            {col.label}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
@@ -254,28 +318,20 @@ export function CustomersList() {
                           onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
-                          <td
-                            style={{
-                              padding: '12px 16px',
-                              color: '#0062ff',
-                              fontSize: 13,
-                              fontWeight: 500,
-                            }}
-                          >
-                            {customer.displayName}
-                          </td>
-                          <td style={{ padding: '12px 16px', color: '#333', fontSize: 13 }}>
-                            {customer.companyName || '-'}
-                          </td>
-                          <td style={{ padding: '12px 16px', color: '#333', fontSize: 13 }}>
-                            {customer.customerNumber}
-                          </td>
-                          <td style={{ padding: '12px 16px', color: '#333', fontSize: 13 }}>
-                            {customer.workPhone || '-'}
-                          </td>
-                          <td style={{ padding: '12px 16px', color: '#333', fontSize: 13 }}>
-                            {customer.emailAddress || '-'}
-                          </td>
+                          {columns.map((col) => (
+                            <td
+                              key={col.key}
+                              style={{
+                                padding: '12px 16px',
+                                fontSize: 13,
+                                // The locked column is the identity you click through on.
+                                color: col.locked ? '#0062ff' : '#333',
+                                fontWeight: col.locked ? 500 : 400,
+                              }}
+                            >
+                              {renderCustomerCell(customer, col.key)}
+                            </td>
+                          ))}
                         </tr>
                       ))}
                     </tbody>
@@ -287,7 +343,16 @@ export function CustomersList() {
 
           {/* Pagination — hidden while a customer is selected (narrow master pane) */}
           {!selectedCustomerId && (
-            <Pagination pageContext={pageContext} page={page} onPageChange={setPage} />
+            <Pagination
+              pageContext={pageContext}
+              page={page}
+              onPageChange={setPage}
+              perPage={perPage}
+              onPerPageChange={setPerPage}
+              total={total}
+              isCounting={isCounting}
+              onRequestCount={() => void requestCount()}
+            />
           )}
         </div>
 
@@ -298,6 +363,15 @@ export function CustomersList() {
           </div>
         )}
       </div>
+
+      <CustomizeColumnsModal
+        isOpen={isColumnsOpen}
+        onClose={() => setIsColumnsOpen(false)}
+        catalog={catalog}
+        visible={visible}
+        isSaving={saveColumns.isPending}
+        onSave={(cols) => saveColumns.mutate(cols, { onSuccess: () => setIsColumnsOpen(false) })}
+      />
 
       <ConfirmDialog
         isOpen={!!customerToDelete}

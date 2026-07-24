@@ -15,6 +15,12 @@ export const itemsApi = {
     return response.data as ItemsPage;
   },
 
+  /** Total matching items — only called when the user clicks "view". */
+  getItemCount: async (orgId: string, params: PageParams = {}): Promise<number> => {
+    const response = await apiClient.get(`${endpoints.seedData.items(orgId)}/count`, { params });
+    return (response.data as { total: number }).total;
+  },
+
   getItem: async (orgId: string, id: string): Promise<Item> => {
     const response = await apiClient.get(`${endpoints.seedData.items(orgId)}/${id}`);
     return response.data;

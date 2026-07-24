@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import {
   getVendorsList,
+  countVendors,
   createNewVendor,
   getVendorById,
   updateVendorById,
@@ -245,6 +246,15 @@ export const getVendors = async (req: Request, res: Response) => {
   if (!parsed.success) throw ApiError.badRequest('Invalid search parameters.');
   const data = await getVendorsList(req.tenantId!, parsed.data);
   sendSuccess(res, data);
+};
+
+/** Total matching vendors — the "Total count: view" link. Same query params as
+ * the list so the number always describes the rows on screen. */
+export const getVendorCount = async (req: Request, res: Response) => {
+  const parsed = listQuerySchema.safeParse(req.query);
+  if (!parsed.success) throw ApiError.badRequest('Invalid search parameters.');
+  const total = await countVendors(req.tenantId!, parsed.data);
+  sendSuccess(res, { total });
 };
 
 export const createVendor = async (req: Request, res: Response) => {
