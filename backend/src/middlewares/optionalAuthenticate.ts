@@ -9,6 +9,11 @@ import { verifyAccessToken } from '../lib/jwt.ts';
  * Used by the invitation-accept route, which serves two callers on the same
  * endpoint — a logged-in user joining an org, and an anonymous new user
  * creating an account from the invite. The handler branches on `req.user`.
+ *
+ * Same signature-only caveat as `authenticate`: for up to `JWT_ACCESS_TTL` a
+ * deactivated or soft-deleted user still presents as logged in here, and so
+ * takes the join-existing-account branch. Read that middleware's header before
+ * assuming `req.user` means the account is currently in good standing.
  */
 export function optionalAuthenticate(req: Request, _res: Response, next: NextFunction): void {
   const header = req.headers.authorization;

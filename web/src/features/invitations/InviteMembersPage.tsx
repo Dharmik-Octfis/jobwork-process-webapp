@@ -301,16 +301,21 @@ export function InviteMembersPage() {
                     type="submit"
                     disabled={isSubmitting || createMutation.isPending}
                     style={{
+                      // 32px + var(--radius-sm) + 13px text: the same box the
+                      // email and role controls beside it are, so the row lines up.
+                      height: 32,
+                      padding: '0 16px',
                       background: 'var(--color-primary)',
-                      color: 'white',
-                      border: 'none',
-                      padding: '10px 20px',
-                      borderRadius: 'var(--radius-md)',
+                      color: 'var(--color-primary-contrast)',
+                      border: '1px solid var(--color-primary)',
+                      borderRadius: 'var(--radius-sm)',
+                      fontFamily: 'var(--font-sans)',
+                      fontSize: 13,
                       fontWeight: 600,
                       cursor: createMutation.isPending ? 'not-allowed' : 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 8,
+                      gap: 6,
                       whiteSpace: 'nowrap',
                       opacity: createMutation.isPending ? 0.7 : 1,
                     }}

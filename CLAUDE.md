@@ -9,6 +9,52 @@ expensive when you do.
 
 ---
 
+## 🔴 Three middlewares, three questions — all required
+
+| Middleware          | Question it answers                         | How                                        | Checked live?    |
+| ------------------- | ------------------------------------------- | ------------------------------------------ | ---------------- |
+| `authenticate`      | Was this token signed by us and unexpired?  | JWT verify — **no database access at all** | ❌ no            |
+| `tenantContext`     | Is the caller a current member of this org? | `memberships` where `isDeleted: false`     | ✅ every request |
+| `requirePermission` | May they perform this action?               | the caller's resolved permission set       | ✅ every request |
+
+A protected route missing any of these fails **open and silently** — same shape as a tenant table
+with no RLS policy. Mount them in that order; each needs what the one before it set.
+
+🔴 **`authenticate` proves the token, not the account.** A signature only proves the token was
+genuine _when it was minted_. It is never resolved against `refresh_tokens`, so for up to
+`JWT_ACCESS_TTL` (**15m**) an access token keeps working after its owner was deactivated,
+soft-deleted, or logged out, and after their session row was revoked. `sid` is a claim on this path,
+nothing more. **This is a deliberate throughput trade made 2026-07-24, not an oversight** — a
+per-request `sid` lookup was implemented and then removed. Do not "fix" it by reinstating an
+unconditional lookup; if the window ever needs closing, cache the lookup on `sid` with a short TTL so
+the staleness bound is tunable. `middlewares/authenticate.test.ts` pins the current behaviour, window
+included.
+
+**So revocation happens at the refresh boundary, and only there.** `auth.service.refresh` is the
+entire enforcement surface: row must exist, belong to `sub`, be unexpired, and the user must satisfy
+`ACTIVE_USER` — and it revokes every session when that fails. Weaken it and a disabled account works
+**forever** instead of for 15 minutes. It is guarded by the second describe block in that test file.
+
+What is _not_ bounded by 15 minutes, because it is re-read on every request: **org membership**
+(removal takes effect immediately, on every device), **permissions**, and **row visibility**.
+
+**One definition of "usable account".** `ACTIVE_USER` (`lib/authGuards.ts`) is `{ isActive: true,
+isDeleted: false }` — put it in the `where`, or use `isUsableAccount(row)` where you already hold the
+row (`login` reads the user _before_ checking the password so a disabled account can't be told apart
+from a wrong one). Never spell the flags out inline: two flags means two chances to check only one,
+which is exactly how `isDeleted` came to be checked in zero places while `isActive` was checked in two.
+
+🔴 **Flipping `isActive → false` or `isDeleted → true` on a `User` must call `revokeUserSessions()`
+in the same transaction.** `onDelete: Cascade` on `refresh_tokens.user_id` only fires on a _hard_
+delete, and this codebase soft-deletes everywhere. Since nothing on the request path checks the
+account, this is what makes deactivation take effect at all — at the user's next refresh.
+
+**Tests:** suites run against the dev database **in parallel**, so a test that mutates a user it
+merely _found_ will break whatever another suite is doing with that user at that moment. Create your
+own fixtures and hard-delete them — see `middlewares/authenticate.test.ts`.
+
+---
+
 ## 🔴 Tenant isolation — read before writing any query
 
 **Two layers. Both are required. They catch different mistakes.**

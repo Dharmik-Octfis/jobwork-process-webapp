@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import {
   getCustomersList,
+  countCustomers,
   createNewCustomer,
   getCustomerById,
   updateCustomerById,
@@ -241,6 +242,14 @@ export const getCustomers = async (req: Request, res: Response) => {
   if (!parsed.success) throw ApiError.badRequest('Invalid search parameters.');
   const data = await getCustomersList(req.tenantId!, parsed.data);
   sendSuccess(res, data);
+};
+
+/** Total matching customers — the "Total count: view" link. */
+export const getCustomerCount = async (req: Request, res: Response) => {
+  const parsed = listQuerySchema.safeParse(req.query);
+  if (!parsed.success) throw ApiError.badRequest('Invalid search parameters.');
+  const total = await countCustomers(req.tenantId!, parsed.data);
+  sendSuccess(res, { total });
 };
 
 export const createCustomer = async (req: Request, res: Response) => {

@@ -170,6 +170,8 @@ router.post(
   validateBody(createItemSchema),
   itemsController.createItem,
 );
+// Before '/:id' — otherwise '/count' is captured as an item id.
+router.get('/count', requirePermission('item:read'), itemsController.getItemCount);
 router.get('/:id', requirePermission('item:read'), itemsController.getItem);
 router.get('/:id/activities', requirePermission('item:read'), itemsController.getItemActivities);
 router.get('/:id/signed-url', requirePermission('item:read'), itemsController.getSignedUrl);

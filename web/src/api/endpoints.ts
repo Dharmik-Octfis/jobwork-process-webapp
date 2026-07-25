@@ -74,4 +74,7 @@ export const endpoints = {
   seedData: {
     items: (orgId: string) => `/organizations/${orgId}/items`,
   },
+  /** Per-user list column layout ("Customize Columns") for one module. */
+  listViews: (orgId: string, entityType: string) =>
+    `/organizations/${orgId}/list-views/${entityType}`,
 } as const;

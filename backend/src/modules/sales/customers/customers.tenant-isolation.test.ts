@@ -35,15 +35,15 @@ describe('customers — cross-tenant isolation', () => {
     const token = signAccessToken(memberId, 'session-for-test');
 
     const res = await request(createApp())
-      .get(customersUrl(org.id))
+      .get(`${customersUrl(org.id)}?perPage=100`)
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
-    // The list now returns { results, pageContext } inside the envelope's `data`.
-    const { results, pageContext } = res.body.data;
+    // The list no longer returns a total (counting is opt-in via /count), so the
+    // request above asks for a page big enough to hold them all and we count rows.
+    const { results } = res.body.data;
     expect(Array.isArray(results)).toBe(true);
-    // pageContext.total is the full count; `results` is one (default) page of it.
-    expect(pageContext.total).toBe(org.customers);
+    expect(results.length).toBe(org.customers);
     for (const customer of results) expect(customer.organizationId).toBe(org.id);
   });
 
@@ -225,12 +225,11 @@ describe('customers — cross-tenant isolation', () => {
       .set('Authorization', `Bearer ${token}`);
 
     if (res.status === 200) {
-      const { results, pageContext } = res.body.data;
+      const { results } = res.body.data;
       expect(
         results,
         `LEAK via search: outsider ${outsider.id} matched rows in "${victimOrg.name}".`,
       ).toEqual([]);
-      expect(pageContext.total).toBe(0);
     } else {
       expect([401, 403, 404]).toContain(res.status);
     }

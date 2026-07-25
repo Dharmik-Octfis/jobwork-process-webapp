@@ -1,6 +1,7 @@
 import { Prisma } from '../../../generated/prisma/client.ts';
 import { prisma } from '../../db/prisma.ts';
 import { ApiError } from '../../lib/apiError.ts';
+import { ACTIVE_USER, isUsableAccount, revokeUserSessions } from '../../lib/authGuards.ts';
 import {
   signAccessToken,
   signRefreshToken,
@@ -75,7 +76,7 @@ export async function signup(input: SignupInput): Promise<AuthResult> {
 export async function login(input: LoginInput): Promise<AuthResult> {
   const user = await prisma.user.findUnique({
     where: { email: input.email },
-    select: { ...publicUserSelect, passwordHash: true, isActive: true },
+    select: { ...publicUserSelect, passwordHash: true, isActive: true, isDeleted: true },
   });
 
   if (!user?.passwordHash) {
@@ -91,7 +92,9 @@ export async function login(input: LoginInput): Promise<AuthResult> {
 
   // Checked after the password so a disabled account can't be distinguished
   // from a wrong password by anyone who doesn't already know the password.
-  if (!user.isActive) {
+  // Both flags, via the shared predicate — `isActive` alone used to let a
+  // soft-deleted user log in normally.
+  if (!isUsableAccount(user)) {
     throw new ApiError(403, 'This account has been disabled.');
   }
 
@@ -142,7 +145,7 @@ export async function refresh(oldRefreshToken: string): Promise<AuthResult> {
   // ✅ 2. Check if it exists in DB (reuse/revocation check)
   const storedToken = await prisma.refreshToken.findUnique({
     where: { token: oldRefreshToken },
-    include: { user: { select: { ...publicUserSelect, isActive: true } } },
+    include: { user: { select: { ...publicUserSelect, isActive: true, isDeleted: true } } },
   });
 
   if (!storedToken) {
@@ -164,7 +167,10 @@ export async function refresh(oldRefreshToken: string): Promise<AuthResult> {
     throw new ApiError(401, 'Refresh token has expired.');
   }
 
-  if (!storedToken.user.isActive) {
+  // Same predicate as `login` and as `authenticate`'s session join, so a
+  // deactivated or soft-deleted user cannot keep rotating tokens indefinitely.
+  if (!isUsableAccount(storedToken.user)) {
+    await revokeUserSessions(payload.sub).catch(() => {});
     throw new ApiError(403, 'This account has been disabled.');
   }
 
@@ -220,8 +226,11 @@ export async function logoutByToken(refreshToken: string): Promise<void> {
 }
 
 export async function getUserById(userId: string): Promise<PublicUser> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
+  // `findFirst`, not `findUnique`: the `ACTIVE_USER` flags are not part of the
+  // unique key. Without them a soft-deleted user still resolved here, so
+  // `/auth/me` kept returning a profile for an account that no longer exists.
+  const user = await prisma.user.findFirst({
+    where: { id: userId, ...ACTIVE_USER },
     select: publicUserSelect,
   });
 
@@ -233,8 +242,10 @@ export async function getUserById(userId: string): Promise<PublicUser> {
 }
 
 export async function requestPasswordReset(email: string): Promise<void> {
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) return; // Silent failure to prevent email enumeration
+  // A disabled or soft-deleted account gets no OTP — and, as with an unknown
+  // address, no hint that it was refused. Silent to prevent email enumeration.
+  const user = await prisma.user.findFirst({ where: { email, ...ACTIVE_USER } });
+  if (!user) return;
 
   // Generate a random 6-digit OTP
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -267,15 +278,16 @@ export async function resetPassword(input: ResetPasswordInput): Promise<void> {
 
   await prisma.$transaction(async (tx) => {
     // 1. Update user password
-    await tx.user.update({
+    const user = await tx.user.update({
       where: { email: input.email },
       data: { passwordHash },
+      select: { id: true },
     });
 
-    // 2. Invalidate all existing sessions
-    await tx.refreshToken.deleteMany({
-      where: { user: { email: input.email } },
-    });
+    // 2. Invalidate all existing sessions — in the same transaction as the
+    //    credential change, so no session can outlive the password it was
+    //    established with. `authenticate` refuses them from the next request on.
+    await revokeUserSessions(user.id, tx);
 
     // 3. Delete the used OTP token
     await tx.passwordResetToken.delete({ where: { id: token.id } });

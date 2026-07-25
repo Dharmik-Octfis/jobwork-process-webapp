@@ -158,6 +158,12 @@ export async function fetchCustomers(
   });
 }
 
+/** Total matching customers — only called when the user clicks "view". */
+export async function fetchCustomerCount(orgId: string, params: PageParams = {}): Promise<number> {
+  const response = await apiClient.get(`${endpoints.sales.customers(orgId)}/count`, { params });
+  return (response.data as { total: number }).total;
+}
+
 export async function createCustomer(orgId: string, data: CreateCustomerData): Promise<Customer> {
   const payload = mapFlatToAddresses(data);
   const response = await apiClient.post(endpoints.sales.customers(orgId), payload);
