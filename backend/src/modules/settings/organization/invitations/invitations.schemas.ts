@@ -13,14 +13,19 @@ const email = z
   .email('Enter a valid email address');
 
 /**
- * An invite grants a permission template (role) the Owner created. There is no
- * default — an org ships with only the Owner role, so a role must exist before
- * anyone can be invited. The Owner template itself is not invitable: ownership is
- * conferred by creating the org, never by invitation (enforced in the service).
+ * An invite carries two independent things: a **role** (job title) and a
+ * **permission template** (the access). The template is required — it is the
+ * invitee's authorization, and an org ships with only the Owner template, so one
+ * must exist before anyone can be invited. The role is optional: a title grants
+ * nothing, so requiring one would block inviting for no security gain.
+ *
+ * Neither Owner one is invitable: ownership is conferred by creating the org,
+ * never by invitation (enforced in the service).
  */
 export const createInvitationSchema = z.object({
   email,
-  permissionTemplateId: z.string().uuid('Select a role for this member.'),
+  roleId: z.string().uuid('Select a role for this member.').optional(),
+  permissionTemplateId: z.string().uuid('Select a permission template for this member.'),
 });
 
 export type CreateInvitationInput = z.infer<typeof createInvitationSchema>;

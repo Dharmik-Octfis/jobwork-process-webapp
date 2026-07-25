@@ -107,6 +107,9 @@ export function AcceptInvitePage() {
 
   const orgName = invite.organizationName ?? 'the organization';
   const inviteEmail = invite.email ?? '';
+  // The job title if the inviter set one, otherwise the access they're getting —
+  // a title is optional, and "invited as undefined" helps nobody.
+  const invitedAs = invite.roleName ?? invite.permissionTemplateName ?? 'a member';
   const serverError = acceptMutation.isError ? toApiErrorMessage(acceptMutation.error) : null;
 
   // ── Case A: signed in ────────────────────────────────────────────────────────
@@ -128,7 +131,7 @@ export function AcceptInvitePage() {
     }
 
     return (
-      <Shell title={`Join ${orgName}`} subtitle={`You're invited as ${invite.roleName}.`}>
+      <Shell title={`Join ${orgName}`} subtitle={`You're invited as ${invitedAs}.`}>
         {serverError && <FormErrorBanner message={serverError} />}
         <Button
           fullWidth
@@ -162,10 +165,7 @@ export function AcceptInvitePage() {
   const onSubmit = handleSubmit((values) => acceptMutation.mutate(values));
 
   return (
-    <Shell
-      title={`Join ${orgName}`}
-      subtitle={`Create your account to accept as ${invite.roleName}.`}
-    >
+    <Shell title={`Join ${orgName}`} subtitle={`Create your account to accept as ${invitedAs}.`}>
       <form className={styles.form} onSubmit={onSubmit} noValidate>
         {serverError && <FormErrorBanner message={serverError} />}
 

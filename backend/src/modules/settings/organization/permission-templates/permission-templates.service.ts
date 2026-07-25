@@ -9,7 +9,7 @@ type TemplateRow = {
   name: string;
   description: string | null;
   isSystem: boolean;
-  isOwner: boolean;
+  grantsAllPermissions: boolean;
   permissions: string[];
   createdAt: Date;
   updatedAt: Date;
@@ -21,10 +21,10 @@ function toPublic(row: TemplateRow, memberCount: number): PublicPermissionTempla
     name: row.name,
     description: row.description,
     isSystem: row.isSystem,
-    isOwner: row.isOwner,
-    // The Owner template stores no keys — expose the full computed catalog so the
-    // UI renders its checkboxes (all ticked, read-only) like any other template.
-    permissions: row.isOwner ? [...ALL_PERMISSIONS] : row.permissions,
+    grantsAllPermissions: row.grantsAllPermissions,
+    // An auto-granting template stores no keys — expose the full computed catalog
+    // so the UI renders its checkboxes (all ticked, read-only) like any other.
+    permissions: row.grantsAllPermissions ? [...ALL_PERMISSIONS] : row.permissions,
     memberCount,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -36,18 +36,23 @@ const TEMPLATE_SELECT = {
   name: true,
   description: true,
   isSystem: true,
-  isOwner: true,
+  grantsAllPermissions: true,
   permissions: true,
   createdAt: true,
   updatedAt: true,
 } as const;
 
 /**
- * Seed the three immutable system templates into a brand-new organization and
- * return the Owner template's id (so the caller can point the owner's Membership
- * at it). Runs inside the caller's tenant transaction — `tx` must already be
- * scoped to `organizationId` via runAsTenant, because permission_templates is
- * RLS-protected and the INSERTs are checked against `app.current_tenant`.
+ * Seed a brand-new organization's templates (Owner, Full access, View only) and
+ * return the Owner template's id, so the caller can point the creator's
+ * Membership at it. Runs inside the caller's tenant transaction — `tx` must
+ * already be scoped to `organizationId` via runAsTenant, because
+ * permission_templates is RLS-protected and the INSERTs are checked against
+ * `app.current_tenant`.
+ *
+ * Only Owner is `isSystem`; the other two are editable rows the org owns from the
+ * moment they exist. See SYSTEM_TEMPLATES for what each grants and why "Full
+ * access" stops short of rewriting templates.
  */
 export async function seedSystemTemplates(
   tx: TenantClient,
@@ -62,15 +67,16 @@ export async function seedSystemTemplates(
         organizationId,
         name: spec.name,
         description: spec.description,
-        isSystem: true,
-        isOwner: spec.isOwner,
-        permissions: [...spec.permissions], // empty for Owner (computed via isOwner)
+        isSystem: spec.isSystem,
+        grantsAllPermissions: spec.grantsAllPermissions,
+        // Empty for Owner — computed at runtime via grantsAllPermissions.
+        permissions: [...spec.permissions],
         createdBy: actorUserId,
         updatedBy: actorUserId,
       },
-      select: { id: true, isOwner: true },
+      select: { id: true, isSystem: true },
     });
-    if (created.isOwner) ownerTemplateId = created.id;
+    if (created.isSystem) ownerTemplateId = created.id;
   }
 
   return { ownerTemplateId };
@@ -138,7 +144,9 @@ export function createTemplate(
           name: input.name,
           description: input.description ?? null,
           isSystem: false,
-          isOwner: false,
+          // Never settable through the API — only the seeded Owner template
+          // auto-grants. See the field comment in permissions.prisma.
+          grantsAllPermissions: false,
           permissions: input.permissions,
           createdBy: userId,
           updatedBy: userId,
@@ -168,7 +176,7 @@ export function updateTemplate(
     });
     if (!existing) throw new ApiError(404, 'Permission template not found.');
     if (existing.isSystem) {
-      throw new ApiError(403, 'System templates (Owner, Admin, Member) cannot be edited.');
+      throw new ApiError(403, 'The Owner template cannot be edited.');
     }
 
     const data: {
@@ -210,7 +218,7 @@ export function deleteTemplate(userId: string, organizationId: string, id: strin
     });
     if (!existing) throw new ApiError(404, 'Permission template not found.');
     if (existing.isSystem) {
-      throw new ApiError(403, 'System templates (Owner, Admin, Member) cannot be deleted.');
+      throw new ApiError(403, 'The Owner template cannot be deleted.');
     }
 
     const inUse = await tx.membership.count({

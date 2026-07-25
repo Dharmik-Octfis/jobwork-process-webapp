@@ -188,6 +188,21 @@ ephemeral token tables, no master-data reference tables):
   module has no gate, every member can do everything, and nothing warns you (same shape as a tenant
   table with no RLS policy). A module's routes are not done until each carries a `requirePermission`.
   Copy `src/modules/purchases/vendors/`. Full model in `docs/ROLES_AND_PERMISSIONS.md`.
+- 🔴 **A Role is NOT a permission set.** Since 2026-07-25 they are two independent things on a
+  Membership: `roleId` → `roles` is a **job title that grants nothing** (no middleware reads it),
+  and `permissionTemplateId` → `permission_templates` **is** the authorization. Same title with
+  different access, and one bundle across titles, are both normal. Never branch on a role name —
+  the check belongs in the catalog + `requirePermission`. Managing the two is separately grantable
+  (`role:*` vs `permission_template:*`): retitling staff is harmless, rewriting permissions is
+  privilege escalation.
+- 🔴 **`Membership.isOwner` is above the permission system, and there is only ONE gate below it.**
+  `tenantContext` resolves an owner to every permission _before_ reading a template, so no route
+  ever branches on ownership — `requirePermission` is a pure set check. `requireOwner` exists only
+  for what no template may grant (deleting the org; later ownership transfer), because anyone with
+  `permission_template:update` can self-grant every key. **Never write a bespoke membership lookup
+  in a service to authorize** — that was `assertOrgAdmin`, a second system that ignored the catalog
+  and left `member:create` holders unable to invite; it is gone. Mount `tenantContext` and add a
+  `requirePermission`.
 
 ## 🔴 API responses — one envelope, one error path
 

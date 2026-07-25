@@ -1,32 +1,63 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, Lock, Users } from 'lucide-react';
+import { Plus, Pencil, Trash2, Lock, Users, ShieldCheck, X } from 'lucide-react';
 import { toApiErrorMessage } from '../../api/client';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { rolesApi, type Role } from './roles.api';
-import { RoleEditor } from './RoleEditor';
 import '../organizations/CreateOrganizationForm.css';
 
 /**
- * Settings → Roles. A new organization has exactly one role (Owner), so this page
- * is where the owner creates the roles they need before inviting anyone.
+ * Settings → Roles. A role is a job title and nothing more: it grants no access.
+ * Two people with the same title routinely need different access, so what someone
+ * may DO is a permission template, assigned separately on Settings → Permissions.
  *
- * Permissions are never granted per user — they belong to a role, and a member is
- * put on a role. To vary one person's access, make another role.
+ * The form is inline rather than a full-page editor — there are only two fields,
+ * and pushing a page transition for a name and a sentence is more ceremony than
+ * the task deserves. (Permissions, with a hundred checkboxes, does get its own page.)
  */
 export function RolesPage() {
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<Role | 'new' | null>(null);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
   const [toDelete, setToDelete] = useState<Role | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  const rolesKey = ['permission-templates', orgId];
+  const rolesKey = ['roles', orgId];
   const { data: roles, isLoading } = useQuery({
     queryKey: rolesKey,
     queryFn: () => rolesApi.list(orgId!),
     enabled: Boolean(orgId),
+  });
+
+  const openForm = (role: Role | 'new') => {
+    setServerError(null);
+    setEditing(role);
+    setName(role === 'new' ? '' : role.name);
+    setDescription(role === 'new' ? '' : (role.description ?? ''));
+  };
+
+  const closeForm = () => {
+    setEditing(null);
+    setName('');
+    setDescription('');
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      const body = { name: name.trim(), description: description.trim() || undefined };
+      return editing && editing !== 'new'
+        ? rolesApi.update(orgId!, editing.id, body)
+        : rolesApi.create(orgId!, body);
+    },
+    onSuccess: async () => {
+      setServerError(null);
+      closeForm();
+      await queryClient.invalidateQueries({ queryKey: rolesKey });
+    },
+    onError: (err) => setServerError(toApiErrorMessage(err)),
   });
 
   const deleteMutation = useMutation({
@@ -39,20 +70,6 @@ export function RolesPage() {
   });
 
   if (!orgId) return null;
-
-  if (editing) {
-    return (
-      <RoleEditor
-        orgId={orgId}
-        role={editing === 'new' ? null : editing}
-        onDone={async () => {
-          setEditing(null);
-          await queryClient.invalidateQueries({ queryKey: rolesKey });
-        }}
-        onCancel={() => setEditing(null)}
-      />
-    );
-  }
 
   const customRoles = roles?.filter((r) => !r.isSystem) ?? [];
 
@@ -70,12 +87,12 @@ export function RolesPage() {
         <div>
           <h2 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 var(--space-1) 0' }}>Roles</h2>
           <p style={{ color: 'var(--color-text-muted)', margin: 0, fontSize: 14 }}>
-            A role is a set of permissions. Members are assigned a role — permissions are never
-            granted to one person directly. Create a role before inviting someone.
+            A role is a job title — what someone is here to do. It grants no access on its own. What
+            a member may <em>do</em> comes from their permission template, assigned separately.
           </p>
         </div>
         <button
-          onClick={() => setEditing('new')}
+          onClick={() => openForm('new')}
           style={{
             background: 'var(--color-primary)',
             color: 'white',
@@ -94,6 +111,32 @@ export function RolesPage() {
         </button>
       </div>
 
+      {/* The one thing an admin needs to know before they start ticking nothing:
+          this page has no permissions on it, and where the permissions are. */}
+      <Link
+        to={`/organizations/${orgId}/settings/permissions`}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          padding: '10px 14px',
+          marginBottom: 'var(--space-5)',
+          background: 'var(--color-bg)',
+          border: '1px solid var(--color-border)',
+          borderRadius: 'var(--radius-md)',
+          fontSize: 13,
+          color: 'var(--color-text)',
+          textDecoration: 'none',
+        }}
+      >
+        <ShieldCheck size={16} style={{ flexShrink: 0, color: 'var(--color-primary)' }} />
+        <span>
+          Looking for permissions? They live in{' '}
+          <strong style={{ color: 'var(--color-primary)' }}>Settings → Permissions</strong> and are
+          assigned to a member independently of their role.
+        </span>
+      </Link>
+
       {serverError && (
         <div
           style={{
@@ -107,6 +150,110 @@ export function RolesPage() {
         >
           {serverError}
         </div>
+      )}
+
+      {editing && (
+        <section
+          style={{
+            background: 'var(--color-surface)',
+            borderRadius: 'var(--radius-lg)',
+            border: '1px solid var(--color-border)',
+            padding: 'var(--space-6)',
+            marginBottom: 'var(--space-5)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 'var(--space-4)',
+            }}
+          >
+            <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>
+              {editing === 'new' ? 'New role' : `Edit "${editing.name}"`}
+            </h3>
+            <button
+              onClick={closeForm}
+              title="Cancel"
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--color-text-muted)',
+                display: 'flex',
+                padding: 4,
+              }}
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
+            <div className="org-form-group" style={{ flex: '1 1 240px', margin: 0 }}>
+              <label>Role name</label>
+              <input
+                className="org-form-input"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Warehouse Supervisor"
+              />
+            </div>
+            <div className="org-form-group" style={{ flex: '2 1 320px', margin: 0 }}>
+              <label>Description (optional)</label>
+              <input
+                className="org-form-input"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="What this job is"
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, marginTop: 'var(--space-5)' }}>
+            <button
+              onClick={() => {
+                setServerError(null);
+                if (!name.trim()) {
+                  setServerError('Role name is required.');
+                  return;
+                }
+                saveMutation.mutate();
+              }}
+              disabled={saveMutation.isPending}
+              style={{
+                background: 'var(--color-primary)',
+                color: 'white',
+                border: 'none',
+                padding: '10px 20px',
+                borderRadius: 'var(--radius-md)',
+                fontWeight: 600,
+                cursor: saveMutation.isPending ? 'not-allowed' : 'pointer',
+                opacity: saveMutation.isPending ? 0.7 : 1,
+              }}
+            >
+              {saveMutation.isPending
+                ? 'Saving…'
+                : editing === 'new'
+                  ? 'Create role'
+                  : 'Save changes'}
+            </button>
+            <button
+              onClick={closeForm}
+              style={{
+                background: 'white',
+                color: 'var(--color-text)',
+                border: '1px solid var(--color-border)',
+                padding: '10px 20px',
+                borderRadius: 'var(--radius-md)',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </section>
       )}
 
       <section
@@ -157,9 +304,11 @@ export function RolesPage() {
                       </span>
                     )}
                   </div>
-                  <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 2 }}>
-                    {role.description}
-                  </div>
+                  {role.description && (
+                    <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                      {role.description}
+                    </div>
+                  )}
                   <div
                     style={{
                       fontSize: 12,
@@ -172,15 +321,13 @@ export function RolesPage() {
                   >
                     <Users size={12} />
                     {role.memberCount} member{role.memberCount === 1 ? '' : 's'}
-                    {' · '}
-                    {role.isOwner ? 'All permissions' : `${role.permissions.length} permissions`}
                   </div>
                 </div>
 
                 {!role.isSystem && (
                   <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                     <button
-                      onClick={() => setEditing(role)}
+                      onClick={() => openForm(role)}
                       title="Edit role"
                       style={iconButtonStyle('var(--color-text)')}
                     >
@@ -202,13 +349,9 @@ export function RolesPage() {
 
         {!isLoading && customRoles.length === 0 && (
           <div
-            style={{
-              padding: 'var(--space-6)',
-              color: 'var(--color-text-muted)',
-              fontSize: 14,
-            }}
+            style={{ padding: 'var(--space-6)', color: 'var(--color-text-muted)', fontSize: 14 }}
           >
-            No roles yet besides Owner. Create one to invite teammates.
+            No roles yet besides Owner. Create the job titles your team uses.
           </div>
         )}
       </section>
@@ -218,7 +361,7 @@ export function RolesPage() {
         title="Delete role"
         message={
           toDelete && toDelete.memberCount > 0
-            ? `"${toDelete.name}" is assigned to ${toDelete.memberCount} member(s). Move them to another role first.`
+            ? `"${toDelete.name}" is assigned to ${toDelete.memberCount} member(s). Give them a different role first.`
             : `Delete "${toDelete?.name}"? This cannot be undone.`
         }
         confirmText="Delete"

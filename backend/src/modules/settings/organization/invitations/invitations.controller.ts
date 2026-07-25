@@ -9,7 +9,9 @@ import type { CreateInvitationInput, AcceptInvitationInput } from './invitations
 
 export async function createInvitation(req: Request, res: Response): Promise<void> {
   if (!req.user) throw new ApiError(401, 'Sign in to continue.');
-  const organizationId = req.params.id as string;
+  // `req.tenantId`, never `req.params` — only tenantContext's copy has been
+  // membership-checked (CLAUDE.md).
+  const organizationId = req.tenantId!;
 
   const invitation = await invitationsService.createInvitation(
     req.user.id,
@@ -24,15 +26,15 @@ export async function createInvitation(req: Request, res: Response): Promise<voi
 
 export async function listInvitations(req: Request, res: Response): Promise<void> {
   if (!req.user) throw new ApiError(401, 'Sign in to continue.');
-  const organizationId = req.params.id as string;
+  const organizationId = req.tenantId!;
 
-  const invitations = await invitationsService.listInvitations(req.user.id, organizationId);
+  const invitations = await invitationsService.listInvitations(organizationId);
   sendSuccess(res, { invitations });
 }
 
 export async function revokeInvitation(req: Request, res: Response): Promise<void> {
   if (!req.user) throw new ApiError(401, 'Sign in to continue.');
-  const organizationId = req.params.id as string;
+  const organizationId = req.tenantId!;
   const invitationId = req.params.invitationId as string;
 
   await invitationsService.revokeInvitation(req.user.id, organizationId, invitationId);
@@ -65,7 +67,11 @@ export async function acceptMine(req: Request, res: Response): Promise<void> {
   // Always already signed in here, so there is never an autoLogin to issue.
   sendSuccess(
     res,
-    { organization: result.organization, roleName: result.roleName },
+    {
+      organization: result.organization,
+      roleName: result.roleName,
+      permissionTemplateName: result.permissionTemplateName,
+    },
     'Invitation accepted.',
   );
 }
@@ -104,6 +110,7 @@ export async function accept(req: Request, res: Response): Promise<void> {
       {
         organization: result.organization,
         roleName: result.roleName,
+        permissionTemplateName: result.permissionTemplateName,
         user: result.autoLogin.user,
         accessToken: result.autoLogin.accessToken,
       },
@@ -115,7 +122,11 @@ export async function accept(req: Request, res: Response): Promise<void> {
 
   sendSuccess(
     res,
-    { organization: result.organization, roleName: result.roleName },
+    {
+      organization: result.organization,
+      roleName: result.roleName,
+      permissionTemplateName: result.permissionTemplateName,
+    },
     'Invitation accepted.',
   );
 }

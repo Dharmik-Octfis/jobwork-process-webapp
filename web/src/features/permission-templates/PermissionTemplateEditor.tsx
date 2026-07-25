@@ -1,8 +1,8 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { toApiErrorMessage } from '../../api/client';
-import { rolesApi, type Role } from './roles.api';
+import { permissionTemplatesApi, type PermissionTemplate } from './permissionTemplates.api';
 import '../organizations/CreateOrganizationForm.css';
 
 /** `vendor:create` → `vendor` / `create`. Resources may contain no colon, actions never do. */
@@ -54,24 +54,28 @@ function TriCheckbox({
 
 interface Props {
   orgId: string;
-  /** null = creating a new role. */
-  role: Role | null;
+  /** null = creating a new template. */
+  template: PermissionTemplate | null;
   onDone: () => void | Promise<void>;
   onCancel: () => void;
 }
 
 /**
- * Create/edit a role. The checkbox grid is rendered from the server's permission
- * catalog, so a module added in the backend appears here with no frontend change.
- * The whole permission set is saved at once — roles are edited wholesale.
+ * Create/edit a permission template — the bundle that decides what a member may
+ * do. Nothing here is a job title: titles are roles, edited on Settings → Roles,
+ * and assigned to a member independently of the template.
+ *
+ * The checkbox grid is rendered from the server's permission catalog, so a module
+ * added in the backend appears here with no frontend change. The whole permission
+ * set is saved at once — templates are edited wholesale.
  */
-export function RoleEditor({ orgId, role, onDone, onCancel }: Props) {
-  const [name, setName] = useState(role?.name ?? '');
-  const [description, setDescription] = useState(role?.description ?? '');
-  // Seed with View already implied, so a role saved before that rule existed shows
-  // the same ticks it will have once saved again.
+export function PermissionTemplateEditor({ orgId, template, onDone, onCancel }: Props) {
+  const [name, setName] = useState(template?.name ?? '');
+  const [description, setDescription] = useState(template?.description ?? '');
+  // Seed with View already implied, so a template saved before that rule existed
+  // shows the same ticks it will have once saved again.
   const [selected, setSelected] = useState<Set<string>>(() => {
-    const keys = role?.permissions ?? [];
+    const keys = template?.permissions ?? [];
     return new Set([...keys, ...keys.map((k) => `${resourceOf(k)}:read`)]);
   });
   const [error, setError] = useState<string | null>(null);
@@ -88,9 +92,30 @@ export function RoleEditor({ orgId, role, onDone, onCancel }: Props) {
 
   const { data: groups, isLoading } = useQuery({
     queryKey: ['permission-catalog', orgId],
-    queryFn: () => rolesApi.catalog(orgId),
+    queryFn: () => permissionTemplatesApi.catalog(orgId),
     staleTime: 60 * 60 * 1000, // static vocabulary — no need to refetch
   });
+
+  /**
+   * The grid's columns: every action any module exposes, in the order the catalog
+   * first mentions it. Most modules have all four, but a resource may expose fewer
+   * (Organization Profile has no Create or Delete — you cannot create an org from
+   * inside one, and deleting it is owner-only and outside the permission system).
+   * Reading columns off the first module would then misalign every row, so they are
+   * derived from the union and unsupported cells render as "—".
+   */
+  const columns = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const group of groups ?? []) {
+      for (const module of group.modules) {
+        for (const a of module.actions) {
+          const action = actionOf(a.key);
+          if (!seen.has(action)) seen.set(action, a.label);
+        }
+      }
+    }
+    return [...seen].map(([action, label]) => ({ action, label }));
+  }, [groups]);
 
   const saveMutation = useMutation({
     mutationFn: () => {
@@ -99,7 +124,9 @@ export function RoleEditor({ orgId, role, onDone, onCancel }: Props) {
         description: description.trim() || undefined,
         permissions: [...selected],
       };
-      return role ? rolesApi.update(orgId, role.id, body) : rolesApi.create(orgId, body);
+      return template
+        ? permissionTemplatesApi.update(orgId, template.id, body)
+        : permissionTemplatesApi.create(orgId, body);
     },
     onSuccess: () => onDone(),
     onError: (err) => setError(toApiErrorMessage(err)),
@@ -151,11 +178,11 @@ export function RoleEditor({ orgId, role, onDone, onCancel }: Props) {
           marginBottom: 'var(--space-4)',
         }}
       >
-        <ChevronLeft size={16} /> Back to roles
+        <ChevronLeft size={16} /> Back to permissions
       </button>
 
       <h2 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 var(--space-5) 0' }}>
-        {role ? `Edit "${role.name}"` : 'New role'}
+        {template ? `Edit "${template.name}"` : 'New permission template'}
       </h2>
 
       {error && (
@@ -186,12 +213,12 @@ export function RoleEditor({ orgId, role, onDone, onCancel }: Props) {
         }}
       >
         <div className="org-form-group" style={{ flex: '1 1 240px', margin: 0 }}>
-          <label>Role name</label>
+          <label>Template name</label>
           <input
             className="org-form-input"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Warehouse Supervisor"
+            placeholder="e.g. Warehouse — full access"
           />
         </div>
         <div className="org-form-group" style={{ flex: '2 1 320px', margin: 0 }}>
@@ -200,7 +227,7 @@ export function RoleEditor({ orgId, role, onDone, onCancel }: Props) {
             className="org-form-input"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="What this role is for"
+            placeholder="What this level of access is for"
           />
         </div>
       </section>
@@ -236,11 +263,9 @@ export function RoleEditor({ orgId, role, onDone, onCancel }: Props) {
               <thead>
                 <tr style={{ background: 'var(--color-bg)' }}>
                   <th style={thStyle('left')}>Module</th>
-                  {/* Every module exposes the same four actions, so one module's
-                      list names the columns for the whole grid. */}
-                  {(groups?.[0]?.modules?.[0]?.actions ?? []).map((a) => (
-                    <th key={a.key} style={thStyle('center')}>
-                      {a.label}
+                  {columns.map((c) => (
+                    <th key={c.action} style={thStyle('center')}>
+                      {c.label}
                     </th>
                   ))}
                   <th style={thStyle('center')}>All</th>
@@ -342,16 +367,22 @@ export function RoleEditor({ orgId, role, onDone, onCancel }: Props) {
                             </span>
                           </button>
                         </td>
-                        {group.modules[0]?.actions.map((a) => {
-                          const action = actionOf(a.key);
-                          const keys = group.modules.map((m) => `${m.resource}:${action}`);
+                        {columns.map(({ action, label }) => {
+                          // Only the modules that actually expose this action — a
+                          // bulk toggle must not invent a key nothing checks.
+                          const keys = group.modules
+                            .filter((m) => m.actions.some((a) => actionOf(a.key) === action))
+                            .map((m) => `${m.resource}:${action}`);
+                          if (keys.length === 0) {
+                            return <td key={action} style={emptyCellStyle} />;
+                          }
                           const on = keys.every((k) => selected.has(k));
                           const some = keys.some((k) => selected.has(k));
                           // Only lock View when clicking it would *clear* it —
                           // a partly-ticked group must stay tickable.
                           const locked = action === 'read' && on && groupReadLocked;
                           return (
-                            <td key={a.key} style={{ padding: '10px 0', textAlign: 'center' }}>
+                            <td key={action} style={{ padding: '10px 0', textAlign: 'center' }}>
                               <TriCheckbox
                                 checked={on}
                                 indeterminate={some}
@@ -359,7 +390,7 @@ export function RoleEditor({ orgId, role, onDone, onCancel }: Props) {
                                 title={
                                   locked
                                     ? 'View is required by Create, Edit or Delete in this module.'
-                                    : `${a.label} — all of ${group.label}`
+                                    : `${label} — all of ${group.label}`
                                 }
                                 onChange={() => setKeys(keys, !on)}
                               />
@@ -403,23 +434,37 @@ export function RoleEditor({ orgId, role, onDone, onCancel }: Props) {
                               >
                                 {module.label}
                               </td>
-                              {module.actions.map((a) => {
-                                const locked =
-                                  actionOf(a.key) === 'read' && selected.has(a.key) && readLocked;
+                              {columns.map(({ action }) => {
+                                const key = `${module.resource}:${action}`;
+                                // This module doesn't expose the action at all —
+                                // an em dash, so the row still lines up with the
+                                // header and nobody hunts for a missing checkbox.
+                                if (!keys.includes(key)) {
+                                  return (
+                                    <td
+                                      key={action}
+                                      title="Not applicable to this module"
+                                      style={emptyCellStyle}
+                                    >
+                                      —
+                                    </td>
+                                  );
+                                }
+                                const locked = action === 'read' && selected.has(key) && readLocked;
                                 return (
                                   <td
-                                    key={a.key}
+                                    key={action}
                                     style={{ padding: '10px 0', textAlign: 'center' }}
                                   >
                                     <TriCheckbox
-                                      checked={selected.has(a.key)}
+                                      checked={selected.has(key)}
                                       disabled={locked}
                                       title={
                                         locked
                                           ? 'View is required by Create, Edit or Delete.'
                                           : undefined
                                       }
-                                      onChange={() => setKeys([a.key], !selected.has(a.key))}
+                                      onChange={() => setKeys([key], !selected.has(key))}
                                     />
                                   </td>
                                 );
@@ -449,7 +494,7 @@ export function RoleEditor({ orgId, role, onDone, onCancel }: Props) {
           onClick={() => {
             setError(null);
             if (!name.trim()) {
-              setError('Role name is required.');
+              setError('Template name is required.');
               return;
             }
             saveMutation.mutate();
@@ -466,7 +511,7 @@ export function RoleEditor({ orgId, role, onDone, onCancel }: Props) {
             opacity: saveMutation.isPending ? 0.7 : 1,
           }}
         >
-          {saveMutation.isPending ? 'Saving…' : role ? 'Save changes' : 'Create role'}
+          {saveMutation.isPending ? 'Saving…' : template ? 'Save changes' : 'Create template'}
         </button>
         <button
           onClick={onCancel}
@@ -486,6 +531,14 @@ export function RoleEditor({ orgId, role, onDone, onCancel }: Props) {
     </div>
   );
 }
+
+/** A cell for an action the module doesn't have. Muted, so the eye skips it. */
+const emptyCellStyle = {
+  padding: '10px 0',
+  textAlign: 'center',
+  color: 'var(--color-border-strong)',
+  fontSize: 13,
+} as const;
 
 function thStyle(align: 'left' | 'center') {
   return {

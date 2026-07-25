@@ -15,10 +15,14 @@ declare global {
       user?: { id: string; sid: string };
       tenantId?: string;
       membership?: {
-        role: string;
+        /** The org creator. Already folded into `permissions` (an owner resolves
+         * to the whole catalog), so routes should NOT branch on this to allow an
+         * action — use `requirePermission`. It exists for `requireOwner`, which
+         * gates the few actions no permission may grant, and for display. */
+        isOwner: boolean;
         permissionTemplateId: string | null;
-        /** Permission keys this member holds — from their template (Owner = all).
-         * `requirePermission()` checks this set. */
+        /** Permission keys this member holds — from their template, or the whole
+         * catalog if they own the org. `requirePermission()` checks this set. */
         permissions: Set<string>;
       };
     }

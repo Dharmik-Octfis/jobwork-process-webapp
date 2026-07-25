@@ -9,23 +9,29 @@ import { toApiErrorMessage } from '../../api/client';
 import { organizationsApi } from '../organizations/organizations.api';
 import { invitationsApi } from './invitations.api';
 import { rolesApi } from '../roles/roles.api';
+import { permissionTemplatesApi } from '../permission-templates/permissionTemplates.api';
 import { membersApi } from '../members/members.api';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import '../organizations/CreateOrganizationForm.css';
 
 const inviteSchema = z.object({
   email: z.string().trim().min(1, 'Email is required').email('Enter a valid email address'),
-  permissionTemplateId: z.string().min(1, 'Select a role'),
+  // A job title is optional — it grants nothing, so requiring one would block
+  // inviting for no gain. Access is not optional.
+  roleId: z.string().optional(),
+  permissionTemplateId: z.string().min(1, 'Select a permission template'),
 });
 type InviteValues = z.infer<typeof inviteSchema>;
 
 /**
- * Settings → Members. Invite people, see who's in the org, and change what role
- * someone holds.
+ * Settings → Members. Invite people, see who's in the org, and change what
+ * someone is called and what they can do.
  *
- * An organization has no default roles — only Owner exists at creation — so the
- * invite form is disabled until the owner has created at least one role. Access
- * is always granted by assigning a role, never per person.
+ * Role and permission template are two independent choices, here and everywhere:
+ * a role is a job title that grants nothing, a permission template IS the access.
+ * An organization has no default templates — only Owner exists at creation — so
+ * the invite form is disabled until the owner has created at least one. Access is
+ * always granted by assigning a template, never per person.
  */
 export function InviteMembersPage() {
   const { orgId: id } = useParams<{ orgId: string }>();
@@ -56,14 +62,23 @@ export function InviteMembersPage() {
   });
 
   const { data: roles } = useQuery({
-    queryKey: ['permission-templates', id],
+    queryKey: ['roles', id],
     queryFn: () => rolesApi.list(id!),
     enabled: Boolean(id),
   });
 
-  // The Owner role is never assignable — ownership comes from creating the org.
-  const assignableRoles = roles?.filter((r) => !r.isOwner) ?? [];
-  const hasRoles = assignableRoles.length > 0;
+  const { data: templates } = useQuery({
+    queryKey: ['permission-templates', id],
+    queryFn: () => permissionTemplatesApi.list(id!),
+    enabled: Boolean(id),
+  });
+
+  // Neither Owner one is assignable — ownership comes from creating the org. Both
+  // filters are `isSystem`: the seeded "Full access" / "View only" templates and
+  // "Manager" / "Staff" roles are ordinary editable rows and freely assignable.
+  const assignableRoles = roles?.filter((r) => !r.isSystem) ?? [];
+  const assignableTemplates = templates?.filter((t) => !t.isSystem) ?? [];
+  const hasTemplates = assignableTemplates.length > 0;
 
   const {
     register,
@@ -72,14 +87,21 @@ export function InviteMembersPage() {
     formState: { errors, isSubmitting },
   } = useForm<InviteValues>({
     resolver: zodResolver(inviteSchema),
-    defaultValues: { email: '', permissionTemplateId: '' },
+    defaultValues: { email: '', roleId: '', permissionTemplateId: '' },
   });
 
   const createMutation = useMutation({
-    mutationFn: (values: InviteValues) => invitationsApi.create(id!, values),
+    mutationFn: (values: InviteValues) =>
+      // An empty select means "no title", which the API expects as an absent
+      // field — sending '' would fail uuid validation.
+      invitationsApi.create(id!, {
+        email: values.email,
+        permissionTemplateId: values.permissionTemplateId,
+        ...(values.roleId ? { roleId: values.roleId } : {}),
+      }),
     onSuccess: async () => {
       setServerError(null);
-      reset({ email: '', permissionTemplateId: '' });
+      reset({ email: '', roleId: '', permissionTemplateId: '' });
       await queryClient.invalidateQueries({ queryKey: invitesKey });
     },
     onError: (err) => setServerError(toApiErrorMessage(err)),
@@ -92,9 +114,17 @@ export function InviteMembersPage() {
     },
   });
 
-  const assignRoleMutation = useMutation({
-    mutationFn: ({ membershipId, roleId }: { membershipId: string; roleId: string }) =>
-      membersApi.assignRole(id!, membershipId, roleId),
+  // One mutation for both dropdowns on a member row: the PUT takes either field,
+  // so "change their title" and "change their access" are the same call with a
+  // different key. `roleId: null` clears the title.
+  const updateMemberMutation = useMutation({
+    mutationFn: ({
+      membershipId,
+      body,
+    }: {
+      membershipId: string;
+      body: { roleId?: string | null; permissionTemplateId?: string };
+    }) => membersApi.update(id!, membershipId, body),
     onSuccess: async () => {
       setServerError(null);
       await queryClient.invalidateQueries({ queryKey: membersKey });
@@ -167,8 +197,10 @@ export function InviteMembersPage() {
               </div>
             )}
 
-            {/* No roles yet → inviting is impossible by design. Point them at Roles. */}
-            {!hasRoles ? (
+            {/* No permission templates yet → inviting is impossible by design, since
+                a member must be given access. Point them at Permissions. (Roles are
+                optional, so their absence never blocks an invite.) */}
+            {!hasTemplates ? (
               <div
                 style={{
                   display: 'flex',
@@ -183,13 +215,13 @@ export function InviteMembersPage() {
               >
                 <ShieldAlert size={18} style={{ flexShrink: 0, marginTop: 2 }} />
                 <div>
-                  <strong>Create a role first.</strong>
+                  <strong>Create a permission template first.</strong>
                   <div style={{ color: 'var(--color-text-muted)', marginTop: 4 }}>
-                    This organization has no roles yet besides Owner. A member must be given a role,
-                    so create one before inviting anyone.
+                    This organization has no permission templates yet besides Owner. A member must
+                    be given access, so create one before inviting anyone.
                   </div>
                   <Link
-                    to={`/organizations/${id}/settings/roles`}
+                    to={`/organizations/${id}/settings/permissions`}
                     style={{
                       display: 'inline-block',
                       marginTop: 10,
@@ -198,7 +230,7 @@ export function InviteMembersPage() {
                       textDecoration: 'none',
                     }}
                   >
-                    Go to Roles →
+                    Go to Permissions →
                   </Link>
                 </div>
               </div>
@@ -223,13 +255,28 @@ export function InviteMembersPage() {
                   {errors.email && <p className="org-form-error-msg">{errors.email.message}</p>}
                 </div>
 
-                <div className="org-form-group" style={{ flex: '0 0 180px', margin: 0 }}>
+                {/* Two separate choices. The title is optional and grants nothing;
+                    the template is what the invitee will actually be able to do. */}
+                <div className="org-form-group" style={{ flex: '0 0 170px', margin: 0 }}>
                   <label>Role</label>
-                  <select className="org-form-select" {...register('permissionTemplateId')}>
-                    <option value="">Select a role…</option>
+                  <select className="org-form-select" {...register('roleId')}>
+                    <option value="">No role</option>
                     {assignableRoles.map((r) => (
                       <option key={r.id} value={r.id}>
                         {r.name}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.roleId && <p className="org-form-error-msg">{errors.roleId.message}</p>}
+                </div>
+
+                <div className="org-form-group" style={{ flex: '0 0 190px', margin: 0 }}>
+                  <label>Permissions</label>
+                  <select className="org-form-select" {...register('permissionTemplateId')}>
+                    <option value="">Select a template…</option>
+                    {assignableTemplates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
                       </option>
                     ))}
                   </select>
@@ -341,25 +388,74 @@ export function InviteMembersPage() {
                         </span>
                       ) : (
                         <>
-                          <select
-                            className="org-form-select"
-                            style={{ minWidth: 160 }}
-                            value={m.permissionTemplateId ?? ''}
-                            disabled={assignRoleMutation.isPending || !hasRoles}
-                            onChange={(e) =>
-                              assignRoleMutation.mutate({
-                                membershipId: m.id,
-                                roleId: e.target.value,
-                              })
-                            }
+                          {/* Role and permissions change independently — two
+                              dropdowns, one PUT each. Labelled, because two bare
+                              selects side by side say nothing about which is which. */}
+                          <label
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: 2,
+                              fontSize: 11,
+                              fontWeight: 600,
+                              color: 'var(--color-text-muted)',
+                            }}
                           >
-                            {!m.permissionTemplateId && <option value="">No role</option>}
-                            {assignableRoles.map((r) => (
-                              <option key={r.id} value={r.id}>
-                                {r.name}
-                              </option>
-                            ))}
-                          </select>
+                            Role
+                            <select
+                              className="org-form-select"
+                              style={{ minWidth: 150 }}
+                              value={m.roleId ?? ''}
+                              disabled={updateMemberMutation.isPending}
+                              onChange={(e) =>
+                                updateMemberMutation.mutate({
+                                  membershipId: m.id,
+                                  body: { roleId: e.target.value || null },
+                                })
+                              }
+                            >
+                              <option value="">No role</option>
+                              {assignableRoles.map((r) => (
+                                <option key={r.id} value={r.id}>
+                                  {r.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: 2,
+                              fontSize: 11,
+                              fontWeight: 600,
+                              color: 'var(--color-text-muted)',
+                            }}
+                          >
+                            Permissions
+                            <select
+                              className="org-form-select"
+                              style={{ minWidth: 170 }}
+                              value={m.permissionTemplateId ?? ''}
+                              disabled={updateMemberMutation.isPending || !hasTemplates}
+                              onChange={(e) =>
+                                updateMemberMutation.mutate({
+                                  membershipId: m.id,
+                                  body: { permissionTemplateId: e.target.value },
+                                })
+                              }
+                            >
+                              {/* A member with no template can do nothing — the
+                                  placeholder says so rather than looking assigned. */}
+                              {!m.permissionTemplateId && <option value="">No access</option>}
+                              {assignableTemplates.map((t) => (
+                                <option key={t.id} value={t.id}>
+                                  {t.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
                           <button
                             onClick={() => setMemberToRemove(m.id)}
                             title="Remove member"
@@ -456,7 +552,8 @@ export function InviteMembersPage() {
                         )}
                       </div>
                       <div style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
-                        {inv.roleName} · invited by {inv.invitedByName} ·{' '}
+                        {inv.roleName ? `${inv.roleName} · ` : ''}
+                        {inv.permissionTemplateName} · invited by {inv.invitedByName} ·{' '}
                         {inv.status === 'declined'
                           ? 'invite again to re-send'
                           : `expires ${new Date(inv.expiresAt).toLocaleDateString()}`}

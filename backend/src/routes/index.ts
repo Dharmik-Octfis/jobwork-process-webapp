@@ -4,6 +4,7 @@ import { organizationsRouter } from '../modules/settings/organization/organizati
 import {
   invitationsRouter,
   myInvitationsRouter,
+  orgInvitationsRouter,
 } from '../modules/settings/organization/invitations/invitations.routes.ts';
 import {
   globalSeedDataRouter,
@@ -16,6 +17,7 @@ import { uomRouter } from '../modules/settings/inventory/uom/uom.routes.ts';
 import { currenciesRouter } from '../modules/settings/configuration/currencies/currencies.routes.ts';
 import { paymentTermsRouter } from '../modules/settings/configuration/payment-terms/payment-terms.routes.ts';
 import { customFieldsRouter } from '../modules/settings/customization/custom-fields/custom-fields.routes.ts';
+import { rolesRouter } from '../modules/settings/organization/roles/roles.routes.ts';
 import { permissionTemplatesRouter } from '../modules/settings/organization/permission-templates/permission-templates.routes.ts';
 import { membersRouter } from '../modules/settings/organization/members/members.routes.ts';
 import { itemsRouter } from '../modules/items/items.routes.ts';
@@ -44,6 +46,10 @@ apiRouter.use('/organizations/:orgId/inventory/uom', uomRouter);
 apiRouter.use('/organizations/:orgId/configuration/currencies', currenciesRouter);
 apiRouter.use('/organizations/:orgId/configuration/payment-terms', paymentTermsRouter);
 apiRouter.use('/organizations/:orgId/custom-fields', customFieldsRouter);
+// Two separate axes: `/roles` is job titles, `/permission-templates` is access.
+// A membership points at one of each, independently.
+apiRouter.use('/organizations/:orgId/invitations', orgInvitationsRouter);
+apiRouter.use('/organizations/:orgId/roles', rolesRouter);
 apiRouter.use('/organizations/:orgId/permission-templates', permissionTemplatesRouter);
 apiRouter.use('/organizations/:orgId/members', membersRouter);
 apiRouter.use('/organizations/:orgId/items', itemsRouter);

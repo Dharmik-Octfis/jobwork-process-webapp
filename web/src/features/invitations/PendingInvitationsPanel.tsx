@@ -111,8 +111,8 @@ export function PendingInvitationsPanel() {
             <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 600 }}>{inv.organizationName}</div>
               <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 2 }}>
-                Invited as <strong>{inv.roleName}</strong> by {inv.invitedByName} · expires{' '}
-                {new Date(inv.expiresAt).toLocaleDateString()}
+                Invited as <strong>{inv.roleName ?? inv.permissionTemplateName}</strong> by{' '}
+                {inv.invitedByName} · expires {new Date(inv.expiresAt).toLocaleDateString()}
               </div>
             </div>
 

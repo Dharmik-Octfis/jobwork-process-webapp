@@ -19,6 +19,37 @@ import { ApiError } from '../lib/apiError.ts';
  * data you can touch). It does NOT replace `runAsTenant` + `where organizationId`
  * — a member with `vendor:read` still only ever sees their own org's vendors.
  */
+/**
+ * Gate a route on being the organization's OWNER. Mount after `authenticate` and
+ * `tenantContext`, exactly like `requirePermission`.
+ *
+ *   router.delete('/:orgId', authenticate, tenantContext, requireOwner, deleteOrg);
+ *
+ * 🔴 Use this **only** for actions no permission may ever grant — deleting the
+ * organization, transferring ownership. Everything else belongs in the catalog
+ * behind `requirePermission`; an owner passes those automatically, because
+ * `tenantContext` resolves them to the full catalog.
+ *
+ * Why some actions need a gate outside the permission system at all: whoever
+ * holds `permission_template:update` can tick any box for themselves, so every
+ * permission is ultimately self-grantable. A check that no template can satisfy
+ * is the only thing that stays owner-exclusive. Keep the list short enough to
+ * recite — if it grows, the new entries probably belong in the catalog.
+ *
+ * This is authorization, not tenant isolation. Owning org A says nothing about
+ * org B: `req.membership` is resolved from the membership for the org in the URL,
+ * and RLS still scopes every query independently.
+ */
+export function requireOwner(req: Request, _res: Response, next: NextFunction): void {
+  // Fails closed when tenantContext did not run (a wiring bug) or the caller is
+  // not a member — same posture as requirePermission.
+  if (!req.membership?.isOwner) {
+    next(new ApiError(403, 'Only the organization owner can do this.'));
+    return;
+  }
+  next();
+}
+
 export function requirePermission(...required: string[]) {
   return (req: Request, _res: Response, next: NextFunction): void => {
     const granted = req.membership?.permissions;

@@ -14,6 +14,7 @@ import { OrganizationSettingsPage } from '../features/organizations/Organization
 import { AcceptInvitePage } from '../features/invitations/AcceptInvitePage';
 import { InviteMembersPage } from '../features/invitations/InviteMembersPage';
 import { RolesPage } from '../features/roles/RolesPage';
+import { PermissionTemplatesPage } from '../features/permission-templates/PermissionTemplatesPage';
 import { AppLayout } from '../components/layout/AppLayout';
 import { SettingsLayout } from '../components/layout/SettingsLayout';
 import { VendorsList } from '../features/purchases/vendors/VendorsList';
@@ -88,7 +89,10 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <OrganizationSettingsPage /> },
           { path: 'members', element: <InviteMembersPage /> },
+          // Two screens, deliberately: `roles` is job titles (no access at all),
+          // `permissions` is the access bundles. A member is assigned one of each.
           { path: 'roles', element: <RolesPage /> },
+          { path: 'permissions', element: <PermissionTemplatesPage /> },
           { path: 'inventory/uom', element: <UnitOfMeasurementPage /> },
           { path: 'configuration/currencies', element: <CurrenciesPage /> },
           { path: 'modules', element: <ModulesListPage /> },

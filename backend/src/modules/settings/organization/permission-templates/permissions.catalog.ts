@@ -50,9 +50,23 @@ export const ACTIONS = [
   { action: 'delete', label: 'Delete' },
 ] as const;
 
-/** Build the four `resource:action` permissions for a resource. */
-function crud(resource: string): PermissionAction[] {
-  return ACTIONS.map(({ action, label }) => ({ key: `${resource}:${action}`, label }));
+export type ActionName = (typeof ACTIONS)[number]['action'];
+
+/**
+ * Build a resource's permissions. Defaults to all four; a resource may narrow the
+ * list when an action genuinely does not exist for it.
+ *
+ * Narrowing is rare and should stay rare — the uniform grid is what keeps the
+ * editor readable. But a key the catalog defines and no route checks is worse
+ * than a missing column: it appears as a checkbox, an admin ticks it believing
+ * they granted something, and nothing happens. `organization` is the one case
+ * today — you cannot "create" an organization from inside one, and deleting it is
+ * owner-only via `requireOwner`, which no permission can satisfy.
+ */
+function crud(resource: string, actions?: readonly ActionName[]): PermissionAction[] {
+  return ACTIONS.filter(({ action }) => !actions || actions.includes(action)).map(
+    ({ action, label }) => ({ key: `${resource}:${action}`, label }),
+  );
 }
 
 /**
@@ -65,7 +79,7 @@ function crud(resource: string): PermissionAction[] {
 const MODULE_GROUPS: readonly {
   key: string;
   label: string;
-  resources: { resource: string; label: string }[];
+  resources: { resource: string; label: string; actions?: readonly ActionName[] }[];
 }[] = [
   {
     key: 'inventory',
@@ -86,9 +100,23 @@ const MODULE_GROUPS: readonly {
     key: 'settings',
     label: 'Settings',
     resources: [
-      { resource: 'organization', label: 'Organization Profile' },
+      // No create (you cannot create an organization from inside one) and no
+      // delete (owner-only, gated by `requireOwner` — see authorize.ts).
+      { resource: 'organization', label: 'Organization Profile', actions: ['read', 'update'] },
       { resource: 'member', label: 'Members & Invitations' },
-      { resource: 'role', label: 'Roles & Permissions' },
+      // Two resources, not one, because they are not the same power. `role`
+      // grants managing job titles — a labelling exercise. `permission_template`
+      // grants rewriting what people may DO, which is privilege escalation: hold
+      // it and you can grant yourself anything. Splitting them lets an admin
+      // delegate the first without the second.
+      //
+      // NOTE: `role:*` used to gate permission templates. Custom templates written
+      // before 2026-07-25 therefore hold `role:*` and NOT `permission_template:*`,
+      // so they keep managing titles and lose template editing until an owner
+      // ticks it back on. That is the safe direction, and the same "existing
+      // templates don't silently gain a new permission" rule as any new resource.
+      { resource: 'role', label: 'Roles' },
+      { resource: 'permission_template', label: 'Permission Templates' },
       { resource: 'uom', label: 'Units of Measurement' },
       { resource: 'currency', label: 'Currencies' },
       { resource: 'payment_term', label: 'Payment Terms' },
@@ -104,7 +132,7 @@ export const PERMISSION_CATALOG: readonly PermissionGroup[] = MODULE_GROUPS.map(
   modules: g.resources.map((r) => ({
     resource: r.resource,
     label: r.label,
-    actions: crud(r.resource),
+    actions: crud(r.resource, r.actions),
   })),
 }));
 
@@ -142,22 +170,46 @@ export function withImpliedRead(keys: readonly string[]): string[] {
   return [...out];
 }
 
+/** Every `<resource>:read` key — what "View only" grants. */
+const ALL_READ_PERMISSIONS: readonly string[] = ALL_PERMISSIONS.filter((key) =>
+  key.endsWith(':read'),
+);
+
 /**
- * The ONLY template seeded into a new organization: Owner.
+ * Rewriting a permission template is the one permission that grants every other
+ * permission: hold it and you can tick any box for yourself. So it is withheld
+ * from the seeded "Full access" template, which is what keeps Owner and admin
+ * genuinely different tiers rather than the same account with extra steps.
  *
- * No Admin/Member defaults are created. An org starts with exactly one role — the
- * Owner's — and the Owner must create a role before anyone can be invited. That
- * keeps every granted permission an explicit, deliberate choice rather than a
- * default nobody reviewed.
+ * `read` stays — seeing what access exists is not the same as changing it.
+ */
+const SELF_ESCALATING_PERMISSIONS: readonly string[] = [
+  'permission_template:create',
+  'permission_template:update',
+  'permission_template:delete',
+];
+
+/**
+ * The templates seeded into a new organization.
  *
- * Owner stores NO permissions: `isOwner` makes it resolve to `ALL_PERMISSIONS` at
- * runtime, so a permission added in a future release applies to every Owner with
- * no backfill.
+ * **Owner** is immutable (`isSystem`) and never assignable — ownership comes from
+ * creating the org, and `Membership.isOwner` is what actually grants it; this row
+ * exists so ownership has a name on screen. It stores no keys:
+ * `grantsAllPermissions` resolves it to the whole catalog at runtime, so a
+ * permission shipped later needs no backfill.
+ *
+ * **Full access** and **View only** are ordinary editable rows — starting points
+ * so a new org can invite someone in the first minute instead of building a
+ * template first. They are `isSystem: false` deliberately: a default nobody can
+ * adjust becomes a default everybody works around. Both are computed from the
+ * catalog, so a new module lands in them for orgs created after it ships (existing
+ * orgs' copies are theirs to edit, exactly like any other row they own).
  */
 export interface SystemTemplateSpec {
   name: string;
   description: string;
-  isOwner: boolean;
+  isSystem: boolean;
+  grantsAllPermissions: boolean;
   permissions: readonly string[];
 }
 
@@ -165,16 +217,47 @@ export const SYSTEM_TEMPLATES: readonly SystemTemplateSpec[] = [
   {
     name: 'Owner',
     description: 'Full access to everything. Cannot be edited or deleted.',
-    isOwner: true,
-    permissions: [], // computed — see isOwner
+    isSystem: true,
+    grantsAllPermissions: true,
+    permissions: [], // computed — see grantsAllPermissions
+  },
+  {
+    name: 'Full access',
+    description: 'Manage everything day to day. Cannot change what other people are allowed to do.',
+    isSystem: false,
+    grantsAllPermissions: false,
+    permissions: ALL_PERMISSIONS.filter((key) => !SELF_ESCALATING_PERMISSIONS.includes(key)),
+  },
+  {
+    name: 'View only',
+    description: 'See everything, change nothing.',
+    isSystem: false,
+    grantsAllPermissions: false,
+    permissions: ALL_READ_PERMISSIONS,
   },
 ] as const;
 
 /**
- * Fallback permission set for a Membership whose `permissionTemplateId` is null.
- * Only the org owner keeps access without a template — everyone else gets nothing
- * until the Owner assigns them a role. Fails closed by design.
+ * The job titles seeded into a new organization. A role grants NOTHING, so these
+ * are pure suggestions — named as titles rather than access levels on purpose.
+ * "Manager on View only" has to read as a deliberate choice; it would read as a
+ * mistake if the role were called "Admin" beside a template of the same name,
+ * and the two would drift back into lockstep.
+ *
+ * Owner is `isSystem` (immutable, not assignable); the rest are editable.
  */
-export function permissionsForRole(role: string): readonly string[] {
-  return role === 'owner' ? ALL_PERMISSIONS : [];
+export interface SystemRoleSpec {
+  name: string;
+  description: string;
+  isSystem: boolean;
 }
+
+export const SYSTEM_ROLES: readonly SystemRoleSpec[] = [
+  {
+    name: 'Owner',
+    description: 'The organization owner. Cannot be edited or deleted.',
+    isSystem: true,
+  },
+  { name: 'Manager', description: 'Runs a team or a function.', isSystem: false },
+  { name: 'Staff', description: 'Works in the business day to day.', isSystem: false },
+] as const;

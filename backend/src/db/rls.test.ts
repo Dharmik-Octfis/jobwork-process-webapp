@@ -35,6 +35,7 @@ const TENANT_TABLES = [
   'currencies',
   'payment_terms',
   'custom_field_definitions',
+  'roles',
   'permission_templates',
 ] as const;
 

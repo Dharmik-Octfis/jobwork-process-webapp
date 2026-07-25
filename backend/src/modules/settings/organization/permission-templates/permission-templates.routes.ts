@@ -10,32 +10,35 @@ import * as controller from './permission-templates.controller.ts';
  * Mounted at `/organizations/:orgId/permission-templates` (routes/index.ts).
  * `mergeParams: true` so the nested router sees `:orgId`; authenticate →
  * tenantContext verifies membership AND resolves the caller's permission set
- * before any handler. This module dogfoods its own gate: reads need `role:read`,
- * writes need the matching `role:create` / `role:update` / `role:delete` (all
- * owner-only in the seeded templates).
+ * before any handler. This module dogfoods its own gate: reads need
+ * `permission_template:read`, writes the matching create/update/delete.
+ *
+ * NOT `role:*` — that gates job titles now (`roles.routes.ts`). Rewriting a
+ * permission template is privilege escalation; renaming a title is not, so the
+ * two are separately grantable.
  */
 const router = Router({ mergeParams: true });
 
 router.use(authenticate, tenantContext);
 
 // `/catalog` before `/:id` so it isn't captured as an id.
-router.get('/catalog', requirePermission('role:read'), controller.getCatalog);
+router.get('/catalog', requirePermission('permission_template:read'), controller.getCatalog);
 
-router.get('/', requirePermission('role:read'), controller.getTemplates);
-router.get('/:id', requirePermission('role:read'), controller.getOneTemplate);
+router.get('/', requirePermission('permission_template:read'), controller.getTemplates);
+router.get('/:id', requirePermission('permission_template:read'), controller.getOneTemplate);
 
 router.post(
   '/',
-  requirePermission('role:create'),
+  requirePermission('permission_template:create'),
   validateBody(createTemplateSchema),
   controller.postTemplate,
 );
 router.put(
   '/:id',
-  requirePermission('role:update'),
+  requirePermission('permission_template:update'),
   validateBody(updateTemplateSchema),
   controller.putTemplate,
 );
-router.delete('/:id', requirePermission('role:delete'), controller.removeTemplate);
+router.delete('/:id', requirePermission('permission_template:delete'), controller.removeTemplate);
 
 export { router as permissionTemplatesRouter };

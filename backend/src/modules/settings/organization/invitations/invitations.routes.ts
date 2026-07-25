@@ -1,9 +1,46 @@
 import { Router } from 'express';
 import { authenticate } from '../../../../middlewares/authenticate.ts';
 import { optionalAuthenticate } from '../../../../middlewares/optionalAuthenticate.ts';
+import { tenantContext } from '../../../../middlewares/tenantContext.ts';
+import { requirePermission } from '../../../../middlewares/authorize.ts';
 import { validateBody } from '../../../../middlewares/validate.ts';
 import * as invitationsController from './invitations.controller.ts';
-import { acceptInvitationSchema } from './invitations.schemas.ts';
+import { acceptInvitationSchema, createInvitationSchema } from './invitations.schemas.ts';
+
+/**
+ * Org-scoped invite management — mounted at `/organizations/:orgId/invitations`
+ * (routes/index.ts), BEFORE `/organizations`, so the longer path wins.
+ *
+ * These routes used to hang off `organizationsRouter` with `authenticate` only,
+ * authorized by an `assertOrgAdmin` call inside the service that read the old
+ * `memberships.role` string. That was a second, parallel authorization system
+ * that ignored the permission catalog entirely: a member holding `member:create`
+ * still could not invite anyone. Now it is the same gate as every other module —
+ * `tenantContext` verifies membership and resolves permissions, and each route
+ * carries one `requirePermission`.
+ */
+export const orgInvitationsRouter = Router({ mergeParams: true });
+
+orgInvitationsRouter.use(authenticate, tenantContext);
+
+orgInvitationsRouter.get(
+  '/',
+  requirePermission('member:read'),
+  invitationsController.listInvitations,
+);
+orgInvitationsRouter.post(
+  '/',
+  requirePermission('member:create'),
+  validateBody(createInvitationSchema),
+  invitationsController.createInvitation,
+);
+// Revoking a pending invite is undoing an invitation, not removing a member —
+// `member:create` is the power being reversed, so it is what gates this.
+orgInvitationsRouter.delete(
+  '/:invitationId',
+  requirePermission('member:create'),
+  invitationsController.revokeInvitation,
+);
 
 /**
  * Public invitation routes — no `authenticate`, because the whole point is to

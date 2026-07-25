@@ -1,30 +1,19 @@
 import { apiClient } from '../../api/client';
 import { endpoints } from '../../api/endpoints';
 
-/** One leaf module and its four actions, as the backend catalog defines them. */
-export interface PermissionModule {
-  resource: string;
-  label: string;
-  actions: { key: string; label: string }[];
-}
-
-/** A main module from the home-screen sidebar; its modules hang beneath it. The
- * group itself holds no permissions — its checkboxes bulk-toggle the children. */
-export interface PermissionGroup {
-  key: string;
-  label: string;
-  modules: PermissionModule[];
-}
-
-/** A role (permission template). Permissions are always edited as a whole set —
- * there is no per-user permission, so changing access means a different role. */
+/**
+ * A role is a job title — "Warehouse Supervisor", "Accountant". It carries NO
+ * permissions: it says what someone is here to do, not what they may do. Access
+ * lives in a permission template (`features/permission-templates/`), assigned
+ * separately, so two people with the same title can have different access and one
+ * access bundle can span titles.
+ */
 export interface Role {
   id: string;
   name: string;
   description: string | null;
+  /** The seeded "Owner" role — not editable, deletable, or assignable. */
   isSystem: boolean;
-  isOwner: boolean;
-  permissions: string[];
   memberCount: number;
   createdAt: string;
   updatedAt: string;
@@ -33,34 +22,25 @@ export interface Role {
 export interface RoleInput {
   name: string;
   description?: string;
-  permissions: string[];
 }
 
 export const rolesApi = {
-  /** GET …/permission-templates/catalog — the checkbox grid's source of truth. */
-  catalog: async (orgId: string): Promise<PermissionGroup[]> => {
-    const { data } = await apiClient.get<{ groups: PermissionGroup[] }>(
-      endpoints.permissionTemplates.catalog(orgId),
-    );
-    return data.groups;
-  },
-
   list: async (orgId: string): Promise<Role[]> => {
-    const { data } = await apiClient.get<Role[]>(endpoints.permissionTemplates.forOrg(orgId));
+    const { data } = await apiClient.get<Role[]>(endpoints.roles.forOrg(orgId));
     return data;
   },
 
   create: async (orgId: string, body: RoleInput): Promise<Role> => {
-    const { data } = await apiClient.post<Role>(endpoints.permissionTemplates.forOrg(orgId), body);
+    const { data } = await apiClient.post<Role>(endpoints.roles.forOrg(orgId), body);
     return data;
   },
 
   update: async (orgId: string, id: string, body: Partial<RoleInput>): Promise<Role> => {
-    const { data } = await apiClient.put<Role>(endpoints.permissionTemplates.byId(orgId, id), body);
+    const { data } = await apiClient.put<Role>(endpoints.roles.byId(orgId, id), body);
     return data;
   },
 
   remove: async (orgId: string, id: string): Promise<void> => {
-    await apiClient.delete(endpoints.permissionTemplates.byId(orgId, id));
+    await apiClient.delete(endpoints.roles.byId(orgId, id));
   },
 };

@@ -31,8 +31,17 @@ export const endpoints = {
     revoke: (orgId: string, invitationId: string) =>
       `/organizations/${orgId}/invitations/${invitationId}`,
   },
-  /** Roles = permission templates. An org starts with only "Owner"; the owner
-   * creates the rest before anyone can be invited. */
+  /**
+   * Roles = job titles. They carry NO permissions — a role grants nothing, and
+   * nothing on the server reads one. What a member may DO comes from their
+   * permission template below. A membership points at one of each, independently.
+   */
+  roles: {
+    forOrg: (orgId: string) => `/organizations/${orgId}/roles`,
+    byId: (orgId: string, id: string) => `/organizations/${orgId}/roles/${id}`,
+  },
+  /** Permission templates = the access bundles. An org starts with only "Owner";
+   * the owner creates the rest before anyone can be invited. */
   permissionTemplates: {
     forOrg: (orgId: string) => `/organizations/${orgId}/permission-templates`,
     byId: (orgId: string, id: string) => `/organizations/${orgId}/permission-templates/${id}`,

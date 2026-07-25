@@ -66,6 +66,8 @@ model User {
   updatedCurrencies             Currency[]              @relation("CurrencyUpdatedBy")
   createdCustomFieldDefinitions CustomFieldDefinition[] @relation("CustomFieldDefinitionCreatedBy")
   updatedCustomFieldDefinitions CustomFieldDefinition[] @relation("CustomFieldDefinitionUpdatedBy")
+  createdRoles                  Role[]                  @relation("RoleCreatedBy")
+  updatedRoles                  Role[]                  @relation("RoleUpdatedBy")
   createdPermissionTemplates    PermissionTemplate[]    @relation("PermissionTemplateCreatedBy")
   updatedPermissionTemplates    PermissionTemplate[]    @relation("PermissionTemplateUpdatedBy")
   createdPaymentTerms           PaymentTerm[]           @relation("PaymentTermCreatedBy")
@@ -139,6 +141,7 @@ model Organization {
   unitsOfMeasurement     UnitOfMeasurement[]
   currencies             Currency[]
   customFieldDefinitions CustomFieldDefinition[]
+  roles                  Role[]
   permissionTemplates    PermissionTemplate[]
   paymentTerms           PaymentTerm[]
 
@@ -152,7 +155,20 @@ model Membership {
   id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId               String   @map("user_id") @db.Uuid
   organizationId       String   @map("organization_id") @db.Uuid
-  role                 String   @default("member") @db.VarChar(50) // owner, admin, member — legacy label; authorization now comes from permissionTemplate
+  // The org creator. Ownership is ABOVE the permission system: `tenantContext`
+  // short-circuits an owner to every permission before it ever reads a template,
+  // and `requireOwner` gates the handful of actions no template may grant
+  // (deleting the org, transferring ownership). Replaced a `role` string that
+  // stored one bit in a VARCHAR(50) — see the 2026-07-25 migration.
+  //
+  // Scoped to THIS organization: it never widens tenant scope. An owner of one
+  // org is a stranger to every other, and RLS enforces that independently.
+  isOwner              Boolean  @default(false) @map("is_owner")
+  // The member's job title. Purely descriptive — no middleware reads it, so it
+  // grants nothing (see permissions.prisma). Nullable: a member may have no title
+  // yet, and every row predating the roles/permissions split has none. SetNull so
+  // deleting a role never deletes memberships.
+  roleId               String?  @map("role_id") @db.Uuid
   // The permission template that grants this membership its access. Nullable:
   // legacy rows created before this module predate it, and tenantContext falls
   // back to `role` (permissionsForRole) when it is null. SetNull, not Cascade —
@@ -167,6 +183,7 @@ model Membership {
 
   user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role               Role?               @relation(fields: [roleId], references: [id], onDelete: SetNull)
   permissionTemplate PermissionTemplate? @relation(fields: [permissionTemplateId], references: [id], onDelete: SetNull)
 
   createdByUser User? @relation("MembershipCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
@@ -185,10 +202,14 @@ model Invitation {
   id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId       String    @map("organization_id") @db.Uuid
   email                String    @db.Citext
-  // The role (permission template) the invitee gets on accept. Required — an org
-  // has no default roles, so the Owner must create one before inviting anyone.
-  // The Owner template itself is never invitable (enforced in the service):
-  // ownership comes from creating the org, not from an invite.
+  // The job title the invitee gets on accept. Optional — a title grants nothing,
+  // so requiring one would block inviting for no security gain. Restrict: a role
+  // with a pending invite cannot be deleted out from under it.
+  roleId               String?   @map("role_id") @db.Uuid
+  // The permission template the invitee gets on accept. Required — an org has no
+  // default templates, so the Owner must create one before inviting anyone. The
+  // Owner template itself is never invitable (enforced in the service): ownership
+  // comes from creating the org, not from an invite.
   permissionTemplateId String    @map("permission_template_id") @db.Uuid
   tokenHash            String    @unique @map("token_hash")
   status               String    @default("pending") @db.VarChar(20) // pending | accepted | revoked | declined
@@ -210,6 +231,7 @@ model Invitation {
 
   organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invitedBy          User               @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+  role               Role?              @relation(fields: [roleId], references: [id], onDelete: Restrict)
   permissionTemplate PermissionTemplate @relation(fields: [permissionTemplateId], references: [id], onDelete: Restrict)
 
   createdByUser User? @relation("InvitationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)

@@ -4,9 +4,12 @@ import type { AuthResult } from '../../../auth/auth.types.ts';
 export interface PublicInvitation {
   id: string;
   email: string;
-  /** The role (permission template) this invite grants. */
+  /** The job title the invitee will carry. Optional — it grants nothing. */
+  roleId: string | null;
+  roleName: string | null;
+  /** The permission template this invite grants — the invitee's actual access. */
   permissionTemplateId: string;
-  roleName: string;
+  permissionTemplateName: string;
   status: string;
   invitedByName: string;
   expiresAt: string;
@@ -22,7 +25,10 @@ export interface MyInvitation {
   id: string;
   organizationId: string;
   organizationName: string;
-  roleName: string;
+  /** The job title offered, if any. */
+  roleName: string | null;
+  /** The access bundle offered — always present. */
+  permissionTemplateName: string;
   invitedByName: string;
   expiresAt: string;
   createdAt: string;
@@ -41,8 +47,10 @@ export interface InvitationLookupResult {
   status: InvitationLookupStatus;
   organizationName: string | null;
   email: string | null;
-  /** Name of the role this invite grants, for display on the accept page. */
+  /** Job title offered, for display on the accept page. Null when none was set. */
   roleName: string | null;
+  /** Name of the permission template this invite grants. */
+  permissionTemplateName: string | null;
   /** Whether a user account already exists for the invited email. */
   accountExists: boolean;
 }
@@ -54,6 +62,9 @@ export interface InvitationLookupResult {
  */
 export interface AcceptInvitationResult {
   organization: { id: string; name: string };
-  roleName: string;
+  /** The job title they joined with, if the invite carried one. */
+  roleName: string | null;
+  /** The permission template they joined with — what they may actually do. */
+  permissionTemplateName: string;
   autoLogin: AuthResult | null;
 }

@@ -13,8 +13,6 @@ import type {
   MyInvitation,
 } from './invitations.types.ts';
 
-/** Roles allowed to send/manage invitations. */
-const ORG_ADMIN_ROLES = ['owner', 'admin'];
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 /**
@@ -43,39 +41,33 @@ function hashToken(rawToken: string): string {
   return createHash('sha256').update(rawToken).digest('hex');
 }
 
-/** Throw 403 unless `userId` is an owner/admin of `organizationId`.
- * Exported so other admin-only features (e.g. custom fields) reuse one gate. */
-export async function assertOrgAdmin(userId: string, organizationId: string): Promise<void> {
-  // findFirst, not findUnique: `isDeleted` is not part of the unique key, and a
-  // removed member's row survives the soft delete. Looking them up by the unique
-  // key alone would let someone who was removed keep admin powers on the routes
-  // that use this gate (invitations, custom fields) — those mount `authenticate`
-  // only, so tenantContext's own isDeleted filter never runs for them.
-  const membership = await prisma.membership.findFirst({
-    where: { userId, organizationId, isDeleted: false },
-    select: { role: true },
-  });
-
-  if (!membership || !ORG_ADMIN_ROLES.includes(membership.role)) {
-    throw new ApiError(403, 'You do not have permission to manage this organization.');
-  }
-}
+// `assertOrgAdmin` lived here until 2026-07-25. It was a second authorization
+// system: it read the old `memberships.role` string, accepted 'owner' or 'admin',
+// and ignored the permission catalog — so a member holding `member:create` still
+// could not invite anyone. Its callers (this module and custom fields) now mount
+// `authenticate, tenantContext` and carry a `requirePermission` per route, which
+// also makes the membership/isDeleted lookup it did by hand redundant:
+// tenantContext already filters `isDeleted` on both the membership and the org.
 
 function toPublicInvitation(invite: {
   id: string;
   email: string;
+  roleId: string | null;
   permissionTemplateId: string;
   status: string;
   expiresAt: Date;
   createdAt: Date;
   invitedBy: { fullName: string };
+  role: { name: string } | null;
   permissionTemplate: { name: string };
 }): PublicInvitation {
   return {
     id: invite.id,
     email: invite.email,
+    roleId: invite.roleId,
+    roleName: invite.role?.name ?? null,
     permissionTemplateId: invite.permissionTemplateId,
-    roleName: invite.permissionTemplate.name,
+    permissionTemplateName: invite.permissionTemplate.name,
     status: invite.status,
     invitedByName: invite.invitedBy.fullName,
     expiresAt: invite.expiresAt.toISOString(),
@@ -127,9 +119,9 @@ async function assertSendAllowed(organizationId: string, email: string): Promise
 }
 
 /**
- * Resolve the role an invite is about to grant, proving it belongs to this org
- * and may actually be handed out. The Owner template is refused: ownership comes
- * from creating the organization, never from an invitation.
+ * Resolve the access an invite is about to grant, proving the template belongs to
+ * this org and may actually be handed out. The Owner template is refused:
+ * ownership comes from creating the organization, never from an invitation.
  */
 async function assertInvitableTemplate(
   organizationId: string,
@@ -138,14 +130,38 @@ async function assertInvitableTemplate(
   const template = await runAsTenant(organizationId, (tx) =>
     tx.permissionTemplate.findFirst({
       where: { id: permissionTemplateId, organizationId, isDeleted: false },
-      select: { isOwner: true },
+      select: { isSystem: true },
     }),
   );
 
   if (!template) {
-    throw ApiError.badRequest('That role does not exist. Create a role before inviting someone.');
+    throw ApiError.badRequest(
+      'That permission template does not exist. Create one before inviting someone.',
+    );
   }
-  if (template.isOwner) {
+  // `isSystem` is the Owner template — the one row that is never handed out. The
+  // seeded "Full access" / "View only" templates are ordinary rows and invitable.
+  if (template.isSystem) {
+    throw new ApiError(403, 'The Owner permission template cannot be granted by invitation.');
+  }
+}
+
+/**
+ * Same check for the job title, when one was chosen. A title grants nothing, but
+ * it still has to be a real role in THIS org — otherwise an id from another
+ * tenant would be written straight onto the invitation. The seeded Owner role is
+ * refused for the same reason its template is.
+ */
+async function assertInvitableRole(organizationId: string, roleId: string): Promise<void> {
+  const role = await runAsTenant(organizationId, (tx) =>
+    tx.role.findFirst({
+      where: { id: roleId, organizationId, isDeleted: false },
+      select: { isSystem: true },
+    }),
+  );
+
+  if (!role) throw ApiError.badRequest('That role does not exist.');
+  if (role.isSystem) {
     throw new ApiError(403, 'The Owner role cannot be granted by invitation.');
   }
 }
@@ -162,8 +178,9 @@ export async function createInvitation(
   organizationId: string,
   input: CreateInvitationInput,
 ): Promise<PublicInvitation> {
-  await assertOrgAdmin(inviterId, organizationId);
+  // Authorization is the route's job now (`requirePermission('member:create')`).
   await assertInvitableTemplate(organizationId, input.permissionTemplateId);
+  if (input.roleId) await assertInvitableRole(organizationId, input.roleId);
 
   // Already an ACTIVE member? Nothing to invite. Checked via the user's membership
   // so a registered member with a differently-cased email is still caught (citext).
@@ -193,6 +210,7 @@ export async function createInvitation(
     create: {
       organizationId,
       email: input.email,
+      roleId: input.roleId ?? null,
       permissionTemplateId: input.permissionTemplateId,
       tokenHash,
       invitedById: inviterId,
@@ -204,6 +222,7 @@ export async function createInvitation(
     },
     // Re-invite: reset everything a stale/revoked/declined/accepted row carries.
     update: {
+      roleId: input.roleId ?? null,
       permissionTemplateId: input.permissionTemplateId,
       tokenHash,
       status: 'pending',
@@ -218,12 +237,14 @@ export async function createInvitation(
     select: {
       id: true,
       email: true,
+      roleId: true,
       permissionTemplateId: true,
       status: true,
       expiresAt: true,
       createdAt: true,
       organization: { select: { name: true } },
       invitedBy: { select: { fullName: true } },
+      role: { select: { name: true } },
       permissionTemplate: { select: { name: true } },
     },
   });
@@ -238,13 +259,8 @@ export async function createInvitation(
   return toPublicInvitation(invite);
 }
 
-/** Pending invitations for an org (owner/admin only). */
-export async function listInvitations(
-  userId: string,
-  organizationId: string,
-): Promise<PublicInvitation[]> {
-  await assertOrgAdmin(userId, organizationId);
-
+/** Pending invitations for an org. Gated by `member:read` on the route. */
+export async function listInvitations(organizationId: string): Promise<PublicInvitation[]> {
   // `declined` is included on purpose — the whole point of a decline is that the
   // admin sees it, rather than watching an invite expire silently a week later.
   const invites = await prisma.invitation.findMany({
@@ -253,11 +269,13 @@ export async function listInvitations(
     select: {
       id: true,
       email: true,
+      roleId: true,
       permissionTemplateId: true,
       status: true,
       expiresAt: true,
       createdAt: true,
       invitedBy: { select: { fullName: true } },
+      role: { select: { name: true } },
       permissionTemplate: { select: { name: true } },
     },
   });
@@ -265,15 +283,13 @@ export async function listInvitations(
   return invites.map(toPublicInvitation);
 }
 
-/** Revoke a pending invitation (owner/admin only). Idempotent-ish: a missing or
- * already-final invite is treated as already revoked. */
+/** Revoke a pending invitation. Idempotent-ish: a missing or already-final invite
+ * is treated as already revoked. Gated by `member:create` on the route. */
 export async function revokeInvitation(
   userId: string,
   organizationId: string,
   invitationId: string,
 ): Promise<void> {
-  await assertOrgAdmin(userId, organizationId);
-
   // Scope the update to this org so an admin can't revoke another org's invite
   // by guessing an id.
   await prisma.invitation.updateMany({
@@ -326,6 +342,7 @@ export async function getInvitationByToken(rawToken: string): Promise<Invitation
       status: true,
       expiresAt: true,
       organization: { select: { name: true } },
+      role: { select: { name: true } },
       permissionTemplate: { select: { name: true } },
     },
   });
@@ -336,6 +353,7 @@ export async function getInvitationByToken(rawToken: string): Promise<Invitation
       organizationName: null,
       email: null,
       roleName: null,
+      permissionTemplateName: null,
       accountExists: false,
     };
   }
@@ -345,7 +363,8 @@ export async function getInvitationByToken(rawToken: string): Promise<Invitation
   const base = {
     organizationName: invite.organization.name,
     email: invite.email,
-    roleName: invite.permissionTemplate.name,
+    roleName: invite.role?.name ?? null,
+    permissionTemplateName: invite.permissionTemplate.name,
     accountExists,
   };
 
@@ -422,6 +441,7 @@ export async function listMyInvitations(userId: string): Promise<MyInvitation[]>
       expiresAt: true,
       createdAt: true,
       organization: { select: { name: true } },
+      role: { select: { name: true } },
       permissionTemplate: { select: { name: true } },
       invitedBy: { select: { fullName: true } },
     },
@@ -431,7 +451,8 @@ export async function listMyInvitations(userId: string): Promise<MyInvitation[]>
     id: i.id,
     organizationId: i.organizationId,
     organizationName: i.organization.name,
-    roleName: i.permissionTemplate.name,
+    roleName: i.role?.name ?? null,
+    permissionTemplateName: i.permissionTemplate.name,
     invitedByName: i.invitedBy.fullName,
     expiresAt: i.expiresAt.toISOString(),
     createdAt: i.createdAt.toISOString(),
@@ -451,11 +472,13 @@ export async function acceptMyInvitation(
     select: {
       id: true,
       email: true,
+      roleId: true,
       permissionTemplateId: true,
       status: true,
       expiresAt: true,
       organizationId: true,
       organization: { select: { id: true, name: true } },
+      role: { select: { name: true } },
       permissionTemplate: { select: { name: true } },
     },
   });
@@ -466,7 +489,8 @@ export async function acceptMyInvitation(
 
   return {
     organization: { id: invite.organization.id, name: invite.organization.name },
-    roleName: invite.permissionTemplate.name,
+    roleName: invite.role?.name ?? null,
+    permissionTemplateName: invite.permissionTemplate.name,
     // Already signed in — no session to issue, unlike the anonymous token flow.
     autoLogin: null,
   };
@@ -522,7 +546,12 @@ function assertInviteLive(invite: { status: string; expiresAt: Date }): void {
  * (see below) that must not be duplicated and half-remembered.
  */
 async function joinOrganization(
-  invite: { id: string; organizationId: string; permissionTemplateId: string },
+  invite: {
+    id: string;
+    organizationId: string;
+    roleId: string | null;
+    permissionTemplateId: string;
+  },
   userId: string,
 ): Promise<void> {
   await prisma.$transaction([
@@ -534,9 +563,10 @@ async function joinOrganization(
       create: {
         userId,
         organizationId: invite.organizationId,
-        // `role` is a coarse legacy label — 'owner' only ever comes from creating
-        // the org. Authorization comes from permissionTemplateId.
-        role: 'member',
+        // No isOwner: ownership comes from creating the org, never from an invite.
+        // Authorization comes from permissionTemplateId; roleId is the job title,
+        // which grants nothing.
+        roleId: invite.roleId,
         permissionTemplateId: invite.permissionTemplateId,
         createdBy: userId,
         updatedBy: userId,
@@ -549,6 +579,7 @@ async function joinOrganization(
       // original join record, so the first-joined date survives a rejoin.
       update: {
         isDeleted: false,
+        roleId: invite.roleId,
         permissionTemplateId: invite.permissionTemplateId,
         updatedBy: userId,
       },
@@ -583,11 +614,13 @@ export async function acceptInvitation(
     select: {
       id: true,
       email: true,
+      roleId: true,
       permissionTemplateId: true,
       status: true,
       expiresAt: true,
       organizationId: true,
       organization: { select: { id: true, name: true } },
+      role: { select: { name: true } },
       permissionTemplate: { select: { name: true } },
     },
   });
@@ -598,6 +631,8 @@ export async function acceptInvitation(
   assertInviteLive(invite);
 
   const org = { id: invite.organization.id, name: invite.organization.name };
+  const roleName = invite.role?.name ?? null;
+  const permissionTemplateName = invite.permissionTemplate.name;
 
   // ── Case A: a logged-in user is accepting ──────────────────────────────────
   if (currentUserId) {
@@ -619,7 +654,7 @@ export async function acceptInvitation(
 
     await joinOrganization(invite, currentUser.id);
 
-    return { organization: org, roleName: invite.permissionTemplate.name, autoLogin: null };
+    return { organization: org, roleName, permissionTemplateName, autoLogin: null };
   }
 
   // ── Case B: anonymous acceptor ─────────────────────────────────────────────
@@ -663,8 +698,10 @@ export async function acceptInvitation(
       data: {
         userId: created.id,
         organizationId: invite.organizationId,
-        // Legacy label; authorization comes from permissionTemplateId.
-        role: 'member',
+        // No isOwner: ownership comes from creating the org, never from an invite.
+        // Authorization comes from permissionTemplateId; roleId is the job title,
+        // which grants nothing.
+        roleId: invite.roleId,
         permissionTemplateId: invite.permissionTemplateId,
         // Self-service accept: the new user is the actor for their own membership.
         createdBy: created.id,
@@ -681,5 +718,5 @@ export async function acceptInvitation(
   });
 
   const autoLogin = await issueTokens(newUser);
-  return { organization: org, roleName: invite.permissionTemplate.name, autoLogin };
+  return { organization: org, roleName, permissionTemplateName, autoLogin };
 }

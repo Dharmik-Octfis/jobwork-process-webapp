@@ -3,7 +3,6 @@ import { prisma, runAsTenant } from '../db/prisma.ts';
 import { ApiError } from '../lib/apiError.ts';
 import {
   ALL_PERMISSIONS,
-  permissionsForRole,
   withImpliedRead,
 } from '../modules/settings/organization/permission-templates/permissions.catalog.ts';
 
@@ -74,7 +73,7 @@ export async function tenantContext(
       isDeleted: false,
       organization: { isDeleted: false },
     },
-    select: { role: true, permissionTemplateId: true },
+    select: { isOwner: true, permissionTemplateId: true },
   });
 
   if (!membership) {
@@ -99,7 +98,7 @@ export async function tenantContext(
 
   req.tenantId = organizationId;
   req.membership = {
-    role: membership.role,
+    isOwner: membership.isOwner,
     permissionTemplateId: membership.permissionTemplateId,
     permissions,
   };
@@ -108,32 +107,37 @@ export async function tenantContext(
 
 /**
  * Turn a membership into the set of permission keys it grants.
- *  - Owner template (isOwner) → every permission in the catalog, computed, so a
+ *
+ *  - **Owner → every permission, before a template is even read.** Ownership sits
+ *    ABOVE the permission system: an owner cannot be locked out of their own
+ *    organization by a template, whether through a mistake, a hostile admin, or a
+ *    future code path nobody has written yet. Resolving it here — once — is also
+ *    what keeps `requirePermission` a pure set check with no ownership special
+ *    case in any of the ~40 routes that use it.
+ *  - Template with `grantsAllPermissions` → the whole catalog, computed, so a
  *    newly-shipped permission needs no backfill.
- *  - Any other template → exactly its stored keys.
- *  - No template (legacy row, pre-dating this module) → fall back to the old
- *    `role` string mapped onto the equivalent seeded set, so access keeps working
- *    even before the data backfill runs.
+ *  - Any other template → exactly its stored keys, plus implied reads.
+ *  - No template, or a template deleted out from under the membership → **empty
+ *    set**. Fails closed: a non-owner with no template can do nothing until one is
+ *    assigned.
  */
 async function resolvePermissions(
   organizationId: string,
-  membership: { role: string; permissionTemplateId: string | null },
+  membership: { isOwner: boolean; permissionTemplateId: string | null },
 ): Promise<Set<string>> {
-  if (!membership.permissionTemplateId) {
-    return new Set(permissionsForRole(membership.role));
-  }
+  if (membership.isOwner) return new Set(ALL_PERMISSIONS);
+
+  if (!membership.permissionTemplateId) return new Set();
 
   const template = await runAsTenant(organizationId, (tx) =>
     tx.permissionTemplate.findFirst({
       where: { id: membership.permissionTemplateId!, organizationId, isDeleted: false },
-      select: { isOwner: true, permissions: true },
+      select: { grantsAllPermissions: true, permissions: true },
     }),
   );
 
-  // Template missing/archived out from under the membership → fall back to role
-  // rather than silently granting nothing.
-  if (!template) return new Set(permissionsForRole(membership.role));
-  if (template.isOwner) return new Set(ALL_PERMISSIONS);
+  if (!template) return new Set();
+  if (template.grantsAllPermissions) return new Set(ALL_PERMISSIONS);
   // Rows written before `read` became implied (or by anything but the editor) get
   // the same treatment as a fresh save — see `withImpliedRead`.
   return new Set(withImpliedRead(template.permissions));

@@ -13,28 +13,54 @@ replaces the other.
 ```
                  permissions.catalog.ts            permission_templates (table)      memberships (table)
                  ┌───────────────────┐             ┌───────────────────────┐         ┌──────────────────┐
-  vendor:read ──►│                   │             │  "Warehouse Manager"  │◄────────│ user → template  │
-  vendor:create  │  THE CATALOG      │  ticked ──► │  permissions: [       │  points │ (one per org)    │
+  vendor:read ──►│                   │             │  "Warehouse — full"   │◄────────│ user → template  │  ← what they may DO
+  vendor:create  │  THE CATALOG      │  ticked ──► │  permissions: [       │  points │      → role      │  ← what they're CALLED
   vendor:update  │  (code, fixed)    │  into       │    'vendor:read',     │  at      └──────────────────┘
-  vendor:delete  │                   │             │    'vendor:create' ]  │
-  item:read  ... │                   │             └───────────────────────┘
-                 └───────────────────┘
-                    the vocabulary                      a role = a bundle              the assignment
+  vendor:delete  │                   │             │    'vendor:create' ]  │                  │
+  item:read  ... │                   │             └───────────────────────┘                  ▼
+                 └───────────────────┘                                             roles (table)
+                    the vocabulary                    an access bundle             "Warehouse Supervisor"
+                                                                                    — grants nothing
 ```
 
 - **Permission** — the atomic capability, named `resource:action` (e.g. `vendor:create`). Defined
   in **code** (`permissions.catalog.ts`), never a table. It is the thing route middleware checks.
-- **Permission template** (a.k.a. "profile" or "role") — a named bundle of permissions, stored in
-  the `permission_templates` table, per organization. This is what admins create and edit.
-- **Membership → template** — each `Membership` points at exactly **one** template
-  (`permissionTemplateId`). That template's permission set _is_ the user's authorization.
+- **Permission template** (a.k.a. "profile") — a named bundle of permissions, stored in the
+  `permission_templates` table, per organization. This **is** the authorization.
+- **Role** — a **job title** ("Warehouse Supervisor", "Accountant"), stored in the `roles` table,
+  per organization. It carries **no permissions and grants nothing**.
+- **Membership → template + role** — each `Membership` points at **one template** (required for
+  access) and **one role** (optional, descriptive). They are set independently.
+
+### 🔴 Roles and permission templates are two different axes
+
+They were one object until 2026-07-25 and are now deliberately separate:
+
+|                 | Role                              | Permission template               |
+| --------------- | --------------------------------- | --------------------------------- |
+| Answers         | "what is this person here to do?" | "what may this person do?"        |
+| Grants access   | **No — nothing reads it**         | **Yes — it is the authorization** |
+| Table           | `roles`                           | `permission_templates`            |
+| On a Membership | `roleId` (nullable)               | `permissionTemplateId`            |
+| Screen          | Settings → Roles                  | Settings → Permissions            |
+| Gated by        | `role:*`                          | `permission_template:*`           |
+
+Two people with the same job title routinely need different access (a trainee Accountant and a
+senior one), and one access bundle is routinely shared across titles. Fusing them forced a
+near-duplicate "role" per person — per-user permissions wearing a costume. **Same role + different
+template, and same template + different role, are both normal and both supported.**
+
+**Never gate anything on a role name.** If code branches on a role, that is an authorization bug:
+the check belongs in the catalog and `requirePermission`. A role is nullable precisely because
+nothing depends on it — a member with no title is fully functional.
 
 ### Why "template", and why no per-user permissions
 
 There are deliberately **no per-user permission grants**. You cannot add or remove a single
 permission for one person. To give someone different access, you assign them a **different
 template** (create one if none fits). This is the same model as Zoho CRM profiles, Salesforce
-profiles, and AWS IAM managed policies.
+profiles, and AWS IAM managed policies — where the "profile" is separate from the user's title,
+exactly as it is here.
 
 The payoff: **"what can this user do?" is answerable by reading one row.** There are no hidden
 per-user overrides, no allow-vs-deny precedence rules, no merge logic. The cost is _template
@@ -43,14 +69,15 @@ wearing a costume. (See §7.)
 
 ---
 
-## 2. Permissions are code; roles are data
+## 2. Permissions are code; templates and roles are data
 
 This is the load-bearing design decision, so it's worth stating plainly:
 
 |                    | Lives in                            | Who changes it                       | Migration to change? |
 | ------------------ | ----------------------------------- | ------------------------------------ | -------------------- |
 | Permission catalog | **Code** (`permissions.catalog.ts`) | Developers, when they ship a feature | No — edit the file   |
-| Templates / roles  | **Table** (`permission_templates`)  | Customers/admins, in the UI          | No — it's just data  |
+| Templates          | **Table** (`permission_templates`)  | Customers/admins, in the UI          | No — it's just data  |
+| Roles (job titles) | **Table** (`roles`)                 | Customers/admins, in the UI          | No — it's just data  |
 | Assignment         | **Table** (`memberships`)           | Admins, when they add/edit a member  | No — it's just data  |
 
 The catalog replaces what a textbook RBAC schema would put in a `permissions` table. It is code,
@@ -104,26 +131,67 @@ existed resolve correctly without a backfill).
 
 ---
 
-## 4. A new org has exactly ONE role: Owner
+## 4. Ownership is above the permission system
 
-When an organization is created, **only the Owner template is seeded** (`isSystem: true`,
-`isOwner: true`). It is immutable — the service refuses to edit or delete it.
+`Membership.isOwner` marks the person who created the organization. It is **not** a role and not a
+permission — it sits above both:
 
-There are **no default Admin or Member roles**. The Owner must create a role before anyone can be
-invited or assigned. That is deliberate: a seeded "Member" role is a set of permissions nobody
-consciously chose, and defaults like that are how people end up with access no one reviewed.
-Starting empty forces every grant to be an explicit decision.
+```ts
+// tenantContext.resolvePermissions — the FIRST thing it does
+if (membership.isOwner) return new Set(ALL_PERMISSIONS);
+```
 
-| Template  | Stored permissions         | Notes                                                              |
-| --------- | -------------------------- | ------------------------------------------------------------------ |
-| **Owner** | _(none — `isOwner: true`)_ | Resolves to **all** permissions at runtime. No backfill on change. |
+Two consequences worth stating: an owner **cannot be locked out** of their own organization by any
+template, and no route needs an ownership special case — `requirePermission` stays a pure set check
+because the owner already holds everything by the time it runs.
 
-Everything else is a **custom** role the Owner creates (`isSystem: false`), ticking boxes from the
-catalog. Custom roles can be edited and deleted; a role still assigned to a member can't be deleted
-— reassign those members first. The Owner role is never assignable or invitable: ownership comes
-from creating the organization, not from being granted.
+`isOwner` is set in exactly one place (organization creation) and there is no API that grants it.
+It is scoped to **one** organization: owning Acme says nothing about Globex, and RLS enforces that
+independently. (It replaced a `role` string — `owner|admin|member` — that stored one bit in a
+`VARCHAR(50)`; see the 2026-07-25 migration.)
+
+### `requireOwner` — the short list
+
+A few actions must be impossible for _anyone_ but the owner. They can't be expressed as permissions,
+because whoever holds `permission_template:update` can tick any box for themselves — **every
+permission is ultimately self-grantable**. Only a check outside the permission system stays
+owner-exclusive:
+
+```ts
+router.delete('/:orgId', authenticate, tenantContext, requireOwner, deleteOrganization);
+```
+
+Today that list is **deleting the organization**, and later ownership transfer and billing. Keep it
+short enough to recite: if it grows, the new entries probably belong in the catalog. Note the catalog
+has **no `organization:delete` key at all** — a checkbox that grants nothing is worse than a missing
+one, because an admin ticks it and believes they granted something.
+
+## 4b. What a new organization starts with
+
+| Seeded                 | Kind      | Editable?       | Grants                                         |
+| ---------------------- | --------- | --------------- | ---------------------------------------------- |
+| **Owner** template     | template  | No (`isSystem`) | Everything, computed (`grantsAllPermissions`)  |
+| **Full access**        | template  | **Yes**         | Everything except writing permission templates |
+| **View only**          | template  | **Yes**         | Every `:read` in the catalog                   |
+| **Owner** role         | job title | No (`isSystem`) | Nothing — it is a label                        |
+| **Manager**, **Staff** | job title | **Yes**         | Nothing — they are labels                      |
+
+The Owner template and Owner role are immutable and never assignable or invitable: ownership comes
+from creating the organization. Everything else is an ordinary editable row the org owns from the
+moment it exists — a default nobody can adjust becomes a default everybody works around.
+
+🔴 **"Full access" deliberately withholds `permission_template:create/update/delete`** (it keeps
+`read`). With those, its holder could grant themselves anything, making them the owner in all but
+name and rendering `requireOwner` meaningless. Withholding them is what makes Owner → Full access →
+View only three genuine tiers. An owner can tick those boxes for an org that wants it.
+
+An org previously started with the Owner template alone, on the principle that a seeded template is
+a set of permissions nobody chose. Seeded starting points won on 2026-07-25 for two reasons: the
+templates are **editable**, and nothing is ever auto-assigned — an admin picks one from a dropdown
+with no default selected, and that act of choosing _is_ the review.
 
 A membership with **no** template has **no permissions** (the owner excepted) — it fails closed.
+A membership with **no role** is simply untitled, and works exactly the same.
 
 ---
 
@@ -137,15 +205,23 @@ authenticate ──► tenantContext ──► requirePermission('vendor:create'
 
 1. **`authenticate`** — proves who you are, sets `req.user`.
 2. **`tenantContext`** — verifies you're a member of `:orgId`, then resolves your permission set
-   into `req.membership.permissions` (a `Set<string>`):
-   - Owner template (`isOwner`) → **all** catalog permissions, computed.
+   into `req.membership.permissions` (a `Set<string>`), in this order:
+   - **`isOwner` → all catalog permissions, before a template is even read** (§4).
+   - Template with `grantsAllPermissions` → **all** catalog permissions, computed.
    - Any other template → its stored keys, plus the `:read` each one implies (§3).
-   - **No template** → only the org owner keeps access (`permissionsForRole()`); everyone else
-     gets an empty set until a role is assigned. Fails closed.
+   - **No template**, or one deleted out from under the membership → **empty set**. Fails closed.
    - The template lives in an RLS-protected table, so it is read inside a `runAsTenant` block.
+   - The membership's **role is never read here** — it grants nothing and never enters the set.
 3. **`requirePermission('vendor:create')`** — a DB-free check that the set contains every listed
    permission (AND semantics). Missing → `403`. It never touches tenant isolation; a member with
    `vendor:read` still only sees their own org's vendors because RLS enforces that independently.
+   **`requireOwner`** is the same shape for the few actions no template may grant (§4).
+
+There is exactly **one** authorization mechanism. Until 2026-07-25 invitations and custom fields
+used a second one — `assertOrgAdmin`, which read the old `role` string and ignored the catalog
+entirely, so a member holding `member:create` still could not invite anyone. If you find yourself
+writing a bespoke membership lookup in a service, you are rebuilding it: mount `tenantContext` and
+add a `requirePermission` instead.
 
 ---
 
@@ -167,8 +243,15 @@ the main module the sidebar files it under:
 ```
 
 That instantly creates `purchase_order:read/create/update/delete`, a new row under Purchases in the
-role editor's checkbox grid (covered by that group's bulk toggles), and Owner coverage (computed). Existing custom roles do **not** get the new
-permissions — an Owner ticks them on deliberately, which is the point.
+editor's checkbox grid (covered by that group's bulk toggles), and Owner coverage (computed).
+Existing templates do **not** get the new permissions — an owner ticks them on deliberately, which is
+the point. (Orgs created _after_ you ship it get them in their seeded "Full access" / "View only",
+which are computed from the catalog.)
+
+A resource may expose **fewer** than four actions — `{ resource: 'organization', …, actions: ['read',
+'update'] }` — and the grid renders "—" for the rest. Use it only when an action genuinely cannot
+exist: a key the catalog defines and no route checks is worse than a missing column, because someone
+ticks it and believes they granted something.
 
 ### Step 2 — gate every route with `requirePermission`
 
@@ -203,10 +286,13 @@ functions. The failure mode is _template sprawl_: creating a near-duplicate temp
 instead of reusing one. Because per-user overrides don't exist, every tiny difference tempts a new
 template. Keep it in check by:
 
-- Naming templates by **job function** ("Warehouse Supervisor"), not by permission diff.
+- Naming templates by **level of access** ("Warehouse — full", "Read-only"), not by permission diff
+  and not after one person. Job titles belong on the **role**, which is what the separation is for:
+  the pressure to mint "Warehouse Supervisor (but no delete)" disappears once a title costs nothing.
 - Treating a **template assigned to exactly one member** as a smell (the API returns `memberCount`
   so the UI can surface it).
 - Keeping permissions **coarse** (the uniform 4-per-resource catalog already does this).
+- Roles sprawl harmlessly — one per genuine job title is correct, and they grant nothing.
 
 Per-user overrides and attribute-based rules (ABAC) are deliberately **not** built. They're easy to
 add later if a real need appears, and impossible to cleanly remove once code depends on them.
@@ -215,29 +301,37 @@ add later if a real need appears, and impossible to cleanly remove once code dep
 
 ## 8. Files & where things live
 
-| File                                                                               | Role                                                               |
-| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `…/permission-templates/permissions.catalog.ts`                                    | **The catalog** — resource list, `ALL_PERMISSIONS`, Owner seed     |
-| `…/permission-templates/permission-templates.service.ts`                           | Role CRUD, `seedSystemTemplates()`, immutability guards            |
-| `…/permission-templates/permission-templates.{routes,controller,schemas,types}.ts` | The roles API (`/organizations/:orgId/permission-templates`)       |
-| `…/members/members.{routes,controller,service,schemas,types}.ts`                   | **Assigning** a role to a member (`/organizations/:orgId/members`) |
-| `…/invitations/`                                                                   | Invites carry a `permissionTemplateId`, not a role string          |
-| `src/middlewares/authorize.ts`                                                     | `requirePermission(...)` — the route gate                          |
-| `src/middlewares/tenantContext.ts`                                                 | Resolves `req.membership.permissions`                              |
-| `prisma/schema/permissions.prisma`                                                 | `PermissionTemplate` model                                         |
-| `prisma/migrations/*_add_permission_templates`                                     | Table + RLS + backfill                                             |
-| `prisma/migrations/*_owner_only_default_role`                                      | Drops the Admin/Member seeds; invites → template FK                |
-| `web/src/features/roles/`                                                          | Settings → Roles: list + catalog-driven checkbox editor            |
-| `web/src/features/members/` · `features/invitations/`                              | Member list + role assignment · invite with a role                 |
+| File                                                                               | Role                                                                              |
+| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `…/permission-templates/permissions.catalog.ts`                                    | **The catalog** — resource list, `ALL_PERMISSIONS`, Owner seed                    |
+| `…/permission-templates/permission-templates.service.ts`                           | Template CRUD, `seedSystemTemplates()`, immutability guards                       |
+| `…/permission-templates/permission-templates.{routes,controller,schemas,types}.ts` | The templates API (`/organizations/:orgId/permission-templates`)                  |
+| `…/roles/roles.{routes,controller,service,schemas,types}.ts`                       | The **roles** (job titles) API (`/organizations/:orgId/roles`)                    |
+| `…/members/members.{routes,controller,service,schemas,types}.ts`                   | Assigning a role **and/or** a template (`/organizations/:orgId/members`)          |
+| `…/invitations/`                                                                   | Invites carry a required `permissionTemplateId` + optional `roleId`               |
+| `src/middlewares/authorize.ts`                                                     | `requirePermission(...)` and `requireOwner` — the route gates                     |
+| `src/middlewares/tenantContext.ts`                                                 | Resolves `req.membership.permissions` (isOwner → all; else the template)          |
+| `prisma/schema/permissions.prisma`                                                 | `Role` + `PermissionTemplate` models                                              |
+| `prisma/migrations/*_add_permission_templates`                                     | Templates table + RLS + backfill                                                  |
+| `prisma/migrations/*_owner_only_default_role`                                      | Drops the Admin/Member seeds; invites → template FK                               |
+| `prisma/migrations/*_split_roles_from_permission_templates`                        | `roles` table + RLS, `role_id` on memberships/invitations, Owner backfill         |
+| `prisma/migrations/*_membership_is_owner_and_seeded_templates`                     | `role` → `is_owner`, flag rename, Full access / View only + Manager / Staff seeds |
+| `web/src/features/roles/`                                                          | Settings → Roles: job-title list + inline editor                                  |
+| `web/src/features/permission-templates/`                                           | Settings → Permissions: list + catalog-driven checkbox editor                     |
+| `web/src/features/members/` · `features/invitations/`                              | Member list with both dropdowns · invite picking both                             |
 
 ### The lifecycle, end to end
 
-1. Owner creates the org → only the **Owner** role exists.
-2. Owner opens **Settings → Roles** and creates a role (e.g. "Warehouse Supervisor").
-3. Owner opens **Settings → Members** and invites someone, picking that role. The invite form is
-   blocked until at least one role exists.
-4. Invitee accepts → their Membership is created pointing at that role.
-5. To change what someone can do, assign them a **different** role — never a one-off permission.
+1. Owner creates the org → their membership is flagged `isOwner`, and the seeds land: **Owner /
+   Full access / View only** templates and **Owner / Manager / Staff** roles (§4b).
+2. Owner opens **Settings → Members** and invites someone, picking a template (required) and a role
+   (optional). Both dropdowns are usable immediately — that is what the seeds buy.
+3. Invitee accepts → their Membership is created carrying both, and never `isOwner`.
+4. When the seeds stop fitting, **Settings → Permissions** edits or adds a template (they are
+   ordinary rows, including the seeded two), and **Settings → Roles** edits or adds job titles.
+5. To change what someone can **do**, put them on a different **template**. To change what they're
+   **called**, change their **role**. Either dropdown on the member row, independently — never a
+   one-off permission.
 
 **Related:** tenant isolation & RLS → `PRISMA.md` §8; per-org custom fields (the same
 "code, not data" split for field _definitions_) → `DYNAMIC_CUSTOM_FIELDS_EXPLAINED.md`; auth model

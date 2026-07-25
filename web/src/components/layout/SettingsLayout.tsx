@@ -9,6 +9,7 @@ import {
   LayoutGrid,
   ChevronRight,
   ShieldCheck,
+  IdCard,
 } from 'lucide-react';
 import { CUSTOM_FIELD_MODULES } from '../../features/custom-fields/customFields.schemas';
 
@@ -134,6 +135,8 @@ export function SettingsLayout() {
             <span style={{ fontSize: 14 }}>Members & Invites</span>
           </NavLink>
 
+          {/* Two entries, not one: a role is a job title and grants nothing; a
+              permission template is the access. Members get one of each. */}
           <NavLink
             to={`/organizations/${orgId}/settings/roles`}
             style={({ isActive }) => ({
@@ -149,8 +152,27 @@ export function SettingsLayout() {
               transition: 'all 0.2s ease',
             })}
           >
+            <IdCard size={18} />
+            <span style={{ fontSize: 14 }}>Roles</span>
+          </NavLink>
+
+          <NavLink
+            to={`/organizations/${orgId}/settings/permissions`}
+            style={({ isActive }) => ({
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-3)',
+              padding: '8px 12px',
+              borderRadius: 'var(--radius-md)',
+              textDecoration: 'none',
+              color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
+              background: isActive ? 'var(--primary-50)' : 'transparent',
+              fontWeight: isActive ? 600 : 500,
+              transition: 'all 0.2s ease',
+            })}
+          >
             <ShieldCheck size={18} />
-            <span style={{ fontSize: 14 }}>Roles & Permissions</span>
+            <span style={{ fontSize: 14 }}>Permissions</span>
           </NavLink>
 
           <div

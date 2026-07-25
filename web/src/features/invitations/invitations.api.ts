@@ -10,8 +10,10 @@ export interface InvitationLookup {
   status: InvitationLookupStatus;
   organizationName: string | null;
   email: string | null;
-  /** Name of the role this invite grants. */
+  /** Job title offered, if the inviter set one. Grants nothing by itself. */
   roleName: string | null;
+  /** Name of the permission template this invite grants — the actual access. */
+  permissionTemplateName: string | null;
   /** Whether an account already exists for the invited email. */
   accountExists: boolean;
 }
@@ -20,8 +22,12 @@ export interface InvitationLookup {
 export interface Invitation {
   id: string;
   email: string;
+  /** The job title the invitee will carry. Optional — it grants nothing. */
+  roleId: string | null;
+  roleName: string | null;
+  /** The permission template the invite grants — always present. */
   permissionTemplateId: string;
-  roleName: string;
+  permissionTemplateName: string;
   status: string;
   invitedByName: string;
   expiresAt: string;
@@ -34,7 +40,10 @@ export interface MyInvitation {
   id: string;
   organizationId: string;
   organizationName: string;
-  roleName: string;
+  /** The job title offered, if any. */
+  roleName: string | null;
+  /** The access bundle offered — always present. */
+  permissionTemplateName: string;
   invitedByName: string;
   expiresAt: string;
   createdAt: string;
@@ -48,7 +57,8 @@ export interface AcceptInvitationBody {
 
 export interface AcceptInvitationResult {
   organization: { id: string; name: string };
-  roleName: string;
+  roleName: string | null;
+  permissionTemplateName: string;
   /** Present only when a brand-new account was created during accept. */
   user?: User;
   accessToken?: string;
@@ -120,10 +130,11 @@ export const invitationsApi = {
   },
 
   /** POST /organizations/:orgId/invitations — send an invite (owner/admin). The
-   * role must be one the owner created; there are no default roles. */
+   * permission template is required and must be one the owner created (there are
+   * no defaults); the role is a job title and optional. */
   create: async (
     orgId: string,
-    body: { email: string; permissionTemplateId: string },
+    body: { email: string; roleId?: string; permissionTemplateId: string },
   ): Promise<Invitation> => {
     const { data } = await apiClient.post<{ invitation: Invitation }>(
       endpoints.invitations.forOrg(orgId),

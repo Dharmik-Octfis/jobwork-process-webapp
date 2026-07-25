@@ -32,7 +32,7 @@ export async function getDefinitions(req: Request, res: Response): Promise<void>
   if (!req.user) throw new ApiError(401, 'Sign in to continue.');
   const orgId = req.tenantId!;
   const entityType = requireEntityType(req);
-  const fields = await service.listDefinitions(req.user.id, orgId, entityType);
+  const fields = await service.listDefinitions(orgId, entityType);
   sendSuccess(res, { fields });
 }
 

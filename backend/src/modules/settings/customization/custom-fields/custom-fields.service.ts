@@ -1,7 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { runAsTenant } from '../../../../db/prisma.ts';
 import { ApiError } from '../../../../lib/apiError.ts';
-import { assertOrgAdmin } from '../../organization/invitations/invitations.service.ts';
 import type { Prisma } from '../../../../../generated/prisma/client.ts';
 import {
   MAX_ACTIVE_FIELDS,
@@ -72,13 +71,10 @@ export function listActiveDefinitions(organizationId: string, entityType: Entity
   );
 }
 
-/** All non-archived definitions (active + hidden) for the admin manager. */
-export async function listDefinitions(
-  userId: string,
-  organizationId: string,
-  entityType: EntityType,
-) {
-  await assertOrgAdmin(userId, organizationId);
+/** All non-archived definitions (active + hidden) for the admin manager. Takes no
+ * acting user: authorization is the route's `requirePermission('custom_field:read')`,
+ * and a read stamps nothing. */
+export async function listDefinitions(organizationId: string, entityType: EntityType) {
   return runAsTenant(organizationId, (tx) =>
     tx.customFieldDefinition.findMany({
       where: { organizationId, entityType, isDeleted: false },
@@ -92,8 +88,6 @@ export async function createDefinition(
   organizationId: string,
   input: CreateDefinitionInput,
 ) {
-  await assertOrgAdmin(userId, organizationId);
-
   return runAsTenant(organizationId, async (tx) => {
     const activeCount = await tx.customFieldDefinition.count({
       where: { organizationId, entityType: input.entityType, isDeleted: false, status: 'active' },
@@ -142,8 +136,6 @@ export async function updateDefinition(
   id: string,
   input: UpdateDefinitionInput,
 ) {
-  await assertOrgAdmin(userId, organizationId);
-
   return runAsTenant(organizationId, async (tx) => {
     // key and dataType are immutable — they are never read from `input`.
     const existing = await tx.customFieldDefinition.findFirst({
@@ -173,8 +165,6 @@ export async function reorderDefinitions(
   organizationId: string,
   items: ReorderInput['items'],
 ) {
-  await assertOrgAdmin(userId, organizationId);
-
   await runAsTenant(organizationId, async (tx) => {
     for (const { id, displayOrder } of items) {
       await tx.customFieldDefinition.updateMany({
@@ -187,8 +177,6 @@ export async function reorderDefinitions(
 
 /** Archive (soft-delete). Values stay in the DB and the key stays reserved. */
 export async function archiveDefinition(userId: string, organizationId: string, id: string) {
-  await assertOrgAdmin(userId, organizationId);
-
   await runAsTenant(organizationId, async (tx) => {
     const existing = await tx.customFieldDefinition.findFirst({
       where: { id, organizationId, isDeleted: false },

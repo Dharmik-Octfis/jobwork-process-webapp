@@ -5,6 +5,7 @@ import { ApiError } from '../../../../lib/apiError.ts';
 import { sendSuccess } from '../../../../lib/apiResponse.ts';
 import { createOrganizationSchema, updateOrganizationSchema } from './organizations.schemas.ts';
 import { seedSystemTemplates } from '../permission-templates/permission-templates.service.ts';
+import { seedSystemRoles } from '../roles/roles.service.ts';
 
 export async function createOrganization(req: Request, res: Response, next: NextFunction) {
   try {
@@ -41,15 +42,20 @@ export async function createOrganization(req: Request, res: Response, next: Next
         },
       });
 
-      // Seed the immutable Owner/Admin/Member templates, then make the creator an
-      // Owner pointing at the Owner template (all permissions, computed).
+      // Seed the immutable Owner role (a title) and Owner template (the access),
+      // then make the creator an owner carrying both. Only these two are seeded:
+      // every other title and template is one an admin consciously created.
       const { ownerTemplateId } = await seedSystemTemplates(tx, orgId, userId);
+      const { ownerRoleId } = await seedSystemRoles(tx, orgId, userId);
 
       await tx.membership.create({
         data: {
           userId,
           organizationId: orgId,
-          role: 'owner',
+          // The one place isOwner is ever set: creating the organization. There is
+          // no API that grants it, which is what keeps "one owner per org" true.
+          isOwner: true,
+          roleId: ownerRoleId,
           permissionTemplateId: ownerTemplateId,
           createdBy: userId,
           updatedBy: userId,
@@ -95,23 +101,12 @@ export async function getOrganizations(req: Request, res: Response, next: NextFu
 export async function updateOrganization(req: Request, res: Response, next: NextFunction) {
   try {
     const userId = req.user?.id;
-    const orgId = req.params.id as string;
+    // Membership, soft-delete and permission checks all happened in the middleware
+    // chain (tenantContext → requirePermission('organization:update')), so the
+    // hand-rolled owner lookup that used to live here is gone.
+    const orgId = req.tenantId!;
     if (!userId) {
       throw new ApiError(401, 'Sign in to continue.');
-    }
-
-    const membership = await prisma.membership.findFirst({
-      where: {
-        userId,
-        organizationId: orgId,
-        role: 'owner',
-        isDeleted: false,
-        organization: { isDeleted: false },
-      },
-    });
-
-    if (!membership) {
-      throw new ApiError(403, 'Only owners can update this organization.');
     }
 
     const parsedData = updateOrganizationSchema.safeParse(req.body);
@@ -139,23 +134,11 @@ export async function updateOrganization(req: Request, res: Response, next: Next
 export async function deleteOrganization(req: Request, res: Response, next: NextFunction) {
   try {
     const userId = req.user?.id;
-    const orgId = req.params.id as string;
+    // `requireOwner` on the route already proved ownership — and unlike the check
+    // this replaced, it cannot be satisfied by any permission template.
+    const orgId = req.tenantId!;
     if (!userId) {
       throw new ApiError(401, 'Sign in to continue.');
-    }
-
-    const membership = await prisma.membership.findFirst({
-      where: {
-        userId,
-        organizationId: orgId,
-        role: 'owner',
-        isDeleted: false,
-        organization: { isDeleted: false },
-      },
-    });
-
-    if (!membership) {
-      throw new ApiError(403, 'Only owners can delete this organization.');
     }
 
     // Soft delete: keep the row, flip isDeleted, and record who removed it.
