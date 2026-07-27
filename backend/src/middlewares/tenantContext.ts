@@ -1,10 +1,11 @@
 import type { NextFunction, Request, Response } from 'express';
-import { prisma, runAsTenant } from '../db/prisma.ts';
+import { prisma } from '../db/prisma.ts';
 import { ApiError } from '../lib/apiError.ts';
 import {
   ALL_PERMISSIONS,
   withImpliedRead,
 } from '../modules/settings/organization/permission-templates/permissions.catalog.ts';
+import { getTemplateBody } from '../modules/settings/organization/permission-templates/permissionTemplates.cache.ts';
 
 /**
  * Resolve which organization this request acts inside, and prove the caller
@@ -120,6 +121,16 @@ export async function tenantContext(
  *  - No template, or a template deleted out from under the membership → **empty
  *    set**. Fails closed: a non-owner with no template can do nothing until one is
  *    assigned.
+ *
+ * The template body comes from `permissionTemplates.cache.ts` rather than
+ * straight from Postgres — that read was a full `runAsTenant` (four round trips
+ * to RDS, holding a pooled connection) on every request. The *membership* read
+ * above is deliberately NOT cached, which is what keeps member removal effective
+ * immediately; see the long note in that module for why the split sits there.
+ *
+ * The resolved `Set` is rebuilt here on every request and never cached: it is a
+ * pure function of the membership and the template body, and constructing it
+ * from ~40 strings costs microseconds.
  */
 async function resolvePermissions(
   organizationId: string,
@@ -129,12 +140,7 @@ async function resolvePermissions(
 
   if (!membership.permissionTemplateId) return new Set();
 
-  const template = await runAsTenant(organizationId, (tx) =>
-    tx.permissionTemplate.findFirst({
-      where: { id: membership.permissionTemplateId!, organizationId, isDeleted: false },
-      select: { grantsAllPermissions: true, permissions: true },
-    }),
-  );
+  const template = await getTemplateBody(organizationId, membership.permissionTemplateId);
 
   if (!template) return new Set();
   if (template.grantsAllPermissions) return new Set(ALL_PERMISSIONS);

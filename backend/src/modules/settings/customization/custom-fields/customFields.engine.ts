@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ApiError } from '../../../../lib/apiError.ts';
 import type { TenantClient } from '../../../../db/prisma.ts';
+import { createMemoryCache } from '../../../../lib/memoryCache.ts';
 import type { EntityType } from './customFields.constants.ts';
 
 /**
@@ -132,16 +133,72 @@ function buildValueSchema(def: FieldDefinition): z.ZodTypeAny {
 }
 
 /** Active field definitions for an org+module, ordered for the form. */
+/**
+ * L1 only — deliberately NOT Catalyst Cache.
+ *
+ * Every caller of `loadActiveDefinitions` is already **inside an open
+ * `runAsTenant` transaction** (see `vendors.service.ts` / `items.service.ts`
+ * create and update). A Prisma transaction holds one of only five pool
+ * connections for its whole life, so swapping the local `SELECT` for an
+ * authenticated HTTPS call to Catalyst would keep that connection pinned across
+ * a network round trip — strictly worse than the query it replaced. A shared
+ * cache only pays off where the lookup happens *before* the transaction opens,
+ * which is the case for permission templates and is not the case here.
+ *
+ * Staleness, stated plainly: definitions are read to validate a record's
+ * `custom_fields` on write, so for up to `DEFS_TTL_MS` after an admin archives a
+ * field, instances other than the one that processed the edit may still accept a
+ * value for it. That value lands in JSONB and is stripped by the engine on the
+ * next read/write, so the blast radius is one stale column value — acceptable at
+ * 30 seconds, which is why the TTL is short rather than convenient.
+ */
+const DEFS_TTL_MS = 30 * 1000;
+
+const defsCache = createMemoryCache<FieldDefinition[]>({
+  ttlMs: DEFS_TTL_MS,
+  maxEntries: 500,
+});
+
+/**
+ * Tenant-scoped by construction — the org id is part of the key, because a cache
+ * has no RLS beneath it and the key is its only isolation.
+ */
+function defsKey(organizationId: string, entityType: EntityType): string {
+  return `cf:defs:${organizationId}:${entityType}`;
+}
+
+/**
+ * 🔴 Call after every write to a definition (create / update / reorder /
+ * archive), once the transaction has committed. Clears this instance only;
+ * others age out within `DEFS_TTL_MS`.
+ */
+export function invalidateDefinitions(organizationId: string, entityType: EntityType): void {
+  defsCache.delete(defsKey(organizationId, entityType));
+}
+
+/** Drop this instance's definition cache entirely. For tests. */
+export function clearDefinitionsCache(): void {
+  defsCache.clear();
+}
+
 export async function loadActiveDefinitions(
   tx: TenantClient,
   organizationId: string,
   entityType: EntityType,
 ): Promise<FieldDefinition[]> {
-  return tx.customFieldDefinition.findMany({
+  const key = defsKey(organizationId, entityType);
+
+  const cached = defsCache.get(key);
+  if (cached) return cached;
+
+  const defs = await tx.customFieldDefinition.findMany({
     where: { organizationId, entityType, isDeleted: false, status: 'active' },
     orderBy: { displayOrder: 'asc' },
     select: { key: true, label: true, dataType: true, config: true, isRequired: true },
   });
+
+  defsCache.set(key, defs);
+  return defs;
 }
 
 /**

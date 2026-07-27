@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { runAsTenant } from '../../../../db/prisma.ts';
 import { ApiError } from '../../../../lib/apiError.ts';
 import type { Prisma } from '../../../../../generated/prisma/client.ts';
+import { invalidateDefinitions } from './customFields.engine.ts';
 import {
   MAX_ACTIVE_FIELDS,
   OPTION_TYPES,
@@ -88,7 +89,7 @@ export async function createDefinition(
   organizationId: string,
   input: CreateDefinitionInput,
 ) {
-  return runAsTenant(organizationId, async (tx) => {
+  const created = await runAsTenant(organizationId, async (tx) => {
     const activeCount = await tx.customFieldDefinition.count({
       where: { organizationId, entityType: input.entityType, isDeleted: false, status: 'active' },
     });
@@ -128,6 +129,12 @@ export async function createDefinition(
       },
     });
   });
+
+  // After commit, never inside the transaction: clearing early lets a concurrent
+  // request read the pre-commit state and re-cache it, and nothing would clear
+  // that entry again. Local instance only — others age out within the TTL.
+  invalidateDefinitions(organizationId, input.entityType);
+  return created;
 }
 
 export async function updateDefinition(
@@ -136,11 +143,12 @@ export async function updateDefinition(
   id: string,
   input: UpdateDefinitionInput,
 ) {
-  return runAsTenant(organizationId, async (tx) => {
+  const { row, entityType } = await runAsTenant(organizationId, async (tx) => {
     // key and dataType are immutable — they are never read from `input`.
+    // `entityType` is selected purely to key the cache invalidation below.
     const existing = await tx.customFieldDefinition.findFirst({
       where: { id, organizationId, isDeleted: false },
-      select: { id: true, dataType: true },
+      select: { id: true, dataType: true, entityType: true },
     });
     if (!existing) throw new ApiError(404, 'Custom field not found.');
 
@@ -156,8 +164,14 @@ export async function updateDefinition(
 
     // Scope the write to the org so an id from another tenant is a no-op (RLS also guards).
     await tx.customFieldDefinition.updateMany({ where: { id, organizationId }, data });
-    return tx.customFieldDefinition.findFirst({ where: { id, organizationId } });
+    return {
+      row: await tx.customFieldDefinition.findFirst({ where: { id, organizationId } }),
+      entityType: existing.entityType as EntityType,
+    };
   });
+
+  invalidateDefinitions(organizationId, entityType);
+  return row;
 }
 
 export async function reorderDefinitions(
@@ -165,22 +179,36 @@ export async function reorderDefinitions(
   organizationId: string,
   items: ReorderInput['items'],
 ) {
-  await runAsTenant(organizationId, async (tx) => {
+  const affected = await runAsTenant(organizationId, async (tx) => {
+    // `loadActiveDefinitions` orders by displayOrder, so a reorder changes the
+    // cached array even though no field's contents change. Collect which modules
+    // were touched — a payload could in principle span more than one.
+    const rows = await tx.customFieldDefinition.findMany({
+      where: { id: { in: items.map((i) => i.id) }, organizationId },
+      select: { entityType: true },
+    });
+
     for (const { id, displayOrder } of items) {
       await tx.customFieldDefinition.updateMany({
         where: { id, organizationId },
         data: { displayOrder, updatedBy: userId },
       });
     }
+
+    return new Set(rows.map((r) => r.entityType as EntityType));
   });
+
+  for (const entityType of affected) {
+    invalidateDefinitions(organizationId, entityType);
+  }
 }
 
 /** Archive (soft-delete). Values stay in the DB and the key stays reserved. */
 export async function archiveDefinition(userId: string, organizationId: string, id: string) {
-  await runAsTenant(organizationId, async (tx) => {
+  const entityType = await runAsTenant(organizationId, async (tx) => {
     const existing = await tx.customFieldDefinition.findFirst({
       where: { id, organizationId, isDeleted: false },
-      select: { id: true },
+      select: { id: true, entityType: true },
     });
     if (!existing) throw new ApiError(404, 'Custom field not found.');
 
@@ -188,7 +216,13 @@ export async function archiveDefinition(userId: string, organizationId: string, 
       where: { id, organizationId },
       data: { isDeleted: true, updatedBy: userId },
     });
+
+    return existing.entityType as EntityType;
   });
+
+  // The most important of the four: until this lands, a write could still be
+  // validated against — and required to fill — a field that no longer exists.
+  invalidateDefinitions(organizationId, entityType);
 }
 
 // Re-export for services that need the value engine alongside the definition API.

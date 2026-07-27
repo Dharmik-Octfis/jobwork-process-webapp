@@ -82,6 +82,15 @@ const envSchema = z.object({
   ZC_REFRESH_TOKEN: z.string().optional(),
   // Default Stratus bucket every upload lands in unless a call overrides it.
   ZC_STRATUS_BUCKET: z.string().optional(),
+  /**
+   * Catalyst Cache segment id (Console -> Cache -> your segment). Optional and
+   * separate from the Stratus vars on purpose: leaving it unset disables the
+   * whole L2 cache layer (`lib/catalystCache.ts` no-ops and every caller falls
+   * through to Postgres), so the cache can be switched off in production without
+   * a code change — and so a deployment that has not created a segment still
+   * boots and behaves correctly, just without caching.
+   */
+  ZC_CACHE_SEGMENT_ID: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -136,6 +145,7 @@ export const env = {
     clientSecret: raw.ZC_CLIENT_SECRET,
     refreshToken: raw.ZC_REFRESH_TOKEN,
     stratusBucket: raw.ZC_STRATUS_BUCKET,
+    cacheSegmentId: raw.ZC_CACHE_SEGMENT_ID,
     // True only when every credential the SDK needs is present. lib/storage.ts
     // reads this to fail with a clear message instead of a cryptic SDK error.
     configured: Boolean(
@@ -145,6 +155,18 @@ export const env = {
       raw.ZC_CLIENT_SECRET &&
       raw.ZC_REFRESH_TOKEN &&
       raw.ZC_STRATUS_BUCKET,
+    ),
+    // The same OAuth credentials as `configured`, minus the Stratus bucket (the
+    // cache does not need one) plus a segment id. Kept separate so caching and
+    // file storage can be enabled independently — lib/catalystCache.ts reads
+    // this and silently no-ops when false, rather than throwing like storage.
+    cacheConfigured: Boolean(
+      raw.ZC_PROJECT_ID &&
+      raw.ZC_PROJECT_KEY &&
+      raw.ZC_CLIENT_ID &&
+      raw.ZC_CLIENT_SECRET &&
+      raw.ZC_REFRESH_TOKEN &&
+      raw.ZC_CACHE_SEGMENT_ID,
     ),
   },
 } as const;

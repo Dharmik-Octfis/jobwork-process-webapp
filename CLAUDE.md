@@ -319,11 +319,12 @@ npx tsc -b               # ⚠️ THE typecheck. `tsc --noEmit` checks ZERO file
 
 ## Docs
 
-|                                                           |                                                              |
-| --------------------------------------------------------- | ------------------------------------------------------------ |
-| `docs/PRISMA.md` §8                                       | migrations, the RLS runbook, drift, why the DB was baselined |
-| `docs/ARCHITECTURE_AND_TECH_STACK.md`                     | every tech decision + rejected alternatives                  |
-| `docs/DYNAMIC_CUSTOM_FIELDS_EXPLAINED.md`                 | per-org custom fields — concepts                             |
-| `docs/DYNAMIC_CUSTOM_FIELDS_IMPLEMENTATION_PROMPT.md`     | …and the ordered build plan                                  |
-| `docs/ROLES_AND_PERMISSIONS.md`                           | permission templates, `requirePermission`, the code catalog  |
-| `docs/AUTHENTICATION.md` · `CATALYST_DEPLOYMENT_GUIDE.md` | auth model · deploy                                          |
+|                                                           |                                                                 |
+| --------------------------------------------------------- | --------------------------------------------------------------- |
+| `docs/PRISMA.md` §8                                       | migrations, the RLS runbook, drift, why the DB was baselined    |
+| `docs/ARCHITECTURE_AND_TECH_STACK.md`                     | every tech decision + rejected alternatives                     |
+| `docs/DYNAMIC_CUSTOM_FIELDS_EXPLAINED.md`                 | per-org custom fields — concepts                                |
+| `docs/DYNAMIC_CUSTOM_FIELDS_IMPLEMENTATION_PROMPT.md`     | …and the ordered build plan                                     |
+| `docs/ROLES_AND_PERMISSIONS.md`                           | permission templates, `requirePermission`, the code catalog     |
+| `docs/CACHING.md`                                         | L1/L2 layers, what must never be cached, the invalidation rules |
+| `docs/AUTHENTICATION.md` · `CATALYST_DEPLOYMENT_GUIDE.md` | auth model · deploy                                             |

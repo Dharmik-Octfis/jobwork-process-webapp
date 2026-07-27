@@ -42,9 +42,15 @@ export async function createOrganization(req: Request, res: Response, next: Next
         },
       });
 
-      // Seed the immutable Owner role (a title) and Owner template (the access),
-      // then make the creator an owner carrying both. Only these two are seeded:
-      // every other title and template is one an admin consciously created.
+      // Seed both axes, then make the creator an owner carrying one of each:
+      // roles are job titles (Owner, Manager, Staff), templates are the access
+      // (Owner, Full access, View only) — see SYSTEM_ROLES / SYSTEM_TEMPLATES.
+      // Only the two Owner rows are `isSystem` (immutable, never assignable —
+      // ownership comes from creating the org, not from being given the row).
+      // The other four are ordinary editable rows the org owns from this moment,
+      // seeded so neither settings screen is empty on day one; an admin may
+      // rename, re-tick, or delete them. Only the Owner ids are returned here
+      // because they are the only ones this membership needs.
       const { ownerTemplateId } = await seedSystemTemplates(tx, orgId, userId);
       const { ownerRoleId } = await seedSystemRoles(tx, orgId, userId);
 

@@ -1,5 +1,6 @@
 import { runAsTenant, type TenantClient } from '../../../../db/prisma.ts';
 import { ApiError } from '../../../../lib/apiError.ts';
+import { invalidateTemplate } from './permissionTemplates.cache.ts';
 import { ALL_PERMISSIONS, SYSTEM_TEMPLATES } from './permissions.catalog.ts';
 import type { CreateTemplateInput, UpdateTemplateInput } from './permission-templates.schemas.ts';
 import type { PublicPermissionTemplate } from './permission-templates.types.ts';
@@ -163,13 +164,13 @@ export function createTemplate(
   });
 }
 
-export function updateTemplate(
+export async function updateTemplate(
   userId: string,
   organizationId: string,
   id: string,
   input: UpdateTemplateInput,
 ): Promise<PublicPermissionTemplate> {
-  return runAsTenant(organizationId, async (tx) => {
+  const result = await runAsTenant(organizationId, async (tx) => {
     const existing = await tx.permissionTemplate.findFirst({
       where: { id, organizationId, isDeleted: false },
       select: { id: true, isSystem: true },
@@ -206,12 +207,24 @@ export function updateTemplate(
     const counts = await memberCounts(tx, organizationId, [id]);
     return toPublic(row as TemplateRow, counts.get(id) ?? 0);
   });
+
+  // 🔴 AFTER the transaction commits, never inside it. Invalidating early opens
+  // a window where another request reads the still-uncommitted old row and
+  // caches it — and nothing would invalidate that entry again, so the stale
+  // permissions would live until the TTL. This is what actually keeps a
+  // permission change effective; the TTL only covers a delete that never ran.
+  await invalidateTemplate(organizationId, id);
+  return result;
 }
 
 /** Soft-delete a custom template. Refuses system templates and any template still
  * assigned to a member (reassign them first — there is no per-user override). */
-export function deleteTemplate(userId: string, organizationId: string, id: string): Promise<void> {
-  return runAsTenant(organizationId, async (tx) => {
+export async function deleteTemplate(
+  userId: string,
+  organizationId: string,
+  id: string,
+): Promise<void> {
+  await runAsTenant(organizationId, async (tx) => {
     const existing = await tx.permissionTemplate.findFirst({
       where: { id, organizationId, isDeleted: false },
       select: { id: true, isSystem: true },
@@ -236,6 +249,11 @@ export function deleteTemplate(userId: string, organizationId: string, id: strin
       data: { isDeleted: true, updatedBy: userId },
     });
   });
+
+  // After commit — same reasoning as updateTemplate. Belt and braces here, since
+  // the guard above refuses to delete a template any member still holds, so
+  // nothing should be resolving through it by this point.
+  await invalidateTemplate(organizationId, id);
 }
 
 function isUniqueViolation(error: unknown): boolean {
