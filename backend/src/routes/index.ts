@@ -12,10 +12,12 @@ import {
 } from '../modules/seed-data/seed-data.routes.ts';
 import { appModulesRouter } from '../modules/settings/customization/app-modules/app-modules.routes.ts';
 import { vendorsRouter } from '../modules/purchases/vendors/vendors.routes.ts';
+import { purchaseOrdersRouter } from '../modules/purchases/purchase-orders/purchase-orders.routes.ts';
 import { customersRouter } from '../modules/sales/customers/customers.routes.ts';
 import { uomRouter } from '../modules/settings/inventory/uom/uom.routes.ts';
 import { currenciesRouter } from '../modules/settings/configuration/currencies/currencies.routes.ts';
 import { paymentTermsRouter } from '../modules/settings/configuration/payment-terms/payment-terms.routes.ts';
+import { locationsRouter } from '../modules/settings/configuration/locations/locations.routes.ts';
 import { customFieldsRouter } from '../modules/settings/customization/custom-fields/custom-fields.routes.ts';
 import { rolesRouter } from '../modules/settings/organization/roles/roles.routes.ts';
 import { permissionTemplatesRouter } from '../modules/settings/organization/permission-templates/permission-templates.routes.ts';
@@ -42,10 +44,12 @@ apiRouter.use('/auth', authRouter);
 // anyway, but only after running that router's `authenticate` a second time.
 // Specific before general keeps the path short and the middleware chain honest.
 apiRouter.use('/organizations/:orgId/purchases/vendors', vendorsRouter);
+apiRouter.use('/organizations/:orgId/purchases/purchase-orders', purchaseOrdersRouter);
 apiRouter.use('/organizations/:orgId/sales/customers', customersRouter);
 apiRouter.use('/organizations/:orgId/inventory/uom', uomRouter);
 apiRouter.use('/organizations/:orgId/configuration/currencies', currenciesRouter);
 apiRouter.use('/organizations/:orgId/configuration/payment-terms', paymentTermsRouter);
+apiRouter.use('/organizations/:orgId/configuration/locations', locationsRouter);
 apiRouter.use('/organizations/:orgId/custom-fields', customFieldsRouter);
 // Two separate axes: `/roles` is job titles, `/permission-templates` is access.
 // A membership points at one of each, independently.

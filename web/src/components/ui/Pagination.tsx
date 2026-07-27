@@ -53,11 +53,13 @@ export function Pagination({
   return (
     <div
       style={{
+        height: '44px',
+        boxSizing: 'border-box',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: 16,
-        padding: '10px 24px',
+        padding: '0 20px',
         borderTop: '1px solid var(--color-border)',
         background: 'var(--color-surface)',
         fontSize: 13,

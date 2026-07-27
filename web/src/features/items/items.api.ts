@@ -1,5 +1,5 @@
 import { apiClient } from '../../api/client';
-import type { Item, ItemFormData } from './items.schemas.ts';
+import type { Item, ItemFormData } from './items.schemas';
 import type { Paginated, PageParams } from '../../lib/pagination';
 
 import { endpoints } from '../../api/endpoints';

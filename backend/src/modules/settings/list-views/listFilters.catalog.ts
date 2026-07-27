@@ -37,6 +37,13 @@ export const LIST_FILTERS: Record<EntityType, readonly FilterPreset[]> = {
     { key: 'goods', label: 'Goods', where: { type: 'Goods' } },
     { key: 'services', label: 'Services', where: { type: 'Service' } },
   ],
+  purchase_order: [
+    { key: 'all', label: 'All Purchase Orders', where: {} },
+    { key: 'draft', label: 'Draft', where: { status: 'Draft' } },
+    { key: 'issued', label: 'Issued', where: { status: 'Issued' } },
+    { key: 'closed', label: 'Closed', where: { status: 'Closed' } },
+    { key: 'cancelled', label: 'Cancelled', where: { status: 'Cancelled' } },
+  ],
 };
 
 /** Key + label only — what the picker renders. */

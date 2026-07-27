@@ -155,7 +155,7 @@ export function ModuleFieldsPage() {
               <button
                 onClick={openCreate}
                 style={{
-                  background: 'var(--color-primary)',
+                  background: '#186337',
                   color: 'white',
                   border: 'none',
                   padding: '8px 14px',

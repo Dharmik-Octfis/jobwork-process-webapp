@@ -65,11 +65,20 @@ export const endpoints = {
     vendors: (orgId: string) => `/organizations/${orgId}/purchases/vendors`,
     vendorPreferences: (orgId: string) =>
       `/organizations/${orgId}/purchases/vendors/preferences/number-sequence`,
+    purchaseOrders: (orgId: string) => `/organizations/${orgId}/purchases/purchase-orders`,
+    purchaseOrderPreferences: (orgId: string) =>
+      `/organizations/${orgId}/purchases/purchase-orders/preferences/number-sequence`,
   },
   sales: {
     customers: (orgId: string) => `/organizations/${orgId}/sales/customers`,
     customerPreferences: (orgId: string) =>
       `/organizations/${orgId}/sales/customers/preferences/number-sequence`,
+  },
+  configuration: {
+    locations: (orgId: string) => `/organizations/${orgId}/configuration/locations`,
+    paymentTerms: (orgId: string) => `/organizations/${orgId}/configuration/payment-terms`,
+    taxes: (orgId: string) => `/organizations/${orgId}/configuration/taxes`,
+    accounts: (orgId: string) => `/organizations/${orgId}/configuration/accounts`,
   },
   seedData: {
     items: (orgId: string) => `/organizations/${orgId}/items`,

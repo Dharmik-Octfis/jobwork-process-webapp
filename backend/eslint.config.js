@@ -49,7 +49,7 @@ export default defineConfig([
         // aggregate selectors (`_count`, `_sum`, `_avg`) are spelled that way.
         {
           selector: 'objectLiteralProperty',
-          format: ['camelCase', 'UPPER_CASE'],
+          format: ['camelCase', 'UPPER_CASE', 'snake_case'],
           leadingUnderscore: 'allow',
         },
         {

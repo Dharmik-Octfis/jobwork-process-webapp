@@ -289,6 +289,8 @@ export function VendorForm({
               <input
                 {...register('workPhone')}
                 placeholder="Work Phone"
+                maxLength={10}
+                onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }}
                 style={{ ...inputStyle, borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
               />
             </div>
@@ -308,6 +310,8 @@ export function VendorForm({
               <input
                 {...register('mobilePhone')}
                 placeholder="Mobile"
+                maxLength={10}
+                onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }}
                 style={{ ...inputStyle, borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
               />
             </div>
@@ -376,7 +380,7 @@ export function VendorForm({
             >
               <label style={labelStyle}>Currency</label>
               <CurrencyDropdown
-                value={watch('currency')}
+                value={watch('currency') || ''}
                 onChange={(val) => setValue('currency', val, { shouldValidate: true, shouldDirty: true })}
                 currencies={currencies || []}
                 style={{ maxWidth: '440px' }}
@@ -384,7 +388,7 @@ export function VendorForm({
 
               <label style={labelStyle}>Payment Terms</label>
               <PaymentTermDropdown
-                value={watch('paymentTerms')}
+                value={watch('paymentTerms') || ''}
                 onChange={(val) => setValue('paymentTerms', val, { shouldValidate: true, shouldDirty: true })}
                 paymentTerms={paymentTerms || []}
                 onAddNew={() => setIsPaymentTermModalOpen(true)}
@@ -447,7 +451,12 @@ export function VendorForm({
                   <input {...register('billingPinCode')} style={inputStyle} />
 
                   <label style={labelStyle}>Phone</label>
-                  <input {...register('billingPhone')} style={inputStyle} />
+                  <input
+                    {...register('billingPhone')}
+                    maxLength={10}
+                    onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }}
+                    style={inputStyle}
+                  />
                 </div>
               </div>
 
@@ -525,7 +534,12 @@ export function VendorForm({
                   <input {...register('shippingPinCode')} style={inputStyle} />
 
                   <label style={labelStyle}>Phone</label>
-                  <input {...register('shippingPhone')} style={inputStyle} />
+                  <input
+                    {...register('shippingPhone')}
+                    maxLength={10}
+                    onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }}
+                    style={inputStyle}
+                  />
                 </div>
               </div>
             </div>
@@ -589,12 +603,16 @@ export function VendorForm({
                       <td style={{ padding: '6px 8px', fontSize: '13px' }}>
                         <input
                           {...register(`contactPersons.${index}.workPhone`)}
+                          maxLength={10}
+                          onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }}
                           style={inputStyle}
                         />
                       </td>
                       <td style={{ padding: '6px 8px', fontSize: '13px' }}>
                         <input
                           {...register(`contactPersons.${index}.mobilePhone`)}
+                          maxLength={10}
+                          onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }}
                           style={inputStyle}
                         />
                       </td>
@@ -686,15 +704,18 @@ export function VendorForm({
 
         <div
           style={{
+            height: '44px',
+            boxSizing: 'border-box',
             position: 'fixed',
             bottom: 0,
             left: 220,
             right: 0,
             background: '#fff',
-            padding: '16px 32px',
+            padding: '0 24px',
             borderTop: '1px solid #eef0f3',
             display: 'flex',
-            gap: '16px',
+            alignItems: 'center',
+            gap: '12px',
             zIndex: 100,
           }}
         >
@@ -702,7 +723,7 @@ export function VendorForm({
             type="submit"
             disabled={isSubmitting}
             style={{
-              padding: '8px 24px',
+              padding: '6px 20px',
               background: '#0062ff',
               color: 'white',
               border: 'none',
@@ -718,7 +739,7 @@ export function VendorForm({
             type="button"
             onClick={() => navigate(`/organizations/${orgId}/purchases/vendors`)}
             style={{
-              padding: '8px 24px',
+              padding: '6px 20px',
               background: 'white',
               color: '#333',
               border: '1px solid #d1d5db',

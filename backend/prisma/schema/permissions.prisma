@@ -111,9 +111,6 @@ model PermissionTemplate {
   createdByUser User? @relation("PermissionTemplateCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User? @relation("PermissionTemplateUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
-  // One template name per org. Spans soft-deleted rows; a deleted name is freed
-  // only by hard cleanup — acceptable, template churn is low (see CLAUDE.md note
-  // on unique constraints + soft delete).
   @@unique([organizationId, name])
   @@index([organizationId, isDeleted])
   @@map("permission_templates")

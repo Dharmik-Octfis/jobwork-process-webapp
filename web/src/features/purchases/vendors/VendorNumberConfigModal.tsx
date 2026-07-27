@@ -32,7 +32,7 @@ export function VendorNumberConfigModal({
   return (
     <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.4)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000 }}>
       <div style={{ backgroundColor: 'white', borderRadius: '0 0 8px 8px', width: '600px', maxWidth: '90%', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}>
-        
+
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid #eef0f3' }}>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 500, color: '#2b2b2b' }}>Configure Vendor Numbers Preferences</h2>
@@ -90,7 +90,6 @@ export function VendorNumberConfigModal({
             Cancel
           </button>
         </div>
-
       </div>
     </div>
   );

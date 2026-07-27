@@ -20,6 +20,8 @@ import { SettingsLayout } from '../components/layout/SettingsLayout';
 import { VendorsList } from '../features/purchases/vendors/VendorsList';
 import { CreateVendor } from '../features/purchases/vendors/CreateVendor';
 import { EditVendor } from '../features/purchases/vendors/EditVendor';
+import { PurchaseOrdersList } from '../features/purchases/purchase-orders/PurchaseOrdersList';
+import { CreatePurchaseOrder } from '../features/purchases/purchase-orders/CreatePurchaseOrder';
 import { CustomersList } from '../features/sales/customers/CustomersList';
 import { CreateCustomer } from '../features/sales/customers/CreateCustomer';
 import { EditCustomer } from '../features/sales/customers/EditCustomer';
@@ -31,6 +33,10 @@ import { UnitOfMeasurementPage } from '../features/inventory/uom/UnitOfMeasureme
 import { CurrenciesPage } from '../features/configuration/currencies/CurrenciesPage';
 import { ModulesListPage } from '../features/custom-fields/ModulesListPage';
 import { ModuleFieldsPage } from '../features/custom-fields/ModuleFieldsPage';
+import { LocationsList } from '../features/configuration/locations/LocationsList';
+import { CreateLocation } from '../features/configuration/locations/CreateLocation';
+import { EditLocation } from '../features/configuration/locations/EditLocation';
+
 
 /**
  * Every page whose data belongs to one organization lives under
@@ -68,6 +74,9 @@ export const router = createBrowserRouter([
               { path: '/organizations/:orgId/purchases/vendors', element: <VendorsList /> },
               { path: '/organizations/:orgId/purchases/vendors/new', element: <CreateVendor /> },
               { path: '/organizations/:orgId/purchases/vendors/:id/edit', element: <EditVendor /> },
+              { path: '/organizations/:orgId/purchases/purchase-orders', element: <PurchaseOrdersList /> },
+              { path: '/organizations/:orgId/purchases/purchase-orders/new', element: <CreatePurchaseOrder /> },
+              { path: '/organizations/:orgId/purchases/purchase-orders/:id/edit', element: <CreatePurchaseOrder /> },
               { path: '/organizations/:orgId/sales/customers', element: <CustomersList /> },
               { path: '/organizations/:orgId/sales/customers/new', element: <CreateCustomer /> },
               { path: '/organizations/:orgId/sales/customers/:id/edit', element: <EditCustomer /> },
@@ -97,6 +106,9 @@ export const router = createBrowserRouter([
           { path: 'configuration/currencies', element: <CurrenciesPage /> },
           { path: 'modules', element: <ModulesListPage /> },
           { path: 'modules/:entityType', element: <ModuleFieldsPage /> },
+          { path: 'locations', element: <LocationsList /> },
+          { path: 'locations/new', element: <CreateLocation /> },
+          { path: 'locations/:id/edit', element: <EditLocation /> },
         ],
       },
       { path: '/organizations/new', element: <CreateOrganizationForm /> },

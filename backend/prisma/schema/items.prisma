@@ -1,101 +1,82 @@
 model Item {
-  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String @map("organization_id") @db.Uuid
-
-  name          String
-  aliasName     String? @map("alias_name")
-  type          String  @default("Goods") @db.VarChar(50) // Goods | Service
-  category      String?
-  brand         String?
-  manufacturer  String?
-  hsnCode       String? @map("hsn_code")
-  taxPreference String  @default("Taxable") @map("tax_preference") @db.VarChar(50) // Taxable | Non-Taxable
-
-  itemType String @default("Single Item") @map("item_type") @db.VarChar(50) // Single Item | Contains Variants
-  unit     String
-  sku      String
-
-  isSalesInfo  Boolean  @default(false) @map("is_sales_info")
-  sellingPrice Decimal? @map("selling_price") @db.Decimal(10, 2)
-  salesAccount String?  @map("sales_account")
-
-  isPurchaseInfo  Boolean  @default(false) @map("is_purchase_info")
-  costPrice       Decimal? @map("cost_price") @db.Decimal(10, 2)
-  purchaseAccount String?  @map("purchase_account")
-  packaging       String?
-
-  deliveryDate DateTime? @map("delivery_date") @db.Date
-
-  frontImage String?  @map("front_image")
-  rearImage  String?  @map("rear_image")
-  images     String[]
-
-  trackInventory           Boolean @default(false) @map("track_inventory")
-  binLocationTracking      String? @map("bin_location_tracking")
-  inventoryTracking        String? @map("inventory_tracking")
-  inventoryAccount         String? @map("inventory_account")
-  inventoryValuationMethod String? @map("inventory_valuation_method")
-
-  // Per-org dynamic custom fields — keyed by CustomFieldDefinition.key. See customfields.prisma.
-  customFields Json @default("{}") @map("custom_fields")
-
-  isDeleted Boolean  @default(false) @map("is_deleted")
-  createdBy String?  @map("created_by") @db.Uuid
-  updatedBy String?  @map("updated_by") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  createdByUser User? @relation("ItemCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser User? @relation("ItemUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
-
-  activities ItemActivity[]
+  id                       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId           String              @map("organization_id") @db.Uuid
+  name                     String
+  aliasName                String?             @map("alias_name")
+  type                     String              @default("Goods") @db.VarChar(50)
+  category                 String?
+  brand                    String?
+  manufacturer             String?
+  hsnCode                  String?             @map("hsn_code")
+  taxPreference            String              @default("Taxable") @map("tax_preference") @db.VarChar(50)
+  itemType                 String              @default("Single Item") @map("item_type") @db.VarChar(50)
+  unit                     String
+  sku                      String
+  isSalesInfo              Boolean             @default(false) @map("is_sales_info")
+  sellingPrice             Decimal?            @map("selling_price") @db.Decimal(10, 2)
+  salesAccount             String?             @map("sales_account")
+  isPurchaseInfo           Boolean             @default(false) @map("is_purchase_info")
+  costPrice                Decimal?            @map("cost_price") @db.Decimal(10, 2)
+  purchaseAccount          String?             @map("purchase_account")
+  packaging                String?
+  deliveryDate             DateTime?           @map("delivery_date") @db.Date
+  createdAt                DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy                String?             @map("created_by") @db.Uuid
+  isDeleted                Boolean             @default(false) @map("is_deleted")
+  updatedBy                String?             @map("updated_by") @db.Uuid
+  customFields             Json                @default("{}") @map("custom_fields")
+  binLocationTracking      String?             @map("bin_location_tracking")
+  frontImage               String?             @map("front_image")
+  images                   String[]
+  inventoryAccount         String?             @map("inventory_account")
+  inventoryTracking        String?             @map("inventory_tracking")
+  inventoryValuationMethod String?             @map("inventory_valuation_method")
+  rearImage                String?             @map("rear_image")
+  trackInventory           Boolean             @default(false) @map("track_inventory")
+  activities               ItemActivity[]
+  createdByUser            User?               @relation("ItemCreatedBy", fields: [createdBy], references: [id])
+  organization             Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedByUser            User?               @relation("ItemUpdatedBy", fields: [updatedBy], references: [id])
+  purchaseOrderItems       PurchaseOrderItem[]
 
   @@map("items")
 }
 
 model UnitOfMeasurement {
-  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String @map("organization_id") @db.Uuid
-
-  unitName      String @map("unit_name") // e.g., Kilograms
-  symbol        String
-  uqc           String @default("OTH") // e.g., KGS
-  unitPrecision Int    @default(2) @map("unit_precision")
-
-  isDeleted Boolean  @default(false) @map("is_deleted")
-  createdBy String?  @map("created_by") @db.Uuid
-  updatedBy String?  @map("updated_by") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  createdByUser User? @relation("UomCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser User? @relation("UomUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  unitName       String       @map("unit_name")
+  uqc            String       @default("OTH")
+  isDeleted      Boolean      @default(false) @map("is_deleted")
+  createdBy      String?      @map("created_by") @db.Uuid
+  updatedBy      String?      @map("updated_by") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  symbol         String
+  unitPrecision  Int          @default(2) @map("unit_precision")
+  createdByUser  User?        @relation("UomCreatedBy", fields: [createdBy], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedByUser  User?        @relation("UomUpdatedBy", fields: [updatedBy], references: [id])
 
   @@unique([organizationId, unitName])
   @@map("units_of_measurement")
 }
 
 model ItemActivity {
-  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  itemId      String  @map("item_id") @db.Uuid
-  title       String  @db.VarChar(255)
-  description String?
-  performedBy String? @map("performed_by") @db.VarChar(255)
-
-  isDeleted Boolean  @default(false) @map("is_deleted")
-  createdBy String?  @map("created_by") @db.Uuid
-  updatedBy String?  @map("updated_by") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
-
-  createdByUser User? @relation("ItemActivityCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser User? @relation("ItemActivityUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  itemId        String   @map("item_id") @db.Uuid
+  title         String   @db.VarChar(255)
+  description   String?
+  performedBy   String?  @map("performed_by") @db.VarChar(255)
+  isDeleted     Boolean  @default(false) @map("is_deleted")
+  createdBy     String?  @map("created_by") @db.Uuid
+  updatedBy     String?  @map("updated_by") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdByUser User?    @relation("ItemActivityCreatedBy", fields: [createdBy], references: [id])
+  item          Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  updatedByUser User?    @relation("ItemActivityUpdatedBy", fields: [updatedBy], references: [id])
 
   @@map("item_activities")
 }

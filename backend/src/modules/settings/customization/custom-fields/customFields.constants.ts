@@ -5,7 +5,7 @@
  */
 
 /** Modules that support custom fields today. Extend as new entities gain them. */
-export const ENTITY_TYPES = ['vendor', 'customer', 'item'] as const;
+export const ENTITY_TYPES = ['vendor', 'customer', 'item', 'purchase_order'] as const;
 export type EntityType = (typeof ENTITY_TYPES)[number];
 
 export function isEntityType(value: string): value is EntityType {

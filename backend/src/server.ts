@@ -61,3 +61,5 @@ main().catch((error: unknown) => {
   console.error('Failed to start:', error);
   process.exit(1);
 });
+
+

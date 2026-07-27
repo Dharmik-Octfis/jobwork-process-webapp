@@ -2,8 +2,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchCustomerById, deleteCustomer, updateCustomer, fetchCustomerActivities } from './customers.api';
 import { type UpdateCustomerData, type CustomerAddress } from './customers.schemas';
 import { useParams, useNavigate } from 'react-router-dom';
-import { X, Edit, ChevronDown, CheckCircle2, Plus } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { X, Edit, ChevronDown} from 'lucide-react';
+import { useState, useRef, useEffect, Fragment } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { CustomerActivityTimeline } from './CustomerActivityTimeline';
 import { CustomerComments } from './CustomerComments';
@@ -210,25 +210,6 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
-            onClick={() => navigate(`/organizations/${orgId}/sales/customers/new`)}
-            style={{
-              padding: '6px 12px',
-              border: 'none',
-              background: '#0062ff',
-              color: 'white',
-              borderRadius: '4px',
-              fontSize: '13px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontWeight: 500,
-            }}
-          >
-            <Plus size={14} /> New
-          </button>
-
-          <button
             onClick={() => navigate(`/organizations/${orgId}/sales/customers/${customerId}/edit`)}
             style={{
               padding: '6px 12px',
@@ -351,24 +332,27 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
           padding: '0 24px',
           borderBottom: '1px solid #eef0f3',
           display: 'flex',
-          gap: '24px',
+          alignItems: 'center',
+          gap: '16px',
         }}
       >
-        {tabs.map((tab) => (
-          <div
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            style={{
-              padding: '12px 0',
-              fontSize: '14px',
-              fontWeight: activeTab === tab ? 600 : 500,
-              color: activeTab === tab ? '#0062ff' : '#64748b',
-              borderBottom: activeTab === tab ? '2px solid #0062ff' : '2px solid transparent',
-              cursor: 'pointer',
-            }}
-          >
-            {tab}
-          </div>
+        {tabs.map((tab, idx) => (
+          <Fragment key={tab}>
+            {idx > 0 && <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />}
+            <div
+              onClick={() => setActiveTab(tab)}
+              style={{
+                padding: '12px 0',
+                fontSize: '14px',
+                fontWeight: activeTab === tab ? 600 : 500,
+                color: activeTab === tab ? '#0062ff' : '#64748b',
+                borderBottom: activeTab === tab ? '2px solid #0062ff' : '2px solid transparent',
+                cursor: 'pointer',
+              }}
+            >
+              {tab}
+            </div>
+          </Fragment>
         ))}
       </div>
 
@@ -613,20 +597,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                   View Opening Balance
                 </div>
 
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    color: '#64748b',
-                    fontSize: '14px',
-                    borderTop: '1px solid #eef0f3',
-                    paddingTop: '16px',
-                  }}
-                >
-                  <CheckCircle2 size={16} color="#ef4444" />
-                  <span>0 check(s) pending to print for this customer</span>
-                </div>
+
               </div>
 
               <div style={{ padding: '16px' }}>

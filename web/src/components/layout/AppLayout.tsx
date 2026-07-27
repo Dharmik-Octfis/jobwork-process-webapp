@@ -21,7 +21,6 @@ import {
   ShoppingCart,
   Receipt,
   ChevronRight,
-  Plus,
 } from 'lucide-react';
 import { Logo } from '../ui/Logo';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
@@ -33,7 +32,7 @@ import type { User } from '../../features/auth/auth.types';
 import { fetchAppModules } from '../../features/modules/modules.api';
 import type { AppModule } from '../../features/modules/modules.schemas';
 import { LAST_ORG_KEY } from '../../routes/OrgRedirect';
-import { PaymentTermModal } from '../../features/sales/customers/PaymentTermModal';
+
 import { fetchVendors } from '../../features/purchases/vendors/vendors.api';
 import { fetchCustomers } from '../../features/sales/customers/customers.api';
 import { itemsApi } from '../../features/items/items.api';
@@ -50,6 +49,7 @@ const ROUTE_MAP: Record<string, string> = {
   VENDORS: '/purchases/vendors',
   PO: '/purchases/po',
   BILLS: '/purchases/bills',
+  PURCHASE_ORDERS: '/purchases/purchase-orders',
   SALES: '/sales',
   CUSTOMERS: '/sales/customers',
   ITEMS: '/items',
@@ -332,7 +332,6 @@ export function AppLayout() {
   const navigate = useNavigate();
 
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
-  const [isPaymentTermModalOpen, setIsPaymentTermModalOpen] = useState(false);
 
   // Remember it only so `/` can send the user back here next visit (OrgRedirect).
   // Not an authorization input: the server re-checks membership on every request.
@@ -375,7 +374,9 @@ export function AppLayout() {
       >
         <div
           style={{
-            padding: 'var(--space-4) var(--space-5)',
+            height: '50px',
+            boxSizing: 'border-box',
+            padding: '0 var(--space-5)',
             borderBottom: '1px solid rgba(255,255,255,0.1)',
             display: 'flex',
             alignItems: 'center',
@@ -406,18 +407,28 @@ export function AppLayout() {
         </nav>
 
         {activeOrgId && (
-          <div style={{ padding: 'var(--space-3)', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+          <div
+            style={{
+              height: '44px',
+              boxSizing: 'border-box',
+              padding: '0 var(--space-3)',
+              borderTop: '1px solid rgba(255,255,255,0.1)',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
             <NavLink
               to={`/organizations/${activeOrgId}/settings`}
               style={({ isActive }) => ({
+                width: '100%',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 'var(--space-3)',
-                padding: '8px 14px',
+                padding: '6px 14px',
                 borderRadius: 'var(--radius-md)',
                 textDecoration: 'none',
                 color: isActive ? 'white' : 'rgba(255,255,255,0.7)',
-                background: isActive ? 'rgba(255,255,255,0.1)' : 'transparent',
+                background: isActive ? '#186337' : 'transparent',
                 fontWeight: isActive ? 600 : 500,
                 transition: 'all 0.2s ease',
               })}
@@ -434,10 +445,12 @@ export function AppLayout() {
         {/* Topbar */}
         <header
           style={{
+            height: '50px',
+            boxSizing: 'border-box',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            padding: '8px 16px',
+            padding: '0 20px',
             background: 'white',
             borderBottom: '1px solid var(--color-border)',
             position: 'sticky',
@@ -451,26 +464,6 @@ export function AppLayout() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
-            {activeOrgId && (
-              <button
-                onClick={() => setIsPaymentTermModalOpen(true)}
-                title="Add Payment Term"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: 32,
-                  height: 32,
-                  borderRadius: '50%',
-                  border: '1px solid #eef0f3',
-                  background: 'white',
-                  cursor: 'pointer',
-                  color: '#64748b',
-                }}
-              >
-                <Plus size={18} />
-              </button>
-            )}
             <OrgDropdown
               organizations={organizations || []}
               activeOrgId={activeOrgId ?? null}
@@ -485,15 +478,6 @@ export function AppLayout() {
           <Outlet />
         </main>
       </div>
-
-      {activeOrgId && (
-        <PaymentTermModal
-          orgId={activeOrgId}
-          isOpen={isPaymentTermModalOpen}
-          onClose={() => setIsPaymentTermModalOpen(false)}
-          onSuccess={() => setIsPaymentTermModalOpen(false)}
-        />
-      )}
     </div>
   );
 }
@@ -515,6 +499,7 @@ function ModuleNavGroup({
 
   const isParent = module.children && module.children.length > 0;
   const [localExpanded, setLocalExpanded] = useState(false);
+  const [expandedChildId, setExpandedChildId] = useState<string | null>(null);
 
   const isExpanded = onToggle ? expandedId === module.id : localExpanded;
 
@@ -585,7 +570,13 @@ function ModuleNavGroup({
             }}
           >
             {module.children?.map((child) => (
-              <ModuleNavGroup key={child.id} module={child} depth={depth + 1} />
+              <ModuleNavGroup
+                key={child.id}
+                module={child}
+                depth={depth + 1}
+                expandedId={expandedChildId}
+                onToggle={(id) => setExpandedChildId((prev) => (prev === id ? null : id))}
+              />
             ))}
           </div>
         </div>
@@ -605,7 +596,7 @@ function ModuleNavGroup({
         borderRadius: 'var(--radius-md)',
         textDecoration: 'none',
         color: isActive ? 'white' : 'rgba(255,255,255,0.7)',
-        background: isActive ? 'rgba(255,255,255,0.1)' : 'transparent',
+        background: isActive ? '#186337' : 'transparent',
         fontWeight: isActive ? 600 : 500,
         transition: 'all 0.2s ease',
       })}
