@@ -1030,14 +1030,17 @@ export function CreateItemPage() {
 
           <div
             style={{
+              height: '44px',
+              boxSizing: 'border-box',
               position: 'fixed',
               bottom: 0,
               left: 220,
               right: 0,
               background: '#fff',
-              padding: '16px 32px',
+              padding: '0 24px',
               borderTop: '1px solid #cbd5e1',
               display: 'flex',
+              alignItems: 'center',
               gap: '12px',
               zIndex: 100,
             }}
@@ -1046,7 +1049,7 @@ export function CreateItemPage() {
               type="submit"
               disabled={createMutation.isPending}
               style={{
-                padding: '8px 24px',
+                padding: '6px 20px',
                 background: '#0062ff',
                 color: 'white',
                 border: 'none',
@@ -1063,7 +1066,7 @@ export function CreateItemPage() {
               type="button"
               onClick={() => navigate(`/organizations/${orgId}/items`)}
               style={{
-                padding: '8px 24px',
+                padding: '6px 20px',
                 background: 'white',
                 color: '#333',
                 border: '1px solid #d1d5db',

@@ -16,6 +16,7 @@ import {
 } from './customers.schemas';
 import { z } from 'zod';
 
+export type { Customer };
 function mapAddressesToFlat(
   data: Record<string, unknown> & { addresses?: CustomerAddress[] },
 ): Record<string, unknown> {

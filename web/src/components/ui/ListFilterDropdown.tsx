@@ -48,14 +48,28 @@ export function ListFilterDropdown({
           border: 'none',
           padding: 0,
           cursor: filters.length === 0 ? 'default' : 'pointer',
+          whiteSpace: 'nowrap',
+          maxWidth: '100%',
         }}
       >
-        <h1 style={{ fontSize: '18px', fontWeight: 600, color: '#000', margin: 0 }}>{label}</h1>
+        <h1
+          style={{
+            fontSize: '18px',
+            fontWeight: 600,
+            color: '#000',
+            margin: 0,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {label}
+        </h1>
         <ChevronDown
           size={16}
           color="#0062ff"
           strokeWidth={2.5}
-          style={{ transform: open ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s' }}
+          style={{ transform: open ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s', flexShrink: 0 }}
         />
       </button>
 

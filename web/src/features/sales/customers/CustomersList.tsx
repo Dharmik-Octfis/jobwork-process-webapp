@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchCustomers, fetchCustomerCount, deleteCustomer } from './customers.api';
-import { Plus, Building2, SlidersHorizontal } from 'lucide-react';
+import { Plus, Building2, SlidersHorizontal  } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
 import { CustomerDetail } from './CustomerDetail';

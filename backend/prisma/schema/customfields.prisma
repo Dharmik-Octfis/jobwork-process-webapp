@@ -1,56 +1,25 @@
-// Dynamic custom fields — the "recipe" that describes extra form fields an org
-// admin adds to a module (vendor, item, …). The actual values (the "meal") live
-// in a `custom_fields` JSONB column on the entity table (see Vendor/Item), keyed
-// by this row's immutable `key`. See docs discussion "Dynamic Custom Fields".
-//
-// One row = one field, per organization, per module. Enum-like columns follow the
-// repo convention: String @db.VarChar + a `// a | b | c` comment, validated in Zod
-// (there are ZERO Prisma enum blocks in this schema).
 model CustomFieldDefinition {
-  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String @map("organization_id") @db.Uuid
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  entityType     String       @map("entity_type") @db.VarChar(50)
+  key            String       @db.VarChar(80)
+  label          String       @db.VarChar(150)
+  dataType       String       @map("data_type") @db.VarChar(30)
+  config         Json         @default("{}")
+  isRequired     Boolean      @default(false) @map("is_required")
+  showInPrint    Boolean      @default(true) @map("show_in_print")
+  showInList     Boolean      @default(false) @map("show_in_list")
+  displayOrder   Int          @default(0) @map("display_order")
+  status         String       @default("active") @db.VarChar(20)
+  isDeleted      Boolean      @default(false) @map("is_deleted")
+  createdBy      String?      @map("created_by") @db.Uuid
+  updatedBy      String?      @map("updated_by") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdByUser  User?        @relation("CustomFieldDefinitionCreatedBy", fields: [createdBy], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedByUser  User?        @relation("CustomFieldDefinitionUpdatedBy", fields: [updatedBy], references: [id])
 
-  entityType String @map("entity_type") @db.VarChar(50) // vendor | item
-
-  // `key` is an IMMUTABLE slug generated once from the label (e.g. "truck_no").
-  // It is the JSONB key the value is stored under. Never renamed, never reused —
-  // the @@unique below spans archived rows (we never delete the row) so a removed
-  // field's key can't be handed to a new field and resurrect ghost data.
-  key   String @db.VarChar(80)
-  label String @db.VarChar(150)
-
-  // text | textarea | number | decimal | checkbox | date | datetime | time |
-  // email | url | phone | select | multi_select | attachment
-  dataType String @map("data_type") @db.VarChar(30)
-
-  // Type-specific settings: { options:[{id,label,order}], min, max, precision,
-  // maxLength, regex, ... }. Loose on purpose — each dataType uses different keys.
-  config Json @default("{}")
-
-  isRequired   Boolean @default(false) @map("is_required")
-  showInPrint  Boolean @default(true) @map("show_in_print")
-  showInList   Boolean @default(false) @map("show_in_list")
-  displayOrder Int     @default(0) @map("display_order")
-
-  // active | hidden  — visibility on the form. archived is modelled by isDeleted
-  // (the standard soft-delete), so the three states are:
-  //   ACTIVE   = isDeleted:false, status:active
-  //   HIDDEN   = isDeleted:false, status:hidden  (off form, old values kept)
-  //   ARCHIVED = isDeleted:true                   (off everywhere, values kept in DB)
-  status String @default("active") @db.VarChar(20)
-
-  isDeleted Boolean  @default(false) @map("is_deleted")
-  createdBy String?  @map("created_by") @db.Uuid
-  updatedBy String?  @map("updated_by") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  createdByUser User? @relation("CustomFieldDefinitionCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser User? @relation("CustomFieldDefinitionUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
-
-  // Spans archived rows on purpose (see `key` note above).
   @@unique([organizationId, entityType, key])
   @@index([organizationId, entityType, status, displayOrder])
   @@map("custom_field_definitions")

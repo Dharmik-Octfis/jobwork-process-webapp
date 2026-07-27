@@ -1,71 +1,50 @@
-// Tenant domain: Organization, User, Membership, Invitation (architecture §4).
-// Only User exists so far. See docs/PRISMA.md §4.3 for why each attribute is here.
-
 model User {
-  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email        String  @unique @db.Citext
-  passwordHash String? @map("password_hash")
-  firstName    String  @default("") @map("first_name") @db.VarChar(40)
-  lastName     String  @default("") @map("last_name") @db.VarChar(40)
-  fullName     String  @default("") @map("full_name") @db.VarChar(80)
-  isActive     Boolean @default(true) @map("is_active")
-
-  // Standard audit columns — see CLAUDE.md "Default columns". createdBy/updatedBy
-  // are self-referential here (the actor is also a User).
-  isDeleted Boolean  @default(false) @map("is_deleted")
-  createdBy String?  @map("created_by") @db.Uuid
-  updatedBy String?  @map("updated_by") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  refreshTokens   RefreshToken[]
-  memberships     Membership[]
-  sentInvitations Invitation[]   @relation("InvitedBy")
-
-  createdByUser User? @relation("UserCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser User? @relation("UserUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
-
-  // Back-relations for every domain table's createdBy/updatedBy audit FK.
-  createdUsers                  User[]                  @relation("UserCreatedBy")
-  updatedUsers                  User[]                  @relation("UserUpdatedBy")
-  createdOrganizations          Organization[]          @relation("OrganizationCreatedBy")
-  updatedOrganizations          Organization[]          @relation("OrganizationUpdatedBy")
-  createdMemberships            Membership[]            @relation("MembershipCreatedBy")
-  updatedMemberships            Membership[]            @relation("MembershipUpdatedBy")
-  createdInvitations            Invitation[]            @relation("InvitationCreatedBy")
-  updatedInvitations            Invitation[]            @relation("InvitationUpdatedBy")
-  createdVendors                Vendor[]                @relation("VendorCreatedBy")
-  updatedVendors                Vendor[]                @relation("VendorUpdatedBy")
-  createdVendorContactPersons   VendorContactPerson[]   @relation("VendorContactPersonCreatedBy")
-  updatedVendorContactPersons   VendorContactPerson[]   @relation("VendorContactPersonUpdatedBy")
-  createdVendorActivities       VendorActivity[]        @relation("VendorActivityCreatedBy")
-  updatedVendorActivities       VendorActivity[]        @relation("VendorActivityUpdatedBy")
-  createdVendorComments         VendorComment[]         @relation("VendorCommentCreatedBy")
-  updatedVendorComments         VendorComment[]         @relation("VendorCommentUpdatedBy")
-  createdVendorAddresses        VendorAddress[]         @relation("VendorAddressCreatedBy")
-  updatedVendorAddresses        VendorAddress[]         @relation("VendorAddressUpdatedBy")
-  createdCustomers              Customer[]              @relation("CustomerCreatedBy")
-  updatedCustomers              Customer[]              @relation("CustomerUpdatedBy")
-  createdCustomerContactPersons CustomerContactPerson[] @relation("CustomerContactPersonCreatedBy")
-  updatedCustomerContactPersons CustomerContactPerson[] @relation("CustomerContactPersonUpdatedBy")
-  createdCustomerActivities     CustomerActivity[]      @relation("CustomerActivityCreatedBy")
-  updatedCustomerActivities     CustomerActivity[]      @relation("CustomerActivityUpdatedBy")
-  createdCustomerComments       CustomerComment[]       @relation("CustomerCommentCreatedBy")
-  updatedCustomerComments       CustomerComment[]       @relation("CustomerCommentUpdatedBy")
-  createdCustomerAddresses      CustomerAddress[]       @relation("CustomerAddressCreatedBy")
-  updatedCustomerAddresses      CustomerAddress[]       @relation("CustomerAddressUpdatedBy")
-  createdNumberSequences        NumberSequence[]        @relation("NumberSequenceCreatedBy")
-  updatedNumberSequences        NumberSequence[]        @relation("NumberSequenceUpdatedBy")
-  createdItems                  Item[]                  @relation("ItemCreatedBy")
-  updatedItems                  Item[]                  @relation("ItemUpdatedBy")
-  createdItemActivities         ItemActivity[]          @relation("ItemActivityCreatedBy")
-  updatedItemActivities         ItemActivity[]          @relation("ItemActivityUpdatedBy")
-  createdUnitsOfMeasurement     UnitOfMeasurement[]     @relation("UomCreatedBy")
-  updatedUnitsOfMeasurement     UnitOfMeasurement[]     @relation("UomUpdatedBy")
+  id                            String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                         String                  @unique @db.Citext
+  passwordHash                  String?                 @map("password_hash")
+  firstName                     String                  @default("") @map("first_name") @db.VarChar(40)
+  lastName                      String                  @default("") @map("last_name") @db.VarChar(40)
+  fullName                      String                  @default("") @map("full_name") @db.VarChar(80)
+  isActive                      Boolean                 @default(true) @map("is_active")
+  createdAt                     DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                     DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy                     String?                 @map("created_by") @db.Uuid
+  isDeleted                     Boolean                 @default(false) @map("is_deleted")
+  updatedBy                     String?                 @map("updated_by") @db.Uuid
   createdCurrencies             Currency[]              @relation("CurrencyCreatedBy")
   updatedCurrencies             Currency[]              @relation("CurrencyUpdatedBy")
   createdCustomFieldDefinitions CustomFieldDefinition[] @relation("CustomFieldDefinitionCreatedBy")
   updatedCustomFieldDefinitions CustomFieldDefinition[] @relation("CustomFieldDefinitionUpdatedBy")
+  createdCustomerActivities     CustomerActivity[]      @relation("CustomerActivityCreatedBy")
+  updatedCustomerActivities     CustomerActivity[]      @relation("CustomerActivityUpdatedBy")
+  createdCustomerAddresses      CustomerAddress[]       @relation("CustomerAddressCreatedBy")
+  updatedCustomerAddresses      CustomerAddress[]       @relation("CustomerAddressUpdatedBy")
+  createdCustomerComments       CustomerComment[]       @relation("CustomerCommentCreatedBy")
+  updatedCustomerComments       CustomerComment[]       @relation("CustomerCommentUpdatedBy")
+  createdCustomerContactPersons CustomerContactPerson[] @relation("CustomerContactPersonCreatedBy")
+  updatedCustomerContactPersons CustomerContactPerson[] @relation("CustomerContactPersonUpdatedBy")
+  createdCustomers              Customer[]              @relation("CustomerCreatedBy")
+  updatedCustomers              Customer[]              @relation("CustomerUpdatedBy")
+  createdInvitations            Invitation[]            @relation("InvitationCreatedBy")
+  sentInvitations               Invitation[]            @relation("InvitedBy")
+  updatedInvitations            Invitation[]            @relation("InvitationUpdatedBy")
+  createdItemActivities         ItemActivity[]          @relation("ItemActivityCreatedBy")
+  updatedItemActivities         ItemActivity[]          @relation("ItemActivityUpdatedBy")
+  createdItems                  Item[]                  @relation("ItemCreatedBy")
+  updatedItems                  Item[]                  @relation("ItemUpdatedBy")
+  createdLocations              Location[]              @relation("LocationCreatedBy")
+  updatedLocations              Location[]              @relation("LocationUpdatedBy")
+  createdMemberships            Membership[]            @relation("MembershipCreatedBy")
+  updatedMemberships            Membership[]            @relation("MembershipUpdatedBy")
+  createdOrganizations          Organization[]          @relation("OrganizationCreatedBy")
+  updatedOrganizations          Organization[]          @relation("OrganizationUpdatedBy")
+  memberships                   Membership[]
+  createdNumberSequences        NumberSequence[]        @relation("NumberSequenceCreatedBy")
+  updatedNumberSequences        NumberSequence[]        @relation("NumberSequenceUpdatedBy")
+
+  createdUnitsOfMeasurement     UnitOfMeasurement[]     @relation("UomCreatedBy")
+  updatedUnitsOfMeasurement     UnitOfMeasurement[]     @relation("UomUpdatedBy")
+
 
   listViewPreferences           ListViewPreference[]    @relation("ListViewPreferenceUser")
   createdListViewPreferences    ListViewPreference[]    @relation("ListViewPreferenceCreatedBy")
@@ -77,27 +56,43 @@ model User {
   createdPaymentTerms           PaymentTerm[]           @relation("PaymentTermCreatedBy")
   updatedPaymentTerms           PaymentTerm[]           @relation("PaymentTermUpdatedBy")
 
+  createdPoActivities         PurchaseOrderActivity[] @relation("PoActivityCreatedBy")
+  updatedPoActivities         PurchaseOrderActivity[] @relation("PoActivityUpdatedBy")
+  createdPoComments           PurchaseOrderComment[]  @relation("PoCommentCreatedBy")
+  updatedPoComments           PurchaseOrderComment[]  @relation("PoCommentUpdatedBy")
+  createdPurchaseOrderItems   PurchaseOrderItem[]     @relation("PoItemCreatedBy")
+  updatedPurchaseOrderItems   PurchaseOrderItem[]     @relation("PoItemUpdatedBy")
+  createdPurchaseOrders       PurchaseOrder[]         @relation("PoCreatedBy")
+  updatedPurchaseOrders       PurchaseOrder[]         @relation("PoUpdatedBy")
+  refreshTokens               RefreshToken[]
+  createdByUser               User?                   @relation("UserCreatedBy", fields: [createdBy], references: [id])
+  createdUsers                User[]                  @relation("UserCreatedBy")
+  updatedByUser               User?                   @relation("UserUpdatedBy", fields: [updatedBy], references: [id])
+  updatedUsers                User[]                  @relation("UserUpdatedBy")
+  createdVendorActivities     VendorActivity[]        @relation("VendorActivityCreatedBy")
+  updatedVendorActivities     VendorActivity[]        @relation("VendorActivityUpdatedBy")
+  createdVendorAddresses      VendorAddress[]         @relation("VendorAddressCreatedBy")
+  updatedVendorAddresses      VendorAddress[]         @relation("VendorAddressUpdatedBy")
+  createdVendorComments       VendorComment[]         @relation("VendorCommentCreatedBy")
+  updatedVendorComments       VendorComment[]         @relation("VendorCommentUpdatedBy")
+  createdVendorContactPersons VendorContactPerson[]   @relation("VendorContactPersonCreatedBy")
+  updatedVendorContactPersons VendorContactPerson[]   @relation("VendorContactPersonUpdatedBy")
+  createdVendors              Vendor[]                @relation("VendorCreatedBy")
+  updatedVendors              Vendor[]                @relation("VendorUpdatedBy")
+
   @@map("users")
 }
 
 model RefreshToken {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  token     String   @unique // Store the hashed token if preferred, but for now we'll store the plain token as per standard or a hash. Since this is just a string, we can store it directly.
+  token     String   @unique
   userId    String   @map("user_id") @db.Uuid
   expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("refresh_tokens")
 }
-
-// A user is a person who can log in — nothing more. No organizationId, no role,
-// no permissions: those belong on Membership, so one person can join several
-// organizations with different access in each.
-//
-// passwordHash is nullable because invited and SSO users exist before they set
-// one, and is never selected outside the login path.
 
 model PasswordResetToken {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -111,47 +106,44 @@ model PasswordResetToken {
 }
 
 model Organization {
-  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name         String
-  industryCode String? @map("industry_code") @db.VarChar(64)
-
-  dialCode String? @map("dial_code")
-  phone    String?
-  email    String?
-
-  countryCode String? @map("country_code") @db.VarChar(2)
-  stateCode   String? @map("state_code") @db.VarChar(6)
-  cityId      String? @map("city_id") @db.Uuid
-  zip         String?
-  orgAddress  String? @map("org_address")
-
-  taxIdValue String? @map("tax_id_value")
-
-  isDeleted              Boolean                 @default(false) @map("is_deleted")
-  createdBy              String?                 @map("created_by") @db.Uuid
-  updatedBy              String?                 @map("updated_by") @db.Uuid
+  id                     String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                   String
+  phone                  String?
+  email                  String?
+  zip                    String?
+  dialCode               String?                 @map("dial_code")
+  orgAddress             String?                 @map("org_address")
+  taxIdValue             String?                 @map("tax_id_value")
   createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt              DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  industry               Industry?               @relation(fields: [industryCode], references: [code])
-  country                Country?                @relation(fields: [countryCode], references: [code], onDelete: SetNull, onUpdate: Cascade)
-  state                  State?                  @relation(fields: [stateCode], references: [code], onDelete: SetNull, onUpdate: Cascade)
-  city                   City?                   @relation(fields: [cityId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  memberships            Membership[]
-  invitations            Invitation[]
-  vendors                Vendor[]
-  customers              Customer[]
-  items                  Item[]
-  numberSequences        NumberSequence[]
-  unitsOfMeasurement     UnitOfMeasurement[]
+  industryCode           String?                 @map("industry_code") @db.VarChar(64)
+  createdBy              String?                 @map("created_by") @db.Uuid
+  isDeleted              Boolean                 @default(false) @map("is_deleted")
+  updatedBy              String?                 @map("updated_by") @db.Uuid
+  stateCode              String?                 @map("state_code") @db.VarChar(6)
+  cityId                 String?                 @map("city_id") @db.Uuid
+  countryCode            String?                 @map("country_code") @db.VarChar(2)
   currencies             Currency[]
   customFieldDefinitions CustomFieldDefinition[]
+  customers              Customer[]
+  invitations            Invitation[]
+  items                  Item[]
+  locations              Location[]
+  memberships            Membership[]
+  numberSequences        NumberSequence[]
+  city                   City?                   @relation(fields: [cityId], references: [id])
+  country                Country?                @relation(fields: [countryCode], references: [code])
+  createdByUser          User?                   @relation("OrganizationCreatedBy", fields: [createdBy], references: [id])
+  industry               Industry?               @relation(fields: [industryCode], references: [code])
+  state                  State?                  @relation(fields: [stateCode], references: [code])
+  updatedByUser          User?                   @relation("OrganizationUpdatedBy", fields: [updatedBy], references: [id])
+  paymentTerms           PaymentTerm[]
   listViewPreferences    ListViewPreference[]
   roles                  Role[]
   permissionTemplates    PermissionTemplate[]
-  paymentTerms           PaymentTerm[]
-
-  createdByUser User? @relation("OrganizationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser User? @relation("OrganizationUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  purchaseOrders         PurchaseOrder[]
+  unitsOfMeasurement     UnitOfMeasurement[]
+  vendors                Vendor[]
 
   @@map("organizations")
 }
@@ -198,11 +190,6 @@ model Membership {
   @@map("memberships")
 }
 
-// An invitation binds an *email address* (not a User) to an organization, so it
-// can be sent to someone who has no account yet. It becomes a Membership only at
-// accept time — see invitations.service.ts. The row holds all the real data;
-// the emailed token is just a random lookup key (its SHA-256 hash is stored, so
-// a leaked DB row can't be replayed — the raw token lives only in the email).
 model Invitation {
   id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId       String    @map("organization_id") @db.Uuid
@@ -242,84 +229,59 @@ model Invitation {
   createdByUser User? @relation("InvitationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User? @relation("InvitationUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
-  // One live invite per email per org — re-inviting updates the existing row.
   @@unique([organizationId, email])
-  // Serves the per-org hourly send cap (see assertSendAllowed).
   @@index([organizationId, lastSentAt])
   @@index([email])
   @@map("invitations")
 }
 
 model Industry {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  code      String   @unique @db.VarChar(64) // technology | manufacturing | oil_and_gas | ... — stable FK target, no spaces
-  name      String   @unique
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String         @unique
+  isActive      Boolean        @default(true) @map("is_active")
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  code          String         @unique @db.VarChar(64)
   organizations Organization[]
 
   @@map("industries")
 }
 
-// Master data, like Industry/State/City — read-only reference rows, not tenant-scoped.
-//
-// `code` is ISO 3166-1 alpha-2 ("IN"); `isoCode` is alpha-3 ("IND"). They are kept
-// separate because alpha-2 is what forms, phone libraries, and payment providers
-// expect, while alpha-3 is what most government and shipping paperwork asks for.
-// `dialCode` is the ITU calling-code prefix ("+91") the phone-number dropdown binds
-// to — a phone prefix, NOT a country identifier, and deliberately NOT unique (US and
-// Canada both share "+1"), which is why it is its own column, not `code`/`isoCode`.
-// (Organization.dialCode stores the value the user picked from this list.)
 model Country {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name      String   @unique
-  code      String   @unique @db.VarChar(2)
-  isoCode   String   @unique @map("iso_code") @db.VarChar(3)
-  dialCode  String   @map("dial_code") @db.VarChar(8)
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  states        State[]
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String         @unique
+  code          String         @unique @db.VarChar(2)
+  isoCode       String         @unique @map("iso_code") @db.VarChar(3)
+  isActive      Boolean        @default(true) @map("is_active")
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  dialCode      String         @map("dial_code") @db.VarChar(8)
   organizations Organization[]
+  states        State[]
 
   @@map("countries")
 }
 
-// A state's identity is its ISO 3166-2 subdivision code ("IN-GJ"), NOT a surrogate
-// uuid — the code is already a stable, globally-unique standard key, so it is the
-// PK and what other rows reference. `name` can be relabelled without touching a
-// single referencing row. States belong to a country (countryCode -> Country.code).
 model State {
-  code        String   @id @db.VarChar(6)
-  name        String
-  countryCode String   @map("country_code") @db.VarChar(2)
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  country       Country        @relation(fields: [countryCode], references: [code], onDelete: Restrict, onUpdate: Cascade)
+  name          String
+  isActive      Boolean        @default(true) @map("is_active")
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  code          String         @id @db.VarChar(6)
+  countryCode   String         @map("country_code") @db.VarChar(2)
   cities        City[]
   organizations Organization[]
+  country       Country        @relation(fields: [countryCode], references: [code])
 
-  // `name` is only unique *within* a country — two countries may both have a
-  // "Georgia"-like name. Uniqueness is the (country, name) pair.
   @@unique([countryCode, name])
   @@map("states")
 }
 
-// A city has NO global standard code, so it keeps a surrogate uuid PK. `geonamesId`
-// is the stable external anchor (from the GeoNames dataset) used to upsert on
-// re-import so the uuid is generated once and never orphans a referencing row; it
-// is nullable until a real dataset is imported. Cities link to states by code.
 model City {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  geonamesId Int?     @unique @map("geonames_id")
-  name       String
-  stateCode  String   @map("state_code") @db.VarChar(6)
-  isActive   Boolean  @default(true) @map("is_active")
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  state         State          @relation(fields: [stateCode], references: [code], onDelete: Cascade, onUpdate: Cascade)
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  isActive      Boolean        @default(true) @map("is_active")
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  stateCode     String         @map("state_code") @db.VarChar(6)
+  geonamesId    Int?           @unique @map("geonames_id")
+  state         State          @relation(fields: [stateCode], references: [code], onDelete: Cascade)
   organizations Organization[]
 
   @@unique([name, stateCode])
@@ -327,87 +289,74 @@ model City {
 }
 
 model AppModule {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  code      String   @unique @db.VarChar(50)
-  name      String   @db.VarChar(100)
-  parentId  String?  @map("parent_id") @db.Uuid
-  sortIndex Int      @default(0) @map("sort_index")
-  icon      String?  @db.VarChar(50)
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  parent   AppModule?  @relation("ModuleToSubModules", fields: [parentId], references: [id], onDelete: Cascade)
-  children AppModule[] @relation("ModuleToSubModules")
+  id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code      String      @unique @db.VarChar(50)
+  name      String      @db.VarChar(100)
+  parentId  String?     @map("parent_id") @db.Uuid
+  sortIndex Int         @default(0) @map("sort_index")
+  icon      String?     @db.VarChar(50)
+  isActive  Boolean     @default(true) @map("is_active")
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  parent    AppModule?  @relation("ModuleToSubModules", fields: [parentId], references: [id], onDelete: Cascade)
+  children  AppModule[] @relation("ModuleToSubModules")
 
   @@map("app_modules")
 }
 
-// Per-tenant auto-numbering counters for PO / Invoice / Vendor etc.
-// `entityType` picks the sequence; `prefix` + `nextNumber` build the human number.
 model NumberSequence {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  entityType     String   @map("entity_type") @db.VarChar(50)
-  prefix         String   @db.VarChar(20)
-  nextNumber     Int      @default(1) @map("next_number")
-  isDeleted      Boolean  @default(false) @map("is_deleted")
-  createdBy      String?  @map("created_by") @db.Uuid
-  updatedBy      String?  @map("updated_by") @db.Uuid
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  createdByUser User? @relation("NumberSequenceCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser User? @relation("NumberSequenceUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  entityType     String       @map("entity_type") @db.VarChar(50)
+  prefix         String       @db.VarChar(20)
+  nextNumber     Int          @default(1) @map("next_number")
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?      @map("created_by") @db.Uuid
+  isDeleted      Boolean      @default(false) @map("is_deleted")
+  updatedBy      String?      @map("updated_by") @db.Uuid
+  createdByUser  User?        @relation("NumberSequenceCreatedBy", fields: [createdBy], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedByUser  User?        @relation("NumberSequenceUpdatedBy", fields: [updatedBy], references: [id])
 
   @@unique([organizationId, entityType])
   @@map("number_sequences")
 }
 
 model Currency {
-  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String @map("organization_id") @db.Uuid
-
-  currencyCode  String @map("currency_code")
-  currencyName  String @map("currency_name")
-  symbol        String
-  decimalPlaces Int    @default(2) @map("decimal_places")
-  format        String @default("1,234,567.89")
-
-  isDeleted Boolean  @default(false) @map("is_deleted")
-  createdBy String?  @map("created_by") @db.Uuid
-  updatedBy String?  @map("updated_by") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  createdByUser User? @relation("CurrencyCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser User? @relation("CurrencyUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  currencyCode   String       @map("currency_code")
+  currencyName   String       @map("currency_name")
+  symbol         String
+  decimalPlaces  Int          @default(2) @map("decimal_places")
+  isDeleted      Boolean      @default(false) @map("is_deleted")
+  createdBy      String?      @map("created_by") @db.Uuid
+  updatedBy      String?      @map("updated_by") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  format         String       @default("1,234,567.89")
+  createdByUser  User?        @relation("CurrencyCreatedBy", fields: [createdBy], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedByUser  User?        @relation("CurrencyUpdatedBy", fields: [updatedBy], references: [id])
 
   @@unique([organizationId, currencyCode])
   @@map("currencies")
 }
 
 model PaymentTerm {
-  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String @map("organization_id") @db.Uuid
-
-  termName     String @map("term_name")
-  dueAfterDays Int    @map("due_after_days")
-
-  isDeleted Boolean  @default(false) @map("is_deleted")
-  createdBy String?  @map("created_by") @db.Uuid
-  updatedBy String?  @map("updated_by") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  createdByUser User? @relation("PaymentTermCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser User? @relation("PaymentTermUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  termName       String       @map("term_name")
+  dueAfterDays   Int          @map("due_after_days")
+  isDeleted      Boolean      @default(false) @map("is_deleted")
+  createdBy      String?      @map("created_by") @db.Uuid
+  updatedBy      String?      @map("updated_by") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdByUser  User?        @relation("PaymentTermCreatedBy", fields: [createdBy], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedByUser  User?        @relation("PaymentTermUpdatedBy", fields: [updatedBy], references: [id])
 
   @@unique([organizationId, termName])
   @@map("payment_terms")
@@ -455,4 +404,36 @@ model ListViewPreference {
   /// holding a unique key.
   @@unique([userId, organizationId, entityType])
   @@map("list_view_preferences")
+}
+
+model Location {
+  id                     String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId         String          @map("organization_id") @db.Uuid
+  name                   String
+  addressString          String?         @map("address_string")
+  isDeleted              Boolean         @default(false) @map("is_deleted")
+  createdBy              String?         @map("created_by") @db.Uuid
+  updatedBy              String?         @map("updated_by") @db.Uuid
+  createdAt              DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  city                   String?
+  country                String?
+  logo                   String?
+  parentId               String?         @map("parent_id") @db.Uuid
+  phone                  String?
+  state                  String?
+  street1                String?
+  street2                String?
+  type                   String          @default("Business")
+  zip                    String?
+  createdByUser          User?           @relation("LocationCreatedBy", fields: [createdBy], references: [id])
+  organization           Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parentLocation         Location?       @relation("LocationHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  childLocations         Location[]      @relation("LocationHierarchy")
+  updatedByUser          User?           @relation("LocationUpdatedBy", fields: [updatedBy], references: [id])
+  deliveryPurchaseOrders PurchaseOrder[]
+  sourcePurchaseOrders   PurchaseOrder[] @relation("PoSourceLocation")
+
+  @@unique([organizationId, name])
+  @@map("locations")
 }

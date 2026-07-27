@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { ApiError } from '../../../../lib/apiError.ts';
 import { sendSuccess } from '../../../../lib/apiResponse.ts';
-import { prisma } from '../../../../db/prisma.ts';
+import {runAsTenant } from '../../../../db/prisma.ts';
 import type { CreatePaymentTermInput } from './payment-terms.schemas.js';
 
 /**
@@ -13,9 +13,11 @@ import type { CreatePaymentTermInput } from './payment-terms.schemas.js';
  */
 
 export async function getPaymentTerms(req: Request, res: Response) {
-  const paymentTerms = await prisma.paymentTerm.findMany({
-    where: { organizationId: req.tenantId!, isDeleted: false },
-    orderBy: { dueAfterDays: 'asc' },
+  const paymentTerms = await runAsTenant(req.tenantId!, async (tx) => {
+    return tx.paymentTerm.findMany({
+      where: { organizationId: req.tenantId!, isDeleted: false },
+      orderBy: { dueAfterDays: 'asc' },
+    });
   });
 
   sendSuccess(res, paymentTerms);
@@ -26,22 +28,24 @@ export async function createPaymentTerm(req: Request, res: Response) {
   const { id: userId } = req.user!;
   const data = req.body as CreatePaymentTermInput;
 
-  const existingTerm = await prisma.paymentTerm.findFirst({
-    where: { organizationId: orgId, termName: data.termName, isDeleted: false },
-  });
+  const paymentTerm = await runAsTenant(orgId, async (tx) => {
+    const existingTerm = await tx.paymentTerm.findFirst({
+      where: { organizationId: orgId, termName: data.termName, isDeleted: false },
+    });
 
-  if (existingTerm) {
-    throw ApiError.conflict('A payment term with this name already exists');
-  }
+    if (existingTerm) {
+      throw ApiError.conflict('A payment term with this name already exists');
+    }
 
-  const paymentTerm = await prisma.paymentTerm.create({
-    data: {
-      organizationId: orgId,
-      termName: data.termName,
-      dueAfterDays: data.dueAfterDays,
-      createdBy: userId,
-      updatedBy: userId,
-    },
+    return tx.paymentTerm.create({
+      data: {
+        organizationId: orgId,
+        termName: data.termName,
+        dueAfterDays: data.dueAfterDays,
+        createdBy: userId,
+        updatedBy: userId,
+      },
+    });
   });
 
   sendSuccess(res, paymentTerm, 'Payment term created.', 201);

@@ -124,7 +124,7 @@ export function UnitOfMeasurementPage() {
                   setIsModalOpen(true);
                 }}
                 style={{
-                  background: 'var(--color-primary)',
+                  background: '#186337',
                   color: 'white',
                   border: 'none',
                   padding: '6px 12px',

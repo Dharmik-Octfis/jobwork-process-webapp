@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { itemsApi } from './items.api';
 import { useParams, useNavigate } from 'react-router-dom';
-import { X, Edit, ChevronDown, Plus } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { X, Edit, ChevronDown} from 'lucide-react';
+import { useState, useRef, useEffect, Fragment } from 'react';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { ItemActivityHistory } from './ItemActivityHistory';
 import { ItemImageGallery } from './components/ItemImageGallery';
@@ -128,25 +128,6 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
-            onClick={() => navigate(`/organizations/${orgId}/items/new`)}
-            style={{
-              padding: '6px 12px',
-              border: 'none',
-              background: '#0062ff',
-              color: 'white',
-              borderRadius: '4px',
-              fontSize: '13px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontWeight: 500,
-            }}
-          >
-            <Plus size={14} /> New
-          </button>
-
-          <button
             onClick={() => navigate(`/organizations/${orgId}/items/${itemId}/edit`)}
             style={{
               padding: '6px 12px',
@@ -246,22 +227,24 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', borderBottom: '1px solid #eef0f3', padding: '0 24px', gap: '24px' }}>
-        {['Overview', 'Locations', 'Transactions', 'Related Lists', 'History'].map((tab) => (
-          <div
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            style={{
-              padding: '12px 0',
-              fontSize: '13px',
-              fontWeight: activeTab === tab ? 500 : 400,
-              color: activeTab === tab ? '#0062ff' : '#64748b',
-              borderBottom: activeTab === tab ? '2px solid #0062ff' : '2px solid transparent',
-              cursor: 'pointer',
-            }}
-          >
-            {tab}
-          </div>
+      <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #eef0f3', padding: '0 24px', gap: '16px' }}>
+        {['Overview', 'Locations', 'Transactions', 'Related Lists', 'History'].map((tab, idx) => (
+          <Fragment key={tab}>
+            {idx > 0 && <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />}
+            <div
+              onClick={() => setActiveTab(tab)}
+              style={{
+                padding: '12px 0',
+                fontSize: '13px',
+                fontWeight: activeTab === tab ? 500 : 400,
+                color: activeTab === tab ? '#0062ff' : '#64748b',
+                borderBottom: activeTab === tab ? '2px solid #0062ff' : '2px solid transparent',
+                cursor: 'pointer',
+              }}
+            >
+              {tab}
+            </div>
+          </Fragment>
         ))}
       </div>
 

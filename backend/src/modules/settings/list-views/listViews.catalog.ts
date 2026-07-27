@@ -70,6 +70,17 @@ export const LIST_COLUMNS: Record<EntityType, readonly ColumnDef[]> = {
     { key: 'createdAt', label: 'Created At' },
     { key: 'updatedAt', label: 'Last Modified' },
   ],
+  purchase_order: [
+    { key: 'purchaseorder_number', label: 'PO Number', locked: true },
+    { key: 'vendor', label: 'Vendor', defaultVisible: true },
+    { key: 'date', label: 'Date', defaultVisible: true },
+    { key: 'delivery_date', label: 'Delivery Date', defaultVisible: true },
+    { key: 'total', label: 'Amount', defaultVisible: true },
+    { key: 'status', label: 'Status', defaultVisible: true },
+    { key: 'payment_terms', label: 'Payment Terms' },
+    { key: 'created_at', label: 'Created At' },
+    { key: 'updated_at', label: 'Last Modified' },
+  ],
 };
 
 /** The locked keys for an entity, in catalog order. */

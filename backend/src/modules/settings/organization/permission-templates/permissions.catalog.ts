@@ -118,9 +118,11 @@ const MODULE_GROUPS: readonly {
       { resource: 'role', label: 'Roles' },
       { resource: 'permission_template', label: 'Permission Templates' },
       { resource: 'uom', label: 'Units of Measurement' },
-      { resource: 'currency', label: 'Currencies' },
+      { resource: 'purchase_order', label: 'Purchase Orders' },
+  { resource: 'currency', label: 'Currencies' },
       { resource: 'payment_term', label: 'Payment Terms' },
-      { resource: 'custom_field', label: 'Custom Fields' },
+      { resource: 'location', label: 'Locations' },
+  { resource: 'custom_field', label: 'Custom Fields' },
     ],
   },
 ];
