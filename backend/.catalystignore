@@ -10,3 +10,4 @@ node_modules/@esbuild
 node_modules/react-dom
 node_modules/effect
 node_modules/@electric-sql
+backups

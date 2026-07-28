@@ -106,8 +106,16 @@ promotes it to `req.tenantId` after checking `memberships`. Everything downstrea
 
 ## 🔴 Database
 
-- **Never create or alter a table by hand.** Schema file → `npm run db:migrate` → commit the generated
-  SQL. `npm run db:check-drift` (exit 2 = drift) is the enforcement — run it in CI.
+- **Never create or alter a table by hand.** Schema file → `npm run db:draft -- <name>` → edit the
+  generated SQL → `npm run db:promote` → `npm run db:apply` → commit.
+  `npm run db:check-drift` (exit 2 = drift) is the enforcement — run it in CI.
+- 🔴 **`prisma db push` and `prisma migrate dev` are not used here — both delete data.** `db push`
+  ignores `prisma/migrations` entirely and issues whatever DDL makes the live database match your
+  schema files, so anything in the database but not in those files is something it removes; on
+  2026-07-25 a push from a branch with stale files cost every organization its owner
+  (`migrations/20260725140000_.../migration.sql:32`). `migrate dev` offers to **reset** whenever it
+  sees drift, and this shared dev database drifts routinely. `npm run db:push` / `npm run db:migrate`
+  are guards that explain this and exit 1. See `scripts/db-sync.ts`.
 - The app connects as **`jobwork_app`** — a non-owner, no `BYPASSRLS`, no DDL rights.
   **Never point `DATABASE_URL` at `postgres`.** The table owner bypasses every policy _silently_;
   RLS that does nothing looks exactly like RLS that works.
@@ -305,7 +313,19 @@ sendSuccess(res, null, 'Vendor deleted.'); // 200, no payload
 ```bash
 # backend/
 npm run dev · typecheck · lint
-npm run db:migrate       # prisma migrate dev — authoring, YOUR machine only (can reset the DB)
+# Schema changes — `scripts/db-sync.ts`. Nothing here can reset the database.
+npm run db:status            # read-only: what is pending, what has drifted, what would destroy data
+npm run db:draft -- <name>   # drift → prisma/drafts/<ts>_<name>.sql. Applies NOTHING.
+                             # `migrate diff` renders a RENAME as drop+add, so the draft is a
+                             # starting point to edit, not an answer. Destructive lines are
+                             # annotated in the file.
+npm run db:promote           # draft → prisma/migrations, once reviewed. THE gate: past here,
+                             # plain `migrate deploy` applies it in CI and prod with no prompt.
+                             # Refuses destructive SQL unless the file carries
+                             # `-- @destructive-ok: <reason>`, which then lives in git.
+npm run db:apply             # pg_dump → migrate deploy → generate → re-check drift
+npm run db:backup            # pg_dump on demand → backend/backups (gitignored)
+
 npm run db:deploy        # prisma migrate deploy — every other environment, never resets
 npm run db:check-drift   # exit 0 = in sync, 2 = drift. Run in CI.
 npx vitest run

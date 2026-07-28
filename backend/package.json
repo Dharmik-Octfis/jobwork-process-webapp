@@ -13,10 +13,16 @@
     "lint": "eslint .",
     "db:generate": "prisma generate",
     "db:pull": "prisma db pull",
-    "db:migrate": "prisma migrate dev",
+    "db:status": "tsx scripts/db-sync.ts status",
+    "db:draft": "tsx scripts/db-sync.ts draft",
+    "db:promote": "tsx scripts/db-sync.ts promote",
+    "db:apply": "tsx scripts/db-sync.ts apply",
+    "db:backup": "tsx scripts/db-sync.ts backup",
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
-    "db:check-drift": "prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code"
+    "db:check-drift": "prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code",
+    "db:push": "tsx scripts/db-sync.ts blocked push",
+    "db:migrate": "tsx scripts/db-sync.ts blocked \"migrate dev\""
   },
   "keywords": [],
   "author": "",
