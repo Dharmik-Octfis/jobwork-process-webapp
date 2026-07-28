@@ -7,7 +7,9 @@ import type { ItemFormData } from './items.schemas.ts';
 import { itemFormSchema } from './items.schemas.ts';
 import { z } from 'zod';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog.tsx';
+import { Select } from '../../components/ui/Select.tsx';
 import { CustomFieldsSection } from '../custom-fields/CustomFieldsSection.tsx';
+
 
 export function EditItemPage() {
   const { id, orgId } = useParams<{ id: string; orgId: string }>();
@@ -66,36 +68,40 @@ export function EditItemPage() {
   // Initialize form data directly during render when item is loaded.
   // This avoids the cascading render problem caused by setting state in useEffect.
   if (item && initializedId !== id) {
+    const rawItem = item as typeof item & Record<string, unknown>;
     setInitializedId(id!);
     setFormData({
-      name: item.name,
-
-      type: item.type as 'Goods' | 'Service',
-      category: item.category || '',
-      brand: item.brand || '',
-      manufacturer: item.manufacturer || '',
-      hsnCode: item.hsnCode || '',
-      taxPreference: item.taxPreference as 'Taxable' | 'Non-Taxable',
-      itemType: item.itemType as 'Single Item' | 'Contains Variants',
-      unit: item.unit,
-      sku: item.sku,
-      isSalesInfo: item.isSalesInfo,
-      sellingPrice: item.sellingPrice !== null ? Number(item.sellingPrice) : null,
-      salesAccount: item.salesAccount || '',
-      isPurchaseInfo: item.isPurchaseInfo,
-      costPrice: item.costPrice !== null ? Number(item.costPrice) : null,
-      purchaseAccount: item.purchaseAccount || '',
-      packaging: item.packaging || '',
-      deliveryDate: item.deliveryDate ? String(item.deliveryDate).split('T')[0] : '',
-      frontImage: item.frontImage || null,
-      rearImage: item.rearImage || null,
-      images: item.images || [],
-      trackInventory: item.trackInventory || false,
-      binLocationTracking: item.binLocationTracking || 'No',
-      inventoryTracking: item.inventoryTracking || 'None',
-      inventoryAccount: item.inventoryAccount || '',
-      inventoryValuationMethod: item.inventoryValuationMethod || 'FIFO (First In, First Out)',
-      customFields: (item.customFields as Record<string, unknown>) || {},
+      name: (rawItem.name as string) || '',
+      type: ((rawItem.type || rawItem.product_type || 'Goods') as 'Goods' | 'Service'),
+      category: (rawItem.category as string) || '',
+      brand: (rawItem.brand as string) || '',
+      manufacturer: rawItem.manufacturer || '',
+      hsnCode: rawItem.hsnCode || rawItem.hsn_or_sac || '',
+      taxPreference: (rawItem.taxPreference || rawItem.taxability_type || (rawItem.is_taxable ? 'Taxable' : 'Non-Taxable') || 'Taxable') as 'Taxable' | 'Non-Taxable',
+      itemType: (rawItem.itemType || rawItem.item_type || 'Single Item') as 'Single Item' | 'Contains Variants',
+      unit: rawItem.unit || '',
+      sku: rawItem.sku || '',
+      isSalesInfo: rawItem.isSalesInfo ?? rawItem.can_be_sold ?? false,
+      sellingPrice: rawItem.sellingPrice !== null && rawItem.sellingPrice !== undefined
+        ? Number(rawItem.sellingPrice)
+        : (rawItem.rate !== null && rawItem.rate !== undefined ? Number(rawItem.rate) : null),
+      salesAccount: rawItem.salesAccount || rawItem.account_id || '',
+      isPurchaseInfo: rawItem.isPurchaseInfo ?? rawItem.can_be_purchased ?? false,
+      costPrice: rawItem.costPrice !== null && rawItem.costPrice !== undefined
+        ? Number(rawItem.costPrice)
+        : (rawItem.purchase_rate !== null && rawItem.purchase_rate !== undefined ? Number(rawItem.purchase_rate) : null),
+      purchaseAccount: rawItem.purchaseAccount || rawItem.purchase_account_id || '',
+      packaging: rawItem.packaging || '',
+      deliveryDate: (rawItem.deliveryDate || rawItem.delivery_date) ? String(rawItem.deliveryDate || rawItem.delivery_date).split('T')[0] : '',
+      frontImage: rawItem.frontImage || rawItem.front_image || null,
+      rearImage: rawItem.rearImage || rawItem.rear_image || null,
+      images: rawItem.images || [],
+      trackInventory: rawItem.trackInventory ?? rawItem.track_inventory ?? false,
+      binLocationTracking: (rawItem.binLocationTracking === 'Yes' || rawItem.is_storage_location_enabled === true || rawItem.is_storage_location_enabled === 'Yes') ? 'Yes' : 'No',
+      inventoryTracking: rawItem.inventoryTracking || rawItem.inventory_tracking || 'None',
+      inventoryAccount: rawItem.inventoryAccount || rawItem.inventory_account_id || '',
+      inventoryValuationMethod: rawItem.inventoryValuationMethod || rawItem.inventory_valuation_method || 'FIFO (First In, First Out)',
+      customFields: (rawItem.customFields || rawItem.custom_fields as Record<string, unknown>) || {},
     });
   }
 
@@ -172,6 +178,17 @@ export function EditItemPage() {
 
   const handleRadioChange = (name: string, value: string) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSelectChange = (name: keyof ItemFormData, value: string) => {
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (errors[name]) {
+      setErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[name];
+        return newErrors;
+      });
+    }
   };
 
   const handleFrontImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -356,24 +373,19 @@ export function EditItemPage() {
                 }}
               >
                 <label style={{ fontSize: 12, color: '#4b5563' }}>Category</label>
-                <select
-                  name="category"
+                <Select
                   value={formData.category || ''}
-                  onChange={handleChange}
-                  style={{
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    border: '1px solid #d1d5db',
-                    fontSize: 12,
-                    background: 'white',
-                  }}
-                >
-                  <option value="">Select a category</option>
-                  <option value="Electronics">Electronics</option>
-                  <option value="Furniture">Furniture</option>
-                  <option value="Foot wear">Foot wear</option>
-                </select>
+                  onChange={(val) => handleSelectChange('category', val)}
+                  options={[
+                    { value: '', label: 'Select a category' },
+                    { value: 'Electronics', label: 'Electronics' },
+                    { value: 'Furniture', label: 'Furniture' },
+                    { value: 'Foot wear', label: 'Foot wear' },
+                    ...(formData.category && !['Electronics', 'Furniture', 'Foot wear'].includes(formData.category)
+                      ? [{ value: formData.category, label: formData.category }]
+                      : []),
+                  ]}
+                />
               </div>
 
               <div
@@ -384,23 +396,18 @@ export function EditItemPage() {
                 }}
               >
                 <label style={{ fontSize: 12, color: '#4b5563' }}>Brand</label>
-                <select
-                  name="brand"
+                <Select
                   value={formData.brand || ''}
-                  onChange={handleChange}
-                  style={{
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    border: '1px solid #d1d5db',
-                    fontSize: 12,
-                    background: 'white',
-                  }}
-                >
-                  <option value="">Select or Add Brand</option>
-                  <option value="Apple">Apple</option>
-                  <option value="Samsung">Samsung</option>
-                </select>
+                  onChange={(val) => handleSelectChange('brand', val)}
+                  options={[
+                    { value: '', label: 'Select or Add Brand' },
+                    { value: 'Apple', label: 'Apple' },
+                    { value: 'Samsung', label: 'Samsung' },
+                    ...(formData.brand && !['Apple', 'Samsung'].includes(formData.brand)
+                      ? [{ value: formData.brand, label: formData.brand }]
+                      : []),
+                  ]}
+                />
               </div>
 
               <div
@@ -411,22 +418,17 @@ export function EditItemPage() {
                 }}
               >
                 <label style={{ fontSize: 12, color: '#4b5563' }}>Manufacturer</label>
-                <select
-                  name="manufacturer"
+                <Select
                   value={formData.manufacturer || ''}
-                  onChange={handleChange}
-                  style={{
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    border: '1px solid #d1d5db',
-                    fontSize: 12,
-                    background: 'white',
-                  }}
-                >
-                  <option value="">Select or Add Manufacturer</option>
-                  <option value="Foxconn">Foxconn</option>
-                </select>
+                  onChange={(val) => handleSelectChange('manufacturer', val)}
+                  options={[
+                    { value: '', label: 'Select or Add Manufacturer' },
+                    { value: 'Foxconn', label: 'Foxconn' },
+                    ...(formData.manufacturer && !['Foxconn'].includes(formData.manufacturer)
+                      ? [{ value: formData.manufacturer, label: formData.manufacturer }]
+                      : []),
+                  ]}
+                />
               </div>
 
               <div
@@ -729,36 +731,32 @@ export function EditItemPage() {
                   overflow: 'hidden',
                 }}
               >
-                <select
-                  style={{
-                    padding: '6px 10px',
-                    border: 'none',
-                    borderRight: '1px solid #d1d5db',
-                    background: '#f8fafc',
-                    fontSize: 12,
-                    outline: 'none',
-                  }}
-                >
-                  <option>Unit Group</option>
-                </select>
-                <select
-                  name="unit"
-                  value={formData.unit}
-                  onChange={handleChange}
-                  style={{
-                    flex: 1,
-                    padding: '6px 10px',
-                    border: 'none',
-                    fontSize: 12,
-                    outline: 'none',
-                    background: 'white',
-                  }}
-                >
-                  <option value="">Select Unit</option>
-                  <option value="pcs">pcs</option>
-                  <option value="kg">kg</option>
-                  <option value="box">box</option>
-                </select>
+                <div style={{
+                  padding: '5px 8px',
+                  borderRight: '1px solid #d1d5db',
+                  background: '#f8fafc',
+                  fontSize: 12,
+                  display: 'flex',
+                  alignItems: 'center'
+                }}>
+                  Unit Group
+                </div>
+                <div style={{ flex: 1 }}>
+                  <Select
+                    value={formData.unit}
+                    onChange={(val) => handleSelectChange('unit', val)}
+                    options={[
+                      { value: '', label: 'Select Unit' },
+                      { value: 'pcs', label: 'pcs' },
+                      { value: 'kg', label: 'kg' },
+                      { value: 'box', label: 'box' },
+                      ...(formData.unit && !['pcs', 'kg', 'box'].includes(formData.unit)
+                        ? [{ value: formData.unit, label: formData.unit }]
+                        : []),
+                    ]}
+                    buttonStyle={{ border: 'none' }}
+                  />
+                </div>
               </div>
 
               <label style={{ fontSize: 12, color: '#dc2626' }}>SKU*</label>
@@ -919,42 +917,26 @@ export function EditItemPage() {
                   }}
                 >
                   <label style={{ fontSize: 12, color: '#dc2626' }}>Inventory Account*</label>
-                  <select
-                    name="inventoryAccount"
+                  <Select
                     value={formData.inventoryAccount || ''}
-                    onChange={handleChange}
-                    style={{
-                      width: '100%',
-                      padding: '6px 10px',
-                      borderRadius: '4px',
-                      border: '1px solid #d1d5db',
-                      fontSize: 12,
-                      background: 'white',
-                    }}
-                  >
-                    <option value="">Select an account</option>
-                    <option value="Inventory Asset">Inventory Asset</option>
-                  </select>
+                    onChange={(val) => handleSelectChange('inventoryAccount', val)}
+                    options={[
+                      { value: '', label: 'Select an account' },
+                      { value: 'Inventory Asset', label: 'Inventory Asset' },
+                    ]}
+                  />
 
                   <label style={{ fontSize: 12, color: '#dc2626' }}>
                     Inventory Valuation Method*
                   </label>
-                  <select
-                    name="inventoryValuationMethod"
+                  <Select
                     value={formData.inventoryValuationMethod || ''}
-                    onChange={handleChange}
-                    style={{
-                      width: '100%',
-                      padding: '6px 10px',
-                      borderRadius: '4px',
-                      border: '1px solid #d1d5db',
-                      fontSize: 12,
-                      background: 'white',
-                    }}
-                  >
-                    <option value="FIFO (First In, First Out)">FIFO (First In, First Out)</option>
-                    <option value="Moving Average">Moving Average</option>
-                  </select>
+                    onChange={(val) => handleSelectChange('inventoryValuationMethod', val)}
+                    options={[
+                      { value: 'FIFO (First In, First Out)', label: 'FIFO (First In, First Out)' },
+                      { value: 'Moving Average', label: 'Moving Average' },
+                    ]}
+                  />
                 </div>
               </div>
             )}
@@ -1003,23 +985,15 @@ export function EditItemPage() {
                 />
 
                 <label style={{ fontSize: 12, color: '#4b5563' }}>Sales Account</label>
-                <select
-                  name="salesAccount"
+                <Select
                   value={formData.salesAccount || ''}
-                  onChange={handleChange}
-                  style={{
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    border: '1px solid #d1d5db',
-                    fontSize: 12,
-                    background: 'white',
-                  }}
-                >
-                  <option value="">Select Account</option>
-                  <option value="Sales">Sales</option>
-                  <option value="General Income">General Income</option>
-                </select>
+                  onChange={(val) => handleSelectChange('salesAccount', val)}
+                  options={[
+                    { value: '', label: 'Select Account' },
+                    { value: 'Sales', label: 'Sales' },
+                    { value: 'General Income', label: 'General Income' },
+                  ]}
+                />
               </div>
             )}
 
@@ -1061,23 +1035,15 @@ export function EditItemPage() {
                 />
 
                 <label style={{ fontSize: 12, color: '#4b5563' }}>Purchase Account</label>
-                <select
-                  name="purchaseAccount"
+                <Select
                   value={formData.purchaseAccount || ''}
-                  onChange={handleChange}
-                  style={{
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    border: '1px solid #d1d5db',
-                    fontSize: 12,
-                    background: 'white',
-                  }}
-                >
-                  <option value="">Select Account</option>
-                  <option value="Cost of Goods Sold">Cost of Goods Sold</option>
-                  <option value="Inventory">Inventory</option>
-                </select>
+                  onChange={(val) => handleSelectChange('purchaseAccount', val)}
+                  options={[
+                    { value: '', label: 'Select Account' },
+                    { value: 'Cost of Goods Sold', label: 'Cost of Goods Sold' },
+                    { value: 'Inventory', label: 'Inventory' },
+                  ]}
+                />
               </div>
             )}
           </div>

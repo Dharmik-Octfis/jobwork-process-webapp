@@ -237,24 +237,42 @@ input[type='number'] {
 
 /* Print styles for PO and document templates */
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
   body * {
     visibility: hidden !important;
   }
+
   .po-print-template,
   .po-print-template * {
     visibility: visible !important;
   }
+
   .po-print-template {
-    position: absolute !important;
+    position: fixed !important;
     left: 0 !important;
     top: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
-    padding: 16px !important;
+    padding: 0 !important;
     box-shadow: none !important;
     border: none !important;
     background: #ffffff !important;
+    box-sizing: border-box !important;
+    z-index: 999999 !important;
   }
 }
 

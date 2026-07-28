@@ -15,6 +15,8 @@ import type { AuthResult, PublicUser } from './auth.types.ts';
 import { env } from '../../config/env.ts';
 import ms from 'ms';
 
+import { uploadFile, getFileUrl } from '../../lib/storage.ts';
+
 /** Postgres unique-constraint violation, surfaced by Prisma. */
 const UNIQUE_VIOLATION = 'P2002';
 
@@ -24,7 +26,40 @@ const publicUserSelect = {
   lastName: true,
   fullName: true,
   email: true,
+  avatarUrl: true,
 } as const;
+
+async function resolveAvatarUrl(avatarUrl: string | null | undefined): Promise<string | null> {
+  if (!avatarUrl) return null;
+  if (avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://') || avatarUrl.startsWith('data:')) {
+    return avatarUrl;
+  }
+  try {
+    return await getFileUrl(avatarUrl);
+  } catch (err) {
+    console.warn(`Failed to resolve signed URL for avatar key "${avatarUrl}":`, err);
+    return avatarUrl;
+  }
+}
+
+export async function formatPublicUser(user: {
+  id: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  email: string;
+  avatarUrl?: string | null;
+}): Promise<PublicUser> {
+  const signedAvatarUrl = await resolveAvatarUrl(user.avatarUrl);
+  return {
+    id: user.id,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    fullName: user.fullName,
+    email: user.email,
+    avatar_url: signedAvatarUrl,
+  };
+}
 
 export async function updateProfile(
   userId: string,
@@ -36,7 +71,37 @@ export async function updateProfile(
     data: { firstName: input.firstName, lastName: input.lastName, fullName },
     select: publicUserSelect,
   });
-  return user;
+  return await formatPublicUser(user);
+}
+
+export async function uploadAvatar(
+  userId: string,
+  file: Express.Multer.File,
+): Promise<PublicUser> {
+  const timestamp = Date.now();
+  const cleanName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+  const key = `users/${userId}/avatar-${timestamp}-${cleanName}`;
+
+  let storedKey = key;
+  try {
+    await uploadFile({
+      key,
+      body: file.buffer,
+      contentType: file.mimetype,
+      overwrite: true,
+    });
+  } catch (err) {
+    console.warn('Catalyst Stratus avatar upload failed:', err);
+    storedKey = key;
+  }
+
+  const updatedUser = await prisma.user.update({
+    where: { id: userId },
+    data: { avatarUrl: storedKey },
+    select: publicUserSelect,
+  });
+
+  return await formatPublicUser(updatedUser);
 }
 
 let decoyHash: Promise<string> | undefined;
@@ -98,13 +163,7 @@ export async function login(input: LoginInput): Promise<AuthResult> {
     throw new ApiError(403, 'This account has been disabled.');
   }
 
-  return await issueTokens({
-    id: user.id,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    fullName: user.fullName,
-    email: user.email,
-  });
+  return await issueTokens(await formatPublicUser(user));
 }
 
 /**
@@ -175,13 +234,7 @@ export async function refresh(oldRefreshToken: string): Promise<AuthResult> {
   }
 
   // ✅ 4. Rotation — do delete + create atomically inside a transaction
-  const publicUser = {
-    id: storedToken.user.id,
-    firstName: storedToken.user.firstName,
-    lastName: storedToken.user.lastName,
-    fullName: storedToken.user.fullName,
-    email: storedToken.user.email,
-  };
+  const publicUser = await formatPublicUser(storedToken.user);
 
   const newRefreshToken = signRefreshToken(publicUser.id);
   const expiresAt = new Date(Date.now() + ms(env.jwt.refreshTtl as ms.StringValue));
@@ -238,7 +291,7 @@ export async function getUserById(userId: string): Promise<PublicUser> {
     throw new ApiError(401, 'Your session is no longer valid. Please sign in again.');
   }
 
-  return user;
+  return await formatPublicUser(user);
 }
 
 export async function requestPasswordReset(email: string): Promise<void> {

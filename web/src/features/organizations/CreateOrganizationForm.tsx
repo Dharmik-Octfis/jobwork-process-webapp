@@ -48,10 +48,12 @@ export function CreateOrganizationForm() {
   } = useForm<CreateOrganizationData>({
     resolver: zodResolver(createOrganizationSchema),
     defaultValues: {
-      stateCode: 'IN-GJ',
-      countryCode: 'IN',
-      cityId: '',
-      industryCode: '',
+      address: {
+        stateCode: 'IN-GJ',
+        country: 'IN',
+        city: '',
+      },
+      industryType: '',
       dialCode: '+91',
     },
   });
@@ -64,14 +66,14 @@ export function CreateOrganizationForm() {
         // Re-assert India once the country options exist: an uncontrolled
         // <select> can drop its selection when its options load in asynchronously.
         setValue('dialCode', '+91');
-        setValue('countryCode', 'IN');
-        setValue('stateCode', 'IN-GJ');
+        setValue('address.country', 'IN');
+        setValue('address.stateCode', 'IN-GJ');
       })
       .catch((err) => console.error('Failed to load master data:', err));
   }, [setValue]);
 
-  const selectedCountryCode = watch('countryCode');
-  const selectedStateCode = watch('stateCode');
+  const selectedCountryCode = watch('address.country');
+  const selectedStateCode = watch('address.stateCode');
 
   // Filter states by selected country
   const availableStates = masterData?.states.filter((s) => !selectedCountryCode || s.countryCode === selectedCountryCode) || [];
@@ -83,8 +85,8 @@ export function CreateOrganizationForm() {
       return;
     }
     if (selectedCountryCode && !isInitializing) {
-      setValue('stateCode', '');
-      setValue('cityId', '');
+      setValue('address.city', '');
+      setValue('address.stateCode', '');
     }
   }, [selectedCountryCode, setValue, isInitializing]);
 
@@ -92,7 +94,7 @@ export function CreateOrganizationForm() {
   useEffect(() => {
     if (isInitializing) return;
     if (selectedStateCode && !isInitializing) {
-      setValue('cityId', '');
+      setValue('address.city', '');
     }
   }, [selectedStateCode, setValue, isInitializing]);
 
@@ -146,7 +148,7 @@ export function CreateOrganizationForm() {
                 Industry Type <span className="required">*</span>
               </label>
               <Controller
-                name="industryCode"
+                name="industryType"
                 control={control}
                 render={({ field }) => (
                   <SearchableSelect
@@ -157,8 +159,8 @@ export function CreateOrganizationForm() {
                   />
                 )}
               />
-              {errors.industryCode && (
-                <span className="org-form-error-text">{errors.industryCode.message}</span>
+              {errors.industryType && (
+                <span className="org-form-error-text">{errors.industryType.message}</span>
               )}
             </div>
           </div>
@@ -166,7 +168,7 @@ export function CreateOrganizationForm() {
           <div className="org-form-field org-form-full-width">
             <label className="org-form-label">Address</label>
             <textarea
-              {...register('orgAddress')}
+              {...register('address.streetAddress1')}
               className="org-form-textarea"
               placeholder="Full physical address"
             />
@@ -176,7 +178,7 @@ export function CreateOrganizationForm() {
             <div className="org-form-field">
               <label className="org-form-label">Country</label>
               <Controller
-                name="countryCode"
+                name="address.country"
                 control={control}
                 render={({ field }) => (
                   <SearchableSelect
@@ -193,7 +195,7 @@ export function CreateOrganizationForm() {
             <div className="org-form-field">
               <label className="org-form-label">State</label>
               <Controller
-                name="stateCode"
+                name="address.stateCode"
                 control={control}
                 render={({ field }) => (
                   <SearchableSelect
@@ -210,7 +212,7 @@ export function CreateOrganizationForm() {
             <div className="org-form-field">
               <label className="org-form-label">City</label>
               <Controller
-                name="cityId"
+                name="address.city"
                 control={control}
                 render={({ field }) => (
                   <SearchableSelect
@@ -227,15 +229,15 @@ export function CreateOrganizationForm() {
             <div className="org-form-field">
               <label className="org-form-label">Pincode</label>
               <input
-                {...register('zip')}
+                {...register('address.zip')}
                 maxLength={6}
-                className={`org-form-input ${errors.zip ? 'has-error' : ''}`}
+                className={`org-form-input ${errors.address?.zip ? 'has-error' : ''}`}
                 placeholder="e.g. 380001"
                 onInput={(e) => {
                   e.currentTarget.value = e.currentTarget.value.replace(/\D/g, '');
                 }}
               />
-              {errors.zip && <span className="org-form-error-text">{errors.zip.message}</span>}
+              {errors.address?.zip && <span className="org-form-error-text">{errors.address.zip.message}</span>}
             </div>
           </div>
 
@@ -256,7 +258,9 @@ export function CreateOrganizationForm() {
 
             <div className="org-form-field">
               <label className="org-form-label">Phone No</label>
-              <div className={`org-form-input-group ${errors.phone ? 'has-error' : ''}`}>
+              <div
+                className={`org-form-input-group ${errors.phone || errors.dialCode ? 'has-error' : ''}`}
+              >
                 <Controller
                   name="dialCode"
                   control={control}

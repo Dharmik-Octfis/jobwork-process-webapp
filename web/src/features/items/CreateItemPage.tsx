@@ -1,9 +1,10 @@
 import { useState, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
+import { Select } from '../../components/ui/Select';
 import { itemsApi } from './items.api.ts';
-import type { ItemFormData } from './items.schemas.ts';
+import type { ItemFormData, Item } from './items.schemas.ts';
 import { itemFormSchema } from './items.schemas.ts';
 import { z } from 'zod';
 import { CustomFieldsSection } from '../custom-fields/CustomFieldsSection.tsx';
@@ -11,36 +12,76 @@ import { CustomFieldsSection } from '../custom-fields/CustomFieldsSection.tsx';
 export function CreateItemPage() {
   const { orgId } = useParams<{ orgId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
-  const [formData, setFormData] = useState<ItemFormData>({
-    name: '',
 
-    type: 'Goods',
-    category: '',
-    brand: '',
-    manufacturer: '',
-    hsnCode: '',
-    taxPreference: 'Taxable',
-    itemType: 'Single Item',
-    unit: '',
-    sku: '',
-    isSalesInfo: false,
-    sellingPrice: null,
-    salesAccount: '',
-    isPurchaseInfo: false,
-    costPrice: null,
-    purchaseAccount: '',
-    packaging: '',
-    deliveryDate: '',
-    frontImage: null,
-    rearImage: null,
-    images: [],
-    trackInventory: false,
-    binLocationTracking: 'No',
-    inventoryTracking: 'None',
-    inventoryAccount: '',
-    inventoryValuationMethod: 'FIFO (First In, First Out)',
-    customFields: {},
+  const itemToClone = (location.state as { itemToClone?: Partial<Item> & Record<string, unknown> })?.itemToClone;
+
+  const [formData, setFormData] = useState<ItemFormData>(() => {
+    if (itemToClone) {
+      return {
+        name: itemToClone.name || '',
+        type: (itemToClone.type || itemToClone.product_type || 'Goods') as 'Goods' | 'Service',
+        category: itemToClone.category || '',
+        brand: itemToClone.brand || '',
+        manufacturer: itemToClone.manufacturer || '',
+        hsnCode: itemToClone.hsnCode || itemToClone.hsn_or_sac || '',
+        taxPreference: (itemToClone.taxPreference || itemToClone.taxability_type || (itemToClone.is_taxable ? 'Taxable' : 'Non-Taxable') || 'Taxable') as 'Taxable' | 'Non-Taxable',
+        itemType: (itemToClone.itemType || itemToClone.item_type || 'Single Item') as 'Single Item' | 'Contains Variants',
+        unit: itemToClone.unit || '',
+        sku: itemToClone.sku || '',
+        isSalesInfo: itemToClone.isSalesInfo ?? itemToClone.can_be_sold ?? false,
+        sellingPrice: itemToClone.sellingPrice !== null && itemToClone.sellingPrice !== undefined
+          ? Number(itemToClone.sellingPrice)
+          : (itemToClone.rate !== null && itemToClone.rate !== undefined ? Number(itemToClone.rate) : null),
+        salesAccount: itemToClone.salesAccount || itemToClone.account_id || '',
+        isPurchaseInfo: itemToClone.isPurchaseInfo ?? itemToClone.can_be_purchased ?? false,
+        costPrice: itemToClone.costPrice !== null && itemToClone.costPrice !== undefined
+          ? Number(itemToClone.costPrice)
+          : (itemToClone.purchase_rate !== null && itemToClone.purchase_rate !== undefined ? Number(itemToClone.purchase_rate) : null),
+        purchaseAccount: itemToClone.purchaseAccount || itemToClone.purchase_account_id || '',
+        packaging: itemToClone.packaging || '',
+        deliveryDate: (itemToClone.deliveryDate || itemToClone.delivery_date) ? String(itemToClone.deliveryDate || itemToClone.delivery_date).split('T')[0] : '',
+        frontImage: itemToClone.frontImage || itemToClone.front_image || null,
+        rearImage: itemToClone.rearImage || itemToClone.rear_image || null,
+        images: itemToClone.images || [],
+        trackInventory: itemToClone.trackInventory ?? itemToClone.track_inventory ?? false,
+        binLocationTracking: (itemToClone.binLocationTracking === 'Yes' || itemToClone.is_storage_location_enabled === true || itemToClone.is_storage_location_enabled === 'Yes') ? 'Yes' : 'No',
+        inventoryTracking: itemToClone.inventoryTracking || itemToClone.inventory_tracking || 'None',
+        inventoryAccount: itemToClone.inventoryAccount || itemToClone.inventory_account_id || '',
+        inventoryValuationMethod: itemToClone.inventoryValuationMethod || itemToClone.inventory_valuation_method || 'FIFO (First In, First Out)',
+        customFields: (itemToClone.customFields || itemToClone.custom_fields as Record<string, unknown>) || {},
+      };
+    }
+    return {
+      name: '',
+      type: 'Goods',
+      category: '',
+      brand: '',
+      manufacturer: '',
+      hsnCode: '',
+      taxPreference: 'Taxable',
+      itemType: 'Single Item',
+      unit: '',
+      sku: '',
+      isSalesInfo: false,
+      sellingPrice: null,
+      salesAccount: '',
+      isPurchaseInfo: false,
+      costPrice: null,
+      purchaseAccount: '',
+      packaging: '',
+      deliveryDate: '',
+      frontImage: null,
+      rearImage: null,
+      images: [],
+      trackInventory: false,
+      binLocationTracking: 'No',
+      inventoryTracking: 'None',
+      inventoryAccount: '',
+      inventoryValuationMethod: 'FIFO (First In, First Out)',
+      customFields: {},
+    };
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -121,6 +162,17 @@ export function CreateItemPage() {
 
   const handleRadioChange = (name: string, value: string) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSelectChange = (name: keyof ItemFormData, value: string) => {
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (errors[name]) {
+      setErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[name];
+        return newErrors;
+      });
+    }
   };
 
   const handleFrontImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -282,24 +334,19 @@ export function CreateItemPage() {
                 }}
               >
                 <label style={{ fontSize: 12, color: '#4b5563' }}>Category</label>
-                <select
-                  name="category"
+                <Select
                   value={formData.category || ''}
-                  onChange={handleChange}
-                  style={{
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    border: '1px solid #d1d5db',
-                    fontSize: 12,
-                    background: 'white',
-                  }}
-                >
-                  <option value="">Select a category</option>
-                  <option value="Electronics">Electronics</option>
-                  <option value="Furniture">Furniture</option>
-                  <option value="Foot wear">Foot wear</option>
-                </select>
+                  onChange={(val) => handleSelectChange('category', val)}
+                  options={[
+                    { value: '', label: 'Select a category' },
+                    { value: 'Electronics', label: 'Electronics' },
+                    { value: 'Furniture', label: 'Furniture' },
+                    { value: 'Foot wear', label: 'Foot wear' },
+                    ...(formData.category && !['Electronics', 'Furniture', 'Foot wear'].includes(formData.category)
+                      ? [{ value: formData.category, label: formData.category }]
+                      : []),
+                  ]}
+                />
               </div>
 
               <div
@@ -310,23 +357,18 @@ export function CreateItemPage() {
                 }}
               >
                 <label style={{ fontSize: 12, color: '#4b5563' }}>Brand</label>
-                <select
-                  name="brand"
+                <Select
                   value={formData.brand || ''}
-                  onChange={handleChange}
-                  style={{
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    border: '1px solid #d1d5db',
-                    fontSize: 12,
-                    background: 'white',
-                  }}
-                >
-                  <option value="">Select or Add Brand</option>
-                  <option value="Apple">Apple</option>
-                  <option value="Samsung">Samsung</option>
-                </select>
+                  onChange={(val) => handleSelectChange('brand', val)}
+                  options={[
+                    { value: '', label: 'Select or Add Brand' },
+                    { value: 'Apple', label: 'Apple' },
+                    { value: 'Samsung', label: 'Samsung' },
+                    ...(formData.brand && !['Apple', 'Samsung'].includes(formData.brand)
+                      ? [{ value: formData.brand, label: formData.brand }]
+                      : []),
+                  ]}
+                />
               </div>
 
               <div
@@ -337,22 +379,17 @@ export function CreateItemPage() {
                 }}
               >
                 <label style={{ fontSize: 12, color: '#4b5563' }}>Manufacturer</label>
-                <select
-                  name="manufacturer"
+                <Select
                   value={formData.manufacturer || ''}
-                  onChange={handleChange}
-                  style={{
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    border: '1px solid #d1d5db',
-                    fontSize: 12,
-                    background: 'white',
-                  }}
-                >
-                  <option value="">Select or Add Manufacturer</option>
-                  <option value="Foxconn">Foxconn</option>
-                </select>
+                  onChange={(val) => handleSelectChange('manufacturer', val)}
+                  options={[
+                    { value: '', label: 'Select or Add Manufacturer' },
+                    { value: 'Foxconn', label: 'Foxconn' },
+                    ...(formData.manufacturer && !['Foxconn'].includes(formData.manufacturer)
+                      ? [{ value: formData.manufacturer, label: formData.manufacturer }]
+                      : []),
+                  ]}
+                />
               </div>
 
               <div
@@ -649,36 +686,32 @@ export function CreateItemPage() {
                   overflow: 'hidden',
                 }}
               >
-                <select
-                  style={{
-                    padding: '6px 10px',
-                    border: 'none',
-                    borderRight: '1px solid #d1d5db',
-                    background: '#f8fafc',
-                    fontSize: 12,
-                    outline: 'none',
-                  }}
-                >
-                  <option>Unit Group</option>
-                </select>
-                <select
-                  name="unit"
-                  value={formData.unit}
-                  onChange={handleChange}
-                  style={{
-                    flex: 1,
-                    padding: '6px 10px',
-                    border: 'none',
-                    fontSize: 12,
-                    outline: 'none',
-                    background: 'white',
-                  }}
-                >
-                  <option value="">Select Unit</option>
-                  <option value="pcs">pcs</option>
-                  <option value="kg">kg</option>
-                  <option value="box">box</option>
-                </select>
+                <div style={{
+                  padding: '5px 8px',
+                  borderRight: '1px solid #d1d5db',
+                  background: '#f8fafc',
+                  fontSize: 12,
+                  display: 'flex',
+                  alignItems: 'center'
+                }}>
+                  Unit Group
+                </div>
+                <div style={{ flex: 1 }}>
+                  <Select
+                    value={formData.unit}
+                    onChange={(val) => handleSelectChange('unit', val)}
+                    options={[
+                      { value: '', label: 'Select Unit' },
+                      { value: 'pcs', label: 'pcs' },
+                      { value: 'kg', label: 'kg' },
+                      { value: 'box', label: 'box' },
+                      ...(formData.unit && !['pcs', 'kg', 'box'].includes(formData.unit)
+                        ? [{ value: formData.unit, label: formData.unit }]
+                        : []),
+                    ]}
+                    buttonStyle={{ border: 'none' }}
+                  />
+                </div>
               </div>
 
               <label style={{ fontSize: 12, color: '#dc2626' }}>SKU*</label>
@@ -839,42 +872,26 @@ export function CreateItemPage() {
                   }}
                 >
                   <label style={{ fontSize: 12, color: '#dc2626' }}>Inventory Account*</label>
-                  <select
-                    name="inventoryAccount"
+                  <Select
                     value={formData.inventoryAccount || ''}
-                    onChange={handleChange}
-                    style={{
-                      width: '100%',
-                      padding: '6px 10px',
-                      borderRadius: '4px',
-                      border: '1px solid #d1d5db',
-                      fontSize: 12,
-                      background: 'white',
-                    }}
-                  >
-                    <option value="">Select an account</option>
-                    <option value="Inventory Asset">Inventory Asset</option>
-                  </select>
+                    onChange={(val) => handleSelectChange('inventoryAccount', val)}
+                    options={[
+                      { value: '', label: 'Select an account' },
+                      { value: 'Inventory Asset', label: 'Inventory Asset' },
+                    ]}
+                  />
 
                   <label style={{ fontSize: 12, color: '#dc2626' }}>
                     Inventory Valuation Method*
                   </label>
-                  <select
-                    name="inventoryValuationMethod"
+                  <Select
                     value={formData.inventoryValuationMethod || ''}
-                    onChange={handleChange}
-                    style={{
-                      width: '100%',
-                      padding: '6px 10px',
-                      borderRadius: '4px',
-                      border: '1px solid #d1d5db',
-                      fontSize: 12,
-                      background: 'white',
-                    }}
-                  >
-                    <option value="FIFO (First In, First Out)">FIFO (First In, First Out)</option>
-                    <option value="Moving Average">Moving Average</option>
-                  </select>
+                    onChange={(val) => handleSelectChange('inventoryValuationMethod', val)}
+                    options={[
+                      { value: 'FIFO (First In, First Out)', label: 'FIFO (First In, First Out)' },
+                      { value: 'Moving Average', label: 'Moving Average' },
+                    ]}
+                  />
                 </div>
               </div>
             )}
@@ -923,23 +940,15 @@ export function CreateItemPage() {
                 />
 
                 <label style={{ fontSize: 12, color: '#4b5563' }}>Sales Account</label>
-                <select
-                  name="salesAccount"
+                <Select
                   value={formData.salesAccount || ''}
-                  onChange={handleChange}
-                  style={{
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    border: '1px solid #d1d5db',
-                    fontSize: 12,
-                    background: 'white',
-                  }}
-                >
-                  <option value="">Select Account</option>
-                  <option value="Sales">Sales</option>
-                  <option value="General Income">General Income</option>
-                </select>
+                  onChange={(val) => handleSelectChange('salesAccount', val)}
+                  options={[
+                    { value: '', label: 'Select Account' },
+                    { value: 'Sales', label: 'Sales' },
+                    { value: 'General Income', label: 'General Income' },
+                  ]}
+                />
               </div>
             )}
 
@@ -981,23 +990,15 @@ export function CreateItemPage() {
                 />
 
                 <label style={{ fontSize: 12, color: '#4b5563' }}>Purchase Account</label>
-                <select
-                  name="purchaseAccount"
+                <Select
                   value={formData.purchaseAccount || ''}
-                  onChange={handleChange}
-                  style={{
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    border: '1px solid #d1d5db',
-                    fontSize: 12,
-                    background: 'white',
-                  }}
-                >
-                  <option value="">Select Account</option>
-                  <option value="Cost of Goods Sold">Cost of Goods Sold</option>
-                  <option value="Inventory">Inventory</option>
-                </select>
+                  onChange={(val) => handleSelectChange('purchaseAccount', val)}
+                  options={[
+                    { value: '', label: 'Select Account' },
+                    { value: 'Cost of Goods Sold', label: 'Cost of Goods Sold' },
+                    { value: 'Inventory', label: 'Inventory' },
+                  ]}
+                />
               </div>
             )}
           </div>

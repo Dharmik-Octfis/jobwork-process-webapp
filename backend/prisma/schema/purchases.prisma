@@ -1,21 +1,21 @@
 model Vendor {
   id                       String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId           String                @map("organization_id") @db.Uuid
-  vendorNumber             String                @map("vendor_number") @db.VarChar(50)
-  emailAddress             String?               @map("email_address") @db.VarChar(255)
+  contactNumber            String                @map("vendor_number") @db.VarChar(50)
+  email                    String?               @map("email_address") @db.VarChar(255)
   createdAt                DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   companyName              String?               @map("company_name") @db.VarChar(255)
   currency                 String?               @db.VarChar(10)
-  displayName              String                @default("") @map("display_name") @db.VarChar(255)
-  mobilePhone              String?               @map("mobile_phone") @db.VarChar(50)
+  contactName              String                @default("") @map("display_name") @db.VarChar(255)
+  mobile                   String?               @map("mobile_phone") @db.VarChar(50)
   paymentTerms             String?               @map("payment_terms") @db.VarChar(100)
   primaryContactFirstName  String?               @map("primary_contact_first_name") @db.VarChar(100)
   primaryContactLastName   String?               @map("primary_contact_last_name") @db.VarChar(100)
   primaryContactSalutation String?               @map("primary_contact_salutation") @db.VarChar(20)
-  remarks                  String?
+  notes                    String?
   status                   String                @default("active") @db.VarChar(20)
-  workPhone                String?               @map("work_phone") @db.VarChar(50)
+  phone                    String?               @map("work_phone") @db.VarChar(50)
   createdBy                String?               @map("created_by") @db.Uuid
   isDeleted                Boolean               @default(false) @map("is_deleted")
   updatedBy                String?               @map("updated_by") @db.Uuid
@@ -29,7 +29,7 @@ model Vendor {
   organization             Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   updatedByUser            User?                 @relation("VendorUpdatedBy", fields: [updatedBy], references: [id])
 
-  @@unique([organizationId, vendorNumber])
+  @@unique([organizationId, contactNumber])
   @@map("vendors")
 }
 
@@ -39,9 +39,9 @@ model VendorContactPerson {
   salutation    String?  @db.VarChar(20)
   firstName     String?  @map("first_name") @db.VarChar(100)
   lastName      String?  @map("last_name") @db.VarChar(100)
-  emailAddress  String?  @map("email_address") @db.VarChar(255)
-  workPhone     String?  @map("work_phone") @db.VarChar(50)
-  mobilePhone   String?  @map("mobile_phone") @db.VarChar(50)
+  email         String?  @map("email_address") @db.VarChar(255)
+  phone         String?  @map("work_phone") @db.VarChar(50)
+  mobile        String?  @map("mobile_phone") @db.VarChar(50)
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   createdBy     String?  @map("created_by") @db.Uuid
   isDeleted     Boolean  @default(false) @map("is_deleted")
@@ -115,12 +115,12 @@ model VendorAddress {
 
 model PurchaseOrder {
   id                   String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organization_id       String                  @map("organization_id") @db.Uuid
-  vendor_id             String                  @map("vendor_id") @db.Uuid
-  delivery_type         String                  @default("Location") @map("delivery_type") @db.VarChar(50)
-  delivery_location_id  String?                 @map("delivery_location_id") @db.Uuid
-  delivery_customer_id  String?                 @map("delivery_customer_id") @db.Uuid
-  purchaseorder_number  String                  @map("po_number") @db.VarChar(100)
+  organization_id      String                  @map("organization_id") @db.Uuid
+  vendor_id            String                  @map("vendor_id") @db.Uuid
+  delivery_type        String                  @default("Location") @map("delivery_type") @db.VarChar(50)
+  delivery_location_id String?                 @map("delivery_location_id") @db.Uuid
+  delivery_customer_id String?                 @map("delivery_customer_id") @db.Uuid
+  purchaseorder_number String                  @map("po_number") @db.VarChar(100)
   date                 DateTime                @map("po_date") @db.Date
   delivery_date        DateTime?               @map("delivery_date") @db.Date
   payment_terms        String?                 @map("payment_terms") @db.VarChar(100)

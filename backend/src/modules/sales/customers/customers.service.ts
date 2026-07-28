@@ -1,7 +1,7 @@
 import { runAsTenant } from '../../../db/prisma.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
 
-/** Message for the (organizationId, customerNumber) unique index. */
+/** Message for the (organizationId, contactNumber) unique index. */
 const DUPLICATE_NUMBER = 'Customer number already exists in this organization.';
 import {
   loadActiveDefinitions,
@@ -69,12 +69,13 @@ function customerListWhere(organizationId: string, opts: ListQuery): Prisma.Cust
     // Preset view ("Active Customers"), spread in so it narrows rather than replaces.
     ...filterWhere<Prisma.CustomerWhereInput>('customer', opts.filter),
     ...searchWhere<Prisma.CustomerWhereInput>(opts.search, [
-      'displayName',
       'companyName',
-      'emailAddress',
-      'customerNumber',
-      'workPhone',
-      'mobilePhone',
+      'contactName',
+      'primaryContactFirstName',
+      'email',
+      'contactNumber',
+      'phone',
+      'mobile',
     ]),
   };
 }
@@ -134,7 +135,7 @@ export async function createNewCustomer(
       // Wait, frontend didn't have padding logic yet. We need to agree on padding.
       // Let's just compare without padding if it's not strictly padded, or assume it's directly from frontend.
       // Actually, if we just blindly increment, it might be safer, but only if they start with the prefix.
-      if (customerData.customerNumber.startsWith(seq.prefix)) {
+      if (customerData.contactNumber.startsWith(seq.prefix)) {
         await tx.numberSequence.update({
           where: { id: seq.id },
           data: { nextNumber: seq.nextNumber + 1 },
@@ -172,7 +173,7 @@ export async function createNewCustomer(
             create: [
               {
                 title: 'Customer created',
-                description: `Customer ${customerData.displayName} has been created by ${performedBy}`,
+                description: `Customer ${customerData.contactName} has been created by ${performedBy}`,
                 performedBy,
                 createdBy: userId ?? null,
                 updatedBy: userId ?? null,

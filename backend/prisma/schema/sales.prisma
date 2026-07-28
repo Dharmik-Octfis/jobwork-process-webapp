@@ -10,16 +10,16 @@ model Customer {
   // Main Fields
   customerType   String  @default("business") @map("customer_type") @db.VarChar(20)
   companyName    String? @map("company_name") @db.VarChar(255)
-  displayName    String  @default("") @map("display_name") @db.VarChar(255)
-  customerNumber String  @map("customer_number") @db.VarChar(50)
-  emailAddress   String? @map("email_address") @db.VarChar(255)
-  workPhone      String? @map("work_phone") @db.VarChar(50)
-  mobilePhone    String? @map("mobile_phone") @db.VarChar(50)
+  contactName   String  @default("") @map("display_name") @db.VarChar(255)
+  contactNumber String  @map("customer_number") @db.VarChar(50)
+  email         String? @map("email_address") @db.VarChar(255)
+  phone         String? @map("work_phone") @db.VarChar(50)
+  mobile        String? @map("mobile_phone") @db.VarChar(50)
 
   // Other Details
   currency     String? @db.VarChar(10)
   paymentTerms String? @map("payment_terms") @db.VarChar(100)
-  remarks      String?
+  notes        String?
 
   addresses CustomerAddress[]
 
@@ -34,16 +34,16 @@ model Customer {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   contactPersons CustomerContactPerson[]
   activities     CustomerActivity[]
   comments       CustomerComment[]
 
   deliveryPurchaseOrders PurchaseOrder[]
-  createdByUser User? @relation("CustomerCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser User? @relation("CustomerUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  createdByUser          User?           @relation("CustomerCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser          User?           @relation("CustomerUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
-  @@unique([organizationId, customerNumber])
+  @@unique([organizationId, contactNumber])
   @@map("customers")
 }
 
@@ -53,9 +53,9 @@ model CustomerContactPerson {
   salutation    String?  @db.VarChar(20)
   firstName     String?  @map("first_name") @db.VarChar(100)
   lastName      String?  @map("last_name") @db.VarChar(100)
-  emailAddress  String?  @map("email_address") @db.VarChar(255)
-  workPhone     String?  @map("work_phone") @db.VarChar(50)
-  mobilePhone   String?  @map("mobile_phone") @db.VarChar(50)
+  email         String?  @map("email_address") @db.VarChar(255)
+  phone         String?  @map("work_phone") @db.VarChar(50)
+  mobile        String?  @map("mobile_phone") @db.VarChar(50)
   isDeleted     Boolean  @default(false) @map("is_deleted")
   createdBy     String?  @map("created_by") @db.Uuid
   updatedBy     String?  @map("updated_by") @db.Uuid

@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
+import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { vendorAddressSchema, type VendorAddress } from './vendors.schemas';
 import { X } from 'lucide-react';
@@ -21,6 +22,7 @@ interface AdditionalAddressModalProps {
 export function AdditionalAddressModal({ isOpen, onClose, onSubmit }: AdditionalAddressModalProps) {
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors },
@@ -140,11 +142,21 @@ export function AdditionalAddressModal({ isOpen, onClose, onSubmit }: Additional
 
             <div>
               <label style={labelStyle}>Country/Region</label>
-              <select {...register('country')} style={inputStyle}>
-                <option value="">Select</option>
-                <option value="India">India</option>
-                <option value="USA">USA</option>
-              </select>
+              <Controller
+                control={control}
+                name="country"
+                render={({ field }) => (
+                  <SearchableSelect
+                    value={field.value || ''}
+                    onChange={field.onChange}
+                    options={[
+                      { value: 'India', label: 'India' },
+                      { value: 'USA', label: 'USA' },
+                    ]}
+                    placeholder="Select Country"
+                  />
+                )}
+              />
             </div>
 
             <div>

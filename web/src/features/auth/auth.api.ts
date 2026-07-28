@@ -26,6 +26,19 @@ export async function updateProfile(input: UpdateProfileInput): Promise<{ user: 
   return data;
 }
 
+export async function uploadAvatar(file: File): Promise<{ user: AuthResponse['user'] }> {
+  const formData = new FormData();
+  formData.append('avatar', file);
+  const { data } = await apiClient.post<{ user: AuthResponse['user'] }>(
+    endpoints.auth.avatar,
+    formData,
+    {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    },
+  );
+  return data;
+}
+
 export async function forgotPassword(input: { email: string }): Promise<{ message: string }> {
   const { data } = await apiClient.post<{ message: string }>(endpoints.auth.forgotPassword, input);
   return data;

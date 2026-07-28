@@ -128,14 +128,14 @@ describe('customers — cross-tenant isolation', () => {
     }
 
     const token = signAccessToken(membership.userId, 'session-for-test');
-    const customerNumber = `ISOLATION-TEST-${Date.now()}`;
+    const contactNumber = `ISOLATION-TEST-${Date.now()}`;
 
     const res = await request(createApp())
       .post(customersUrl(victimOrg.id))
       .set('Authorization', `Bearer ${token}`)
       .send({
         customerName: 'Injected by isolation test',
-        customerNumber,
+        contactNumber,
         gstTreatment: 'unregistered',
         sourceOfSupply: 'Gujarat',
       });
@@ -147,7 +147,7 @@ describe('customers — cross-tenant isolation', () => {
     // fail — green even on a real breach. That is what it was until 2026-07-17.
     const written = await runAsTenant(victimOrg.id, (tx) =>
       tx.customer.findFirst({
-        where: { customerNumber, organizationId: victimOrg.id },
+        where: { contactNumber, organizationId: victimOrg.id },
         select: { id: true },
       }),
     );
@@ -181,14 +181,14 @@ describe('customers — cross-tenant isolation', () => {
     const sample = await runAsTenant(org.id, (tx) =>
       tx.customer.findFirst({
         where: { organizationId: org.id, isDeleted: false },
-        select: { displayName: true },
+        select: { contactName: true },
       }),
     );
-    if (!sample?.displayName || sample.displayName.length < 2) {
+    if (!sample?.contactName || sample.contactName.length < 2) {
       ctx.skip('no named customer to derive a search term from');
       return;
     }
-    const term = sample.displayName.slice(0, 3);
+    const term = sample.contactName.slice(0, 3);
     const token = signAccessToken(memberId, 'session-for-test');
 
     const res = await request(createApp())
