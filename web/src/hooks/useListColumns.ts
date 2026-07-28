@@ -20,6 +20,20 @@ export function useListColumns(orgId: string | undefined, entityType: string) {
     queryKey,
     queryFn: () => fetchListView(orgId!, entityType),
     enabled: Boolean(orgId),
+    /**
+     * Overrides the app-wide 30s default (`app/queryClient.ts`) because this
+     * payload is near-static and the request is expensive — it is a column
+     * layout plus the org's custom-field catalog, and it costs six sequential
+     * database round trips server-side.
+     *
+     * 30s bought nothing: the only writer that matters is the user's own save
+     * below, which seeds the cache directly via `setQueryData`, so a refetch
+     * would never show them anything they did not already have. The remaining
+     * writer is an admin editing custom fields — five minutes is a fine bound
+     * for a new column appearing, and matches what `customFields.api.ts` already
+     * uses for the same underlying data.
+     */
+    staleTime: 5 * 60 * 1000,
   });
 
   const saveMutation = useMutation({

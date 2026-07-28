@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, Suspense } from 'react';
 import {
   NavLink,
   Outlet,
@@ -9,6 +9,7 @@ import {
 } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { RouteFallback } from './RouteFallback';
 import {
   X,
   FileText,
@@ -512,9 +513,13 @@ export function AppLayout() {
           </div>
         </header>
 
-        {/* Page Content */}
+        {/* Page Content. Suspense sits INSIDE <main> so a route chunk still
+            loading swaps only this area — the sidebar and header stay on screen.
+            Every page under this layout is lazy (see app/router.tsx). */}
         <main style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
-          <Outlet />
+          <Suspense fallback={<RouteFallback />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

@@ -1,42 +1,140 @@
+import { lazy, type ComponentType } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { LoginPage } from '../features/auth/LoginPage';
 import { SignupPage } from '../features/auth/SignupPage';
 import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage';
-import { DashboardPage } from '../features/dashboard/DashboardPage';
-import { PurchasesPage } from '../features/purchases/PurchasesPage';
 import { ProtectedRoute } from '../routes/ProtectedRoute';
 import { RequireOrganization } from '../routes/RequireOrganization';
 import { OrgRedirect } from '../routes/OrgRedirect';
-import { OrganizationsList } from '../features/organizations/OrganizationsList';
-import { CreateOrganizationForm } from '../features/organizations/CreateOrganizationForm';
-import { ProfilePage } from '../features/profile/ProfilePage';
-import { OrganizationSettingsPage } from '../features/organizations/OrganizationSettingsPage';
 import { AcceptInvitePage } from '../features/invitations/AcceptInvitePage';
-import { InviteMembersPage } from '../features/invitations/InviteMembersPage';
-import { RolesPage } from '../features/roles/RolesPage';
-import { PermissionTemplatesPage } from '../features/permission-templates/PermissionTemplatesPage';
+import { CreateOrganizationForm } from '../features/organizations/CreateOrganizationForm';
 import { AppLayout } from '../components/layout/AppLayout';
 import { SettingsLayout } from '../components/layout/SettingsLayout';
-import { VendorsList } from '../features/purchases/vendors/VendorsList';
-import { CreateVendor } from '../features/purchases/vendors/CreateVendor';
-import { EditVendor } from '../features/purchases/vendors/EditVendor';
-import { PurchaseOrdersList } from '../features/purchases/purchase-orders/PurchaseOrdersList';
-import { CreatePurchaseOrder } from '../features/purchases/purchase-orders/CreatePurchaseOrder';
-import { CustomersList } from '../features/sales/customers/CustomersList';
-import { CreateCustomer } from '../features/sales/customers/CreateCustomer';
-import { EditCustomer } from '../features/sales/customers/EditCustomer';
 
-import { ItemsList } from '../features/items/ItemsList';
-import { CreateItemPage } from '../features/items/CreateItemPage';
-import { EditItemPage } from '../features/items/EditItemPage';
-import { UnitOfMeasurementPage } from '../features/inventory/uom/UnitOfMeasurementPage';
-import { CurrenciesPage } from '../features/configuration/currencies/CurrenciesPage';
-import { ModulesListPage } from '../features/custom-fields/ModulesListPage';
-import { ModuleFieldsPage } from '../features/custom-fields/ModuleFieldsPage';
-import { LocationsList } from '../features/configuration/locations/LocationsList';
-import { CreateLocation } from '../features/configuration/locations/CreateLocation';
-import { EditLocation } from '../features/configuration/locations/EditLocation';
+/**
+ * WHAT IS EAGER AND WHAT IS SPLIT, AND WHY THE LINE SITS WHERE IT DOES
+ *
+ * Everything imported above ships in the entry bundle; everything built with
+ * `lazyPage` below becomes its own chunk fetched on first navigation. Before
+ * this split the entry bundle was 981 KB (249 KB gzipped) because it contained
+ * every page in the app — you downloaded the role editor and the purchase-order
+ * module to look at the login screen.
+ *
+ * Eager, deliberately:
+ *  - the auth pages, because a logged-out visitor lands on one and a second
+ *    round trip to fetch it is pure added latency on the most common entry point
+ *  - the route guards (`ProtectedRoute`, `RequireOrganization`, `OrgRedirect`),
+ *    which are a few lines each and run before any page renders
+ *  - both layouts, which render on every authenticated route — splitting them
+ *    would put a chunk fetch in front of the shell on literally every page
+ *
+ * Split: every feature page. They are the bulk of the code, a given user visits
+ * a handful of them, and each one already waits on its own API call — so the
+ * chunk fetch overlaps work the page was going to do anyway.
+ */
 
+/**
+ * `React.lazy` requires a module with a **default** export; every page in this
+ * codebase is a named export. This adapts one to the other in a single place
+ * rather than repeating the `.then(m => ({ default: m.X }))` dance 25 times.
+ *
+ * The `ComponentType` cast is safe because every route element here takes no
+ * props — React Router supplies context through hooks, not props. A page that
+ * ever needs props must not go through this helper.
+ */
+function lazyPage<M extends Record<string, unknown>, K extends keyof M>(
+  load: () => Promise<M>,
+  name: K,
+) {
+  return lazy(() => load().then((m) => ({ default: m[name] as ComponentType })));
+}
+
+const DashboardPage = lazyPage(
+  () => import('../features/dashboard/DashboardPage'),
+  'DashboardPage',
+);
+const PurchasesPage = lazyPage(
+  () => import('../features/purchases/PurchasesPage'),
+  'PurchasesPage',
+);
+const OrganizationsList = lazyPage(
+  () => import('../features/organizations/OrganizationsList'),
+  'OrganizationsList',
+);
+const ProfilePage = lazyPage(() => import('../features/profile/ProfilePage'), 'ProfilePage');
+const OrganizationSettingsPage = lazyPage(
+  () => import('../features/organizations/OrganizationSettingsPage'),
+  'OrganizationSettingsPage',
+);
+const InviteMembersPage = lazyPage(
+  () => import('../features/invitations/InviteMembersPage'),
+  'InviteMembersPage',
+);
+const RolesPage = lazyPage(() => import('../features/roles/RolesPage'), 'RolesPage');
+const PermissionTemplatesPage = lazyPage(
+  () => import('../features/permission-templates/PermissionTemplatesPage'),
+  'PermissionTemplatesPage',
+);
+const VendorsList = lazyPage(
+  () => import('../features/purchases/vendors/VendorsList'),
+  'VendorsList',
+);
+const CreateVendor = lazyPage(
+  () => import('../features/purchases/vendors/CreateVendor'),
+  'CreateVendor',
+);
+const EditVendor = lazyPage(() => import('../features/purchases/vendors/EditVendor'), 'EditVendor');
+const PurchaseOrdersList = lazyPage(
+  () => import('../features/purchases/purchase-orders/PurchaseOrdersList'),
+  'PurchaseOrdersList',
+);
+const CreatePurchaseOrder = lazyPage(
+  () => import('../features/purchases/purchase-orders/CreatePurchaseOrder'),
+  'CreatePurchaseOrder',
+);
+const CustomersList = lazyPage(
+  () => import('../features/sales/customers/CustomersList'),
+  'CustomersList',
+);
+const CreateCustomer = lazyPage(
+  () => import('../features/sales/customers/CreateCustomer'),
+  'CreateCustomer',
+);
+const EditCustomer = lazyPage(
+  () => import('../features/sales/customers/EditCustomer'),
+  'EditCustomer',
+);
+const ItemsList = lazyPage(() => import('../features/items/ItemsList'), 'ItemsList');
+const CreateItemPage = lazyPage(() => import('../features/items/CreateItemPage'), 'CreateItemPage');
+const EditItemPage = lazyPage(() => import('../features/items/EditItemPage'), 'EditItemPage');
+const UnitOfMeasurementPage = lazyPage(
+  () => import('../features/inventory/uom/UnitOfMeasurementPage'),
+  'UnitOfMeasurementPage',
+);
+const CurrenciesPage = lazyPage(
+  () => import('../features/configuration/currencies/CurrenciesPage'),
+  'CurrenciesPage',
+);
+const ModulesListPage = lazyPage(
+  () => import('../features/custom-fields/ModulesListPage'),
+  'ModulesListPage',
+);
+const ModuleFieldsPage = lazyPage(
+  () => import('../features/custom-fields/ModuleFieldsPage'),
+  'ModuleFieldsPage',
+);
+const LocationsList = lazyPage(
+  () => import('../features/configuration/locations/LocationsList'),
+  'LocationsList',
+);
+const CreateLocation = lazyPage(
+  () => import('../features/configuration/locations/CreateLocation'),
+  'CreateLocation',
+);
+const EditLocation = lazyPage(
+  () => import('../features/configuration/locations/EditLocation'),
+  'EditLocation',
+);
 
 /**
  * Every page whose data belongs to one organization lives under
@@ -51,6 +149,12 @@ import { EditLocation } from '../features/configuration/locations/EditLocation';
  *
  * Not org-scoped, deliberately: auth, `/profile`, `/organizations` (you pick one
  * *before* you have one), and `/invite/accept` (the invitee may have no account).
+ *
+ * 🔴 Every lazy element below renders inside `AppLayout` or `SettingsLayout`,
+ * which is where the `<Suspense>` boundary lives — around each layout's
+ * `<Outlet />`, so a chunk still loading swaps only the content area and leaves
+ * the sidebar and header on screen. A page added OUTSIDE both layouts must be
+ * eager, or it suspends with no boundary above it and blanks the whole app.
  */
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -74,9 +178,18 @@ export const router = createBrowserRouter([
               { path: '/organizations/:orgId/purchases/vendors', element: <VendorsList /> },
               { path: '/organizations/:orgId/purchases/vendors/new', element: <CreateVendor /> },
               { path: '/organizations/:orgId/purchases/vendors/:id/edit', element: <EditVendor /> },
-              { path: '/organizations/:orgId/purchases/purchase-orders', element: <PurchaseOrdersList /> },
-              { path: '/organizations/:orgId/purchases/purchase-orders/new', element: <CreatePurchaseOrder /> },
-              { path: '/organizations/:orgId/purchases/purchase-orders/:id/edit', element: <CreatePurchaseOrder /> },
+              {
+                path: '/organizations/:orgId/purchases/purchase-orders',
+                element: <PurchaseOrdersList />,
+              },
+              {
+                path: '/organizations/:orgId/purchases/purchase-orders/new',
+                element: <CreatePurchaseOrder />,
+              },
+              {
+                path: '/organizations/:orgId/purchases/purchase-orders/:id/edit',
+                element: <CreatePurchaseOrder />,
+              },
               { path: '/organizations/:orgId/sales/customers', element: <CustomersList /> },
               { path: '/organizations/:orgId/sales/customers/new', element: <CreateCustomer /> },
               { path: '/organizations/:orgId/sales/customers/:id/edit', element: <EditCustomer /> },

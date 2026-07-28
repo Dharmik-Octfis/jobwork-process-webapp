@@ -11,41 +11,50 @@
 /* ----------------------------------------------------------------------------
    Zoho Puvi — primary typeface (bundled locally so it renders offline).
    Only the weights the UI uses are shipped: 400 / 500 / 600 / 700 / 800.
+
+   WOFF2, not OTF. WOFF2 is a web-font *container* — the same glyph data under
+   Brotli — so it renders identically while shipping 462 KB of OTF as 261 KB.
+   Every browser has supported it since 2020, and it is the only format listed
+   deliberately: a second `src` entry pointing at the OTF would make the browser
+   fall back to a 460 KB download for no one.
+
+   `font-display: swap` is load-bearing — text paints immediately in the fallback
+   face and re-renders when Puvi arrives, so a slow font never blocks first paint.
    -------------------------------------------------------------------------- */
 @font-face {
   font-family: 'Zoho Puvi';
   font-weight: 400;
   font-style: normal;
   font-display: swap;
-  src: url('./assets/fonts/Zoho_Puvi_Regular.otf') format('opentype');
+  src: url('./assets/fonts/Zoho_Puvi_Regular.woff2') format('woff2');
 }
 @font-face {
   font-family: 'Zoho Puvi';
   font-weight: 500;
   font-style: normal;
   font-display: swap;
-  src: url('./assets/fonts/Zoho_Puvi_Medium.otf') format('opentype');
+  src: url('./assets/fonts/Zoho_Puvi_Medium.woff2') format('woff2');
 }
 @font-face {
   font-family: 'Zoho Puvi';
   font-weight: 600;
   font-style: normal;
   font-display: swap;
-  src: url('./assets/fonts/Zoho_Puvi_Semibold.otf') format('opentype');
+  src: url('./assets/fonts/Zoho_Puvi_Semibold.woff2') format('woff2');
 }
 @font-face {
   font-family: 'Zoho Puvi';
   font-weight: 700;
   font-style: normal;
   font-display: swap;
-  src: url('./assets/fonts/Zoho_Puvi_Bold.otf') format('opentype');
+  src: url('./assets/fonts/Zoho_Puvi_Bold.woff2') format('woff2');
 }
 @font-face {
   font-family: 'Zoho Puvi';
   font-weight: 800;
   font-style: normal;
   font-display: swap;
-  src: url('./assets/fonts/Zoho_Puvi_Extrabold.otf') format('opentype');
+  src: url('./assets/fonts/Zoho_Puvi_Extrabold.woff2') format('woff2');
 }
 
 :root {
@@ -242,7 +251,8 @@ input[type='number'] {
     margin: 10mm;
   }
 
-  html, body {
+  html,
+  body {
     background: #ffffff !important;
     margin: 0 !important;
     padding: 0 !important;
@@ -275,4 +285,3 @@ input[type='number'] {
     z-index: 999999 !important;
   }
 }
-

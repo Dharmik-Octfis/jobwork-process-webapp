@@ -91,6 +91,21 @@ const envSchema = z.object({
    * boots and behaves correctly, just without caching.
    */
   ZC_CACHE_SEGMENT_ID: z.string().optional(),
+
+  /**
+   * Shared secret guarding `/api/diagnostics/*`. **Unset means the routes are
+   * not mounted at all** — not merely protected — so a deployment that never
+   * sets this cannot leak infrastructure timing no matter what is requested.
+   *
+   * It is a bearer secret rather than a login because the whole point is to
+   * measure the request path from outside, including on an instance nobody has
+   * an account on. 32 chars minimum for the same reason as the JWT secrets: a
+   * guessable token here reveals your database topology and latency profile.
+   */
+  DIAGNOSTICS_TOKEN: z
+    .string()
+    .min(32, 'DIAGNOSTICS_TOKEN must be at least 32 characters')
+    .optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -117,6 +132,8 @@ export const env = {
     refreshTtl: raw.JWT_REFRESH_TTL,
   },
   appUrl: raw.APP_URL.replace(/\/+$/, ''), // no trailing slash, so link building is predictable
+  /** Absent → `/api/diagnostics/*` is never mounted. See the schema comment. */
+  diagnosticsToken: raw.DIAGNOSTICS_TOKEN,
   corsOrigins: raw.CORS_ORIGINS.split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),
