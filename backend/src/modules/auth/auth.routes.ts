@@ -45,6 +45,12 @@ openApiRegistry.registerPath({
   },
 });
 
+import multer from 'multer';
+
+const upload = multer({
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB
+});
+
 export const authRouter = Router();
 
 authRouter.post('/signup', validateBody(signupSchema), authController.signup);
@@ -57,6 +63,12 @@ authRouter.put(
   authenticate,
   validateBody(updateProfileSchema),
   authController.updateProfile,
+);
+authRouter.post(
+  '/me/avatar',
+  authenticate,
+  upload.single('avatar'),
+  authController.uploadAvatar,
 );
 
 authRouter.post(

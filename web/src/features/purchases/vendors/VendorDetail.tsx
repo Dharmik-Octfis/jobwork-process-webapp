@@ -109,7 +109,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
     } = vendor;
     const vendorToClone = {
       ...restToClone,
-      vendorNumber: '',
+      contactNumber: '',
     };
 
     navigate(`/organizations/${orgId}/purchases/vendors/new`, { state: { vendorToClone } });
@@ -187,7 +187,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
-            {vendor.displayName}
+            {vendor.contactName}
           </h2>
           <span
             onClick={() => {
@@ -503,16 +503,16 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                 <div style={sectionHeaderStyle}>Other Details</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div>
-                    <div style={labelStyle}>Vendor Number</div>
-                    <div style={valueStyle}>{vendor.vendorNumber}</div>
+                    <div style={labelStyle}>Contact Number</div>
+                    <div style={valueStyle}>{vendor.contactNumber}</div>
                   </div>
                   <div>
                     <div style={labelStyle}>Email Address</div>
-                    <div style={valueStyle}>{vendor.emailAddress || '-'}</div>
+                    <div style={valueStyle}>{vendor.email || '-'}</div>
                   </div>
                   <div>
                     <div style={labelStyle}>Work Phone</div>
-                    <div style={valueStyle}>{vendor.workPhone || '-'}</div>
+                    <div style={valueStyle}>{vendor.phone || '-'}</div>
                   </div>
                   <div>
                     <div style={labelStyle}>Default Currency</div>

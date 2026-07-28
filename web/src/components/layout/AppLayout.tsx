@@ -22,7 +22,6 @@ import {
   Receipt,
   ChevronRight,
 } from 'lucide-react';
-import { Logo } from '../ui/Logo';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useAuth } from '../../providers/auth-context';
 import { useLogout } from '../../features/auth/useLogout';
@@ -108,8 +107,8 @@ const SEARCHABLE_ROUTES: SearchModule[] = [
     fetch: async (orgId, term) =>
       (await fetchVendors(orgId, { search: term, perPage: 6 })).results.map((v) => ({
         id: v.id,
-        title: v.displayName,
-        subtitle: v.companyName || v.emailAddress || undefined,
+        title: v.contactName,
+        subtitle: v.companyName || v.email || undefined,
       })),
     to: (orgId, id) => `/organizations/${orgId}/purchases/vendors?id=${id}`,
   },
@@ -119,8 +118,8 @@ const SEARCHABLE_ROUTES: SearchModule[] = [
     fetch: async (orgId, term) =>
       (await fetchCustomers(orgId, { search: term, perPage: 6 })).results.map((c) => ({
         id: c.id,
-        title: c.displayName,
-        subtitle: c.companyName || c.emailAddress || undefined,
+        title: c.contactName,
+        subtitle: c.companyName || c.email || undefined,
       })),
     to: (orgId, id) => `/organizations/${orgId}/sales/customers?id=${id}`,
   },
@@ -328,8 +327,8 @@ export function AppLayout() {
   // active org was invisible in the URL, unbookmarkable, and impossible to have
   // two of in two tabs.
   const { orgId: activeOrgId } = useParams<{ orgId: string }>();
-  const location = useLocation();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
 
@@ -346,10 +345,23 @@ export function AppLayout() {
    * refetches on its own. The old code called `queryClient.invalidateQueries()`
    * with no key, nuking every cache in the app including master data.
    */
+  const rememberedOrgId = localStorage.getItem(LAST_ORG_KEY);
+  const effectiveOrgId = activeOrgId || rememberedOrgId || organizations?.[0]?.organizationId;
+
   const switchOrg = (nextOrgId: string) => {
-    const rest = activeOrgId ? location.pathname.replace(`/organizations/${activeOrgId}`, '') : '';
-    navigate(`/organizations/${nextOrgId}${rest}`);
+    if (!activeOrgId) {
+      navigate(`/organizations/${nextOrgId}`);
+      return;
+    }
+    const nextPath = location.pathname.replace(
+      `/organizations/${activeOrgId}`,
+      `/organizations/${nextOrgId}`,
+    );
+    navigate(nextPath);
   };
+
+  const activeOrg =
+    organizations?.find((o) => o.organizationId === effectiveOrgId) || organizations?.[0];
 
   return (
     <div
@@ -376,14 +388,41 @@ export function AppLayout() {
           style={{
             height: '50px',
             boxSizing: 'border-box',
-            padding: '0 var(--space-5)',
+            padding: '0 var(--space-4)',
             borderBottom: '1px solid rgba(255,255,255,0.1)',
             display: 'flex',
             alignItems: 'center',
-            gap: 'var(--space-3)',
+            justifyContent: 'center',
+            overflow: 'hidden',
           }}
         >
-          <Logo tone="dark" size={28} />
+          {activeOrg?.logo_url ? (
+            <img
+              src={activeOrg.logo_url}
+              alt={activeOrg.name}
+              style={{
+                maxWidth: 190,
+                maxHeight: 40,
+                width: 'auto',
+                height: 'auto',
+                objectFit: 'contain',
+                display: 'block',
+              }}
+            />
+          ) : activeOrg?.name ? (
+            <span
+              style={{
+                color: '#ffffff',
+                fontWeight: 600,
+                fontSize: 16,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {activeOrg.name}
+            </span>
+          ) : null}
         </div>
 
         <nav
@@ -406,7 +445,7 @@ export function AppLayout() {
           ))}
         </nav>
 
-        {activeOrgId && (
+        {effectiveOrgId && (
           <div
             style={{
               height: '44px',
@@ -418,7 +457,7 @@ export function AppLayout() {
             }}
           >
             <NavLink
-              to={`/organizations/${activeOrgId}/settings`}
+              to={`/organizations/${effectiveOrgId}/settings`}
               style={({ isActive }) => ({
                 width: '100%',
                 display: 'flex',
@@ -466,7 +505,7 @@ export function AppLayout() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
             <OrgDropdown
               organizations={organizations || []}
-              activeOrgId={activeOrgId ?? null}
+              activeOrgId={effectiveOrgId ?? null}
               onSelectOrg={switchOrg}
             />
             <ProfileDropdown user={user} logoutMutation={logoutMutation} />
@@ -495,7 +534,8 @@ function ModuleNavGroup({
 }) {
   const Icon = module.icon && ICON_MAP[module.icon] ? ICON_MAP[module.icon] : FileText;
   const { orgId } = useParams<{ orgId: string }>();
-  const to = navPath(module.code, orgId);
+  const effectiveOrgId = orgId || localStorage.getItem(LAST_ORG_KEY) || undefined;
+  const to = navPath(module.code, effectiveOrgId);
 
   const isParent = module.children && module.children.length > 0;
   const [localExpanded, setLocalExpanded] = useState(false);
@@ -649,9 +689,18 @@ function ProfileDropdown({
           padding: 0,
           color: 'var(--color-text)',
           boxShadow: 'var(--shadow-sm)',
+          overflow: 'hidden',
         }}
       >
-        <UserIcon size={18} />
+        {user?.avatar_url ? (
+          <img
+            src={user.avatar_url}
+            alt={user.fullName}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : (
+          <UserIcon size={18} />
+        )}
       </button>
 
       {isOpen && (
@@ -692,15 +741,30 @@ function ProfileDropdown({
                 style={{
                   width: 40,
                   height: 40,
-                  borderRadius: '4px',
-                  background: '#e2e8f0',
+                  borderRadius: '50%',
+                  background: 'var(--color-primary)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: 18,
+                  fontSize: 16,
+                  color: 'white',
+                  fontWeight: 600,
+                  overflow: 'hidden',
+                  flexShrink: 0,
                 }}
               >
-                <Users size={20} color="white" />
+                {user?.avatar_url ? (
+                  <img
+                    src={user.avatar_url}
+                    alt={user.fullName}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  <span>
+                    {(user?.firstName?.charAt(0) || 'U').toUpperCase()}
+                    {(user?.lastName?.charAt(0) || '').toUpperCase()}
+                  </span>
+                )}
               </div>
               <div>
                 <div style={{ fontWeight: 500, fontSize: 14, color: '#1e293b' }}>
@@ -783,11 +847,14 @@ function OrgDropdown({
   activeOrgId: string | null;
   onSelectOrg: (id: string) => void;
 }) {
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const navigate = useNavigate();
 
-  const activeOrg = organizations?.find((o) => o.id === activeOrgId) || organizations?.[0];
+  const rememberedOrgId = localStorage.getItem(LAST_ORG_KEY);
+  const effectiveOrgId = activeOrgId || rememberedOrgId;
+  const activeOrg =
+    organizations?.find((o) => o.organizationId === effectiveOrgId) || organizations?.[0];
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -807,7 +874,7 @@ function OrgDropdown({
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
+          gap: 8,
           padding: '6px 10px',
           borderRadius: 'var(--radius-sm)',
           border: '1px solid var(--color-border)',
@@ -879,9 +946,9 @@ function OrgDropdown({
 
             {organizations?.map((org) => (
               <div
-                key={org.id}
+                key={org.organizationId}
                 onClick={() => {
-                  onSelectOrg(org.id);
+                  onSelectOrg(org.organizationId);
                   setIsOpen(false);
                 }}
                 style={{
@@ -890,19 +957,19 @@ function OrgDropdown({
                   gap: 12,
                   padding: '12px 16px',
                   cursor: 'pointer',
-                  background: org.id === activeOrgId ? '#f8fafc' : 'none',
+                  background: org.organizationId === activeOrgId ? '#f8fafc' : 'none',
                   borderLeft:
-                    org.id === activeOrgId
+                    org.organizationId === activeOrgId
                       ? '3px solid var(--color-primary)'
                       : '3px solid transparent',
                 }}
                 onMouseEnter={(e) => {
-                  if (org.id !== activeOrgId) {
+                  if (org.organizationId !== activeOrgId) {
                     e.currentTarget.style.background = 'var(--color-bg)';
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (org.id !== activeOrgId) {
+                  if (org.organizationId !== activeOrgId) {
                     e.currentTarget.style.background = 'none';
                   }
                 }}
@@ -917,9 +984,18 @@ function OrgDropdown({
                     alignItems: 'center',
                     justifyContent: 'center',
                     background: 'white',
+                    overflow: 'hidden',
                   }}
                 >
-                  <FileText size={20} color="#94a3b8" />
+                  {org.logo_url ? (
+                    <img
+                      src={org.logo_url}
+                      alt={org.name}
+                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                    />
+                  ) : (
+                    <FileText size={20} color="#94a3b8" />
+                  )}
                 </div>
                 <div
                   style={{

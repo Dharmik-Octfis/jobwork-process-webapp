@@ -128,14 +128,14 @@ describe('vendors — cross-tenant isolation', () => {
     }
 
     const token = signAccessToken(membership.userId, 'session-for-test');
-    const vendorNumber = `ISOLATION-TEST-${Date.now()}`;
+    const contactNumber = `ISOLATION-TEST-${Date.now()}`;
 
     const res = await request(createApp())
       .post(vendorsUrl(victimOrg.id))
       .set('Authorization', `Bearer ${token}`)
       .send({
         vendorName: 'Injected by isolation test',
-        vendorNumber,
+        contactNumber,
         gstTreatment: 'unregistered',
         sourceOfSupply: 'Gujarat',
       });
@@ -147,7 +147,7 @@ describe('vendors — cross-tenant isolation', () => {
     // fail — green even on a real breach. That is what it was until 2026-07-17.
     const written = await runAsTenant(victimOrg.id, (tx) =>
       tx.vendor.findFirst({
-        where: { vendorNumber, organizationId: victimOrg.id },
+        where: { contactNumber, organizationId: victimOrg.id },
         select: { id: true },
       }),
     );
@@ -183,14 +183,14 @@ describe('vendors — cross-tenant isolation', () => {
     const sample = await runAsTenant(org.id, (tx) =>
       tx.vendor.findFirst({
         where: { organizationId: org.id, isDeleted: false },
-        select: { displayName: true },
+        select: { contactName: true },
       }),
     );
-    if (!sample?.displayName || sample.displayName.length < 2) {
+    if (!sample?.contactName || sample.contactName.length < 2) {
       ctx.skip('no named vendor to derive a search term from');
       return;
     }
-    const term = sample.displayName.slice(0, 3);
+    const term = sample.contactName.slice(0, 3);
     const token = signAccessToken(memberId, 'session-for-test');
 
     const res = await request(createApp())

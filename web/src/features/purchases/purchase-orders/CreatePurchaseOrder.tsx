@@ -7,6 +7,7 @@ import { Plus, Trash2, Info, Pencil, Settings, Mail, Phone, PlusCircle, Check, I
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchPaymentTerms } from './payment-terms.api';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
+import { Select } from '../../../components/ui/Select';
 import type { CreatePurchaseOrderData, PurchaseOrderItem } from './purchase-orders.schemas';
 import {
   createPurchaseOrder,
@@ -25,6 +26,15 @@ import { fetchCustomers, type Customer } from '../../sales/customers/customers.a
 import { PurchaseOrderNumberConfigModal } from './PurchaseOrderNumberConfigModal';
 import { PaymentTermModal } from '../../sales/customers/PaymentTermModal';
 import { DeliveryAddressModal } from './DeliveryAddressModal';
+function getImageKey(img: unknown): string | null {
+  if (!img) return null;
+  if (typeof img === 'string') return img;
+  if (typeof img === 'object' && img !== null && 'key' in img && typeof (img as { key: unknown }).key === 'string') {
+    return (img as { key: string }).key;
+  }
+  return null;
+}
+
 function ItemImage({
   orgId,
   itemId,
@@ -34,22 +44,23 @@ function ItemImage({
 }: {
   orgId?: string;
   itemId?: string;
-  imageKey?: string | null;
+  imageKey?: string | { key: string; name?: string; size?: number; type?: string } | null;
   alt?: string;
   iconSize?: number;
 }) {
+  const resolvedKey = getImageKey(imageKey);
   const isDirectUrl = Boolean(
-    imageKey && (imageKey.startsWith('http://') || imageKey.startsWith('https://') || imageKey.startsWith('data:')),
+    resolvedKey && (resolvedKey.startsWith('http://') || resolvedKey.startsWith('https://') || resolvedKey.startsWith('data:')),
   );
 
   const { data: signedUrl } = useQuery({
-    queryKey: ['signedUrl', orgId, itemId, imageKey],
-    queryFn: () => itemsApi.getSignedUrl(orgId!, itemId!, imageKey!),
-    enabled: Boolean(orgId && itemId && imageKey && !isDirectUrl),
+    queryKey: ['signedUrl', orgId, itemId, resolvedKey],
+    queryFn: () => itemsApi.getSignedUrl(orgId!, itemId!, resolvedKey!),
+    enabled: Boolean(orgId && itemId && resolvedKey && !isDirectUrl),
     staleTime: 1000 * 60 * 30,
   });
 
-  const finalSrc = isDirectUrl ? imageKey : signedUrl;
+  const finalSrc = isDirectUrl ? resolvedKey : signedUrl;
 
   if (!finalSrc) {
     return <Image size={iconSize} color="#94a3b8" />;
@@ -159,7 +170,7 @@ export function CreatePurchaseOrder() {
 
       const resetData: CreatePurchaseOrderData = {
         vendor_id: existingPo.vendor_id || '',
-        purchaseorder_number: isClone ? undefined : existingPo.purchaseorder_number,
+        purchaseorder_number: isClone ? '' : existingPo.purchaseorder_number || '',
         date: isClone
           ? new Date().toISOString().split('T')[0]
           : existingPo.date
@@ -470,7 +481,7 @@ export function CreatePurchaseOrder() {
             Vendor Name* <Info size={14} color="#888" />
           </label>
           <SearchableSelect
-            options={vendors.map((v) => ({ label: v.displayName, value: v.id }))}
+            options={vendors.map((v) => ({ label: v.contactName, value: v.id }))}
             value={watch('vendor_id') || undefined}
             onChange={(val) => setValue('vendor_id', val)}
             placeholder="Select a Vendor"
@@ -494,14 +505,14 @@ export function CreatePurchaseOrder() {
                       flexShrink: 0,
                     }}
                   >
-                    {vendor.displayName.charAt(0).toUpperCase()}
+                    {vendor.contactName.charAt(0).toUpperCase()}
                   </div>
                   <div style={{ flex: 1, overflow: 'hidden' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontWeight: 500 }}>{vendor.displayName}</span>
+                      <span style={{ fontWeight: 500 }}>{vendor.contactName}</span>
                       <span style={{ color: isSelected ? '#bfdbfe' : '#94a3b8' }}>|</span>
                       <span style={{ fontSize: '12px', color: isSelected ? '#dbeafe' : '#64748b' }}>
-                        {vendor.vendorNumber}
+                        {vendor.contactNumber}
                       </span>
                     </div>
                     <div
@@ -514,14 +525,14 @@ export function CreatePurchaseOrder() {
                         color: isSelected ? '#bfdbfe' : '#94a3b8',
                       }}
                     >
-                      {vendor.emailAddress && (
+                      {vendor.email && (
                         <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <Mail size={12} /> {vendor.emailAddress}
+                          <Mail size={12} /> {vendor.email}
                         </span>
                       )}
-                      {vendor.mobilePhone && (
+                      {vendor.mobile && (
                         <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <Phone size={12} /> {vendor.mobilePhone}
+                          <Phone size={12} /> {vendor.mobile}
                         </span>
                       )}
                     </div>
@@ -549,9 +560,9 @@ export function CreatePurchaseOrder() {
                       flexShrink: 0,
                     }}
                   >
-                    {vendor.displayName.charAt(0).toUpperCase()}
+                    {vendor.contactName.charAt(0).toUpperCase()}
                   </div>
-                  <span>{vendor.displayName}</span>
+                  <span>{vendor.contactName}</span>
                 </div>
               );
             }}
@@ -693,7 +704,7 @@ export function CreatePurchaseOrder() {
             {watchDeliveryType === 'Customer' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <SearchableSelect
-                  options={customers.map((c: Customer) => ({ label: c.displayName, value: c.id }))}
+                  options={customers.map((c: Customer) => ({ label: c.contactName, value: c.id }))}
                   value={watchDeliveryCustomerId || undefined}
                   onChange={(val) => setValue('delivery_customer_id', val)}
                   placeholder="Select Customer"
@@ -757,13 +768,13 @@ export function CreatePurchaseOrder() {
                         </div>
                       ) : (
                         <>
-                          <span>{customDeliveryName || selectedCustomer.displayName}</span>
+                          <span>{customDeliveryName || selectedCustomer.contactName}</span>
                           <Pencil
                             size={14}
                             color="#0062ff"
                             style={{ cursor: 'pointer' }}
                             onClick={() => {
-                              setCustomDeliveryName(customDeliveryName || selectedCustomer.displayName);
+                              setCustomDeliveryName(customDeliveryName || selectedCustomer.contactName);
                               setIsEditingDeliveryName(true);
                             }}
                           />
@@ -939,7 +950,7 @@ export function CreatePurchaseOrder() {
               {itemFields.map((field, index) => {
                 const curItem = watchItems?.[index];
                 const selectedItem = itemsList.find((i) => i.id === curItem?.item_id);
-                const itemImageUrl = selectedItem?.frontImage || (selectedItem?.images && selectedItem.images[0]);
+                const itemImageUrl = getImageKey(selectedItem?.frontImage) || getImageKey(selectedItem?.images?.[0]);
                 const qty = isNaN(Number(curItem?.quantity)) ? 0 : Number(curItem?.quantity);
                 const rate = isNaN(Number(curItem?.rate)) ? 0 : Number(curItem?.rate);
                 const basePrice = qty * rate;
@@ -1051,7 +1062,7 @@ export function CreatePurchaseOrder() {
                                 style={{ ...searchableSelectStyle, maxWidth: 'none', width: '100%' }}
                                 renderOption={(option) => {
                                   const item = itemsList.find((i) => i.id === option.value);
-                                  const img = item?.frontImage || (item?.images && item.images[0]);
+                                  const img = getImageKey(item?.frontImage) || getImageKey(item?.images?.[0]);
                                   return (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                       <div
@@ -1202,12 +1213,18 @@ export function CreatePurchaseOrder() {
                           }}
                           placeholder="0.00"
                         />
-                        <select
+                        <Select
                           value={watchItems?.[index]?.discountType || 'percentage'}
-                          onChange={(e) => {
-                            setValue(`line_items.${index}.discountType`, e.target.value as 'percentage' | 'fixed');
+                          onChange={(val) => {
+                            setValue(`line_items.${index}.discountType`, val as 'percentage' | 'fixed');
                           }}
-                          style={{
+                          options={[
+                            { value: 'percentage', label: '%' },
+                            { value: 'fixed', label: '₹' },
+                          ]}
+                          fullWidth={false}
+                          containerStyle={{ flexShrink: 0, height: '100%' }}
+                          buttonStyle={{
                             border: 'none',
                             borderLeft: '1px solid #eef0f3',
                             background: '#f8fafc',
@@ -1215,14 +1232,10 @@ export function CreatePurchaseOrder() {
                             fontSize: '12px',
                             fontWeight: 600,
                             color: '#475569',
-                            cursor: 'pointer',
-                            outline: 'none',
-                            flexShrink: 0,
+                            borderRadius: '0 6px 6px 0',
+                            height: '100%',
                           }}
-                        >
-                          <option value="percentage">%</option>
-                          <option value="fixed">₹</option>
-                        </select>
+                        />
                       </div>
                     </td>
                     <td
@@ -1450,7 +1463,7 @@ export function CreatePurchaseOrder() {
                           {fileObj.name}
                         </span>
                         <span style={{ color: '#94a3b8', fontSize: '11px', flexShrink: 0 }}>
-                          ({(fileObj.size / (1024 * 1024)).toFixed(2)} MB)
+                          ({((fileObj.size || 0) / (1024 * 1024)).toFixed(2)} MB)
                         </span>
                       </div>
                       <button

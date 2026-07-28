@@ -178,7 +178,7 @@ export function DeliveryAddressModal({
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                           <span style={{ fontWeight: 600, fontSize: '13px', color: '#1e293b' }}>
-                            {cust.displayName}
+                            {cust.contactName}
                           </span>
                           {isSelected && <Check size={16} color="#0062ff" />}
                         </div>

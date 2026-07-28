@@ -72,12 +72,12 @@ function vendorListWhere(organizationId: string, opts: ListQuery): Prisma.Vendor
     // Preset view ("Active Vendors"), spread in so it narrows rather than replaces.
     ...filterWhere<Prisma.VendorWhereInput>('vendor', opts.filter),
     ...searchWhere<Prisma.VendorWhereInput>(opts.search, [
-      'displayName',
+      'contactName',
       'companyName',
-      'emailAddress',
-      'vendorNumber',
-      'workPhone',
-      'mobilePhone',
+      'email',
+      'contactNumber',
+      'phone',
+      'mobile',
     ]),
   };
 }
@@ -134,7 +134,7 @@ export async function createNewVendor(organizationId: string, data: VendorInput,
       // Wait, frontend didn't have padding logic yet. We need to agree on padding.
       // Let's just compare without padding if it's not strictly padded, or assume it's directly from frontend.
       // Actually, if we just blindly increment, it might be safer, but only if they start with the prefix.
-      if (vendorData.vendorNumber.startsWith(seq.prefix)) {
+      if (vendorData.contactNumber.startsWith(seq.prefix)) {
         await tx.numberSequence.update({
           where: { id: seq.id },
           data: { nextNumber: seq.nextNumber + 1 },
@@ -172,7 +172,7 @@ export async function createNewVendor(organizationId: string, data: VendorInput,
             create: [
               {
                 title: 'Vendor created',
-                description: `Vendor ${vendorData.displayName} has been created by ${performedBy}`,
+                description: `Vendor ${vendorData.contactName} has been created by ${performedBy}`,
                 performedBy,
                 createdBy: userId ?? null,
                 updatedBy: userId ?? null,

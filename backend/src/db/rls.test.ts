@@ -222,10 +222,10 @@ describe('row-level security', () => {
     const name = await runAsTenant(victim.id, (tx) =>
       tx.vendor.findFirst({
         where: { id: victimVendorId, organizationId: victim.id },
-        select: { displayName: true },
+        select: { contactName: true },
       }),
     );
-    expect(name?.displayName, 'the victim’s row was actually modified').not.toBe('hacked');
+    expect(name?.contactName, 'the victim’s row was actually modified').not.toBe('hacked');
   });
 
   it('the tenant setting does not leak to the next query on the same connection', async (ctx) => {

@@ -83,6 +83,20 @@ export async function updateProfile(req: Request, res: Response): Promise<void> 
   sendSuccess(res, { user });
 }
 
+export async function uploadAvatar(req: Request, res: Response): Promise<void> {
+  if (!req.user) {
+    throw new ApiError(401, 'Sign in to continue.');
+  }
+
+  const file = req.file;
+  if (!file) {
+    throw ApiError.badRequest('No image file provided.');
+  }
+
+  const user = await authService.uploadAvatar(req.user.id, file);
+  sendSuccess(res, { user }, 'Avatar uploaded successfully.');
+}
+
 export async function forgotPassword(req: Request, res: Response): Promise<void> {
   const { email } = req.body as ForgotPasswordInput;
   await authService.requestPasswordReset(email);
