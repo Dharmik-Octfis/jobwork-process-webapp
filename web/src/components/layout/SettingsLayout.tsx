@@ -25,16 +25,24 @@ export function SettingsLayout() {
     location.pathname === `/organizations/${orgId}/settings` ||
     location.pathname.includes('/settings/members') ||
     location.pathname.includes('/settings/roles') ||
+    location.pathname.includes('/settings/permissions') ||
     location.pathname.includes('/settings/locations');
-  const [orgOpen, setOrgOpen] = useState(onOrgRoute);
 
   const onInventoryRoute = location.pathname.includes('/settings/inventory');
-  const [inventoryOpen, setInventoryOpen] = useState(onInventoryRoute);
-
   const onConfigRoute = location.pathname.includes('/settings/configuration');
-  const [configOpen, setConfigOpen] = useState(onConfigRoute);
 
-  const [customizationOpen, setCustomizationOpen] = useState(onModulesRoute);
+  const [openSection, setOpenSection] = useState<'org' | 'inventory' | 'config' | 'customization' | null>(() => {
+    if (onOrgRoute) return 'org';
+    if (onInventoryRoute) return 'inventory';
+    if (onConfigRoute) return 'config';
+    if (onModulesRoute) return 'customization';
+    return null;
+  });
+
+  const orgOpen = openSection === 'org';
+  const inventoryOpen = openSection === 'inventory';
+  const configOpen = openSection === 'config';
+  const customizationOpen = openSection === 'customization';
 
   return (
     <div
@@ -99,7 +107,7 @@ export function SettingsLayout() {
           }}
         >
           <button
-            onClick={() => setOrgOpen(!orgOpen)}
+            onClick={() => setOpenSection(orgOpen ? null : 'org')}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -250,7 +258,7 @@ export function SettingsLayout() {
           </div>
 
           <button
-            onClick={() => setInventoryOpen(!inventoryOpen)}
+            onClick={() => setOpenSection(inventoryOpen ? null : 'inventory')}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -322,7 +330,7 @@ export function SettingsLayout() {
             </div>
           </div>
           <button
-            onClick={() => setConfigOpen(!configOpen)}
+            onClick={() => setOpenSection(configOpen ? null : 'config')}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -395,7 +403,7 @@ export function SettingsLayout() {
           </div>
 
           <button
-            onClick={() => setCustomizationOpen(!customizationOpen)}
+            onClick={() => setOpenSection(customizationOpen ? null : 'customization')}
             style={{
               display: 'flex',
               alignItems: 'center',

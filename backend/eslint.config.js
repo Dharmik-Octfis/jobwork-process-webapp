@@ -57,6 +57,15 @@ export default defineConfig([
           format: ['camelCase', 'UPPER_CASE'],
           leadingUnderscore: 'allow',
         },
+        // Allow backend wire format properties like avatar_url/logo_url
+        {
+          selector: ['objectLiteralProperty', 'typeProperty'],
+          filter: {
+            regex: '^(?:avatar_url|logo_url)$',
+            match: true,
+          },
+          format: null,
+        },
       ],
     },
   },

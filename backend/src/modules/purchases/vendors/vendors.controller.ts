@@ -37,9 +37,9 @@ const vendorContactPersonSchema = z.object({
   salutation: z.string().nullable().optional(),
   firstName: z.string().nullable().optional(),
   lastName: z.string().nullable().optional(),
-  emailAddress: z.string().email().or(z.literal('')).nullable().optional(),
-  workPhone: z.string().nullable().optional(),
-  mobilePhone: z.string().nullable().optional(),
+  email: z.string().email().or(z.literal('')).nullable().optional(),
+  phone: z.string().nullable().optional(),
+  mobile: z.string().nullable().optional(),
 });
 
 export const createVendorSchema = openApiRegistry.register(
@@ -49,14 +49,14 @@ export const createVendorSchema = openApiRegistry.register(
     primaryContactFirstName: z.string().nullable().optional(),
     primaryContactLastName: z.string().nullable().optional(),
     companyName: z.string().nullable().optional(),
-    displayName: z.string(),
-    vendorNumber: z.string(),
-    emailAddress: z.string().email().or(z.literal('')).nullable().optional(),
-    workPhone: z.string().or(z.literal('')).nullable().optional(),
-    mobilePhone: z.string().or(z.literal('')).nullable().optional(),
+    contactName: z.string(),
+    contactNumber: z.string(),
+    email: z.string().email().or(z.literal('')).nullable().optional(),
+    phone: z.string().or(z.literal('')).nullable().optional(),
+    mobile: z.string().or(z.literal('')).nullable().optional(),
     currency: z.string().nullable().optional(),
     paymentTerms: z.string().nullable().optional(),
-    remarks: z.string().nullable().optional(),
+    notes: z.string().nullable().optional(),
 
     status: z.string().optional(),
 

@@ -29,6 +29,7 @@ export interface User {
   lastName: string;
   fullName: string;
   email: string;
+  avatar_url?: string | null;
 }
 
 /**

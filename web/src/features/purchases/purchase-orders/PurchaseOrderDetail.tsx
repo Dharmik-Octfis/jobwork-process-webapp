@@ -1,6 +1,22 @@
 import { format } from 'date-fns';
+interface Html2PdfOptions {
+  margin?: number | [number, number] | [number, number, number, number];
+  filename?: string;
+  image?: {
+    type?: 'jpeg' | 'png' | 'webp';
+    quality?: number;
+  };
+  enableLinks?: boolean;
+  html2canvas?: object;
+  jsPDF?: {
+    unit?: string;
+    format?: string | [number, number];
+    orientation?: 'portrait' | 'landscape';
+  };
+}
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchPurchaseOrderById, getPOSignedUrl, deletePurchaseOrder, type POAttachment } from './purchase-orders.api';
+import { fetchPaymentTerms } from './payment-terms.api';
 import { useParams, useNavigate } from 'react-router-dom';
 import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer } from 'lucide-react';
 import { useState, useRef, useEffect, Fragment } from 'react';
@@ -56,9 +72,8 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
     setTimeout(async () => {
       if (pdfTemplateRef.current) {
         try {
-          // @ts-ignore
-          const html2pdfModule = (await import('html2pdf.js')).default || (window as any).html2pdf;
-          const opt = {
+          const html2pdfModule = (await import('html2pdf.js')).default || (window as unknown as { html2pdf?: unknown }).html2pdf;
+          const opt: Html2PdfOptions = {
             margin: [8, 8, 8, 8],
             filename: `${po?.purchaseorder_number || 'PO'}.pdf`,
             image: { type: 'jpeg', quality: 0.98 },
@@ -113,6 +128,18 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
     queryFn: () => fetchPurchaseOrderById(orgId!, poId),
     enabled: Boolean(orgId && poId),
   });
+
+  const { data: paymentTerms } = useQuery({
+    queryKey: ['paymentTerms', orgId],
+    queryFn: () => fetchPaymentTerms(orgId!),
+    enabled: Boolean(orgId),
+  });
+
+  const getPaymentTermLabel = (termVal?: string | null) => {
+    if (!termVal) return '-';
+    const found = paymentTerms?.find((pt) => pt.id.toString() === termVal || pt.termName === termVal);
+    return found ? found.termName : termVal;
+  };
 
   if (isLoading) {
     return (
@@ -567,11 +594,11 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                       VENDOR ADDRESS
                     </div>
                     <div style={{ fontSize: '13px', color: '#0062ff', fontWeight: 600, marginBottom: '2px' }}>
-                      {po.vendor?.displayName || po.vendor?.companyName || '-'}
+                      {po.vendor?.contactName || po.vendor?.companyName || '-'}
                     </div>
                     <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.5 }}>
-                      {po.vendor?.emailAddress && <div>{po.vendor.emailAddress}</div>}
-                      {po.vendor?.workPhone && <div>{po.vendor.workPhone}</div>}
+                      {po.vendor?.email && <div>{po.vendor.email}</div>}
+                      {po.vendor?.phone && <div>{po.vendor.phone}</div>}
                     </div>
                   </div>
 
@@ -582,7 +609,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                     <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: 600, marginBottom: '2px' }}>
                       {po.delivery_type === 'Location'
                         ? po.deliveryLocation?.name || 'Head Office'
-                        : po.deliveryCustomer?.displayName || '-'}
+                        : po.deliveryCustomer?.contactName || '-'}
                     </div>
                     <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.5, maxWidth: '220px' }}>
                       {po.delivery_type === 'Location' && po.deliveryLocation?.address}
@@ -638,7 +665,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
 
                 <div>
                   <div style={labelStyle}>PAYMENT TERMS</div>
-                  <div style={valueStyle}>{po.payment_terms || '-'}</div>
+                  <div style={valueStyle}>{getPaymentTermLabel(po.payment_terms)}</div>
 
                   <div style={{ ...labelStyle, marginTop: '8px' }}>DELIVERY TYPE</div>
                   <div style={valueStyle}>{po.delivery_type || 'Location'}</div>
@@ -808,7 +835,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                       <strong>Date</strong> : {po.date ? format(new Date(po.date), 'dd-MM-yyyy') : '-'}
                     </td>
                     <td style={{ width: '50%', padding: '6px 10px' }}>
-                      <strong>Terms</strong> : {po.payment_terms || '-'}
+                      <strong>Terms</strong> : {getPaymentTermLabel(po.payment_terms)}
                     </td>
                   </tr>
                 </tbody>
@@ -825,15 +852,15 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                 <tbody>
                   <tr>
                     <td style={{ padding: '10px', verticalAlign: 'top', borderRight: '1px solid #000', lineHeight: 1.5 }}>
-                      <strong>{po.vendor?.displayName || po.vendor?.companyName || '-'}</strong>
-                      {po.vendor?.emailAddress && <div>{po.vendor.emailAddress}</div>}
-                      {po.vendor?.workPhone && <div>{po.vendor.workPhone}</div>}
+                      <strong>{po.vendor?.contactName || po.vendor?.companyName || '-'}</strong>
+                      {po.vendor?.email && <div>{po.vendor.email}</div>}
+                      {po.vendor?.phone && <div>{po.vendor.phone}</div>}
                     </td>
                     <td style={{ padding: '10px', verticalAlign: 'top', lineHeight: 1.5 }}>
                       <strong>
                         {po.delivery_type === 'Location'
                           ? po.deliveryLocation?.name || 'Head Office'
-                          : po.deliveryCustomer?.displayName || '-'}
+                          : po.deliveryCustomer?.contactName || '-'}
                       </strong>
                       {po.delivery_type === 'Location' && <div>{po.deliveryLocation?.address}</div>}
                     </td>
@@ -877,13 +904,13 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                 <tbody>
                   <tr>
                     <td style={{ width: '60%', padding: '12px', verticalAlign: 'top', borderRight: '1px solid #000' }}>
-                      <div style={{ marginBottom: '12px' }}>
+                      <div style={{ marginBottom: '12px', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
                         <strong>Notes:</strong><br />
                         {po.notes || 'With reference to your above quotation, we request you to supply the following materials subject to terms and conditions.'}
                       </div>
 
                       {po.terms && (
-                        <div>
+                        <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
                           <strong>Terms & Conditions:</strong><br />
                           {po.terms}
                         </div>

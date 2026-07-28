@@ -34,6 +34,7 @@ export function SearchableSelect({
 }: SearchableSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [menuPlacement, setMenuPlacement] = useState<'bottom' | 'top'>('bottom');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const selectedOption = options.find((opt) => opt.value === value);
@@ -48,6 +49,18 @@ export function SearchableSelect({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (isOpen && dropdownRef.current) {
+      const rect = dropdownRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      if (spaceBelow < 320 && rect.top > 320) {
+        setMenuPlacement('top');
+      } else {
+        setMenuPlacement('bottom');
+      }
+    }
+  }, [isOpen]);
 
   const filteredOptions = options.filter(
     (opt) =>
@@ -109,10 +122,9 @@ export function SearchableSelect({
         <div
           style={{
             position: 'absolute',
-            top: '100%',
+            ...(menuPlacement === 'top' ? { bottom: '100%', marginBottom: 4 } : { top: '100%', marginTop: 4 }),
             left: 0,
             right: 0,
-            marginTop: 4,
             backgroundColor: 'white',
             border: '1px solid var(--color-border)',
             borderRadius: 'var(--radius-md)',

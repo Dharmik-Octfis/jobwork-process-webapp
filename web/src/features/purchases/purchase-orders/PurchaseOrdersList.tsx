@@ -21,7 +21,7 @@ function renderPoCell(po: PurchaseOrder, key: string): string {
     return Array.isArray(value) ? value.join(', ') : String(value);
   }
   if (key === 'vendor') {
-    return po.vendor?.displayName || '-';
+    return po.vendor?.contactName || '-';
   }
   if (key === 'total') {
     return `₹${Number(po.total || 0).toFixed(2)}`;
@@ -251,7 +251,7 @@ export function PurchaseOrdersList() {
                           {po.purchaseorder_number}
                         </div>
                         <div style={{ fontSize: '12px', color: '#64748b' }}>
-                          {po.vendor?.displayName || '-'} • ₹{po.total}
+                          {po.vendor?.contactName || '-'} • ₹{po.total}
                         </div>
                       </div>
                     ))}

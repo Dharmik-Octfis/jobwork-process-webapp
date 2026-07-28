@@ -37,6 +37,8 @@ export function Select({
    */
   dropUp = false,
   ariaLabel,
+  containerStyle,
+  buttonStyle,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -48,6 +50,8 @@ export function Select({
   fullWidth?: boolean;
   dropUp?: boolean;
   ariaLabel?: string;
+  containerStyle?: React.CSSProperties;
+  buttonStyle?: React.CSSProperties;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -63,7 +67,7 @@ export function Select({
   const selected = options.find((o) => o.value === value);
 
   return (
-    <div ref={ref} style={{ position: 'relative', minWidth, width: fullWidth ? '100%' : minWidth }}>
+    <div ref={ref} style={{ position: 'relative', minWidth, width: fullWidth ? '100%' : minWidth, ...containerStyle }}>
       <button
         type="button"
         role="combobox"
@@ -91,6 +95,7 @@ export function Select({
           cursor: disabled ? 'not-allowed' : 'pointer',
           textAlign: 'left',
           transition: 'all 0.2s ease',
+          ...buttonStyle,
         }}
       >
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

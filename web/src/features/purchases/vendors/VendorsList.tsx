@@ -25,9 +25,20 @@ function renderVendorCell(vendor: Vendor, key: string): string {
     if (value === null || value === undefined || value === '') return '-';
     return Array.isArray(value) ? value.join(', ') : String(value);
   }
-  const value = (vendor as unknown as Record<string, unknown>)[key];
+  // Map old catalog keys to correct Prisma field names in case they are saved in the DB
+  const legacyMap: Record<string, string> = {
+    displayName: 'contactName',
+    vendorNumber: 'contactNumber',
+    workPhone: 'phone',
+    emailAddress: 'email',
+    mobilePhone: 'mobile',
+    remarks: 'notes',
+  };
+  const actualKey = legacyMap[key] || key;
+
+  const value = (vendor as unknown as Record<string, unknown>)[actualKey];
   if (value === null || value === undefined || value === '') return '-';
-  if (key === 'createdAt' || key === 'updatedAt')
+  if (actualKey === 'createdAt' || actualKey === 'updatedAt')
     return new Date(String(value)).toLocaleDateString();
   return String(value);
 }
@@ -150,27 +161,25 @@ export function VendorsList() {
                   <SlidersHorizontal size={15} />
                 </button>
               )}
-              {!selectedVendorId && (
-                <button
-                  onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/new`)}
-                  style={{
-                    background: '#0062ff',
-                    color: 'white',
-                    border: 'none',
-                    padding: '6px 12px',
-                    borderRadius: '4px',
-                    fontWeight: 500,
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
-                  }}
-                >
-                  <Plus size={16} /> New
-                </button>
-              )}
-            </div>
+              <button
+                onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/new`)}
+                style={{
+                  background: '#186337',
+                  color: 'white',
+                  border: 'none',
+                  padding: '6px 12px',
+                  borderRadius: '4px',
+                  fontWeight: 500,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <Plus size={16} /> New
+              </button></div>
           </header>
 
           <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -277,10 +286,10 @@ export function VendorsList() {
                             marginBottom: '4px',
                           }}
                         >
-                          {vendor.displayName}
+                          {vendor.contactName}
                         </div>
                         <div style={{ fontSize: '12px', color: '#64748b' }}>
-                          {vendor.companyName || vendor.emailAddress || 'No email'}
+                          {vendor.companyName || vendor.email || 'No email'}
                         </div>
                       </div>
                     ))}

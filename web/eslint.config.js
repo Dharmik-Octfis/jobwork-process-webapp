@@ -61,11 +61,11 @@ export default defineConfig([
         // `{ 'Content-Type': 'application/json' }`.
         { selector: 'objectLiteralProperty', format: null, modifiers: ['requiresQuotes'] },
         { selector: 'typeProperty', format: null, modifiers: ['requiresQuotes'] },
-        // Allow the React __html property for dangerouslySetInnerHTML
+        // Allow React __html property and backend wire format properties like avatar_url/logo_url
         {
           selector: ['objectLiteralProperty', 'typeProperty'],
           filter: {
-            regex: '^__html$',
+            regex: '^(?:__html|avatar_url|logo_url)$',
             match: true,
           },
           format: null,

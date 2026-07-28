@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Mail, Trash2, ShieldAlert } from 'lucide-react';
@@ -12,6 +12,7 @@ import { rolesApi } from '../roles/roles.api';
 import { permissionTemplatesApi } from '../permission-templates/permissionTemplates.api';
 import { membersApi } from '../members/members.api';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { Select } from '../../components/ui/Select';
 import '../organizations/CreateOrganizationForm.css';
 
 const inviteSchema = z.object({
@@ -45,7 +46,7 @@ export function InviteMembersPage() {
     queryFn: () => organizationsApi.getOrganizations(),
     staleTime: 5 * 60 * 1000,
   });
-  const activeOrg = organizations?.find((o) => o.id === id);
+  const activeOrg = organizations?.find((o) => o.organizationId === id);
 
   const invitesKey = ['invitations', id];
   const { data: invitations, isLoading } = useQuery({
@@ -84,6 +85,7 @@ export function InviteMembersPage() {
     register,
     handleSubmit,
     reset,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<InviteValues>({
     resolver: zodResolver(inviteSchema),
@@ -259,27 +261,39 @@ export function InviteMembersPage() {
                     the template is what the invitee will actually be able to do. */}
                 <div className="org-form-group" style={{ flex: '0 0 170px', margin: 0 }}>
                   <label>Role</label>
-                  <select className="org-form-select" {...register('roleId')}>
-                    <option value="">No role</option>
-                    {assignableRoles.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.name}
-                      </option>
-                    ))}
-                  </select>
+                  <Controller
+                    control={control}
+                    name="roleId"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                        options={[
+                          { value: '', label: 'No role' },
+                          ...assignableRoles.map((r) => ({ value: r.id, label: r.name })),
+                        ]}
+                      />
+                    )}
+                  />
                   {errors.roleId && <p className="org-form-error-msg">{errors.roleId.message}</p>}
                 </div>
 
                 <div className="org-form-group" style={{ flex: '0 0 190px', margin: 0 }}>
                   <label>Permissions</label>
-                  <select className="org-form-select" {...register('permissionTemplateId')}>
-                    <option value="">Select a template…</option>
-                    {assignableTemplates.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </select>
+                  <Controller
+                    control={control}
+                    name="permissionTemplateId"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                        options={[
+                          { value: '', label: 'Select a template…' },
+                          ...assignableTemplates.map((t) => ({ value: t.id, label: t.name })),
+                        ]}
+                      />
+                    )}
+                  />
                   {errors.permissionTemplateId && (
                     <p className="org-form-error-msg">{errors.permissionTemplateId.message}</p>
                   )}
@@ -407,25 +421,22 @@ export function InviteMembersPage() {
                             }}
                           >
                             Role
-                            <select
-                              className="org-form-select"
-                              style={{ minWidth: 150 }}
+                            <Select
+                              minWidth={150}
                               value={m.roleId ?? ''}
                               disabled={updateMemberMutation.isPending}
-                              onChange={(e) =>
+                              onChange={(val) =>
                                 updateMemberMutation.mutate({
                                   membershipId: m.id,
-                                  body: { roleId: e.target.value || null },
+                                  body: { roleId: val || null },
                                 })
                               }
-                            >
-                              <option value="">No role</option>
-                              {assignableRoles.map((r) => (
-                                <option key={r.id} value={r.id}>
-                                  {r.name}
-                                </option>
-                              ))}
-                            </select>
+                              options={[
+                                { value: '', label: 'No role' },
+                                ...assignableRoles.map((r) => ({ value: r.id, label: r.name })),
+                              ]}
+                              fullWidth={false}
+                            />
                           </label>
 
                           <label
@@ -439,27 +450,22 @@ export function InviteMembersPage() {
                             }}
                           >
                             Permissions
-                            <select
-                              className="org-form-select"
-                              style={{ minWidth: 170 }}
+                            <Select
+                              minWidth={170}
                               value={m.permissionTemplateId ?? ''}
                               disabled={updateMemberMutation.isPending || !hasTemplates}
-                              onChange={(e) =>
+                              onChange={(val) =>
                                 updateMemberMutation.mutate({
                                   membershipId: m.id,
-                                  body: { permissionTemplateId: e.target.value },
+                                  body: { permissionTemplateId: val },
                                 })
                               }
-                            >
-                              {/* A member with no template can do nothing — the
-                                  placeholder says so rather than looking assigned. */}
-                              {!m.permissionTemplateId && <option value="">No access</option>}
-                              {assignableTemplates.map((t) => (
-                                <option key={t.id} value={t.id}>
-                                  {t.name}
-                                </option>
-                              ))}
-                            </select>
+                              options={[
+                                ...(!m.permissionTemplateId ? [{ value: '', label: 'No access' }] : []),
+                                ...assignableTemplates.map((t) => ({ value: t.id, label: t.name })),
+                              ]}
+                              fullWidth={false}
+                            />
                           </label>
                           <button
                             onClick={() => setMemberToRemove(m.id)}

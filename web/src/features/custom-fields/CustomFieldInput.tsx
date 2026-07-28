@@ -1,4 +1,5 @@
 import type { CustomFieldDefinition } from './customFields.schemas';
+import { Select } from '../../components/ui/Select';
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
@@ -130,18 +131,15 @@ export function CustomFieldInput({ def, value, onChange, error }: Props) {
 
     case 'select':
       control = (
-        <select
+        <Select
           value={(value as string) ?? ''}
-          onChange={(e) => onChange(e.target.value)}
-          style={inputStyle}
-        >
-          <option value="">Select…</option>
-          {options.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+          onChange={(val) => onChange(val)}
+          options={[
+            { value: '', label: 'Select…' },
+            ...options.map((o) => ({ value: o.id, label: o.label })),
+          ]}
+          buttonStyle={{ maxWidth: '440px' }}
+        />
       );
       break;
 

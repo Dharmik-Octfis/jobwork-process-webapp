@@ -30,7 +30,7 @@ export async function getPurchaseOrdersList(organizationId: string, opts: ListQu
       skip: (page - 1) * perPage,
       take: takeForPage(perPage),
       include: {
-        vendor: { select: { displayName: true } },
+        vendor: { select: { contactName: true } },
         deliveryLocation: true,
         deliveryCustomer: true,
       },
@@ -55,7 +55,7 @@ export async function getPurchaseOrderById(orgId: string, id: string) {
           where: { is_deleted: false },
           include: { item: { select: { name: true, sku: true } } },
         },
-        vendor: { select: { displayName: true, emailAddress: true, workPhone: true, addresses: true } },
+        vendor: { select: { contactName: true, email: true, phone: true, addresses: true } },
         deliveryLocation: true,
         deliveryCustomer: true,
       },

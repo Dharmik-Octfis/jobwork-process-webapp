@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchCustomers, fetchCustomerCount, deleteCustomer } from './customers.api';
-import { Plus, Building2, SlidersHorizontal  } from 'lucide-react';
+import { Plus, Building2, SlidersHorizontal } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
 import { CustomerDetail } from './CustomerDetail';
@@ -152,26 +152,25 @@ export function CustomersList() {
                   <SlidersHorizontal size={15} />
                 </button>
               )}
-              {!selectedCustomerId && (
-                <button
-                  onClick={() => navigate(`/organizations/${orgId}/sales/customers/new`)}
-                  style={{
-                    background: '#0062ff',
-                    color: 'white',
-                    border: 'none',
-                    padding: '6px 12px',
-                    borderRadius: '4px',
-                    fontWeight: 500,
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
-                  }}
-                >
-                  <Plus size={16} /> New
-                </button>
-              )}
+              <button
+                onClick={() => navigate(`/organizations/${orgId}/sales/customers/new`)}
+                style={{
+                  background: '#186337',
+                  color: 'white',
+                  border: 'none',
+                  padding: '6px 12px',
+                  borderRadius: '4px',
+                  fontWeight: 500,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <Plus size={16} /> New
+              </button>
             </div>
           </header>
 
@@ -280,10 +279,10 @@ export function CustomersList() {
                             marginBottom: '4px',
                           }}
                         >
-                          {customer.displayName}
+                          {customer.contactName}
                         </div>
                         <div style={{ fontSize: '12px', color: '#64748b' }}>
-                          {customer.companyName || customer.emailAddress || 'No email'}
+                          {customer.companyName || customer.email || 'No email'}
                         </div>
                       </div>
                     ))}
