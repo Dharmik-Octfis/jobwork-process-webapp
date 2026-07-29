@@ -13,13 +13,13 @@ model Vendor {
   primaryContactFirstName  String?               @map("primary_contact_first_name") @db.VarChar(100)
   primaryContactLastName   String?               @map("primary_contact_last_name") @db.VarChar(100)
   primaryContactSalutation String?               @map("primary_contact_salutation") @db.VarChar(20)
-  notes                    String?
   status                   String                @default("active") @db.VarChar(20)
   phone                    String?               @map("work_phone") @db.VarChar(50)
   createdBy                String?               @map("created_by") @db.Uuid
   isDeleted                Boolean               @default(false) @map("is_deleted")
   updatedBy                String?               @map("updated_by") @db.Uuid
   customFields             Json                  @default("{}") @map("custom_fields")
+  notes                    String?
   purchaseOrders           PurchaseOrder[]
   activities               VendorActivity[]
   addresses                VendorAddress[]
@@ -127,8 +127,6 @@ model PurchaseOrder {
   sub_total            Decimal                 @default(0) @map("sub_total") @db.Decimal(15, 2)
   total                Decimal                 @default(0) @map("total_amount") @db.Decimal(15, 2)
   notes                String?
-  terms                String?                 @map("terms_and_conditions")
-  documents            Json?                   @default("[]") @map("attachments")
   status               String                  @default("Draft") @db.VarChar(50)
   custom_fields        Json                    @default("{}") @map("custom_fields")
   is_deleted           Boolean                 @default(false) @map("is_deleted")
@@ -137,6 +135,8 @@ model PurchaseOrder {
   created_at           DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
   updated_at           DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   location_id          String?                 @map("location_id") @db.Uuid
+  documents            Json?                   @default("[]") @map("attachments")
+  terms                String?                 @map("terms_and_conditions")
   activities           PurchaseOrderActivity[]
   comments             PurchaseOrderComment[]
   line_items           PurchaseOrderItem[]

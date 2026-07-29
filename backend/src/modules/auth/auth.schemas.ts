@@ -89,3 +89,13 @@ export const updateProfileSchema = z.object({
 });
 
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Current password is required'),
+  newPassword: z
+    .string()
+    .min(8, 'Use at least 8 characters')
+    .max(72, 'Keep your password under 72 characters'),
+});
+
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;

@@ -217,7 +217,7 @@ export function VendorForm({
           <input {...register('companyName')} style={inputStyle} />
 
           <label style={labelRequiredStyle}>
-            Contact Name* <Info size={14} color="#888" />
+            Display Name* <Info size={14} color="#888" />
           </label>
           <div>
             <input

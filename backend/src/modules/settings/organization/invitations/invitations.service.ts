@@ -4,7 +4,7 @@ import { ApiError } from '../../../../lib/apiError.ts';
 import { env } from '../../../../config/env.ts';
 import { hashPassword } from '../../../../lib/password.ts';
 import { sendInvitationEmail } from '../../../../lib/mailer.ts';
-import { issueTokens } from '../../../auth/auth.service.ts';
+import { issueTokens, formatPublicUser } from '../../../auth/auth.service.ts';
 import type { CreateInvitationInput, AcceptInvitationInput } from './invitations.schemas.ts';
 import type {
   PublicInvitation,
@@ -608,6 +608,7 @@ export async function acceptInvitation(
   rawToken: string,
   currentUserId: string | null,
   input: AcceptInvitationInput,
+  userAgent: string,
 ): Promise<AcceptInvitationResult> {
   const invite = await prisma.invitation.findUnique({
     where: { tokenHash: hashToken(rawToken) },
@@ -690,8 +691,9 @@ export async function acceptInvitation(
         lastName: input.lastName!,
         fullName,
         passwordHash,
+        userAgent,
       },
-      select: { id: true, firstName: true, lastName: true, fullName: true, email: true },
+      select: { id: true, firstName: true, lastName: true, fullName: true, email: true, userAgent: true },
     });
 
     await tx.membership.create({
@@ -717,6 +719,6 @@ export async function acceptInvitation(
     return created;
   });
 
-  const autoLogin = await issueTokens(newUser);
+  const autoLogin = await issueTokens(await formatPublicUser(newUser));
   return { organization: org, roleName, permissionTemplateName, autoLogin };
 }

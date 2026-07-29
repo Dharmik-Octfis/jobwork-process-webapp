@@ -12,6 +12,7 @@ export interface PublicUser {
   fullName: string;
   email: string;
   avatar_url?: string | null;
+  userAgent: string;
 }
 
 export interface AuthResult {

@@ -5,13 +5,14 @@ model User {
   firstName                     String                  @default("") @map("first_name") @db.VarChar(40)
   lastName                      String                  @default("") @map("last_name") @db.VarChar(40)
   fullName                      String                  @default("") @map("full_name") @db.VarChar(80)
-  avatarUrl                     String?                 @map("avatar_url")
   isActive                      Boolean                 @default(true) @map("is_active")
   createdAt                     DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                     DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   createdBy                     String?                 @map("created_by") @db.Uuid
   isDeleted                     Boolean                 @default(false) @map("is_deleted")
   updatedBy                     String?                 @map("updated_by") @db.Uuid
+  avatarUrl                     String?                 @map("avatar_url")
+  userAgent                     String?                 @map("user_agent")
   createdCurrencies             Currency[]              @relation("CurrencyCreatedBy")
   updatedCurrencies             Currency[]              @relation("CurrencyUpdatedBy")
   createdCustomFieldDefinitions CustomFieldDefinition[] @relation("CustomFieldDefinitionCreatedBy")
@@ -33,52 +34,49 @@ model User {
   updatedItemActivities         ItemActivity[]          @relation("ItemActivityUpdatedBy")
   createdItems                  Item[]                  @relation("ItemCreatedBy")
   updatedItems                  Item[]                  @relation("ItemUpdatedBy")
+  createdListViewPreferences    ListViewPreference[]    @relation("ListViewPreferenceCreatedBy")
+  updatedListViewPreferences    ListViewPreference[]    @relation("ListViewPreferenceUpdatedBy")
+  listViewPreferences           ListViewPreference[]    @relation("ListViewPreferenceUser")
   createdLocations              Location[]              @relation("LocationCreatedBy")
   updatedLocations              Location[]              @relation("LocationUpdatedBy")
   createdMemberships            Membership[]            @relation("MembershipCreatedBy")
   updatedMemberships            Membership[]            @relation("MembershipUpdatedBy")
-  createdOrganizations          Organization[]          @relation("OrganizationCreatedBy")
-  updatedOrganizations          Organization[]          @relation("OrganizationUpdatedBy")
   memberships                   Membership[]
   createdNumberSequences        NumberSequence[]        @relation("NumberSequenceCreatedBy")
   updatedNumberSequences        NumberSequence[]        @relation("NumberSequenceUpdatedBy")
-
-  createdUnitsOfMeasurement UnitOfMeasurement[] @relation("UomCreatedBy")
-  updatedUnitsOfMeasurement UnitOfMeasurement[] @relation("UomUpdatedBy")
-
-  listViewPreferences        ListViewPreference[] @relation("ListViewPreferenceUser")
-  createdListViewPreferences ListViewPreference[] @relation("ListViewPreferenceCreatedBy")
-  updatedListViewPreferences ListViewPreference[] @relation("ListViewPreferenceUpdatedBy")
-  createdRoles               Role[]               @relation("RoleCreatedBy")
-  updatedRoles               Role[]               @relation("RoleUpdatedBy")
-  createdPermissionTemplates PermissionTemplate[] @relation("PermissionTemplateCreatedBy")
-  updatedPermissionTemplates PermissionTemplate[] @relation("PermissionTemplateUpdatedBy")
-  createdPaymentTerms        PaymentTerm[]        @relation("PaymentTermCreatedBy")
-  updatedPaymentTerms        PaymentTerm[]        @relation("PaymentTermUpdatedBy")
-
-  createdPoActivities         PurchaseOrderActivity[] @relation("PoActivityCreatedBy")
-  updatedPoActivities         PurchaseOrderActivity[] @relation("PoActivityUpdatedBy")
-  createdPoComments           PurchaseOrderComment[]  @relation("PoCommentCreatedBy")
-  updatedPoComments           PurchaseOrderComment[]  @relation("PoCommentUpdatedBy")
-  createdPurchaseOrderItems   PurchaseOrderItem[]     @relation("PoItemCreatedBy")
-  updatedPurchaseOrderItems   PurchaseOrderItem[]     @relation("PoItemUpdatedBy")
-  createdPurchaseOrders       PurchaseOrder[]         @relation("PoCreatedBy")
-  updatedPurchaseOrders       PurchaseOrder[]         @relation("PoUpdatedBy")
-  refreshTokens               RefreshToken[]
-  createdByUser               User?                   @relation("UserCreatedBy", fields: [createdBy], references: [id])
-  createdUsers                User[]                  @relation("UserCreatedBy")
-  updatedByUser               User?                   @relation("UserUpdatedBy", fields: [updatedBy], references: [id])
-  updatedUsers                User[]                  @relation("UserUpdatedBy")
-  createdVendorActivities     VendorActivity[]        @relation("VendorActivityCreatedBy")
-  updatedVendorActivities     VendorActivity[]        @relation("VendorActivityUpdatedBy")
-  createdVendorAddresses      VendorAddress[]         @relation("VendorAddressCreatedBy")
-  updatedVendorAddresses      VendorAddress[]         @relation("VendorAddressUpdatedBy")
-  createdVendorComments       VendorComment[]         @relation("VendorCommentCreatedBy")
-  updatedVendorComments       VendorComment[]         @relation("VendorCommentUpdatedBy")
-  createdVendorContactPersons VendorContactPerson[]   @relation("VendorContactPersonCreatedBy")
-  updatedVendorContactPersons VendorContactPerson[]   @relation("VendorContactPersonUpdatedBy")
-  createdVendors              Vendor[]                @relation("VendorCreatedBy")
-  updatedVendors              Vendor[]                @relation("VendorUpdatedBy")
+  createdOrganizations          Organization[]          @relation("OrganizationCreatedBy")
+  updatedOrganizations          Organization[]          @relation("OrganizationUpdatedBy")
+  createdPaymentTerms           PaymentTerm[]           @relation("PaymentTermCreatedBy")
+  updatedPaymentTerms           PaymentTerm[]           @relation("PaymentTermUpdatedBy")
+  createdPermissionTemplates    PermissionTemplate[]    @relation("PermissionTemplateCreatedBy")
+  updatedPermissionTemplates    PermissionTemplate[]    @relation("PermissionTemplateUpdatedBy")
+  createdPoActivities           PurchaseOrderActivity[] @relation("PoActivityCreatedBy")
+  updatedPoActivities           PurchaseOrderActivity[] @relation("PoActivityUpdatedBy")
+  createdPoComments             PurchaseOrderComment[]  @relation("PoCommentCreatedBy")
+  updatedPoComments             PurchaseOrderComment[]  @relation("PoCommentUpdatedBy")
+  createdPurchaseOrderItems     PurchaseOrderItem[]     @relation("PoItemCreatedBy")
+  updatedPurchaseOrderItems     PurchaseOrderItem[]     @relation("PoItemUpdatedBy")
+  createdPurchaseOrders         PurchaseOrder[]         @relation("PoCreatedBy")
+  updatedPurchaseOrders         PurchaseOrder[]         @relation("PoUpdatedBy")
+  refreshTokens                 RefreshToken[]
+  createdRoles                  Role[]                  @relation("RoleCreatedBy")
+  updatedRoles                  Role[]                  @relation("RoleUpdatedBy")
+  createdUnitsOfMeasurement     UnitOfMeasurement[]     @relation("UomCreatedBy")
+  updatedUnitsOfMeasurement     UnitOfMeasurement[]     @relation("UomUpdatedBy")
+  createdByUser                 User?                   @relation("UserCreatedBy", fields: [createdBy], references: [id])
+  createdUsers                  User[]                  @relation("UserCreatedBy")
+  updatedByUser                 User?                   @relation("UserUpdatedBy", fields: [updatedBy], references: [id])
+  updatedUsers                  User[]                  @relation("UserUpdatedBy")
+  createdVendorActivities       VendorActivity[]        @relation("VendorActivityCreatedBy")
+  updatedVendorActivities       VendorActivity[]        @relation("VendorActivityUpdatedBy")
+  createdVendorAddresses        VendorAddress[]         @relation("VendorAddressCreatedBy")
+  updatedVendorAddresses        VendorAddress[]         @relation("VendorAddressUpdatedBy")
+  createdVendorComments         VendorComment[]         @relation("VendorCommentCreatedBy")
+  updatedVendorComments         VendorComment[]         @relation("VendorCommentUpdatedBy")
+  createdVendorContactPersons   VendorContactPerson[]   @relation("VendorContactPersonCreatedBy")
+  updatedVendorContactPersons   VendorContactPerson[]   @relation("VendorContactPersonUpdatedBy")
+  createdVendors                Vendor[]                @relation("VendorCreatedBy")
+  updatedVendors                Vendor[]                @relation("VendorUpdatedBy")
 
   @@map("users")
 }
@@ -129,6 +127,7 @@ model Organization {
   customers              Customer[]
   invitations            Invitation[]
   items                  Item[]
+  listViewPreferences    ListViewPreference[]
   locations              Location[]
   memberships            Membership[]
   numberSequences        NumberSequence[]
@@ -139,10 +138,9 @@ model Organization {
   state                  State?                  @relation(fields: [stateCode], references: [code])
   updatedByUser          User?                   @relation("OrganizationUpdatedBy", fields: [updatedBy], references: [id])
   paymentTerms           PaymentTerm[]
-  listViewPreferences    ListViewPreference[]
-  roles                  Role[]
   permissionTemplates    PermissionTemplate[]
   purchaseOrders         PurchaseOrder[]
+  roles                  Role[]
   unitsOfMeasurement     UnitOfMeasurement[]
   vendors                Vendor[]
 
@@ -150,85 +148,53 @@ model Organization {
 }
 
 model Membership {
-  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId               String   @map("user_id") @db.Uuid
-  organizationId       String   @map("organization_id") @db.Uuid
-  // The org creator. Ownership is ABOVE the permission system: `tenantContext`
-  // short-circuits an owner to every permission before it ever reads a template,
-  // and `requireOwner` gates the handful of actions no template may grant
-  // (deleting the org, transferring ownership). Replaced a `role` string that
-  // stored one bit in a VARCHAR(50) — see the 2026-07-25 migration.
-  //
-  // Scoped to THIS organization: it never widens tenant scope. An owner of one
-  // org is a stranger to every other, and RLS enforces that independently.
-  isOwner              Boolean  @default(false) @map("is_owner")
-  // The member's job title. Purely descriptive — no middleware reads it, so it
-  // grants nothing (see permissions.prisma). Nullable: a member may have no title
-  // yet, and every row predating the roles/permissions split has none. SetNull so
-  // deleting a role never deletes memberships.
-  roleId               String?  @map("role_id") @db.Uuid
-  // The permission template that grants this membership its access. Nullable:
-  // legacy rows created before this module predate it, and tenantContext falls
-  // back to `role` (permissionsForRole) when it is null. SetNull, not Cascade —
-  // deleting a template must never delete memberships (the service also blocks
-  // deleting a template still in use).
-  permissionTemplateId String?  @map("permission_template_id") @db.Uuid
-  isDeleted            Boolean  @default(false) @map("is_deleted")
-  createdBy            String?  @map("created_by") @db.Uuid
-  updatedBy            String?  @map("updated_by") @db.Uuid
-  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt            DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  role               Role?               @relation(fields: [roleId], references: [id], onDelete: SetNull)
-  permissionTemplate PermissionTemplate? @relation(fields: [permissionTemplateId], references: [id], onDelete: SetNull)
-
-  createdByUser User? @relation("MembershipCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser User? @relation("MembershipUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  id                   String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId               String              @map("user_id") @db.Uuid
+  organizationId       String              @map("organization_id") @db.Uuid
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy            String?             @map("created_by") @db.Uuid
+  isDeleted            Boolean             @default(false) @map("is_deleted")
+  updatedBy            String?             @map("updated_by") @db.Uuid
+  permissionTemplateId String?             @map("permission_template_id") @db.Uuid
+  roleId               String?             @map("role_id") @db.Uuid
+  isOwner              Boolean             @default(false) @map("is_owner")
+  createdByUser        User?               @relation("MembershipCreatedBy", fields: [createdBy], references: [id])
+  organization         Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  permissionTemplate   PermissionTemplate? @relation(fields: [permissionTemplateId], references: [id])
+  role                 Role?               @relation(fields: [roleId], references: [id])
+  updatedByUser        User?               @relation("MembershipUpdatedBy", fields: [updatedBy], references: [id])
+  user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, organizationId])
   @@map("memberships")
 }
 
 model Invitation {
-  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId       String    @map("organization_id") @db.Uuid
-  email                String    @db.Citext
-  // The job title the invitee gets on accept. Optional — a title grants nothing,
-  // so requiring one would block inviting for no security gain. Restrict: a role
-  // with a pending invite cannot be deleted out from under it.
-  roleId               String?   @map("role_id") @db.Uuid
-  // The permission template the invitee gets on accept. Required — an org has no
-  // default templates, so the Owner must create one before inviting anyone. The
-  // Owner template itself is never invitable (enforced in the service): ownership
-  // comes from creating the org, not from an invite.
-  permissionTemplateId String    @map("permission_template_id") @db.Uuid
-  tokenHash            String    @unique @map("token_hash")
-  status               String    @default("pending") @db.VarChar(20) // pending | accepted | revoked | declined
-  invitedById          String    @map("invited_by_id") @db.Uuid
-  expiresAt            DateTime  @map("expires_at") @db.Timestamptz(6)
-  acceptedAt           DateTime? @map("accepted_at") @db.Timestamptz(6)
-  declinedAt           DateTime? @map("declined_at") @db.Timestamptz(6)
-
-  // Send throttling. The row is RECYCLED on re-invite (see @@unique below), so
-  // there is no row-per-send to count — these two columns are the send record.
-  // `lastSentAt` drives both the per-recipient cooldown and the per-org hourly cap.
-  sendCount  Int       @default(0) @map("send_count")
-  lastSentAt DateTime? @map("last_sent_at") @db.Timestamptz(6)
-  isDeleted  Boolean   @default(false) @map("is_deleted")
-  createdBy  String?   @map("created_by") @db.Uuid
-  updatedBy  String?   @map("updated_by") @db.Uuid
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  invitedBy          User               @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
-  role               Role?              @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  permissionTemplate PermissionTemplate @relation(fields: [permissionTemplateId], references: [id], onDelete: Restrict)
-
-  createdByUser User? @relation("InvitationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser User? @relation("InvitationUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  id                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String             @map("organization_id") @db.Uuid
+  email                String             @db.Citext
+  tokenHash            String             @unique @map("token_hash")
+  status               String             @default("pending") @db.VarChar(20)
+  invitedById          String             @map("invited_by_id") @db.Uuid
+  expiresAt            DateTime           @map("expires_at") @db.Timestamptz(6)
+  acceptedAt           DateTime?          @map("accepted_at") @db.Timestamptz(6)
+  createdAt            DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy            String?            @map("created_by") @db.Uuid
+  isDeleted            Boolean            @default(false) @map("is_deleted")
+  updatedBy            String?            @map("updated_by") @db.Uuid
+  declinedAt           DateTime?          @map("declined_at") @db.Timestamptz(6)
+  lastSentAt           DateTime?          @map("last_sent_at") @db.Timestamptz(6)
+  permissionTemplateId String             @map("permission_template_id") @db.Uuid
+  sendCount            Int                @default(0) @map("send_count")
+  roleId               String?            @map("role_id") @db.Uuid
+  createdByUser        User?              @relation("InvitationCreatedBy", fields: [createdBy], references: [id])
+  invitedBy            User               @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+  organization         Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  permissionTemplate   PermissionTemplate @relation(fields: [permissionTemplateId], references: [id])
+  role                 Role?              @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  updatedByUser        User?              @relation("InvitationUpdatedBy", fields: [updatedBy], references: [id])
 
   @@unique([organizationId, email])
   @@index([organizationId, lastSentAt])
@@ -375,34 +341,26 @@ model PaymentTerm {
 /// Per-org custom FIELDS can still be *chosen* as columns — they're stored in
 /// `columns` as `cf:<key>`.
 model ListViewPreference {
-  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String @map("organization_id") @db.Uuid
-  userId         String @map("user_id") @db.Uuid
-
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
   /// vendor | customer | item — the module whose list this layout belongs to.
-  entityType String @map("entity_type") @db.VarChar(50)
-
+  entityType     String       @map("entity_type") @db.VarChar(50)
   /// Ordered array of visible column keys; position in the array IS the column
   /// order. Built-in columns are plain keys ("displayName"); custom fields are
   /// prefixed ("cf:truck_no"). Locked columns are re-asserted server-side on
   /// save, so a tampered payload can't drop or move them.
-  columns Json @default("[]")
+  columns        Json         @default("[]")
+  isDeleted      Boolean      @default(false) @map("is_deleted")
+  createdBy      String?      @map("created_by") @db.Uuid
+  updatedBy      String?      @map("updated_by") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdByUser  User?        @relation("ListViewPreferenceCreatedBy", fields: [createdBy], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedByUser  User?        @relation("ListViewPreferenceUpdatedBy", fields: [updatedBy], references: [id])
+  user           User         @relation("ListViewPreferenceUser", fields: [userId], references: [id], onDelete: Cascade)
 
-  isDeleted Boolean  @default(false) @map("is_deleted")
-  createdBy String?  @map("created_by") @db.Uuid
-  updatedBy String?  @map("updated_by") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User         @relation("ListViewPreferenceUser", fields: [userId], references: [id], onDelete: Cascade)
-
-  createdByUser User? @relation("ListViewPreferenceCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser User? @relation("ListViewPreferenceUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
-
-  /// One layout per user per module per org. Saves upsert onto this key (and set
-  /// isDeleted:false), which is the documented way to live with soft-delete
-  /// holding a unique key.
   @@unique([userId, organizationId, entityType])
   @@map("list_view_preferences")
 }

@@ -248,31 +248,36 @@ export function CreateItemPage() {
         <h1 style={{ fontSize: '22px', fontWeight: 400, margin: 0, color: '#000' }}>New Item</h1>
       </div>
 
-      <div style={{ padding: '0 24px 24px' }}>
+      <div style={{ padding: '0 32px 32px' }}>
         <form
           onSubmit={handleSubmit}
           style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}
         >
           {/* Top Section: Basic Info & Images */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'max-content 360px', gap: '64px' }}>
+          <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div
               style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '12px',
+                flex: 1,
+                minWidth: '480px',
+                maxWidth: '640px',
                 background: '#f8fafc',
                 padding: '24px',
                 borderRadius: '8px',
+                border: '1px solid #e2e8f0',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px',
               }}
             >
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '140px 400px',
+                  gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
+                  gap: '12px',
                 }}
               >
-                <label style={{ fontSize: 12, color: '#dc2626' }}>Name*</label>
+                <label style={{ fontSize: 12, color: '#dc2626', fontWeight: 500 }}>Name*</label>
                 <div>
                   <input
                     name="name"
@@ -280,14 +285,15 @@ export function CreateItemPage() {
                     onChange={handleChange}
                     style={{
                       width: '100%',
+                      maxWidth: '400px',
                       padding: '6px 10px',
                       borderRadius: '4px',
-                      border: '1px solid #d1d5db',
+                      border: errors.name ? '1px solid #ef4444' : '1px solid #d1d5db',
                       fontSize: 12,
                     }}
                   />
                   {errors.name && (
-                    <span style={{ color: 'red', fontSize: 12, marginTop: 4, display: 'block' }}>
+                    <span style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}>
                       {errors.name}
                     </span>
                   )}
@@ -297,13 +303,14 @@ export function CreateItemPage() {
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '140px 400px',
+                  gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
+                  gap: '12px',
                 }}
               >
-                <label style={{ fontSize: 12, color: '#4b5563' }}>Type</label>
-                <div style={{ display: 'flex', gap: 12 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Type</label>
+                <div style={{ display: 'flex', gap: 16 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
                     <input
                       type="radio"
                       name="type"
@@ -313,7 +320,7 @@ export function CreateItemPage() {
                     />{' '}
                     Goods
                   </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
                     <input
                       type="radio"
                       name="type"
@@ -329,83 +336,94 @@ export function CreateItemPage() {
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '140px 400px',
+                  gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
+                  gap: '12px',
                 }}
               >
-                <label style={{ fontSize: 12, color: '#4b5563' }}>Category</label>
-                <Select
-                  value={formData.category || ''}
-                  onChange={(val) => handleSelectChange('category', val)}
-                  options={[
-                    { value: '', label: 'Select a category' },
-                    { value: 'Electronics', label: 'Electronics' },
-                    { value: 'Furniture', label: 'Furniture' },
-                    { value: 'Foot wear', label: 'Foot wear' },
-                    ...(formData.category && !['Electronics', 'Furniture', 'Foot wear'].includes(formData.category)
-                      ? [{ value: formData.category, label: formData.category }]
-                      : []),
-                  ]}
-                />
+                <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Category</label>
+                <div style={{ maxWidth: '400px' }}>
+                  <Select
+                    value={formData.category || ''}
+                    onChange={(val) => handleSelectChange('category', val)}
+                    options={[
+                      { value: '', label: 'Select a category' },
+                      { value: 'Electronics', label: 'Electronics' },
+                      { value: 'Furniture', label: 'Furniture' },
+                      { value: 'Foot wear', label: 'Foot wear' },
+                      ...(formData.category && !['Electronics', 'Furniture', 'Foot wear'].includes(formData.category)
+                        ? [{ value: formData.category, label: formData.category }]
+                        : []),
+                    ]}
+                  />
+                </div>
               </div>
 
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '140px 400px',
+                  gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
+                  gap: '12px',
                 }}
               >
-                <label style={{ fontSize: 12, color: '#4b5563' }}>Brand</label>
-                <Select
-                  value={formData.brand || ''}
-                  onChange={(val) => handleSelectChange('brand', val)}
-                  options={[
-                    { value: '', label: 'Select or Add Brand' },
-                    { value: 'Apple', label: 'Apple' },
-                    { value: 'Samsung', label: 'Samsung' },
-                    ...(formData.brand && !['Apple', 'Samsung'].includes(formData.brand)
-                      ? [{ value: formData.brand, label: formData.brand }]
-                      : []),
-                  ]}
-                />
+                <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Brand</label>
+                <div style={{ maxWidth: '400px' }}>
+                  <Select
+                    value={formData.brand || ''}
+                    onChange={(val) => handleSelectChange('brand', val)}
+                    options={[
+                      { value: '', label: 'Select or Add Brand' },
+                      { value: 'Apple', label: 'Apple' },
+                      { value: 'Samsung', label: 'Samsung' },
+                      ...(formData.brand && !['Apple', 'Samsung'].includes(formData.brand)
+                        ? [{ value: formData.brand, label: formData.brand }]
+                        : []),
+                    ]}
+                  />
+                </div>
               </div>
 
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '140px 400px',
+                  gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
+                  gap: '12px',
                 }}
               >
-                <label style={{ fontSize: 12, color: '#4b5563' }}>Manufacturer</label>
-                <Select
-                  value={formData.manufacturer || ''}
-                  onChange={(val) => handleSelectChange('manufacturer', val)}
-                  options={[
-                    { value: '', label: 'Select or Add Manufacturer' },
-                    { value: 'Foxconn', label: 'Foxconn' },
-                    ...(formData.manufacturer && !['Foxconn'].includes(formData.manufacturer)
-                      ? [{ value: formData.manufacturer, label: formData.manufacturer }]
-                      : []),
-                  ]}
-                />
+                <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Manufacturer</label>
+                <div style={{ maxWidth: '400px' }}>
+                  <Select
+                    value={formData.manufacturer || ''}
+                    onChange={(val) => handleSelectChange('manufacturer', val)}
+                    options={[
+                      { value: '', label: 'Select or Add Manufacturer' },
+                      { value: 'Foxconn', label: 'Foxconn' },
+                      ...(formData.manufacturer && !['Foxconn'].includes(formData.manufacturer)
+                        ? [{ value: formData.manufacturer, label: formData.manufacturer }]
+                        : []),
+                    ]}
+                  />
+                </div>
               </div>
 
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '140px 400px',
+                  gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
+                  gap: '12px',
                 }}
               >
-                <label style={{ fontSize: 12, color: '#4b5563' }}>HSN Code</label>
+                <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>HSN Code</label>
                 <input
                   name="hsnCode"
                   value={formData.hsnCode || ''}
                   onChange={handleChange}
                   style={{
                     width: '100%',
+                    maxWidth: '400px',
                     padding: '6px 10px',
                     borderRadius: '4px',
                     border: '1px solid #d1d5db',
@@ -418,9 +436,10 @@ export function CreateItemPage() {
             {/* Image Upload Area */}
             <div
               style={{
-                border: '1px solid #eef0f3',
+                width: '360px',
+                border: '1px solid #e2e8f0',
                 borderRadius: '8px',
-                padding: '12px',
+                padding: '16px',
                 display: 'flex',
                 gap: '12px',
                 background: '#f8fafc',
@@ -428,7 +447,7 @@ export function CreateItemPage() {
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
                 <div>
-                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b' }}>Front View</div>
+                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>Front View</div>
                   <input
                     type="file"
                     ref={frontImageRef}
@@ -441,7 +460,7 @@ export function CreateItemPage() {
                     onClick={() => frontImageRef.current?.click()}
                     style={{
                       width: '100%',
-                      padding: '16px',
+                      padding: '12px 8px',
                       border: '1px dashed #cbd5e1',
                       borderRadius: '6px',
                       background: '#ffffff',
@@ -449,17 +468,17 @@ export function CreateItemPage() {
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      gap: 6,
+                      gap: 4,
                       cursor: 'pointer',
                     }}
                   >
-                    <span style={{ fontSize: 12 }}>
+                    <span style={{ fontSize: 12, fontWeight: 500 }}>
                       {frontImageFile ? frontImageFile.name : '↑ Upload Front Image'}
                     </span>
                   </button>
                 </div>
                 <div>
-                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b' }}>Rear View</div>
+                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>Rear View</div>
                   <input
                     type="file"
                     ref={rearImageRef}
@@ -472,7 +491,7 @@ export function CreateItemPage() {
                     onClick={() => rearImageRef.current?.click()}
                     style={{
                       width: '100%',
-                      padding: '16px',
+                      padding: '12px 8px',
                       border: '1px dashed #cbd5e1',
                       borderRadius: '6px',
                       background: '#ffffff',
@@ -480,18 +499,18 @@ export function CreateItemPage() {
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      gap: 6,
+                      gap: 4,
                       cursor: 'pointer',
                     }}
                   >
-                    <span style={{ fontSize: 12 }}>
+                    <span style={{ fontSize: 12, fontWeight: 500 }}>
                       {rearImageFile ? rearImageFile.name : '↑ Upload Rear Image'}
                     </span>
                   </button>
                 </div>
               </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b' }}>Other Images</div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>Other Images</div>
                 <input
                   type="file"
                   ref={otherImagesRef}
@@ -505,8 +524,9 @@ export function CreateItemPage() {
                   onClick={() => otherImagesRef.current?.click()}
                   style={{
                     width: '100%',
-                    height: 'calc(100% - 24px)',
-                    padding: '16px',
+                    flex: 1,
+                    minHeight: '110px',
+                    padding: '12px 8px',
                     border: '1px dashed #cbd5e1',
                     borderRadius: '6px',
                     background: '#ffffff',
@@ -541,7 +561,7 @@ export function CreateItemPage() {
                       : 'Drag & Drop Images'}
                   </div>
                   <div
-                    style={{ fontSize: 10, color: '#64748b', textAlign: 'center', lineHeight: 1.4 }}
+                    style={{ fontSize: 10, color: '#64748b', textAlign: 'center', lineHeight: 1.3 }}
                   >
                     You can add up to 3 images, each not exceeding 2 MB.
                   </div>
@@ -550,12 +570,23 @@ export function CreateItemPage() {
             </div>
           </div>
 
-          <hr style={{ border: 'none', borderTop: '1px solid #cbd5e1' }} />
+          <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '8px 0' }} />
 
           {/* Item Details Section */}
-          <div>
+          <div
+            style={{
+              maxWidth: '640px',
+              background: '#f8fafc',
+              padding: '24px',
+              borderRadius: '8px',
+              border: '1px solid #e2e8f0',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+            }}
+          >
             <h3
-              style={{ fontSize: '16px', fontWeight: 500, marginBottom: '12px', color: '#1e293b' }}
+              style={{ fontSize: '15px', fontWeight: 600, margin: 0, color: '#1e293b' }}
             >
               Item Details
             </h3>
@@ -563,12 +594,12 @@ export function CreateItemPage() {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: '140px 400px',
+                gridTemplateColumns: '140px 1fr',
                 alignItems: 'center',
-                marginBottom: 12,
+                gap: '12px',
               }}
             >
-              <label style={{ fontSize: 12, color: '#4b5563' }}>Item Type</label>
+              <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Item Type</label>
               <div style={{ display: 'flex', gap: 12 }}>
                 <label
                   style={{
@@ -576,15 +607,16 @@ export function CreateItemPage() {
                     alignItems: 'center',
                     gap: 6,
                     fontSize: 12,
-                    padding: '8px 16px',
+                    padding: '6px 14px',
                     border:
                       formData.itemType === 'Single Item'
                         ? '1px solid #0062ff'
-                        : '1px solid #eef0f3',
+                        : '1px solid #cbd5e1',
                     borderRadius: 6,
                     background: formData.itemType === 'Single Item' ? '#f0f6ff' : 'white',
                     color: formData.itemType === 'Single Item' ? '#0062ff' : '#4b5563',
                     cursor: 'pointer',
+                    fontWeight: 500,
                   }}
                 >
                   <input
@@ -597,14 +629,14 @@ export function CreateItemPage() {
                   />
                   <div
                     style={{
-                      width: 16,
-                      height: 16,
+                      width: 14,
+                      height: 14,
                       borderRadius: '50%',
-                      background: formData.itemType === 'Single Item' ? '#0062ff' : '#eef0f3',
+                      background: formData.itemType === 'Single Item' ? '#0062ff' : '#e2e8f0',
                       border: '2px solid white',
                       boxShadow:
                         '0 0 0 1px ' +
-                        (formData.itemType === 'Single Item' ? '#0062ff' : '#d1d5db'),
+                        (formData.itemType === 'Single Item' ? '#0062ff' : '#cbd5e1'),
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -612,7 +644,7 @@ export function CreateItemPage() {
                   >
                     {formData.itemType === 'Single Item' && (
                       <div
-                        style={{ width: 6, height: 6, borderRadius: '50%', background: 'white' }}
+                        style={{ width: 4, height: 4, borderRadius: '50%', background: 'white' }}
                       />
                     )}
                   </div>
@@ -624,15 +656,16 @@ export function CreateItemPage() {
                     alignItems: 'center',
                     gap: 6,
                     fontSize: 12,
-                    padding: '8px 16px',
+                    padding: '6px 14px',
                     border:
                       formData.itemType === 'Contains Variants'
                         ? '1px solid #0062ff'
-                        : '1px solid #eef0f3',
+                        : '1px solid #cbd5e1',
                     borderRadius: 6,
                     background: formData.itemType === 'Contains Variants' ? '#f0f6ff' : 'white',
                     color: formData.itemType === 'Contains Variants' ? '#0062ff' : '#4b5563',
                     cursor: 'pointer',
+                    fontWeight: 500,
                   }}
                 >
                   <input
@@ -645,14 +678,14 @@ export function CreateItemPage() {
                   />
                   <div
                     style={{
-                      width: 16,
-                      height: 16,
+                      width: 14,
+                      height: 14,
                       borderRadius: '50%',
-                      background: formData.itemType === 'Contains Variants' ? '#0062ff' : '#eef0f3',
+                      background: formData.itemType === 'Contains Variants' ? '#0062ff' : '#e2e8f0',
                       border: '2px solid white',
                       boxShadow:
                         '0 0 0 1px ' +
-                        (formData.itemType === 'Contains Variants' ? '#0062ff' : '#d1d5db'),
+                        (formData.itemType === 'Contains Variants' ? '#0062ff' : '#cbd5e1'),
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -660,7 +693,7 @@ export function CreateItemPage() {
                   >
                     {formData.itemType === 'Contains Variants' && (
                       <div
-                        style={{ width: 6, height: 6, borderRadius: '50%', background: 'white' }}
+                        style={{ width: 4, height: 4, borderRadius: '50%', background: 'white' }}
                       />
                     )}
                   </div>
@@ -672,92 +705,116 @@ export function CreateItemPage() {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: '130px 240px 130px 240px',
+                gridTemplateColumns: '140px 1fr',
                 alignItems: 'center',
-                gap: '12px 16px',
+                gap: '12px',
               }}
             >
-              <label style={{ fontSize: 12, color: '#dc2626' }}>Unit*</label>
-              <div
-                style={{
-                  display: 'flex',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '4px',
-                  overflow: 'hidden',
-                }}
-              >
-                <div style={{
-                  padding: '5px 8px',
-                  borderRight: '1px solid #d1d5db',
-                  background: '#f8fafc',
-                  fontSize: 12,
-                  display: 'flex',
-                  alignItems: 'center'
-                }}>
-                  Unit Group
+              <label style={{ fontSize: 12, color: '#dc2626', fontWeight: 500 }}>Unit*</label>
+              <div>
+                <div
+                  style={{
+                    display: 'flex',
+                    border: errors.unit ? '1px solid #ef4444' : '1px solid #d1d5db',
+                    borderRadius: '4px',
+                    overflow: 'hidden',
+                    maxWidth: '400px',
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: '6px 12px',
+                      borderRight: '1px solid #d1d5db',
+                      background: '#f1f5f9',
+                      fontSize: 12,
+                      color: '#475569',
+                      display: 'flex',
+                      alignItems: 'center',
+                      whiteSpace: 'nowrap',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Unit Group
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <Select
+                      value={formData.unit}
+                      onChange={(val) => handleSelectChange('unit', val)}
+                      options={[
+                        { value: '', label: 'Select Unit' },
+                        { value: 'pcs', label: 'pcs' },
+                        { value: 'kg', label: 'kg' },
+                        { value: 'box', label: 'box' },
+                        ...(formData.unit && !['pcs', 'kg', 'box'].includes(formData.unit)
+                          ? [{ value: formData.unit, label: formData.unit }]
+                          : []),
+                      ]}
+                      buttonStyle={{ border: 'none' }}
+                    />
+                  </div>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <Select
-                    value={formData.unit}
-                    onChange={(val) => handleSelectChange('unit', val)}
-                    options={[
-                      { value: '', label: 'Select Unit' },
-                      { value: 'pcs', label: 'pcs' },
-                      { value: 'kg', label: 'kg' },
-                      { value: 'box', label: 'box' },
-                      ...(formData.unit && !['pcs', 'kg', 'box'].includes(formData.unit)
-                        ? [{ value: formData.unit, label: formData.unit }]
-                        : []),
-                    ]}
-                    buttonStyle={{ border: 'none' }}
-                  />
-                </div>
+                {errors.unit && (
+                  <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>
+                    {errors.unit}
+                  </div>
+                )}
               </div>
-
-              <label style={{ fontSize: 12, color: '#dc2626' }}>SKU*</label>
-              <input
-                name="sku"
-                value={formData.sku}
-                onChange={handleChange}
-                style={{
-                  width: '100%',
-                  padding: '6px 10px',
-                  borderRadius: '4px',
-                  border: '1px solid #d1d5db',
-                  fontSize: 12,
-                }}
-              />
             </div>
-            {errors.unit && (
-              <div style={{ color: 'red', fontSize: 12, marginTop: 4, marginLeft: 150 }}>
-                {errors.unit}
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '140px 1fr',
+                alignItems: 'center',
+                gap: '12px',
+              }}
+            >
+              <label style={{ fontSize: 12, color: '#dc2626', fontWeight: 500 }}>SKU*</label>
+              <div>
+                <input
+                  name="sku"
+                  value={formData.sku}
+                  onChange={handleChange}
+                  style={{
+                    width: '100%',
+                    maxWidth: '400px',
+                    padding: '6px 10px',
+                    borderRadius: '4px',
+                    border: errors.sku ? '1px solid #ef4444' : '1px solid #d1d5db',
+                    fontSize: 12,
+                  }}
+                />
+                {errors.sku && (
+                  <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>
+                    {errors.sku}
+                  </div>
+                )}
               </div>
-            )}
-            {errors.sku && (
-              <div
-                style={{
-                  color: 'red',
-                  fontSize: 12,
-                  marginTop: 4,
-                  marginLeft: 'calc(150px * 2 + 1fr + 48px)',
-                }}
-              >
-                {errors.sku}
-              </div>
-            )}
+            </div>
           </div>
 
-          <hr style={{ border: 'none', borderTop: '1px solid #cbd5e1' }} />
+          <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '8px 0' }} />
 
           {/* Inventory Tracking */}
-          <div>
+          <div
+            style={{
+              maxWidth: '640px',
+              background: '#f8fafc',
+              padding: '24px',
+              borderRadius: '8px',
+              border: '1px solid #e2e8f0',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+            }}
+          >
             <label
               style={{
                 display: 'flex',
                 alignItems: 'flex-start',
-                gap: 6,
+                gap: 8,
                 fontSize: 13,
-                fontWeight: 500,
+                fontWeight: 600,
                 color: '#1e293b',
                 cursor: 'pointer',
               }}
@@ -781,11 +838,11 @@ export function CreateItemPage() {
             {formData.trackInventory && (
               <div
                 style={{
-                  marginTop: 12,
-                  paddingLeft: 16,
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 12,
+                  gap: 14,
+                  paddingTop: 8,
+                  borderTop: '1px solid #e2e8f0',
                 }}
               >
                 <div
@@ -793,11 +850,12 @@ export function CreateItemPage() {
                     display: 'grid',
                     gridTemplateColumns: '160px 1fr',
                     alignItems: 'center',
+                    gap: 12,
                   }}
                 >
-                  <label style={{ fontSize: 12, color: '#4b5563' }}>Bin Location Tracking</label>
-                  <div style={{ display: 'flex', gap: 12 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                  <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Bin Location Tracking</label>
+                  <div style={{ display: 'flex', gap: 16 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
                       <input
                         type="radio"
                         name="binLocationTracking"
@@ -807,7 +865,7 @@ export function CreateItemPage() {
                       />{' '}
                       Yes
                     </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
                       <input
                         type="radio"
                         name="binLocationTracking"
@@ -825,11 +883,12 @@ export function CreateItemPage() {
                     display: 'grid',
                     gridTemplateColumns: '160px 1fr',
                     alignItems: 'center',
+                    gap: 12,
                   }}
                 >
-                  <label style={{ fontSize: 12, color: '#4b5563' }}>Inventory Tracking</label>
-                  <div style={{ display: 'flex', gap: 12 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                  <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Inventory Tracking</label>
+                  <div style={{ display: 'flex', gap: 16 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
                       <input
                         type="radio"
                         name="inventoryTracking"
@@ -839,7 +898,7 @@ export function CreateItemPage() {
                       />{' '}
                       None
                     </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
                       <input
                         type="radio"
                         name="inventoryTracking"
@@ -849,7 +908,7 @@ export function CreateItemPage() {
                       />{' '}
                       Serial
                     </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
                       <input
                         type="radio"
                         name="inventoryTracking"
@@ -865,154 +924,232 @@ export function CreateItemPage() {
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '160px 1fr 160px 1fr',
+                    gridTemplateColumns: '160px 1fr',
                     alignItems: 'center',
-                    gap: '12px 16px',
-                    marginTop: 12,
+                    gap: 12,
                   }}
                 >
-                  <label style={{ fontSize: 12, color: '#dc2626' }}>Inventory Account*</label>
-                  <Select
-                    value={formData.inventoryAccount || ''}
-                    onChange={(val) => handleSelectChange('inventoryAccount', val)}
-                    options={[
-                      { value: '', label: 'Select an account' },
-                      { value: 'Inventory Asset', label: 'Inventory Asset' },
-                    ]}
-                  />
+                  <label style={{ fontSize: 12, color: '#dc2626', fontWeight: 500 }}>Inventory Account*</label>
+                  <div style={{ maxWidth: '400px' }}>
+                    <Select
+                      value={formData.inventoryAccount || ''}
+                      onChange={(val) => handleSelectChange('inventoryAccount', val)}
+                      options={[
+                        { value: '', label: 'Select an account' },
+                        { value: 'Inventory Asset', label: 'Inventory Asset' },
+                      ]}
+                    />
+                  </div>
+                </div>
 
-                  <label style={{ fontSize: 12, color: '#dc2626' }}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '160px 1fr',
+                    alignItems: 'center',
+                    gap: 12,
+                  }}
+                >
+                  <label style={{ fontSize: 12, color: '#dc2626', fontWeight: 500 }}>
                     Inventory Valuation Method*
                   </label>
-                  <Select
-                    value={formData.inventoryValuationMethod || ''}
-                    onChange={(val) => handleSelectChange('inventoryValuationMethod', val)}
-                    options={[
-                      { value: 'FIFO (First In, First Out)', label: 'FIFO (First In, First Out)' },
-                      { value: 'Moving Average', label: 'Moving Average' },
-                    ]}
-                  />
+                  <div style={{ maxWidth: '400px' }}>
+                    <Select
+                      value={formData.inventoryValuationMethod || ''}
+                      onChange={(val) => handleSelectChange('inventoryValuationMethod', val)}
+                      options={[
+                        { value: 'FIFO (First In, First Out)', label: 'FIFO (First In, First Out)' },
+                        { value: 'Moving Average', label: 'Moving Average' },
+                      ]}
+                    />
+                  </div>
                 </div>
               </div>
             )}
           </div>
 
-          <hr style={{ border: 'none', borderTop: '1px solid #cbd5e1' }} />
+          <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '8px 0' }} />
 
           {/* Sales and Purchase Information */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-              <input
-                type="checkbox"
-                name="isSalesInfo"
-                checked={formData.isSalesInfo}
-                onChange={handleChange}
-              />
-              <h3 style={{ margin: 0, fontSize: 13, fontWeight: 500, color: '#1e293b' }}>
+          <div
+            style={{
+              maxWidth: '640px',
+              background: '#f8fafc',
+              padding: '24px',
+              borderRadius: '8px',
+              border: '1px solid #e2e8f0',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+            }}
+          >
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#1e293b' }}>
+              Sales & Purchase Information
+            </h3>
+
+            <div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#334155', marginBottom: formData.isSalesInfo ? 12 : 0 }}>
+                <input
+                  type="checkbox"
+                  name="isSalesInfo"
+                  checked={formData.isSalesInfo}
+                  onChange={handleChange}
+                />
                 Sales Information
-              </h3>
-            </div>
-            {formData.isSalesInfo && (
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '130px 240px 130px 240px',
-                  alignItems: 'center',
-                  gap: '12px 16px',
-                  paddingLeft: 16,
-                  marginBottom: 12,
-                }}
-              >
-                <label style={{ fontSize: 12, color: '#4b5563' }}>Selling Price</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  name="sellingPrice"
-                  value={formData.sellingPrice || ''}
-                  onChange={handleChange}
+              </label>
+
+              {formData.isSalesInfo && (
+                <div
                   style={{
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    border: '1px solid #d1d5db',
-                    fontSize: 12,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 14,
+                    paddingLeft: 24,
                   }}
-                />
+                >
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '140px 1fr',
+                      alignItems: 'center',
+                      gap: 12,
+                    }}
+                  >
+                    <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Selling Price</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      name="sellingPrice"
+                      value={formData.sellingPrice || ''}
+                      onChange={handleChange}
+                      style={{
+                        width: '100%',
+                        maxWidth: '400px',
+                        padding: '6px 10px',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        fontSize: 12,
+                      }}
+                    />
+                  </div>
 
-                <label style={{ fontSize: 12, color: '#4b5563' }}>Sales Account</label>
-                <Select
-                  value={formData.salesAccount || ''}
-                  onChange={(val) => handleSelectChange('salesAccount', val)}
-                  options={[
-                    { value: '', label: 'Select Account' },
-                    { value: 'Sales', label: 'Sales' },
-                    { value: 'General Income', label: 'General Income' },
-                  ]}
-                />
-              </div>
-            )}
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '140px 1fr',
+                      alignItems: 'center',
+                      gap: 12,
+                    }}
+                  >
+                    <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Sales Account</label>
+                    <div style={{ maxWidth: '400px' }}>
+                      <Select
+                        value={formData.salesAccount || ''}
+                        onChange={(val) => handleSelectChange('salesAccount', val)}
+                        options={[
+                          { value: '', label: 'Select Account' },
+                          { value: 'Sales', label: 'Sales' },
+                          { value: 'General Income', label: 'General Income' },
+                        ]}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-              <input
-                type="checkbox"
-                name="isPurchaseInfo"
-                checked={formData.isPurchaseInfo}
-                onChange={handleChange}
-              />
-              <h3 style={{ margin: 0, fontSize: 13, fontWeight: 500, color: '#1e293b' }}>
+            <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '4px 0' }} />
+
+            <div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#334155', marginBottom: formData.isPurchaseInfo ? 12 : 0 }}>
+                <input
+                  type="checkbox"
+                  name="isPurchaseInfo"
+                  checked={formData.isPurchaseInfo}
+                  onChange={handleChange}
+                />
                 Purchase Information
-              </h3>
-            </div>
-            {formData.isPurchaseInfo && (
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '130px 240px 130px 240px',
-                  alignItems: 'center',
-                  gap: '12px 16px',
-                  paddingLeft: 16,
-                }}
-              >
-                <label style={{ fontSize: 12, color: '#4b5563' }}>Cost Price</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  name="costPrice"
-                  value={formData.costPrice || ''}
-                  onChange={handleChange}
-                  style={{
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    border: '1px solid #d1d5db',
-                    fontSize: 12,
-                  }}
-                />
+              </label>
 
-                <label style={{ fontSize: 12, color: '#4b5563' }}>Purchase Account</label>
-                <Select
-                  value={formData.purchaseAccount || ''}
-                  onChange={(val) => handleSelectChange('purchaseAccount', val)}
-                  options={[
-                    { value: '', label: 'Select Account' },
-                    { value: 'Cost of Goods Sold', label: 'Cost of Goods Sold' },
-                    { value: 'Inventory', label: 'Inventory' },
-                  ]}
-                />
-              </div>
-            )}
+              {formData.isPurchaseInfo && (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 14,
+                    paddingLeft: 24,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '140px 1fr',
+                      alignItems: 'center',
+                      gap: 12,
+                    }}
+                  >
+                    <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Cost Price</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      name="costPrice"
+                      value={formData.costPrice || ''}
+                      onChange={handleChange}
+                      style={{
+                        width: '100%',
+                        maxWidth: '400px',
+                        padding: '6px 10px',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        fontSize: 12,
+                      }}
+                    />
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '140px 1fr',
+                      alignItems: 'center',
+                      gap: 12,
+                    }}
+                  >
+                    <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Purchase Account</label>
+                    <div style={{ maxWidth: '400px' }}>
+                      <Select
+                        value={formData.purchaseAccount || ''}
+                        onChange={(val) => handleSelectChange('purchaseAccount', val)}
+                        options={[
+                          { value: '', label: 'Select Account' },
+                          { value: 'Cost of Goods Sold', label: 'Cost of Goods Sold' },
+                          { value: 'Inventory', label: 'Inventory' },
+                        ]}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
-          <hr style={{ border: 'none', borderTop: '1px solid #cbd5e1' }} />
+          <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '8px 0' }} />
 
           {/* Custom Fields */}
           {orgId && (
-            <div>
+            <div
+              style={{
+                maxWidth: '640px',
+                background: '#f8fafc',
+                padding: '24px',
+                borderRadius: '8px',
+                border: '1px solid #e2e8f0',
+              }}
+            >
               <h3
                 style={{
-                  fontSize: '16px',
-                  fontWeight: 500,
-                  marginBottom: '12px',
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  marginBottom: '16px',
                   color: '#1e293b',
                 }}
               >
@@ -1031,33 +1168,34 @@ export function CreateItemPage() {
 
           <div
             style={{
-              height: '44px',
+              height: '56px',
               boxSizing: 'border-box',
               position: 'fixed',
               bottom: 0,
               left: 220,
               right: 0,
               background: '#fff',
-              padding: '0 24px',
+              padding: '0 32px',
               borderTop: '1px solid #cbd5e1',
               display: 'flex',
               alignItems: 'center',
               gap: '12px',
               zIndex: 100,
+              boxShadow: '0 -2px 10px rgba(0,0,0,0.05)',
             }}
           >
             <button
               type="submit"
               disabled={createMutation.isPending}
               style={{
-                padding: '6px 20px',
+                padding: '8px 24px',
                 background: '#0062ff',
                 color: 'white',
                 border: 'none',
-                borderRadius: '4px',
+                borderRadius: '6px',
                 cursor: createMutation.isPending ? 'not-allowed' : 'pointer',
                 fontWeight: 500,
-                fontSize: '12px',
+                fontSize: '13px',
                 opacity: createMutation.isPending ? 0.7 : 1,
               }}
             >
@@ -1067,14 +1205,14 @@ export function CreateItemPage() {
               type="button"
               onClick={() => navigate(`/organizations/${orgId}/items`)}
               style={{
-                padding: '6px 20px',
+                padding: '8px 24px',
                 background: 'white',
-                color: '#333',
-                border: '1px solid #d1d5db',
-                borderRadius: '4px',
+                color: '#334155',
+                border: '1px solid #cbd5e1',
+                borderRadius: '6px',
                 cursor: 'pointer',
                 fontWeight: 500,
-                fontSize: '12px',
+                fontSize: '13px',
               }}
             >
               Cancel

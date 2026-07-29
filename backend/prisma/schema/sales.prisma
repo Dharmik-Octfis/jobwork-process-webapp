@@ -1,47 +1,34 @@
 model Customer {
-  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String @map("organization_id") @db.Uuid
-
-  // Primary Contact
-  primaryContactSalutation String? @map("primary_contact_salutation") @db.VarChar(20)
-  primaryContactFirstName  String? @map("primary_contact_first_name") @db.VarChar(100)
-  primaryContactLastName   String? @map("primary_contact_last_name") @db.VarChar(100)
-
-  // Main Fields
-  customerType   String  @default("business") @map("customer_type") @db.VarChar(20)
-  companyName    String? @map("company_name") @db.VarChar(255)
-  contactName   String  @default("") @map("display_name") @db.VarChar(255)
-  contactNumber String  @map("customer_number") @db.VarChar(50)
-  email         String? @map("email_address") @db.VarChar(255)
-  phone         String? @map("work_phone") @db.VarChar(50)
-  mobile        String? @map("mobile_phone") @db.VarChar(50)
-
-  // Other Details
-  currency     String? @db.VarChar(10)
-  paymentTerms String? @map("payment_terms") @db.VarChar(100)
-  notes        String?
-
-  addresses CustomerAddress[]
-
-  status String @default("active") @db.VarChar(20)
-
-  // Per-org dynamic custom fields — keyed by CustomFieldDefinition.key. See customfields.prisma.
-  customFields Json @default("{}") @map("custom_fields")
-
-  isDeleted Boolean  @default(false) @map("is_deleted")
-  createdBy String?  @map("created_by") @db.Uuid
-  updatedBy String?  @map("updated_by") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  contactPersons CustomerContactPerson[]
-  activities     CustomerActivity[]
-  comments       CustomerComment[]
-
-  deliveryPurchaseOrders PurchaseOrder[]
-  createdByUser          User?           @relation("CustomerCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser          User?           @relation("CustomerUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  id                       String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId           String                  @map("organization_id") @db.Uuid
+  primaryContactSalutation String?                 @map("primary_contact_salutation") @db.VarChar(20)
+  primaryContactFirstName  String?                 @map("primary_contact_first_name") @db.VarChar(100)
+  primaryContactLastName   String?                 @map("primary_contact_last_name") @db.VarChar(100)
+  companyName              String?                 @map("company_name") @db.VarChar(255)
+  contactName              String                  @default("") @map("display_name") @db.VarChar(255)
+  contactNumber            String                  @map("customer_number") @db.VarChar(50)
+  email                    String?                 @map("email_address") @db.VarChar(255)
+  phone                    String?                 @map("work_phone") @db.VarChar(50)
+  mobile                   String?                 @map("mobile_phone") @db.VarChar(50)
+  currency                 String?                 @db.VarChar(10)
+  paymentTerms             String?                 @map("payment_terms") @db.VarChar(100)
+  status                   String                  @default("active") @db.VarChar(20)
+  customFields             Json                    @default("{}") @map("custom_fields")
+  isDeleted                Boolean                 @default(false) @map("is_deleted")
+  createdBy                String?                 @map("created_by") @db.Uuid
+  updatedBy                String?                 @map("updated_by") @db.Uuid
+  createdAt                DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  customerType             String                  @default("business") @map("customer_type") @db.VarChar(20)
+  notes                    String?
+  activities               CustomerActivity[]
+  addresses                CustomerAddress[]
+  comments                 CustomerComment[]
+  contactPersons           CustomerContactPerson[]
+  createdByUser            User?                   @relation("CustomerCreatedBy", fields: [createdBy], references: [id])
+  organization             Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedByUser            User?                   @relation("CustomerUpdatedBy", fields: [updatedBy], references: [id])
+  deliveryPurchaseOrders   PurchaseOrder[]
 
   @@unique([organizationId, contactNumber])
   @@map("customers")

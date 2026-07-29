@@ -9,18 +9,26 @@ import type {
   ForgotPasswordInput,
   ResetPasswordInput,
   UpdateProfileInput,
+  ChangePasswordInput,
 } from './auth.schemas.ts';
 import * as authService from './auth.service.ts';
 
 export async function signup(req: Request, res: Response): Promise<void> {
-  const { accessToken, refreshToken, user } = await authService.signup(req.body as SignupInput);
+  const { accessToken, refreshToken, user } = await authService.signup(
+    req.body as SignupInput,
+    req.get('user-agent') ?? 'unknown',
+  );
 
   setRefreshTokenAsCookie(res, refreshToken);
   sendSuccess(res, { user, accessToken }, 'Account created.', 201);
 }
 
 export async function login(req: Request, res: Response): Promise<void> {
-  const { accessToken, refreshToken, user } = await authService.login(req.body as LoginInput);
+  const userAgent = req.get('user-agent') ?? 'unknown';
+  const { accessToken, refreshToken, user } = await authService.login(
+    req.body as LoginInput,
+    userAgent,
+  );
 
   setRefreshTokenAsCookie(res, refreshToken);
   sendSuccess(res, { user, accessToken }, 'Signed in.');
@@ -83,7 +91,17 @@ export async function updateProfile(req: Request, res: Response): Promise<void> 
   sendSuccess(res, { user });
 }
 
+export async function changePassword(req: Request, res: Response): Promise<void> {
+  if (!req.user) {
+    throw new ApiError(401, 'Sign in to continue.');
+  }
+
+  await authService.changePassword(req.user.id, req.body as ChangePasswordInput);
+  sendSuccess(res, null, 'Password changed successfully.');
+}
+
 export async function uploadAvatar(req: Request, res: Response): Promise<void> {
+
   if (!req.user) {
     throw new ApiError(401, 'Sign in to continue.');
   }

@@ -141,7 +141,6 @@ export function CustomerForm({
     border: '1px solid #d1d5db',
     borderRadius: '4px',
   };
-  const _selectStyle = { ...inputStyle };
   const tabBtnStyle = (isActive: boolean) => ({
     padding: '12px 0',
     border: 'none',

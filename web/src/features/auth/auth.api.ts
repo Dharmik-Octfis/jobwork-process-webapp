@@ -52,6 +52,15 @@ export async function resetPassword(
   return data;
 }
 
+export async function changePassword(
+  input: import('./auth.schemas').ChangePasswordInput,
+): Promise<{ message: string }> {
+  const { confirmPassword: _confirmPassword, ...payload } = input;
+  const { data } = await apiClient.post<{ message: string }>(endpoints.auth.changePassword, payload);
+  return data;
+}
+
+
 /**
  * POST /auth/logout — the server ends the session using the Bearer access token
  * (or the refresh cookie as a fallback) and clears the refresh cookie. No body

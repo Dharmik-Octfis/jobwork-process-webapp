@@ -234,7 +234,7 @@ export function CurrencyFormModal({
                       value={field.value}
                       onChange={(val) => {
                         field.onChange(val);
-                        const option = currencyOptions.find((opt) => opt.value === val);
+                        const option = currencyOptions.find((opt: { label: string; value: string; name?: string; symbol?: string }) => opt.value === val);
                         if (option) {
                           const name = option.name || option.label.split(' - ')[1];
                           if (name) setValue('currencyName', name);

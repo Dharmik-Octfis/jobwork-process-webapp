@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type ReactNode } from 'react';
 import {
   NavLink,
   Outlet,
@@ -14,6 +14,7 @@ import {
   FileText,
   Users,
   LogOut,
+  KeyRound,
   User as UserIcon,
   Settings,
   LayoutDashboard,
@@ -23,6 +24,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { ChangePasswordModal } from '../../features/profile/ChangePasswordModal';
 import { useAuth } from '../../providers/auth-context';
 import { useLogout } from '../../features/auth/useLogout';
 import { organizationsApi } from '../../features/organizations/organizations.api';
@@ -650,6 +652,51 @@ function ModuleNavGroup({
   );
 }
 
+function ProfileMenuItem({
+  icon,
+  label,
+  onClick,
+  variant = 'default',
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+  variant?: 'default' | 'danger';
+}) {
+  const isDanger = variant === 'danger';
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        width: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '10px 16px',
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        fontSize: 13,
+        fontWeight: 500,
+        color: isDanger ? '#ef4444' : 'var(--color-text)',
+        textAlign: 'left',
+        transition: 'background-color 0.15s ease',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = isDanger ? '#fef2f2' : 'var(--color-bg)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = 'none';
+      }}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
 function ProfileDropdown({
   user,
   logoutMutation,
@@ -659,6 +706,7 @@ function ProfileDropdown({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isSignoutDialogOpen, setIsSignoutDialogOpen] = useState(false);
+  const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
@@ -710,118 +758,49 @@ function ProfileDropdown({
             top: '100%',
             right: 0,
             marginTop: 8,
-            width: 350,
+            minWidth: 180,
             background: 'var(--color-surface)',
             border: '1px solid var(--color-border)',
             borderRadius: 'var(--radius-md)',
             boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
             zIndex: 20,
             overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column',
+            padding: '6px 0',
           }}
         >
-          <div style={{ padding: '16px', position: 'relative' }}>
-            <button
-              onClick={() => setIsOpen(false)}
-              style={{
-                position: 'absolute',
-                top: 16,
-                right: 16,
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: '#ef4444',
-              }}
-            >
-              <X size={16} />
-            </button>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16 }}>
-              <div
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: '50%',
-                  background: 'var(--color-primary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 16,
-                  color: 'white',
-                  fontWeight: 600,
-                  overflow: 'hidden',
-                  flexShrink: 0,
-                }}
-              >
-                {user?.avatar_url ? (
-                  <img
-                    src={user.avatar_url}
-                    alt={user.fullName}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                ) : (
-                  <span>
-                    {(user?.firstName?.charAt(0) || 'U').toUpperCase()}
-                    {(user?.lastName?.charAt(0) || '').toUpperCase()}
-                  </span>
-                )}
-              </div>
-              <div>
-                <div style={{ fontWeight: 500, fontSize: 14, color: '#1e293b' }}>
-                  {user?.fullName || 'User'}
-                </div>
-                <div style={{ fontSize: 13, color: '#64748b' }}>{user?.email || ''}</div>
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                borderTop: '1px solid #f1f5f9',
-                paddingTop: 16,
-              }}
-            >
-              <button
-                onClick={() => {
-                  setIsOpen(false);
-                  navigate('/profile');
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#2563eb',
-                  fontSize: 13,
-                  cursor: 'pointer',
-                  padding: 0,
-                }}
-              >
-                Edit Profile
-              </button>
-              <button
-                onClick={() => {
-                  setIsOpen(false);
-                  setIsSignoutDialogOpen(true);
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#ef4444',
-                  fontSize: 13,
-                  cursor: 'pointer',
-                  padding: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                <LogOut size={16} /> Sign Out
-              </button>
-            </div>
-          </div>
+          <ProfileMenuItem
+            icon={<UserIcon size={16} />}
+            label="Edit Profile"
+            onClick={() => {
+              setIsOpen(false);
+              navigate('/profile');
+            }}
+          />
+          <ProfileMenuItem
+            icon={<KeyRound size={16} />}
+            label="Change Password"
+            onClick={() => {
+              setIsOpen(false);
+              setIsChangePasswordModalOpen(true);
+            }}
+          />
+          <div style={{ height: 1, background: 'var(--color-border)', margin: '6px 0' }} />
+          <ProfileMenuItem
+            icon={<LogOut size={16} />}
+            label="Sign Out"
+            variant="danger"
+            onClick={() => {
+              setIsOpen(false);
+              setIsSignoutDialogOpen(true);
+            }}
+          />
         </div>
       )}
+
+      <ChangePasswordModal
+        isOpen={isChangePasswordModalOpen}
+        onClose={() => setIsChangePasswordModalOpen(false)}
+      />
 
       <ConfirmDialog
         isOpen={isSignoutDialogOpen}

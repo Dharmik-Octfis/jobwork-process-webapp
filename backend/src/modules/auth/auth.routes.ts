@@ -8,8 +8,11 @@ import {
   forgotPasswordSchema,
   resetPasswordSchema,
   updateProfileSchema,
+  changePasswordSchema,
 } from './auth.schemas.ts';
+
 import { openApiRegistry } from '../../config/openapi.ts';
+
 
 openApiRegistry.registerPath({
   method: 'post',
@@ -71,6 +74,12 @@ authRouter.post(
   authController.uploadAvatar,
 );
 
+authRouter.post(
+  '/change-password',
+  authenticate,
+  validateBody(changePasswordSchema),
+  authController.changePassword,
+);
 authRouter.post(
   '/forgot-password',
   validateBody(forgotPasswordSchema),

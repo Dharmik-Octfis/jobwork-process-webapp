@@ -9,7 +9,7 @@ import {
   type RefreshTokenPayload,
 } from '../../lib/jwt.ts';
 import { hashPassword, verifyPassword } from '../../lib/password.ts';
-import type { LoginInput, SignupInput, ResetPasswordInput } from './auth.schemas.ts';
+import type { LoginInput, SignupInput, ResetPasswordInput, ChangePasswordInput } from './auth.schemas.ts';
 import { sendOtpEmail } from '../../lib/mailer.ts';
 import type { AuthResult, PublicUser } from './auth.types.ts';
 import { env } from '../../config/env.ts';
@@ -27,6 +27,7 @@ const publicUserSelect = {
   fullName: true,
   email: true,
   avatarUrl: true,
+  userAgent: true,
 } as const;
 
 async function resolveAvatarUrl(avatarUrl: string | null | undefined): Promise<string | null> {
@@ -49,6 +50,7 @@ export async function formatPublicUser(user: {
   fullName: string;
   email: string;
   avatarUrl?: string | null;
+  userAgent?: string | null;
 }): Promise<PublicUser> {
   const signedAvatarUrl = await resolveAvatarUrl(user.avatarUrl);
   return {
@@ -58,6 +60,7 @@ export async function formatPublicUser(user: {
     fullName: user.fullName,
     email: user.email,
     avatar_url: signedAvatarUrl,
+    userAgent: user.userAgent ?? 'unknown', 
   };
 }
 
@@ -110,7 +113,7 @@ function getDecoyHash(): Promise<string> {
   return decoyHash;
 }
 
-export async function signup(input: SignupInput): Promise<AuthResult> {
+export async function signup(input: SignupInput, userAgent: string): Promise<AuthResult> {
   const passwordHash = await hashPassword(input.password);
   const fullName = `${input.firstName} ${input.lastName}`.trim();
 
@@ -122,11 +125,12 @@ export async function signup(input: SignupInput): Promise<AuthResult> {
         fullName,
         email: input.email,
         passwordHash,
+        userAgent,
       },
       select: publicUserSelect,
     });
 
-    return await issueTokens(user);
+    return await issueTokens(await formatPublicUser(user));
   } catch (error) {
     // Checking `findUnique` first would still race: two concurrent signups for
     // the same email both see "available", and one loses at the index. The
@@ -138,7 +142,7 @@ export async function signup(input: SignupInput): Promise<AuthResult> {
   }
 }
 
-export async function login(input: LoginInput): Promise<AuthResult> {
+export async function login(input: LoginInput, userAgent: string): Promise<AuthResult> {
   const user = await prisma.user.findUnique({
     where: { email: input.email },
     select: { ...publicUserSelect, passwordHash: true, isActive: true, isDeleted: true },
@@ -155,6 +159,14 @@ export async function login(input: LoginInput): Promise<AuthResult> {
     throw ApiError.unauthorized();
   }
 
+  // Persist the latest browser/device agent so account details stay current,
+  // even for users created before this column was introduced.
+  const updatedUser = await prisma.user.update({
+    where: { id: user.id },
+    data: { userAgent: userAgent || 'unknown' },
+    select: publicUserSelect,
+  });
+
   // Checked after the password so a disabled account can't be distinguished
   // from a wrong password by anyone who doesn't already know the password.
   // Both flags, via the shared predicate — `isActive` alone used to let a
@@ -163,7 +175,7 @@ export async function login(input: LoginInput): Promise<AuthResult> {
     throw new ApiError(403, 'This account has been disabled.');
   }
 
-  return await issueTokens(await formatPublicUser(user));
+  return await issueTokens(await formatPublicUser(updatedUser));
 }
 
 /**
@@ -346,3 +358,27 @@ export async function resetPassword(input: ResetPasswordInput): Promise<void> {
     await tx.passwordResetToken.delete({ where: { id: token.id } });
   });
 }
+
+export async function changePassword(userId: string, input: ChangePasswordInput): Promise<void> {
+  const user = await prisma.user.findFirst({
+    where: { id: userId, ...ACTIVE_USER },
+    select: { id: true, passwordHash: true },
+  });
+
+  if (!user || !user.passwordHash) {
+    throw new ApiError(400, 'Current password is incorrect.');
+  }
+
+  const isValidPassword = await verifyPassword(user.passwordHash, input.currentPassword);
+  if (!isValidPassword) {
+    throw new ApiError(400, 'Current password is incorrect.');
+  }
+
+  const newPasswordHash = await hashPassword(input.newPassword);
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash: newPasswordHash },
+  });
+}
+
