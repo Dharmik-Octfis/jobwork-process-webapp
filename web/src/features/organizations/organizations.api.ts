@@ -1,10 +1,15 @@
 import { apiClient } from '../../api/client';
-import type { Organization, CreateOrganizationData, UpdateOrganizationData } from './organizations.schemas';
+import type {
+  Organization,
+  CreateOrganizationData,
+  UpdateOrganizationData,
+} from './organizations.schemas';
 
 /* eslint-disable @typescript-eslint/naming-convention */
 type RawOrganization = Partial<Organization> & {
   dial_code?: string;
   organization_id?: string;
+  org_code?: string;
   tax_id_value?: string;
   account_created_date?: string;
   address?: Organization['address'] & {
@@ -18,18 +23,26 @@ export const organizationsApi = {
   getOrganizations: async (): Promise<Organization[]> => {
     const response = await apiClient.get('/organizations');
     const orgs = response.data.organizations || response.data;
-    return Array.isArray(orgs) ? orgs.map((org: RawOrganization) => ({
-      ...org,
-      dialCode: org.dialCode || org.dial_code,
-      organizationId: org.organizationId || org.organization_id,
-      taxIdValue: org.taxIdValue || org.tax_id_value,
-      accountCreatedDate: org.accountCreatedDate || org.account_created_date,
-      address: org.address ? {
-        ...org.address,
-        streetAddress1: org.address.streetAddress1 || org.address.street_address1,
-        stateCode: org.address.stateCode || org.address.state_code,
-      } : undefined,
-    }) as Organization) : orgs;
+    return Array.isArray(orgs)
+      ? orgs.map(
+          (org: RawOrganization) =>
+            ({
+              ...org,
+              dialCode: org.dialCode || org.dial_code,
+              organizationId: org.organizationId || org.organization_id,
+              taxIdValue: org.taxIdValue || org.tax_id_value,
+              orgCode: org.orgCode || org.org_code,
+              accountCreatedDate: org.accountCreatedDate || org.account_created_date,
+              address: org.address
+                ? {
+                    ...org.address,
+                    streetAddress1: org.address.streetAddress1 || org.address.street_address1,
+                    stateCode: org.address.stateCode || org.address.state_code,
+                  }
+                : undefined,
+            }) as Organization,
+        )
+      : orgs;
   },
 
   createOrganization: async (data: CreateOrganizationData): Promise<Organization> => {
@@ -38,11 +51,13 @@ export const organizationsApi = {
       ...data,
       dial_code: data.dialCode,
       tax_id_value: data.taxIdValue,
-      address: data.address ? {
-        ...data.address,
-        street_address1: data.address.streetAddress1,
-        state_code: data.address.stateCode,
-      } : undefined,
+      address: data.address
+        ? {
+            ...data.address,
+            street_address1: data.address.streetAddress1,
+            state_code: data.address.stateCode,
+          }
+        : undefined,
     };
     /* eslint-enable @typescript-eslint/naming-convention */
     const response = await apiClient.post('/organizations', payload);
@@ -52,12 +67,15 @@ export const organizationsApi = {
       dialCode: org.dialCode || org.dial_code,
       organizationId: org.organizationId || org.organization_id,
       taxIdValue: org.taxIdValue || org.tax_id_value,
+      orgCode: org.orgCode || org.org_code,
       accountCreatedDate: org.accountCreatedDate || org.account_created_date,
-      address: org.address ? {
-        ...org.address,
-        streetAddress1: org.address.streetAddress1 || org.address.street_address1,
-        stateCode: org.address.stateCode || org.address.state_code,
-      } : undefined,
+      address: org.address
+        ? {
+            ...org.address,
+            streetAddress1: org.address.streetAddress1 || org.address.street_address1,
+            stateCode: org.address.stateCode || org.address.state_code,
+          }
+        : undefined,
     };
   },
 
@@ -67,11 +85,13 @@ export const organizationsApi = {
       ...data,
       dial_code: data.dialCode,
       tax_id_value: data.taxIdValue,
-      address: data.address ? {
-        ...data.address,
-        street_address1: data.address.streetAddress1,
-        state_code: data.address.stateCode,
-      } : undefined,
+      address: data.address
+        ? {
+            ...data.address,
+            street_address1: data.address.streetAddress1,
+            state_code: data.address.stateCode,
+          }
+        : undefined,
     };
     /* eslint-enable @typescript-eslint/naming-convention */
     const response = await apiClient.put(`/organizations/${id}`, payload);
@@ -81,12 +101,15 @@ export const organizationsApi = {
       dialCode: org.dialCode || org.dial_code,
       organizationId: org.organizationId || org.organization_id,
       taxIdValue: org.taxIdValue || org.tax_id_value,
+      orgCode: org.orgCode || org.org_code,
       accountCreatedDate: org.accountCreatedDate || org.account_created_date,
-      address: org.address ? {
-        ...org.address,
-        streetAddress1: org.address.streetAddress1 || org.address.street_address1,
-        stateCode: org.address.stateCode || org.address.state_code,
-      } : undefined,
+      address: org.address
+        ? {
+            ...org.address,
+            streetAddress1: org.address.streetAddress1 || org.address.street_address1,
+            stateCode: org.address.stateCode || org.address.state_code,
+          }
+        : undefined,
     };
   },
 
@@ -110,13 +133,16 @@ export const organizationsApi = {
       dialCode: org.dialCode || org.dial_code,
       organizationId: org.organizationId || org.organization_id,
       taxIdValue: org.taxIdValue || org.tax_id_value,
+      orgCode: org.orgCode || org.org_code,
       logo_url: org.logo_url,
       accountCreatedDate: org.accountCreatedDate || org.account_created_date,
-      address: org.address ? {
-        ...org.address,
-        streetAddress1: org.address.streetAddress1 || org.address.street_address1,
-        stateCode: org.address.stateCode || org.address.state_code,
-      } : undefined,
+      address: org.address
+        ? {
+            ...org.address,
+            streetAddress1: org.address.streetAddress1 || org.address.street_address1,
+            stateCode: org.address.stateCode || org.address.state_code,
+          }
+        : undefined,
     };
   },
 
@@ -125,5 +151,3 @@ export const organizationsApi = {
     return response.data;
   },
 };
-
-

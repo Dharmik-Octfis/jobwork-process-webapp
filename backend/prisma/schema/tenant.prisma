@@ -105,6 +105,15 @@ model PasswordResetToken {
 
 model Organization {
   id                     String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Human-readable support code shown under the org name in the switcher, so a
+  /// customer can read it to support without spelling out a uuid. Ten random
+  /// digits — NOT an identifier: never in a URL, never an FK, never a credential.
+  /// Random rather than a sequence so codes don't leak tenant count or signup
+  /// order. Stored as text, not bigint, because Prisma maps bigint to JS BigInt
+  /// and JSON.stringify throws on it, which would break every sendSuccess payload.
+  /// No DB default on purpose — the app supplies it, so a missing value is a loud
+  /// NOT NULL error rather than a silently auto-filled one.
+  orgCode                String                  @unique @map("org_code") @db.VarChar(10)
   name                   String
   phone                  String?
   email                  String?

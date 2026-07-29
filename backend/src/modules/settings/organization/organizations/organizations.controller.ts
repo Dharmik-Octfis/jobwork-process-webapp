@@ -6,13 +6,18 @@ import { sendSuccess } from '../../../../lib/apiResponse.ts';
 import { createOrganizationSchema, updateOrganizationSchema } from './organizations.schemas.ts';
 import { seedSystemTemplates } from '../permission-templates/permission-templates.service.ts';
 import { seedSystemRoles } from '../roles/roles.service.ts';
+import { withOrgCodeRetry } from './orgCode.ts';
 import { uploadFile, getFileUrl } from '../../../../lib/storage.ts';
 
 import type { Organization, Prisma, Industry } from '../../../../../generated/prisma/client.ts';
 
 async function resolveLogoUrl(logoUrl: string | null | undefined): Promise<string | null> {
   if (!logoUrl) return null;
-  if (logoUrl.startsWith('http://') || logoUrl.startsWith('https://') || logoUrl.startsWith('data:')) {
+  if (
+    logoUrl.startsWith('http://') ||
+    logoUrl.startsWith('https://') ||
+    logoUrl.startsWith('data:')
+  ) {
     return logoUrl;
   }
   try {
@@ -28,6 +33,9 @@ async function mapToZohoFormat(org: Organization & { industry?: Pick<Industry, '
   const logoUrl = await resolveLogoUrl(org.logoUrl);
   return {
     organization_id: org.id,
+    // The support code the customer reads to support. Additive — `organization_id`
+    // is still the uuid, and still the only value any client should send back.
+    org_code: org.orgCode,
     name: org.name,
     industryType: org.industryCode,
     email: org.email,
@@ -62,52 +70,59 @@ export async function createOrganization(req: Request, res: Response, next: Next
 
     const orgId = crypto.randomUUID();
 
-    const organization = await runAsTenant(orgId, async (tx) => {
-      const created = await tx.organization.create({
-        data: {
-          id: orgId,
-          name: data.name,
-          industryCode: data.industryType,
-          email: data.email,
-          phone: data.phone,
-          dialCode: data.dial_code,
-          taxIdValue: data.tax_id_value,
-          orgAddress: data.address?.street_address1 || null,
-          countryCode: data.address?.country || null,
-          stateCode: data.address?.state_code || null,
-          cityId: data.address?.city || null,
-          zip: data.address?.zip || null,
-          createdBy: userId,
-          updatedBy: userId,
-        },
-      });
+    // The retry wraps the ENTIRE transaction rather than the create inside it: a
+    // unique violation aborts the surrounding Postgres transaction, so re-rolling
+    // the code within this callback could never commit. A rolled-back attempt
+    // leaves nothing behind, so reusing `orgId` across attempts is safe.
+    const organization = await withOrgCodeRetry((orgCode) =>
+      runAsTenant(orgId, async (tx) => {
+        const created = await tx.organization.create({
+          data: {
+            id: orgId,
+            orgCode,
+            name: data.name,
+            industryCode: data.industryType,
+            email: data.email,
+            phone: data.phone,
+            dialCode: data.dial_code,
+            taxIdValue: data.tax_id_value,
+            orgAddress: data.address?.street_address1 || null,
+            countryCode: data.address?.country || null,
+            stateCode: data.address?.state_code || null,
+            cityId: data.address?.city || null,
+            zip: data.address?.zip || null,
+            createdBy: userId,
+            updatedBy: userId,
+          },
+        });
 
-      // Seed both axes, then make the creator an owner carrying one of each:
-      // roles are job titles (Owner, Manager, Staff), templates are the access
-      // (Owner, Full access, View only) — see SYSTEM_ROLES / SYSTEM_TEMPLATES.
-      // Only the two Owner rows are `isSystem` (immutable, never assignable —
-      // ownership comes from creating the org, not from being given the row).
-      // The other four are ordinary editable rows the org owns from this moment,
-      // seeded so neither settings screen is empty on day one; an admin may
-      // rename, re-tick, or delete them. Only the Owner ids are returned here
-      // because they are the only ones this membership needs.
-      const { ownerTemplateId } = await seedSystemTemplates(tx, orgId, userId);
-      const { ownerRoleId } = await seedSystemRoles(tx, orgId, userId);
+        // Seed both axes, then make the creator an owner carrying one of each:
+        // roles are job titles (Owner, Manager, Staff), templates are the access
+        // (Owner, Full access, View only) — see SYSTEM_ROLES / SYSTEM_TEMPLATES.
+        // Only the two Owner rows are `isSystem` (immutable, never assignable —
+        // ownership comes from creating the org, not from being given the row).
+        // The other four are ordinary editable rows the org owns from this moment,
+        // seeded so neither settings screen is empty on day one; an admin may
+        // rename, re-tick, or delete them. Only the Owner ids are returned here
+        // because they are the only ones this membership needs.
+        const { ownerTemplateId } = await seedSystemTemplates(tx, orgId, userId);
+        const { ownerRoleId } = await seedSystemRoles(tx, orgId, userId);
 
-      await tx.membership.create({
-        data: {
-          userId,
-          organizationId: orgId,
-          isOwner: true,
-          roleId: ownerRoleId,
-          permissionTemplateId: ownerTemplateId,
-          createdBy: userId,
-          updatedBy: userId,
-        },
-      });
+        await tx.membership.create({
+          data: {
+            userId,
+            organizationId: orgId,
+            isOwner: true,
+            roleId: ownerRoleId,
+            permissionTemplateId: ownerTemplateId,
+            createdBy: userId,
+            updatedBy: userId,
+          },
+        });
 
-      return created;
-    });
+        return created;
+      }),
+    );
 
     // We emulate Zoho's generic envelope: { code: 0, message: "success", organization: { ... } }
     res.status(201).json({
@@ -177,10 +192,13 @@ export async function updateOrganization(req: Request, res: Response, next: Next
     if (data.tax_id_value !== undefined) updateData.taxIdValue = data.tax_id_value;
 
     if (data.address !== undefined) {
-      if (data.address.street_address1 !== undefined) updateData.orgAddress = data.address.street_address1;
+      if (data.address.street_address1 !== undefined)
+        updateData.orgAddress = data.address.street_address1;
       if (data.address.country !== undefined) updateData.countryCode = data.address.country;
-      if (data.address.state_code !== undefined) updateData.stateCode = data.address.state_code === '' ? null : data.address.state_code;
-      if (data.address.city !== undefined) updateData.cityId = data.address.city === '' ? null : data.address.city;
+      if (data.address.state_code !== undefined)
+        updateData.stateCode = data.address.state_code === '' ? null : data.address.state_code;
+      if (data.address.city !== undefined)
+        updateData.cityId = data.address.city === '' ? null : data.address.city;
       if (data.address.zip !== undefined) updateData.zip = data.address.zip;
     }
 
@@ -276,4 +294,3 @@ export async function deleteOrganization(req: Request, res: Response, next: Next
     next(error);
   }
 }
-

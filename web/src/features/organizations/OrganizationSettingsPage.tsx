@@ -12,7 +12,12 @@ import './CreateOrganizationForm.css'; // Re-use styles
 
 type MasterData = {
   industries: { id: string; code: string; name: string }[];
-  states: { code: string; name: string; countryCode: string; cities: { id: string; name: string }[] }[];
+  states: {
+    code: string;
+    name: string;
+    countryCode: string;
+    cities: { id: string; name: string }[];
+  }[];
   countries: { id: string; code: string; name: string; dialCode: string }[];
 };
 
@@ -25,7 +30,12 @@ export function OrganizationSettingsPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deleteConfirmName, setDeleteConfirmName] = useState('');
 
-  const { data: organizations, isLoading, isError, error } = useQuery({
+  const {
+    data: organizations,
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
     queryKey: ['organizations'],
     queryFn: () => organizationsApi.getOrganizations(),
     staleTime: 5 * 60 * 1000,
@@ -94,7 +104,10 @@ export function OrganizationSettingsPage() {
   const selectedStateCode = watch('address.stateCode');
 
   // Filter states by selected country
-  const availableStates = masterData?.states.filter((s) => !selectedCountryCode || s.countryCode === selectedCountryCode) || [];
+  const availableStates =
+    masterData?.states.filter(
+      (s) => !selectedCountryCode || s.countryCode === selectedCountryCode,
+    ) || [];
 
   // Clear city when state changes, unless we are just initializing
   const [isInitializing, setIsInitializing] = useState(true);
@@ -148,6 +161,23 @@ export function OrganizationSettingsPage() {
 
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>(activeOrg?.logo_url || null);
+
+  const [copiedOrgCode, setCopiedOrgCode] = useState(false);
+
+  // `navigator.clipboard` is undefined outside a secure context — plain http on a
+  // LAN IP, which is exactly how this gets demoed — so the failure path has to do
+  // something real. A button that silently does nothing reads as broken, and this
+  // is the one value on the page a customer actually needs to get out of the app.
+  const copyOrgCode = async () => {
+    if (!activeOrg?.orgCode) return;
+    try {
+      await navigator.clipboard.writeText(activeOrg.orgCode);
+      setCopiedOrgCode(true);
+      setTimeout(() => setCopiedOrgCode(false), 1500);
+    } catch {
+      window.prompt('Copy your Organization Code:', activeOrg.orgCode);
+    }
+  };
 
   useEffect(() => {
     if (activeOrg?.logo_url) {
@@ -351,7 +381,8 @@ export function OrganizationSettingsPage() {
                   Organization Logo
                 </label>
                 <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: '0 0 8px 0' }}>
-                  Upload your company logo (`logo_url`). Recommended format: PNG, JPG, or SVG up to 2MB.
+                  Upload your company logo (`logo_url`). Recommended format: PNG, JPG, or SVG up to
+                  2MB.
                 </p>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <input
@@ -362,7 +393,9 @@ export function OrganizationSettingsPage() {
                     style={{ fontSize: 13 }}
                   />
                   {uploadingLogo && (
-                    <span style={{ fontSize: 12, color: 'var(--color-primary)' }}>Uploading...</span>
+                    <span style={{ fontSize: 12, color: 'var(--color-primary)' }}>
+                      Uploading...
+                    </span>
                   )}
                 </div>
               </div>
@@ -387,6 +420,53 @@ export function OrganizationSettingsPage() {
               onSubmit={handleSubmit(onSubmit)}
               style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}
             >
+              {/* Org ID — read-only. The only field here a customer needs to read
+                  *out* rather than edit. Generated once at creation and never
+                  changes, so it is deliberately not part of the form state. */}
+              <div className="org-form-group">
+                <label>Organization Code</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <span
+                    style={{
+                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                      fontSize: 15,
+                      letterSpacing: '0.08em',
+                      color: 'var(--color-text)',
+                    }}
+                  >
+                    {activeOrg.orgCode ?? '—'}
+                  </span>
+                  {activeOrg.orgCode && (
+                    // type="button" is load-bearing: a bare <button> inside a form
+                    // defaults to type="submit", so copying would save the org.
+                    <button
+                      type="button"
+                      onClick={copyOrgCode}
+                      style={{
+                        border: '1px solid var(--color-border)',
+                        background: 'var(--color-surface)',
+                        color: 'var(--color-text-muted)',
+                        borderRadius: 6,
+                        padding: '2px 8px',
+                        fontSize: 12,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {copiedOrgCode ? 'Copied' : 'Copy'}
+                    </button>
+                  )}
+                </div>
+                <p
+                  style={{
+                    marginTop: 4,
+                    fontSize: 12,
+                    color: 'var(--color-text-muted)',
+                  }}
+                >
+                  Quote this when you contact support.
+                </p>
+              </div>
+
               {/* Name */}
               <div className="org-form-group">
                 <label>
@@ -412,7 +492,12 @@ export function OrganizationSettingsPage() {
                   render={({ field }) => (
                     <div className={errors.industryType ? 'error' : ''}>
                       <SearchableSelect
-                        options={masterData?.industries.map(ind => ({ label: ind.name, value: ind.code })) || []}
+                        options={
+                          masterData?.industries.map((ind) => ({
+                            label: ind.name,
+                            value: ind.code,
+                          })) || []
+                        }
                         value={field.value}
                         onChange={field.onChange}
                         placeholder="Select Industry"
@@ -480,7 +565,10 @@ export function OrganizationSettingsPage() {
                     render={({ field }) => (
                       <div className={errors.address?.country ? 'error' : ''}>
                         <SearchableSelect
-                          options={masterData?.countries.map(c => ({ label: c.name, value: c.code })) || []}
+                          options={
+                            masterData?.countries.map((c) => ({ label: c.name, value: c.code })) ||
+                            []
+                          }
                           value={field.value}
                           onChange={field.onChange}
                           disabled={!masterData}
@@ -499,7 +587,7 @@ export function OrganizationSettingsPage() {
                     render={({ field }) => (
                       <div className={errors.address?.stateCode ? 'error' : ''}>
                         <SearchableSelect
-                          options={availableStates.map(s => ({ label: s.name, value: s.code }))}
+                          options={availableStates.map((s) => ({ label: s.name, value: s.code }))}
                           value={field.value}
                           onChange={field.onChange}
                           disabled={!selectedCountryCode}
@@ -518,7 +606,7 @@ export function OrganizationSettingsPage() {
                     render={({ field }) => (
                       <div className={errors.address?.city ? 'error' : ''}>
                         <SearchableSelect
-                          options={availableCities.map(c => ({ label: c.name, value: c.id }))}
+                          options={availableCities.map((c) => ({ label: c.name, value: c.id }))}
                           value={field.value}
                           onChange={field.onChange}
                           disabled={!selectedStateCode}

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Suspense } from 'react';
+import { useState, useRef, useEffect, Suspense, type ReactNode } from 'react';
 import {
   NavLink,
   Outlet,
@@ -989,8 +989,34 @@ function OrgDropdown({
                     justifyContent: 'space-between',
                   }}
                 >
-                  <div style={{ fontWeight: 500, fontSize: 13, color: 'var(--color-text)' }}>
-                    {org.name}
+                  <div>
+                    <div style={{ fontWeight: 500, fontSize: 13, color: 'var(--color-text)' }}>
+                      {org.name}
+                    </div>
+                    {/* The support code, labelled. A bare ten-digit number under an
+                        org name reads as an account number, a GST number, or a
+                        phone number — the label is what makes it answerable when
+                        support asks for it. Digits are monospaced because they get
+                        read aloud rather than clicked. */}
+                    {org.orgCode && (
+                      <div
+                        style={{
+                          marginTop: 2,
+                          fontSize: 11,
+                          color: 'var(--color-text-muted)',
+                        }}
+                      >
+                        Organization Code:{' '}
+                        <span
+                          style={{
+                            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                            letterSpacing: '0.03em',
+                          }}
+                        >
+                          {org.orgCode}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

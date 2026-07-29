@@ -10,17 +10,19 @@ const baseOrganizationSchema = z.object({
     .regex(/^\d{10}$/, 'Mobile number must be exactly 10 digits')
     .optional()
     .or(z.literal('')),
-  address: z.object({
-    streetAddress1: z.string().optional(),
-    city: z.string().optional(),
-    stateCode: z.string().optional(),
-    country: z.string().optional(),
-    zip: z
-      .string()
-      .regex(/^\d{6}$/, 'Pincode must be exactly 6 digits')
-      .optional()
-      .or(z.literal(''))
-  }).optional(),
+  address: z
+    .object({
+      streetAddress1: z.string().optional(),
+      city: z.string().optional(),
+      stateCode: z.string().optional(),
+      country: z.string().optional(),
+      zip: z
+        .string()
+        .regex(/^\d{6}$/, 'Pincode must be exactly 6 digits')
+        .optional()
+        .or(z.literal('')),
+    })
+    .optional(),
   taxIdValue: z
     .string()
     .length(15, 'GST Number must be exactly 15 characters')
@@ -43,6 +45,13 @@ export type UpdateOrganizationData = z.infer<typeof updateOrganizationSchema>;
 
 export interface Organization {
   organizationId: string;
+  /**
+   * Ten-digit support code the customer reads out to support. Display only —
+   * `organizationId` is still the value every request and route key uses.
+   * Optional here because a client holding a cached organization from before
+   * this field shipped will not have it; render defensively.
+   */
+  orgCode?: string;
   name: string;
   portalName?: string;
   industryType?: string;
@@ -58,7 +67,7 @@ export interface Organization {
     zip?: string;
   };
   taxIdValue?: string;
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+   
   logo_url?: string | null;
   accountCreatedDate: string;
 }
