@@ -162,26 +162,25 @@ export function ItemsList() {
                   <SlidersHorizontal size={15} />
                 </button>
               )}
-              {!selectedItemId && (
-                <button
-                  onClick={() => navigate(`/organizations/${orgId}/items/new`)}
-                  style={{
-                    background: '#0062ff',
-                    color: 'white',
-                    border: 'none',
-                    padding: '6px 12px',
-                    borderRadius: '4px',
-                    fontWeight: 500,
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
-                  }}
-                >
-                  <Plus size={16} /> New
-                </button>
-              )}
+              <button
+                onClick={() => navigate(`/organizations/${orgId}/items/new`)}
+                style={{
+                  background: '#186337',
+                  color: 'white',
+                  border: 'none',
+                  padding: '6px 12px',
+                  borderRadius: '4px',
+                  fontWeight: 500,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <Plus size={16} /> New
+              </button>
             </div>
           </header>
 

@@ -4,4 +4,8 @@ node_modules
 
 /generated/prisma
 
+# pg_dump output from `npm run db:apply` / `db:backup` — real customer data,
+# and large. Keep it on the machine that made it.
+/backups
+
 /public

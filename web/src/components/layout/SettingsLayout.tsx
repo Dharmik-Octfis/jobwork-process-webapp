@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { NavLink, Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
+import { RouteFallback } from './RouteFallback';
 import {
   ChevronLeft,
   Building2,
@@ -25,16 +26,26 @@ export function SettingsLayout() {
     location.pathname === `/organizations/${orgId}/settings` ||
     location.pathname.includes('/settings/members') ||
     location.pathname.includes('/settings/roles') ||
+    location.pathname.includes('/settings/permissions') ||
     location.pathname.includes('/settings/locations');
-  const [orgOpen, setOrgOpen] = useState(onOrgRoute);
 
   const onInventoryRoute = location.pathname.includes('/settings/inventory');
-  const [inventoryOpen, setInventoryOpen] = useState(onInventoryRoute);
-
   const onConfigRoute = location.pathname.includes('/settings/configuration');
-  const [configOpen, setConfigOpen] = useState(onConfigRoute);
 
-  const [customizationOpen, setCustomizationOpen] = useState(onModulesRoute);
+  const [openSection, setOpenSection] = useState<
+    'org' | 'inventory' | 'config' | 'customization' | null
+  >(() => {
+    if (onOrgRoute) return 'org';
+    if (onInventoryRoute) return 'inventory';
+    if (onConfigRoute) return 'config';
+    if (onModulesRoute) return 'customization';
+    return null;
+  });
+
+  const orgOpen = openSection === 'org';
+  const inventoryOpen = openSection === 'inventory';
+  const configOpen = openSection === 'config';
+  const customizationOpen = openSection === 'customization';
 
   return (
     <div
@@ -99,7 +110,7 @@ export function SettingsLayout() {
           }}
         >
           <button
-            onClick={() => setOrgOpen(!orgOpen)}
+            onClick={() => setOpenSection(orgOpen ? null : 'org')}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -188,45 +199,45 @@ export function SettingsLayout() {
                 <span style={{ fontSize: 14 }}>Members & Invites</span>
               </NavLink>
 
-          {/* Two entries, not one: a role is a job title and grants nothing; a
+              {/* Two entries, not one: a role is a job title and grants nothing; a
               permission template is the access. Members get one of each. */}
-          <NavLink
-            to={`/organizations/${orgId}/settings/roles`}
-            style={({ isActive }) => ({
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-3)',
-              padding: '8px 12px',
-              borderRadius: 'var(--radius-md)',
-              textDecoration: 'none',
-              color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
-              background: isActive ? 'var(--primary-50)' : 'transparent',
-              fontWeight: isActive ? 600 : 500,
-              transition: 'all 0.2s ease',
-            })}
-          >
-            <IdCard size={18} />
-            <span style={{ fontSize: 14 }}>Roles</span>
-          </NavLink>
+              <NavLink
+                to={`/organizations/${orgId}/settings/roles`}
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-3)',
+                  padding: '8px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  textDecoration: 'none',
+                  color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
+                  background: isActive ? 'var(--primary-50)' : 'transparent',
+                  fontWeight: isActive ? 600 : 500,
+                  transition: 'all 0.2s ease',
+                })}
+              >
+                <IdCard size={18} />
+                <span style={{ fontSize: 14 }}>Roles</span>
+              </NavLink>
 
-          <NavLink
-            to={`/organizations/${orgId}/settings/permissions`}
-            style={({ isActive }) => ({
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-3)',
-              padding: '8px 12px',
-              borderRadius: 'var(--radius-md)',
-              textDecoration: 'none',
-              color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
-              background: isActive ? 'var(--primary-50)' : 'transparent',
-              fontWeight: isActive ? 600 : 500,
-              transition: 'all 0.2s ease',
-            })}
-          >
-            <ShieldCheck size={18} />
-            <span style={{ fontSize: 14 }}>Permissions</span>
-          </NavLink>
+              <NavLink
+                to={`/organizations/${orgId}/settings/permissions`}
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-3)',
+                  padding: '8px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  textDecoration: 'none',
+                  color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
+                  background: isActive ? 'var(--primary-50)' : 'transparent',
+                  fontWeight: isActive ? 600 : 500,
+                  transition: 'all 0.2s ease',
+                })}
+              >
+                <ShieldCheck size={18} />
+                <span style={{ fontSize: 14 }}>Permissions</span>
+              </NavLink>
 
               <NavLink
                 to={`/organizations/${orgId}/settings/locations`}
@@ -250,7 +261,7 @@ export function SettingsLayout() {
           </div>
 
           <button
-            onClick={() => setInventoryOpen(!inventoryOpen)}
+            onClick={() => setOpenSection(inventoryOpen ? null : 'inventory')}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -322,7 +333,7 @@ export function SettingsLayout() {
             </div>
           </div>
           <button
-            onClick={() => setConfigOpen(!configOpen)}
+            onClick={() => setOpenSection(configOpen ? null : 'config')}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -395,7 +406,7 @@ export function SettingsLayout() {
           </div>
 
           <button
-            onClick={() => setCustomizationOpen(!customizationOpen)}
+            onClick={() => setOpenSection(customizationOpen ? null : 'customization')}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -531,7 +542,11 @@ export function SettingsLayout() {
           background: 'var(--color-bg)',
         }}
       >
-        <Outlet />
+        {/* Same reasoning as AppLayout — the settings nav stays put while a
+            lazily-loaded settings page loads. */}
+        <Suspense fallback={<RouteFallback />}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   );

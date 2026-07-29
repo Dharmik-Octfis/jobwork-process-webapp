@@ -27,13 +27,13 @@ model Item {
   updatedBy                String?             @map("updated_by") @db.Uuid
   customFields             Json                @default("{}") @map("custom_fields")
   binLocationTracking      String?             @map("bin_location_tracking")
-  frontImage               String?             @map("front_image")
-  images                   String[]
   inventoryAccount         String?             @map("inventory_account")
   inventoryTracking        String?             @map("inventory_tracking")
   inventoryValuationMethod String?             @map("inventory_valuation_method")
-  rearImage                String?             @map("rear_image")
   trackInventory           Boolean             @default(false) @map("track_inventory")
+  frontImage               Json?               @map("front_image")
+  images                   Json?               @default("[]")
+  rearImage                Json?               @map("rear_image")
   activities               ItemActivity[]
   createdByUser            User?               @relation("ItemCreatedBy", fields: [createdBy], references: [id])
   organization             Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)

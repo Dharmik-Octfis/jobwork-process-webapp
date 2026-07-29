@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const baseOrganizationSchema = z.object({
   name: z.string().min(1, 'Organization name is required').max(100),
-  industryCode: z.string().min(1, 'Industry is required'),
+  industryType: z.string().min(1, 'Industry is required'),
   email: z.string().email('Invalid email address').optional().or(z.literal('')),
   dialCode: z.string().optional(),
   phone: z
@@ -10,15 +10,19 @@ const baseOrganizationSchema = z.object({
     .regex(/^\d{10}$/, 'Mobile number must be exactly 10 digits')
     .optional()
     .or(z.literal('')),
-  orgAddress: z.string().optional(),
-  countryCode: z.string().optional(),
-  stateCode: z.string().optional(),
-  cityId: z.string().optional(),
-  zip: z
-    .string()
-    .regex(/^\d{6}$/, 'Pincode must be exactly 6 digits')
-    .optional()
-    .or(z.literal('')),
+  address: z
+    .object({
+      streetAddress1: z.string().optional(),
+      city: z.string().optional(),
+      stateCode: z.string().optional(),
+      country: z.string().optional(),
+      zip: z
+        .string()
+        .regex(/^\d{6}$/, 'Pincode must be exactly 6 digits')
+        .optional()
+        .or(z.literal('')),
+    })
+    .optional(),
   taxIdValue: z
     .string()
     .length(15, 'GST Number must be exactly 15 characters')
@@ -40,20 +44,30 @@ export const updateOrganizationSchema = baseOrganizationSchema
 export type UpdateOrganizationData = z.infer<typeof updateOrganizationSchema>;
 
 export interface Organization {
-  id: string;
+  organizationId: string;
+  /**
+   * Ten-digit support code the customer reads out to support. Display only —
+   * `organizationId` is still the value every request and route key uses.
+   * Optional here because a client holding a cached organization from before
+   * this field shipped will not have it; render defensively.
+   */
+  orgCode?: string;
   name: string;
   portalName?: string;
-  industryCode?: string;
+  industryType?: string;
   industry?: { name: string } | null;
   email?: string;
   dialCode?: string;
   phone?: string;
-  orgAddress?: string;
-  countryCode?: string;
-  stateCode?: string;
-  cityId?: string;
-  zip?: string;
+  address?: {
+    streetAddress1?: string;
+    country?: string;
+    stateCode?: string;
+    city?: string;
+    zip?: string;
+  };
   taxIdValue?: string;
-  createdAt: string;
-  updatedAt: string;
+   
+  logo_url?: string | null;
+  accountCreatedDate: string;
 }

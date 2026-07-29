@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, Trash2, Info, Settings } from 'lucide-react';
@@ -13,6 +13,8 @@ import { usePaymentTerms } from './payment-terms.api';
 import { PaymentTermModal } from './PaymentTermModal';
 import { PaymentTermDropdown } from './PaymentTermDropdown';
 import { CurrencyDropdown } from './CurrencyDropdown';
+import { Select } from '../../../components/ui/Select';
+import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import './customer-form.css';
 
 interface CustomerFormProps {
@@ -53,9 +55,9 @@ export function CustomerForm({
           salutation: '',
           firstName: '',
           lastName: '',
-          emailAddress: '',
-          workPhone: '',
-          mobilePhone: '',
+          email: '',
+          phone: '',
+          mobile: '',
         },
       ],
     },
@@ -84,10 +86,10 @@ export function CustomerForm({
   useEffect(() => {
     if (preference && !isEdit) {
       const generatedNumber = `${preference.prefix}${preference.nextNumber.toString().padStart(5, '0')}`;
-      const currentValue = watch('customerNumber');
+      const currentValue = watch('contactNumber');
 
       if (!currentValue || currentValue === lastPrefilledNumber) {
-        setValue('customerNumber', generatedNumber);
+        setValue('contactNumber', generatedNumber);
         setLastPrefilledNumber(generatedNumber);
       }
     }
@@ -98,7 +100,7 @@ export function CustomerForm({
       updateCustomerNumberPreference(orgId!, data),
     onSuccess: (data) => {
       queryClient.setQueryData(['customer-number-preference', orgId], data);
-      setValue('customerNumber', `${data.prefix}${data.nextNumber.toString().padStart(5, '0')}`);
+      setValue('contactNumber', `${data.prefix}${data.nextNumber.toString().padStart(5, '0')}`);
       setIsNumberConfigOpen(false);
     },
   });
@@ -139,7 +141,6 @@ export function CustomerForm({
     border: '1px solid #d1d5db',
     borderRadius: '4px',
   };
-  const selectStyle = { ...inputStyle };
   const tabBtnStyle = (isActive: boolean) => ({
     padding: '12px 0',
     border: 'none',
@@ -189,11 +190,22 @@ export function CustomerForm({
           </label>
           <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-              <input type="radio" value="business" defaultChecked {...register('customerType')} style={{ accentColor: '#0062ff' }} />
+              <input
+                type="radio"
+                value="business"
+                defaultChecked
+                {...register('customerType')}
+                style={{ accentColor: '#0062ff' }}
+              />
               Business
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-              <input type="radio" value="individual" {...register('customerType')} style={{ accentColor: '#0062ff' }} />
+              <input
+                type="radio"
+                value="individual"
+                {...register('customerType')}
+                style={{ accentColor: '#0062ff' }}
+              />
               Individual
             </label>
           </div>
@@ -202,17 +214,26 @@ export function CustomerForm({
             Primary Contact <Info size={14} color="#888" />
           </label>
           <div style={{ display: 'flex', gap: '12px', maxWidth: '440px' }}>
-            <select
-              {...register('primaryContactSalutation')}
-              style={{ ...selectStyle, width: '120px' }}
-            >
-              <option value="">Salutation</option>
-              <option value="Mr.">Mr.</option>
-              <option value="Mrs.">Mrs.</option>
-              <option value="Ms.">Ms.</option>
-              <option value="Miss.">Miss.</option>
-              <option value="Dr.">Dr.</option>
-            </select>
+            <Controller
+              control={control}
+              name="primaryContactSalutation"
+              render={({ field }) => (
+                <Select
+                  value={field.value || ''}
+                  onChange={field.onChange}
+                  options={[
+                    { value: '', label: 'Salutation' },
+                    { value: 'Mr.', label: 'Mr.' },
+                    { value: 'Mrs.', label: 'Mrs.' },
+                    { value: 'Ms.', label: 'Ms.' },
+                    { value: 'Miss.', label: 'Miss.' },
+                    { value: 'Dr.', label: 'Dr.' },
+                  ]}
+                  minWidth={120}
+                  fullWidth={false}
+                />
+              )}
+            />
             <input
               {...register('primaryContactFirstName')}
               placeholder="First Name"
@@ -233,13 +254,13 @@ export function CustomerForm({
           </label>
           <div>
             <input
-              {...register('displayName')}
+              {...register('contactName')}
               placeholder="Select or type to add"
-              style={inputStyle}
+              style={{ ...inputStyle, borderColor: errors.contactName ? '#ef4444' : '#e2e8f0' }}
             />
-            {errors.displayName && (
+            {errors.contactName && (
               <div style={{ color: 'red', fontSize: '12px', marginTop: '4px' }}>
-                {errors.displayName.message}
+                {errors.contactName.message}
               </div>
             )}
           </div>
@@ -260,7 +281,7 @@ export function CustomerForm({
               ✉
             </span>
             <input
-              {...register('emailAddress')}
+              {...register('email')}
               type="email"
               style={{ ...inputStyle, paddingLeft: '28px' }}
             />
@@ -269,7 +290,7 @@ export function CustomerForm({
           <label style={labelRequiredStyle}>Customer Number*</label>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input {...register('customerNumber')} style={{ ...inputStyle, flex: 1 }} />
+              <input {...register('contactNumber')} style={{ ...inputStyle, flex: 1 }} />
               <button
                 type="button"
                 onClick={() => setIsNumberConfigOpen(true)}
@@ -285,9 +306,9 @@ export function CustomerForm({
                 <Settings size={18} />
               </button>
             </div>
-            {errors.customerNumber && (
+            {errors.contactNumber && (
               <div style={{ color: 'red', fontSize: '12px', marginTop: '4px' }}>
-                {errors.customerNumber.message}
+                {errors.contactNumber.message}
               </div>
             )}
           </div>
@@ -296,45 +317,51 @@ export function CustomerForm({
             Phone <Info size={14} color="#888" />
           </label>
           <div style={{ display: 'flex', gap: '16px', maxWidth: '440px' }}>
-            <div style={{ display: 'flex', gap: '0', flex: 1 }}>
-              <select
+            <div style={{ display: 'flex', gap: '0', flex: 1, alignItems: 'center' }}>
+              <div
                 style={{
-                  ...selectStyle,
-                  width: '70px',
-                  borderRight: 'none',
-                  borderTopRightRadius: 0,
-                  borderBottomRightRadius: 0,
                   background: '#f9f9f9',
+                  border: '1px solid #d1d5db',
+                  borderRight: 'none',
+                  padding: '5px 8px',
+                  fontSize: '13px',
+                  borderTopLeftRadius: '4px',
+                  borderBottomLeftRadius: '4px',
                 }}
               >
-                <option>+91</option>
-              </select>
+                +91
+              </div>
               <input
-                {...register('workPhone')}
+                {...register('phone')}
                 placeholder="Work Phone"
                 maxLength={10}
-                onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }}
+                onKeyPress={(e) => {
+                  if (!/[0-9]/.test(e.key)) e.preventDefault();
+                }}
                 style={{ ...inputStyle, borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
               />
             </div>
-            <div style={{ display: 'flex', gap: '0', flex: 1 }}>
-              <select
+            <div style={{ display: 'flex', gap: '0', flex: 1, alignItems: 'center' }}>
+              <div
                 style={{
-                  ...selectStyle,
-                  width: '70px',
-                  borderRight: 'none',
-                  borderTopRightRadius: 0,
-                  borderBottomRightRadius: 0,
                   background: '#f9f9f9',
+                  border: '1px solid #d1d5db',
+                  borderRight: 'none',
+                  padding: '5px 8px',
+                  fontSize: '13px',
+                  borderTopLeftRadius: '4px',
+                  borderBottomLeftRadius: '4px',
                 }}
               >
-                <option>+91</option>
-              </select>
+                +91
+              </div>
               <input
-                {...register('mobilePhone')}
+                {...register('mobile')}
                 placeholder="Mobile"
                 maxLength={10}
-                onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }}
+                onKeyPress={(e) => {
+                  if (!/[0-9]/.test(e.key)) e.preventDefault();
+                }}
                 style={{ ...inputStyle, borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
               />
             </div>
@@ -380,10 +407,10 @@ export function CustomerForm({
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab('remarks')}
-            style={tabBtnStyle(activeTab === 'remarks')}
+            onClick={() => setActiveTab('notes')}
+            style={tabBtnStyle(activeTab === 'notes')}
           >
-            Remarks
+            Notes
           </button>
         </div>
 
@@ -404,7 +431,9 @@ export function CustomerForm({
               <label style={labelStyle}>Currency</label>
               <CurrencyDropdown
                 value={watch('currency') || ''}
-                onChange={(val) => setValue('currency', val, { shouldValidate: true, shouldDirty: true })}
+                onChange={(val) =>
+                  setValue('currency', val, { shouldValidate: true, shouldDirty: true })
+                }
                 currencies={currencies || []}
                 style={{ maxWidth: '440px' }}
               />
@@ -412,7 +441,9 @@ export function CustomerForm({
               <label style={labelStyle}>Payment Terms</label>
               <PaymentTermDropdown
                 value={watch('paymentTerms') || ''}
-                onChange={(val) => setValue('paymentTerms', val, { shouldValidate: true, shouldDirty: true })}
+                onChange={(val) =>
+                  setValue('paymentTerms', val, { shouldValidate: true, shouldDirty: true })
+                }
                 paymentTerms={paymentTerms || []}
                 onAddNew={() => setIsPaymentTermModalOpen(true)}
                 style={{ maxWidth: '440px' }}
@@ -442,11 +473,21 @@ export function CustomerForm({
                   <input {...register('billingAttention')} style={inputStyle} />
 
                   <label style={labelStyle}>Country/Region</label>
-                  <select {...register('billingCountry')} style={selectStyle}>
-                    <option value="">Select</option>
-                    <option value="India">India</option>
-                    <option value="USA">USA</option>
-                  </select>
+                  <Controller
+                    control={control}
+                    name="billingCountry"
+                    render={({ field }) => (
+                      <SearchableSelect
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                        options={[
+                          { value: 'India', label: 'India' },
+                          { value: 'USA', label: 'USA' },
+                        ]}
+                        placeholder="Select Country"
+                      />
+                    )}
+                  />
 
                   <label style={labelStyle}>Address</label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -477,7 +518,9 @@ export function CustomerForm({
                   <input
                     {...register('billingPhone')}
                     maxLength={10}
-                    onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }}
+                    onKeyPress={(e) => {
+                      if (!/[0-9]/.test(e.key)) e.preventDefault();
+                    }}
                     style={inputStyle}
                   />
                 </div>
@@ -525,11 +568,21 @@ export function CustomerForm({
                   <input {...register('shippingAttention')} style={inputStyle} />
 
                   <label style={labelStyle}>Country/Region</label>
-                  <select {...register('shippingCountry')} style={selectStyle}>
-                    <option value="">Select</option>
-                    <option value="India">India</option>
-                    <option value="USA">USA</option>
-                  </select>
+                  <Controller
+                    control={control}
+                    name="shippingCountry"
+                    render={({ field }) => (
+                      <SearchableSelect
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                        options={[
+                          { value: 'India', label: 'India' },
+                          { value: 'USA', label: 'USA' },
+                        ]}
+                        placeholder="Select Country"
+                      />
+                    )}
+                  />
 
                   <label style={labelStyle}>Address</label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -560,7 +613,9 @@ export function CustomerForm({
                   <input
                     {...register('shippingPhone')}
                     maxLength={10}
-                    onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }}
+                    onKeyPress={(e) => {
+                      if (!/[0-9]/.test(e.key)) e.preventDefault();
+                    }}
                     style={inputStyle}
                   />
                 </div>
@@ -594,15 +649,24 @@ export function CustomerForm({
                   {contactPersons.map((field, index) => (
                     <tr key={field.id} style={{ borderBottom: '1px solid #eee' }}>
                       <td style={{ padding: '6px 8px', fontSize: '13px' }}>
-                        <select
-                          {...register(`contactPersons.${index}.salutation`)}
-                          style={{ ...selectStyle, minWidth: '80px' }}
-                        >
-                          <option value=""></option>
-                          <option value="Mr.">Mr.</option>
-                          <option value="Mrs.">Mrs.</option>
-                          <option value="Ms.">Ms.</option>
-                        </select>
+                        <Controller
+                          control={control}
+                          name={`contactPersons.${index}.salutation`}
+                          render={({ field }) => (
+                            <Select
+                              value={field.value || ''}
+                              onChange={field.onChange}
+                              options={[
+                                { value: '', label: '' },
+                                { value: 'Mr.', label: 'Mr.' },
+                                { value: 'Mrs.', label: 'Mrs.' },
+                                { value: 'Ms.', label: 'Ms.' },
+                              ]}
+                              minWidth={80}
+                              fullWidth={false}
+                            />
+                          )}
+                        />
                       </td>
                       <td style={{ padding: '6px 8px', fontSize: '13px' }}>
                         <input
@@ -618,24 +682,28 @@ export function CustomerForm({
                       </td>
                       <td style={{ padding: '6px 8px', fontSize: '13px' }}>
                         <input
-                          {...register(`contactPersons.${index}.emailAddress`)}
+                          {...register(`contactPersons.${index}.email`)}
                           type="email"
                           style={inputStyle}
                         />
                       </td>
                       <td style={{ padding: '6px 8px', fontSize: '13px' }}>
                         <input
-                          {...register(`contactPersons.${index}.workPhone`)}
+                          {...register(`contactPersons.${index}.phone`)}
                           maxLength={10}
-                          onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }}
+                          onKeyPress={(e) => {
+                            if (!/[0-9]/.test(e.key)) e.preventDefault();
+                          }}
                           style={inputStyle}
                         />
                       </td>
                       <td style={{ padding: '6px 8px', fontSize: '13px' }}>
                         <input
-                          {...register(`contactPersons.${index}.mobilePhone`)}
+                          {...register(`contactPersons.${index}.mobile`)}
                           maxLength={10}
-                          onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }}
+                          onKeyPress={(e) => {
+                            if (!/[0-9]/.test(e.key)) e.preventDefault();
+                          }}
                           style={inputStyle}
                         />
                       </td>
@@ -676,9 +744,9 @@ export function CustomerForm({
                     salutation: '',
                     firstName: '',
                     lastName: '',
-                    emailAddress: '',
-                    workPhone: '',
-                    mobilePhone: '',
+                    email: '',
+                    phone: '',
+                    mobile: '',
                   })
                 }
                 style={{
@@ -711,15 +779,14 @@ export function CustomerForm({
             />
           )}
 
-          {activeTab === 'remarks' && (
-            <div style={{ padding: '24px 0' }}>
-              <label style={{ ...labelStyle, marginBottom: '8px' }}>
-                Remarks (For Internal Use)
-              </label>
+          {activeTab === 'notes' && (
+            <div>
+              <label style={labelStyle}>Notes (For Internal Use)</label>
               <textarea
-                {...register('remarks')}
+                {...register('notes')}
                 rows={4}
-                style={{ ...inputStyle, resize: 'vertical' }}
+                style={{ ...inputStyle, resize: 'vertical', width: '100%' }}
+                placeholder="Add notes..."
               />
             </div>
           )}

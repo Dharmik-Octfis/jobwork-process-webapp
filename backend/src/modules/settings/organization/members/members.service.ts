@@ -10,7 +10,7 @@ const MEMBER_SELECT = {
   roleId: true,
   permissionTemplateId: true,
   createdAt: true,
-  user: { select: { fullName: true, email: true } },
+  user: { select: { fullName: true, email: true, userAgent: true } },
   role: { select: { name: true } },
   permissionTemplate: { select: { name: true } },
 } as const;
@@ -22,7 +22,7 @@ type MemberRow = {
   roleId: string | null;
   permissionTemplateId: string | null;
   createdAt: Date;
-  user: { fullName: string; email: string };
+  user: { fullName: string; email: string; userAgent?: string | null };
   role: { name: string } | null;
   permissionTemplate: { name: string } | null;
 };
@@ -39,6 +39,7 @@ function toPublic(row: MemberRow): PublicMember {
     permissionTemplateName: row.permissionTemplate?.name ?? null,
     isOwner: row.isOwner,
     joinedAt: row.createdAt.toISOString(),
+    userAgent: row.user.userAgent ?? 'unknown',
   };
 }
 

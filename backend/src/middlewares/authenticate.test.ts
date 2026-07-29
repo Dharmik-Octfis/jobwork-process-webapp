@@ -41,7 +41,8 @@ async function makeUser(flags: { isActive?: boolean; isDeleted?: boolean } = {})
       firstName: 'Session',
       lastName: 'Probe',
       fullName: 'Session Probe',
-      ...flags,
+      userAgent: 'unknown',
+...flags,
     },
     select: { id: true },
   });

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, Suspense, type ReactNode } from 'react';
 import {
   NavLink,
   Outlet,
@@ -9,11 +9,13 @@ import {
 } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { RouteFallback } from './RouteFallback';
 import {
   X,
   FileText,
   Users,
   LogOut,
+  KeyRound,
   User as UserIcon,
   Settings,
   LayoutDashboard,
@@ -22,8 +24,8 @@ import {
   Receipt,
   ChevronRight,
 } from 'lucide-react';
-import { Logo } from '../ui/Logo';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { ChangePasswordModal } from '../../features/profile/ChangePasswordModal';
 import { useAuth } from '../../providers/auth-context';
 import { useLogout } from '../../features/auth/useLogout';
 import { organizationsApi } from '../../features/organizations/organizations.api';
@@ -108,8 +110,8 @@ const SEARCHABLE_ROUTES: SearchModule[] = [
     fetch: async (orgId, term) =>
       (await fetchVendors(orgId, { search: term, perPage: 6 })).results.map((v) => ({
         id: v.id,
-        title: v.displayName,
-        subtitle: v.companyName || v.emailAddress || undefined,
+        title: v.contactName,
+        subtitle: v.companyName || v.email || undefined,
       })),
     to: (orgId, id) => `/organizations/${orgId}/purchases/vendors?id=${id}`,
   },
@@ -119,8 +121,8 @@ const SEARCHABLE_ROUTES: SearchModule[] = [
     fetch: async (orgId, term) =>
       (await fetchCustomers(orgId, { search: term, perPage: 6 })).results.map((c) => ({
         id: c.id,
-        title: c.displayName,
-        subtitle: c.companyName || c.emailAddress || undefined,
+        title: c.contactName,
+        subtitle: c.companyName || c.email || undefined,
       })),
     to: (orgId, id) => `/organizations/${orgId}/sales/customers?id=${id}`,
   },
@@ -328,8 +330,8 @@ export function AppLayout() {
   // active org was invisible in the URL, unbookmarkable, and impossible to have
   // two of in two tabs.
   const { orgId: activeOrgId } = useParams<{ orgId: string }>();
-  const location = useLocation();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
 
@@ -346,10 +348,23 @@ export function AppLayout() {
    * refetches on its own. The old code called `queryClient.invalidateQueries()`
    * with no key, nuking every cache in the app including master data.
    */
+  const rememberedOrgId = localStorage.getItem(LAST_ORG_KEY);
+  const effectiveOrgId = activeOrgId || rememberedOrgId || organizations?.[0]?.organizationId;
+
   const switchOrg = (nextOrgId: string) => {
-    const rest = activeOrgId ? location.pathname.replace(`/organizations/${activeOrgId}`, '') : '';
-    navigate(`/organizations/${nextOrgId}${rest}`);
+    if (!activeOrgId) {
+      navigate(`/organizations/${nextOrgId}`);
+      return;
+    }
+    const nextPath = location.pathname.replace(
+      `/organizations/${activeOrgId}`,
+      `/organizations/${nextOrgId}`,
+    );
+    navigate(nextPath);
   };
+
+  const activeOrg =
+    organizations?.find((o) => o.organizationId === effectiveOrgId) || organizations?.[0];
 
   return (
     <div
@@ -376,14 +391,41 @@ export function AppLayout() {
           style={{
             height: '50px',
             boxSizing: 'border-box',
-            padding: '0 var(--space-5)',
+            padding: '0 var(--space-4)',
             borderBottom: '1px solid rgba(255,255,255,0.1)',
             display: 'flex',
             alignItems: 'center',
-            gap: 'var(--space-3)',
+            justifyContent: 'center',
+            overflow: 'hidden',
           }}
         >
-          <Logo tone="dark" size={28} />
+          {activeOrg?.logo_url ? (
+            <img
+              src={activeOrg.logo_url}
+              alt={activeOrg.name}
+              style={{
+                maxWidth: 190,
+                maxHeight: 40,
+                width: 'auto',
+                height: 'auto',
+                objectFit: 'contain',
+                display: 'block',
+              }}
+            />
+          ) : activeOrg?.name ? (
+            <span
+              style={{
+                color: '#ffffff',
+                fontWeight: 600,
+                fontSize: 16,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {activeOrg.name}
+            </span>
+          ) : null}
         </div>
 
         <nav
@@ -406,7 +448,7 @@ export function AppLayout() {
           ))}
         </nav>
 
-        {activeOrgId && (
+        {effectiveOrgId && (
           <div
             style={{
               height: '44px',
@@ -418,7 +460,7 @@ export function AppLayout() {
             }}
           >
             <NavLink
-              to={`/organizations/${activeOrgId}/settings`}
+              to={`/organizations/${effectiveOrgId}/settings`}
               style={({ isActive }) => ({
                 width: '100%',
                 display: 'flex',
@@ -466,16 +508,20 @@ export function AppLayout() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
             <OrgDropdown
               organizations={organizations || []}
-              activeOrgId={activeOrgId ?? null}
+              activeOrgId={effectiveOrgId ?? null}
               onSelectOrg={switchOrg}
             />
             <ProfileDropdown user={user} logoutMutation={logoutMutation} />
           </div>
         </header>
 
-        {/* Page Content */}
+        {/* Page Content. Suspense sits INSIDE <main> so a route chunk still
+            loading swaps only this area — the sidebar and header stay on screen.
+            Every page under this layout is lazy (see app/router.tsx). */}
         <main style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
-          <Outlet />
+          <Suspense fallback={<RouteFallback />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>
@@ -495,7 +541,8 @@ function ModuleNavGroup({
 }) {
   const Icon = module.icon && ICON_MAP[module.icon] ? ICON_MAP[module.icon] : FileText;
   const { orgId } = useParams<{ orgId: string }>();
-  const to = navPath(module.code, orgId);
+  const effectiveOrgId = orgId || localStorage.getItem(LAST_ORG_KEY) || undefined;
+  const to = navPath(module.code, effectiveOrgId);
 
   const isParent = module.children && module.children.length > 0;
   const [localExpanded, setLocalExpanded] = useState(false);
@@ -610,6 +657,51 @@ function ModuleNavGroup({
   );
 }
 
+function ProfileMenuItem({
+  icon,
+  label,
+  onClick,
+  variant = 'default',
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+  variant?: 'default' | 'danger';
+}) {
+  const isDanger = variant === 'danger';
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        width: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '10px 16px',
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        fontSize: 13,
+        fontWeight: 500,
+        color: isDanger ? '#ef4444' : 'var(--color-text)',
+        textAlign: 'left',
+        transition: 'background-color 0.15s ease',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = isDanger ? '#fef2f2' : 'var(--color-bg)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = 'none';
+      }}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
 function ProfileDropdown({
   user,
   logoutMutation,
@@ -619,6 +711,7 @@ function ProfileDropdown({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isSignoutDialogOpen, setIsSignoutDialogOpen] = useState(false);
+  const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
@@ -649,9 +742,18 @@ function ProfileDropdown({
           padding: 0,
           color: 'var(--color-text)',
           boxShadow: 'var(--shadow-sm)',
+          overflow: 'hidden',
         }}
       >
-        <UserIcon size={18} />
+        {user?.avatar_url ? (
+          <img
+            src={user.avatar_url}
+            alt={user.fullName}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : (
+          <UserIcon size={18} />
+        )}
       </button>
 
       {isOpen && (
@@ -661,103 +763,49 @@ function ProfileDropdown({
             top: '100%',
             right: 0,
             marginTop: 8,
-            width: 350,
+            minWidth: 180,
             background: 'var(--color-surface)',
             border: '1px solid var(--color-border)',
             borderRadius: 'var(--radius-md)',
             boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
             zIndex: 20,
             overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column',
+            padding: '6px 0',
           }}
         >
-          <div style={{ padding: '16px', position: 'relative' }}>
-            <button
-              onClick={() => setIsOpen(false)}
-              style={{
-                position: 'absolute',
-                top: 16,
-                right: 16,
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: '#ef4444',
-              }}
-            >
-              <X size={16} />
-            </button>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16 }}>
-              <div
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: '4px',
-                  background: '#e2e8f0',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 18,
-                }}
-              >
-                <Users size={20} color="white" />
-              </div>
-              <div>
-                <div style={{ fontWeight: 500, fontSize: 14, color: '#1e293b' }}>
-                  {user?.fullName || 'User'}
-                </div>
-                <div style={{ fontSize: 13, color: '#64748b' }}>{user?.email || ''}</div>
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                borderTop: '1px solid #f1f5f9',
-                paddingTop: 16,
-              }}
-            >
-              <button
-                onClick={() => {
-                  setIsOpen(false);
-                  navigate('/profile');
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#2563eb',
-                  fontSize: 13,
-                  cursor: 'pointer',
-                  padding: 0,
-                }}
-              >
-                Edit Profile
-              </button>
-              <button
-                onClick={() => {
-                  setIsOpen(false);
-                  setIsSignoutDialogOpen(true);
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#ef4444',
-                  fontSize: 13,
-                  cursor: 'pointer',
-                  padding: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                <LogOut size={16} /> Sign Out
-              </button>
-            </div>
-          </div>
+          <ProfileMenuItem
+            icon={<UserIcon size={16} />}
+            label="Edit Profile"
+            onClick={() => {
+              setIsOpen(false);
+              navigate('/profile');
+            }}
+          />
+          <ProfileMenuItem
+            icon={<KeyRound size={16} />}
+            label="Change Password"
+            onClick={() => {
+              setIsOpen(false);
+              setIsChangePasswordModalOpen(true);
+            }}
+          />
+          <div style={{ height: 1, background: 'var(--color-border)', margin: '6px 0' }} />
+          <ProfileMenuItem
+            icon={<LogOut size={16} />}
+            label="Sign Out"
+            variant="danger"
+            onClick={() => {
+              setIsOpen(false);
+              setIsSignoutDialogOpen(true);
+            }}
+          />
         </div>
       )}
+
+      <ChangePasswordModal
+        isOpen={isChangePasswordModalOpen}
+        onClose={() => setIsChangePasswordModalOpen(false)}
+      />
 
       <ConfirmDialog
         isOpen={isSignoutDialogOpen}
@@ -783,11 +831,14 @@ function OrgDropdown({
   activeOrgId: string | null;
   onSelectOrg: (id: string) => void;
 }) {
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const navigate = useNavigate();
 
-  const activeOrg = organizations?.find((o) => o.id === activeOrgId) || organizations?.[0];
+  const rememberedOrgId = localStorage.getItem(LAST_ORG_KEY);
+  const effectiveOrgId = activeOrgId || rememberedOrgId;
+  const activeOrg =
+    organizations?.find((o) => o.organizationId === effectiveOrgId) || organizations?.[0];
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -807,7 +858,7 @@ function OrgDropdown({
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
+          gap: 8,
           padding: '6px 10px',
           borderRadius: 'var(--radius-sm)',
           border: '1px solid var(--color-border)',
@@ -879,9 +930,9 @@ function OrgDropdown({
 
             {organizations?.map((org) => (
               <div
-                key={org.id}
+                key={org.organizationId}
                 onClick={() => {
-                  onSelectOrg(org.id);
+                  onSelectOrg(org.organizationId);
                   setIsOpen(false);
                 }}
                 style={{
@@ -890,19 +941,19 @@ function OrgDropdown({
                   gap: 12,
                   padding: '12px 16px',
                   cursor: 'pointer',
-                  background: org.id === activeOrgId ? '#f8fafc' : 'none',
+                  background: org.organizationId === activeOrgId ? '#f8fafc' : 'none',
                   borderLeft:
-                    org.id === activeOrgId
+                    org.organizationId === activeOrgId
                       ? '3px solid var(--color-primary)'
                       : '3px solid transparent',
                 }}
                 onMouseEnter={(e) => {
-                  if (org.id !== activeOrgId) {
+                  if (org.organizationId !== activeOrgId) {
                     e.currentTarget.style.background = 'var(--color-bg)';
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (org.id !== activeOrgId) {
+                  if (org.organizationId !== activeOrgId) {
                     e.currentTarget.style.background = 'none';
                   }
                 }}
@@ -917,9 +968,18 @@ function OrgDropdown({
                     alignItems: 'center',
                     justifyContent: 'center',
                     background: 'white',
+                    overflow: 'hidden',
                   }}
                 >
-                  <FileText size={20} color="#94a3b8" />
+                  {org.logo_url ? (
+                    <img
+                      src={org.logo_url}
+                      alt={org.name}
+                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                    />
+                  ) : (
+                    <FileText size={20} color="#94a3b8" />
+                  )}
                 </div>
                 <div
                   style={{
@@ -929,8 +989,34 @@ function OrgDropdown({
                     justifyContent: 'space-between',
                   }}
                 >
-                  <div style={{ fontWeight: 500, fontSize: 13, color: 'var(--color-text)' }}>
-                    {org.name}
+                  <div>
+                    <div style={{ fontWeight: 500, fontSize: 13, color: 'var(--color-text)' }}>
+                      {org.name}
+                    </div>
+                    {/* The support code, labelled. A bare ten-digit number under an
+                        org name reads as an account number, a GST number, or a
+                        phone number — the label is what makes it answerable when
+                        support asks for it. Digits are monospaced because they get
+                        read aloud rather than clicked. */}
+                    {org.orgCode && (
+                      <div
+                        style={{
+                          marginTop: 2,
+                          fontSize: 11,
+                          color: 'var(--color-text-muted)',
+                        }}
+                      >
+                        Organization Code:{' '}
+                        <span
+                          style={{
+                            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                            letterSpacing: '0.03em',
+                          }}
+                        >
+                          {org.orgCode}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

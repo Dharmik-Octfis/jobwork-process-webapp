@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { Pool, type PoolConfig } from 'pg';
+import { Client as PgClient, Pool, type PoolConfig } from 'pg';
 import { PrismaClient } from '../../generated/prisma/client.ts';
 import { env } from '../config/env.ts';
 
@@ -60,13 +60,96 @@ function toPoolConnectionString(databaseUrl: string): string {
   return url.toString();
 }
 
-const pool = new Pool({
+/**
+ * 🔴 **Opening a connection to RDS costs ~1.9s from AppSail** — measured
+ * 2026-07-28 via `/api/diagnostics/latency`, against ~255ms for one round trip.
+ * It is a TCP handshake, a TLS handshake with full certificate-chain validation,
+ * and SCRAM-SHA-256 auth (PBKDF2, 4096 iterations), all across two clouds.
+ *
+ * That number is why the two timeout settings below are not defaults to leave
+ * alone. `pg` closes an idle connection after **10 seconds** unless told
+ * otherwise, and this app's traffic is bursty — so with the default, a large
+ * share of real requests arrive to an empty pool and pay that ~1.9s before their
+ * first query is even sent. `server.ts` warms one connection at boot; without
+ * `idleTimeoutMillis` that connection is gone ten seconds later.
+ */
+const poolConfig: PoolConfig = {
   connectionString: toPoolConnectionString(env.databaseUrl),
   ssl: resolveSsl(),
+  /**
+   * Deliberately small: AppSail runs many short-lived instances (§6) against one
+   * managed Postgres with a connection cap, and `max` is per instance — so this
+   * multiplies by the instance count. Raise it only with evidence of contention
+   * (`waiting > 0` in `poolStats()`), never reflexively.
+   */
   max: 5,
-});
+  /**
+   * 0 = never close an idle connection, rather than pg's 10s default. Correct
+   * here because `max` is already low, so an idle connection costs one slot on
+   * the server and saves ~1.9s the next time traffic arrives.
+   */
+  idleTimeoutMillis: 0,
+  /**
+   * `idleTimeoutMillis: 0` keeps the connection in OUR pool, but a NAT gateway
+   * or firewall on a two-cloud path will silently drop an idle TCP flow anyway.
+   * We would not find out until a query hung on a dead socket. Keepalive probes
+   * hold the path open and surface a genuinely broken connection quickly.
+   */
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10_000,
+};
+
+const pool = new Pool(poolConfig);
 
 const adapter = new PrismaPg(pool);
+
+/**
+ * Live pool counters, for the diagnostics endpoint.
+ *
+ * `total` is open connections, `idle` those not currently checked out, and
+ * `waiting` requests queued because all `max` are busy. A non-zero `waiting`
+ * under light load means the pool — not the network — is the bottleneck.
+ */
+export function poolStats(): {
+  total: number;
+  idle: number;
+  waiting: number;
+  max: number;
+} {
+  return {
+    total: pool.totalCount,
+    idle: pool.idleCount,
+    waiting: pool.waitingCount,
+    max: poolConfig.max ?? 0,
+  };
+}
+
+/**
+ * Open a connection OUTSIDE the pool, time it, and close it again.
+ *
+ * This is the cost the pool exists to amortise: TCP handshake + TLS handshake
+ * with certificate-chain validation + SCRAM-SHA-256 auth (PBKDF2, 4096
+ * iterations). It is several round trips plus real CPU on both ends, so
+ * comparing it against a pooled `SELECT 1` tells you whether a slow request is
+ * paying for distance or for a connection it should not have had to open.
+ *
+ * Deliberately builds from `poolConfig`, so it measures the SAME endpoint, TLS
+ * settings, and credentials the app actually uses — a hand-rolled client here
+ * would measure a connection nothing else in the process makes.
+ */
+export async function timeFreshConnection(): Promise<number> {
+  const client = new PgClient(poolConfig);
+  const startedAt = performance.now();
+  try {
+    await client.connect();
+    return performance.now() - startedAt;
+  } finally {
+    await client.end().catch(() => {
+      // Already closed, or the connect() above threw. Nothing to salvage — the
+      // caller only wanted the timing, and a failed connect surfaces as a throw.
+    });
+  }
+}
 
 export const prisma = new PrismaClient({
   adapter,

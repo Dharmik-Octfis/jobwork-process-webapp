@@ -12,7 +12,12 @@ import './CreateOrganizationForm.css'; // Re-use styles
 
 type MasterData = {
   industries: { id: string; code: string; name: string }[];
-  states: { code: string; name: string; countryCode: string; cities: { id: string; name: string }[] }[];
+  states: {
+    code: string;
+    name: string;
+    countryCode: string;
+    cities: { id: string; name: string }[];
+  }[];
   countries: { id: string; code: string; name: string; dialCode: string }[];
 };
 
@@ -25,13 +30,18 @@ export function OrganizationSettingsPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deleteConfirmName, setDeleteConfirmName] = useState('');
 
-  const { data: organizations } = useQuery({
+  const {
+    data: organizations,
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
     queryKey: ['organizations'],
     queryFn: () => organizationsApi.getOrganizations(),
     staleTime: 5 * 60 * 1000,
   });
 
-  const activeOrg = organizations?.find((o) => o.id === id);
+  const activeOrg = organizations?.find((o) => o.organizationId === id);
 
   const [masterData, setMasterData] = useState<MasterData | null>(null);
 
@@ -56,12 +66,15 @@ export function OrganizationSettingsPage() {
       name: '',
       email: '',
       phone: '',
-      orgAddress: '',
-      countryCode: 'IN',
-      stateCode: 'IN-GJ',
-      cityId: '',
-      zip: '',
-      industryCode: '',
+      dialCode: '+91',
+      address: {
+        streetAddress1: '',
+        country: 'IN',
+        stateCode: 'IN-GJ',
+        city: '',
+        zip: '',
+      },
+      industryType: '',
       taxIdValue: '',
     },
   });
@@ -73,23 +86,28 @@ export function OrganizationSettingsPage() {
         name: activeOrg.name,
         email: activeOrg.email || '',
         phone: activeOrg.phone || '',
-        orgAddress: activeOrg.orgAddress || '',
-        countryCode: activeOrg.countryCode || 'IN',
-        stateCode: activeOrg.stateCode || 'IN-GJ',
-        cityId: activeOrg.cityId || '',
-        zip: activeOrg.zip || '',
-        industryCode: activeOrg.industryCode || '',
+        dialCode: activeOrg.dialCode || '+91',
+        address: {
+          streetAddress1: activeOrg.address?.streetAddress1 || '',
+          country: activeOrg.address?.country || 'IN',
+          stateCode: activeOrg.address?.stateCode || 'IN-GJ',
+          city: activeOrg.address?.city || '',
+          zip: activeOrg.address?.zip || '',
+        },
+        industryType: activeOrg.industryType || '',
         taxIdValue: activeOrg.taxIdValue || '',
       });
     }
   }, [activeOrg, reset]);
 
-  const selectedCountryCode = watch('countryCode');
-  const selectedStateCode = watch('stateCode');
+  const selectedCountryCode = watch('address.country');
+  const selectedStateCode = watch('address.stateCode');
 
   // Filter states by selected country
-  const availableStates = masterData?.states.filter((s) => !selectedCountryCode || s.countryCode === selectedCountryCode) || [];
-
+  const availableStates =
+    masterData?.states.filter(
+      (s) => !selectedCountryCode || s.countryCode === selectedCountryCode,
+    ) || [];
 
   // Clear city when state changes, unless we are just initializing
   const [isInitializing, setIsInitializing] = useState(true);
@@ -99,17 +117,17 @@ export function OrganizationSettingsPage() {
       return;
     }
     if (selectedCountryCode && !isInitializing) {
-      setValue('stateCode', '');
-      setValue('cityId', '');
+      setValue('address.stateCode', '');
+      setValue('address.city', '');
     }
-  }, [selectedCountryCode, setValue, activeOrg, isInitializing]);
+  }, [selectedCountryCode, setValue, isInitializing]);
 
   useEffect(() => {
     if (activeOrg && isInitializing) {
       return;
     }
     if (selectedStateCode && !isInitializing) {
-      setValue('cityId', '');
+      setValue('address.city', '');
     }
   }, [selectedStateCode, setValue, activeOrg, isInitializing]);
 
@@ -141,12 +159,63 @@ export function OrganizationSettingsPage() {
     }
   };
 
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [logoPreview, setLogoPreview] = useState<string | null>(activeOrg?.logo_url || null);
+
+  const [copiedOrgCode, setCopiedOrgCode] = useState(false);
+
+  // `navigator.clipboard` is undefined outside a secure context — plain http on a
+  // LAN IP, which is exactly how this gets demoed — so the failure path has to do
+  // something real. A button that silently does nothing reads as broken, and this
+  // is the one value on the page a customer actually needs to get out of the app.
+  const copyOrgCode = async () => {
+    if (!activeOrg?.orgCode) return;
+    try {
+      await navigator.clipboard.writeText(activeOrg.orgCode);
+      setCopiedOrgCode(true);
+      setTimeout(() => setCopiedOrgCode(false), 1500);
+    } catch {
+      window.prompt('Copy your Organization Code:', activeOrg.orgCode);
+    }
+  };
+
+  useEffect(() => {
+    if (activeOrg?.logo_url) {
+      setLogoPreview(activeOrg.logo_url);
+    }
+  }, [activeOrg]);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !id) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setServerError('Image size must be 2 MB or less.');
+      e.target.value = '';
+      return;
+    }
+    try {
+      setUploadingLogo(true);
+      setServerError(null);
+      const localPreviewUrl = URL.createObjectURL(file);
+      setLogoPreview(localPreviewUrl);
+      const updated = await organizationsApi.uploadLogo(id, file);
+      if (updated.logo_url) {
+        setLogoPreview(updated.logo_url);
+      }
+      await queryClient.invalidateQueries({ queryKey: ['organizations'] });
+    } catch (err) {
+      setServerError(toApiErrorMessage(err));
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
   const availableCities =
     selectedStateCode && masterData
       ? masterData.states.find((s) => s.code === selectedStateCode)?.cities || []
       : [];
 
-  if (!activeOrg) {
+  if (isLoading) {
     return (
       <div
         style={{
@@ -155,9 +224,74 @@ export function OrganizationSettingsPage() {
           alignItems: 'center',
           minHeight: '100vh',
           background: 'var(--color-bg)',
+          color: 'var(--color-text-muted)',
         }}
       >
-        Loading or Organization not found...
+        Loading organization settings...
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
+          minHeight: '100vh',
+          gap: 16,
+          background: 'var(--color-bg)',
+        }}
+      >
+        <p style={{ color: 'var(--color-danger, #ef4444)' }}>
+          Failed to load organization settings: {toApiErrorMessage(error)}
+        </p>
+        <button
+          onClick={() => navigate('/')}
+          style={{
+            padding: '8px 16px',
+            borderRadius: 6,
+            background: 'var(--color-primary, #2563eb)',
+            color: '#fff',
+            border: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          Return to Dashboard
+        </button>
+      </div>
+    );
+  }
+
+  if (!activeOrg) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
+          minHeight: '100vh',
+          gap: 16,
+          background: 'var(--color-bg)',
+        }}
+      >
+        <p style={{ fontSize: 16, fontWeight: 500 }}>Organization not found.</p>
+        <button
+          onClick={() => navigate('/')}
+          style={{
+            padding: '8px 16px',
+            borderRadius: 6,
+            background: 'var(--color-primary, #2563eb)',
+            color: '#fff',
+            border: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          Return to Dashboard
+        </button>
       </div>
     );
   }
@@ -203,6 +337,70 @@ export function OrganizationSettingsPage() {
               Update your organization's details and public information.
             </p>
 
+            {/* Logo Section */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 20,
+                marginBottom: 24,
+                padding: 16,
+                border: '1px dashed var(--color-border)',
+                borderRadius: 'var(--radius-md)',
+                background: 'var(--color-bg)',
+              }}
+            >
+              <div
+                style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: 8,
+                  border: '1px solid var(--color-border)',
+                  background: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  overflow: 'hidden',
+                  flexShrink: 0,
+                }}
+              >
+                {logoPreview ? (
+                  <img
+                    src={logoPreview}
+                    alt="Organization Logo"
+                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  />
+                ) : (
+                  <span style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-text-muted)' }}>
+                    {activeOrg.name.charAt(0).toUpperCase()}
+                  </span>
+                )}
+              </div>
+              <div>
+                <label style={{ fontWeight: 500, fontSize: 14, display: 'block', marginBottom: 4 }}>
+                  Organization Logo
+                </label>
+                <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: '0 0 8px 0' }}>
+                  Upload your company logo (`logo_url`). Recommended format: PNG, JPG, or SVG up to
+                  2MB.
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLogoUpload}
+                    disabled={uploadingLogo}
+                    style={{ fontSize: 13 }}
+                  />
+                  {uploadingLogo && (
+                    <span style={{ fontSize: 12, color: 'var(--color-primary)' }}>
+                      Uploading...
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
             {serverError && (
               <div
                 style={{
@@ -222,6 +420,53 @@ export function OrganizationSettingsPage() {
               onSubmit={handleSubmit(onSubmit)}
               style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}
             >
+              {/* Org ID — read-only. The only field here a customer needs to read
+                  *out* rather than edit. Generated once at creation and never
+                  changes, so it is deliberately not part of the form state. */}
+              <div className="org-form-group">
+                <label>Organization Code</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <span
+                    style={{
+                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                      fontSize: 15,
+                      letterSpacing: '0.08em',
+                      color: 'var(--color-text)',
+                    }}
+                  >
+                    {activeOrg.orgCode ?? '—'}
+                  </span>
+                  {activeOrg.orgCode && (
+                    // type="button" is load-bearing: a bare <button> inside a form
+                    // defaults to type="submit", so copying would save the org.
+                    <button
+                      type="button"
+                      onClick={copyOrgCode}
+                      style={{
+                        border: '1px solid var(--color-border)',
+                        background: 'var(--color-surface)',
+                        color: 'var(--color-text-muted)',
+                        borderRadius: 6,
+                        padding: '2px 8px',
+                        fontSize: 12,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {copiedOrgCode ? 'Copied' : 'Copy'}
+                    </button>
+                  )}
+                </div>
+                <p
+                  style={{
+                    marginTop: 4,
+                    fontSize: 12,
+                    color: 'var(--color-text-muted)',
+                  }}
+                >
+                  Quote this when you contact support.
+                </p>
+              </div>
+
               {/* Name */}
               <div className="org-form-group">
                 <label>
@@ -242,12 +487,17 @@ export function OrganizationSettingsPage() {
                   Industry Type <span className="required">*</span>
                 </label>
                 <Controller
-                  name="industryCode"
+                  name="industryType"
                   control={control}
                   render={({ field }) => (
-                    <div className={errors.industryCode ? 'error' : ''}>
+                    <div className={errors.industryType ? 'error' : ''}>
                       <SearchableSelect
-                        options={masterData?.industries.map(ind => ({ label: ind.name, value: ind.code })) || []}
+                        options={
+                          masterData?.industries.map((ind) => ({
+                            label: ind.name,
+                            value: ind.code,
+                          })) || []
+                        }
                         value={field.value}
                         onChange={field.onChange}
                         placeholder="Select Industry"
@@ -255,8 +505,8 @@ export function OrganizationSettingsPage() {
                     </div>
                   )}
                 />
-                {errors.industryCode && (
-                  <p className="org-form-error-msg">{errors.industryCode.message}</p>
+                {errors.industryType && (
+                  <p className="org-form-error-msg">{errors.industryType.message}</p>
                 )}
               </div>
 
@@ -289,14 +539,14 @@ export function OrganizationSettingsPage() {
 
               <div className="org-form-group">
                 <label>Street Address</label>
-                <input
-                  type="text"
-                  className={`org-form-input ${errors.orgAddress ? 'error' : ''}`}
-                  placeholder="123 Business Rd, Suite 100"
-                  {...register('orgAddress')}
+                <textarea
+                  className={`org-form-input ${errors.address?.streetAddress1 ? 'error' : ''}`}
+                  placeholder="E.g. 101, Business Center"
+                  {...register('address.streetAddress1')}
+                  rows={2}
                 />
-                {errors.orgAddress && (
-                  <p className="org-form-error-msg">{errors.orgAddress.message}</p>
+                {errors.address?.streetAddress1 && (
+                  <p className="org-form-error-msg">{errors.address.streetAddress1.message}</p>
                 )}
               </div>
 
@@ -310,12 +560,15 @@ export function OrganizationSettingsPage() {
                 <div className="org-form-group">
                   <label>Country</label>
                   <Controller
-                    name="countryCode"
+                    name="address.country"
                     control={control}
                     render={({ field }) => (
-                      <div className={errors.countryCode ? 'error' : ''}>
+                      <div className={errors.address?.country ? 'error' : ''}>
                         <SearchableSelect
-                          options={masterData?.countries.map(c => ({ label: c.name, value: c.code })) || []}
+                          options={
+                            masterData?.countries.map((c) => ({ label: c.name, value: c.code })) ||
+                            []
+                          }
                           value={field.value}
                           onChange={field.onChange}
                           disabled={!masterData}
@@ -329,12 +582,12 @@ export function OrganizationSettingsPage() {
                 <div className="org-form-group">
                   <label>State</label>
                   <Controller
-                    name="stateCode"
+                    name="address.stateCode"
                     control={control}
                     render={({ field }) => (
-                      <div className={errors.stateCode ? 'error' : ''}>
+                      <div className={errors.address?.stateCode ? 'error' : ''}>
                         <SearchableSelect
-                          options={availableStates.map(s => ({ label: s.name, value: s.code }))}
+                          options={availableStates.map((s) => ({ label: s.name, value: s.code }))}
                           value={field.value}
                           onChange={field.onChange}
                           disabled={!selectedCountryCode}
@@ -348,12 +601,12 @@ export function OrganizationSettingsPage() {
                 <div className="org-form-group">
                   <label>City</label>
                   <Controller
-                    name="cityId"
+                    name="address.city"
                     control={control}
                     render={({ field }) => (
-                      <div className={errors.cityId ? 'error' : ''}>
+                      <div className={errors.address?.city ? 'error' : ''}>
                         <SearchableSelect
-                          options={availableCities.map(c => ({ label: c.name, value: c.id }))}
+                          options={availableCities.map((c) => ({ label: c.name, value: c.id }))}
                           value={field.value}
                           onChange={field.onChange}
                           disabled={!selectedStateCode}
@@ -368,9 +621,9 @@ export function OrganizationSettingsPage() {
                   <label>ZIP Code</label>
                   <input
                     type="text"
-                    className={`org-form-input ${errors.zip ? 'error' : ''}`}
+                    className={`org-form-input ${errors.address?.zip ? 'error' : ''}`}
                     placeholder="10001"
-                    {...register('zip')}
+                    {...register('address.zip')}
                   />
                 </div>
               </div>
@@ -380,9 +633,14 @@ export function OrganizationSettingsPage() {
                 <input
                   type="text"
                   className={`org-form-input ${errors.taxIdValue ? 'error' : ''}`}
-                  placeholder="Enter Tax ID"
+                  placeholder="E.g. 27AAAAA0000A1Z5"
                   {...register('taxIdValue')}
+                  style={{ textTransform: 'uppercase' }}
+                  maxLength={15}
                 />
+                {errors.taxIdValue && (
+                  <p className="org-form-error-msg">{errors.taxIdValue.message}</p>
+                )}
               </div>
 
               <div

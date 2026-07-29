@@ -94,11 +94,13 @@ export async function accept(req: Request, res: Response): Promise<void> {
   const token = req.params.token as string;
   // `optionalAuthenticate` sets req.user when a valid Bearer token is present.
   const currentUserId = req.user?.id ?? null;
+  const userAgent = req.get('user-agent') ?? 'unknown';
 
   const result = await invitationsService.acceptInvitation(
     token,
     currentUserId,
     req.body as AcceptInvitationInput,
+    userAgent,
   );
 
   // A brand-new user was created during accept — sign them in exactly like signup:

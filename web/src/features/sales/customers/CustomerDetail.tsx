@@ -109,7 +109,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
     } = customer;
     const customerToClone = {
       ...restToClone,
-      customerNumber: '',
+      contactNumber: '',
     };
 
     navigate(`/organizations/${orgId}/sales/customers/new`, { state: { customerToClone } });
@@ -187,7 +187,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
-            {customer.displayName}
+            {customer.contactName}
           </h2>
           <span
             onClick={() => {
@@ -504,15 +504,15 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div>
                     <div style={labelStyle}>Customer Number</div>
-                    <div style={valueStyle}>{customer.customerNumber}</div>
+                    <div style={valueStyle}>{customer.contactNumber}</div>
                   </div>
                   <div>
                     <div style={labelStyle}>Email Address</div>
-                    <div style={valueStyle}>{customer.emailAddress || '-'}</div>
+                    <div style={valueStyle}>{customer.email || '-'}</div>
                   </div>
                   <div>
                     <div style={labelStyle}>Work Phone</div>
-                    <div style={valueStyle}>{customer.workPhone || '-'}</div>
+                    <div style={valueStyle}>{customer.phone || '-'}</div>
                   </div>
                   <div>
                     <div style={labelStyle}>Default Currency</div>

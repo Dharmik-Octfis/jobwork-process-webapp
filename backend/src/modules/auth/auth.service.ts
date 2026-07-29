@@ -9,11 +9,13 @@ import {
   type RefreshTokenPayload,
 } from '../../lib/jwt.ts';
 import { hashPassword, verifyPassword } from '../../lib/password.ts';
-import type { LoginInput, SignupInput, ResetPasswordInput } from './auth.schemas.ts';
+import type { LoginInput, SignupInput, ResetPasswordInput, ChangePasswordInput } from './auth.schemas.ts';
 import { sendOtpEmail } from '../../lib/mailer.ts';
 import type { AuthResult, PublicUser } from './auth.types.ts';
 import { env } from '../../config/env.ts';
 import ms from 'ms';
+
+import { uploadFile, getFileUrl } from '../../lib/storage.ts';
 
 /** Postgres unique-constraint violation, surfaced by Prisma. */
 const UNIQUE_VIOLATION = 'P2002';
@@ -24,7 +26,43 @@ const publicUserSelect = {
   lastName: true,
   fullName: true,
   email: true,
+  avatarUrl: true,
+  userAgent: true,
 } as const;
+
+async function resolveAvatarUrl(avatarUrl: string | null | undefined): Promise<string | null> {
+  if (!avatarUrl) return null;
+  if (avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://') || avatarUrl.startsWith('data:')) {
+    return avatarUrl;
+  }
+  try {
+    return await getFileUrl(avatarUrl);
+  } catch (err) {
+    console.warn(`Failed to resolve signed URL for avatar key "${avatarUrl}":`, err);
+    return avatarUrl;
+  }
+}
+
+export async function formatPublicUser(user: {
+  id: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  email: string;
+  avatarUrl?: string | null;
+  userAgent?: string | null;
+}): Promise<PublicUser> {
+  const signedAvatarUrl = await resolveAvatarUrl(user.avatarUrl);
+  return {
+    id: user.id,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    fullName: user.fullName,
+    email: user.email,
+    avatar_url: signedAvatarUrl,
+    userAgent: user.userAgent ?? 'unknown', 
+  };
+}
 
 export async function updateProfile(
   userId: string,
@@ -36,7 +74,37 @@ export async function updateProfile(
     data: { firstName: input.firstName, lastName: input.lastName, fullName },
     select: publicUserSelect,
   });
-  return user;
+  return await formatPublicUser(user);
+}
+
+export async function uploadAvatar(
+  userId: string,
+  file: Express.Multer.File,
+): Promise<PublicUser> {
+  const timestamp = Date.now();
+  const cleanName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+  const key = `users/${userId}/avatar-${timestamp}-${cleanName}`;
+
+  let storedKey = key;
+  try {
+    await uploadFile({
+      key,
+      body: file.buffer,
+      contentType: file.mimetype,
+      overwrite: true,
+    });
+  } catch (err) {
+    console.warn('Catalyst Stratus avatar upload failed:', err);
+    storedKey = key;
+  }
+
+  const updatedUser = await prisma.user.update({
+    where: { id: userId },
+    data: { avatarUrl: storedKey },
+    select: publicUserSelect,
+  });
+
+  return await formatPublicUser(updatedUser);
 }
 
 let decoyHash: Promise<string> | undefined;
@@ -45,7 +113,7 @@ function getDecoyHash(): Promise<string> {
   return decoyHash;
 }
 
-export async function signup(input: SignupInput): Promise<AuthResult> {
+export async function signup(input: SignupInput, userAgent: string): Promise<AuthResult> {
   const passwordHash = await hashPassword(input.password);
   const fullName = `${input.firstName} ${input.lastName}`.trim();
 
@@ -57,11 +125,12 @@ export async function signup(input: SignupInput): Promise<AuthResult> {
         fullName,
         email: input.email,
         passwordHash,
+        userAgent,
       },
       select: publicUserSelect,
     });
 
-    return await issueTokens(user);
+    return await issueTokens(await formatPublicUser(user));
   } catch (error) {
     // Checking `findUnique` first would still race: two concurrent signups for
     // the same email both see "available", and one loses at the index. The
@@ -73,7 +142,7 @@ export async function signup(input: SignupInput): Promise<AuthResult> {
   }
 }
 
-export async function login(input: LoginInput): Promise<AuthResult> {
+export async function login(input: LoginInput, userAgent: string): Promise<AuthResult> {
   const user = await prisma.user.findUnique({
     where: { email: input.email },
     select: { ...publicUserSelect, passwordHash: true, isActive: true, isDeleted: true },
@@ -90,6 +159,14 @@ export async function login(input: LoginInput): Promise<AuthResult> {
     throw ApiError.unauthorized();
   }
 
+  // Persist the latest browser/device agent so account details stay current,
+  // even for users created before this column was introduced.
+  const updatedUser = await prisma.user.update({
+    where: { id: user.id },
+    data: { userAgent: userAgent || 'unknown' },
+    select: publicUserSelect,
+  });
+
   // Checked after the password so a disabled account can't be distinguished
   // from a wrong password by anyone who doesn't already know the password.
   // Both flags, via the shared predicate — `isActive` alone used to let a
@@ -98,13 +175,7 @@ export async function login(input: LoginInput): Promise<AuthResult> {
     throw new ApiError(403, 'This account has been disabled.');
   }
 
-  return await issueTokens({
-    id: user.id,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    fullName: user.fullName,
-    email: user.email,
-  });
+  return await issueTokens(await formatPublicUser(updatedUser));
 }
 
 /**
@@ -175,13 +246,7 @@ export async function refresh(oldRefreshToken: string): Promise<AuthResult> {
   }
 
   // ✅ 4. Rotation — do delete + create atomically inside a transaction
-  const publicUser = {
-    id: storedToken.user.id,
-    firstName: storedToken.user.firstName,
-    lastName: storedToken.user.lastName,
-    fullName: storedToken.user.fullName,
-    email: storedToken.user.email,
-  };
+  const publicUser = await formatPublicUser(storedToken.user);
 
   const newRefreshToken = signRefreshToken(publicUser.id);
   const expiresAt = new Date(Date.now() + ms(env.jwt.refreshTtl as ms.StringValue));
@@ -238,7 +303,7 @@ export async function getUserById(userId: string): Promise<PublicUser> {
     throw new ApiError(401, 'Your session is no longer valid. Please sign in again.');
   }
 
-  return user;
+  return await formatPublicUser(user);
 }
 
 export async function requestPasswordReset(email: string): Promise<void> {
@@ -293,3 +358,27 @@ export async function resetPassword(input: ResetPasswordInput): Promise<void> {
     await tx.passwordResetToken.delete({ where: { id: token.id } });
   });
 }
+
+export async function changePassword(userId: string, input: ChangePasswordInput): Promise<void> {
+  const user = await prisma.user.findFirst({
+    where: { id: userId, ...ACTIVE_USER },
+    select: { id: true, passwordHash: true },
+  });
+
+  if (!user || !user.passwordHash) {
+    throw new ApiError(400, 'Current password is incorrect.');
+  }
+
+  const isValidPassword = await verifyPassword(user.passwordHash, input.currentPassword);
+  if (!isValidPassword) {
+    throw new ApiError(400, 'Current password is incorrect.');
+  }
+
+  const newPasswordHash = await hashPassword(input.newPassword);
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash: newPasswordHash },
+  });
+}
+

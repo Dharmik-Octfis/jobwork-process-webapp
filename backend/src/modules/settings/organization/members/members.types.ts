@@ -17,4 +17,5 @@ export interface PublicMember {
    * changed, and they cannot be removed. */
   isOwner: boolean;
   joinedAt: string;
+  userAgent: string;
 }

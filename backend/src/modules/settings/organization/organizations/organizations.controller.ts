@@ -6,6 +6,54 @@ import { sendSuccess } from '../../../../lib/apiResponse.ts';
 import { createOrganizationSchema, updateOrganizationSchema } from './organizations.schemas.ts';
 import { seedSystemTemplates } from '../permission-templates/permission-templates.service.ts';
 import { seedSystemRoles } from '../roles/roles.service.ts';
+import { withOrgCodeRetry } from './orgCode.ts';
+import { uploadFile, getFileUrl } from '../../../../lib/storage.ts';
+
+import type { Organization, Prisma, Industry } from '../../../../../generated/prisma/client.ts';
+
+async function resolveLogoUrl(logoUrl: string | null | undefined): Promise<string | null> {
+  if (!logoUrl) return null;
+  if (
+    logoUrl.startsWith('http://') ||
+    logoUrl.startsWith('https://') ||
+    logoUrl.startsWith('data:')
+  ) {
+    return logoUrl;
+  }
+  try {
+    return await getFileUrl(logoUrl);
+  } catch (err) {
+    console.warn(`Failed to resolve signed URL for logo key "${logoUrl}":`, err);
+    return logoUrl;
+  }
+}
+
+// Mapper to convert Prisma Organization to Zoho-style format
+async function mapToZohoFormat(org: Organization & { industry?: Pick<Industry, 'name'> | null }) {
+  const logoUrl = await resolveLogoUrl(org.logoUrl);
+  return {
+    organization_id: org.id,
+    // The support code the customer reads to support. Additive — `organization_id`
+    // is still the uuid, and still the only value any client should send back.
+    org_code: org.orgCode,
+    name: org.name,
+    industryType: org.industryCode,
+    email: org.email,
+    phone: org.phone,
+    dial_code: org.dialCode,
+    address: {
+      street_address1: org.orgAddress,
+      country: org.countryCode,
+      state_code: org.stateCode,
+      city: org.cityId,
+      zip: org.zip,
+    },
+    tax_id_value: org.taxIdValue,
+    logo_url: logoUrl,
+    account_created_date: org.createdAt.toISOString(),
+    industry: org.industry, // from include
+  };
+}
 
 export async function createOrganization(req: Request, res: Response, next: NextFunction) {
   try {
@@ -14,64 +62,74 @@ export async function createOrganization(req: Request, res: Response, next: Next
       throw ApiError.badRequest('Validation failed', parsedData.error.issues);
     }
     const data = parsedData.data;
-    // Empty select -> null so the state_code / city_id FKs are cleared, not fed ''
-    // (which is not a valid uuid and matches no state).
-    if (!data.stateCode) data.stateCode = null;
-    if (!data.cityId) data.cityId = null;
 
     const userId = req.user?.id;
     if (!userId) {
       throw new ApiError(401, 'Sign in to continue.');
     }
 
-    // The org id is generated up front so the whole bootstrap can run inside a
-    // single tenant transaction: permission_templates is RLS-protected, so its
-    // INSERTs are only allowed once `app.current_tenant` is set to this org
-    // (runAsTenant does that). The organizations table itself is not RLS-gated,
-    // so creating it in here is fine.
     const orgId = crypto.randomUUID();
 
-    const organization = await runAsTenant(orgId, async (tx) => {
-      const created = await tx.organization.create({
-        data: {
-          id: orgId,
-          ...data,
-          // Audit columns: the creating user stamps both created_by and updated_by.
-          createdBy: userId,
-          updatedBy: userId,
-        },
-      });
+    // The retry wraps the ENTIRE transaction rather than the create inside it: a
+    // unique violation aborts the surrounding Postgres transaction, so re-rolling
+    // the code within this callback could never commit. A rolled-back attempt
+    // leaves nothing behind, so reusing `orgId` across attempts is safe.
+    const organization = await withOrgCodeRetry((orgCode) =>
+      runAsTenant(orgId, async (tx) => {
+        const created = await tx.organization.create({
+          data: {
+            id: orgId,
+            orgCode,
+            name: data.name,
+            industryCode: data.industryType,
+            email: data.email,
+            phone: data.phone,
+            dialCode: data.dial_code,
+            taxIdValue: data.tax_id_value,
+            orgAddress: data.address?.street_address1 || null,
+            countryCode: data.address?.country || null,
+            stateCode: data.address?.state_code || null,
+            cityId: data.address?.city || null,
+            zip: data.address?.zip || null,
+            createdBy: userId,
+            updatedBy: userId,
+          },
+        });
 
-      // Seed both axes, then make the creator an owner carrying one of each:
-      // roles are job titles (Owner, Manager, Staff), templates are the access
-      // (Owner, Full access, View only) — see SYSTEM_ROLES / SYSTEM_TEMPLATES.
-      // Only the two Owner rows are `isSystem` (immutable, never assignable —
-      // ownership comes from creating the org, not from being given the row).
-      // The other four are ordinary editable rows the org owns from this moment,
-      // seeded so neither settings screen is empty on day one; an admin may
-      // rename, re-tick, or delete them. Only the Owner ids are returned here
-      // because they are the only ones this membership needs.
-      const { ownerTemplateId } = await seedSystemTemplates(tx, orgId, userId);
-      const { ownerRoleId } = await seedSystemRoles(tx, orgId, userId);
+        // Seed both axes, then make the creator an owner carrying one of each:
+        // roles are job titles (Owner, Manager, Staff), templates are the access
+        // (Owner, Full access, View only) — see SYSTEM_ROLES / SYSTEM_TEMPLATES.
+        // Only the two Owner rows are `isSystem` (immutable, never assignable —
+        // ownership comes from creating the org, not from being given the row).
+        // The other four are ordinary editable rows the org owns from this moment,
+        // seeded so neither settings screen is empty on day one; an admin may
+        // rename, re-tick, or delete them. Only the Owner ids are returned here
+        // because they are the only ones this membership needs.
+        const { ownerTemplateId } = await seedSystemTemplates(tx, orgId, userId);
+        const { ownerRoleId } = await seedSystemRoles(tx, orgId, userId);
 
-      await tx.membership.create({
-        data: {
-          userId,
-          organizationId: orgId,
-          // The one place isOwner is ever set: creating the organization. There is
-          // no API that grants it, which is what keeps "one owner per org" true.
-          isOwner: true,
-          roleId: ownerRoleId,
-          permissionTemplateId: ownerTemplateId,
-          createdBy: userId,
-          updatedBy: userId,
-        },
-      });
+        await tx.membership.create({
+          data: {
+            userId,
+            organizationId: orgId,
+            isOwner: true,
+            roleId: ownerRoleId,
+            permissionTemplateId: ownerTemplateId,
+            createdBy: userId,
+            updatedBy: userId,
+          },
+        });
 
-      return created;
+        return created;
+      }),
+    );
+
+    // We emulate Zoho's generic envelope: { code: 0, message: "success", organization: { ... } }
+    res.status(201).json({
+      code: 0,
+      message: 'success',
+      organization: await mapToZohoFormat(organization),
     });
-
-    sendSuccess(res, organization, 'Organization created.', 201);
   } catch (error) {
     next(error);
   }
@@ -93,12 +151,17 @@ export async function getOrganizations(req: Request, res: Response, next: NextFu
           },
         },
       },
-      // industryCode is a stable slug; join the label for display.
       include: { industry: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     });
 
-    sendSuccess(res, organizations);
+    const formattedOrgs = await Promise.all(organizations.map(mapToZohoFormat));
+
+    res.status(200).json({
+      code: 0,
+      message: 'success',
+      organizations: formattedOrgs,
+    });
   } catch (error) {
     next(error);
   }
@@ -107,9 +170,6 @@ export async function getOrganizations(req: Request, res: Response, next: NextFu
 export async function updateOrganization(req: Request, res: Response, next: NextFunction) {
   try {
     const userId = req.user?.id;
-    // Membership, soft-delete and permission checks all happened in the middleware
-    // chain (tenantContext → requirePermission('organization:update')), so the
-    // hand-rolled owner lookup that used to live here is gone.
     const orgId = req.tenantId!;
     if (!userId) {
       throw new ApiError(401, 'Sign in to continue.');
@@ -121,17 +181,92 @@ export async function updateOrganization(req: Request, res: Response, next: Next
     }
 
     const data = parsedData.data;
-    // Present-but-empty select -> null (clear the FK); absent -> left undefined so
-    // Prisma leaves the column unchanged.
-    if (data.stateCode === '') data.stateCode = null;
-    if (data.cityId === '') data.cityId = null;
+
+    // Map Zoho keys back to Prisma fields for update
+    const updateData: Prisma.OrganizationUncheckedUpdateInput = {};
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.industryType !== undefined) updateData.industryCode = data.industryType;
+    if (data.email !== undefined) updateData.email = data.email;
+    if (data.phone !== undefined) updateData.phone = data.phone;
+    if (data.dial_code !== undefined) updateData.dialCode = data.dial_code;
+    if (data.tax_id_value !== undefined) updateData.taxIdValue = data.tax_id_value;
+
+    if (data.address !== undefined) {
+      if (data.address.street_address1 !== undefined)
+        updateData.orgAddress = data.address.street_address1;
+      if (data.address.country !== undefined) updateData.countryCode = data.address.country;
+      if (data.address.state_code !== undefined)
+        updateData.stateCode = data.address.state_code === '' ? null : data.address.state_code;
+      if (data.address.city !== undefined)
+        updateData.cityId = data.address.city === '' ? null : data.address.city;
+      if (data.address.zip !== undefined) updateData.zip = data.address.zip;
+    }
+
+    updateData.updatedBy = userId;
 
     const updatedOrg = await prisma.organization.update({
       where: { id: orgId },
-      data: { ...data, updatedBy: userId },
+      data: updateData,
+      include: { industry: { select: { name: true } } },
     });
 
-    sendSuccess(res, updatedOrg, 'Organization updated.');
+    res.status(200).json({
+      code: 0,
+      message: 'success',
+      organization: await mapToZohoFormat(updatedOrg),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function uploadOrganizationLogo(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = req.user?.id;
+    const orgId = (req.params.orgId as string) || req.tenantId;
+    if (!userId) {
+      throw new ApiError(401, 'Sign in to continue.');
+    }
+    if (!orgId) {
+      throw ApiError.badRequest('Organization ID is required');
+    }
+
+    const file = req.file;
+    if (!file) {
+      throw ApiError.badRequest('No image file provided.');
+    }
+
+    const timestamp = Date.now();
+    const cleanName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const key = `organizations/${orgId}/logo-${timestamp}-${cleanName}`;
+
+    let storedKey = key;
+    try {
+      await uploadFile({
+        key,
+        body: file.buffer,
+        contentType: file.mimetype,
+        overwrite: true,
+      });
+    } catch (err) {
+      console.warn('Catalyst Stratus upload failed:', err);
+      storedKey = key;
+    }
+
+    const updatedOrg = await prisma.organization.update({
+      where: { id: orgId },
+      data: {
+        logoUrl: storedKey,
+        updatedBy: userId,
+      },
+      include: { industry: { select: { name: true } } },
+    });
+
+    res.status(200).json({
+      code: 0,
+      message: 'Logo uploaded successfully.',
+      organization: await mapToZohoFormat(updatedOrg),
+    });
   } catch (error) {
     next(error);
   }

@@ -1,30 +1,40 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useQuery } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { createCurrencySchema } from './currencies.schemas';
 import type { CreateCurrencyData, CreateCurrencyFormData, Currency } from './currencies.schemas';
 import { useCreateCurrency, useUpdateCurrency } from './currencies.api';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
+import { organizationsApi } from '../../organizations/organizations.api';
 
-const CURRENCY_OPTIONS = [
-  { label: 'AED - UAE Dirham', value: 'AED' },
-  { label: 'AFN - Afghan Afghani', value: 'AFN' },
-  { label: 'ALL - Albanian Lek', value: 'ALL' },
-  { label: 'AMD - Armenian Dram', value: 'AMD' },
-  { label: 'ANG - Netherlands Antillian Guilder', value: 'ANG' },
-  { label: 'AOA - Angolan Kwanza', value: 'AOA' },
-  { label: 'ARS - Argentine Peso', value: 'ARS' },
-  { label: 'AUD - Australian Dollar', value: 'AUD' },
-  { label: 'CAD - Canadian Dollar', value: 'CAD' },
-  { label: 'CHF - Swiss Franc', value: 'CHF' },
-  { label: 'CNY - Chinese Yuan', value: 'CNY' },
-  { label: 'EUR - Euro', value: 'EUR' },
-  { label: 'GBP - British Pound', value: 'GBP' },
-  { label: 'INR - Indian Rupee', value: 'INR' },
-  { label: 'JPY - Japanese Yen', value: 'JPY' },
-  { label: 'SGD - Singapore Dollar', value: 'SGD' },
-  { label: 'USD - US Dollar', value: 'USD' }
+/** `getSeedData` is untyped, so pin the option shape here or `.find` sees `any`. */
+type CurrencyOption = { label: string; value: string; name: string; symbol: string };
+
+const FALLBACK_CURRENCY_OPTIONS: CurrencyOption[] = [
+  { label: 'AED - UAE Dirham', value: 'AED', name: 'UAE Dirham', symbol: 'AED' },
+  { label: 'AFN - Afghan Afghani', value: 'AFN', name: 'Afghan Afghani', symbol: 'AFN' },
+  { label: 'ALL - Albanian Lek', value: 'ALL', name: 'Albanian Lek', symbol: 'ALL' },
+  { label: 'AMD - Armenian Dram', value: 'AMD', name: 'Armenian Dram', symbol: 'AMD' },
+  {
+    label: 'ANG - Netherlands Antillian Guilder',
+    value: 'ANG',
+    name: 'Netherlands Antillian Guilder',
+    symbol: 'ANG',
+  },
+  { label: 'AOA - Angolan Kwanza', value: 'AOA', name: 'Angolan Kwanza', symbol: 'AOA' },
+  { label: 'ARS - Argentine Peso', value: 'ARS', name: 'Argentine Peso', symbol: 'ARS' },
+  { label: 'AUD - Australian Dollar', value: 'AUD', name: 'Australian Dollar', symbol: 'A$' },
+  { label: 'CAD - Canadian Dollar', value: 'CAD', name: 'Canadian Dollar', symbol: 'CA$' },
+  { label: 'CHF - Swiss Franc', value: 'CHF', name: 'Swiss Franc', symbol: 'CHF' },
+  { label: 'CNY - Chinese Yuan', value: 'CNY', name: 'Chinese Yuan', symbol: '¥' },
+  { label: 'EUR - Euro', value: 'EUR', name: 'Euro', symbol: '€' },
+  { label: 'GBP - British Pound', value: 'GBP', name: 'British Pound', symbol: '£' },
+  { label: 'INR - Indian Rupee', value: 'INR', name: 'Indian Rupee', symbol: '₹' },
+  { label: 'JPY - Japanese Yen', value: 'JPY', name: 'Japanese Yen', symbol: '¥' },
+  { label: 'SGD - Singapore Dollar', value: 'SGD', name: 'Singapore Dollar', symbol: 'S$' },
+  { label: 'USD - US Dollar', value: 'USD', name: 'US Dollar', symbol: '$' },
 ];
 
 const NUMBER_FORMATS = [
@@ -41,7 +51,12 @@ interface CurrencyFormModalProps {
   currencyToEdit?: Currency | null;
 }
 
-export function CurrencyFormModal({ orgId, isOpen, onClose, currencyToEdit }: CurrencyFormModalProps) {
+export function CurrencyFormModal({
+  orgId,
+  isOpen,
+  onClose,
+  currencyToEdit,
+}: CurrencyFormModalProps) {
   const {
     register,
     handleSubmit,
@@ -61,6 +76,27 @@ export function CurrencyFormModal({ orgId, isOpen, onClose, currencyToEdit }: Cu
       format: '1,234,567.89',
     },
   });
+
+  const { data: seedData } = useQuery({
+    queryKey: ['seed-data'],
+    queryFn: () => organizationsApi.getSeedData(),
+  });
+
+  const currencyOptions = useMemo<CurrencyOption[]>(() => {
+    if (
+      seedData?.currencies &&
+      Array.isArray(seedData.currencies) &&
+      seedData.currencies.length > 0
+    ) {
+      return seedData.currencies.map((c: { code: string; name: string; symbol: string }) => ({
+        label: `${c.code} - ${c.name}`,
+        value: c.code,
+        name: c.name,
+        symbol: c.symbol,
+      }));
+    }
+    return FALLBACK_CURRENCY_OPTIONS;
+  }, [seedData]);
 
   useEffect(() => {
     if (isOpen) {
@@ -206,15 +242,18 @@ export function CurrencyFormModal({ orgId, isOpen, onClose, currencyToEdit }: Cu
                   control={control}
                   render={({ field }) => (
                     <SearchableSelect
-                      options={CURRENCY_OPTIONS}
+                      options={currencyOptions}
                       value={field.value}
                       onChange={(val) => {
                         field.onChange(val);
-                        const option = CURRENCY_OPTIONS.find(opt => opt.value === val);
+                        const option = currencyOptions.find(
+                          (opt: { label: string; value: string; name?: string; symbol?: string }) =>
+                            opt.value === val,
+                        );
                         if (option) {
-                          const name = option.label.split(' - ')[1];
+                          const name = option.name || option.label.split(' - ')[1];
                           if (name) setValue('currencyName', name);
-                          setValue('symbol', val);
+                          if (option.symbol) setValue('symbol', option.symbol);
                         }
                       }}
                       placeholder="Select"
@@ -222,7 +261,14 @@ export function CurrencyFormModal({ orgId, isOpen, onClose, currencyToEdit }: Cu
                   )}
                 />
                 {errors.currencyCode && (
-                  <span style={{ color: '#dc2626', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                  <span
+                    style={{
+                      color: '#dc2626',
+                      fontSize: '12px',
+                      marginTop: '4px',
+                      display: 'block',
+                    }}
+                  >
                     {errors.currencyCode.message}
                   </span>
                 )}
@@ -255,7 +301,14 @@ export function CurrencyFormModal({ orgId, isOpen, onClose, currencyToEdit }: Cu
                   onBlur={(e) => (e.target.style.borderColor = 'var(--color-border)')}
                 />
                 {errors.symbol && (
-                  <span style={{ color: '#dc2626', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                  <span
+                    style={{
+                      color: '#dc2626',
+                      fontSize: '12px',
+                      marginTop: '4px',
+                      display: 'block',
+                    }}
+                  >
                     {errors.symbol.message}
                   </span>
                 )}
@@ -288,7 +341,14 @@ export function CurrencyFormModal({ orgId, isOpen, onClose, currencyToEdit }: Cu
                   onBlur={(e) => (e.target.style.borderColor = 'var(--color-border)')}
                 />
                 {errors.currencyName && (
-                  <span style={{ color: '#dc2626', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                  <span
+                    style={{
+                      color: '#dc2626',
+                      fontSize: '12px',
+                      marginTop: '4px',
+                      display: 'block',
+                    }}
+                  >
                     {errors.currencyName.message}
                   </span>
                 )}
@@ -325,7 +385,14 @@ export function CurrencyFormModal({ orgId, isOpen, onClose, currencyToEdit }: Cu
                   )}
                 />
                 {errors.decimalPlaces && (
-                  <span style={{ color: '#dc2626', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                  <span
+                    style={{
+                      color: '#dc2626',
+                      fontSize: '12px',
+                      marginTop: '4px',
+                      display: 'block',
+                    }}
+                  >
                     {errors.decimalPlaces.message}
                   </span>
                 )}
@@ -356,7 +423,14 @@ export function CurrencyFormModal({ orgId, isOpen, onClose, currencyToEdit }: Cu
                   )}
                 />
                 {errors.format && (
-                  <span style={{ color: '#dc2626', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                  <span
+                    style={{
+                      color: '#dc2626',
+                      fontSize: '12px',
+                      marginTop: '4px',
+                      display: 'block',
+                    }}
+                  >
                     {errors.format.message}
                   </span>
                 )}

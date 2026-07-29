@@ -1,115 +1,43 @@
-// Access control — ROLES and PERMISSION TEMPLATES, two independent axes.
-//
-// A Role is a job title ("Warehouse Supervisor", "Accountant"). It carries NO
-// permissions and grants nothing — it answers "what is this person here to do?"
-// A PermissionTemplate is a bundle of permission keys and IS the authorization —
-// it answers "what may this person do?".
-//
-// They were one thing until 2026-07-25 and are now deliberately separate: two
-// people with the same job title routinely need different access (a trainee
-// Accountant vs. a senior one), and one access bundle is routinely shared across
-// titles. Bundling them forced a near-duplicate "role" per person — per-user
-// permissions wearing a costume. A Membership points at one of each,
-// independently: same role + different template, or same template + different
-// role, are both normal.
-//
-// 🔴 Only `permissionTemplateId` affects authorization. `roleId` is a label; no
-// middleware reads it. Never gate anything on a Role name.
 model Role {
-  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String  @map("organization_id") @db.Uuid
-  name           String  @db.VarChar(100)
-  description    String? @db.VarChar(255)
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  name           String       @db.VarChar(100)
+  description    String?      @db.VarChar(255)
+  isSystem       Boolean      @default(false) @map("is_system")
+  isDeleted      Boolean      @default(false) @map("is_deleted")
+  createdBy      String?      @map("created_by") @db.Uuid
+  updatedBy      String?      @map("updated_by") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  invitations    Invitation[]
+  memberships    Membership[]
+  createdByUser  User?        @relation("RoleCreatedBy", fields: [createdBy], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedByUser  User?        @relation("RoleUpdatedBy", fields: [updatedBy], references: [id])
 
-  // The seeded "Owner" role every org gets, so the creator's membership has a
-  // title. Immutable — the service refuses to edit or delete isSystem rows.
-  isSystem Boolean @default(false) @map("is_system")
-
-  // Standard audit columns (CLAUDE.md "Default columns"). No custom_fields, for
-  // the same reason PermissionTemplate has none: control-plane config, not
-  // business data.
-  isDeleted Boolean  @default(false) @map("is_deleted")
-  createdBy String?  @map("created_by") @db.Uuid
-  updatedBy String?  @map("updated_by") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  memberships  Membership[]
-  invitations  Invitation[]
-
-  createdByUser User? @relation("RoleCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser User? @relation("RoleUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
-
-  // One role name per org, spanning soft-deleted rows — same trade-off as
-  // PermissionTemplate below (role churn is low).
   @@unique([organizationId, name])
   @@index([organizationId, isDeleted])
   @@map("roles")
 }
 
-// A user's Membership points at exactly ONE template; that template's permission
-// set IS the user's authorization in the org. There are deliberately NO per-user
-// permission grants: to vary one person's access you assign a different template
-// (create one if none fits). That keeps "what can this user do?" answerable by
-// reading a single row, and keeps enforcement to one set-membership check.
-//
-// A new org is seeded with three: the immutable **Owner** template (isSystem —
-// the service refuses to edit, delete or assign it) plus **Full access** and
-// **View only**, which are ordinary editable rows an admin can rename, retune or
-// delete. Starting points, not law.
-//
-// The Owner template stores NO keys — `grantsAllPermissions` resolves it to the
-// code catalog (permissions.catalog.ts) at runtime, so a permission added in a
-// later release applies with no data migration. See CLAUDE.md "custom fields" for
-// the same code-not-data idea.
-//
-// NOTE: the owner's access does not actually depend on this template — the
-// resolver short-circuits on `Membership.isOwner` before reading one. The Owner
-// template survives so the members list and the templates screen have something
-// to show, and so ownership has a name in the UI.
 model PermissionTemplate {
-  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String  @map("organization_id") @db.Uuid
-  name           String  @db.VarChar(100)
-  description    String? @db.VarChar(255)
-
-  // The seeded Owner template — cannot be edited or deleted, and never assignable
-  // (ownership comes from creating the org). Everything else, including the
-  // seeded "Full access" / "View only" starting points, is ordinary editable data.
-  isSystem             Boolean @default(false) @map("is_system")
-  // Resolves to ALL_PERMISSIONS at runtime instead of reading `permissions`, so a
-  // permission shipped in a later release applies with no backfill. Renamed from
-  // `isOwner` on 2026-07-25: it never meant "this is the owner" (that is
-  // Membership.isOwner), it meant "auto-grant everything, now and in future".
-  //
-  // Deliberately NOT settable through the API — only the seeded Owner template
-  // carries it. A customer-editable auto-grant flag is a template whose contents
-  // change with no audit trail and nobody's decision; expose it only if asked for.
-  grantsAllPermissions Boolean @default(false) @map("grants_all_permissions")
-
-  // Permission keys from the code catalog (permissions.catalog.ts). Edited
-  // wholesale — the whole set is replaced on update, never one key at a time.
-  // Empty for the Owner template (computed) and for a brand-new custom template.
-  permissions String[] @default([])
-
-  // Standard audit columns (CLAUDE.md "Default columns"). No custom_fields column
-  // on purpose: a permission template is control-plane config, not business data —
-  // same exclusion custom_field_definitions makes.
-  isDeleted Boolean  @default(false) @map("is_deleted")
-  createdBy String?  @map("created_by") @db.Uuid
-  updatedBy String?  @map("updated_by") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  memberships  Membership[]
-  // Restrict on the invitation side: a template with a pending invite cannot be
-  // deleted out from under it.
-  invitations  Invitation[]
-
-  createdByUser User? @relation("PermissionTemplateCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser User? @relation("PermissionTemplateUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  id                   String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String       @map("organization_id") @db.Uuid
+  name                 String       @db.VarChar(100)
+  description          String?      @db.VarChar(255)
+  isSystem             Boolean      @default(false) @map("is_system")
+  permissions          String[]     @default([])
+  isDeleted            Boolean      @default(false) @map("is_deleted")
+  createdBy            String?      @map("created_by") @db.Uuid
+  updatedBy            String?      @map("updated_by") @db.Uuid
+  createdAt            DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  grantsAllPermissions Boolean      @default(false) @map("grants_all_permissions")
+  invitations          Invitation[]
+  memberships          Membership[]
+  createdByUser        User?        @relation("PermissionTemplateCreatedBy", fields: [createdBy], references: [id])
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedByUser        User?        @relation("PermissionTemplateUpdatedBy", fields: [updatedBy], references: [id])
 
   @@unique([organizationId, name])
   @@index([organizationId, isDeleted])

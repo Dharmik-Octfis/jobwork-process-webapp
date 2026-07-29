@@ -24,6 +24,8 @@ import { permissionTemplatesRouter } from '../modules/settings/organization/perm
 import { membersRouter } from '../modules/settings/organization/members/members.routes.ts';
 import { itemsRouter } from '../modules/items/items.routes.ts';
 import { listViewsRouter } from '../modules/settings/list-views/listViews.routes.ts';
+import { diagnosticsRouter } from '../modules/diagnostics/diagnostics.routes.ts';
+import { env } from '../config/env.ts';
 
 /** Mounts every module router under `/api` (architecture §4). */
 export const apiRouter = Router();
@@ -31,6 +33,13 @@ export const apiRouter = Router();
 apiRouter.get('/health', (_req, res) => {
   res.status(200).json({ status: 'ok' });
 });
+
+// Ops-only latency probe. NOT mounted unless a token is configured, so a
+// deployment that never sets `DIAGNOSTICS_TOKEN` genuinely has no such route —
+// the safest possible default for something that reports infrastructure shape.
+if (env.diagnosticsToken) {
+  apiRouter.use('/diagnostics', diagnosticsRouter);
+}
 
 apiRouter.use('/auth', authRouter);
 
