@@ -67,7 +67,9 @@ export function OrgRedirect() {
   // Only trust the remembered id if the user is still a member — they may have
   // been removed, or be signed in as someone else on a shared browser.
   const remembered = localStorage.getItem(LAST_ORG_KEY);
-  const target = organizations.some((o) => o.organizationId === remembered) ? remembered : organizations[0]!.organizationId;
+  const target = organizations.some((o) => o.organizationId === remembered)
+    ? remembered
+    : organizations[0]!.organizationId;
 
   return <Navigate to={`/organizations/${target}`} replace />;
 }

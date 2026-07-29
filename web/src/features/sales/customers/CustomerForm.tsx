@@ -190,11 +190,22 @@ export function CustomerForm({
           </label>
           <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-              <input type="radio" value="business" defaultChecked {...register('customerType')} style={{ accentColor: '#0062ff' }} />
+              <input
+                type="radio"
+                value="business"
+                defaultChecked
+                {...register('customerType')}
+                style={{ accentColor: '#0062ff' }}
+              />
               Business
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-              <input type="radio" value="individual" {...register('customerType')} style={{ accentColor: '#0062ff' }} />
+              <input
+                type="radio"
+                value="individual"
+                {...register('customerType')}
+                style={{ accentColor: '#0062ff' }}
+              />
               Individual
             </label>
           </div>
@@ -307,42 +318,50 @@ export function CustomerForm({
           </label>
           <div style={{ display: 'flex', gap: '16px', maxWidth: '440px' }}>
             <div style={{ display: 'flex', gap: '0', flex: 1, alignItems: 'center' }}>
-              <div style={{ 
-                background: '#f9f9f9', 
-                border: '1px solid #d1d5db', 
-                borderRight: 'none', 
-                padding: '5px 8px', 
-                fontSize: '13px', 
-                borderTopLeftRadius: '4px', 
-                borderBottomLeftRadius: '4px' 
-              }}>
+              <div
+                style={{
+                  background: '#f9f9f9',
+                  border: '1px solid #d1d5db',
+                  borderRight: 'none',
+                  padding: '5px 8px',
+                  fontSize: '13px',
+                  borderTopLeftRadius: '4px',
+                  borderBottomLeftRadius: '4px',
+                }}
+              >
                 +91
               </div>
               <input
                 {...register('phone')}
                 placeholder="Work Phone"
                 maxLength={10}
-                onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }}
+                onKeyPress={(e) => {
+                  if (!/[0-9]/.test(e.key)) e.preventDefault();
+                }}
                 style={{ ...inputStyle, borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
               />
             </div>
             <div style={{ display: 'flex', gap: '0', flex: 1, alignItems: 'center' }}>
-              <div style={{ 
-                background: '#f9f9f9', 
-                border: '1px solid #d1d5db', 
-                borderRight: 'none', 
-                padding: '5px 8px', 
-                fontSize: '13px', 
-                borderTopLeftRadius: '4px', 
-                borderBottomLeftRadius: '4px' 
-              }}>
+              <div
+                style={{
+                  background: '#f9f9f9',
+                  border: '1px solid #d1d5db',
+                  borderRight: 'none',
+                  padding: '5px 8px',
+                  fontSize: '13px',
+                  borderTopLeftRadius: '4px',
+                  borderBottomLeftRadius: '4px',
+                }}
+              >
                 +91
               </div>
               <input
                 {...register('mobile')}
                 placeholder="Mobile"
                 maxLength={10}
-                onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }}
+                onKeyPress={(e) => {
+                  if (!/[0-9]/.test(e.key)) e.preventDefault();
+                }}
                 style={{ ...inputStyle, borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
               />
             </div>
@@ -412,7 +431,9 @@ export function CustomerForm({
               <label style={labelStyle}>Currency</label>
               <CurrencyDropdown
                 value={watch('currency') || ''}
-                onChange={(val) => setValue('currency', val, { shouldValidate: true, shouldDirty: true })}
+                onChange={(val) =>
+                  setValue('currency', val, { shouldValidate: true, shouldDirty: true })
+                }
                 currencies={currencies || []}
                 style={{ maxWidth: '440px' }}
               />
@@ -420,7 +441,9 @@ export function CustomerForm({
               <label style={labelStyle}>Payment Terms</label>
               <PaymentTermDropdown
                 value={watch('paymentTerms') || ''}
-                onChange={(val) => setValue('paymentTerms', val, { shouldValidate: true, shouldDirty: true })}
+                onChange={(val) =>
+                  setValue('paymentTerms', val, { shouldValidate: true, shouldDirty: true })
+                }
                 paymentTerms={paymentTerms || []}
                 onAddNew={() => setIsPaymentTermModalOpen(true)}
                 style={{ maxWidth: '440px' }}
@@ -495,7 +518,9 @@ export function CustomerForm({
                   <input
                     {...register('billingPhone')}
                     maxLength={10}
-                    onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }}
+                    onKeyPress={(e) => {
+                      if (!/[0-9]/.test(e.key)) e.preventDefault();
+                    }}
                     style={inputStyle}
                   />
                 </div>
@@ -588,7 +613,9 @@ export function CustomerForm({
                   <input
                     {...register('shippingPhone')}
                     maxLength={10}
-                    onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }}
+                    onKeyPress={(e) => {
+                      if (!/[0-9]/.test(e.key)) e.preventDefault();
+                    }}
                     style={inputStyle}
                   />
                 </div>
@@ -664,7 +691,9 @@ export function CustomerForm({
                         <input
                           {...register(`contactPersons.${index}.phone`)}
                           maxLength={10}
-                          onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }}
+                          onKeyPress={(e) => {
+                            if (!/[0-9]/.test(e.key)) e.preventDefault();
+                          }}
                           style={inputStyle}
                         />
                       </td>
@@ -672,7 +701,9 @@ export function CustomerForm({
                         <input
                           {...register(`contactPersons.${index}.mobile`)}
                           maxLength={10}
-                          onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }}
+                          onKeyPress={(e) => {
+                            if (!/[0-9]/.test(e.key)) e.preventDefault();
+                          }}
                           style={inputStyle}
                         />
                       </td>

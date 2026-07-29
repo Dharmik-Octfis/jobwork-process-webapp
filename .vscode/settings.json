@@ -14,5 +14,19 @@
   "[json]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
   "[css]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
   "[html]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
-  "[prisma]": { "editor.defaultFormatter": "Prisma.prisma" }
+  "[prisma]": { "editor.defaultFormatter": "Prisma.prisma" },
+
+  // Generated commit messages must pass commitlint.config.js (@commitlint/config-conventional),
+  // which husky's commit-msg hook enforces. The 100-char caps are per LINE, not per bullet.
+  "github.copilot.chat.commitMessageGeneration.instructions": [
+    {
+      "text": "Follow Conventional Commits: '<type>(<optional scope>): <description>'. Allowed types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert. Type and description must be lower-case; no period at the end of the subject."
+    },
+    {
+      "text": "Subject line must be at most 100 characters. Leave a blank line after the subject."
+    },
+    {
+      "text": "Hard-wrap every body and footer line at 72 characters, and never exceed 100 characters on any single line. Wrap long bullets onto continuation lines indented by two spaces rather than writing one long line."
+    }
+  ]
 }

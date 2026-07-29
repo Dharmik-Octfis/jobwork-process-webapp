@@ -9,12 +9,20 @@ import { useCreateCurrency, useUpdateCurrency } from './currencies.api';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import { organizationsApi } from '../../organizations/organizations.api';
 
-const FALLBACK_CURRENCY_OPTIONS = [
+/** `getSeedData` is untyped, so pin the option shape here or `.find` sees `any`. */
+type CurrencyOption = { label: string; value: string; name: string; symbol: string };
+
+const FALLBACK_CURRENCY_OPTIONS: CurrencyOption[] = [
   { label: 'AED - UAE Dirham', value: 'AED', name: 'UAE Dirham', symbol: 'AED' },
   { label: 'AFN - Afghan Afghani', value: 'AFN', name: 'Afghan Afghani', symbol: 'AFN' },
   { label: 'ALL - Albanian Lek', value: 'ALL', name: 'Albanian Lek', symbol: 'ALL' },
   { label: 'AMD - Armenian Dram', value: 'AMD', name: 'Armenian Dram', symbol: 'AMD' },
-  { label: 'ANG - Netherlands Antillian Guilder', value: 'ANG', name: 'Netherlands Antillian Guilder', symbol: 'ANG' },
+  {
+    label: 'ANG - Netherlands Antillian Guilder',
+    value: 'ANG',
+    name: 'Netherlands Antillian Guilder',
+    symbol: 'ANG',
+  },
   { label: 'AOA - Angolan Kwanza', value: 'AOA', name: 'Angolan Kwanza', symbol: 'AOA' },
   { label: 'ARS - Argentine Peso', value: 'ARS', name: 'Argentine Peso', symbol: 'ARS' },
   { label: 'AUD - Australian Dollar', value: 'AUD', name: 'Australian Dollar', symbol: 'A$' },
@@ -26,7 +34,7 @@ const FALLBACK_CURRENCY_OPTIONS = [
   { label: 'INR - Indian Rupee', value: 'INR', name: 'Indian Rupee', symbol: '₹' },
   { label: 'JPY - Japanese Yen', value: 'JPY', name: 'Japanese Yen', symbol: '¥' },
   { label: 'SGD - Singapore Dollar', value: 'SGD', name: 'Singapore Dollar', symbol: 'S$' },
-  { label: 'USD - US Dollar', value: 'USD', name: 'US Dollar', symbol: '$' }
+  { label: 'USD - US Dollar', value: 'USD', name: 'US Dollar', symbol: '$' },
 ];
 
 const NUMBER_FORMATS = [
@@ -74,8 +82,12 @@ export function CurrencyFormModal({
     queryFn: () => organizationsApi.getSeedData(),
   });
 
-  const currencyOptions = useMemo(() => {
-    if (seedData?.currencies && Array.isArray(seedData.currencies) && seedData.currencies.length > 0) {
+  const currencyOptions = useMemo<CurrencyOption[]>(() => {
+    if (
+      seedData?.currencies &&
+      Array.isArray(seedData.currencies) &&
+      seedData.currencies.length > 0
+    ) {
       return seedData.currencies.map((c: { code: string; name: string; symbol: string }) => ({
         label: `${c.code} - ${c.name}`,
         value: c.code,
@@ -234,7 +246,10 @@ export function CurrencyFormModal({
                       value={field.value}
                       onChange={(val) => {
                         field.onChange(val);
-                        const option = currencyOptions.find((opt: { label: string; value: string; name?: string; symbol?: string }) => opt.value === val);
+                        const option = currencyOptions.find(
+                          (opt: { label: string; value: string; name?: string; symbol?: string }) =>
+                            opt.value === val,
+                        );
                         if (option) {
                           const name = option.name || option.label.split(' - ')[1];
                           if (name) setValue('currencyName', name);
