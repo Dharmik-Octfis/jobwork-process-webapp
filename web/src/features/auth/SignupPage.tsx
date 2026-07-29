@@ -1,20 +1,20 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Link } from 'react-router-dom';
+
 import { toApiErrorMessage } from '../../api/client';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+
 import { AuthShell } from './AuthShell';
 import { FormErrorBanner } from './FormErrorBanner';
 import { signupSchema } from './auth.schemas';
 import type { SignupInput } from './auth.schemas';
 import { useSignup } from './useSignup';
-import styles from './Auth.module.css';
 
-/**
- * The sign-up screen — creates the user account and nothing else. Choosing or
- * creating an organization is a separate step after the first sign-in.
- */
+import styles from './Auth.module.css';
+import layoutStyles from '../../components/ui/LogisticsBackground.module.css';
+
 export function SignupPage() {
   const {
     register,
@@ -31,76 +31,106 @@ export function SignupPage() {
     },
   });
 
-  const signupMutation = useSignup('/');
+  const signupMutation = useSignup();
 
-  const onSubmit = handleSubmit((values) => signupMutation.mutate(values));
+  const onSubmit = handleSubmit((values) => {
+    signupMutation.mutate(values);
+  });
 
   return (
-    <AuthShell title="Create your account" subtitle="It takes less than a minute.">
-      <form className={styles.form} onSubmit={onSubmit} noValidate>
+    <AuthShell
+      title="Create Account"
+      subtitle="Start managing your operations effectively"
+    >
+      <form
+        className={layoutStyles.formGrid}
+        onSubmit={onSubmit}
+        noValidate
+      >
         {signupMutation.isError && (
-          <FormErrorBanner message={toApiErrorMessage(signupMutation.error)} />
+          <FormErrorBanner
+            message={toApiErrorMessage(signupMutation.error)}
+          />
         )}
 
-        <div className={styles.row}>
-          <Input
-            label="First name"
-            autoComplete="given-name"
-            placeholder="Jane"
-            autoFocus
-            error={errors.firstName?.message}
-            {...register('firstName')}
-          />
+        {/* 2-Column Row for First & Last Name */}
+        <div className={layoutStyles.formRow2Col}>
+          <div className={layoutStyles.formGroup}>
+            <Input
+              label=""
+              placeholder="First name"
+              autoFocus
+              error={errors.firstName?.message}
+              {...register('firstName')}
+            />
+          </div>
 
+          <div className={layoutStyles.formGroup}>
+            <Input
+              label=""
+              placeholder="Last name"
+              error={errors.lastName?.message}
+              {...register('lastName')}
+            />
+          </div>
+        </div>
+
+        {/* Email Address */}
+        <div className={layoutStyles.formGroup}>
           <Input
-            label="Last name"
-            autoComplete="family-name"
-            placeholder="Doe"
-            error={errors.lastName?.message}
-            {...register('lastName')}
+            label=""
+            type="email"
+            autoComplete="email"
+            placeholder="Email address"
+            error={errors.email?.message}
+            {...register('email')}
           />
         </div>
 
-        <Input
-          label="Email"
-          type="email"
-          autoComplete="email"
-          placeholder="you@company.com"
-          error={errors.email?.message}
-          {...register('email')}
-        />
+        {/* 2-Column Row for Password & Confirm Password */}
+        <div className={layoutStyles.formRow2Col}>
+          <div className={layoutStyles.formGroup}>
+            <Input
+              label=""
+              type="password"
+              autoComplete="new-password"
+              placeholder="Password"
+              error={errors.password?.message}
+              {...register('password')}
+            />
+          </div>
 
-        <Input
-          label="Password"
-          type="password"
-          autoComplete="new-password"
-          placeholder="Create a password"
-          hint="At least 8 chars."
-          error={errors.password?.message}
-          {...register('password')}
-        />
+          <div className={layoutStyles.formGroup}>
+            <Input
+              label=""
+              type="password"
+              autoComplete="new-password"
+              placeholder="Confirm password"
+              error={errors.confirmPassword?.message}
+              {...register('confirmPassword')}
+            />
+          </div>
+        </div>
 
-        <Input
-          label="Confirm password"
-          type="password"
-          autoComplete="new-password"
-          placeholder="Re-enter password"
-          error={errors.confirmPassword?.message}
-          {...register('confirmPassword')}
-        />
+        {/* Compact Legal Disclaimer */}
+        <p className={styles.termsText}>
+          By creating an account you agree to our{' '}
+          <Link to="/terms">Terms</Link> and{' '}
+          <Link to="/privacy">Privacy Policy</Link>.
+        </p>
 
         <Button
           type="submit"
           fullWidth
-          className={styles.submit}
+          className={layoutStyles.submitBtn}
           isLoading={signupMutation.isPending}
         >
-          {signupMutation.isPending ? 'Creating account…' : 'Create account'}
+          {signupMutation.isPending ? 'Creating Account...' : 'Sign up'}
         </Button>
       </form>
 
       <p className={styles.switch}>
-        Already have an account? <Link to="/login">Sign in</Link>
+        Already have an account? <Link to="/login">Login</Link>
       </p>
     </AuthShell>
   );

@@ -1,91 +1,647 @@
-.container {
+:root {
+  --primary: #0088ff;
+  --primary-hover: #0077e6;
+  --text-dark: #0f172a;
+  --text-muted: #64748b;
+  --border-color: #e2e8f0;
+  --input-bg: #f8fafc;
+}
+/* ==========================================================
+   PAGE WRAPPER & BACKGROUND
+========================================================== */
+
+/* .pageWrapper {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column; 
+  justify-content: space-between; 
+  align-items: center;
+  padding: 20px 16px;
+  position: relative;
+  overflow-x: hidden;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: linear-gradient(135deg, #e0effe 0%, #d4e7fe 50%, #e8f3ff 100%);
+  box-sizing: border-box;
+} */
+.pageWrapper {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 16px;
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+  background: linear-gradient(135deg, #e3f0fc 0%, #d8eaff 50%, #eaf3ff 100%);
+}
+
+/* Subtle background geometric pattern */
+.bgPattern {
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  z-index: 0;
   pointer-events: none;
+  z-index: 1;
 }
 
-.svg {
-  width: 100%;
-  height: 100%;
-  opacity: 0.8; /* Let individual groups control opacity */
-  animation: fadeIn 2s ease-out;
-}
-
-/* Base element styles */
-.path {
-  fill: none;
-  stroke: var(--color-teal);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.node {
-  fill: var(--navy-900);
-  stroke: var(--color-teal);
-}
-
-.nodeGlow {
-  fill: var(--color-teal);
-}
-
-.dot {
-  fill: #fff;
-}
-
-.label {
-  fill: rgba(255, 255, 255, 0.7);
-  font-family: var(--font-sans);
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  user-select: none;
-}
-
-/* Foreground - Sharp and bright */
-.layerForeground {
-  opacity: 0.35;
-}
-.layerForeground .path {
-  stroke-width: 1.5;
-}
-.layerForeground .node {
-  stroke-width: 2.5;
-}
-.layerForeground .nodeGlow {
-  opacity: 0.5;
-  filter: blur(8px);
-}
-.layerForeground .dot {
-  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.8));
-}
-.layerForeground .label {
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
-}
-
-/* Background - Blurry and dim (Depth effect) */
-.layerBackground {
-  opacity: 0.1;
-  filter: blur(2px);
-}
-.layerBackground .path {
-  stroke-width: 1;
-}
-.layerBackground .node {
-  stroke-width: 1.5;
-}
-.layerBackground .nodeGlow {
-  opacity: 0.3;
+/* Large top-left soft curved shape */
+/* .pageWrapper::before {
+  content: "";
+  position: absolute;
+  width: 580px;
+  height: 580px;
+  top: -140px;
+  left: -140px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.75) 0%, rgba(190, 220, 255, 0.35) 100%);
+  border-radius: 90px;
+  transform: rotate(38deg);
   filter: blur(12px);
-}
-.layerBackground .dot {
-  filter: blur(1px);
+  z-index: 1;
+} */
+
+/* Large bottom-right soft curved shape */
+/* .pageWrapper::after {
+  content: "";
+  position: absolute;
+  width: 620px;
+  height: 620px;
+  bottom: -160px;
+  right: -160px;
+  background: linear-gradient(135deg, rgba(185, 218, 255, 0.45) 0%, rgba(255, 255, 255, 0.7) 100%);
+  border-radius: 110px;
+  transform: rotate(-28deg);
+  filter: blur(16px);
+  z-index: 1;
+} */
+
+/* ==========================================================
+   REUSABLE 3D SOFT ROUNDED CUBE CLASS
+========================================================== */
+/* .cube {
+  position: absolute;
+  pointer-events: none;
+  z-index: 1;
+  border-radius: 68px;
+  background: linear-gradient(
+    140deg,
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(225, 239, 255, 0.4) 50%,
+    rgba(185, 218, 255, 0.7) 100%
+  );
+  box-shadow: 
+    inset 3px 3px 10px rgba(255, 255, 255, 1),
+    inset -6px -6px 16px rgba(135, 185, 245, 0.35),
+    15px 25px 45px rgba(90, 155, 230, 0.12);
+  backdrop-filter: blur(10px);
+} */
+
+.cube {
+  position: absolute;
+  pointer-events: none;
+  z-index: 1;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(225, 239, 255, 0.45) 50%,
+    rgba(185, 218, 255, 0.75) 100%
+  );
+  box-shadow: 
+    inset 4px 4px 12px rgba(255, 255, 255, 1),
+    inset -6px -6px 16px rgba(135, 185, 245, 0.35),
+    15px 25px 40px rgba(90, 155, 230, 0.12);
+  backdrop-filter: blur(10px);
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 0.8; }
+/* Top-Left Corner Cube (Matching your highlighted screenshot) */
+/* .cubeTopLeft {
+  width: 380px;
+  height: 380px;
+  top: -100px;
+  left: -110px;
+  transform: rotate(35deg);
+  border-radius: 80px;
+} */
+
+.cubeTopLeft {
+  width: 420px;
+  height: 420px;
+  top: -120px;
+  left: -120px;
+  transform: rotate(35deg);
+  border-radius: 90px;
+}
+
+/* Bottom-Right Corner Cube */
+/* .cubeBottomRight {
+  width: 440px;
+  height: 440px;
+  bottom: -130px;
+  right: -120px;
+  transform: rotate(-28deg);
+  border-radius: 90px;
+} */
+
+.cubeBottomRight {
+  width: 480px;
+  height: 480px;
+  bottom: -150px;
+  right: -130px;
+  transform: rotate(-28deg);
+  border-radius: 100px;
+}
+
+
+/* Bottom-Left Corner Cube */
+/* .cubeBottomLeft {
+  width: 300px;
+  height: 300px;
+  bottom: -60px;
+  left: -80px;
+  transform: rotate(22deg);
+  border-radius: 65px;
+} */
+
+.cubeBottomLeft {
+  width: 320px;
+  height: 320px;
+  bottom: -70px;
+  left: -90px;
+  transform: rotate(22deg);
+  border-radius: 70px;
+}
+
+/* --- Floating Cubes Near Form --- */
+
+/* Small Floating Cube Top-Right of Card */
+/* .cubeNearFormTopRight {
+  width: 150px;
+  height: 150px;
+  top: 18%;
+  right: 18%;
+  transform: rotate(20deg);
+  border-radius: 36px;
+  opacity: 0.65;
+} */
+.cubeBehindForm {
+  width: 280px;
+  height: 280px;
+  top: 28%;
+  left: 36%;
+  transform: rotate(28deg);
+  border-radius: 60px;
+  z-index: 1; /* Form container is z-index: 2, so this sits right behind it */
+  opacity: 0.85;
+}
+
+.cubeNearFormTopRight {
+  width: 150px;
+  height: 150px;
+  top: 18%;
+  right: 18%;
+  transform: rotate(22deg);
+  border-radius: 38px;
+  opacity: 0.8;
+}
+
+/* Small Floating Cube Mid-Left of Card */
+/* .cubeNearFormMidLeft {
+  width: 120px;
+  height: 120px;
+  top: 45%;
+  left: 15%;
+  transform: rotate(-15deg);
+  border-radius: 30px;
+  opacity: 0.55;
+} */
+
+.cubeNearFormMidLeft {
+  width: 130px;
+  height: 130px;
+  top: 42%;
+  left: 14%;
+  transform: rotate(-15deg);
+  border-radius: 32px;
+  opacity: 0.75;
+}
+
+/* Small Floating Cube Bottom-Right of Card */
+/* .cubeNearFormBottomRight {
+  width: 170px;
+  height: 170px;
+  bottom: 20%;
+  right: 16%;
+  transform: rotate(12deg);
+  border-radius: 40px;
+  opacity: 0.6;
+} */
+/* .cubeNearFormBottomRight {
+  width: 180px;
+  height: 180px;
+  bottom: 18%;
+  right: 15%;
+  transform: rotate(14deg);
+  border-radius: 44px;
+  opacity: 0.8;
+} */
+
+.cubeNearFormBottomRight {
+  width: 160px;
+  height: 160px;
+  bottom: 22%;
+  right: 16%;
+  transform: rotate(14deg);
+  border-radius: 40px;
+  opacity: 0.75;
+}
+
+.cubeNearFormTopLeft {
+  width: 90px;
+  height: 90px;
+  top: 22%;
+  left: 22%;
+  transform: rotate(10deg);
+  border-radius: 24px;
+  opacity: 0.65;
+}
+.cubeNearFormBottomLeft {
+  width: 110px;
+  height: 110px;
+  bottom: 25%;
+  left: 20%;
+  transform: rotate(-25deg);
+  border-radius: 28px;
+  opacity: 0.7;
+}
+/* ==========================================================
+   3D GLASS BLOCK APPROXIMATIONS
+========================================================== */
+
+/* Top-Left 3D Block */
+.pageWrapper::before {
+  content: "";
+  position: absolute;
+  width: 320px;
+  height: 320px;
+  top: -60px;
+  left: -80px;
+  border-radius: 65px;
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.75) 0%,
+    rgba(210, 230, 255, 0.3) 50%,
+    rgba(180, 212, 255, 0.6) 100%
+  );
+  transform: rotate(32deg) skewX(-5deg);
+  box-shadow: 
+    inset 2px 2px 8px rgba(255, 255, 255, 0.9),
+    inset -4px -4px 12px rgba(140, 185, 240, 0.4),
+    20px 20px 40px rgba(100, 160, 230, 0.15);
+  backdrop-filter: blur(8px);
+  z-index: 1;
+}
+
+/* Bottom-Right 3D Block */
+.pageWrapper::after {
+  content: "";
+  position: absolute;
+  width: 380px;
+  height: 380px;
+  bottom: -90px;
+  right: -90px;
+  border-radius: 80px;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.8) 0%,
+    rgba(195, 222, 255, 0.35) 60%,
+    rgba(165, 202, 255, 0.65) 100%
+  );
+  transform: rotate(-25deg) skewY(3deg);
+  box-shadow: 
+    inset 3px 3px 10px rgba(255, 255, 255, 0.95),
+    inset -5px -5px 15px rgba(130, 178, 238, 0.45),
+    -15px -15px 35px rgba(100, 160, 230, 0.12);
+  backdrop-filter: blur(10px);
+  z-index: 1;
+}
+
+.pageWrapper::before,
+.pageWrapper::after {
+  display: none !important;
+}
+/* Dot Grid Decoration Layers (Left & Right) */
+/* .dotGridLeft,
+.dotGridRight {
+  position: absolute;
+  width: 140px;
+  height: 140px;
+  background-image: radial-gradient(rgba(59, 130, 246, 0.25) 1.5px, transparent 1.5px);
+  background-size: 14px 14px;
+  pointer-events: none;
+  z-index: 1;
+} */
+
+/* .dotGridLeft,
+.dotGridRight,
+.dotGridCenterRight {
+  position: absolute;
+  background-image: radial-gradient(rgba(59, 130, 246, 0.3) 2px, transparent 2px);
+  background-size: 18px 18px;
+  pointer-events: none;
+  z-index: 1;
+} */
+
+.dotGridTopLeft,
+.dotGridBetweenFormAndCubeRight,
+.dotGridBetweenFormAndCubeLeft {
+  position: absolute;
+  background-image: radial-gradient(rgba(59, 130, 246, 0.28) 2px, transparent 2px);
+  background-size: 16px 16px;
+  pointer-events: none;
+  z-index: 0; /* Keeps dots strictly behind the cubes */
+}
+
+/* .dotGridLeft {
+  top: 38%;
+  left: 7%;
+  transform: rotate(-10deg);
+} */
+.dotGridTopLeft {
+  width: 220px;
+  height: 220px;
+  top: 12%;
+  left: 8%;
+  transform: rotate(-10deg);
+}
+.dotGridBetweenFormAndCubeRight {
+  width: 220px;
+  height: 220px;
+  top: 35%;
+  right: 22%;
+  transform: rotate(12deg);
+}
+
+.dotGridBetweenFormAndCubeLeft {
+  width: 200px;
+  height: 200px;
+  bottom: 20%;
+  left: 21%;
+  transform: rotate(-8deg);
+}
+/* .dotGridRight {
+  top: 22%;
+  right: 8%;
+  transform: rotate(15deg);
+} */
+
+.dotGridRight {
+  width: 280px;
+  height: 280px;
+  top: 14%;
+  right: 6%;
+  transform: rotate(12deg);
+}
+
+.dotGridCenterRight {
+  width: 200px;
+  height: 200px;
+  bottom: 22%;
+  right: 8%;
+  transform: rotate(-5deg);
+}
+
+/* Extra secondary small shape in background */
+/* .subShape {
+  position: absolute;
+  width: 320px;
+  height: 320px;
+  top: 15%;
+  left: 20%;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 60px;
+  transform: rotate(18deg);
+  filter: blur(8px);
+  z-index: 1;
+} */
+.subShape {
+  position: absolute;
+  width: 260px;
+  height: 260px;
+  bottom: 8%;
+  left: -40px;
+  border-radius: 50px;
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.65) 0%,
+    rgba(185, 218, 255, 0.25) 100%
+  );
+  transform: rotate(18deg);
+  box-shadow: 
+    inset 2px 2px 6px rgba(255, 255, 255, 0.8),
+    10px 10px 30px rgba(120, 175, 240, 0.15);
+  backdrop-filter: blur(6px);
+  z-index: 1;
+}
+/* Outer wrapper to center card and bottom copyright */
+
+
+.cardContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1; /* Takes up available space to center card vertically */
+  width: 100%;
+  max-width: 400px;
+  z-index: 2;
+  margin: auto 0; /* Auto vertical margins keep the card centered */
+}
+
+/* ==========================================================
+   PASSWORD EYE TOGGLE BUTTON OVERRIDES
+========================================================== */
+
+/* Wrapper positioning context for input with eye icon */
+.formGroup :global(div:has(input[type="password"])),
+.formGroup :global(.relative),
+.formGroup :global(.input-wrapper) {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  width: 100% !important;
+}
+
+/* Target the toggle button inside the input field */
+.formGroup :global(button),
+.formGroup :global(button[type="button"]) {
+  position: absolute !important;
+  right: 8px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  
+  /* Compact circular dimensions */
+  width: 26px !important;
+  height: 26px !important;
+  min-width: 26px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  
+  /* Layout & Alignment */
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  
+  /* Clear full-height default styles */
+  background: transparent !important;
+  border: none !important;
+  border-radius: 50% !important;
+  cursor: pointer !important;
+  box-shadow: none !important;
+  outline: none !important;
+  transition: background-color 0.2s ease, color 0.2s ease !important;
+}
+
+/* Icon sizing */
+.formGroup :global(button svg) {
+  width: 16px !important;
+  height: 16px !important;
+  color: #64748b !important;
+  pointer-events: none !important;
+}
+
+/* Hover & Focus state: Subtle small circular highlight */
+.formGroup :global(button:hover) {
+  background-color: rgba(0, 136, 255, 0.1) !important; /* Soft blue circular hover */
+}
+
+.formGroup :global(button:hover svg) {
+  color: #0088ff !important;
+}
+
+/* Right padding on input so typed text doesn't overlap eye icon */
+.formGroup :global(input[type="password"]) {
+  padding-right: 36px !important;
+}
+
+/* ==========================================================
+   ZOHO COMPACT CARD STYLE
+========================================================== */
+
+.authCard {
+  width: 100%;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 22px 28px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.03);
+  border: 1px solid #eaedf1;
+  box-sizing: border-box;
+}
+
+/* ==========================================================
+   FORM ELEMENTS
+========================================================== */
+.formGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.formRow2Col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+   width: 100%;
+}
+
+/* Hide any auto-generated empty labels */
+.formGroup label,
+.formGroup :global(label) {
+  display: none !important;
+}
+
+.formGroup input,
+.formGroup :global(input) {
+  width: 100%;
+  height: 38px !important;
+  border-radius: 6px !important;
+  border: 1px solid #dbe2ea !important;
+  background: var(--input-bg) !important;
+  padding: 0 12px !important;
+  font-size: 13.5px !important;
+  color: var(--text-dark) !important;
+  outline: none;
+  transition: all 0.2s ease !important;
+  box-sizing: border-box;
+}
+
+.formGroup input:focus,
+.formGroup :global(input:focus) {
+  border-color: #0088ff !important;
+  background: #ffffff !important;
+  box-shadow: 0 0 0 2.5px rgba(0, 136, 255, 0.12) !important;
+}
+
+/* Submit Button */
+.submitBtn {
+  height: 38px !important;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #0D5C75 0%, #0088CC 100%) !important;
+  border: none;
+  color: #ffffff;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 136, 255, 0.2);
+}
+
+.submitBtn:hover {
+  background: linear-gradient(135deg, #0f6c8a 0%, #009be6 100%) !important;
+  box-shadow: 0 6px 16px rgba(0, 136, 204, 0.35);
+  transform: translateY(-1px);
+}
+
+.submitBtn:active {
+  transform: translateY(1px);
+  box-shadow: 0 2px 8px rgba(13, 92, 117, 0.2);
+}
+
+/* .submitBtn:hover {
+  background-color: #68addb !important;
+} */
+
+/* .submitBtn:active {
+  transform: translateY(1px);
+} */
+
+/* ==========================================================
+   PAGE COPYRIGHT FOOTER
+========================================================== */
+
+.pageCopyright {
+  width: 100%;
+  text-align: center;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 400;
+  padding-top: 12px;
+  margin-top: auto; /* Ensures it stays grounded at the bottom */
+  z-index: 2;
+}
+
+@media (max-width: 480px) {
+  .authCard {
+    padding: 24px 20px;
+    border-radius: 10px;
+  }
+  .formRow2Col {
+    grid-template-columns: 1fr;
+  }
 }
