@@ -33,6 +33,7 @@ export const LIST_FILTERS: Record<EntityType, readonly FilterPreset[]> = {
   ],
   item: [
     { key: 'all', label: 'Active Items', where: { isActive: true } },
+    { key: 'all_items', label: 'All Items', where: {} },
     { key: 'inactive', label: 'Inactive Items', where: { isActive: false } },
     { key: 'goods', label: 'Goods', where: { type: 'Goods' } },
     { key: 'services', label: 'Services', where: { type: 'Service' } },

@@ -21,6 +21,7 @@ import {
   LayoutDashboard,
   Home,
   ShoppingCart,
+  ShoppingBag,
   Receipt,
   ChevronRight,
 } from 'lucide-react';
@@ -67,6 +68,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   LayoutDashboard,
   Home,
   ShoppingCart,
+  ShoppingBag,
   Users,
   FileText,
   Receipt,
