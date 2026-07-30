@@ -128,14 +128,114 @@ influences it.
 >
 > ⚠️ **The one real footgun is the account.** If your two Catalyst projects live under _different
 > Zoho accounts_, the per-folder config will still name the right project, but the CLI will be
-> authenticated as the wrong user. You must `catalyst login` to switch. If both projects are under
-> the same Zoho account, this never comes up.
+> authenticated as the wrong user. You must `catalyst login` to switch.
 
-**To confirm the target before a risky deploy:**
+### 1.5b Two targets in one repo — how staging and production stay apart
+
+Staging and production live under **different Zoho accounts**, so the `cd`-is-the-selector trick
+above does not apply: one repo, two destinations. `scripts/deploy.mjs` is the selector instead, and
+`.catalystrc` becomes a **generated file** (git-ignored) rather than a shared setting.
 
 ```bash
-cat .catalystrc      # check the "name" field — this is the project you are about to overwrite
+npm run deploy:staging
+npm run deploy:production
 ```
+
+Everything that differs between the two is declared in **`deploy/targets.json`**:
+
+| Per target    | File                              | Holds                                      |
+| ------------- | --------------------------------- | ------------------------------------------ |
+| Zoho account  | `deploy/targets.json` → `account` | the login the CLI must be authenticated as |
+| Project + env | `deploy/<target>.catalystrc.json` | copied to `.catalystrc` at deploy time     |
+| Secrets       | `backend/.env.<target>`           | git-ignored; one DB + JWT set per target   |
+
+**The account check is the point of the script.** Three of the four settings are repo files it
+writes; the account is machine-wide and it cannot set it. So it reads the CLI's own login file
+(`%APPDATA%\zcatalyst-cli-nodejs\Config\zcatalyst-cli.json`, `active_dc` + that DC's `user.Email`)
+and **refuses to deploy** when it does not match the target — the failure mode a correct-looking
+`.catalystrc` cannot protect you from. Switch accounts with `catalyst logout && catalyst login`.
+
+It also cross-checks `ZC_PROJECT_ID` / `ZC_PROJECT_KEY` / `ZC_ENVIRONMENT` in the env file against
+the project in the `.catalystrc` payload. A half-edited copy of staging's env file would otherwise
+run the app in one project while its Stratus and Cache credentials point at another.
+
+Every check runs **before** anything is written, built or uploaded, so a rejected deploy leaves the
+working tree untouched. Then it prints the resolved account, project, environment, AppSail, env file
+and **database host**, and makes you type the target name to proceed:
+
+```
+  ┌─ Deploy target: STAGING
+  │  Zoho account : user1@demo14.octfis.in  (dc: in)
+  │  Project      : Jobwork  [69851000000066569]
+  │  Environment  : Development
+  │  AppSail      : jobwork-api ← backend/
+  │  Env file     : backend/.env.staging  (26 variables)
+  │  Database     : jobwork-db-dev...ap-south-1.rds.amazonaws.com:5432/jobwork_dev
+  └─ Build        : web + backend
+
+  Type "staging" to deploy, anything else to abort:
+```
+
+Flags: `--yes` (skip confirmation — required when stdin is not a TTY), `--skip-build` (reuse the
+existing `dist/` + `public/`), `--skip-account-check` (when the CLI login file cannot be read).
+
+**Setting up a target** — once per account. `catalyst init` already knows every id; don't retype them:
+
+```bash
+catalyst logout && catalyst login     # as THAT target's Zoho account
+rm .catalystrc && catalyst init       # pick its project + environment
+npm run capture:staging               # or capture:production
+```
+
+`scripts/capture-target.mjs` writes the generated `.catalystrc` to `deploy/<target>.catalystrc.json`
+and records the logged-in account + DC in `deploy/targets.json`. It refuses to capture when the
+account or the project already belongs to the _other_ target — two targets pointing at one place
+deploys successfully into the wrong environment, so it cannot be a warning.
+
+> ⚠️ **`rm .catalystrc` first, or `catalyst init` fails.** It validates the portal already bound in
+> the directory against your session before doing anything, so an old target's `.catalystrc` produces
+> `The Catalyst portal initialized in the current project directory is not accessible with the
+currently logged in user`. The file is generated — deleting it costs nothing.
+
+> ⚠️ **Nothing `ZC_*` carries across accounts.** A second account means a different org, so the
+> production env file needs its **own** Stratus bucket, its own Self Client
+> (`ZC_CLIENT_ID`/`ZC_CLIENT_SECRET`/`ZC_REFRESH_TOKEN`), and its own `ZC_PROJECT_ID` /
+> `ZC_PROJECT_KEY` / `ZC_ENVIRONMENT`. Copying staging's values gives you an app that boots and then
+> fails every upload.
+
+> ⚠️ **`ZC_ENVIRONMENT` is the environment's real name, not the target's name.** A target called
+> `production` deploying into a Catalyst **Development** environment needs
+> `ZC_ENVIRONMENT="Development"`. `deploy.mjs` compares it against `.catalystrc` and blocks the
+> mismatch.
+
+**The first deploy into a fresh project goes interactive.** The AppSail named in `catalyst.json`
+does not exist in the new project yet, so `catalyst deploy appsail` drops into its create flow and
+prompts. Answer:
+
+| Prompt                | Answer                    | Why                                                                               |
+| --------------------- | ------------------------- | --------------------------------------------------------------------------------- |
+| Name for your AppSail | `jobwork-api`             | **Must match `catalyst.json`** — see below.                                       |
+| Build directory       | _(blank)_                 | `build_path` is relative to `source: backend`; it must end up `.`, not `backend`. |
+| Stack                 | **NodeJS 24**             | Matches `app-config.base.json`.                                                   |
+| Command to start      | `node dist/src/server.js` | Matches `app-config.base.json`.                                                   |
+
+> 🔴 **`catalyst.json` is the one deploy file that is NOT per-target.** It is committed and shared,
+> so the AppSail name must be **identical in both projects**. Answering the name prompt with anything
+> else makes the CLI rewrite `catalyst.json`, and the _other_ target then deploys to that name too —
+> creating a stray AppSail there or failing. This is safe only because the projects are in different
+> accounts, where names may repeat; Catalyst appends a per-project suffix to the URL
+> (`jobwork-api-<zaid>.<env>.catalystappsail.com`), so nothing is ambiguous.
+>
+> If you ever genuinely need different names, move `appsail` into `deploy/targets.json` and generate
+> `catalyst.json` in `deploy.mjs` the same way `.catalystrc` is generated.
+
+Answering the build-directory prompt with `backend` yields `build_path: "backend"` → the CLI zips
+`backend/backend` → an empty bundle. `build-app-config.mjs` rewrites `app-config.json` from
+`app-config.base.json` on every deploy, so this self-corrects on the _next_ run — but the run you are
+in ships nothing.
+
+> ℹ️ **`web/` needs no per-target config.** `VITE_API_URL=/api` is same-origin and the bundle is
+> served by the same AppSail, so both targets build identically.
 
 ### 1.6 Why `node_modules` must be bundled (the runtime model)
 
@@ -212,8 +312,17 @@ so "deploy everything" and "deploy just the AppSail" do the same thing. Plain `c
 always worked and is not wrong.
 
 The difference starts to matter **the moment you add a second resource** (a Function, a Cron, a
-hosted Client). From then on, bare `catalyst deploy` would push those too. The root
-`deploy:appsail` script therefore pins the narrow form on purpose.
+hosted Client). From then on, bare `catalyst deploy` would push those too. `scripts/deploy.mjs`
+therefore pins the narrow form — as **`catalyst deploy --only appsail`**.
+
+> 🔴 **Do not use the `appsail` _subcommand_ in a script.** `catalyst deploy appsail` is not just
+> narrow targeting: `--name`, `--build-path`, `--stack` and `--command` are **its options**, and it
+> **prompts for every one you don't pass**, ignoring `catalyst.json` and `app-config.json`. In a
+> scripted deploy that hangs waiting for input, and the answers it collects can overwrite the
+> committed `catalyst.json` with a different AppSail name — breaking the _other_ deploy target.
+>
+> `catalyst deploy --only appsail` is pure targeting: declarative, no prompts, same single resource.
+> Check with `catalyst deploy appsail --help` — the flag list is the giveaway.
 
 ---
 
@@ -351,13 +460,14 @@ When prompted:
 }
 ```
 
-In this repo `.catalystrc` **is committed to git** (no ignore rule matches it), so every developer
-who clones the repo automatically targets the same project and environment. That is deliberate and
-convenient here — but be aware of the consequence: **the `cd` into this folder is what selects the
-Catalyst project.** See §1.5.
+⚠️ **This file used to be committed, and no longer is.** With one destination, committing it meant
+every clone targeted the same project automatically. With staging and production under **different
+Zoho accounts** that stopped working: one committed file cannot name two destinations, and it would
+show up dirty in `git status` every time you switched.
 
-> Some Catalyst setups gitignore this file instead, so that each developer can point at their own
-> environment. If you ever add a Staging/Production environment, revisit that choice.
+It is now **git-ignored and generated** — `scripts/deploy.mjs` writes it from
+`deploy/<target>.catalystrc.json` on every deploy (§1.5b). The committed sources of truth live in
+`deploy/`. Don't hand-edit `.catalystrc`; your next deploy overwrites it.
 
 ### Step 6 — Register the backend as an AppSail app
 
@@ -432,16 +542,17 @@ the whole file with:**
 
 **Every key explained:**
 
-| Key             | Our value                 | What it means                                                                                                                                                                                                                                                                                               |
-| --------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `command`       | `node dist/src/server.js` | The command Catalyst runs to start your app, executed **inside the `backend/` folder**. This path exists because `tsc` compiles `src/server.ts` → `dist/src/server.js`. It matches the `start` script in `backend/package.json`.                                                                            |
-| `build_path`    | `.`                       | Which sub-folder of `source` to upload. `.` means **all of `backend/`**. We need all of it: `dist/`, `node_modules/`, `public/`, `certs/`, and `generated/` must travel together.                                                                                                                           |
-| `stack`         | `node24`                  | The Linux runtime image Catalyst boots. Matches your local Node 24.                                                                                                                                                                                                                                         |
-| `env_variables` | generated                 | **Do not hand-edit.** `npm run config:appsail` writes this from git-ignored `backend/.env.production`; the committed template is `app-config.base.json`. `catalyst deploy` ships this key and it **replaces** the AppSail config, so an empty `{}` here silently deletes every variable set in the console. |
-| `memory`        | `256`                     | RAM in MB for each instance. 256 MB is fine for an Express + Prisma app.                                                                                                                                                                                                                                    |
-| `scripts`       | `{}`                      | `preserve` / `predeploy` lifecycle hooks. ⚠️ These run **on your machine** before upload — they are _not_ remote build steps (see §1.6). We drive the build from the root `deploy:appsail` script instead, so this stays empty.                                                                             |
+| Key             | Our value                 | What it means                                                                                                                                                                                                                                                                                                             |
+| --------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `command`       | `node dist/src/server.js` | The command Catalyst runs to start your app, executed **inside the `backend/` folder**. This path exists because `tsc` compiles `src/server.ts` → `dist/src/server.js`. It matches the `start` script in `backend/package.json`.                                                                                          |
+| `build_path`    | `.`                       | Which sub-folder of `source` to upload. `.` means **all of `backend/`**. We need all of it: `dist/`, `node_modules/`, `public/`, `certs/`, and `generated/` must travel together.                                                                                                                                         |
+| `stack`         | `node24`                  | The Linux runtime image Catalyst boots. Matches your local Node 24.                                                                                                                                                                                                                                                       |
+| `env_variables` | generated                 | **Do not hand-edit.** `npm run config:appsail -- <target>` writes this from the git-ignored `backend/.env.<target>`; the committed template is `app-config.base.json`. `catalyst deploy` ships this key and it **replaces** the AppSail config, so an empty `{}` here silently deletes every variable set in the console. |
+| `memory`        | `256`                     | RAM in MB for each instance. 256 MB is fine for an Express + Prisma app.                                                                                                                                                                                                                                                  |
+| `scripts`       | `{}`                      | `preserve` / `predeploy` lifecycle hooks. ⚠️ These run **on your machine** before upload — they are _not_ remote build steps (see §1.6). We drive the build from `scripts/deploy.mjs` instead, so this stays empty.                                                                                                       |
 
-✅ **Commit this file.**
+✅ **Commit `app-config.base.json`.** ❌ **Never commit the generated `app-config.json`** — it carries
+every secret for whichever target you last deployed (Part 7, item 4).
 
 ### Step 8 — Make the app listen on Catalyst's port
 
@@ -725,23 +836,26 @@ Two problems if you leave it:
    production**. Your `.env` says `NODE_ENV=development`, which would turn on SQL query logging
    (`db/prisma.ts:71`) and disable production behaviour.
 
-So move it out of the way before deploying:
+**`scripts/deploy.mjs` does this for you** — it parks `backend/.env` at `.env.deploy-backup` in the
+repo root for the duration of the upload and restores it in a `finally` (Part 6). The manual
+equivalent, if you ever call `catalyst deploy` by hand:
 
 ```bash
-mv backend/.env .env.backup
+mv backend/.env .env.backup      # ...and put it back in Step 19
 ```
-
-You will put it back in Step 19.
 
 ### Step 17 — Deploy
 
 From the repo root:
 
 ```bash
-catalyst deploy
+npm run deploy:staging       # or: npm run deploy:production
 ```
 
 **What this does, precisely:**
+
+0. Verifies the logged-in Zoho account, writes `.catalystrc` and `backend/app-config.json` for the
+   target, builds both folders, and parks `backend/.env` (§1.5b). Then, via `catalyst deploy appsail`:
 
 1. Reads `catalyst.json` → sees one AppSail app named `jobwork-api` with `source: backend`.
 2. Reads `backend/app-config.json` → learns the stack (`node24`), the start command, the memory.
@@ -826,26 +940,24 @@ If anything fails, go to **AppSail → Logs** in the console. `server.ts:37` pri
 
 ## Part 6 — Routine redeploy (every time after the first)
 
-Once Parts 2–3 are done, the builds are automated by a root script:
-
-```json
-"build:web":      "cd web && npm install && npm run build",
-"build:backend":  "cd backend && npm install && npm run build",
-"deploy:appsail": "npm run build:web && npm run build:backend && xcopy web\\dist backend\\public /E /I /Y && catalyst deploy appsail"
-```
-
-So a normal deploy is:
+Once Parts 2–3 are done, a normal deploy is **one command that names its destination**:
 
 ```bash
-# 1. Hide the local .env so it isn't uploaded  (see the warning below)
-mv backend/.env .env.backup
-
-# 2. Install + build BOTH folders, then deploy — one command
-npm run deploy:appsail
-
-# 3. Restore local dev
-mv .env.backup backend/.env
+npm run deploy:staging       # or: npm run deploy:production
 ```
+
+`scripts/deploy.mjs` (§1.5b) does the whole sequence: verify the Zoho account → verify the env file
+and `.catalystrc` agree → show the target and ask → write `.catalystrc` → generate
+`backend/app-config.json` → `build:web` → `build:backend` → park `backend/.env` → `catalyst deploy
+appsail` → restore `backend/.env`.
+
+> ✅ **The `.env` dance is now automatic.** It used to be a manual `mv backend/.env .env.backup`
+> before every deploy and a `mv` back after (Step 16) — miss it and you uploaded the real DB password
+> and `NODE_ENV=development`. The script parks it at `.env.deploy-backup` **in the repo root** (not
+> inside `backend/`, where `build_path: "."` would just zip it under a new name) and restores it in a
+> `finally`, plus on Ctrl-C. If a run is killed hard enough to skip both, the next run finds the
+> parked file, sees no `backend/.env`, and puts it back. If it finds _both_, it stops and makes you
+> decide which is current.
 
 You do **not** need to touch the console again — but **not** because the values persist. They do
 not. `catalyst deploy` pushes `app-config.json`, whose `env_variables` **replaces** the AppSail
@@ -855,23 +967,19 @@ running keeps its environment — a process's env is fixed at spawn — so the a
 the next cold start, when a fresh process boots against the emptied config and `env.ts` throws
 `Invalid environment variables`.
 
-The console is therefore **not a store**. `backend/.env.production` is. Add variables there.
+The console is therefore **not a store**. `backend/.env.<target>` is. Add variables there — and
+remember there are now **two** such files. A variable added to `.env.staging` and not `.env.production`
+is a variable that exists in staging and vanishes at the next production cold start.
 
-> ⚠️ **`deploy:appsail` does NOT move `.env` for you.** The builds are automated; the `.env`
-> exclusion (Step 16) is still **manual**. If you run `npm run deploy:appsail` on its own, you will
-> upload `backend/.env` — real DB password included — and `NODE_ENV=development` will take effect in
-> production. Steps 1 and 3 above are not optional.
+> ⚠️ **`npm run deploy:appsail` is gone.** It deployed to whatever `.catalystrc` happened to say,
+> which with two accounts is a coin flip. It now exits 1 pointing at the two target-named scripts.
 >
-> Catalyst's `catalyst.json` has an `ignore` array that would solve this properly, but Zoho's docs
-> only document it for **`functions`**, not `appsail`. It is untested here — do not rely on it
-> without verifying.
+> Catalyst's `catalyst.json` has an `ignore` array that would remove the need to park `.env` at all,
+> but Zoho's docs only document it for **`functions`**, not `appsail`. It is untested here — do not
+> rely on it without verifying.
 
 > ℹ️ **Why `npm install` is inside both build scripts.** It makes branch switching safe (§6.1). If
 > the lockfile didn't change, npm no-ops in about a second, so the cost is negligible.
-
-> ℹ️ **`xcopy` is Windows-only.** The deploy script will fail on macOS, Linux, or any CI runner.
-> Replace it with a cross-platform copy (`cpx`, `shx`, or a small Node script) before putting this
-> in a pipeline.
 
 ### 6.1 What you must redo after switching git branches
 
@@ -897,9 +1005,9 @@ Nothing printed → your `node_modules` is already correct, skip the install.
 **Build — every time.** A stale `dist/` does not always crash loudly. It usually just runs **last
 branch's business logic**, silently, which is far worse than a `Cannot find module` error.
 
-✅ **`npm run deploy:appsail` handles both of these for you** — it installs and rebuilds both folders
+✅ **`npm run deploy:<target>` handles both of these for you** — it installs and rebuilds both folders
 before deploying. That is exactly why the build belongs _inside_ the deploy command rather than in
-your memory.
+your memory. (`--skip-build` opts out, for a redeploy of an artifact you just built.)
 
 ---
 
@@ -927,24 +1035,31 @@ works but the website is blank or shows an old version.
 ### 4. 🟠 Never commit `app-config.json`
 
 Secrets **must** live in its `env_variables` — the console does not survive a deploy (Step 18) — so
-the file is git-ignored and generated by `npm run config:appsail` from `backend/.env.production`.
-Edit `app-config.base.json` for non-secret settings (`command`, `stack`, `memory`); never add
-`app-config.json` back to git.
+the file is git-ignored and generated by `npm run config:appsail -- <target>` from
+`backend/.env.<target>`. Edit `app-config.base.json` for non-secret settings (`command`, `stack`,
+`memory`); never add `app-config.json` back to git.
 
-### 5. 🟠 `.env` gets uploaded unless you move it
+### 5. 🟠 `.env` gets uploaded unless it is moved
 
-`build_path: "."` zips the whole folder, and `.gitignore` has no effect on a zip. Move it out
-(Step 16). Symptom if you forget: production silently runs in `development` mode.
+`build_path: "."` zips the whole folder, and `.gitignore` has no effect on a zip. Symptom if it
+slips through: production silently runs in `development` mode against your dev database.
+`scripts/deploy.mjs` now parks it automatically (Part 6) — this only bites you if you invoke
+`catalyst deploy` by hand.
 
 ### 6. 🟠 Changing `VITE_API_URL` requires a rebuild
 
 Vite bakes it into the JS bundle. Editing it without rebuilding changes nothing.
 
-### 7. 🟠 Deploying into the wrong project
+### 7. 🟠 Deploying into the wrong project — or the wrong account
 
 If your Zoho account has several projects (e.g. colleagues' work), `catalyst init` will happily
-let you pick the wrong one. **Check `.catalystrc` before your first deploy** — it records the
-project name and ID you selected. Deploying into a colleague's project can overwrite their app.
+let you pick the wrong one, and deploying into a colleague's project can overwrite their app.
+
+Since staging and production sit under **different Zoho accounts**, the sharper version of this is
+deploying staging's build into production. `npm run deploy:<target>` is the mitigation: it verifies
+the logged-in account, cross-checks the env file against the project, prints the destination
+including the **database host**, and makes you type the target name (§1.5b). Deploying by calling
+`catalyst deploy` directly skips every one of those checks.
 
 ### 8. 🟡 The first deploy of a new app is always two deploys
 
@@ -969,12 +1084,16 @@ that behaves differently in the cloud.
 
 | File                                          | Committed?               | Created by                  | Purpose                                                                                                            |
 | --------------------------------------------- | ------------------------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `catalyst.json`                               | ✅ Yes                   | `catalyst init`             | Tells `catalyst deploy` **what** to deploy (`jobwork-api`) and **from where** (`backend/`).                        |
-| `backend/app-config.json`                     | ✅ Yes                   | `catalyst init appsail`     | Tells AppSail **how** to run the app: start command, Node stack, memory.                                           |
-| `.catalystrc`                                 | ✅ Yes                   | `catalyst init`             | Which Zoho **project + environment** to deploy into (§1.5). Committed here, so every clone targets `jobwork-test`. |
-| CLI login (`%APPDATA%\zcatalyst-cli-nodejs\`) | ❌ No (outside the repo) | `catalyst login`            | Which **Zoho account** the CLI acts as. **Global — one per machine** (§1.5).                                       |
-| `backend/.env`                                | ❌ No                    | you                         | **Local dev only.** Must be moved out before deploying.                                                            |
-| `web/.env.production`                         | ❌ No                    | you                         | Baked into the JS bundle at build time. Sets `VITE_API_URL=/api`.                                                  |
+| `catalyst.json`                               | ✅ Yes                   | `catalyst init`             | Tells `catalyst deploy` **what** to deploy (`jobwork-api`) and **from where** (`backend/`). Same for both targets. |
+| `deploy/targets.json`                         | ✅ Yes                   | you                         | **The target manifest** — per target: Zoho account, DC, `.catalystrc` payload, env file (§1.5b).                   |
+| `deploy/<target>.catalystrc.json`             | ✅ Yes                   | `catalyst init`, then you   | The Catalyst **project + environment** for one target. Copied to `.catalystrc` at deploy time.                     |
+| `backend/app-config.base.json`                | ✅ Yes                   | you                         | Non-secret AppSail settings: start command, Node stack, memory. Same for both targets.                             |
+| `.catalystrc`                                 | ❌ No (generated)        | `scripts/deploy.mjs`        | Whichever target you deployed last. Local scratch — do not hand-edit (§1.5b).                                      |
+| `backend/app-config.json`                     | ❌ No (generated)        | `scripts/deploy.mjs`        | `app-config.base.json` + the target's env file as `env_variables`. **Carries real secrets.**                       |
+| CLI login (`%APPDATA%\zcatalyst-cli-nodejs\`) | ❌ No (outside the repo) | `catalyst login`            | Which **Zoho account** the CLI acts as. **Global — one per machine** (§1.5). Checked by `deploy.mjs`.              |
+| `backend/.env.staging` / `.env.production`    | ❌ No                    | you                         | One per target: its own database, JWT secrets and `ZC_*` credentials. Template: `.env.production.example`.         |
+| `backend/.env`                                | ❌ No                    | you                         | **Local dev only.** Parked automatically during deploy so it is not uploaded.                                      |
+| `web/.env.production`                         | ❌ No                    | you                         | Baked into the JS bundle at build time. Sets `VITE_API_URL=/api` — same for both targets.                          |
 | `backend/dist/`                               | ❌ No                    | `npm run build`             | Compiled JavaScript. **Must exist before deploy.**                                                                 |
 | `backend/public/`                             | ❌ No                    | `npm run build` (in `web/`) | The built React app. **Must exist before deploy.**                                                                 |
 | `backend/node_modules/`                       | ❌ No                    | `npm ci`                    | Dependencies. **Must exist before deploy** — AppSail will not install them.                                        |
@@ -985,16 +1104,19 @@ that behaves differently in the cloud.
 
 ## Part 9 — Troubleshooting
 
-| Symptom                                                | Most likely cause                                                                            |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| App crash-loops, no clear error                        | **RDS unreachable from Zoho.** See Part 2, Step 0.                                           |
-| `Invalid environment variables: …`                     | A variable is missing in the console. See Step 18.                                           |
-| `Cannot find module 'express'`                         | `node_modules/` was not in `backend/` at deploy time.                                        |
-| `Cannot find module '/app/dist/src/server.js'`         | You forgot `npm run build` in `backend/`.                                                    |
-| Website is blank, but `/api/health` works              | `backend/public/` was empty — you forgot to build the frontend **first**.                    |
-| Refreshing `/login` gives a 404                        | The SPA fallback in Step 9 is missing, or placed in the wrong order.                         |
-| API returns HTML instead of JSON                       | The SPA fallback is missing its `req.path.startsWith('/api')` guard.                         |
-| "Execution failed. Check the startup command or port." | `command` in `app-config.json` is wrong, or the app is listening on the wrong port (Step 8). |
+| Symptom                                                | Most likely cause                                                                             |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| `deploy: wrong Zoho account for target …`              | The CLI is logged in as the other environment's account. `catalyst logout && catalyst login`. |
+| `deploy: … disagree about the destination`             | The target's env file has another target's `ZC_PROJECT_ID`/`ZC_PROJECT_KEY`/`ZC_ENVIRONMENT`. |
+| `deploy: … still contains REPLACE_ME`                  | That target's Catalyst project has not been set up yet. See the file's `$comment` (§1.5b).    |
+| App crash-loops, no clear error                        | **RDS unreachable from Zoho.** See Part 2, Step 0.                                            |
+| `Invalid environment variables: …`                     | A variable is missing in the console. See Step 18.                                            |
+| `Cannot find module 'express'`                         | `node_modules/` was not in `backend/` at deploy time.                                         |
+| `Cannot find module '/app/dist/src/server.js'`         | You forgot `npm run build` in `backend/`.                                                     |
+| Website is blank, but `/api/health` works              | `backend/public/` was empty — you forgot to build the frontend **first**.                     |
+| Refreshing `/login` gives a 404                        | The SPA fallback in Step 9 is missing, or placed in the wrong order.                          |
+| API returns HTML instead of JSON                       | The SPA fallback is missing its `req.path.startsWith('/api')` guard.                          |
+| "Execution failed. Check the startup command or port." | `command` in `app-config.json` is wrong, or the app is listening on the wrong port (Step 8).  |
 
 **Where to look:** Catalyst console → **AppSail → jobwork-api → Logs**. Our app logs the port it
 bound to on startup (`server.ts:22`) and the exact reason for any boot failure (`server.ts:37`).

@@ -12,7 +12,12 @@
     "build:web": "cd web && npm install && npm run build",
     "build:backend": "cd backend && npm install && npm run build",
     "config:appsail": "node scripts/build-app-config.mjs",
-    "deploy:appsail": "npm run build:web && npm run build:backend && npm run config:appsail && catalyst deploy"
+    "deploy": "node scripts/deploy.mjs",
+    "deploy:staging": "node scripts/deploy.mjs staging",
+    "deploy:production": "node scripts/deploy.mjs production",
+    "capture:staging": "node scripts/capture-target.mjs staging",
+    "capture:production": "node scripts/capture-target.mjs production",
+    "deploy:appsail": "node -e \"console.error('\\n  deploy:appsail is gone — a deploy must name its target.\\n  Staging and production live under different Zoho accounts.\\n\\n    npm run deploy:staging\\n    npm run deploy:production\\n'); process.exit(1)\""
   },
   "repository": {
     "type": "git",

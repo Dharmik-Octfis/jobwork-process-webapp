@@ -330,6 +330,16 @@ npm run db:deploy        # prisma migrate deploy — every other environment, ne
 npm run db:check-drift   # exit 0 = in sync, 2 = drift. Run in CI.
 npx vitest run
 
+# Deploy — staging and production are DIFFERENT Zoho accounts, so a deploy must name its target.
+npm run deploy:staging       # scripts/deploy.mjs — see docs/CATALYST_DEPLOYMENT_GUIDE.md §1.5b
+npm run deploy:production
+# 🔴 The logged-in Zoho account is machine-wide (%APPDATA%\zcatalyst-cli-nodejs\), NOT a repo file,
+# so it is the one thing the repo cannot get right for you. deploy.mjs reads the CLI's login and
+# refuses to run on a mismatch — never bypass it with a bare `catalyst deploy`, which skips that
+# check plus the env/project cross-check and the `.env`-parking that keeps dev secrets out of the
+# upload. `.catalystrc` and `backend/app-config.json` are GENERATED per target; the committed
+# sources are deploy/targets.json + deploy/<target>.catalystrc.json + backend/.env.<target>.
+
 # web/
 npx tsc -b               # ⚠️ THE typecheck. `tsc --noEmit` checks ZERO files
                          # (tsconfig.json has "files": [] + project references), and

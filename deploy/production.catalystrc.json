@@ -1,0 +1,30 @@
+{
+  "defaults": {
+    "project": 1,
+    "env": 1
+  },
+  "actives": {
+    "project": 1,
+    "env": 1
+  },
+  "projects": [
+    {
+      "idx": 1,
+      "id": "59380000000013048",
+      "name": "Jobwork",
+      "domain": {
+        "id": "50044459098",
+        "name": "jobwork-60080629997.development"
+      },
+      "timezone": "Asia/Kolkata",
+      "env": [
+        {
+          "idx": 1,
+          "id": "60080629997",
+          "name": "Development",
+          "type": 3
+        }
+      ]
+    }
+  ]
+}
