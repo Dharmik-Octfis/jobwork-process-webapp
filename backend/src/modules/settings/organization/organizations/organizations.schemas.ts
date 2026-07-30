@@ -10,6 +10,7 @@ export const createOrganizationSchema = openApiRegistry.register(
     .max(100)
     .openapi({ example: 'Acme Corp' }),
   industryType: z.string().min(1, 'Industry is required').openapi({ example: 'technology' }),
+  tax_id_value: z.string().optional().openapi({ example: '22AAAAA0000A1Z5' }),
 
   dial_code: z.string().optional().openapi({ example: '+91' }),
   phone: z
