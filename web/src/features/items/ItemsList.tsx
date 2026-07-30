@@ -137,7 +137,7 @@ export function ItemsList() {
               filters={filters}
               value={filter}
               onChange={setFilter}
-              fallbackLabel="All Items"
+              fallbackLabel="Active Items"
             />
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -258,7 +258,7 @@ export function ItemsList() {
                         borderBottom: '1px solid #eef0f3',
                       }}
                     >
-                      All Items
+                      {filters.find((f) => f.key === filter)?.label ?? 'Active Items'}
                     </div>
                     {items.map((item) => (
                       <div

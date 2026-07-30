@@ -39,6 +39,11 @@ export async function uploadAvatar(file: File): Promise<{ user: AuthResponse['us
   return data;
 }
 
+export async function deleteAvatar(): Promise<{ user: AuthResponse['user'] }> {
+  const { data } = await apiClient.delete<{ user: AuthResponse['user'] }>(endpoints.auth.avatar);
+  return data;
+}
+
 export async function forgotPassword(input: { email: string }): Promise<{ message: string }> {
   const { data } = await apiClient.post<{ message: string }>(endpoints.auth.forgotPassword, input);
   return data;

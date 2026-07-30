@@ -51,6 +51,15 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     },
   });
 
+  const toggleActiveMutation = useMutation({
+    mutationFn: (newIsActive: boolean) => itemsApi.updateItem({ orgId: orgId!, id: itemId, data: { isActive: newIsActive } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['item', orgId, itemId] });
+      queryClient.invalidateQueries({ queryKey: ['items', orgId] });
+      setIsMoreOpen(false);
+    },
+  });
+
   const handleClone = () => {
     setIsMoreOpen(false);
     if (!item) return;
@@ -114,15 +123,15 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
           </h2>
           <span
             style={{
-              background: item.type === 'Goods' ? '#e0e7ff' : '#dcfce7',
-              color: item.type === 'Goods' ? '#3730a3' : '#166534',
+              background: item.isActive !== false ? '#3b82f6' : '#94a3b8',
+              color: 'white',
               fontSize: '11px',
               padding: '2px 8px',
               borderRadius: '12px',
               fontWeight: 500,
             }}
           >
-            {item.type}
+            {item.isActive !== false ? 'Active' : 'Inactive'}
           </span>
         </div>
 
@@ -187,6 +196,19 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                   onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                 >
                   Clone Item
+                </div>
+                <div
+                  onClick={() => toggleActiveMutation.mutate(item.isActive === false ? true : false)}
+                  style={{
+                    padding: '8px 16px',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    color: '#1e293b',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                >
+                  Mark as {item.isActive !== false ? 'Inactive' : 'Active'}
                 </div>
                 <div
                   onClick={() => {
@@ -282,15 +304,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                 <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>{item.category || '-'}</div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                <div style={{ fontSize: '12px', color: '#64748b' }}>Brand</div>
-                <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>{item.brand || '-'}</div>
-              </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                <div style={{ fontSize: '12px', color: '#64748b' }}>Manufacturer</div>
-                <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>{item.manufacturer || '-'}</div>
-              </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
                 <div style={{ fontSize: '12px', color: '#64748b' }}>Type</div>
@@ -321,10 +335,6 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                     <div style={{ fontSize: '12px', color: '#64748b' }}>Cost Price</div>
                     <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>₹{item.costPrice ? Number(item.costPrice).toFixed(2) : '0.00'}</div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                    <div style={{ fontSize: '12px', color: '#64748b' }}>Purchase Account</div>
-                    <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>{item.purchaseAccount || '-'}</div>
-                  </div>
                 </div>
               </div>
             )}
@@ -336,10 +346,6 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                   <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
                     <div style={{ fontSize: '12px', color: '#64748b' }}>Selling Price</div>
                     <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>₹{item.sellingPrice ? Number(item.sellingPrice).toFixed(2) : '0.00'}</div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                    <div style={{ fontSize: '12px', color: '#64748b' }}>Sales Account</div>
-                    <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>{item.salesAccount || '-'}</div>
                   </div>
                 </div>
               </div>
@@ -363,8 +369,12 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div style={{ background: '#fff', padding: '12px', borderRadius: '6px', border: '1px solid #eef0f3', display: 'flex', flexDirection: 'column', gap: '2px' }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                    <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>0</span>
-                    <span style={{ fontSize: '10px', color: '#64748b' }}>Qty</span>
+                    <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
+                      {item.openingStock || item.opening_stock || 0}
+                    </span>
+                    <span style={{ fontSize: '10px', color: '#64748b' }}>
+                      {item.unit || 'Qty'}
+                    </span>
                   </div>
                   <div style={{ fontSize: '11px', color: '#1e293b' }}>Opening Stock</div>
                 </div>
@@ -387,8 +397,12 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
 
                 <div style={{ background: '#fff', padding: '12px', borderRadius: '6px', border: '1px solid #eef0f3', display: 'flex', flexDirection: 'column', gap: '2px' }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                    <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>0</span>
-                    <span style={{ fontSize: '10px', color: '#64748b' }}>Qty</span>
+                    <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
+                      {item.openingStock || item.opening_stock || 0}
+                    </span>
+                    <span style={{ fontSize: '10px', color: '#64748b' }}>
+                      {item.unit || 'Qty'}
+                    </span>
                   </div>
                   <div style={{ fontSize: '11px', color: '#1e293b' }}>Stock on Hand</div>
                 </div>

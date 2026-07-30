@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Plus, Edit2, Trash2, ChevronDown, Coins } from 'lucide-react';
+import { format } from 'date-fns';
 import { useCurrencies, useDeleteCurrency } from './currencies.api';
 import { CurrencyFormModal } from './CurrencyFormModal';
 import type { Currency } from './currencies.schemas';
@@ -155,8 +156,11 @@ export function CurrenciesPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--color-border)', background: '#f8fafc' }}>
-                    <th style={{ ...headerStyle, width: '30%', textAlign: 'left' }}>Currency Name</th>
-                    <th style={{ ...headerStyle, width: '65%', textAlign: 'left' }}>Symbol</th>
+                    <th style={{ ...headerStyle, width: '25%', textAlign: 'left' }}>Currency Name</th>
+                    <th style={{ ...headerStyle, width: '15%', textAlign: 'left' }}>Symbol</th>
+                    <th style={{ ...headerStyle, width: '15%', textAlign: 'center' }}>Status</th>
+                    <th style={{ ...headerStyle, width: '20%', textAlign: 'left' }}>Created By & Time</th>
+                    <th style={{ ...headerStyle, width: '20%', textAlign: 'left' }}>Modified By & Time</th>
                     <th style={{ ...headerStyle, width: '5%', textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
@@ -174,6 +178,41 @@ export function CurrenciesPage() {
                       </td>
                       <td style={{ padding: '12px 16px', color: 'var(--color-text)' }}>
                         {currency.symbol}
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            padding: '4px 8px',
+                            borderRadius: '12px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            backgroundColor: currency.isActive ? '#dcfce7' : '#f1f5f9',
+                            color: currency.isActive ? '#166534' : '#64748b',
+                          }}
+                        >
+                          {currency.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 16px', color: 'var(--color-text-muted)', fontSize: '12px' }}>
+                        {currency.createdByUser ? (
+                          <div style={{ fontWeight: 500, color: 'var(--color-text)', marginBottom: '2px' }}>
+                            {currency.createdByUser.firstName} {currency.createdByUser.lastName}
+                          </div>
+                        ) : (
+                          <div style={{ fontWeight: 500, color: 'var(--color-text)', marginBottom: '2px' }}>-</div>
+                        )}
+                        <div>{currency.createdAt ? format(new Date(currency.createdAt), 'MMM d, yyyy h:mm a') : '-'}</div>
+                      </td>
+                      <td style={{ padding: '12px 16px', color: 'var(--color-text-muted)', fontSize: '12px' }}>
+                        {currency.updatedByUser ? (
+                          <div style={{ fontWeight: 500, color: 'var(--color-text)', marginBottom: '2px' }}>
+                            {currency.updatedByUser.firstName} {currency.updatedByUser.lastName}
+                          </div>
+                        ) : (
+                          <div style={{ fontWeight: 500, color: 'var(--color-text)', marginBottom: '2px' }}>-</div>
+                        )}
+                        <div>{currency.updatedAt ? format(new Date(currency.updatedAt), 'MMM d, yyyy h:mm a') : '-'}</div>
                       </td>
                       <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                         <div

@@ -16,31 +16,26 @@ export function toItemResponse(item: Record<string, unknown> | null | undefined)
     ...item,
     product_id: item.id,
     organization_id: item.organizationId,
-    alias_name: item.aliasName,
-    product_type: item.type,
     hsn_or_sac: item.hsnCode,
-    is_taxable: item.taxPreference === 'Taxable',
-    taxability_type: item.taxPreference,
     item_type: item.itemType,
     can_be_sold: item.isSalesInfo,
     rate: item.sellingPrice !== null && item.sellingPrice !== undefined ? Number(item.sellingPrice) : null,
-    account_id: item.salesAccount,
+    sales_description: item.salesDescription,
     can_be_purchased: item.isPurchaseInfo,
     purchase_rate: item.costPrice !== null && item.costPrice !== undefined ? Number(item.costPrice) : null,
-    purchase_account_id: item.purchaseAccount,
-    inventory_account_id: item.inventoryAccount,
+    purchase_description: item.purchaseDescription,
     inventory_tracking: item.inventoryTracking,
-    inventory_valuation_method: item.inventoryValuationMethod,
-    is_storage_location_enabled: item.binLocationTracking === 'Yes' || Boolean(item.binLocationTracking),
     track_inventory: item.trackInventory,
+    openingStock: item.openingStock !== null && item.openingStock !== undefined ? Number(item.openingStock) : null,
+    openingStockValuePerUnit: item.openingStockValuePerUnit !== null && item.openingStockValuePerUnit !== undefined ? Number(item.openingStockValuePerUnit) : null,
     custom_fields: item.customFields,
     front_image: item.frontImage,
     rear_image: item.rearImage,
-    delivery_date: item.deliveryDate,
     created_at: item.createdAt,
     updated_at: item.updatedAt,
     created_by: item.createdBy,
     updated_by: item.updatedBy,
+    is_active: item.isActive,
     is_deleted: item.isDeleted,
   };
 }
@@ -50,54 +45,38 @@ export function normalizeItemDto<T extends Record<string, unknown>>(rawData: T):
   const copy: Record<string, unknown> = { ...rawData };
 
   if (copy.product_type !== undefined && copy.type === undefined) copy.type = copy.product_type;
-  if (copy.alias_name !== undefined && copy.aliasName === undefined) copy.aliasName = copy.alias_name;
   if (copy.hsn_or_sac !== undefined && copy.hsnCode === undefined) copy.hsnCode = copy.hsn_or_sac;
   if (copy.rate !== undefined && copy.sellingPrice === undefined) copy.sellingPrice = copy.rate;
-  if (copy.account_id !== undefined && copy.salesAccount === undefined) copy.salesAccount = copy.account_id;
+  if (copy.sales_description !== undefined && copy.salesDescription === undefined) copy.salesDescription = copy.sales_description;
   if (copy.purchase_rate !== undefined && copy.costPrice === undefined) copy.costPrice = copy.purchase_rate;
-  if (copy.purchase_account_id !== undefined && copy.purchaseAccount === undefined) copy.purchaseAccount = copy.purchase_account_id;
-  if (copy.inventory_account_id !== undefined && copy.inventoryAccount === undefined) copy.inventoryAccount = copy.inventory_account_id;
+  if (copy.purchase_description !== undefined && copy.purchaseDescription === undefined) copy.purchaseDescription = copy.purchase_description;
   if (copy.can_be_sold !== undefined && copy.isSalesInfo === undefined) copy.isSalesInfo = copy.can_be_sold;
   if (copy.can_be_purchased !== undefined && copy.isPurchaseInfo === undefined) copy.isPurchaseInfo = copy.can_be_purchased;
   if (copy.track_inventory !== undefined && copy.trackInventory === undefined) copy.trackInventory = copy.track_inventory;
   if (copy.custom_fields !== undefined && copy.customFields === undefined) copy.customFields = copy.custom_fields;
   if (copy.front_image !== undefined && copy.frontImage === undefined) copy.frontImage = copy.front_image;
   if (copy.rear_image !== undefined && copy.rearImage === undefined) copy.rearImage = copy.rear_image;
-  if (copy.delivery_date !== undefined && copy.deliveryDate === undefined) copy.deliveryDate = copy.delivery_date;
-  if (copy.is_storage_location_enabled !== undefined && copy.binLocationTracking === undefined) {
-    copy.binLocationTracking = typeof copy.is_storage_location_enabled === 'boolean'
-      ? (copy.is_storage_location_enabled ? 'Yes' : 'No')
-      : copy.is_storage_location_enabled;
-  }
   if (copy.inventory_tracking !== undefined && copy.inventoryTracking === undefined) copy.inventoryTracking = copy.inventory_tracking;
-  if (copy.inventory_valuation_method !== undefined && copy.inventoryValuationMethod === undefined) copy.inventoryValuationMethod = copy.inventory_valuation_method;
-  if (copy.is_taxable !== undefined && copy.taxPreference === undefined) {
-    copy.taxPreference = copy.is_taxable ? 'Taxable' : 'Non-Taxable';
+  if (copy.is_active !== undefined && copy.isActive === undefined) {
+    copy.isActive = copy.is_active;
   }
 
   // Strip unrecognized snake_case keys so Prisma write doesn't reject unknown properties
   delete copy.product_id;
   delete copy.product_type;
-  delete copy.alias_name;
   delete copy.hsn_or_sac;
   delete copy.rate;
-  delete copy.account_id;
+  delete copy.sales_description;
   delete copy.purchase_rate;
-  delete copy.purchase_account_id;
-  delete copy.inventory_account_id;
+  delete copy.purchase_description;
   delete copy.can_be_sold;
   delete copy.can_be_purchased;
   delete copy.track_inventory;
   delete copy.custom_fields;
   delete copy.front_image;
   delete copy.rear_image;
-  delete copy.delivery_date;
-  delete copy.is_storage_location_enabled;
-  delete copy.inventory_tracking;
-  delete copy.inventory_valuation_method;
-  delete copy.is_taxable;
-  delete copy.taxability_type;
   delete copy.item_type;
+  delete copy.is_active;
 
   return copy as T;
 }
@@ -120,9 +99,7 @@ export class ItemsService {
       ...searchWhere<Prisma.ItemWhereInput>(opts.search, [
         'name',
         'sku',
-        'aliasName',
         'category',
-        'brand',
         'hsnCode',
       ]),
     };
@@ -218,7 +195,6 @@ export class ItemsService {
           frontImage: frontImage === null ? Prisma.DbNull : (frontImage as Prisma.InputJsonValue),
           rearImage: rearImage === null ? Prisma.DbNull : (rearImage as Prisma.InputJsonValue),
           images: images ? (images as unknown as Prisma.InputJsonValue) : undefined,
-          deliveryDate: rest.deliveryDate ? new Date(rest.deliveryDate) : null,
           organizationId,
           createdBy: userId ?? null,
           updatedBy: userId ?? null,
@@ -293,11 +269,6 @@ export class ItemsService {
           ...(images !== undefined
             ? { images: images as unknown as Prisma.InputJsonValue }
             : {}),
-          deliveryDate: rest.deliveryDate
-            ? new Date(rest.deliveryDate)
-            : rest.deliveryDate === null
-              ? null
-              : undefined,
           updatedBy: userId ?? null,
         },
       });
@@ -412,9 +383,8 @@ export class ItemsService {
             files.images.filter(Boolean).map((file) => processFile(file)),
           );
 
-          // Append to existing images array if it exists
-          const existingImages = Array.isArray(item.images) ? (item.images as unknown[]) : [];
-          updateData.images = [...existingImages, ...uploadedImageObjects] as unknown as Prisma.InputJsonValue;
+          // Replace existing images array with new ones
+          updateData.images = uploadedImageObjects as unknown as Prisma.InputJsonValue;
         }
 
         if (Object.keys(updateData).length === 0) {

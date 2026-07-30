@@ -254,7 +254,7 @@ export function VendorForm({
             />
           </div>
 
-          <label style={labelRequiredStyle}>Contact Number*</label>
+          <label style={labelRequiredStyle}>Vendor Number*</label>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <input {...register('contactNumber')} style={{ ...inputStyle, flex: 1 }} />

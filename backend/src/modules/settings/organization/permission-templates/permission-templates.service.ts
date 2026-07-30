@@ -60,27 +60,26 @@ export async function seedSystemTemplates(
   organizationId: string,
   actorUserId: string | null,
 ): Promise<{ ownerTemplateId: string }> {
-  let ownerTemplateId = '';
+  const createdTemplates = await Promise.all(
+    SYSTEM_TEMPLATES.map((spec) =>
+      tx.permissionTemplate.create({
+        data: {
+          organizationId,
+          name: spec.name,
+          description: spec.description,
+          isSystem: spec.isSystem,
+          grantsAllPermissions: spec.grantsAllPermissions,
+          permissions: [...spec.permissions],
+          createdBy: actorUserId,
+          updatedBy: actorUserId,
+        },
+        select: { id: true, isSystem: true },
+      })
+    )
+  );
 
-  for (const spec of SYSTEM_TEMPLATES) {
-    const created = await tx.permissionTemplate.create({
-      data: {
-        organizationId,
-        name: spec.name,
-        description: spec.description,
-        isSystem: spec.isSystem,
-        grantsAllPermissions: spec.grantsAllPermissions,
-        // Empty for Owner — computed at runtime via grantsAllPermissions.
-        permissions: [...spec.permissions],
-        createdBy: actorUserId,
-        updatedBy: actorUserId,
-      },
-      select: { id: true, isSystem: true },
-    });
-    if (created.isSystem) ownerTemplateId = created.id;
-  }
-
-  return { ownerTemplateId };
+  const ownerTemplate = createdTemplates.find((t) => t.isSystem);
+  return { ownerTemplateId: ownerTemplate?.id ?? '' };
 }
 
 /** Active member count per template id, scoped to the org (memberships are not

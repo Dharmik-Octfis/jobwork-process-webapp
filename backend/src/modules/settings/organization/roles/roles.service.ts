@@ -60,24 +60,24 @@ export async function seedSystemRoles(
   organizationId: string,
   actorUserId: string | null,
 ): Promise<{ ownerRoleId: string }> {
-  let ownerRoleId = '';
+  const createdRoles = await Promise.all(
+    SYSTEM_ROLES.map((spec) =>
+      tx.role.create({
+        data: {
+          organizationId,
+          name: spec.name,
+          description: spec.description,
+          isSystem: spec.isSystem,
+          createdBy: actorUserId,
+          updatedBy: actorUserId,
+        },
+        select: { id: true, isSystem: true },
+      })
+    )
+  );
 
-  for (const spec of SYSTEM_ROLES) {
-    const created = await tx.role.create({
-      data: {
-        organizationId,
-        name: spec.name,
-        description: spec.description,
-        isSystem: spec.isSystem,
-        createdBy: actorUserId,
-        updatedBy: actorUserId,
-      },
-      select: { id: true, isSystem: true },
-    });
-    if (created.isSystem) ownerRoleId = created.id;
-  }
-
-  return { ownerRoleId };
+  const ownerRole = createdRoles.find((r) => r.isSystem);
+  return { ownerRoleId: ownerRole?.id ?? '' };
 }
 
 /** How many active members hold each of these titles. Memberships are not

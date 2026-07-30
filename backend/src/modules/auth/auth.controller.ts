@@ -115,6 +115,15 @@ export async function uploadAvatar(req: Request, res: Response): Promise<void> {
   sendSuccess(res, { user }, 'Avatar uploaded successfully.');
 }
 
+export async function deleteAvatar(req: Request, res: Response): Promise<void> {
+  if (!req.user) {
+    throw new ApiError(401, 'Sign in to continue.');
+  }
+
+  const user = await authService.deleteAvatar(req.user.id);
+  sendSuccess(res, { user }, 'Avatar deleted successfully.');
+}
+
 export async function forgotPassword(req: Request, res: Response): Promise<void> {
   const { email } = req.body as ForgotPasswordInput;
   await authService.requestPasswordReset(email);
