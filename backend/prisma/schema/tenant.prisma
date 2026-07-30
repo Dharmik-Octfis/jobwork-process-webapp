@@ -121,7 +121,6 @@ model Organization {
   dialCode               String?                 @map("dial_code")
   orgAddress             String?                 @map("org_address")
   website                String?                 @map("website")
-  orgCode                String                  @map("org_code") @db.VarChar(10)
   taxIdValue             String?                 @map("tax_id_value")
   createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt              DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
