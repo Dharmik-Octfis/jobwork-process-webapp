@@ -1,0 +1,31 @@
+{
+  "$comment": [
+    "Deploy targets. One entry per destination; `node scripts/deploy.mjs <target>` reads this.",
+    "",
+    "Each target names FOUR things that must agree, because they are the four ways a deploy",
+    "can land somewhere you did not mean:",
+    "  account    the Zoho login the Catalyst CLI must be authenticated as. This is the one",
+    "             setting that lives OUTSIDE the repo (machine-wide, see the guide §1.5), so",
+    "             it is the only one a `cd` cannot get right for you. deploy.mjs reads the",
+    "             CLI's own config and refuses to run when it does not match.",
+    "  dc         Zoho data centre the account belongs to ('in', 'com', 'eu', ...). The CLI",
+    "             keeps one login per DC, so the account check is meaningless without it.",
+    "  catalystrc the .catalystrc payload — which Catalyst project + environment.",
+    "  envFile    which git-ignored .env file supplies the AppSail env_variables.",
+    "",
+    "Adding a target: add an entry, add its deploy/<name>.catalystrc.json, and create its",
+    "env file from backend/.env.production.example. Nothing else needs to change."
+  ],
+  "staging": {
+    "account": "jay.v@octfis.com",
+    "dc": "com",
+    "catalystrc": "deploy/staging.catalystrc.json",
+    "envFile": "backend/.env.staging"
+  },
+  "production": {
+    "account": "user1@demo14.octfis.in",
+    "dc": "in",
+    "catalystrc": "deploy/production.catalystrc.json",
+    "envFile": "backend/.env.production"
+  }
+}

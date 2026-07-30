@@ -12,7 +12,7 @@ export const queryClient = new QueryClient({
     },
   },
   mutationCache: new MutationCache({
-    onError: (error, variables, context, mutation) => {
+    onError: (error, _variables, _context, mutation) => {
       // Allow specific mutations to opt out of global toasts via meta
       if (mutation.meta?.suppressToast) return;
       toast.error(toApiErrorMessage(error));
