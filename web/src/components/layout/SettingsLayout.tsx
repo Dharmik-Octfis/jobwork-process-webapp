@@ -48,7 +48,7 @@ export function SettingsLayout() {
     <div
       style={{
         display: 'flex',
-        height: '100vh',
+        height: '100%',
         overflow: 'hidden',
         background: 'var(--color-bg)',
       }}
@@ -174,7 +174,7 @@ export function SettingsLayout() {
                 })}
               >
                 <Building2 size={18} />
-                <span style={{ fontSize: 14 }}>Profile</span>
+                <span style={{ fontSize: 14 }}>Company Setting</span>
               </NavLink>
 
               <NavLink

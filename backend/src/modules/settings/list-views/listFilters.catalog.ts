@@ -32,8 +32,8 @@ export const LIST_FILTERS: Record<EntityType, readonly FilterPreset[]> = {
     { key: 'inactive', label: 'Inactive Customers', where: { status: 'inactive' } },
   ],
   item: [
-    // Items carry no status column; `type` (Goods | Service) is the useful split.
-    { key: 'all', label: 'All Items', where: {} },
+    { key: 'all', label: 'Active Items', where: { isActive: true } },
+    { key: 'inactive', label: 'Inactive Items', where: { isActive: false } },
     { key: 'goods', label: 'Goods', where: { type: 'Goods' } },
     { key: 'services', label: 'Services', where: { type: 'Service' } },
   ],
@@ -58,11 +58,11 @@ export function filterOptions(entityType: EntityType): { key: string; label: str
  * like the filter worked.
  */
 export function filterWhere<TWhere>(entityType: EntityType, key: string | undefined): TWhere {
-  if (!key || key === 'all') return {} as TWhere;
-  const preset = LIST_FILTERS[entityType].find((f) => f.key === key);
+  const searchKey = !key ? 'all' : key;
+  const preset = LIST_FILTERS[entityType].find((f) => f.key === searchKey);
   if (!preset) {
     throw ApiError.badRequest(
-      `Unknown filter "${key}". Expected one of: ${LIST_FILTERS[entityType].map((f) => f.key).join(', ')}.`,
+      `Unknown filter "${searchKey}". Expected one of: ${LIST_FILTERS[entityType].map((f) => f.key).join(', ')}.`,
     );
   }
   return preset.where as TWhere;

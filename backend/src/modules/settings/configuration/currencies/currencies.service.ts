@@ -9,6 +9,9 @@ interface CreateCurrencyData {
   currencyName: string;
   symbol: string;
   decimalPlaces: number;
+  format: string;
+  exchangeRate: number;
+  isActive?: boolean;
 }
 
 interface UpdateCurrencyData {
@@ -16,6 +19,9 @@ interface UpdateCurrencyData {
   currencyName?: string;
   symbol?: string;
   decimalPlaces?: number;
+  format?: string;
+  exchangeRate?: number;
+  isActive?: boolean;
 }
 
 export const getCurrencyList = async (orgId: string) => {
@@ -28,6 +34,14 @@ export const getCurrencyList = async (orgId: string) => {
       orderBy: {
         currencyCode: 'asc',
       },
+      include: {
+        createdByUser: {
+          select: { firstName: true, lastName: true },
+        },
+        updatedByUser: {
+          select: { firstName: true, lastName: true },
+        },
+      },
     }),
   );
 };
@@ -37,21 +51,51 @@ export const createNewCurrency = async (
   data: CreateCurrencyData,
   userId?: string,
 ) => {
-  return runAsTenant(orgId, (tx) =>
-    withUniqueViolation(DUPLICATE_CODE, () =>
-      tx.currency.create({
-        data: {
+  return runAsTenant(orgId, async (tx) => {
+    const existing = await tx.currency.findUnique({
+      where: {
+        // eslint-disable-next-line @typescript-eslint/naming-convention
+        organizationId_currencyCode: {
           organizationId: orgId,
           currencyCode: data.currencyCode,
+        },
+      },
+    });
+
+    if (existing) {
+      if (!existing.isDeleted) {
+        throw ApiError.conflict(DUPLICATE_CODE);
+      }
+      return tx.currency.update({
+        where: { id: existing.id },
+        data: {
           currencyName: data.currencyName,
           symbol: data.symbol,
           decimalPlaces: data.decimalPlaces,
-          createdBy: userId,
+          format: data.format,
+          exchangeRate: data.exchangeRate,
+          isActive: data.isActive ?? true,
+          isDeleted: false,
           updatedBy: userId,
         },
-      }),
-    ),
-  );
+      });
+    }
+
+    return tx.currency.create({
+      data: {
+        organizationId: orgId,
+        currencyCode: data.currencyCode,
+        currencyName: data.currencyName,
+        symbol: data.symbol,
+        decimalPlaces: data.decimalPlaces,
+        format: data.format,
+        exchangeRate: data.exchangeRate,
+        isActive: data.isActive ?? true,
+        createdBy: userId,
+        updatedBy: userId,
+      },
+    });
+  });
 };
 
 export const getCurrencyById = async (orgId: string, id: string) => {

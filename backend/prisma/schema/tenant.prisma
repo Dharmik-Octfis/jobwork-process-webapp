@@ -111,6 +111,8 @@ model Organization {
   zip                    String?
   dialCode               String?                 @map("dial_code")
   orgAddress             String?                 @map("org_address")
+  website                String?                 @map("website")
+  orgCode                String                  @map("org_code") @db.VarChar(10)
   taxIdValue             String?                 @map("tax_id_value")
   createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt              DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -298,11 +300,13 @@ model Currency {
   symbol         String
   decimalPlaces  Int          @default(2) @map("decimal_places")
   isDeleted      Boolean      @default(false) @map("is_deleted")
+  isActive       Boolean      @default(true) @map("is_active")
   createdBy      String?      @map("created_by") @db.Uuid
   updatedBy      String?      @map("updated_by") @db.Uuid
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   format         String       @default("1,234,567.89")
+  exchangeRate   Decimal      @default(1) @map("exchange_rate") @db.Decimal(18, 6)
   createdByUser  User?        @relation("CurrencyCreatedBy", fields: [createdBy], references: [id])
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   updatedByUser  User?        @relation("CurrencyUpdatedBy", fields: [updatedBy], references: [id])

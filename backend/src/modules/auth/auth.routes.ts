@@ -73,6 +73,7 @@ authRouter.post(
   upload.single('avatar'),
   authController.uploadAvatar,
 );
+authRouter.delete('/me/avatar', authenticate, authController.deleteAvatar);
 
 authRouter.post(
   '/change-password',

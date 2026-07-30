@@ -10,13 +10,17 @@ import { useNavigate } from 'react-router-dom';
 import { useState, useRef } from 'react';
 import { useUpdateProfile } from '../auth/useUpdateProfile';
 import { useUploadAvatar } from '../auth/useUploadAvatar';
+import { useDeleteAvatar } from '../auth/useDeleteAvatar';
 import { toApiErrorMessage } from '../../api/client';
+import { Input } from '../../components/ui/Input';
+import { Button } from '../../components/ui/Button';
 
 export function ProfilePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const updateProfileMutation = useUpdateProfile();
   const uploadAvatarMutation = useUploadAvatar();
+  const deleteAvatarMutation = useDeleteAvatar();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -59,6 +63,7 @@ export function ProfilePage() {
       {
         onSuccess: () => {
           setProfileSuccessMsg('Profile updated successfully.');
+          navigate(-1);
         },
       },
     );
@@ -264,21 +269,26 @@ export function ProfilePage() {
                 {logoPreview && (
                   <button
                     type="button"
-                    onClick={() => setLogoPreview(null)}
+                    onClick={() => {
+                      deleteAvatarMutation.mutate(undefined, {
+                        onSuccess: () => setLogoPreview(null),
+                      });
+                    }}
+                    disabled={deleteAvatarMutation.isPending}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: 4,
                       background: 'none',
                       border: 'none',
-                      color: '#dc2626',
-                      cursor: 'pointer',
+                      color: deleteAvatarMutation.isPending ? '#94a3b8' : '#dc2626',
+                      cursor: deleteAvatarMutation.isPending ? 'not-allowed' : 'pointer',
                       fontSize: 12,
                       fontWeight: 500,
                       padding: '6px 8px',
                     }}
                   >
-                    <Trash2 size={14} /> Remove
+                    <Trash2 size={14} /> {deleteAvatarMutation.isPending ? 'Removing...' : 'Remove'}
                   </button>
                 )}
               </div>
@@ -288,130 +298,41 @@ export function ProfilePage() {
           <form onSubmit={handleSaveProfile}>
             <div style={{ display: 'flex', gap: 16, marginBottom: 18 }}>
               <div style={{ flex: 1 }}>
-                <label
-                  style={{
-                    display: 'block',
-                    fontSize: 13,
-                    fontWeight: 500,
-                    color: '#334155',
-                    marginBottom: 6,
-                  }}
-                >
-                  First Name <span style={{ color: '#dc2626' }}>*</span>
-                </label>
-                <input
-                  type="text"
+                <Input
+                  label="First Name *"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
                   placeholder="First name"
-                  style={{
-                    width: '100%',
-                    padding: '9px 12px',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '6px',
-                    fontSize: 13,
-                    boxSizing: 'border-box',
-                    outline: 'none',
-                    transition: 'border-color 0.15s ease',
-                  }}
-                  onFocus={(e) => (e.currentTarget.style.borderColor = '#2563eb')}
-                  onBlur={(e) => (e.currentTarget.style.borderColor = '#cbd5e1')}
+                  required
                 />
               </div>
               <div style={{ flex: 1 }}>
-                <label
-                  style={{
-                    display: 'block',
-                    fontSize: 13,
-                    fontWeight: 500,
-                    color: '#334155',
-                    marginBottom: 6,
-                  }}
-                >
-                  Last Name <span style={{ color: '#dc2626' }}>*</span>
-                </label>
-                <input
-                  type="text"
+                <Input
+                  label="Last Name *"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
                   placeholder="Last name"
-                  style={{
-                    width: '100%',
-                    padding: '9px 12px',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '6px',
-                    fontSize: 13,
-                    boxSizing: 'border-box',
-                    outline: 'none',
-                    transition: 'border-color 0.15s ease',
-                  }}
-                  onFocus={(e) => (e.currentTarget.style.borderColor = '#2563eb')}
-                  onBlur={(e) => (e.currentTarget.style.borderColor = '#cbd5e1')}
+                  required
                 />
               </div>
             </div>
 
             <div style={{ marginBottom: 24 }}>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: '#334155',
-                  marginBottom: 6,
-                }}
-              >
-                Email Address
-              </label>
-              <input
+              <Input
+                label="Email Address"
                 type="email"
                 value={user?.email || ''}
                 disabled
-                style={{
-                  width: '100%',
-                  padding: '9px 12px',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '6px',
-                  fontSize: 13,
-                  boxSizing: 'border-box',
-                  background: '#f8fafc',
-                  color: '#64748b',
-                  cursor: 'not-allowed',
-                }}
+                hint="Email address is managed by organization admin."
               />
-              <span style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, display: 'block' }}>
-                Email address is managed by organization admin.
-              </span>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <button
-                type="submit"
-                disabled={updateProfileMutation.isPending}
-                style={{
-                  background: '#2563eb',
-                  color: '#ffffff',
-                  border: 'none',
-                  padding: '8px 20px',
-                  borderRadius: '6px',
-                  cursor: updateProfileMutation.isPending ? 'not-allowed' : 'pointer',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  opacity: updateProfileMutation.isPending ? 0.7 : 1,
-                  boxShadow: '0 1px 2px rgba(37, 99, 235, 0.2)',
-                  transition: 'background-color 0.15s ease',
-                }}
-                onMouseEnter={(e) => {
-                  if (!updateProfileMutation.isPending) e.currentTarget.style.background = '#1d4ed8';
-                }}
-                onMouseLeave={(e) => {
-                  if (!updateProfileMutation.isPending) e.currentTarget.style.background = '#2563eb';
-                }}
-              >
-                {updateProfileMutation.isPending ? 'Saving...' : 'Save Profile'}
-              </button>
+              <Button type="submit" isLoading={updateProfileMutation.isPending}>
+                Save Profile
+              </Button>
               {updateProfileMutation.isError && (
-                <span style={{ color: '#dc2626', fontSize: 13, fontWeight: 500 }}>
+                <span style={{ color: 'var(--color-danger)', fontSize: 13, fontWeight: 500 }}>
                   {toApiErrorMessage(updateProfileMutation.error)}
                 </span>
               )}

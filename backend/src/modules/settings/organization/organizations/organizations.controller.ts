@@ -40,7 +40,7 @@ async function mapToZohoFormat(org: Organization & { industry?: Pick<Industry, '
       city: org.cityId,
       zip: org.zip,
     },
-    tax_id_value: org.taxIdValue,
+    website: org.website,
     logo_url: logoUrl,
     account_created_date: org.createdAt.toISOString(),
     industry: org.industry, // from include
@@ -59,6 +59,7 @@ export async function createOrganization(req: Request, res: Response, next: Next
     if (!userId) {
       throw new ApiError(401, 'Sign in to continue.');
     }
+    // force restart for prisma length fix
 
     const orgId = crypto.randomUUID();
 
@@ -71,28 +72,39 @@ export async function createOrganization(req: Request, res: Response, next: Next
           email: data.email,
           phone: data.phone,
           dialCode: data.dial_code,
-          taxIdValue: data.tax_id_value,
+          website: data.website,
           orgAddress: data.address?.street_address1 || null,
           countryCode: data.address?.country || null,
           stateCode: data.address?.state_code || null,
           cityId: data.address?.city || null,
           zip: data.address?.zip || null,
+          orgCode: `ORG-${crypto.randomBytes(3).toString('hex').toUpperCase()}`,
           createdBy: userId,
           updatedBy: userId,
         },
       });
 
-      // Seed both axes, then make the creator an owner carrying one of each:
-      // roles are job titles (Owner, Manager, Staff), templates are the access
-      // (Owner, Full access, View only) — see SYSTEM_ROLES / SYSTEM_TEMPLATES.
-      // Only the two Owner rows are `isSystem` (immutable, never assignable —
-      // ownership comes from creating the org, not from being given the row).
-      // The other four are ordinary editable rows the org owns from this moment,
-      // seeded so neither settings screen is empty on day one; an admin may
-      // rename, re-tick, or delete them. Only the Owner ids are returned here
-      // because they are the only ones this membership needs.
-      const { ownerTemplateId } = await seedSystemTemplates(tx, orgId, userId);
-      const { ownerRoleId } = await seedSystemRoles(tx, orgId, userId);
+      const [
+        { ownerTemplateId },
+        { ownerRoleId }
+      ] = await Promise.all([
+        seedSystemTemplates(tx, orgId, userId),
+        seedSystemRoles(tx, orgId, userId),
+        // Automatically create a default INR Currency
+        tx.currency.create({
+          data: {
+            organizationId: orgId,
+            currencyCode: 'INR',
+            currencyName: 'Indian Rupee',
+            symbol: '₹',
+            decimalPlaces: 2,
+            format: '1,234,567.89',
+            exchangeRate: 1,
+            createdBy: userId,
+            updatedBy: userId,
+          },
+        })
+      ]);
 
       await tx.membership.create({
         data: {
@@ -174,7 +186,7 @@ export async function updateOrganization(req: Request, res: Response, next: Next
     if (data.email !== undefined) updateData.email = data.email;
     if (data.phone !== undefined) updateData.phone = data.phone;
     if (data.dial_code !== undefined) updateData.dialCode = data.dial_code;
-    if (data.tax_id_value !== undefined) updateData.taxIdValue = data.tax_id_value;
+    if (data.website !== undefined) updateData.website = data.website;
 
     if (data.address !== undefined) {
       if (data.address.street_address1 !== undefined) updateData.orgAddress = data.address.street_address1;
@@ -272,6 +284,33 @@ export async function deleteOrganization(req: Request, res: Response, next: Next
     });
 
     sendSuccess(res, null, 'Organization deleted successfully');
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deleteOrganizationLogo(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = req.user?.id;
+    const orgId = req.tenantId!;
+    if (!userId) {
+      throw new ApiError(401, 'Sign in to continue.');
+    }
+
+    const updatedOrg = await prisma.organization.update({
+      where: { id: orgId },
+      data: {
+        logoUrl: null,
+        updatedBy: userId,
+      },
+      include: { industry: { select: { name: true } } },
+    });
+
+    res.status(200).json({
+      code: 0,
+      message: 'Logo removed successfully.',
+      organization: await mapToZohoFormat(updatedOrg),
+    });
   } catch (error) {
     next(error);
   }

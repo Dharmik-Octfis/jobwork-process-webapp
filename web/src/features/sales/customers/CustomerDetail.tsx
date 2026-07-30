@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchCustomerById, deleteCustomer, updateCustomer, fetchCustomerActivities } from './customers.api';
 import { type UpdateCustomerData, type CustomerAddress } from './customers.schemas';
 import { useParams, useNavigate } from 'react-router-dom';
-import { X, Edit, ChevronDown} from 'lucide-react';
+import { X, Edit, ChevronDown, Pencil, Trash2 } from 'lucide-react';
 import { useState, useRef, useEffect, Fragment } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { CustomerActivityTimeline } from './CustomerActivityTimeline';
@@ -21,7 +21,8 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
   const [activeTab, setActiveTab] = useState('Overview');
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [isAdditionalAddressModalOpen, setIsAdditionalAddressModalOpen] = useState(false);
+  const [addressModalType, setAddressModalType] = useState<'billing' | 'shipping' | 'additional' | null>(null);
+  const [addressEditIndex, setAddressEditIndex] = useState<number | null>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -74,7 +75,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
     },
   });
 
-  const addAddressMutation = useMutation({
+  const saveAdditionalAddressMutation = useMutation({
     mutationFn: (newAddress: CustomerAddress) => {
       if (!customer) throw new Error('Customer not found');
       const {
@@ -85,13 +86,118 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
         ...rest
       } = customer;
 
-      const updatedAddresses = [...(customer.addresses || []), newAddress];
+      const updatedAddresses = [...(customer.addresses || [])];
+      if (addressEditIndex !== null) {
+        updatedAddresses[addressEditIndex] = newAddress;
+      } else {
+        updatedAddresses.push(newAddress);
+      }
       const dataToUpdate = { ...rest, addresses: updatedAddresses };
       return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] });
-      setIsAdditionalAddressModalOpen(false);
+      setAddressModalType(null);
+      setAddressEditIndex(null);
+    },
+  });
+
+  const deleteAdditionalAddressMutation = useMutation({
+    mutationFn: (index: number) => {
+      if (!customer) throw new Error('Customer not found');
+      const {
+        id: _id,
+        createdAt: _createdAt,
+        updatedAt: _updatedAt,
+        organizationId: _organizationId,
+        ...rest
+      } = customer;
+
+      const updatedAddresses = [...(customer.addresses || [])];
+      updatedAddresses.splice(index, 1);
+      
+      const dataToUpdate = { ...rest, addresses: updatedAddresses };
+      return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] });
+    },
+  });
+
+  const deleteSpecificAddressMutation = useMutation({
+    mutationFn: (type: 'billing' | 'shipping') => {
+      if (!customer) throw new Error('Customer not found');
+      const {
+        id: _id,
+        createdAt: _createdAt,
+        updatedAt: _updatedAt,
+        organizationId: _organizationId,
+        ...rest
+      } = customer;
+
+      const dataToUpdate = { ...rest } as Partial<UpdateCustomerData>;
+      if (type === 'billing') {
+        dataToUpdate.billingStreet1 = '';
+        dataToUpdate.billingStreet2 = '';
+        dataToUpdate.billingCity = '';
+        dataToUpdate.billingState = '';
+        dataToUpdate.billingCountry = '';
+        dataToUpdate.billingPinCode = '';
+        dataToUpdate.billingAttention = '';
+        dataToUpdate.billingPhone = '';
+      } else {
+        dataToUpdate.shippingStreet1 = '';
+        dataToUpdate.shippingStreet2 = '';
+        dataToUpdate.shippingCity = '';
+        dataToUpdate.shippingState = '';
+        dataToUpdate.shippingCountry = '';
+        dataToUpdate.shippingPinCode = '';
+        dataToUpdate.shippingAttention = '';
+        dataToUpdate.shippingPhone = '';
+      }
+      return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] });
+    },
+  });
+
+  const updateSpecificAddressMutation = useMutation({
+    mutationFn: ({ type, address }: { type: 'billing' | 'shipping'; address: CustomerAddress }) => {
+      if (!customer) throw new Error('Customer not found');
+      const {
+        id: _id,
+        createdAt: _createdAt,
+        updatedAt: _updatedAt,
+        organizationId: _organizationId,
+        ...rest
+      } = customer;
+
+      const dataToUpdate = { ...rest } as Partial<UpdateCustomerData>;
+      if (type === 'billing') {
+        dataToUpdate.billingStreet1 = address.street1;
+        dataToUpdate.billingStreet2 = address.street2;
+        dataToUpdate.billingCity = address.city;
+        dataToUpdate.billingState = address.state;
+        dataToUpdate.billingCountry = address.country;
+        dataToUpdate.billingPinCode = address.pinCode;
+        dataToUpdate.billingAttention = address.attention;
+        dataToUpdate.billingPhone = address.phone;
+      } else {
+        dataToUpdate.shippingStreet1 = address.street1;
+        dataToUpdate.shippingStreet2 = address.street2;
+        dataToUpdate.shippingCity = address.city;
+        dataToUpdate.shippingState = address.state;
+        dataToUpdate.shippingCountry = address.country;
+        dataToUpdate.shippingPinCode = address.pinCode;
+        dataToUpdate.shippingAttention = address.attention;
+        dataToUpdate.shippingPhone = address.phone;
+      }
+      return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] });
+      setAddressModalType(null);
     },
   });
 
@@ -420,7 +526,19 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                 <div style={sectionHeaderStyle}>Address</div>
 
                 <div style={{ marginBottom: '16px' }}>
-                  <div style={labelStyle}>Billing Address</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={labelStyle}>Billing Address</div>
+                    {customer.billingStreet1 && (
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={() => { setAddressEditIndex(null); setAddressModalType('billing'); }} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: '#64748b' }} title="Edit Address">
+                          <Pencil size={14} />
+                        </button>
+                        <button onClick={() => { if(window.confirm('Are you sure you want to remove this billing address?')) deleteSpecificAddressMutation.mutate('billing'); }} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: '#ef4444' }} title="Remove Address">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   {customer.billingStreet1 ? (
                     <div style={{ fontSize: '12px', color: '#333' }}>
                       {customer.billingStreet1}
@@ -439,15 +557,30 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                   ) : (
                     <div style={{ fontSize: '12px', color: '#94a3b8' }}>
                       No Billing Address -{' '}
-                      <a href="#" style={{ color: '#0062ff', textDecoration: 'none' }}>
+                      <button
+                        onClick={() => setAddressModalType('billing')}
+                        style={{ color: '#0062ff', textDecoration: 'none', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '12px' }}
+                      >
                         New Address
-                      </a>
+                      </button>
                     </div>
                   )}
                 </div>
 
-                <div>
-                  <div style={labelStyle}>Shipping Address</div>
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={labelStyle}>Shipping Address</div>
+                    {customer.shippingStreet1 && (
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={() => { setAddressEditIndex(null); setAddressModalType('shipping'); }} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: '#64748b' }} title="Edit Address">
+                          <Pencil size={14} />
+                        </button>
+                        <button onClick={() => { if(window.confirm('Are you sure you want to remove this shipping address?')) deleteSpecificAddressMutation.mutate('shipping'); }} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: '#ef4444' }} title="Remove Address">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   {customer.shippingStreet1 ? (
                     <div style={{ fontSize: '12px', color: '#333' }}>
                       {customer.shippingStreet1}
@@ -466,16 +599,29 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                   ) : (
                     <div style={{ fontSize: '12px', color: '#94a3b8' }}>
                       No Shipping Address -{' '}
-                      <a href="#" style={{ color: '#0062ff', textDecoration: 'none' }}>
+                      <button
+                        onClick={() => setAddressModalType('shipping')}
+                        style={{ color: '#0062ff', textDecoration: 'none', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '12px' }}
+                      >
                         New Address
-                      </a>
+                      </button>
                     </div>
                   )}
                 </div>
 
                 {customer.addresses?.filter((a: CustomerAddress) => a.addressType !== 'billing' && a.addressType !== 'shipping').map((addr: CustomerAddress, index: number) => (
                   <div key={index} style={{ marginTop: '12px' }}>
-                    <div style={labelStyle}>Additional Address</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={labelStyle}>Additional Address</div>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={() => { setAddressEditIndex(index); setAddressModalType('additional'); }} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: '#64748b' }} title="Edit Address">
+                          <Pencil size={14} />
+                        </button>
+                        <button onClick={() => { if(window.confirm('Are you sure you want to remove this address?')) deleteAdditionalAddressMutation.mutate(index); }} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: '#ef4444' }} title="Remove Address">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
                     <div style={{ fontSize: '12px', color: '#333' }}>
                       {addr.attention && <>{addr.attention}<br/></>}
                       {addr.street1 && <>{addr.street1}<br/></>}
@@ -491,7 +637,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
 
                 <div style={{ marginTop: '12px' }}>
                   <button
-                    onClick={() => setIsAdditionalAddressModalOpen(true)}
+                    onClick={() => setAddressModalType('additional')}
                     style={{ background: 'none', border: 'none', color: '#0062ff', cursor: 'pointer', padding: 0, fontSize: '13px' }}
                   >
                     + Add additional address
@@ -532,73 +678,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                 background: 'white',
               }}
             >
-              <div style={{ padding: '16px', borderBottom: '1px solid #eef0f3' }}>
-                <div style={sectionHeaderStyle}>Payables</div>
 
-                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '16px' }}>
-                  <thead>
-                    <tr
-                      style={{
-                        borderBottom: '1px solid #eef0f3',
-                        fontSize: '11px',
-                        color: '#64748b',
-                      }}
-                    >
-                      <th style={{ textAlign: 'left', paddingBottom: '8px', fontWeight: 600 }}>
-                        CURRENCY
-                      </th>
-                      <th style={{ textAlign: 'right', paddingBottom: '8px', fontWeight: 600 }}>
-                        OUTSTANDING PAYABLES
-                      </th>
-                      <th style={{ textAlign: 'right', paddingBottom: '8px', fontWeight: 600 }}>
-                        UNUSED CREDITS
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr style={{ borderBottom: '1px solid #eef0f3' }}>
-                      <td style={{ padding: '12px 0', fontSize: '12px', color: '#333' }}>
-                        {customer.currency || 'INR'} - Indian Rupee
-                      </td>
-                      <td
-                        style={{
-                          padding: '12px 0',
-                          fontSize: '12px',
-                          color: '#0062ff',
-                          textAlign: 'right',
-                          fontWeight: 500,
-                        }}
-                      >
-                        ₹0.00
-                      </td>
-                      <td
-                        style={{
-                          padding: '12px 0',
-                          fontSize: '12px',
-                          color: '#333',
-                          textAlign: 'right',
-                          fontWeight: 500,
-                        }}
-                      >
-                        ₹0.00
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                <div
-                  style={{
-                    fontSize: '13px',
-                    color: '#0062ff',
-                    cursor: 'pointer',
-                    marginBottom: '16px',
-                  }}
-                >
-                  View Opening Balance
-                </div>
-
-
-              </div>
 
               <div style={{ padding: '16px' }}>
                 <div
@@ -653,9 +733,52 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
       />
 
       <AdditionalAddressModal
-        isOpen={isAdditionalAddressModalOpen}
-        onClose={() => setIsAdditionalAddressModalOpen(false)}
-        onSubmit={(data) => addAddressMutation.mutate(data)}
+        isOpen={addressModalType !== null}
+        title={
+          addressModalType === 'billing' ? 'Billing Address' :
+          addressModalType === 'shipping' ? 'Shipping Address' :
+          'Additional Address'
+        }
+        defaultValues={
+          addressModalType === 'billing'
+            ? {
+                street1: customer.billingStreet1 || '',
+                street2: customer.billingStreet2 || '',
+                city: customer.billingCity || '',
+                state: customer.billingState || '',
+                country: customer.billingCountry || '',
+                pinCode: customer.billingPinCode || '',
+                attention: customer.billingAttention || '',
+                phone: customer.billingPhone || '',
+                addressType: 'billing',
+              }
+            : addressModalType === 'shipping'
+            ? {
+                street1: customer.shippingStreet1 || '',
+                street2: customer.shippingStreet2 || '',
+                city: customer.shippingCity || '',
+                state: customer.shippingState || '',
+                country: customer.shippingCountry || '',
+                pinCode: customer.shippingPinCode || '',
+                attention: customer.shippingAttention || '',
+                phone: customer.shippingPhone || '',
+                addressType: 'shipping',
+              }
+            : addressEditIndex !== null
+            ? customer.addresses?.[addressEditIndex]
+            : { addressType: 'additional' }
+        }
+        onClose={() => {
+          setAddressModalType(null);
+          setAddressEditIndex(null);
+        }}
+        onSubmit={(data) => {
+          if (addressModalType === 'billing' || addressModalType === 'shipping') {
+            updateSpecificAddressMutation.mutate({ type: addressModalType, address: data });
+          } else {
+            saveAdditionalAddressMutation.mutate(data);
+          }
+        }}
       />
     </div>
   );

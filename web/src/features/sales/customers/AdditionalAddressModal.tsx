@@ -1,3 +1,4 @@
+import React from 'react';
 import { z } from 'zod';
 import { useForm, Controller } from 'react-hook-form';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
@@ -17,9 +18,11 @@ interface AdditionalAddressModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (data: CustomerAddress) => void;
+  title?: string;
+  defaultValues?: Partial<CustomerAddress>;
 }
 
-export function AdditionalAddressModal({ isOpen, onClose, onSubmit }: AdditionalAddressModalProps) {
+export function AdditionalAddressModal({ isOpen, onClose, onSubmit, title = 'Additional Address', defaultValues }: AdditionalAddressModalProps) {
   const {
     register,
     control,
@@ -29,14 +32,39 @@ export function AdditionalAddressModal({ isOpen, onClose, onSubmit }: Additional
   } = useForm<AdditionalAddressFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      addressType: 'additional',
+      addressType: defaultValues?.addressType || 'additional',
+      attention: defaultValues?.attention || '',
+      country: defaultValues?.country || '',
+      street1: defaultValues?.street1 || '',
+      street2: defaultValues?.street2 || '',
+      city: defaultValues?.city || '',
+      state: defaultValues?.state || '',
+      pinCode: defaultValues?.pinCode || '',
+      phone: defaultValues?.phone || '',
     },
   });
+
+  // Reset form when modal opens with new defaultValues
+  React.useEffect(() => {
+    if (isOpen) {
+      reset({
+        addressType: defaultValues?.addressType || 'additional',
+        attention: defaultValues?.attention || '',
+        country: defaultValues?.country || '',
+        street1: defaultValues?.street1 || '',
+        street2: defaultValues?.street2 || '',
+        city: defaultValues?.city || '',
+        state: defaultValues?.state || '',
+        pinCode: defaultValues?.pinCode || '',
+        phone: defaultValues?.phone || '',
+      });
+    }
+  }, [isOpen, defaultValues, reset]);
 
   if (!isOpen) return null;
 
   const handleFormSubmit = (data: AdditionalAddressFormValues) => {
-    onSubmit({ ...data, addressType: 'additional' });
+    onSubmit({ ...data, addressType: defaultValues?.addressType || 'additional' });
     reset();
     onClose();
   };
@@ -123,7 +151,7 @@ export function AdditionalAddressModal({ isOpen, onClose, onSubmit }: Additional
     <div style={overlayStyle}>
       <div style={modalStyle}>
         <div style={headerStyle}>
-          <h3 style={{ margin: 0, fontSize: '15px', color: '#0f172a' }}>Additional Address</h3>
+          <h3 style={{ margin: 0, fontSize: '15px', color: '#0f172a' }}>{title}</h3>
           <button
             type="button"
             onClick={onClose}

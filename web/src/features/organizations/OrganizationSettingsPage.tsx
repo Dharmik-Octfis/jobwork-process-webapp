@@ -6,7 +6,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { updateOrganizationSchema, type UpdateOrganizationData } from './organizations.schemas';
 import { organizationsApi } from './organizations.api';
 import { toApiErrorMessage } from '../../api/client';
-import { Trash2, AlertTriangle } from 'lucide-react';
 import { SearchableSelect } from '../../components/ui/SearchableSelect';
 import './CreateOrganizationForm.css'; // Re-use styles
 
@@ -21,9 +20,7 @@ export function OrganizationSettingsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [deleteConfirmName, setDeleteConfirmName] = useState('');
+
 
   const { data: organizations, isLoading, isError, error } = useQuery({
     queryKey: ['organizations'],
@@ -65,7 +62,7 @@ export function OrganizationSettingsPage() {
         zip: '',
       },
       industryType: '',
-      taxIdValue: '',
+
     },
   });
 
@@ -85,7 +82,7 @@ export function OrganizationSettingsPage() {
           zip: activeOrg.address?.zip || '',
         },
         industryType: activeOrg.industryType || '',
-        taxIdValue: activeOrg.taxIdValue || '',
+        website: activeOrg.website || '',
       });
     }
   }, [activeOrg, reset]);
@@ -130,30 +127,34 @@ export function OrganizationSettingsPage() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!id || !activeOrg) return;
-    if (deleteConfirmName !== activeOrg.name) {
-      setDeleteError('Organization name does not match.');
-      return;
-    }
-    try {
-      setDeleteError(null);
-      await organizationsApi.deleteOrganization(id);
-      await queryClient.invalidateQueries({ queryKey: ['organizations'] });
-      navigate('/');
-    } catch (err) {
-      setDeleteError(toApiErrorMessage(err));
-    }
-  };
+
 
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [deletingLogo, setDeletingLogo] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>(activeOrg?.logo_url || null);
 
   useEffect(() => {
     if (activeOrg?.logo_url) {
       setLogoPreview(activeOrg.logo_url);
+    } else {
+      setLogoPreview(null);
     }
   }, [activeOrg]);
+
+  const handleLogoRemove = async () => {
+    if (!id) return;
+    try {
+      setDeletingLogo(true);
+      setServerError(null);
+      await organizationsApi.deleteLogo(id);
+      setLogoPreview(null);
+      await queryClient.invalidateQueries({ queryKey: ['organizations'] });
+    } catch (err) {
+      setServerError(toApiErrorMessage(err));
+    } finally {
+      setDeletingLogo(false);
+    }
+  };
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -280,8 +281,8 @@ export function OrganizationSettingsPage() {
           maxWidth: 1200,
           margin: '0 auto',
           width: '100%',
-          padding: 'var(--space-6) var(--space-5)',
-          gap: 'var(--space-6)',
+          padding: 'var(--space-3) var(--space-4)',
+          gap: 'var(--space-3)',
         }}
       >
         {/* Main Content */}
@@ -291,7 +292,7 @@ export function OrganizationSettingsPage() {
               background: 'var(--color-surface)',
               borderRadius: 'var(--radius-lg)',
               border: '1px solid var(--color-border)',
-              padding: 'var(--space-6)',
+              padding: 'var(--space-4)',
             }}
           >
             <h2 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 var(--space-1) 0' }}>
@@ -300,8 +301,8 @@ export function OrganizationSettingsPage() {
             <p
               style={{
                 color: 'var(--color-text-muted)',
-                margin: '0 0 var(--space-5) 0',
-                fontSize: 14,
+                margin: '0 0 var(--space-3) 0',
+                fontSize: 13,
               }}
             >
               Update your organization's details and public information.
@@ -312,18 +313,18 @@ export function OrganizationSettingsPage() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 20,
-                marginBottom: 24,
-                padding: 16,
-                border: '1px dashed var(--color-border)',
+                gap: 12,
+                marginBottom: 16,
+                padding: '12px',
+                border: '1px solid var(--color-border)',
                 borderRadius: 'var(--radius-md)',
-                background: 'var(--color-bg)',
+                background: 'var(--color-surface-2)',
               }}
             >
               <div
                 style={{
-                  width: 64,
-                  height: 64,
+                  width: 48,
+                  height: 48,
                   borderRadius: 8,
                   border: '1px solid var(--color-border)',
                   background: '#fff',
@@ -346,23 +347,58 @@ export function OrganizationSettingsPage() {
                   </span>
                 )}
               </div>
-              <div>
-                <label style={{ fontWeight: 500, fontSize: 14, display: 'block', marginBottom: 4 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <label style={{ fontWeight: 600, fontSize: 14, display: 'block', marginBottom: 4, color: 'var(--color-text)' }}>
                   Organization Logo
                 </label>
-                <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: '0 0 8px 0' }}>
-                  Upload your company logo (`logo_url`). Recommended format: PNG, JPG, or SVG up to 2MB.
+                <p style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: '0 0 12px 0' }}>
+                  Upload your company logo. Recommended format: PNG, JPG, or SVG up to 2MB.
                 </p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleLogoUpload}
-                    disabled={uploadingLogo}
-                    style={{ fontSize: 13 }}
-                  />
-                  {uploadingLogo && (
-                    <span style={{ fontSize: 12, color: 'var(--color-primary)' }}>Uploading...</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <label
+                    style={{
+                      cursor: uploadingLogo ? 'not-allowed' : 'pointer',
+                      padding: '8px 16px',
+                      backgroundColor: '#ffffff',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '6px',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: '#374151',
+                      transition: 'all 0.2s',
+                      opacity: uploadingLogo ? 0.7 : 1,
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                    }}
+                  >
+                    {uploadingLogo ? 'Uploading...' : 'Choose Image'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoUpload}
+                      disabled={uploadingLogo}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+                  {logoPreview && (
+                    <button
+                      type="button"
+                      onClick={handleLogoRemove}
+                      disabled={deletingLogo}
+                      style={{
+                        padding: '8px 16px',
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #ef4444',
+                        borderRadius: '6px',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: '#ef4444',
+                        cursor: deletingLogo ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.2s',
+                        opacity: deletingLogo ? 0.7 : 1,
+                      }}
+                    >
+                      {deletingLogo ? 'Removing...' : 'Remove'}
+                    </button>
                   )}
                 </div>
               </div>
@@ -385,52 +421,53 @@ export function OrganizationSettingsPage() {
 
             <form
               onSubmit={handleSubmit(onSubmit)}
-              style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}
+              style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}
             >
-              {/* Name */}
-              <div className="org-form-group">
-                <label>
-                  Organization Name <span className="org-form-required">*</span>
-                </label>
-                <input
-                  type="text"
-                  className={`org-form-input ${errors.name ? 'error' : ''}`}
-                  placeholder="e.g. Acme Corp"
-                  {...register('name')}
-                />
-                {errors.name && <p className="org-form-error-msg">{errors.name.message}</p>}
-              </div>
+              {/* Name and Industry */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
+                <div className="org-form-group">
+                  <label>
+                    Organization Name <span className="org-form-required">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    className={`org-form-input ${errors.name ? 'error' : ''}`}
+                    placeholder="e.g. Acme Corp"
+                    {...register('name')}
+                  />
+                  {errors.name && <p className="org-form-error-msg">{errors.name.message}</p>}
+                </div>
 
-              {/* Industry */}
-              <div className="org-form-group">
-                <label>
-                  Industry Type <span className="required">*</span>
-                </label>
-                <Controller
-                  name="industryType"
-                  control={control}
-                  render={({ field }) => (
-                    <div className={errors.industryType ? 'error' : ''}>
-                      <SearchableSelect
-                        options={masterData?.industries.map(ind => ({ label: ind.name, value: ind.code })) || []}
-                        value={field.value}
-                        onChange={field.onChange}
-                        placeholder="Select Industry"
-                      />
-                    </div>
+                <div className="org-form-group">
+                  <label>
+                    Industry Type <span className="required">*</span>
+                  </label>
+                  <Controller
+                    name="industryType"
+                    control={control}
+                    render={({ field }) => (
+                      <div className={errors.industryType ? 'error' : ''}>
+                        <SearchableSelect
+                          options={masterData?.industries.map(ind => ({ label: ind.name, value: ind.code })) || []}
+                          value={field.value}
+                          onChange={field.onChange}
+                          placeholder="Select Industry"
+                        />
+                      </div>
+                    )}
+                  />
+                  {errors.industryType && (
+                    <p className="org-form-error-msg">{errors.industryType.message}</p>
                   )}
-                />
-                {errors.industryType && (
-                  <p className="org-form-error-msg">{errors.industryType.message}</p>
-                )}
+                </div>
               </div>
 
               {/* Two column layout for email/phone */}
               <div
-                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}
+                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}
               >
                 <div className="org-form-group">
-                  <label>Email Address</label>
+                  <label>Email</label>
                   <input
                     type="email"
                     className={`org-form-input ${errors.email ? 'error' : ''}`}
@@ -441,24 +478,28 @@ export function OrganizationSettingsPage() {
                 </div>
 
                 <div className="org-form-group">
-                  <label>Phone Number</label>
+                  <label>Phone</label>
                   <input
                     type="tel"
                     className={`org-form-input ${errors.phone ? 'error' : ''}`}
-                    placeholder="+1 (555) 000-0000"
+                    placeholder="9876543210"
                     {...register('phone')}
+                    onInput={(e) => {
+                      e.currentTarget.value = e.currentTarget.value.replace(/\D/g, '');
+                    }}
+                    maxLength={10}
                   />
                   {errors.phone && <p className="org-form-error-msg">{errors.phone.message}</p>}
                 </div>
               </div>
 
               <div className="org-form-group">
-                <label>Street Address</label>
-                <textarea
+                <label>Street</label>
+                <input
+                  type="text"
                   className={`org-form-input ${errors.address?.streetAddress1 ? 'error' : ''}`}
                   placeholder="E.g. 101, Business Center"
                   {...register('address.streetAddress1')}
-                  rows={2}
                 />
                 {errors.address?.streetAddress1 && (
                   <p className="org-form-error-msg">{errors.address.streetAddress1.message}</p>
@@ -469,7 +510,7 @@ export function OrganizationSettingsPage() {
                 style={{
                   display: 'grid',
                   gridTemplateColumns: '1fr 1fr',
-                  gap: 'var(--space-4)',
+                  gap: 'var(--space-2)',
                 }}
               >
                 <div className="org-form-group">
@@ -541,17 +582,15 @@ export function OrganizationSettingsPage() {
               </div>
 
               <div className="org-form-group">
-                <label>Tax ID / GSTIN</label>
+                <label>Website</label>
                 <input
-                  type="text"
-                  className={`org-form-input ${errors.taxIdValue ? 'error' : ''}`}
-                  placeholder="E.g. 27AAAAA0000A1Z5"
-                  {...register('taxIdValue')}
-                  style={{ textTransform: 'uppercase' }}
-                  maxLength={15}
+                  type="url"
+                  className={`org-form-input ${errors.website ? 'error' : ''}`}
+                  placeholder="https://example.com"
+                  {...register('website')}
                 />
-                {errors.taxIdValue && (
-                  <p className="org-form-error-msg">{errors.taxIdValue.message}</p>
+                {errors.website && (
+                  <p className="org-form-error-msg">{errors.website.message}</p>
                 )}
               </div>
 
@@ -559,8 +598,8 @@ export function OrganizationSettingsPage() {
                 style={{
                   display: 'flex',
                   justifyContent: 'flex-end',
-                  marginTop: 'var(--space-4)',
-                  paddingTop: 'var(--space-4)',
+                  marginTop: 'var(--space-2)',
+                  paddingTop: 'var(--space-2)',
                   borderTop: '1px solid var(--color-border)',
                 }}
               >
@@ -578,214 +617,13 @@ export function OrganizationSettingsPage() {
                     opacity: isSubmitting ? 0.7 : 1,
                   }}
                 >
-                  {isSubmitting ? 'Saving...' : 'Save Changes'}
+                  {isSubmitting ? 'Saving...' : 'Save'}
                 </button>
               </div>
             </form>
           </section>
-
-          {/* Danger Zone */}
-          <section
-            style={{
-              border: '1px solid var(--color-danger)',
-              borderRadius: 'var(--radius-lg)',
-              overflow: 'hidden',
-              marginTop: 'var(--space-4)',
-            }}
-          >
-            <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--color-border)' }}>
-              <h2
-                style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-danger)', margin: 0 }}
-              >
-                Danger Zone
-              </h2>
-            </div>
-            <div
-              style={{
-                padding: '24px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                background: 'var(--danger-50)',
-              }}
-            >
-              <div>
-                <h3
-                  style={{
-                    fontSize: 16,
-                    fontWeight: 600,
-                    margin: '0 0 4px 0',
-                    color: 'var(--color-text)',
-                  }}
-                >
-                  Delete this organization
-                </h3>
-                <p style={{ margin: 0, fontSize: 14, color: 'var(--color-text-muted)' }}>
-                  Once deleted, it will be gone forever. Please be certain.
-                </p>
-              </div>
-              <button
-                onClick={() => setIsDeleteDialogOpen(true)}
-                style={{
-                  background: 'white',
-                  color: 'var(--color-danger)',
-                  border: '1px solid var(--color-danger)',
-                  padding: '8px 16px',
-                  borderRadius: 'var(--radius-md)',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                <Trash2 size={16} /> Delete Organization
-              </button>
-            </div>
-          </section>
         </main>
       </div>
-
-      {/* Delete Confirmation Modal */}
-      {isDeleteDialogOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.5)',
-            zIndex: 100,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <div
-            style={{
-              background: 'var(--color-surface)',
-              width: 450,
-              borderRadius: 'var(--radius-lg)',
-              overflow: 'hidden',
-              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)',
-            }}
-          >
-            <div style={{ padding: 24 }}>
-              <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
-                <div
-                  style={{
-                    width: 48,
-                    height: 48,
-                    borderRadius: '50%',
-                    background: 'var(--danger-50)',
-                    color: 'var(--color-danger)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <AlertTriangle size={24} />
-                </div>
-                <div>
-                  <h2
-                    style={{
-                      fontSize: 18,
-                      fontWeight: 600,
-                      margin: '0 0 8px 0',
-                      color: 'var(--color-text)',
-                    }}
-                  >
-                    Delete organization
-                  </h2>
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: 14,
-                      color: 'var(--color-text-muted)',
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    This action cannot be undone. This will permanently delete the{' '}
-                    <strong>{activeOrg.name}</strong> organization, members, and all associated
-                    data.
-                  </p>
-                </div>
-              </div>
-
-              {deleteError && (
-                <div
-                  style={{
-                    padding: 12,
-                    background: 'var(--danger-50)',
-                    color: 'var(--color-danger)',
-                    borderRadius: 'var(--radius-md)',
-                    marginBottom: 20,
-                    fontSize: 14,
-                  }}
-                >
-                  {deleteError}
-                </div>
-              )}
-
-              <div className="org-form-group">
-                <label style={{ fontSize: 14 }}>
-                  Please type <strong>{activeOrg.name}</strong> to confirm.
-                </label>
-                <input
-                  type="text"
-                  className="org-form-input"
-                  value={deleteConfirmName}
-                  onChange={(e) => setDeleteConfirmName(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div
-              style={{
-                padding: '16px 24px',
-                background: 'var(--color-bg)',
-                borderTop: '1px solid var(--color-border)',
-                display: 'flex',
-                justifyContent: 'flex-end',
-                gap: 12,
-              }}
-            >
-              <button
-                onClick={() => {
-                  setIsDeleteDialogOpen(false);
-                  setDeleteError(null);
-                  setDeleteConfirmName('');
-                }}
-                style={{
-                  background: 'white',
-                  border: '1px solid var(--color-border)',
-                  padding: '8px 16px',
-                  borderRadius: 'var(--radius-md)',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={deleteConfirmName !== activeOrg.name}
-                style={{
-                  background: 'var(--color-danger)',
-                  color: 'white',
-                  border: 'none',
-                  padding: '8px 16px',
-                  borderRadius: 'var(--radius-md)',
-                  fontWeight: 600,
-                  cursor: deleteConfirmName !== activeOrg.name ? 'not-allowed' : 'pointer',
-                  opacity: deleteConfirmName !== activeOrg.name ? 0.5 : 1,
-                }}
-              >
-                Delete Organization
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

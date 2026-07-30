@@ -66,6 +66,7 @@ export function CurrencyFormModal({
       symbol: '',
       decimalPlaces: 2,
       format: '1,234,567.89',
+      exchangeRate: 1,
     },
   });
 
@@ -95,6 +96,8 @@ export function CurrencyFormModal({
           symbol: currencyToEdit.symbol,
           decimalPlaces: currencyToEdit.decimalPlaces,
           format: currencyToEdit.format || '1,234,567.89',
+          exchangeRate: currencyToEdit.exchangeRate || 1,
+          isActive: currencyToEdit.isActive ?? true,
         });
       } else {
         reset({
@@ -103,6 +106,8 @@ export function CurrencyFormModal({
           symbol: '',
           decimalPlaces: 2,
           format: '1,234,567.89',
+          exchangeRate: 1,
+          isActive: true,
         });
       }
       clearErrors();
@@ -419,6 +424,72 @@ export function CurrencyFormModal({
                     {errors.format.message}
                   </span>
                 )}
+              </div>
+
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    marginBottom: '6px',
+                    color: 'var(--color-text)',
+                  }}
+                >
+                  Exchange Rate<span style={{ color: '#dc2626' }}>*</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.000001"
+                  min="0"
+                  {...register('exchangeRate')}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--color-border)',
+                    fontSize: '13px',
+                    backgroundColor: 'white',
+                  }}
+                  placeholder="1.000000"
+                />
+                {errors.exchangeRate && (
+                  <span
+                    style={{
+                      color: '#dc2626',
+                      fontSize: '12px',
+                      marginTop: '4px',
+                      display: 'block',
+                    }}
+                  >
+                    {errors.exchangeRate.message}
+                  </span>
+                )}
+              </div>
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                <Controller
+                  name="isActive"
+                  control={control}
+                  render={({ field: { value, onChange } }) => (
+                    <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '8px' }}>
+                      <input
+                        type="checkbox"
+                        checked={value}
+                        onChange={(e) => onChange(e.target.checked)}
+                        style={{
+                          width: '16px',
+                          height: '16px',
+                          cursor: 'pointer',
+                          accentColor: 'var(--color-primary)',
+                        }}
+                      />
+                      <span style={{ fontSize: '14px', color: 'var(--color-text)', fontWeight: 500 }}>
+                        Active
+                      </span>
+                    </label>
+                  )}
+                />
               </div>
             </div>
           </form>

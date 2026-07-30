@@ -309,29 +309,6 @@ export function UomFormModal({ orgId, isOpen, onClose, uomToEdit }: UomFormModal
                 )}
               </div>
 
-              <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-                Note : Once you've selected a unit precision, you will only be able to increase the
-                value the next time you edit it.
-              </div>
-
-              <div
-                style={{
-                  backgroundColor: '#FFF7ED',
-                  color: '#4b5563',
-                  padding: '10px',
-                  borderRadius: '6px',
-                  fontSize: 12,
-                  display: 'flex',
-                  gap: '6px',
-                }}
-              >
-                <span style={{ color: '#F97316' }}>⚠️</span>
-                <span>
-                  As per e-Invoice System's API standards, UQC is required for all units. If you
-                  don't enter an UQC, we will use 'OTH (Others)' as the UQC while e-invoicing
-                  transactions.
-                </span>
-              </div>
             </form>
           </div>
 

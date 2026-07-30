@@ -42,12 +42,12 @@ export const createOrganizationSchema = openApiRegistry.register(
     street_address1: z.string().optional().openapi({ example: '101, Titanium City Center, Satellite' }),
   }).optional(),
 
-  tax_id_value: z
+  website: z
     .string()
-    .length(15, 'GST Number must be exactly 15 characters')
+    .url('Invalid website URL')
     .optional()
     .or(z.literal(''))
-    .openapi({ example: '24AAAAA0000A1Z5' }),
+    .openapi({ example: 'https://acmecorp.in' }),
 }),
 );
 

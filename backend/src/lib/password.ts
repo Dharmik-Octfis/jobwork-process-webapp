@@ -18,7 +18,7 @@ import { argon2id, hash, verify } from 'argon2';
  */
 const HASH_OPTIONS = {
   type: argon2id,
-  memoryCost: 47_104,
+  memoryCost: 4096, // Reduced from 47_104 for faster local development without native bindings
   timeCost: 1,
   parallelism: 1,
 } as const;

@@ -21,9 +21,9 @@ const baseOrganizationSchema = z.object({
       .optional()
       .or(z.literal(''))
   }).optional(),
-  taxIdValue: z
+  website: z
     .string()
-    .length(15, 'GST Number must be exactly 15 characters')
+    .url('Invalid website URL')
     .optional()
     .or(z.literal('')),
 });
@@ -57,7 +57,7 @@ export interface Organization {
     city?: string;
     zip?: string;
   };
-  taxIdValue?: string;
+  website?: string;
   // eslint-disable-next-line @typescript-eslint/naming-convention
   logo_url?: string | null;
   accountCreatedDate: string;

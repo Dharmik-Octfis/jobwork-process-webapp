@@ -5,6 +5,7 @@ interface Currency {
   id: string;
   currencyCode: string;
   currencyName: string;
+  isActive?: boolean;
 }
 
 interface CurrencyDropdownProps {
@@ -30,8 +31,9 @@ export function CurrencyDropdown({ value, onChange, currencies = [], style }: Cu
   }, []);
 
   const filteredCurrencies = currencies.filter(c => 
-    c.currencyCode.toLowerCase().includes(search.toLowerCase()) ||
-    c.currencyName.toLowerCase().includes(search.toLowerCase())
+    (c.isActive !== false || c.currencyCode === value) &&
+    (c.currencyCode.toLowerCase().includes(search.toLowerCase()) ||
+    c.currencyName.toLowerCase().includes(search.toLowerCase()))
   );
 
   const selectedCurrency = currencies.find(c => c.currencyCode === value);

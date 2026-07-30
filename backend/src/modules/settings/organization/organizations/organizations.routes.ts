@@ -10,6 +10,7 @@ import {
   getOrganizations,
   updateOrganization,
   uploadOrganizationLogo,
+  deleteOrganizationLogo,
   deleteOrganization,
 } from './organizations.controller.ts';
 
@@ -104,6 +105,23 @@ openApiRegistry.registerPath({
   },
 });
 
+openApiRegistry.registerPath({
+  method: 'delete',
+  path: '/organizations/{id}/logo',
+  tags: ['Organizations'],
+  summary: 'Delete organization logo',
+  request: {
+    params: z.object({
+      id: z.string().openapi({ description: 'Organization ID' }),
+    }),
+  },
+  responses: {
+    200: { description: 'Logo deleted successfully' },
+    401: { description: 'Unauthorized' },
+    403: { description: 'Forbidden' },
+  },
+});
+
 export const organizationsRouter = Router();
 
 organizationsRouter.use(authenticate);
@@ -127,6 +145,12 @@ organizationsRouter.post(
   requirePermission('organization:update'),
   upload.single('logo'),
   uploadOrganizationLogo,
+);
+organizationsRouter.delete(
+  '/:orgId/logo',
+  tenantContext,
+  requirePermission('organization:update'),
+  deleteOrganizationLogo,
 );
 organizationsRouter.delete('/:orgId', tenantContext, requireOwner, deleteOrganization);
 

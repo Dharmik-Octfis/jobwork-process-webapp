@@ -6,6 +6,8 @@ export const createCurrencySchema = z.object({
   symbol: z.string().min(1, 'Symbol is required').max(10, 'Symbol must be 10 characters or less'),
   decimalPlaces: z.coerce.number().int().min(0, 'Decimal places cannot be negative').max(6, 'Decimal places cannot exceed 6').default(2),
   format: z.string().min(1, 'Format is required'),
+  exchangeRate: z.coerce.number().min(0, 'Exchange rate must be positive').default(1),
+  isActive: z.boolean().optional().default(true),
 });
 
 export type CreateCurrencyData = z.output<typeof createCurrencySchema>;
@@ -20,9 +22,13 @@ export interface Currency {
   symbol: string;
   decimalPlaces: number;
   format: string;
+  exchangeRate: number;
   isDeleted: boolean;
+  isActive: boolean;
   createdBy: string | null;
   updatedBy: string | null;
   createdAt: string;
   updatedAt: string;
+  createdByUser?: { firstName: string; lastName: string } | null;
+  updatedByUser?: { firstName: string; lastName: string } | null;
 }

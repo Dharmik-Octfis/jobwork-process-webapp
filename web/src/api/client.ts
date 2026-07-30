@@ -107,6 +107,8 @@ export function refreshAccessToken(): Promise<string | null> {
   return refreshInFlight;
 }
 
+import { toast } from 'react-hot-toast';
+
 apiClient.interceptors.response.use(
   (response) => {
     // Unwrap the standardized API response wrapper if present
@@ -116,6 +118,12 @@ apiClient.interceptors.response.use(
       'statusCode' in response.data &&
       'data' in response.data
     ) {
+      const message = response.data.message;
+      const method = response.config.method?.toLowerCase();
+      // Show toast if it's a mutation and the message is not just the generic 'Success'
+      if (['post', 'put', 'patch', 'delete'].includes(method || '') && message && message !== 'Success') {
+        toast.success(message);
+      }
       return { ...response, data: response.data.data };
     }
     return response;

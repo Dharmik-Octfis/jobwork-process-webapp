@@ -37,6 +37,21 @@ export function CreateOrganizationForm() {
     }
   };
   const [masterData, setMasterData] = useState<MasterData | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+
+  const handleLogoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setServerError('Image size must be 2 MB or less.');
+      e.target.value = '';
+      return;
+    }
+    setServerError(null);
+    setLogoFile(file);
+    setLogoPreview(URL.createObjectURL(file));
+  };
 
   const {
     register,
@@ -102,7 +117,12 @@ export function CreateOrganizationForm() {
     try {
       setServerError(null);
       const submitData = data;
-      await organizationsApi.createOrganization(submitData);
+      const createdOrg = await organizationsApi.createOrganization(submitData);
+      
+      if (logoFile && createdOrg.organizationId) {
+        await organizationsApi.uploadLogo(createdOrg.organizationId, logoFile);
+      }
+
       await queryClient.invalidateQueries({ queryKey: ['organizations'] });
       navigate('/'); // Go back to dashboard or organizations list after onboarding
     } catch (err) {
@@ -130,6 +150,78 @@ export function CreateOrganizationForm() {
         {serverError && <div className="org-form-error">{serverError}</div>}
 
         <form onSubmit={handleSubmit(onSubmit)}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+            <div
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 8,
+                border: '1px solid var(--color-border)',
+                background: 'var(--color-surface-2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden',
+                flexShrink: 0,
+              }}
+            >
+              {logoPreview ? (
+                <img
+                  src={logoPreview}
+                  alt="Logo Preview"
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                />
+              ) : (
+                <span style={{ fontSize: 13, color: 'var(--color-text-muted)', textAlign: 'center', padding: 4 }}>No Logo</span>
+              )}
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--color-text)', marginBottom: 4 }}>
+                Organization Logo
+              </label>
+              <label
+                style={{
+                  cursor: 'pointer',
+                  padding: '6px 12px',
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: '#374151',
+                  display: 'inline-block',
+                }}
+              >
+                Choose Image
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoSelect}
+                  style={{ display: 'none' }}
+                />
+              </label>
+              {logoPreview && (
+                <button
+                  type="button"
+                  onClick={() => { setLogoFile(null); setLogoPreview(null); }}
+                  style={{
+                    marginLeft: 8,
+                    padding: '6px 12px',
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #ef4444',
+                    borderRadius: '6px',
+                    fontSize: 12,
+                    fontWeight: 500,
+                    color: '#ef4444',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          </div>
+
           <div className="org-form-grid">
             <div className="org-form-field">
               <label className="org-form-label">
@@ -166,7 +258,7 @@ export function CreateOrganizationForm() {
           </div>
 
           <div className="org-form-field org-form-full-width">
-            <label className="org-form-label">Address</label>
+            <label className="org-form-label">Street</label>
             <textarea
               {...register('address.streetAddress1')}
               className="org-form-textarea"
@@ -243,21 +335,20 @@ export function CreateOrganizationForm() {
 
           <div className="org-form-grid">
             <div className="org-form-field">
-              <label className="org-form-label">GST Number</label>
+              <label className="org-form-label">Email</label>
               <input
-                {...register('taxIdValue')}
-                maxLength={15}
-                className={`org-form-input ${errors.taxIdValue ? 'has-error' : ''}`}
-                placeholder="22AAAAA0000A1Z5"
-                style={{ textTransform: 'uppercase' }}
+                {...register('email')}
+                type="email"
+                className={`org-form-input ${errors.email ? 'has-error' : ''}`}
+                placeholder="company@example.com"
               />
-              {errors.taxIdValue && (
-                <span className="org-form-error-text">{errors.taxIdValue.message}</span>
+              {errors.email && (
+                <span className="org-form-error-text">{errors.email.message}</span>
               )}
             </div>
 
             <div className="org-form-field">
-              <label className="org-form-label">Phone No</label>
+              <label className="org-form-label">Phone</label>
               <div
                 className={`org-form-input-group ${errors.phone || errors.dialCode ? 'has-error' : ''}`}
               >
@@ -292,14 +383,16 @@ export function CreateOrganizationForm() {
           </div>
 
           <div className="org-form-field org-form-full-width">
-            <label className="org-form-label">Email</label>
+            <label className="org-form-label">Website</label>
             <input
-              {...register('email')}
-              type="email"
-              className={`org-form-input ${errors.email ? 'has-error' : ''}`}
-              placeholder="company@example.com"
+              {...register('website')}
+              type="url"
+              className={`org-form-input ${errors.website ? 'has-error' : ''}`}
+              placeholder="https://example.com"
             />
-            {errors.email && <span className="org-form-error-text">{errors.email.message}</span>}
+            {errors.website && (
+              <span className="org-form-error-text">{errors.website.message}</span>
+            )}
           </div>
 
           <div className="org-form-actions">

@@ -2,35 +2,30 @@ model Item {
   id                       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId           String              @map("organization_id") @db.Uuid
   name                     String
-  aliasName                String?             @map("alias_name")
   type                     String              @default("Goods") @db.VarChar(50)
   category                 String?
-  brand                    String?
-  manufacturer             String?
   hsnCode                  String?             @map("hsn_code")
-  taxPreference            String              @default("Taxable") @map("tax_preference") @db.VarChar(50)
   itemType                 String              @default("Single Item") @map("item_type") @db.VarChar(50)
   unit                     String
   sku                      String
   isSalesInfo              Boolean             @default(false) @map("is_sales_info")
+  isActive                 Boolean             @default(true) @map("is_active")
   sellingPrice             Decimal?            @map("selling_price") @db.Decimal(10, 2)
-  salesAccount             String?             @map("sales_account")
+  salesDescription         String?             @map("sales_description")
   isPurchaseInfo           Boolean             @default(false) @map("is_purchase_info")
   costPrice                Decimal?            @map("cost_price") @db.Decimal(10, 2)
-  purchaseAccount          String?             @map("purchase_account")
+  purchaseDescription      String?             @map("purchase_description")
   packaging                String?
-  deliveryDate             DateTime?           @map("delivery_date") @db.Date
   createdAt                DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   createdBy                String?             @map("created_by") @db.Uuid
   isDeleted                Boolean             @default(false) @map("is_deleted")
   updatedBy                String?             @map("updated_by") @db.Uuid
   customFields             Json                @default("{}") @map("custom_fields")
-  binLocationTracking      String?             @map("bin_location_tracking")
-  inventoryAccount         String?             @map("inventory_account")
   inventoryTracking        String?             @map("inventory_tracking")
-  inventoryValuationMethod String?             @map("inventory_valuation_method")
   trackInventory           Boolean             @default(false) @map("track_inventory")
+  openingStock             Decimal?            @map("opening_stock") @db.Decimal(10, 2)
+  openingStockValuePerUnit Decimal?            @map("opening_stock_value_per_unit") @db.Decimal(10, 2)
   frontImage               Json?               @map("front_image")
   images                   Json?               @default("[]")
   rearImage                Json?               @map("rear_image")

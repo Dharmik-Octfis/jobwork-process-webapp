@@ -17,6 +17,8 @@ export const createCurrencySchema = z.object({
     .max(6, 'Decimal places cannot exceed 6')
     .default(2),
   format: z.string().min(1, 'Format is required'),
+  exchangeRate: z.coerce.number().min(0, 'Exchange rate must be positive').default(1),
+  isActive: z.boolean().optional().default(true),
 });
 
 export const updateCurrencySchema = createCurrencySchema.partial();

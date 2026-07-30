@@ -40,8 +40,7 @@ export function useListSearch() {
         const params = new URLSearchParams(prev);
         if (value) params.set(key, value);
         else params.delete(key);
-        // Opening a record is a separate concern; changing the view clears it.
-        params.delete('id');
+        // Keep the currently selected record open when changing the view/filter.
         return params;
       },
       { replace: true },

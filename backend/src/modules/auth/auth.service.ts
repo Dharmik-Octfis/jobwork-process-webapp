@@ -107,6 +107,16 @@ export async function uploadAvatar(
   return await formatPublicUser(updatedUser);
 }
 
+export async function deleteAvatar(userId: string): Promise<PublicUser> {
+  const updatedUser = await prisma.user.update({
+    where: { id: userId },
+    data: { avatarUrl: null },
+    select: publicUserSelect,
+  });
+
+  return await formatPublicUser(updatedUser);
+}
+
 let decoyHash: Promise<string> | undefined;
 function getDecoyHash(): Promise<string> {
   decoyHash ??= hashPassword('a-password-that-is-never-correct');
