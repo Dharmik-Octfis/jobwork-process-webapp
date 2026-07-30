@@ -17,8 +17,8 @@
     "env file from backend/.env.production.example. Nothing else needs to change."
   ],
   "staging": {
-    "account": "REPLACE_ME@example.com",
-    "dc": "in",
+    "account": "jay.v@octfis.com",
+    "dc": "com",
     "catalystrc": "deploy/staging.catalystrc.json",
     "envFile": "backend/.env.staging"
   },

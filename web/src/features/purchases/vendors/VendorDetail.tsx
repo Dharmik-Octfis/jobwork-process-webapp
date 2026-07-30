@@ -135,7 +135,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
         ...rest
       } = vendor;
 
-      const dataToUpdate: Partial<UpdateVendorData> = { ...rest };
+      const dataToUpdate: Partial<UpdateVendorData> = { ...rest } as any;
       if (type === 'billing') {
         dataToUpdate.billingStreet1 = '';
         dataToUpdate.billingStreet2 = '';
@@ -172,7 +172,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
         organizationId: _organizationId,
         ...rest
       } = vendor;
-      const dataToUpdate: Partial<UpdateVendorData> = { ...rest };
+      const dataToUpdate: Partial<UpdateVendorData> = { ...rest } as any;
       if (type === 'billing') {
         dataToUpdate.billingStreet1 = address.street1;
         dataToUpdate.billingStreet2 = address.street2;

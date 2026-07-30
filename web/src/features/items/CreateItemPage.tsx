@@ -362,7 +362,7 @@ export function CreateItemPage() {
                 <div>
                   <input
                     name="sku"
-                    value={formData.sku}
+                    value={formData.sku || ''}
                     onChange={handleChange}
                     style={{
                       width: '100%',
@@ -444,7 +444,7 @@ export function CreateItemPage() {
                     </div>
                     <div style={{ flex: 1 }}>
                       <Select
-                        value={formData.unit}
+                        value={formData.unit || ''}
                         onChange={(val) => handleSelectChange('unit', val)}
                         options={[
                           ...uoms.map(u => ({ value: u.unitName, label: u.unitName })),
