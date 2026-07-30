@@ -79,20 +79,27 @@ function ImageViewerModal({
     if (activeImageKey === currentFrontKey) return;
 
     const newImages = [...(item.images || [])];
-    const index = newImages.findIndex(img => getImageKey(img) === activeImageKey);
     let activeImageObj: unknown = activeImageKey;
+    const updatePayload: Partial<ItemFormData> = {};
+
+    const index = newImages.findIndex(img => getImageKey(img) === activeImageKey);
     if (index !== -1) {
+      // Image was in 'Other images'
       activeImageObj = newImages[index];
       newImages.splice(index, 1);
-    }
-    if (item.frontImage) {
-      newImages.push(item.frontImage);
+      if (item.frontImage) {
+        newImages.push(item.frontImage);
+      }
+    } else if (activeImageKey === getImageKey(item.rearImage)) {
+      // Image was 'Rear image', so swap old front to rear
+      activeImageObj = item.rearImage;
+      updatePayload.rearImage = (item.frontImage || null) as unknown as string;
     }
 
-    updateItemMutation.mutate({
-      frontImage: activeImageObj as unknown as string,
-      images: newImages as unknown as string[]
-    });
+    updatePayload.frontImage = activeImageObj as unknown as string;
+    updatePayload.images = newImages as unknown as string[];
+
+    updateItemMutation.mutate(updatePayload);
   };
 
   const handleDeleteImage = () => {
@@ -100,13 +107,24 @@ function ImageViewerModal({
     const frontKey = getImageKey(item.frontImage);
     const rearKey = getImageKey(item.rearImage);
 
+    const updatePayload: Partial<ItemFormData> = {};
+    let isDeleted = false;
+
     if (activeImageKey === frontKey) {
-      updateItemMutation.mutate({ frontImage: null as unknown as string });
-    } else if (activeImageKey === rearKey) {
-      updateItemMutation.mutate({ rearImage: null as unknown as string });
-    } else if (Array.isArray(item.images)) {
-      const updated = item.images.filter(img => getImageKey(img) !== activeImageKey);
-      updateItemMutation.mutate({ images: updated as unknown as string[] });
+      updatePayload.frontImage = null as unknown as string;
+      isDeleted = true;
+    } 
+    if (activeImageKey === rearKey) {
+      updatePayload.rearImage = null as unknown as string;
+      isDeleted = true;
+    } 
+    if (Array.isArray(item.images) && item.images.some(img => getImageKey(img) === activeImageKey)) {
+      updatePayload.images = item.images.filter(img => getImageKey(img) !== activeImageKey) as unknown as string[];
+      isDeleted = true;
+    }
+
+    if (isDeleted) {
+      updateItemMutation.mutate(updatePayload);
     }
     onClose();
   };
@@ -195,9 +213,13 @@ function ImageViewerModal({
 
         {/* Bottom Bar */}
         <div style={{ height: '58px', padding: '0 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #eef0f3', boxSizing: 'border-box', background: '#fff' }}>
-          <button onClick={handleMarkAsFront} disabled={updateItemMutation.isPending} style={{ background: 'none', border: 'none', color: '#3b82f6', fontSize: '14px', fontWeight: 500, cursor: updateItemMutation.isPending ? 'not-allowed' : 'pointer', padding: '8px 12px' }}>
-            Mark as Front
-          </button>
+          <div style={{ width: '120px' }}>
+            {activeImageKey !== getImageKey(item.frontImage) && (
+              <button onClick={handleMarkAsFront} disabled={updateItemMutation.isPending} style={{ background: 'none', border: 'none', color: '#3b82f6', fontSize: '14px', fontWeight: 500, cursor: updateItemMutation.isPending ? 'not-allowed' : 'pointer', padding: '8px 12px', marginLeft: '-12px' }}>
+                Mark as Front
+              </button>
+            )}
+          </div>
 
           <button
             onClick={handleDownload}
@@ -231,6 +253,7 @@ function ImageThumbnail({
   onClick?: (url: string) => void;
   maxImgHeight?: string;
 }) {
+  const [isHovered, setIsHovered] = useState(false);
   const { data: url, isLoading } = useQuery({
     queryKey: ['signedUrl', orgId, itemId, imageKey],
     queryFn: () => itemsApi.getSignedUrl(orgId, itemId, imageKey),
@@ -249,9 +272,14 @@ function ImageThumbnail({
   if (!url) return null;
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '6px', overflow: 'hidden', background: '#ffffff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => onClick?.(url)}>
+    <div 
+      style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '6px', overflow: 'hidden', background: '#ffffff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} 
+      onClick={() => onClick?.(url)}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       <img src={url} alt="Item" style={{ maxWidth: '100%', maxHeight: maxImgHeight, width: 'auto', height: 'auto', objectFit: 'contain' }} />
-      {onDelete && (
+      {onDelete && isHovered && (
         <button
           type="button"
           onClick={(e) => {
