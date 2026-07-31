@@ -7,9 +7,9 @@ import { vendorAddressSchema, type VendorAddress } from './vendors.schemas';
 import { X } from 'lucide-react';
 
 const formSchema = vendorAddressSchema.extend({
-  street1: z.string().min(1, 'Address is required'),
-  city: z.string().min(1, 'City is required'),
-  state: z.string().min(1, 'State is required'),
+  street1: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
 });
 
 type AdditionalAddressFormValues = z.infer<typeof formSchema>;
@@ -28,7 +28,7 @@ export function AdditionalAddressModal({ isOpen, onClose, onSubmit, title = 'Add
     control,
     handleSubmit,
     reset,
-    formState: { errors },
+    watch,
   } = useForm<AdditionalAddressFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -61,6 +61,12 @@ export function AdditionalAddressModal({ isOpen, onClose, onSubmit, title = 'Add
   }, [isOpen, defaultValues, reset]);
 
   if (!isOpen) return null;
+
+  const formValues = watch();
+  const isAnyFieldFilled = Object.entries(formValues).some(([key, value]) => {
+    if (key === 'addressType') return false;
+    return typeof value === 'string' && value.trim().length > 0;
+  });
 
   const handleFormSubmit = (data: AdditionalAddressFormValues) => {
     onSubmit({ ...data, addressType: defaultValues?.addressType || 'additional' });
@@ -187,25 +193,22 @@ export function AdditionalAddressModal({ isOpen, onClose, onSubmit, title = 'Add
             </div>
 
             <div>
-              <label style={labelStyle}>Address *</label>
+              <label style={labelStyle}>Address</label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <textarea {...register('street1')} placeholder="Street 1" rows={1} style={{ ...inputStyle, resize: 'vertical' }} />
-                {errors.street1 && <span style={{ color: '#ef4444', fontSize: '12px' }}>{errors.street1.message}</span>}
                 <textarea {...register('street2')} placeholder="Street 2" rows={1} style={{ ...inputStyle, resize: 'vertical' }} />
               </div>
             </div>
 
             <div style={{ display: 'flex', gap: '12px' }}>
               <div style={{ flex: 1 }}>
-                <label style={labelStyle}>City *</label>
+                <label style={labelStyle}>City</label>
                 <input {...register('city')} style={inputStyle} />
-                {errors.city && <span style={{ color: '#ef4444', fontSize: '12px', display: 'block', marginTop: '4px' }}>{errors.city.message}</span>}
               </div>
 
               <div style={{ flex: 1 }}>
-                <label style={labelStyle}>State *</label>
+                <label style={labelStyle}>State</label>
                 <input {...register('state')} style={inputStyle} />
-                {errors.state && <span style={{ color: '#ef4444', fontSize: '12px', display: 'block', marginTop: '4px' }}>{errors.state.message}</span>}
               </div>
             </div>
 
@@ -232,7 +235,14 @@ export function AdditionalAddressModal({ isOpen, onClose, onSubmit, title = 'Add
             </button>
             <button
               type="submit"
-              style={{ ...btnStyle, backgroundColor: '#0f172a', color: '#fff' }}
+              disabled={!isAnyFieldFilled}
+              style={{
+                ...btnStyle,
+                backgroundColor: isAnyFieldFilled ? '#3B82F6' : '#94a3b8',
+                color: '#fff',
+                cursor: isAnyFieldFilled ? 'pointer' : 'not-allowed',
+                opacity: isAnyFieldFilled ? 1 : 0.7
+              }}
             >
               Save
             </button>

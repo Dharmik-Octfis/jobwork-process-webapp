@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   IdCard,
   MapPin,
+  User,
 } from 'lucide-react';
 import { CUSTOM_FIELD_MODULES } from '../../features/custom-fields/customFields.schemas';
 
@@ -178,6 +179,25 @@ export function SettingsLayout() {
               >
                 <Building2 size={18} />
                 <span style={{ fontSize: 14 }}>Company Setting</span>
+              </NavLink>
+
+              <NavLink
+                to={`/organizations/${orgId}/settings/profile`}
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-3)',
+                  padding: '8px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  textDecoration: 'none',
+                  color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
+                  background: isActive ? 'var(--primary-50)' : 'transparent',
+                  fontWeight: isActive ? 600 : 500,
+                  transition: 'all 0.2s ease',
+                })}
+              >
+                <User size={18} />
+                <span style={{ fontSize: 14 }}>Personal Setting</span>
               </NavLink>
 
               <NavLink

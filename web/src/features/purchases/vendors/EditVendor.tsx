@@ -13,7 +13,7 @@ export function EditVendor() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const { data: vendor, isLoading: isFetching } = useQuery({
-    queryKey: ['vendors', id, orgId],
+    queryKey: ['vendor', orgId, id],
     queryFn: () => fetchVendorById(orgId!, id!),
     enabled: !!id && !!orgId,
   });

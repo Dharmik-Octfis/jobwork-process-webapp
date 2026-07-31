@@ -200,7 +200,6 @@ export const router = createBrowserRouter([
               { path: '/organizations/:orgId/items/:id/edit', element: <EditItemPage /> },
             ],
           },
-          { path: '/profile', element: <ProfilePage /> },
           { path: '/organizations', element: <OrganizationsList /> },
         ],
       },
@@ -210,6 +209,7 @@ export const router = createBrowserRouter([
         element: <SettingsLayout />,
         children: [
           { index: true, element: <OrganizationSettingsPage /> },
+          { path: 'profile', element: <ProfilePage /> },
           { path: 'members', element: <InviteMembersPage /> },
           // Two screens, deliberately: `roles` is job titles (no access at all),
           // `permissions` is the access bundles. A member is assigned one of each.

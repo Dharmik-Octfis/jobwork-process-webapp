@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Suspense, type ReactNode } from 'react';
+import { useState, useRef, useEffect, Suspense} from 'react';
 import {
   NavLink,
   Outlet,
@@ -15,7 +15,6 @@ import {
   FileText,
   Users,
   LogOut,
-  KeyRound,
   User as UserIcon,
   Settings,
   LayoutDashboard,
@@ -24,9 +23,10 @@ import {
   ShoppingBag,
   Receipt,
   ChevronRight,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
-import { ChangePasswordModal } from '../../features/profile/ChangePasswordModal';
 import { useAuth } from '../../providers/auth-context';
 import { useLogout } from '../../features/auth/useLogout';
 import { organizationsApi } from '../../features/organizations/organizations.api';
@@ -513,7 +513,7 @@ export function AppLayout() {
               activeOrgId={effectiveOrgId ?? null}
               onSelectOrg={switchOrg}
             />
-            <ProfileDropdown user={user} logoutMutation={logoutMutation} />
+            <ProfileDropdown user={user} logoutMutation={logoutMutation} activeOrgCode={activeOrg?.orgCode} />
           </div>
         </header>
 
@@ -659,63 +659,19 @@ function ModuleNavGroup({
   );
 }
 
-function ProfileMenuItem({
-  icon,
-  label,
-  onClick,
-  variant = 'default',
-}: {
-  icon: ReactNode;
-  label: string;
-  onClick: () => void;
-  variant?: 'default' | 'danger';
-}) {
-  const isDanger = variant === 'danger';
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        width: '100%',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        padding: '10px 16px',
-        background: 'none',
-        border: 'none',
-        cursor: 'pointer',
-        fontSize: 13,
-        fontWeight: 500,
-        color: isDanger ? '#ef4444' : 'var(--color-text)',
-        textAlign: 'left',
-        transition: 'background-color 0.15s ease',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = isDanger ? '#fef2f2' : 'var(--color-bg)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'none';
-      }}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
 function ProfileDropdown({
   user,
   logoutMutation,
+  activeOrgCode,
 }: {
   user: User | null;
   logoutMutation: ReturnType<typeof useLogout>;
+  activeOrgCode?: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isSignoutDialogOpen, setIsSignoutDialogOpen] = useState(false);
-  const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const navigate = useNavigate();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -762,52 +718,112 @@ function ProfileDropdown({
         <div
           style={{
             position: 'absolute',
-            top: '100%',
-            right: 0,
-            marginTop: 8,
-            minWidth: 180,
+            top: 'calc(100% + 12px)',
+            right: -8,
+            width: 340,
             background: 'var(--color-surface)',
             border: '1px solid var(--color-border)',
             borderRadius: 'var(--radius-md)',
-            boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
-            zIndex: 20,
-            overflow: 'hidden',
-            padding: '6px 0',
+            boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
+            zIndex: 50,
+            padding: '20px',
+            animation: 'slideInRightProfile 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+            transformOrigin: 'top right',
           }}
         >
-          <ProfileMenuItem
-            icon={<UserIcon size={16} />}
-            label="Edit Profile"
-            onClick={() => {
-              setIsOpen(false);
-              navigate('/profile');
-            }}
-          />
-          <ProfileMenuItem
-            icon={<KeyRound size={16} />}
-            label="Change Password"
-            onClick={() => {
-              setIsOpen(false);
-              setIsChangePasswordModalOpen(true);
-            }}
-          />
-          <div style={{ height: 1, background: 'var(--color-border)', margin: '6px 0' }} />
-          <ProfileMenuItem
-            icon={<LogOut size={16} />}
-            label="Sign Out"
-            variant="danger"
-            onClick={() => {
-              setIsOpen(false);
-              setIsSignoutDialogOpen(true);
-            }}
-          />
+          <style>
+            {`
+              @keyframes slideInRightProfile {
+                from { opacity: 0; transform: translateX(30px); }
+                to { opacity: 1; transform: translateX(0); }
+              }
+            `}
+          </style>
+
+          <div style={{
+            position: 'absolute',
+            top: -6,
+            right: 18,
+            width: 12,
+            height: 12,
+            background: 'var(--color-surface)',
+            borderTop: '1px solid var(--color-border)',
+            borderLeft: '1px solid var(--color-border)',
+            transform: 'rotate(45deg)'
+          }} />
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', gap: 16 }}>
+              <div style={{ width: 56, height: 56, borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                {user?.avatar_url ? (
+                  <img src={user.avatar_url} alt={user.fullName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <UserIcon size={28} color="var(--color-text-secondary)" />
+                )}
+              </div>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 500, color: 'var(--color-text)', marginBottom: 2 }}>{user?.fullName}</div>
+                <div style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>{user?.email}</div>
+              </div>
+            </div>
+            <button onClick={() => setIsOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-danger)', padding: 4 }}>
+              <X size={18} />
+            </button>
+          </div>
+
+          <div style={{ marginTop: 16, fontSize: 14, color: 'var(--color-text-secondary)', borderBottom: '1px solid var(--color-border)', paddingBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              Organization Code: <span style={{ fontWeight: 500, color: 'var(--color-text)' }}>{activeOrgCode || 'N/A'}</span>
+            </div>
+            {activeOrgCode && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigator.clipboard.writeText(activeOrgCode);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+                title="Copy Organization Code"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: copied ? 'var(--color-success, #10b981)' : 'var(--color-text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: 4,
+                  borderRadius: 'var(--radius-sm)',
+                }}
+              >
+                {copied ? <Check size={14} /> : <Copy size={14} />}
+              </button>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+            <button
+              onClick={() => {
+                setIsOpen(false);
+                setIsSignoutDialogOpen(true);
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: 'none',
+                border: 'none',
+                color: 'var(--color-danger)',
+                cursor: 'pointer',
+                fontSize: 14,
+                fontWeight: 500,
+                padding: '4px 8px'
+              }}
+            >
+              <LogOut size={16} /> Sign Out
+            </button>
+          </div>
         </div>
       )}
-
-      <ChangePasswordModal
-        isOpen={isChangePasswordModalOpen}
-        onClose={() => setIsChangePasswordModalOpen(false)}
-      />
 
       <ConfirmDialog
         isOpen={isSignoutDialogOpen}
@@ -835,6 +851,7 @@ function OrgDropdown({
 }) {
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
+  const [copiedOrgId, setCopiedOrgId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const rememberedOrgId = localStorage.getItem(LAST_ORG_KEY);
@@ -885,21 +902,44 @@ function OrgDropdown({
         <div
           style={{
             position: 'absolute',
-            top: '100%',
-            right: 0,
-            marginTop: 8,
+            top: 'calc(100% + 12px)',
+            right: -56,
             width: 400,
             background: 'var(--color-surface)',
             border: '1px solid var(--color-border)',
             borderRadius: 'var(--radius-md)',
-            boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
-            zIndex: 20,
+            boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
+            zIndex: 50,
             display: 'flex',
             flexDirection: 'column',
             maxHeight: '90vh',
             overflow: 'hidden',
+            animation: 'slideInRightOrg 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+            transformOrigin: 'top right',
           }}
         >
+          <style>
+            {`
+              @keyframes slideInRightOrg {
+                from { opacity: 0; transform: translateX(30px); }
+                to { opacity: 1; transform: translateX(0); }
+              }
+            `}
+          </style>
+
+          {/* Caret pointing to Org button */}
+          <div style={{
+            position: 'absolute',
+            top: -6,
+            right: 76,
+            width: 12,
+            height: 12,
+            background: 'var(--color-surface)',
+            borderTop: '1px solid var(--color-border)',
+            borderLeft: '1px solid var(--color-border)',
+            transform: 'rotate(45deg)'
+          }} />
+
           {/* Header */}
           <div
             style={{
@@ -1006,17 +1046,43 @@ function OrgDropdown({
                           marginTop: 2,
                           fontSize: 11,
                           color: 'var(--color-text-muted)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
                         }}
                       >
-                        Organization Code:{' '}
-                        <span
+                        <div>
+                          Organization Code:{' '}
+                          <span
+                            style={{
+                              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                              letterSpacing: '0.03em',
+                            }}
+                          >
+                            {org.orgCode}
+                          </span>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard.writeText(org.orgCode);
+                            setCopiedOrgId(org.organizationId);
+                            setTimeout(() => setCopiedOrgId(null), 2000);
+                          }}
+                          title="Copy Organization Code"
                           style={{
-                            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-                            letterSpacing: '0.03em',
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: copiedOrgId === org.organizationId ? 'var(--color-success, #10b981)' : 'var(--color-text-muted)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            padding: 2,
+                            borderRadius: 'var(--radius-sm)',
                           }}
                         >
-                          {org.orgCode}
-                        </span>
+                          {copiedOrgId === org.organizationId ? <Check size={12} /> : <Copy size={12} />}
+                        </button>
                       </div>
                     )}
                   </div>
