@@ -1,13 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchCustomerById, deleteCustomer, updateCustomer, fetchCustomerActivities } from './customers.api';
-import { type UpdateCustomerData, type CustomerAddress } from './customers.schemas';
+import { type UpdateCustomerData, type CustomerAddress, type CustomerContactPerson } from './customers.schemas';
 import { useParams, useNavigate } from 'react-router-dom';
-import { X, Edit, ChevronDown, Pencil, Trash2 } from 'lucide-react';
+import { X, Edit, ChevronDown, ChevronUp, Pencil, Trash, Settings, User, Plus } from 'lucide-react';
 import { useState, useRef, useEffect, Fragment } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { CustomerActivityTimeline } from './CustomerActivityTimeline';
 import { CustomerComments } from './CustomerComments';
 import { AdditionalAddressModal } from './AdditionalAddressModal';
+import { PrimaryContactModal } from './PrimaryContactModal';
 
 interface CustomerDetailProps {
   customerId: string;
@@ -23,12 +24,28 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [addressModalType, setAddressModalType] = useState<'billing' | 'shipping' | 'additional' | null>(null);
   const [addressEditIndex, setAddressEditIndex] = useState<number | null>(null);
+  const [isOtherDetailsOpen, setIsOtherDetailsOpen] = useState(true);
+  const [isAddressOpen, setIsAddressOpen] = useState(true);
+  const [isContactPersonOpen, setIsContactPersonOpen] = useState(true);
+  const [isContactSettingsOpen, setIsContactSettingsOpen] = useState(false);
+  const [hoveredContactSetting, setHoveredContactSetting] = useState<'Edit' | 'Delete'>('Edit');
+  const [isPrimaryContactModalOpen, setIsPrimaryContactModalOpen] = useState(false);
+  const [isContactPersonModalOpen, setIsContactPersonModalOpen] = useState(false);
+  const [contactPersonEditIndex, setContactPersonEditIndex] = useState<number | null>(null);
+  const [activeContactPersonMenu, setActiveContactPersonMenu] = useState<number | null>(null);
+  const [hoveredContactPersonSetting, setHoveredContactPersonSetting] = useState<'Edit' | 'Mark as Primary' | 'Delete'>('Edit');
+  const [hoveredSettingsIcon, setHoveredSettingsIcon] = useState<number | null>(null);
+
   const moreMenuRef = useRef<HTMLDivElement>(null);
+  const contactSettingsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
         setIsMoreOpen(false);
+      }
+      if (contactSettingsRef.current && !contactSettingsRef.current.contains(event.target as Node)) {
+        setIsContactSettingsOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -124,7 +141,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
     },
   });
 
-  const deleteSpecificAddressMutation = useMutation({
+  const _deleteSpecificAddressMutation = useMutation({
     mutationFn: (type: 'billing' | 'shipping') => {
       if (!customer) throw new Error('Customer not found');
       const {
@@ -201,6 +218,145 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
     },
   });
 
+  const updatePrimaryContactMutation = useMutation({
+    mutationFn: (newContactData: {
+      salutation?: string | null;
+      firstName?: string | null;
+      lastName?: string | null;
+      email?: string | null;
+      phone?: string | null;
+      mobile?: string | null;
+    }) => {
+      if (!customer) throw new Error('Customer not found');
+      const {
+        id: _id,
+        createdAt: _createdAt,
+        updatedAt: _updatedAt,
+        organizationId: _organizationId,
+        ...rest
+      } = customer;
+
+      const mappedData = {
+        primaryContactSalutation: newContactData.salutation,
+        primaryContactFirstName: newContactData.firstName,
+        primaryContactLastName: newContactData.lastName,
+        email: newContactData.email,
+        phone: newContactData.phone,
+        mobile: newContactData.mobile,
+      };
+
+      const dataToUpdate = { ...rest, ...mappedData };
+      return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] });
+      setIsContactPersonModalOpen(false);
+    },
+  });
+
+  const saveContactPersonMutation = useMutation({
+    mutationFn: (data: CustomerContactPerson) => {
+      if (!customer) throw new Error('Customer not found');
+      const {
+        id: _id,
+        createdAt: _createdAt,
+        updatedAt: _updatedAt,
+        organizationId: _organizationId,
+        ...rest
+      } = customer;
+
+      const currentPersons = customer.contactPersons || [];
+      const updatedPersons = [...currentPersons];
+
+      if (contactPersonEditIndex !== null) {
+        updatedPersons[contactPersonEditIndex] = { ...updatedPersons[contactPersonEditIndex], ...data };
+      } else {
+        updatedPersons.push(data);
+      }
+
+      const dataToUpdate = { ...rest, contactPersons: updatedPersons };
+      return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] });
+      setIsContactPersonModalOpen(false);
+      setContactPersonEditIndex(null);
+    },
+  });
+
+  const deleteContactPersonMutation = useMutation({
+    mutationFn: (index: number) => {
+      if (!customer) throw new Error('Customer not found');
+      const {
+        id: _id,
+        createdAt: _createdAt,
+        updatedAt: _updatedAt,
+        organizationId: _organizationId,
+        ...rest
+      } = customer;
+
+      const updatedPersons = [...(customer.contactPersons || [])];
+      updatedPersons.splice(index, 1);
+
+      const dataToUpdate = { ...rest, contactPersons: updatedPersons };
+      return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] });
+    },
+  });
+
+  const markAsPrimaryMutation = useMutation({
+    mutationFn: (index: number) => {
+      if (!customer) throw new Error('Customer not found');
+      const {
+        id: _id,
+        createdAt: _createdAt,
+        updatedAt: _updatedAt,
+        organizationId: _organizationId,
+        ...rest
+      } = customer;
+
+      const persons = customer.contactPersons || [];
+      const newPrimary = persons[index];
+      
+      const currentPrimary = {
+        salutation: customer.primaryContactSalutation,
+        firstName: customer.primaryContactFirstName,
+        lastName: customer.primaryContactLastName,
+        email: customer.email,
+        phone: customer.phone,
+        mobile: customer.mobile,
+      };
+
+      const hasCurrentPrimary = currentPrimary.firstName || currentPrimary.lastName;
+      const updatedPersons = [...persons];
+      
+      if (hasCurrentPrimary) {
+        updatedPersons[index] = currentPrimary;
+      } else {
+        updatedPersons.splice(index, 1);
+      }
+
+      const dataToUpdate = {
+        ...rest,
+        primaryContactSalutation: newPrimary.salutation,
+        primaryContactFirstName: newPrimary.firstName,
+        primaryContactLastName: newPrimary.lastName,
+        email: newPrimary.email,
+        phone: newPrimary.phone,
+        mobile: newPrimary.mobile,
+        contactPersons: updatedPersons,
+      };
+
+      return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] });
+      queryClient.invalidateQueries({ queryKey: ['customers', orgId] });
+    },
+  });
+
   const handleClone = () => {
     setIsMoreOpen(false);
     if (!customer) return;
@@ -240,13 +396,10 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
   const tabs = ['Overview', 'Comments', 'Transactions'];
 
   const sectionHeaderStyle = {
-    fontSize: '11px',
-    fontWeight: 600,
-    color: '#64748b',
+    fontSize: '13px',
+    fontWeight: 400,
+    color: '#000',
     textTransform: 'uppercase' as const,
-    marginBottom: '12px',
-    borderBottom: '1px solid #eef0f3',
-    paddingBottom: '8px',
   };
 
   const labelStyle = {
@@ -469,36 +622,9 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
             display: activeTab === 'Overview' ? 'flex' : 'none',
             gap: '0px',
             flexDirection: 'column',
+            paddingBottom: '120px',
           }}
         >
-          {/* Top Contact Banner */}
-          <div
-            style={{
-              background: '#f1f5f9',
-              padding: '16px',
-              borderRadius: '8px',
-              fontSize: '13px',
-              color: '#475569',
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginBottom: '16px',
-            }}
-          >
-            <div>
-              {hasPrimaryContact ? (
-                <span>
-                  Primary Contact: <strong>{primaryContactName}</strong>
-                </span>
-              ) : (
-                <span>
-                  There is no primary contact information.{' '}
-                  <a href="#" style={{ color: '#0062ff', textDecoration: 'none' }}>
-                    Add New
-                  </a>
-                </span>
-              )}
-            </div>
-          </div>
 
           <div
             style={{
@@ -506,7 +632,6 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
               gap: '0px',
               boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
               borderRadius: '8px',
-              overflow: 'hidden',
               border: '1px solid #eef0f3',
             }}
           >
@@ -516,14 +641,197 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                 flex: '0 0 300px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '24px',
+                gap: '0px',
                 background: '#f1f5f9',
                 padding: '16px',
                 borderRight: '1px solid #e2e8f0',
+                borderTopLeftRadius: '8px',
+                borderBottomLeftRadius: '8px',
               }}
             >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '24px',
+                }}
+              >
+                {hasPrimaryContact ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div
+                      style={{
+                        width: '48px',
+                        height: '48px',
+                        backgroundColor: '#cbd5e1',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'flex-end',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <User size={40} color="#fff" fill="#fff" style={{ marginBottom: '-6px' }} />
+                    </div>
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#000' }}>
+                      {primaryContactName}
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      fontSize: '13px',
+                      color: '#475569',
+                      backgroundColor: '#f8fafc',
+                      borderRadius: '12px',
+                      padding: '24px 16px',
+                      textAlign: 'center',
+                      width: '100%',
+                    }}
+                  >
+                    <div style={{ marginBottom: '4px' }}>
+                      There is no primary contact information.
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setIsPrimaryContactModalOpen(true);
+                      }}
+                      style={{
+                        color: '#0062ff',
+                        textDecoration: 'none',
+                        background: 'none',
+                        border: 'none',
+                        padding: 0,
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                      }}
+                    >
+                      Add New
+                    </button>
+                  </div>
+                )}
+
+                {hasPrimaryContact && (
+                  <div style={{ position: 'relative' }} ref={contactSettingsRef}>
+                    <button
+                      onClick={() => {
+                        setIsContactSettingsOpen(!isContactSettingsOpen);
+                        setHoveredContactSetting('Edit');
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: 0,
+                        color: '#000',
+                      }}
+                    >
+                      <Settings size={14} />
+                    </button>
+                    {isContactSettingsOpen && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          marginTop: '4px',
+                          background: '#fff',
+                          borderRadius: '6px',
+                          boxShadow:
+                            '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                          border: '1px solid #e2e8f0',
+                          width: '120px',
+                          zIndex: 50,
+                          overflow: 'hidden',
+                          padding: '4px',
+                        }}
+                        onMouseLeave={() => setHoveredContactSetting('Edit')}
+                      >
+                        <button
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '8px 12px',
+                            background:
+                              hoveredContactSetting === 'Edit' ? '#3b82f6' : 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            color: hoveredContactSetting === 'Edit' ? '#fff' : '#334155',
+                            borderRadius: '4px',
+                          }}
+                          onMouseEnter={() => setHoveredContactSetting('Edit')}
+                          onClick={() => {
+                            setIsPrimaryContactModalOpen(true);
+                            setIsContactSettingsOpen(false);
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '8px 12px',
+                            background:
+                              hoveredContactSetting === 'Delete' ? '#3b82f6' : 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            color: hoveredContactSetting === 'Delete' ? '#fff' : '#334155',
+                            borderRadius: '4px',
+                            marginTop: '2px',
+                          }}
+                          onMouseEnter={() => setHoveredContactSetting('Delete')}
+                          onClick={() => {
+                            setIsContactSettingsOpen(false);
+                            setTimeout(() => {
+                              if (
+                                window.confirm('Are you sure you want to delete the primary contact?')
+                              ) {
+                                updatePrimaryContactMutation.mutate({
+                                  salutation: null,
+                                  firstName: null,
+                                  lastName: null,
+                                  email: null,
+                                  phone: null,
+                                  mobile: null,
+                                });
+                              }
+                            }, 10);
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <div>
-                <div style={sectionHeaderStyle}>Address</div>
+                <div
+                  onClick={() => setIsAddressOpen(!isAddressOpen)}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    paddingBottom: '8px',
+                    marginBottom: isAddressOpen ? '12px' : 0,
+                    borderBottom: '1px solid #e2e8f0',
+                  }}
+                >
+                  <div style={{ ...sectionHeaderStyle, borderBottom: 'none', paddingBottom: 0, marginBottom: 0 }}>
+                    Address
+                  </div>
+                  {isAddressOpen ? <ChevronUp size={16} color="#64748b" /> : <ChevronDown size={16} color="#64748b" />}
+                </div>
+                {isAddressOpen && (
+                  <div>
 
                 <div style={{ marginBottom: '16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -531,10 +839,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                     {customer.billingStreet1 && (
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button onClick={() => { setAddressEditIndex(null); setAddressModalType('billing'); }} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: '#64748b' }} title="Edit Address">
-                          <Pencil size={14} />
-                        </button>
-                        <button onClick={() => { if(window.confirm('Are you sure you want to remove this billing address?')) deleteSpecificAddressMutation.mutate('billing'); }} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: '#ef4444' }} title="Remove Address">
-                          <Trash2 size={14} />
+                          <Pencil size={12} />
                         </button>
                       </div>
                     )}
@@ -573,10 +878,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                     {customer.shippingStreet1 && (
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button onClick={() => { setAddressEditIndex(null); setAddressModalType('shipping'); }} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: '#64748b' }} title="Edit Address">
-                          <Pencil size={14} />
-                        </button>
-                        <button onClick={() => { if(window.confirm('Are you sure you want to remove this shipping address?')) deleteSpecificAddressMutation.mutate('shipping'); }} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: '#ef4444' }} title="Remove Address">
-                          <Trash2 size={14} />
+                          <Pencil size={12} />
                         </button>
                       </div>
                     )}
@@ -615,10 +917,10 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                       <div style={labelStyle}>Additional Address</div>
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button onClick={() => { setAddressEditIndex(index); setAddressModalType('additional'); }} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: '#64748b' }} title="Edit Address">
-                          <Pencil size={14} />
+                          <Pencil size={12} />
                         </button>
-                        <button onClick={() => { if(window.confirm('Are you sure you want to remove this address?')) deleteAdditionalAddressMutation.mutate(index); }} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: '#ef4444' }} title="Remove Address">
-                          <Trash2 size={14} />
+                        <button onClick={() => { if(window.confirm('Are you sure you want to remove this address?')) deleteAdditionalAddressMutation.mutate(index); }} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: '#64748b' }} title="Remove Address">
+                          <Trash size={12} />
                         </button>
                       </div>
                     </div>
@@ -643,28 +945,277 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                     + Add additional address
                   </button>
                 </div>
+                  </div>
+                )}
               </div>
 
               <div>
-                <div style={sectionHeaderStyle}>Other Details</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div>
-                    <div style={labelStyle}>Customer Number</div>
-                    <div style={valueStyle}>{customer.contactNumber}</div>
+                <div
+                  onClick={() => setIsOtherDetailsOpen(!isOtherDetailsOpen)}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    paddingTop: '10px',
+                    paddingBottom: '8px',
+                    marginBottom: isOtherDetailsOpen ? '12px' : 0,
+                    borderBottom: '1px solid #e2e8f0',
+                  }}
+                >
+                  <div
+                    style={{
+                      ...sectionHeaderStyle,
+                      borderBottom: 'none',
+                      marginBottom: 0,
+                      paddingBottom: 0,
+                    }}
+                  >
+                    Other Details
                   </div>
-                  <div>
-                    <div style={labelStyle}>Email Address</div>
-                    <div style={valueStyle}>{customer.email || '-'}</div>
+                  {isOtherDetailsOpen ? (
+                    <ChevronUp size={16} color="#0062ff" />
+                  ) : (
+                    <ChevronDown size={16} color="#0062ff" />
+                  )}
+                </div>
+
+                {isOtherDetailsOpen && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div>
+                      <div style={labelStyle}>Customer Number</div>
+                      <div style={valueStyle}>{customer.contactNumber}</div>
+                    </div>
+                    <div>
+                      <div style={labelStyle}>Email Address</div>
+                      <div style={valueStyle}>{customer.email || '-'}</div>
+                    </div>
+                    <div>
+                      <div style={labelStyle}>Work Phone</div>
+                      <div style={valueStyle}>{customer.phone || '-'}</div>
+                    </div>
+                    <div>
+                      <div style={labelStyle}>Default Currency</div>
+                      <div style={valueStyle}>{customer.currency || 'INR'}</div>
+                    </div>
                   </div>
-                  <div>
-                    <div style={labelStyle}>Work Phone</div>
-                    <div style={valueStyle}>{customer.phone || '-'}</div>
+                )}
+              </div>
+
+              <div>
+                <div
+                  onClick={() => setIsContactPersonOpen(!isContactPersonOpen)}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    paddingTop: '10px',
+                    paddingBottom: '8px',
+                    marginBottom: isContactPersonOpen ? '12px' : 0,
+                    borderBottom: '1px solid #e2e8f0',
+                  }}
+                >
+                  <div
+                    style={{
+                      ...sectionHeaderStyle,
+                      borderBottom: 'none',
+                      marginBottom: 0,
+                      paddingBottom: 0,
+                    }}
+                  >
+                    Contact Persons
                   </div>
-                  <div>
-                    <div style={labelStyle}>Default Currency</div>
-                    <div style={valueStyle}>{customer.currency || 'INR'}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setContactPersonEditIndex(null);
+                        setIsContactPersonModalOpen(true);
+                      }}
+                      style={{
+                        background: '#3b82f6',
+                        border: 'none',
+                        borderRadius: '50%',
+                        width: '15px',
+                        height: '15px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        padding: 0,
+                      }}
+                    >
+                      <Plus size={10} color="#fff" />
+                    </button>
+                    {isContactPersonOpen ? (
+                      <ChevronUp size={16} color="#0062ff" />
+                    ) : (
+                      <ChevronDown size={16} color="#0062ff" />
+                    )}
                   </div>
                 </div>
+
+                {isContactPersonOpen && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {customer.contactPersons && customer.contactPersons.length > 0 ? (
+                      customer.contactPersons.map((contact: CustomerContactPerson, index: number) => {
+                        const hasName = contact.firstName || contact.lastName;
+                        return (
+                          <div key={index} style={{ marginBottom: '16px', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                            <div style={{
+                              width: '40px',
+                              height: '40px',
+                              backgroundColor: '#e2e8f0',
+                              borderRadius: '4px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0
+                            }}>
+                              <User size={24} color="#fff" />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: '14px', fontWeight: 500, color: '#0f172a' }}>
+                                {hasName ? `${contact.salutation || ''} ${contact.firstName || ''} ${contact.lastName || ''}`.trim() : 'Unnamed Contact'}
+                              </div>
+                            </div>
+                            <div style={{ position: 'relative' }}>
+                              <button
+                                onClick={() => setActiveContactPersonMenu(activeContactPersonMenu === index ? null : index)}
+                                onMouseEnter={() => setHoveredSettingsIcon(index)}
+                                onMouseLeave={() => setHoveredSettingsIcon(null)}
+                                style={{
+                                  border: 'none',
+                                  background: 'none',
+                                  cursor: 'pointer',
+                                  padding: '4px',
+                                  color: hoveredSettingsIcon === index || activeContactPersonMenu === index ? '#64748b' : '#cbd5e1',
+                                  transition: 'color 0.2s ease',
+                                }}
+                              >
+                                <Settings size={14} />
+                              </button>
+                              {activeContactPersonMenu === index && (
+                                <>
+                                  <div
+                                    onClick={() => setActiveContactPersonMenu(null)}
+                                    style={{
+                                      position: 'fixed',
+                                      top: 0,
+                                      left: 0,
+                                      right: 0,
+                                      bottom: 0,
+                                      zIndex: 40
+                                    }}
+                                  />
+                                  <div
+                                    style={{
+                                      position: 'absolute',
+                                      top: '100%',
+                                      right: 0,
+                                      marginTop: '4px',
+                                      backgroundColor: '#fff',
+                                      border: '1px solid #e2e8f0',
+                                      borderRadius: '6px',
+                                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                                      padding: '4px',
+                                      zIndex: 50,
+                                      minWidth: '160px',
+                                      overflow: 'hidden',
+                                    }}
+                                  >
+                                    <button
+                                      onMouseEnter={() => setHoveredContactPersonSetting('Edit')}
+                                      onClick={() => {
+                                        setContactPersonEditIndex(index);
+                                        setIsContactPersonModalOpen(true);
+                                        setActiveContactPersonMenu(null);
+                                      }}
+                                      style={{
+                                        display: 'block',
+                                        width: '100%',
+                                        padding: '8px 12px',
+                                        textAlign: 'left',
+                                        backgroundColor: hoveredContactPersonSetting === 'Edit' ? '#3b82f6' : 'transparent',
+                                        color: hoveredContactPersonSetting === 'Edit' ? '#fff' : '#334155',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        fontSize: '13px',
+                                        borderRadius: '4px',
+                                      }}
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      onMouseEnter={() => setHoveredContactPersonSetting('Mark as Primary')}
+                                      onClick={() => {
+                                        markAsPrimaryMutation.mutate(index);
+                                        setActiveContactPersonMenu(null);
+                                      }}
+                                      style={{
+                                        display: 'block',
+                                        width: '100%',
+                                        padding: '8px 12px',
+                                        textAlign: 'left',
+                                        backgroundColor: hoveredContactPersonSetting === 'Mark as Primary' ? '#3b82f6' : 'transparent',
+                                        color: hoveredContactPersonSetting === 'Mark as Primary' ? '#fff' : '#334155',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        fontSize: '13px',
+                                        borderRadius: '4px',
+                                        marginTop: '2px',
+                                      }}
+                                    >
+                                      Mark as Primary
+                                    </button>
+                                    <button
+                                      onMouseEnter={() => setHoveredContactPersonSetting('Delete')}
+                                      onClick={() => {
+                                        setActiveContactPersonMenu(null);
+                                        setTimeout(() => {
+                                          if (window.confirm('Are you sure you want to remove this contact person?')) {
+                                            deleteContactPersonMutation.mutate(index);
+                                          }
+                                        }, 10);
+                                      }}
+                                      style={{
+                                        display: 'block',
+                                        width: '100%',
+                                        padding: '8px 12px',
+                                        textAlign: 'left',
+                                        backgroundColor: hoveredContactPersonSetting === 'Delete' ? '#3b82f6' : 'transparent',
+                                        color: hoveredContactPersonSetting === 'Delete' ? '#fff' : '#334155',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        fontSize: '13px',
+                                        borderRadius: '4px',
+                                        marginTop: '2px',
+                                      }}
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div
+                        style={{
+                          fontSize: '13px',
+                          color: '#64748b',
+                          textAlign: 'center',
+                          padding: '16px 0',
+                        }}
+                      >
+                        No contact persons found.
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -676,6 +1227,8 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                 flexDirection: 'column',
                 gap: '0px',
                 background: 'white',
+                borderTopRightRadius: '8px',
+                borderBottomRightRadius: '8px',
               }}
             >
 
@@ -779,6 +1332,36 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
             saveAdditionalAddressMutation.mutate(data);
           }
         }}
+      />
+
+      <PrimaryContactModal
+        isOpen={isPrimaryContactModalOpen}
+        onClose={() => setIsPrimaryContactModalOpen(false)}
+        onSubmit={(data) => updatePrimaryContactMutation.mutate(data)}
+        initialData={{
+          salutation: customer.primaryContactSalutation,
+          firstName: customer.primaryContactFirstName,
+          lastName: customer.primaryContactLastName,
+          email: customer.email,
+          phone: customer.phone,
+          mobile: customer.mobile,
+        }}
+        title="Edit Primary Contact"
+      />
+
+      <PrimaryContactModal
+        isOpen={isContactPersonModalOpen}
+        onClose={() => {
+          setIsContactPersonModalOpen(false);
+          setContactPersonEditIndex(null);
+        }}
+        onSubmit={(data) => saveContactPersonMutation.mutate(data)}
+        initialData={
+          contactPersonEditIndex !== null && customer.contactPersons
+            ? customer.contactPersons[contactPersonEditIndex]
+            : undefined
+        }
+        title={contactPersonEditIndex !== null ? 'Edit Contact Person' : 'Add Contact Person'}
       />
     </div>
   );

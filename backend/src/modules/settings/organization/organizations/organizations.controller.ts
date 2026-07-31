@@ -251,23 +251,17 @@ export async function uploadOrganizationLogo(req: Request, res: Response, next: 
     const cleanName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
     const key = `organizations/${orgId}/logo-${timestamp}-${cleanName}`;
 
-    let storedKey = key;
-    try {
-      await uploadFile({
-        key,
-        body: file.buffer,
-        contentType: file.mimetype,
-        overwrite: true,
-      });
-    } catch (err) {
-      console.warn('Catalyst Stratus upload failed:', err);
-      storedKey = key;
-    }
+    await uploadFile({
+      key,
+      body: file.buffer,
+      contentType: file.mimetype,
+      overwrite: true,
+    });
 
     const updatedOrg = await prisma.organization.update({
       where: { id: orgId },
       data: {
-        logoUrl: storedKey,
+        logoUrl: key,
         updatedBy: userId,
       },
       include: { industry: { select: { name: true } } },

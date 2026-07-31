@@ -27,10 +27,10 @@ export function EditItemPage() {
     unit: '',
     sku: '',
     isSalesInfo: true,
-    sellingPrice: null,
+    sellingPrice: null as unknown as number,
     salesDescription: '',
     isPurchaseInfo: true,
-    costPrice: null,
+    costPrice: null as unknown as number,
     purchaseDescription: '',
     packaging: '',
     frontImage: null,
@@ -77,12 +77,12 @@ export function EditItemPage() {
       isSalesInfo: true,
       sellingPrice: rawItem.sellingPrice !== null && rawItem.sellingPrice !== undefined
         ? Number(rawItem.sellingPrice)
-        : (rawItem.rate !== null && rawItem.rate !== undefined ? Number(rawItem.rate) : null),
+        : (rawItem.rate !== null && rawItem.rate !== undefined ? Number(rawItem.rate) : null as unknown as number),
       salesDescription: (rawItem.salesDescription as string) || (rawItem.sales_description as string) || '',
       isPurchaseInfo: true,
       costPrice: rawItem.costPrice !== null && rawItem.costPrice !== undefined
         ? Number(rawItem.costPrice)
-        : (rawItem.purchase_rate !== null && rawItem.purchase_rate !== undefined ? Number(rawItem.purchase_rate) : null),
+        : (rawItem.purchase_rate !== null && rawItem.purchase_rate !== undefined ? Number(rawItem.purchase_rate) : null as unknown as number),
       purchaseDescription: (rawItem.purchaseDescription as string) || (rawItem.purchase_description as string) || '',
       packaging: rawItem.packaging || '',
       frontImage: rawItem.frontImage || rawItem.front_image || null,
@@ -704,7 +704,7 @@ export function EditItemPage() {
                 {formData.isSalesInfo && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Selling Price</label>
+                      <label style={{ fontSize: 12, color: '#dc2626', fontWeight: 500 }}>Selling Price*</label>
                       <input
                         type="number"
                         step="0.01"
@@ -715,10 +715,15 @@ export function EditItemPage() {
                           width: '100%',
                           padding: '6px 10px',
                           borderRadius: '4px',
-                          border: '1px solid #d1d5db',
+                          border: errors.sellingPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
                           fontSize: 12,
                         }}
                       />
+                      {errors.sellingPrice && (
+                        <span style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}>
+                          {errors.sellingPrice}
+                        </span>
+                      )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Sales Description</label>
@@ -755,7 +760,7 @@ export function EditItemPage() {
                 {formData.isPurchaseInfo && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Cost Price</label>
+                      <label style={{ fontSize: 12, color: '#dc2626', fontWeight: 500 }}>Cost Price*</label>
                       <input
                         type="number"
                         step="0.01"
@@ -766,10 +771,15 @@ export function EditItemPage() {
                           width: '100%',
                           padding: '6px 10px',
                           borderRadius: '4px',
-                          border: '1px solid #d1d5db',
+                          border: errors.costPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
                           fontSize: 12,
                         }}
                       />
+                      {errors.costPrice && (
+                        <span style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}>
+                          {errors.costPrice}
+                        </span>
+                      )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Purchase Description</label>

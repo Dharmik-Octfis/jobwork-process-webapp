@@ -27,13 +27,7 @@ export interface PrimaryContactModalProps {
   title?: string;
 }
 
-export function PrimaryContactModal({
-  isOpen,
-  onClose,
-  onSubmit,
-  initialData,
-  title = 'Add Contact Person',
-}: PrimaryContactModalProps) {
+export function PrimaryContactModal({ isOpen, onClose, onSubmit, initialData, title = 'Add Contact Person' }: PrimaryContactModalProps) {
   const { data: masterData } = useQuery({
     queryKey: ['seedData'],
     queryFn: () => organizationsApi.getSeedData(),

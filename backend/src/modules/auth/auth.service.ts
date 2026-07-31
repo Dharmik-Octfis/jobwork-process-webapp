@@ -85,22 +85,15 @@ export async function uploadAvatar(
   const cleanName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
   const key = `users/${userId}/avatar-${timestamp}-${cleanName}`;
 
-  let storedKey = key;
-  try {
-    await uploadFile({
-      key,
-      body: file.buffer,
-      contentType: file.mimetype,
-      overwrite: true,
-    });
-  } catch (err) {
-    console.warn('Catalyst Stratus avatar upload failed:', err);
-    storedKey = key;
-  }
-
+  await uploadFile({
+    key,
+    body: file.buffer,
+    contentType: file.mimetype,
+    overwrite: true,
+  });
   const updatedUser = await prisma.user.update({
     where: { id: userId },
-    data: { avatarUrl: storedKey },
+    data: { avatarUrl: key },
     select: publicUserSelect,
   });
 

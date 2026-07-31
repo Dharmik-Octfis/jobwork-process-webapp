@@ -3,8 +3,11 @@ import { z } from 'zod';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { X } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { type VendorContactPerson } from './vendors.schemas';
 import { Select } from '../../../components/ui/Select';
+import { PhoneInput } from '../../../components/ui/PhoneInput';
+import { organizationsApi } from '../../organizations/organizations.api';
 
 const formSchema = z.object({
   salutation: z.string().nullable().optional(),
@@ -26,6 +29,12 @@ interface ContactPersonModalProps {
 }
 
 export function ContactPersonModal({ isOpen, onClose, onSubmit, initialData, title = 'Add Contact Person' }: ContactPersonModalProps) {
+  const { data: masterData } = useQuery({
+    queryKey: ['seedData'],
+    queryFn: () => organizationsApi.getSeedData(),
+  });
+  const countries = masterData?.countries || [];
+
   const {
     register,
     control,
@@ -208,48 +217,28 @@ export function ContactPersonModal({ isOpen, onClose, onSubmit, initialData, tit
             <div style={rowStyle}>
               <label style={labelStyle}>Phone</label>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '8px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '4px',
-                    fontSize: '13px',
-                    backgroundColor: '#fff',
-                    color: '#333',
-                    minWidth: '70px',
-                    justifyContent: 'space-between',
-                  }}>
-                    +91 <span style={{ fontSize: '10px' }}>▼</span>
-                  </div>
-                  <input
-                    {...register('phone')}
-                    placeholder="Work Phone"
-                    style={{ ...inputStyle, flex: 1 }}
-                  />
-                </div>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '8px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '4px',
-                    fontSize: '13px',
-                    backgroundColor: '#fff',
-                    color: '#333',
-                    minWidth: '70px',
-                    justifyContent: 'space-between',
-                  }}>
-                    +91 <span style={{ fontSize: '10px' }}>▼</span>
-                  </div>
-                  <input
-                    {...register('mobile')}
-                    placeholder="Mobile"
-                    style={{ ...inputStyle, flex: 1 }}
-                  />
-                </div>
+                <Controller
+                  control={control}
+                  name="phone"
+                  render={({ field }) => (
+                    <PhoneInput
+                      value={field.value || ''}
+                      onChange={field.onChange}
+                      countries={countries}
+                    />
+                  )}
+                />
+                <Controller
+                  control={control}
+                  name="mobile"
+                  render={({ field }) => (
+                    <PhoneInput
+                      value={field.value || ''}
+                      onChange={field.onChange}
+                      countries={countries}
+                    />
+                  )}
+                />
               </div>
             </div>
           </div>

@@ -15,7 +15,15 @@ import { PaymentTermDropdown } from './PaymentTermDropdown';
 import { CurrencyDropdown } from './CurrencyDropdown';
 import { Select } from '../../../components/ui/Select';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
+import { PhoneInput } from '../../../components/ui/PhoneInput';
+import { organizationsApi } from '../../organizations/organizations.api';
 import './customer-form.css';
+
+type MasterData = {
+  industries: { id: string; code: string; name: string }[];
+  states: { code: string; name: string; countryCode: string; cities: { id: string; name: string }[] }[];
+  countries: { id: string; name: string; code: string; isoCode: string; dialCode: string }[];
+};
 
 interface CustomerFormProps {
   initialData?: Partial<CreateCustomerData>;
@@ -37,7 +45,12 @@ export function CustomerForm({
   const [activeTab, setActiveTab] = useState('other');
   const [isNumberConfigOpen, setIsNumberConfigOpen] = useState(false);
   const [isPaymentTermModalOpen, setIsPaymentTermModalOpen] = useState(false);
+  const [masterData, setMasterData] = useState<MasterData | null>(null);
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    organizationsApi.getSeedData().then(setMasterData);
+  }, []);
 
   const {
     register,
@@ -124,6 +137,24 @@ export function CustomerForm({
     setValue('shippingPinCode', watch('billingPinCode'));
     setValue('shippingPhone', watch('billingPhone'));
   };
+
+  const billingCountry = watch('billingCountry');
+  const billingCountryCode = masterData?.countries.find((c) => c.name === billingCountry)?.code;
+  const billingStateOptions = masterData?.states
+    .filter((s) => !billingCountryCode || s.countryCode === billingCountryCode)
+    .map((s) => ({ label: s.name, value: s.name })) || [];
+  const billingStateName = watch('billingState');
+  const billingStateObj = masterData?.states.find((s) => s.name === billingStateName && s.countryCode === billingCountryCode);
+  const billingCityOptions = billingStateObj?.cities.map((c) => ({ label: c.name, value: c.name })) || [];
+
+  const shippingCountry = watch('shippingCountry');
+  const shippingCountryCode = masterData?.countries.find((c) => c.name === shippingCountry)?.code;
+  const shippingStateOptions = masterData?.states
+    .filter((s) => !shippingCountryCode || s.countryCode === shippingCountryCode)
+    .map((s) => ({ label: s.name, value: s.name })) || [];
+  const shippingStateName = watch('shippingState');
+  const shippingStateObj = masterData?.states.find((s) => s.name === shippingStateName && s.countryCode === shippingCountryCode);
+  const shippingCityOptions = shippingStateObj?.cities.map((c) => ({ label: c.name, value: c.name })) || [];
 
   const labelStyle = {
     paddingTop: '0',
@@ -255,7 +286,7 @@ export function CustomerForm({
           <div>
             <input
               {...register('contactName')}
-              placeholder="Select or type to add"
+              placeholder="Type to add"
               style={{ ...inputStyle, borderColor: errors.contactName ? '#ef4444' : '#e2e8f0' }}
             />
             {errors.contactName && (
@@ -317,52 +348,30 @@ export function CustomerForm({
             Phone <Info size={14} color="#888" />
           </label>
           <div style={{ display: 'flex', gap: '16px', maxWidth: '440px' }}>
-            <div style={{ display: 'flex', gap: '0', flex: 1, alignItems: 'center' }}>
-              <div
-                style={{
-                  background: '#f9f9f9',
-                  border: '1px solid #d1d5db',
-                  borderRight: 'none',
-                  padding: '5px 8px',
-                  fontSize: '13px',
-                  borderTopLeftRadius: '4px',
-                  borderBottomLeftRadius: '4px',
-                }}
-              >
-                +91
-              </div>
-              <input
-                {...register('phone')}
-                placeholder="Work Phone"
-                maxLength={10}
-                onKeyPress={(e) => {
-                  if (!/[0-9]/.test(e.key)) e.preventDefault();
-                }}
-                style={{ ...inputStyle, borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
+            <div style={{ flex: 1 }}>
+              <Controller
+                control={control}
+                name="phone"
+                render={({ field }) => (
+                  <PhoneInput
+                    value={field.value || ''}
+                    onChange={field.onChange}
+                    countries={masterData?.countries || []}
+                  />
+                )}
               />
             </div>
-            <div style={{ display: 'flex', gap: '0', flex: 1, alignItems: 'center' }}>
-              <div
-                style={{
-                  background: '#f9f9f9',
-                  border: '1px solid #d1d5db',
-                  borderRight: 'none',
-                  padding: '5px 8px',
-                  fontSize: '13px',
-                  borderTopLeftRadius: '4px',
-                  borderBottomLeftRadius: '4px',
-                }}
-              >
-                +91
-              </div>
-              <input
-                {...register('mobile')}
-                placeholder="Mobile"
-                maxLength={10}
-                onKeyPress={(e) => {
-                  if (!/[0-9]/.test(e.key)) e.preventDefault();
-                }}
-                style={{ ...inputStyle, borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
+            <div style={{ flex: 1 }}>
+              <Controller
+                control={control}
+                name="mobile"
+                render={({ field }) => (
+                  <PhoneInput
+                    value={field.value || ''}
+                    onChange={field.onChange}
+                    countries={masterData?.countries || []}
+                  />
+                )}
               />
             </div>
           </div>
@@ -472,23 +481,6 @@ export function CustomerForm({
                   <label style={labelStyle}>Attention</label>
                   <input {...register('billingAttention')} style={inputStyle} />
 
-                  <label style={labelStyle}>Country/Region</label>
-                  <Controller
-                    control={control}
-                    name="billingCountry"
-                    render={({ field }) => (
-                      <SearchableSelect
-                        value={field.value || ''}
-                        onChange={field.onChange}
-                        options={[
-                          { value: 'India', label: 'India' },
-                          { value: 'USA', label: 'USA' },
-                        ]}
-                        placeholder="Select Country"
-                      />
-                    )}
-                  />
-
                   <label style={labelStyle}>Address</label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <textarea
@@ -505,23 +497,80 @@ export function CustomerForm({
                     />
                   </div>
 
-                  <label style={labelStyle}>City</label>
-                  <input {...register('billingCity')} style={inputStyle} />
+                  <label style={labelStyle}>Country/Region</label>
+                  <Controller
+                    control={control}
+                    name="billingCountry"
+                    render={({ field }) => (
+                      <SearchableSelect
+                        value={field.value || ''}
+                        onChange={(val) => {
+                          field.onChange(val);
+                          setValue('billingState', ''); // Reset state on country change
+                          setValue('billingCity', ''); // Reset city on country change
+                        }}
+                        options={masterData?.countries.map((c) => ({ label: c.name, value: c.name })) || []}
+                        placeholder="Select Country"
+                        disabled={!masterData}
+                      />
+                    )}
+                  />
 
                   <label style={labelStyle}>State</label>
-                  <input {...register('billingState')} style={inputStyle} />
+                  {billingCountry === 'India' ? (
+                    <Controller
+                      control={control}
+                      name="billingState"
+                      render={({ field }) => (
+                        <SearchableSelect
+                          value={field.value || ''}
+                          onChange={(val) => {
+                            field.onChange(val);
+                            setValue('billingCity', '');
+                          }}
+                          options={billingStateOptions}
+                          placeholder="Select State"
+                          disabled={billingStateOptions.length === 0}
+                        />
+                      )}
+                    />
+                  ) : (
+                    <input {...register('billingState')} style={inputStyle} placeholder="State" />
+                  )}
+
+                  <label style={labelStyle}>City</label>
+                  {billingCountry === 'India' ? (
+                    <Controller
+                      control={control}
+                      name="billingCity"
+                      render={({ field }) => (
+                        <SearchableSelect
+                          value={field.value || ''}
+                          onChange={field.onChange}
+                          options={billingCityOptions}
+                          placeholder="Select City"
+                          disabled={!watch('billingState') || billingCityOptions.length === 0}
+                        />
+                      )}
+                    />
+                  ) : (
+                    <input {...register('billingCity')} style={inputStyle} placeholder="City" />
+                  )}
 
                   <label style={labelStyle}>Pin Code</label>
                   <input {...register('billingPinCode')} style={inputStyle} />
 
                   <label style={labelStyle}>Phone</label>
-                  <input
-                    {...register('billingPhone')}
-                    maxLength={10}
-                    onKeyPress={(e) => {
-                      if (!/[0-9]/.test(e.key)) e.preventDefault();
-                    }}
-                    style={inputStyle}
+                  <Controller
+                    control={control}
+                    name="billingPhone"
+                    render={({ field }) => (
+                      <PhoneInput
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                        countries={masterData?.countries || []}
+                      />
+                    )}
                   />
                 </div>
               </div>
@@ -567,23 +616,6 @@ export function CustomerForm({
                   <label style={labelStyle}>Attention</label>
                   <input {...register('shippingAttention')} style={inputStyle} />
 
-                  <label style={labelStyle}>Country/Region</label>
-                  <Controller
-                    control={control}
-                    name="shippingCountry"
-                    render={({ field }) => (
-                      <SearchableSelect
-                        value={field.value || ''}
-                        onChange={field.onChange}
-                        options={[
-                          { value: 'India', label: 'India' },
-                          { value: 'USA', label: 'USA' },
-                        ]}
-                        placeholder="Select Country"
-                      />
-                    )}
-                  />
-
                   <label style={labelStyle}>Address</label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <textarea
@@ -600,23 +632,80 @@ export function CustomerForm({
                     />
                   </div>
 
-                  <label style={labelStyle}>City</label>
-                  <input {...register('shippingCity')} style={inputStyle} />
+                  <label style={labelStyle}>Country/Region</label>
+                  <Controller
+                    control={control}
+                    name="shippingCountry"
+                    render={({ field }) => (
+                      <SearchableSelect
+                        value={field.value || ''}
+                        onChange={(val) => {
+                          field.onChange(val);
+                          setValue('shippingState', ''); // Reset state on country change
+                          setValue('shippingCity', ''); // Reset city on country change
+                        }}
+                        options={masterData?.countries.map((c) => ({ label: c.name, value: c.name })) || []}
+                        placeholder="Select Country"
+                        disabled={!masterData}
+                      />
+                    )}
+                  />
 
                   <label style={labelStyle}>State</label>
-                  <input {...register('shippingState')} style={inputStyle} />
+                  {shippingCountry === 'India' ? (
+                    <Controller
+                      control={control}
+                      name="shippingState"
+                      render={({ field }) => (
+                        <SearchableSelect
+                          value={field.value || ''}
+                          onChange={(val) => {
+                            field.onChange(val);
+                            setValue('shippingCity', '');
+                          }}
+                          options={shippingStateOptions}
+                          placeholder="Select State"
+                          disabled={shippingStateOptions.length === 0}
+                        />
+                      )}
+                    />
+                  ) : (
+                    <input {...register('shippingState')} style={inputStyle} placeholder="State" />
+                  )}
+
+                  <label style={labelStyle}>City</label>
+                  {shippingCountry === 'India' ? (
+                    <Controller
+                      control={control}
+                      name="shippingCity"
+                      render={({ field }) => (
+                        <SearchableSelect
+                          value={field.value || ''}
+                          onChange={field.onChange}
+                          options={shippingCityOptions}
+                          placeholder="Select City"
+                          disabled={!watch('shippingState') || shippingCityOptions.length === 0}
+                        />
+                      )}
+                    />
+                  ) : (
+                    <input {...register('shippingCity')} style={inputStyle} placeholder="City" />
+                  )}
 
                   <label style={labelStyle}>Pin Code</label>
                   <input {...register('shippingPinCode')} style={inputStyle} />
 
                   <label style={labelStyle}>Phone</label>
-                  <input
-                    {...register('shippingPhone')}
-                    maxLength={10}
-                    onKeyPress={(e) => {
-                      if (!/[0-9]/.test(e.key)) e.preventDefault();
-                    }}
-                    style={inputStyle}
+                  <Controller
+                    control={control}
+                    name="shippingPhone"
+                    render={({ field }) => (
+                      <PhoneInput
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                        countries={masterData?.countries || []}
+                      />
+                    )}
                   />
                 </div>
               </div>
@@ -688,23 +777,29 @@ export function CustomerForm({
                         />
                       </td>
                       <td style={{ padding: '6px 8px', fontSize: '13px' }}>
-                        <input
-                          {...register(`contactPersons.${index}.phone`)}
-                          maxLength={10}
-                          onKeyPress={(e) => {
-                            if (!/[0-9]/.test(e.key)) e.preventDefault();
-                          }}
-                          style={inputStyle}
+                        <Controller
+                          control={control}
+                          name={`contactPersons.${index}.phone`}
+                          render={({ field }) => (
+                            <PhoneInput
+                              value={field.value || ''}
+                              onChange={field.onChange}
+                              countries={masterData?.countries || []}
+                            />
+                          )}
                         />
                       </td>
                       <td style={{ padding: '6px 8px', fontSize: '13px' }}>
-                        <input
-                          {...register(`contactPersons.${index}.mobile`)}
-                          maxLength={10}
-                          onKeyPress={(e) => {
-                            if (!/[0-9]/.test(e.key)) e.preventDefault();
-                          }}
-                          style={inputStyle}
+                        <Controller
+                          control={control}
+                          name={`contactPersons.${index}.mobile`}
+                          render={({ field }) => (
+                            <PhoneInput
+                              value={field.value || ''}
+                              onChange={field.onChange}
+                              countries={masterData?.countries || []}
+                            />
+                          )}
                         />
                       </td>
                       <td style={{ padding: '6px 8px', fontSize: '13px', textAlign: 'center' }}>

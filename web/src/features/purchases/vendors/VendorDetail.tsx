@@ -284,6 +284,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vendor', orgId, vendorId] });
+      queryClient.invalidateQueries({ queryKey: ['vendors', orgId] });
       setActiveContactPersonMenu(null);
     },
   });
@@ -587,6 +588,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
             display: activeTab === 'Overview' ? 'flex' : 'none',
             gap: '0px',
             flexDirection: 'column',
+            paddingBottom: '120px',
           }}
         >
           <div
@@ -595,7 +597,6 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
               gap: '0px',
               boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
               borderRadius: '8px',
-              overflow: 'hidden',
               border: '1px solid #eef0f3',
             }}
           >
@@ -609,6 +610,8 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                 background: '#f1f5f9',
                 padding: '16px',
                 borderRight: '1px solid #e2e8f0',
+                borderTopLeftRadius: '8px',
+                borderBottomLeftRadius: '8px',
               }}
             >
               <div
@@ -749,19 +752,21 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                           }}
                           onMouseEnter={() => setHoveredContactSetting('Delete')}
                           onClick={() => {
-                            if (
-                              window.confirm('Are you sure you want to delete the primary contact?')
-                            ) {
-                              updatePrimaryContactMutation.mutate({
-                                salutation: null,
-                                firstName: null,
-                                lastName: null,
-                                email: null,
-                                phone: null,
-                                mobile: null,
-                              });
-                              setIsContactSettingsOpen(false);
-                            }
+                            setIsContactSettingsOpen(false);
+                            setTimeout(() => {
+                              if (
+                                window.confirm('Are you sure you want to delete the primary contact?')
+                              ) {
+                                updatePrimaryContactMutation.mutate({
+                                  salutation: null,
+                                  firstName: null,
+                                  lastName: null,
+                                  email: null,
+                                  phone: null,
+                                  mobile: null,
+                                });
+                              }
+                            }, 10);
                           }}
                         >
                           Delete
@@ -1243,6 +1248,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                                       onMouseEnter={() => setHoveredContactPersonSetting('Mark as Primary')}
                                       onClick={() => {
                                         markAsPrimaryMutation.mutate(index);
+                                        setActiveContactPersonMenu(null);
                                       }}
                                       style={{
                                         display: 'block',
@@ -1263,10 +1269,12 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                                     <button
                                       onMouseEnter={() => setHoveredContactPersonSetting('Delete')}
                                       onClick={() => {
-                                        if (window.confirm('Are you sure you want to remove this contact person?')) {
-                                          deleteContactPersonMutation.mutate(index);
-                                          setActiveContactPersonMenu(null);
-                                        }
+                                        setActiveContactPersonMenu(null);
+                                        setTimeout(() => {
+                                          if (window.confirm('Are you sure you want to remove this contact person?')) {
+                                            deleteContactPersonMutation.mutate(index);
+                                          }
+                                        }, 10);
                                       }}
                                       style={{
                                         display: 'block',
@@ -1316,6 +1324,8 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                 flexDirection: 'column',
                 gap: '0px',
                 background: 'white',
+                borderTopRightRadius: '8px',
+                borderBottomRightRadius: '8px',
               }}
             >
               <div style={{ padding: '16px' }}>
