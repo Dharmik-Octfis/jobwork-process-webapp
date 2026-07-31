@@ -12,9 +12,15 @@ import type { MemberAddress, PublicMember, PublicOrgInvite } from './members.typ
 import type { Prisma } from '../../../../../generated/prisma/client.ts';
 
 /**
- * Settings → Users. A `Membership` is this organization's employee record for a
- * person: their name, contact details, job title and access all live on that row,
- * not on the shared `User` account (see the schema comment on `Membership`).
+ * Settings → Users. A member is a JOIN of two rows, and which half a field lives on
+ * decides who a change affects:
+ *
+ *   `memberships` — display name, active state, job title, permission template, and
+ *     this org's custom-field values. Changing these affects THIS organization only.
+ *   `users` — email and every personal detail (phone, mobile, date of birth,
+ *     address, avatar). Changing these affects EVERY organization the person is in.
+ *
+ * See the schema comments on both models for why the line sits there.
  *
  * 🔴 Every read here runs inside `runAsTenant` even though `memberships` and
  * `invitations` carry no RLS policy — because `roles` and `permission_templates`

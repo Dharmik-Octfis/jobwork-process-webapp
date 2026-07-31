@@ -121,7 +121,14 @@ export function isMember(user: OrgUser): user is Member {
   return user.kind === 'member';
 }
 
-/** The per-org profile fields, shared by the admin and self-service forms. */
+/**
+ * The editable profile fields, used by both the admin and self-service forms.
+ *
+ * 🔴 Mixed scope, and the split is not obvious from the field names:
+ * `firstName`/`lastName` write to the membership (this org only); everything else
+ * writes to the account and changes what every organization the person belongs to
+ * sees. The detail pane groups them under separate headings for exactly this reason.
+ */
 export interface MemberProfileBody {
   firstName?: string;
   lastName?: string;
