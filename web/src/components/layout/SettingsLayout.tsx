@@ -24,6 +24,9 @@ export function SettingsLayout() {
 
   const onOrgRoute =
     location.pathname === `/organizations/${orgId}/settings` ||
+    // `/members` is still matched so the legacy URL keeps the group expanded while
+    // the redirect in router.tsx does its work.
+    location.pathname.includes('/settings/users') ||
     location.pathname.includes('/settings/members') ||
     location.pathname.includes('/settings/roles') ||
     location.pathname.includes('/settings/permissions') ||
@@ -181,7 +184,7 @@ export function SettingsLayout() {
               </NavLink>
 
               <NavLink
-                to={`/organizations/${orgId}/settings/members`}
+                to={`/organizations/${orgId}/settings/users`}
                 style={({ isActive }) => ({
                   display: 'flex',
                   alignItems: 'center',
@@ -196,7 +199,7 @@ export function SettingsLayout() {
                 })}
               >
                 <Users size={18} />
-                <span style={{ fontSize: 14 }}>Members & Invites</span>
+                <span style={{ fontSize: 14 }}>Users</span>
               </NavLink>
 
               {/* Two entries, not one: a role is a job title and grants nothing; a

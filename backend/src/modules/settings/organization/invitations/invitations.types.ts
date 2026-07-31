@@ -4,6 +4,15 @@ import type { AuthResult } from '../../../auth/auth.types.ts';
 export interface PublicInvitation {
   id: string;
   email: string;
+  /**
+   * The name the inviter entered, which becomes the invitee's name in THIS
+   * organization when they accept. Null only on invitations created before names
+   * were required — see the `invitations.first_name` schema comment.
+   */
+  firstName: string | null;
+  lastName: string | null;
+  /** `firstName lastName`, falling back to the email for a legacy nameless invite. */
+  fullName: string;
   /** The job title the invitee will carry. Optional — it grants nothing. */
   roleId: string | null;
   roleName: string | null;

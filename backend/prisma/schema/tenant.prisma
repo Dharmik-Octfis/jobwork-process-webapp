@@ -1,3 +1,15 @@
+/// The ACCOUNT: one row per person, shared by every organization they belong to.
+///
+/// 🔴 Everything here is GLOBAL. `firstName`/`lastName`/`fullName` are the
+/// account-level name, used only where no organization is in scope — signup,
+/// password-reset and invitation emails, the org picker. Inside an organization the
+/// name comes from `Membership`, which may differ.
+///
+/// The personal details below (phone, mobile, date of birth, address, avatar) are
+/// the single source of truth across all organizations, by decision on 2026-07-31.
+/// A person has one date of birth; storing it per org invites contradictory copies.
+/// The trade-off is real and worth remembering when touching these: an admin in one
+/// organization editing them changes what every other organization sees.
 model User {
   id                            String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email                         String                  @unique @db.Citext
@@ -5,6 +17,20 @@ model User {
   firstName                     String                  @default("") @map("first_name") @db.VarChar(40)
   lastName                      String                  @default("") @map("last_name") @db.VarChar(40)
   fullName                      String                  @default("") @map("full_name") @db.VarChar(80)
+  phone                         String?                 @db.VarChar(20)
+  mobile                        String?                 @db.VarChar(20)
+  /// A calendar date, not an instant: `@db.Date` so a birthday never shifts by a
+  /// day across timezones the way a Timestamptz would.
+  dateOfBirth                   DateTime?               @map("date_of_birth") @db.Date
+  addressLine1                  String?                 @map("address_line1") @db.VarChar(255)
+  addressLine2                  String?                 @map("address_line2") @db.VarChar(255)
+  /// Address FKs mirror `Organization` exactly — `states` is keyed by `code`
+  /// (VarChar(6)), not a uuid, and `countries` by a 2-char `code`. Copying that
+  /// shape is what lets the existing country/state/city pickers work unchanged.
+  cityId                        String?                 @map("city_id") @db.Uuid
+  stateCode                     String?                 @map("state_code") @db.VarChar(6)
+  countryCode                   String?                 @map("country_code") @db.VarChar(2)
+  zip                           String?                 @db.VarChar(20)
   isActive                      Boolean                 @default(true) @map("is_active")
   createdAt                     DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                     DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -13,6 +39,9 @@ model User {
   updatedBy                     String?                 @map("updated_by") @db.Uuid
   avatarUrl                     String?                 @map("avatar_url")
   userAgent                     String?                 @map("user_agent")
+  city                          City?                   @relation(fields: [cityId], references: [id])
+  country                       Country?                @relation(fields: [countryCode], references: [code])
+  state                         State?                  @relation(fields: [stateCode], references: [code])
   createdCurrencies             Currency[]              @relation("CurrencyCreatedBy")
   updatedCurrencies             Currency[]              @relation("CurrencyUpdatedBy")
   createdCustomFieldDefinitions CustomFieldDefinition[] @relation("CustomFieldDefinitionCreatedBy")
@@ -157,10 +186,48 @@ model Organization {
   @@map("organizations")
 }
 
+/// A person's membership of one organization.
+///
+/// 🔴 THE NAME IS PER-ORG. EVERY OTHER PERSONAL DETAIL IS NOT.
+///
+/// The name shown anywhere inside an organization comes from THIS row, never from
+/// `User`: the same account can be "Priya Shah" in one org and "P. Shah" in
+/// another, and editing one must never write the other.
+///
+/// Everything else about the person — phone, mobile, date of birth, address,
+/// avatar — lives on `User` and is deliberately SHARED by every organization they
+/// belong to (2026-07-31). One person has one phone number; duplicating it per org
+/// invites two orgs holding contradictory values with no way to say which is
+/// current. The cost is that an admin in one org editing those fields changes what
+/// every other org sees, which is what "single source of truth" means here.
+///
+/// So the rule for anything you are tempted to add to this table: does the ANSWER
+/// legitimately differ per organization? Job title, access, active state and the
+/// display name do. A date of birth does not.
+///
+/// `fullName` is denormalized from `firstName`/`lastName` — the same trade `User`
+/// already makes — so list queries and the createdBy/updatedBy directory read one
+/// column instead of concatenating. It is written in the service layer only
+/// (`composeFullName`); never let a caller set it directly or the two drift.
 model Membership {
   id                   String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId               String              @map("user_id") @db.Uuid
   organizationId       String              @map("organization_id") @db.Uuid
+  firstName            String              @map("first_name") @db.VarChar(40)
+  lastName             String              @map("last_name") @db.VarChar(40)
+  /// Derived from firstName + lastName in the service. Never client-supplied.
+  fullName             String              @map("full_name") @db.VarChar(81)
+  /// Deactivated in THIS organization while keeping the row, its history, and its
+  /// createdBy/updatedBy attribution. 🔴 `tenantContext` filters on it, so an
+  /// inactive member is denied every tenant route on their next request — this is
+  /// not a display flag. Distinct from `isDeleted` (removed from the org) and from
+  /// `User.isActive` (the account itself, across all orgs).
+  isActive             Boolean             @default(true) @map("is_active")
+  /// Per-org dynamic fields, same as every other domain table. Definitions live
+  /// once in `custom_field_definitions` with `entityType: 'member'`; their
+  /// `display_order` (set by dragging rows in Settings → Modules → Users) decides
+  /// where each `cf:` column appears in the Users list.
+  customFields         Json                @default("{}") @map("custom_fields")
   createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   createdBy            String?             @map("created_by") @db.Uuid
@@ -177,6 +244,8 @@ model Membership {
   user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, organizationId])
+  /// Drives the createdBy/updatedBy name directory: one probe per (org, user).
+  @@index([organizationId, isDeleted])
   @@map("memberships")
 }
 
@@ -184,6 +253,17 @@ model Invitation {
   id                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId       String             @map("organization_id") @db.Uuid
   email                String             @db.Citext
+  /// The name the inviter entered. Required by `createInvitationSchema`, so every
+  /// invite created from 2026-07-30 on carries one — that is what makes a pending
+  /// row render as a person in the Users list instead of a bare email address.
+  ///
+  /// Nullable in the DATABASE on purpose: invitations created before this change
+  /// have no name, and inventing one from the email local-part would be fabricated
+  /// data sitting in a customer's org forever. `acceptInvitation` falls back to the
+  /// account name for those rows. Do not "tighten" this to NOT NULL without first
+  /// deciding what the legacy rows should say.
+  firstName            String?            @map("first_name") @db.VarChar(40)
+  lastName             String?            @map("last_name") @db.VarChar(40)
   tokenHash            String             @unique @map("token_hash")
   status               String             @default("pending") @db.VarChar(20)
   invitedById          String             @map("invited_by_id") @db.Uuid
@@ -231,6 +311,7 @@ model Country {
   isActive      Boolean        @default(true) @map("is_active")
   createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   dialCode      String         @map("dial_code") @db.VarChar(8)
+  users         User[]
   organizations Organization[]
   states        State[]
 
@@ -244,6 +325,7 @@ model State {
   code          String         @id @db.VarChar(6)
   countryCode   String         @map("country_code") @db.VarChar(2)
   cities        City[]
+  users         User[]
   organizations Organization[]
   country       Country        @relation(fields: [countryCode], references: [code])
 
@@ -258,6 +340,7 @@ model City {
   createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   stateCode     String         @map("state_code") @db.VarChar(6)
   geonamesId    Int?           @unique @map("geonames_id")
+  users         User[]
   state         State          @relation(fields: [stateCode], references: [code], onDelete: Cascade)
   organizations Organization[]
 

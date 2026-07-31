@@ -67,11 +67,21 @@ export async function tenantContext(
   // every permission their old role granted — invisible in the members list, but
   // fully able to read and write. The `organization.isDeleted` filter does the
   // same job for a deleted org.
+  //
+  // 🔴 `isActive: true` (added 2026-07-30) is what makes deactivating a member in
+  // the Users screen MEAN anything. Without it "Inactive" would be a label in a
+  // list while the person kept full read/write access — the same fail-open shape
+  // as a route with no `requirePermission`. Like the two filters above it is
+  // re-read on every request, so deactivation takes effect immediately on every
+  // device rather than at the end of the 15-minute access-token window (that
+  // bound applies to `User.isActive`, which is checked only at refresh — see
+  // CLAUDE.md and authenticate.test.ts).
   const membership = await prisma.membership.findFirst({
     where: {
       userId: req.user.id,
       organizationId,
       isDeleted: false,
+      isActive: true,
       organization: { isDeleted: false },
     },
     select: { isOwner: true, permissionTemplateId: true },

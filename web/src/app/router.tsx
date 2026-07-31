@@ -66,10 +66,7 @@ const OrganizationSettingsPage = lazyPage(
   () => import('../features/organizations/OrganizationSettingsPage'),
   'OrganizationSettingsPage',
 );
-const InviteMembersPage = lazyPage(
-  () => import('../features/invitations/InviteMembersPage'),
-  'InviteMembersPage',
-);
+const UsersPage = lazyPage(() => import('../features/users/UsersPage'), 'UsersPage');
 const RolesPage = lazyPage(() => import('../features/roles/RolesPage'), 'RolesPage');
 const PermissionTemplatesPage = lazyPage(
   () => import('../features/permission-templates/PermissionTemplatesPage'),
@@ -210,7 +207,15 @@ export const router = createBrowserRouter([
         element: <SettingsLayout />,
         children: [
           { index: true, element: <OrganizationSettingsPage /> },
-          { path: 'members', element: <InviteMembersPage /> },
+          { path: 'users', element: <UsersPage /> },
+          // "Members & Invites" became "Users" on 2026-07-30. The old path is kept
+          // as a redirect rather than deleted: it is in people's bookmarks and in
+          // links we have already sent by email, and a 404 there looks like the
+          // feature was removed. `replace` so Back doesn't bounce off the redirect.
+          {
+            path: 'members',
+            element: <Navigate to="../users" replace />,
+          },
           // Two screens, deliberately: `roles` is job titles (no access at all),
           // `permissions` is the access bundles. A member is assigned one of each.
           { path: 'roles', element: <RolesPage /> },

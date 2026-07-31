@@ -66,6 +66,27 @@ export const LIST_COLUMNS: Record<EntityType, readonly ColumnDef[]> = {
     { key: 'createdAt', label: 'Created At' },
     { key: 'updatedAt', label: 'Last Modified' },
   ],
+  /**
+   * Users. `fullName` is the MEMBERSHIP's name — this organization's name for the
+   * person, not their account name (see the `Membership` schema comment).
+   *
+   * Custom fields are appended after these at runtime, ordered by the
+   * `display_order` an admin sets by dragging rows in Settings → Modules → Users.
+   * That drag is what decides where a custom column lands in this table.
+   */
+  member: [
+    { key: 'fullName', label: 'Name', locked: true },
+    { key: 'email', label: 'Email', defaultVisible: true },
+    { key: 'roleName', label: 'Role', defaultVisible: true },
+    { key: 'permissionTemplateName', label: 'Profile', defaultVisible: true },
+    { key: 'status', label: 'Status', defaultVisible: true },
+    { key: 'phone', label: 'Phone' },
+    { key: 'mobile', label: 'Mobile' },
+    { key: 'dateOfBirth', label: 'Date of Birth' },
+    { key: 'addedByName', label: 'Added By' },
+    { key: 'joinedAt', label: 'Joined On' },
+    { key: 'updatedAt', label: 'Last Modified' },
+  ],
   purchase_order: [
     { key: 'purchaseorder_number', label: 'PO Number', locked: true },
     { key: 'vendor', label: 'Vendor', defaultVisible: true },

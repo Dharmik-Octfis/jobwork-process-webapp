@@ -7,6 +7,7 @@ import { createOrganizationSchema, updateOrganizationSchema } from './organizati
 import { seedSystemTemplates } from '../permission-templates/permission-templates.service.ts';
 import { seedSystemRoles } from '../roles/roles.service.ts';
 import { withOrgCodeRetry } from './orgCode.ts';
+import { composeFullName } from '../../../../lib/memberDirectory.ts';
 import { uploadFile, getFileUrl } from '../../../../lib/storage.ts';
 
 import type { Organization, Prisma, Industry } from '../../../../../generated/prisma/client.ts';
@@ -97,32 +98,45 @@ export async function createOrganization(req: Request, res: Response, next: Next
           },
         });
 
-      const [
-        { ownerTemplateId },
-        { ownerRoleId }
-      ] = await Promise.all([
-        seedSystemTemplates(tx, orgId, userId),
-        seedSystemRoles(tx, orgId, userId),
-        // Automatically create a default INR Currency
-        tx.currency.create({
-          data: {
-            organizationId: orgId,
-            currencyCode: 'INR',
-            currencyName: 'Indian Rupee',
-            symbol: '₹',
-            decimalPlaces: 2,
-            format: '1,234,567.89',
-            exchangeRate: 1,
-            createdBy: userId,
-            updatedBy: userId,
-          },
-        })
-      ]);
+        const [{ ownerTemplateId }, { ownerRoleId }] = await Promise.all([
+          seedSystemTemplates(tx, orgId, userId),
+          seedSystemRoles(tx, orgId, userId),
+          // Automatically create a default INR Currency
+          tx.currency.create({
+            data: {
+              organizationId: orgId,
+              currencyCode: 'INR',
+              currencyName: 'Indian Rupee',
+              symbol: '₹',
+              decimalPlaces: 2,
+              format: '1,234,567.89',
+              exchangeRate: 1,
+              createdBy: userId,
+              updatedBy: userId,
+            },
+          }),
+        ]);
+
+        // The owner's per-org name starts as a copy of their account name. From here
+        // the two are independent: renaming themselves in this org (PUT
+        // /members/me) leaves the account untouched, and vice versa. A brand-new
+        // account whose name was never filled in falls back to the email local-part
+        // rather than storing an empty NOT NULL string that renders as a blank row.
+        const account = await tx.user.findUnique({
+          where: { id: userId },
+          select: { firstName: true, lastName: true, email: true },
+        });
+        const ownerFirstName =
+          account?.firstName?.trim() || account?.email.split('@')[0] || 'Owner';
+        const ownerLastName = account?.lastName?.trim() || '';
 
         await tx.membership.create({
           data: {
             userId,
             organizationId: orgId,
+            firstName: ownerFirstName,
+            lastName: ownerLastName,
+            fullName: composeFullName(ownerFirstName, ownerLastName),
             isOwner: true,
             roleId: ownerRoleId,
             permissionTemplateId: ownerTemplateId,
@@ -332,4 +346,3 @@ export async function deleteOrganizationLogo(req: Request, res: Response, next: 
     next(error);
   }
 }
-

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, Lock, Users, ShieldCheck, X } from 'lucide-react';
 import { toApiErrorMessage } from '../../api/client';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { Select } from '../../components/ui/Select';
 import { rolesApi, type Role } from './roles.api';
 import '../organizations/CreateOrganizationForm.css';
 
@@ -22,6 +23,9 @@ export function RolesPage() {
   const [editing, setEditing] = useState<Role | 'new' | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  /** '' = a root of the org chart. Structure only — a parent grants its children
+   * nothing; access still comes solely from the permission template. */
+  const [parentRoleId, setParentRoleId] = useState('');
   const [toDelete, setToDelete] = useState<Role | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -37,17 +41,26 @@ export function RolesPage() {
     setEditing(role);
     setName(role === 'new' ? '' : role.name);
     setDescription(role === 'new' ? '' : (role.description ?? ''));
+    setParentRoleId(role === 'new' ? '' : (role.parentRoleId ?? ''));
   };
 
   const closeForm = () => {
     setEditing(null);
     setName('');
     setDescription('');
+    setParentRoleId('');
   };
 
   const saveMutation = useMutation({
     mutationFn: () => {
-      const body = { name: name.trim(), description: description.trim() || undefined };
+      const body = {
+        name: name.trim(),
+        description: description.trim() || undefined,
+        // null, not undefined: undefined means "don't change it", null means
+        // "promote this to a root". Sending undefined would make un-parenting a
+        // role impossible.
+        parentRoleId: parentRoleId || null,
+      };
       return editing && editing !== 'new'
         ? rolesApi.update(orgId!, editing.id, body)
         : rolesApi.create(orgId!, body);
@@ -208,6 +221,39 @@ export function RolesPage() {
                 placeholder="What this job is"
               />
             </div>
+            <div className="org-form-group" style={{ flex: '1 1 260px', margin: 0 }}>
+              <label>Reports to (optional)</label>
+              <Select
+                value={parentRoleId}
+                onChange={setParentRoleId}
+                options={[
+                  { value: '', label: 'Top level — reports to nobody' },
+                  ...(roles ?? [])
+                    // A role cannot be its own parent, and cannot move under one of
+                    // its own descendants — that is a cycle. The server refuses both
+                    // with a readable message; filtering the obvious self-case here
+                    // just avoids offering it.
+                    .filter((r) => !(editing !== 'new' && editing && r.id === editing.id))
+                    .map((r) => ({
+                      value: r.id,
+                      // The list arrives as a depth-first walk, so `depth` alone
+                      // renders the shape of the chart in a flat control.
+                      label: `${'  '.repeat(r.depth)}${r.depth > 0 ? '└ ' : ''}${r.name}`,
+                    })),
+                ]}
+                ariaLabel="Reports to"
+              />
+              <p
+                style={{
+                  margin: '6px 0 0',
+                  fontSize: 11.5,
+                  color: 'var(--color-text-muted)',
+                }}
+              >
+                Sets the reporting structure only. A parent role grants no access to anything —
+                permissions come from the permission template.
+              </p>
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: 12, marginTop: 'var(--space-5)' }}>
@@ -282,8 +328,23 @@ export function RolesPage() {
                   borderBottom: '1px solid var(--color-border)',
                 }}
               >
-                <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    minWidth: 0,
+                    // The list arrives as a depth-first walk of the org chart, so a
+                    // left inset per level renders the tree with no grouping pass.
+                    paddingLeft: role.depth * 20,
+                  }}
+                >
                   <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {role.depth > 0 && (
+                      <span
+                        aria-hidden="true"
+                        style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}
+                      >
+                        └
+                      </span>
+                    )}
                     {role.name}
                     {role.isSystem && (
                       <span
@@ -351,7 +412,7 @@ export function RolesPage() {
           <div
             style={{ padding: 'var(--space-6)', color: 'var(--color-text-muted)', fontSize: 14 }}
           >
-            No roles yet besides Owner. Create the job titles your team uses.
+            No roles yet besides the built-in one. Create the job titles your team uses.
           </div>
         )}
       </section>

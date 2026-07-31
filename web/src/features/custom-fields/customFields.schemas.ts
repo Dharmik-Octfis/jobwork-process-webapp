@@ -97,6 +97,13 @@ export const CUSTOM_FIELD_MODULES: Array<{
     description: 'Add fields to the customer create & edit form.',
   },
   { entityType: 'item', label: 'Item', description: 'Add fields to the item create & edit form.' },
+  {
+    entityType: 'member',
+    label: 'User',
+    // Dragging rows in this module's field list sets their display order, which is
+    // also the order the `cf:` columns appear in on Settings → Users.
+    description: 'Add fields to a user’s record. Values are per-organization.',
+  },
 ];
 
 export function moduleLabel(entityType: string): string {

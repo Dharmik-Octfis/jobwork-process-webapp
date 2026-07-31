@@ -4,6 +4,7 @@ import { ApiError } from '../../../../lib/apiError.ts';
 import { env } from '../../../../config/env.ts';
 import { hashPassword } from '../../../../lib/password.ts';
 import { sendInvitationEmail } from '../../../../lib/mailer.ts';
+import { composeFullName, invalidateMemberDirectory } from '../../../../lib/memberDirectory.ts';
 import { issueTokens, formatPublicUser } from '../../../auth/auth.service.ts';
 import type { CreateInvitationInput, AcceptInvitationInput } from './invitations.schemas.ts';
 import type {
@@ -52,6 +53,8 @@ function hashToken(rawToken: string): string {
 function toPublicInvitation(invite: {
   id: string;
   email: string;
+  firstName: string | null;
+  lastName: string | null;
   roleId: string | null;
   permissionTemplateId: string;
   status: string;
@@ -61,18 +64,52 @@ function toPublicInvitation(invite: {
   role: { name: string } | null;
   permissionTemplate: { name: string };
 }): PublicInvitation {
+  const composed = composeFullName(invite.firstName ?? '', invite.lastName ?? '');
+
   return {
     id: invite.id,
     email: invite.email,
+    firstName: invite.firstName,
+    lastName: invite.lastName,
+    // Legacy invitations carry no name; the email keeps the row readable rather
+    // than rendering a blank line in the Users list.
+    fullName: composed || invite.email,
     roleId: invite.roleId,
     roleName: invite.role?.name ?? null,
     permissionTemplateId: invite.permissionTemplateId,
     permissionTemplateName: invite.permissionTemplate.name,
     status: invite.status,
+    // The inviter's ACCOUNT name. This is the one place an account-level name is
+    // correct on an org screen: it is read before the reader has a tenant context
+    // in the email flow, and the Users list re-resolves it per-org through
+    // `memberDirectory` anyway.
     invitedByName: invite.invitedBy.fullName,
     expiresAt: invite.expiresAt.toISOString(),
     createdAt: invite.createdAt.toISOString(),
   };
+}
+
+/**
+ * The name a new Membership is created with, and the rule that makes per-org names
+ * actually work:
+ *
+ *  1. the invitation's name, when the inviter supplied one (always, since
+ *     2026-07-30) — so an admin decides how someone appears in THEIR org;
+ *  2. otherwise the name the acceptor typed on the accept page (new accounts);
+ *  3. otherwise the acceptor's existing account name (legacy invitations).
+ *
+ * 🔴 This never writes back to `User`. Someone already registered who accepts an
+ * invite into a second org gets the invite's name on the NEW membership and keeps
+ * their existing name everywhere else. Copying it up to the account would collapse
+ * every org onto one spelling — the exact bug this feature exists to prevent.
+ */
+function resolveMembershipName(
+  invite: { firstName: string | null; lastName: string | null },
+  fallback: { firstName: string; lastName: string },
+): { firstName: string; lastName: string; fullName: string } {
+  const firstName = invite.firstName?.trim() || fallback.firstName.trim();
+  const lastName = invite.lastName?.trim() || fallback.lastName.trim();
+  return { firstName, lastName, fullName: composeFullName(firstName, lastName) };
 }
 
 /**
@@ -149,20 +186,21 @@ async function assertInvitableTemplate(
 /**
  * Same check for the job title, when one was chosen. A title grants nothing, but
  * it still has to be a real role in THIS org — otherwise an id from another
- * tenant would be written straight onto the invitation. The seeded Owner role is
- * refused for the same reason its template is.
+ * tenant would be written straight onto the invitation. The built-in system role
+ * (the seeded "CEO") is refused for the same reason its template is — matched on
+ * `isSystem`, never on the name.
  */
 async function assertInvitableRole(organizationId: string, roleId: string): Promise<void> {
   const role = await runAsTenant(organizationId, (tx) =>
     tx.role.findFirst({
       where: { id: roleId, organizationId, isDeleted: false },
-      select: { isSystem: true },
+      select: { isSystem: true, name: true },
     }),
   );
 
   if (!role) throw ApiError.badRequest('That role does not exist.');
   if (role.isSystem) {
-    throw new ApiError(403, 'The Owner role cannot be granted by invitation.');
+    throw new ApiError(403, `The built-in "${role.name}" role cannot be granted by invitation.`);
   }
 }
 
@@ -210,6 +248,8 @@ export async function createInvitation(
     create: {
       organizationId,
       email: input.email,
+      firstName: input.firstName,
+      lastName: input.lastName,
       roleId: input.roleId ?? null,
       permissionTemplateId: input.permissionTemplateId,
       tokenHash,
@@ -221,7 +261,12 @@ export async function createInvitation(
       updatedBy: inviterId,
     },
     // Re-invite: reset everything a stale/revoked/declined/accepted row carries.
+    // The name is overwritten too — latest invite wins. Re-inviting is how an
+    // admin corrects a misspelling before the person has accepted, so keeping the
+    // original would make the typo unfixable.
     update: {
+      firstName: input.firstName,
+      lastName: input.lastName,
       roleId: input.roleId ?? null,
       permissionTemplateId: input.permissionTemplateId,
       tokenHash,
@@ -237,6 +282,8 @@ export async function createInvitation(
     select: {
       id: true,
       email: true,
+      firstName: true,
+      lastName: true,
       roleId: true,
       permissionTemplateId: true,
       status: true,
@@ -269,6 +316,8 @@ export async function listInvitations(organizationId: string): Promise<PublicInv
     select: {
       id: true,
       email: true,
+      firstName: true,
+      lastName: true,
       roleId: true,
       permissionTemplateId: true,
       status: true,
@@ -472,6 +521,9 @@ export async function acceptMyInvitation(
     select: {
       id: true,
       email: true,
+      // Carried through so `joinOrganization` can stamp the per-org membership name.
+      firstName: true,
+      lastName: true,
       roleId: true,
       permissionTemplateId: true,
       status: true,
@@ -549,11 +601,25 @@ async function joinOrganization(
   invite: {
     id: string;
     organizationId: string;
+    firstName: string | null;
+    lastName: string | null;
     roleId: string | null;
     permissionTemplateId: string;
   },
   userId: string,
 ): Promise<void> {
+  // The account name is only a FALLBACK for legacy invitations that carry no name
+  // — see `resolveMembershipName`. It is read, never written.
+  const account = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { firstName: true, lastName: true },
+  });
+  if (!account) {
+    throw new ApiError(401, 'Your session is no longer valid. Please sign in again.');
+  }
+
+  const name = resolveMembershipName(invite, account);
+
   await prisma.$transaction([
     prisma.membership.upsert({
       where: {
@@ -563,6 +629,11 @@ async function joinOrganization(
       create: {
         userId,
         organizationId: invite.organizationId,
+        // The per-org employee record starts here. This name belongs to THIS
+        // organization only; the account keeps whatever it already had.
+        firstName: name.firstName,
+        lastName: name.lastName,
+        fullName: name.fullName,
         // No isOwner: ownership comes from creating the org, never from an invite.
         // Authorization comes from permissionTemplateId; roleId is the job title,
         // which grants nothing.
@@ -577,8 +648,20 @@ async function joinOrganization(
       // reactivate this one (CLAUDE.md, "Unique constraints + soft delete").
       // `createdBy`/`createdAt` are deliberately NOT touched: they stay the
       // original join record, so the first-joined date survives a rejoin.
+      //
+      // `isActive: true` is required as well as `isDeleted: false`: a member who
+      // was deactivated and then removed would otherwise rejoin into a membership
+      // that `tenantContext` still refuses, and the invite would look accepted
+      // while they remained locked out.
+      //
+      // The name IS overwritten, because the invite that brought them back is the
+      // current statement of how this org refers to them.
       update: {
         isDeleted: false,
+        isActive: true,
+        firstName: name.firstName,
+        lastName: name.lastName,
+        fullName: name.fullName,
         roleId: invite.roleId,
         permissionTemplateId: invite.permissionTemplateId,
         updatedBy: userId,
@@ -589,6 +672,9 @@ async function joinOrganization(
       data: { status: 'accepted', acceptedAt: new Date(), updatedBy: userId },
     }),
   ]);
+
+  // A new name is now in play for every "Created by"/"Modified by" in this org.
+  await invalidateMemberDirectory(invite.organizationId);
 }
 
 /**
@@ -615,6 +701,9 @@ export async function acceptInvitation(
     select: {
       id: true,
       email: true,
+      // Carried through so `joinOrganization` can stamp the per-org membership name.
+      firstName: true,
+      lastName: true,
       roleId: true,
       permissionTemplateId: true,
       status: true,
@@ -681,7 +770,20 @@ export async function acceptInvitation(
   }
 
   const passwordHash = await hashPassword(input.password);
-  const fullName = `${input.firstName} ${input.lastName}`.trim();
+  const accountFullName = composeFullName(input.firstName, input.lastName);
+
+  // Two names are being set here, and they are NOT the same thing:
+  //
+  //   the ACCOUNT name  ← what this person typed on the accept page. Theirs, used
+  //                       for emails, the org picker, and any org they join later.
+  //   the MEMBERSHIP name ← what the inviter entered, falling back to what they
+  //                       typed. How THIS organization refers to them.
+  //
+  // They usually agree on a first join and are free to diverge forever after.
+  const membershipName = resolveMembershipName(invite, {
+    firstName: input.firstName,
+    lastName: input.lastName,
+  });
 
   const newUser = await prisma.$transaction(async (tx) => {
     const created = await tx.user.create({
@@ -689,17 +791,27 @@ export async function acceptInvitation(
         email: invite.email,
         firstName: input.firstName!,
         lastName: input.lastName!,
-        fullName,
+        fullName: accountFullName,
         passwordHash,
         userAgent,
       },
-      select: { id: true, firstName: true, lastName: true, fullName: true, email: true, userAgent: true },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        fullName: true,
+        email: true,
+        userAgent: true,
+      },
     });
 
     await tx.membership.create({
       data: {
         userId: created.id,
         organizationId: invite.organizationId,
+        firstName: membershipName.firstName,
+        lastName: membershipName.lastName,
+        fullName: membershipName.fullName,
         // No isOwner: ownership comes from creating the org, never from an invite.
         // Authorization comes from permissionTemplateId; roleId is the job title,
         // which grants nothing.
@@ -718,6 +830,9 @@ export async function acceptInvitation(
 
     return created;
   });
+
+  // This org just gained a member whose name every audit column will resolve through.
+  await invalidateMemberDirectory(invite.organizationId);
 
   const autoLogin = await issueTokens(await formatPublicUser(newUser));
   return { organization: org, roleName, permissionTemplateName, autoLogin };

@@ -9,12 +9,22 @@ import { z } from 'zod';
 export const createRoleSchema = z.object({
   name: z.string().trim().min(1, 'Name is required.').max(100),
   description: z.string().trim().max(255).optional(),
+  /**
+   * Who this title reports to. Absent or null = a root of the org chart.
+   *
+   * 🔴 Reporting structure, NOT access. Nesting a role under another grants
+   * nothing and takes nothing away — permission templates remain the only
+   * authorization. The service proves the parent is a live role in this org and
+   * refuses cycles and over-deep trees.
+   */
+  parentRoleId: z.string().uuid('Select a valid parent role.').nullable().optional(),
 });
 
-/** PATCH-style: send only what changed. */
+/** PATCH-style: send only what changed. `parentRoleId: null` promotes to a root. */
 export const updateRoleSchema = z.object({
   name: z.string().trim().min(1, 'Name is required.').max(100).optional(),
   description: z.string().trim().max(255).nullable().optional(),
+  parentRoleId: z.string().uuid('Select a valid parent role.').nullable().optional(),
 });
 
 export type CreateRoleInput = z.infer<typeof createRoleSchema>;

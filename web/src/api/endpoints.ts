@@ -50,11 +50,29 @@ export const endpoints = {
     /** The permission vocabulary the role editor renders as checkboxes. */
     catalog: (orgId: string) => `/organizations/${orgId}/permission-templates/catalog`,
   },
+  /**
+   * Settings → **Users**. The path stays `/members` on purpose: the screen was
+   * renamed, the API was not, and changing it would break every existing client
+   * for a label.
+   */
   members: {
+    /** `?status=active|inactive|unconfirmed|all&search=…` — one list containing
+     * joined members AND unaccepted invitations. */
     forOrg: (orgId: string) => `/organizations/${orgId}/members`,
-    /** PUT to change a member's role; DELETE to remove them. `id` is a membership id. */
+    /** Opt-in total behind the "Total count: view" link, same as every other list. */
+    count: (orgId: string) => `/organizations/${orgId}/members/count`,
+    /** GET the detail pane; PUT to change profile/role/access/active state;
+     * DELETE to remove them. `id` is a membership id, not a user id. */
     byId: (orgId: string, membershipId: string) =>
       `/organizations/${orgId}/members/${membershipId}`,
+    /**
+     * Your OWN record in this organization — a different route, not a convenience
+     * alias. It needs no `member:update` permission (nobody should need permission
+     * to fix their own name), and in exchange it cannot change role, permissions or
+     * active state. Editing your name here does NOT change it in any other
+     * organization, nor your account name.
+     */
+    me: (orgId: string) => `/organizations/${orgId}/members/me`,
   },
   purchases: {
     /**

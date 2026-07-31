@@ -4,8 +4,20 @@
  * values) read from here, so the list of supported types lives in ONE place.
  */
 
-/** Modules that support custom fields today. Extend as new entities gain them. */
-export const ENTITY_TYPES = ['vendor', 'customer', 'item', 'purchase_order'] as const;
+/**
+ * Modules that support custom fields today. Extend as new entities gain them.
+ *
+ * This tuple drives three things at once, and TypeScript enforces all three:
+ * `LIST_COLUMNS` and `LIST_FILTERS` are `Record<EntityType, …>`, so adding a name
+ * here fails the build until that module also has a column catalog and a filter
+ * set. That is deliberate — a module with custom fields but no list catalog would
+ * render an empty table.
+ *
+ * `member` is the Users module. Its custom-field values live on `memberships`, so
+ * a per-org field like "Employee Code" is scoped to one organization exactly like
+ * the member's name is.
+ */
+export const ENTITY_TYPES = ['vendor', 'customer', 'item', 'purchase_order', 'member'] as const;
 export type EntityType = (typeof ENTITY_TYPES)[number];
 
 export function isEntityType(value: string): value is EntityType {

@@ -1,0 +1,58 @@
+/**
+ * Initials avatar with a deterministic colour.
+ *
+ * There is no upload pipeline yet (`Membership.avatarUrl` exists but nothing sets
+ * it), so a generic silhouette would render every row identically — actively
+ * unhelpful in a list whose whole job is telling people apart. Initials plus a hue
+ * derived from the name give each person a stable, recognisable mark, and the
+ * component already renders `avatarUrl` when one appears.
+ */
+
+interface UserAvatarProps {
+  name: string;
+  /** Rendered instead of initials when present. */
+  url?: string | null;
+  size?: number;
+}
+
+/**
+ * Name → hue. A plain sum of code points, which is stable across sessions and
+ * machines — the point is consistency, not distribution, and 12 hues at 30° apart
+ * stay distinguishable while all reading as the same family.
+ */
+function hueFor(name: string): number {
+  let sum = 0;
+  for (let i = 0; i < name.length; i += 1) sum += name.codePointAt(i) ?? 0;
+  return (sum % 12) * 30;
+}
+
+/** First letter of the first two words: "Priya Shah" → "PS", "Priya" → "P". */
+function initialsFor(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  return parts
+    .slice(0, 2)
+    .map((p) => [...p][0] ?? '')
+    .join('');
+}
+
+export function UserAvatar({ name, url, size = 34 }: UserAvatarProps) {
+  const hue = hueFor(name);
+
+  return (
+    <span
+      className="users-avatar"
+      aria-hidden="true"
+      style={{
+        width: size,
+        height: size,
+        fontSize: Math.max(10, Math.round(size * 0.4)),
+        // Mid lightness so white text clears WCAG AA at every hue — a fixed
+        // lightness is what keeps yellow from washing out while blue stays legible.
+        background: url ? 'var(--color-border)' : `hsl(${hue} 58% 45%)`,
+      }}
+    >
+      {url ? <img src={url} alt="" /> : initialsFor(name)}
+    </span>
+  );
+}

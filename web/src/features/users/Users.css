@@ -1,0 +1,363 @@
+/*
+ * Settings → Users — the detail panel and the New User window only.
+ *
+ * The LIST carries no styles here on purpose: it is the shared module-list layout
+ * (header + ListFilterDropdown + table + Pagination), styled inline exactly like
+ * VendorsList and ItemsList so all three stay visibly one system. What lives in
+ * this file is only what those modules don't already provide — the per-org record
+ * pane, the initials avatar, and the invite window.
+ */
+
+/* ── Avatar ──────────────────────────────────────────────────────────────── */
+
+/*
+ * Initials, not a generic silhouette: with no upload pipeline yet every row would
+ * otherwise be the same grey icon, which is worse than useless in a list whose job
+ * is telling people apart. Hue is derived from the name so it stays stable.
+ */
+.users-avatar {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-weight: 600;
+  color: #fff;
+  text-transform: uppercase;
+  overflow: hidden;
+  user-select: none;
+}
+
+.users-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ── Detail ──────────────────────────────────────────────────────────────── */
+
+/* Fills the list's right-hand panel, so no border or radius of its own — the
+   panel already has the divider. */
+.users-detail {
+  min-width: 0;
+  background: var(--color-surface);
+}
+
+.users-detail-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.users-detail-identity {
+  flex: 1;
+  min-width: 0;
+}
+
+.users-detail-name {
+  font-size: 19px;
+  font-weight: 600;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.users-detail-sub {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin-top: 3px;
+}
+
+.users-detail-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* ── Field grid ──────────────────────────────────────────────────────────── */
+
+.users-section {
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.users-section:last-child {
+  border-bottom: none;
+}
+
+.users-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin: 0 0 var(--space-4) 0;
+}
+
+.users-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--space-4) var(--space-5);
+}
+
+.users-field-label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  margin-bottom: 4px;
+}
+
+.users-field-value {
+  font-size: 13.5px;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+/* An unset optional field. A dash reads as "nothing here"; an empty cell reads as
+   a rendering bug. */
+.users-field-value.is-empty {
+  color: var(--color-text-muted);
+}
+
+.users-field-span {
+  grid-column: 1 / -1;
+}
+
+.users-input {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-sizing: border-box;
+}
+
+.users-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.users-input.error {
+  border-color: var(--color-danger);
+}
+
+.users-input:disabled {
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.users-error-msg {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  color: var(--color-danger);
+}
+
+/* ── Badges ──────────────────────────────────────────────────────────────── */
+
+.users-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 2px 9px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.users-badge.is-owner {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background: var(--primary-50);
+}
+
+.users-badge.is-active {
+  color: #15803d;
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.users-badge.is-inactive {
+  color: #b45309;
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.users-badge.is-unconfirmed {
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
+  background: var(--color-bg);
+}
+
+.users-badge.is-declined {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+  background: var(--danger-50);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.users-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 13px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.users-btn:hover:not(:disabled) {
+  background: var(--color-bg);
+}
+
+.users-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.users-btn.is-primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-primary-contrast);
+}
+
+.users-btn.is-primary:hover:not(:disabled) {
+  filter: brightness(0.94);
+  background: var(--color-primary);
+}
+
+.users-btn.is-danger {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+  background: var(--color-surface);
+}
+
+.users-btn.is-danger:hover:not(:disabled) {
+  background: var(--danger-50);
+}
+
+.users-alert {
+  padding: 11px 13px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  margin: 0 0 var(--space-4) 0;
+}
+
+.users-alert.is-error {
+  background: var(--danger-50);
+  color: var(--color-danger);
+}
+
+.users-alert.is-info {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+/* ── New User window ─────────────────────────────────────────────────────── */
+
+/*
+ * A centred modal rather than a side drawer: adding a user is a short, decisive
+ * form (five fields) and it is opened from the list's "New" button, so the eye is
+ * already mid-screen. A drawer would slide the focus to the edge for no gain.
+ */
+
+.users-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  z-index: 100;
+}
+
+.users-modal {
+  width: min(560px, 100%);
+  max-height: min(88vh, 720px);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.22);
+}
+
+.users-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.users-modal-body {
+  padding: var(--space-5);
+  overflow-y: auto;
+  flex: 1;
+}
+
+.users-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+
+.users-modal-close {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 2px;
+  line-height: 0;
+  border-radius: var(--radius-sm);
+}
+
+.users-modal-close:hover {
+  color: var(--color-text);
+}
+
+.users-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.users-form-field {
+  margin-bottom: var(--space-4);
+}
+
+@media (max-width: 640px) {
+  .users-form-row {
+    grid-template-columns: 1fr;
+  }
+}

@@ -38,6 +38,26 @@ export const LIST_FILTERS: Record<EntityType, readonly FilterPreset[]> = {
     { key: 'goods', label: 'Goods', where: { type: 'Goods' } },
     { key: 'services', label: 'Services', where: { type: 'Service' } },
   ],
+  /**
+   * Users. The first entry is the default, so an admin opening Settings → Users
+   * lands on **Active Users** — the people who can actually sign in today, which is
+   * what they are looking for almost every time. (Same trick the `item` list uses:
+   * the key stays `all` because it is the default slot, while the label and `where`
+   * narrow it.)
+   *
+   * 🔴 `unconfirmed` is the one preset whose rows do NOT come from `memberships` —
+   * an invited person has no membership row yet. `members.service.ts` branches on
+   * this key and queries `invitations` instead, so the `where` here is empty and
+   * unused. It is still declared here because this file is the single place list
+   * filter LABELS live, and splitting one module's presets across two files is how
+   * the dropdown and the query drift apart.
+   */
+  member: [
+    { key: 'all', label: 'Active Users', where: { isActive: true, isDeleted: false } },
+    { key: 'inactive', label: 'Inactive Users', where: { isActive: false, isDeleted: false } },
+    { key: 'all_users', label: 'All Users', where: { isDeleted: false } },
+    { key: 'unconfirmed', label: 'Unconfirmed Users', where: {} },
+  ],
   purchase_order: [
     { key: 'all', label: 'All Purchase Orders', where: {} },
     { key: 'draft', label: 'Draft', where: { status: 'Draft' } },

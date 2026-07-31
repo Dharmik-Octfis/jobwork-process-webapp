@@ -93,7 +93,9 @@ export function CurrenciesPage() {
 
           <div style={{ flex: 1, overflow: 'auto' }}>
             {isLoading ? (
-              <div style={{ padding: '32px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+              <div
+                style={{ padding: '32px', textAlign: 'center', color: 'var(--color-text-muted)' }}
+              >
                 Loading...
               </div>
             ) : currencies.length === 0 ? (
@@ -122,7 +124,9 @@ export function CurrenciesPage() {
                 >
                   <Coins size={24} color="var(--color-primary)" />
                 </div>
-                <h3 style={{ fontSize: 16, fontWeight: 600, margin: '0 0 8px 0', color: '#0f172a' }}>
+                <h3
+                  style={{ fontSize: 16, fontWeight: 600, margin: '0 0 8px 0', color: '#0f172a' }}
+                >
                   No Currencies found
                 </h3>
                 <p style={{ margin: '0 0 24px 0', color: '#64748b', fontSize: 14, maxWidth: 300 }}>
@@ -155,12 +159,20 @@ export function CurrenciesPage() {
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid var(--color-border)', background: '#f8fafc' }}>
-                    <th style={{ ...headerStyle, width: '25%', textAlign: 'left' }}>Currency Name</th>
+                  <tr
+                    style={{ borderBottom: '1px solid var(--color-border)', background: '#f8fafc' }}
+                  >
+                    <th style={{ ...headerStyle, width: '25%', textAlign: 'left' }}>
+                      Currency Name
+                    </th>
                     <th style={{ ...headerStyle, width: '15%', textAlign: 'left' }}>Symbol</th>
                     <th style={{ ...headerStyle, width: '15%', textAlign: 'center' }}>Status</th>
-                    <th style={{ ...headerStyle, width: '20%', textAlign: 'left' }}>Created By & Time</th>
-                    <th style={{ ...headerStyle, width: '20%', textAlign: 'left' }}>Modified By & Time</th>
+                    <th style={{ ...headerStyle, width: '20%', textAlign: 'left' }}>
+                      Created By & Time
+                    </th>
+                    <th style={{ ...headerStyle, width: '20%', textAlign: 'left' }}>
+                      Modified By & Time
+                    </th>
                     <th style={{ ...headerStyle, width: '5%', textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
@@ -173,7 +185,13 @@ export function CurrenciesPage() {
                         background: '#fff',
                       }}
                     >
-                      <td style={{ padding: '12px 16px', color: 'var(--color-text)', fontWeight: 500 }}>
+                      <td
+                        style={{
+                          padding: '12px 16px',
+                          color: 'var(--color-text)',
+                          fontWeight: 500,
+                        }}
+                      >
                         {currency.currencyName}
                       </td>
                       <td style={{ padding: '12px 16px', color: 'var(--color-text)' }}>
@@ -194,25 +212,52 @@ export function CurrenciesPage() {
                           {currency.isActive ? 'Active' : 'Inactive'}
                         </span>
                       </td>
-                      <td style={{ padding: '12px 16px', color: 'var(--color-text-muted)', fontSize: '12px' }}>
-                        {currency.createdByUser ? (
-                          <div style={{ fontWeight: 500, color: 'var(--color-text)', marginBottom: '2px' }}>
-                            {currency.createdByUser.firstName} {currency.createdByUser.lastName}
-                          </div>
-                        ) : (
-                          <div style={{ fontWeight: 500, color: 'var(--color-text)', marginBottom: '2px' }}>-</div>
-                        )}
-                        <div>{currency.createdAt ? format(new Date(currency.createdAt), 'MMM d, yyyy h:mm a') : '-'}</div>
+                      <td
+                        style={{
+                          padding: '12px 16px',
+                          color: 'var(--color-text-muted)',
+                          fontSize: '12px',
+                        }}
+                      >
+                        {/* Server-resolved to this organization's name for the actor
+                            — see currencies.service.ts. Already non-blank, so the
+                            dash is only for a payload that predates the change. */}
+                        <div
+                          style={{
+                            fontWeight: 500,
+                            color: 'var(--color-text)',
+                            marginBottom: '2px',
+                          }}
+                        >
+                          {currency.createdByName || '-'}
+                        </div>
+                        <div>
+                          {currency.createdAt
+                            ? format(new Date(currency.createdAt), 'MMM d, yyyy h:mm a')
+                            : '-'}
+                        </div>
                       </td>
-                      <td style={{ padding: '12px 16px', color: 'var(--color-text-muted)', fontSize: '12px' }}>
-                        {currency.updatedByUser ? (
-                          <div style={{ fontWeight: 500, color: 'var(--color-text)', marginBottom: '2px' }}>
-                            {currency.updatedByUser.firstName} {currency.updatedByUser.lastName}
-                          </div>
-                        ) : (
-                          <div style={{ fontWeight: 500, color: 'var(--color-text)', marginBottom: '2px' }}>-</div>
-                        )}
-                        <div>{currency.updatedAt ? format(new Date(currency.updatedAt), 'MMM d, yyyy h:mm a') : '-'}</div>
+                      <td
+                        style={{
+                          padding: '12px 16px',
+                          color: 'var(--color-text-muted)',
+                          fontSize: '12px',
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontWeight: 500,
+                            color: 'var(--color-text)',
+                            marginBottom: '2px',
+                          }}
+                        >
+                          {currency.updatedByName || '-'}
+                        </div>
+                        <div>
+                          {currency.updatedAt
+                            ? format(new Date(currency.updatedAt), 'MMM d, yyyy h:mm a')
+                            : '-'}
+                        </div>
                       </td>
                       <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                         <div

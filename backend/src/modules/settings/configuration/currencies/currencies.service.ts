@@ -1,5 +1,6 @@
 import { runAsTenant } from '../../../../db/prisma.ts';
 import { ApiError, withUniqueViolation } from '../../../../lib/apiError.ts';
+import { getMemberDirectory } from '../../../../lib/memberDirectory.ts';
 
 /** Message for the (organizationId, currencyCode) unique index. */
 const DUPLICATE_CODE = 'Currency code already exists in this organization.';
@@ -24,8 +25,27 @@ interface UpdateCurrencyData {
   isActive?: boolean;
 }
 
+/**
+ * 🔴 "Created by" / "Modified by" resolve through the per-org member directory, NOT
+ * through `createdByUser` on the `users` table.
+ *
+ * This used to `include: { createdByUser: { select: { firstName, lastName } } }`,
+ * which reads the ACCOUNT name — the one name that is deliberately not what an
+ * organization calls someone since per-org profiles landed (2026-07-30). Two orgs
+ * would show the same spelling for the same person, and neither would match the
+ * name in their own Users list.
+ *
+ * `lib/memberDirectory.ts` is the single place that mapping lives; it also handles
+ * former members (still resolvable), migrations/seed writes ("System") and actors
+ * who are not members of this org at all ("Support", never their real name). Any
+ * other module that grows a created/modified column should call it the same way —
+ * before `runAsTenant`, so it never acquires a second pooled connection while
+ * holding a transaction.
+ */
 export const getCurrencyList = async (orgId: string) => {
-  return runAsTenant(orgId, (tx) =>
+  const directory = await getMemberDirectory(orgId);
+
+  const rows = await runAsTenant(orgId, (tx) =>
     tx.currency.findMany({
       where: {
         organizationId: orgId,
@@ -34,16 +54,14 @@ export const getCurrencyList = async (orgId: string) => {
       orderBy: {
         currencyCode: 'asc',
       },
-      include: {
-        createdByUser: {
-          select: { firstName: true, lastName: true },
-        },
-        updatedByUser: {
-          select: { firstName: true, lastName: true },
-        },
-      },
     }),
   );
+
+  return rows.map((row) => ({
+    ...row,
+    createdByName: directory.actorName(row.createdBy),
+    updatedByName: directory.actorName(row.updatedBy),
+  }));
 };
 
 export const createNewCurrency = async (

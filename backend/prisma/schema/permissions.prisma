@@ -1,8 +1,22 @@
+/// A job title, arranged in a **reporting hierarchy** since 2026-07-30.
+///
+/// 🔴 The hierarchy is STRUCTURE, NOT ACCESS. `parentRoleId` says who reports to
+/// whom; it grants nothing, no middleware reads it, and no query filters by it.
+/// What a member may do still comes only from their permission template. If you
+/// ever find yourself wanting "a manager can see their subordinates' records",
+/// that is a data-scoping feature that belongs in the query layer next to RLS —
+/// it is not this column, and adding it here would quietly turn a labelling
+/// exercise into an authorization system nobody audited.
 model Role {
   id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String       @map("organization_id") @db.Uuid
   name           String       @db.VarChar(100)
   description    String?      @db.VarChar(255)
+  /// Who this title reports to. Null = a root of the tree (Owner always is).
+  /// `Restrict` rather than `SetNull`/`Cascade`: silently re-parenting a subtree to
+  /// the root — or deleting it — because someone removed a middle title is a
+  /// reorganisation nobody asked for. `deleteRole` refuses while children exist.
+  parentRoleId   String?      @map("parent_role_id") @db.Uuid
   isSystem       Boolean      @default(false) @map("is_system")
   isDeleted      Boolean      @default(false) @map("is_deleted")
   createdBy      String?      @map("created_by") @db.Uuid
@@ -14,9 +28,12 @@ model Role {
   createdByUser  User?        @relation("RoleCreatedBy", fields: [createdBy], references: [id])
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   updatedByUser  User?        @relation("RoleUpdatedBy", fields: [updatedBy], references: [id])
+  parent         Role?        @relation("RoleHierarchy", fields: [parentRoleId], references: [id], onDelete: Restrict)
+  children       Role[]       @relation("RoleHierarchy")
 
   @@unique([organizationId, name])
   @@index([organizationId, isDeleted])
+  @@index([organizationId, parentRoleId])
   @@map("roles")
 }
 

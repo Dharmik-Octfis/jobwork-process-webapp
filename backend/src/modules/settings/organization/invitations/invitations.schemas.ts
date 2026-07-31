@@ -24,6 +24,19 @@ const email = z
  */
 export const createInvitationSchema = z.object({
   email,
+  /**
+   * 🔴 Required since 2026-07-30. The inviter names the person they are inviting,
+   * and that name becomes the invitee's **per-org** name on their Membership when
+   * they accept — it does NOT touch their account name, so the same person can be
+   * invited into two orgs under two spellings.
+   *
+   * Required rather than optional for a practical reason: without it an unconfirmed
+   * row in the Users list is a bare email address, which tells an admin reviewing
+   * pending invites nothing about who they invited. The invitee can correct it after
+   * accepting via `PUT /members/me`.
+   */
+  firstName: z.string().trim().min(1, 'First name is required.').max(40),
+  lastName: z.string().trim().min(1, 'Last name is required.').max(40),
   roleId: z.string().uuid('Select a role for this member.').optional(),
   permissionTemplateId: z.string().uuid('Select a permission template for this member.'),
 });

@@ -103,7 +103,11 @@ const MODULE_GROUPS: readonly {
       // No create (you cannot create an organization from inside one) and no
       // delete (owner-only, gated by `requireOwner` — see authorize.ts).
       { resource: 'organization', label: 'Organization Profile', actions: ['read', 'update'] },
-      { resource: 'member', label: 'Members & Invitations' },
+      // Renamed to "Users" in the UI on 2026-07-30. The RESOURCE KEY stays
+      // `member` — it is stored inside every customer's permission templates, so
+      // renaming it would silently strip the permission from every template that
+      // holds it. Only the label an admin reads changes.
+      { resource: 'member', label: 'Users' },
       // Two resources, not one, because they are not the same power. `role`
       // grants managing job titles — a labelling exercise. `permission_template`
       // grants rewriting what people may DO, which is privilege escalation: hold
@@ -119,10 +123,10 @@ const MODULE_GROUPS: readonly {
       { resource: 'permission_template', label: 'Permission Templates' },
       { resource: 'uom', label: 'Units of Measurement' },
       { resource: 'purchase_order', label: 'Purchase Orders' },
-  { resource: 'currency', label: 'Currencies' },
+      { resource: 'currency', label: 'Currencies' },
       { resource: 'payment_term', label: 'Payment Terms' },
       { resource: 'location', label: 'Locations' },
-  { resource: 'custom_field', label: 'Custom Fields' },
+      { resource: 'custom_field', label: 'Custom Fields' },
     ],
   },
 ];
@@ -246,7 +250,14 @@ export const SYSTEM_TEMPLATES: readonly SystemTemplateSpec[] = [
  * mistake if the role were called "Admin" beside a template of the same name,
  * and the two would drift back into lockstep.
  *
- * Owner is `isSystem` (immutable, not assignable); the rest are editable.
+ * 🔴 **Array ORDER is the seeded org chart.** `seedSystemRoles` walks this list in
+ * order and parents each entry to the one before it, so the list reads top-down:
+ * CEO → Senior Manager → Manager → Staff. Reordering it reorders a new
+ * organization's reporting lines; inserting in the middle inserts a layer.
+ *
+ * The first entry is `isSystem` — immutable, not assignable, and always the root
+ * of the chart. It is identified by that flag, never by its name, so an org that
+ * renames it (or a future rename here) breaks nothing.
  */
 export interface SystemRoleSpec {
   name: string;
@@ -256,9 +267,14 @@ export interface SystemRoleSpec {
 
 export const SYSTEM_ROLES: readonly SystemRoleSpec[] = [
   {
-    name: 'Owner',
+    name: 'CEO',
     description: 'The organization owner. Cannot be edited or deleted.',
     isSystem: true,
+  },
+  {
+    name: 'Senior Manager',
+    description: 'Leads several teams or functions.',
+    isSystem: false,
   },
   { name: 'Manager', description: 'Runs a team or a function.', isSystem: false },
   { name: 'Staff', description: 'Works in the business day to day.', isSystem: false },

@@ -18,10 +18,19 @@ export interface InvitationLookup {
   accountExists: boolean;
 }
 
-/** An invitation as an org admin sees it in the members list. */
+/** An invitation as an org admin sees it in the Users list. */
 export interface Invitation {
   id: string;
   email: string;
+  /**
+   * The name the inviter entered. Becomes the invitee's name in THIS organization
+   * when they accept — it does not touch their account name, so the same person can
+   * be invited into two orgs under two spellings. Null only on invitations created
+   * before names were required.
+   */
+  firstName: string | null;
+  lastName: string | null;
+  fullName: string;
   /** The job title the invitee will carry. Optional — it grants nothing. */
   roleId: string | null;
   roleName: string | null;
@@ -129,12 +138,24 @@ export const invitationsApi = {
     return data.invitations;
   },
 
-  /** POST /organizations/:orgId/invitations — send an invite (owner/admin). The
-   * permission template is required and must be one the owner created (there are
-   * no defaults); the role is a job title and optional. */
+  /**
+   * POST /organizations/:orgId/invitations — send an invite (owner/admin).
+   *
+   * `firstName`/`lastName` are REQUIRED: they become the person's name inside this
+   * organization, and they are what makes a pending row in the Users list readable
+   * as a person rather than a bare email address. The permission template is
+   * required too and must be one the owner created (there are no defaults); the
+   * role is a job title and optional.
+   */
   create: async (
     orgId: string,
-    body: { email: string; roleId?: string; permissionTemplateId: string },
+    body: {
+      email: string;
+      firstName: string;
+      lastName: string;
+      roleId?: string;
+      permissionTemplateId: string;
+    },
   ): Promise<Invitation> => {
     const { data } = await apiClient.post<{ invitation: Invitation }>(
       endpoints.invitations.forOrg(orgId),
