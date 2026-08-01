@@ -85,9 +85,9 @@ export function CustomFieldsSection({
     >
       {fields.map((def) => (
         <Fragment key={def.id}>
-          <label style={def.isRequired ? { ...labelStyle, color: '#e54d4d' } : labelStyle}>
+          <label style={def.isRequired ? { ...labelStyle, color: '#ef4444' } : labelStyle}>
             {def.label}
-            {def.isRequired ? '*' : ''}
+            {def.isRequired && '*'}
           </label>
           <CustomFieldInput
             def={def}

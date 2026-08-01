@@ -21,12 +21,8 @@ async function resolveLogoUrl(logoUrl: string | null | undefined): Promise<strin
   ) {
     return logoUrl;
   }
-  try {
-    return await getFileUrl(logoUrl);
-  } catch (err) {
-    console.warn(`Failed to resolve signed URL for logo key "${logoUrl}":`, err);
-    return logoUrl;
-  }
+  const { env } = await import('../../../../config/env.ts');
+  return `${env.appUrl}/api/storage/stream?key=${encodeURIComponent(logoUrl)}`;
 }
 
 // Mapper to convert Prisma Organization to Zoho-style format
@@ -87,7 +83,6 @@ export async function createOrganization(req: Request, res: Response, next: Next
             email: data.email,
             phone: data.phone,
             dialCode: data.dial_code,
-            taxIdValue: data.tax_id_value,
             orgAddress: data.address?.street_address1 || null,
             countryCode: data.address?.country || null,
             stateCode: data.address?.state_code || null,
@@ -265,23 +260,17 @@ export async function uploadOrganizationLogo(req: Request, res: Response, next: 
     const cleanName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
     const key = `organizations/${orgId}/logo-${timestamp}-${cleanName}`;
 
-    let storedKey = key;
-    try {
-      await uploadFile({
-        key,
-        body: file.buffer,
-        contentType: file.mimetype,
-        overwrite: true,
-      });
-    } catch (err) {
-      console.warn('Catalyst Stratus upload failed:', err);
-      storedKey = key;
-    }
+    await uploadFile({
+      key,
+      body: file.buffer,
+      contentType: file.mimetype,
+      overwrite: true,
+    });
 
     const updatedOrg = await prisma.organization.update({
       where: { id: orgId },
       data: {
-        logoUrl: storedKey,
+        logoUrl: key,
         updatedBy: userId,
       },
       include: { industry: { select: { name: true } } },

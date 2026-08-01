@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { Select } from '../../components/ui/Select.tsx';
 import { CustomFieldsSection } from '../custom-fields/CustomFieldsSection.tsx';
 import { useUoms } from '../inventory/uom/uom.api.ts';
+import { useActiveCustomFields } from '../custom-fields/customFields.api.ts';
 
 
 export function EditItemPage() {
@@ -16,6 +17,7 @@ export function EditItemPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: uoms = [] } = useUoms(orgId!);
+  const { data: customFields = [] } = useActiveCustomFields(orgId!, 'item');
 
   const [formData, setFormData] = useState<ItemFormData>({
     name: '',
@@ -27,10 +29,10 @@ export function EditItemPage() {
     unit: '',
     sku: '',
     isSalesInfo: true,
-    sellingPrice: null,
+    sellingPrice: null as unknown as number,
     salesDescription: '',
     isPurchaseInfo: true,
-    costPrice: null,
+    costPrice: null as unknown as number,
     purchaseDescription: '',
     packaging: '',
     frontImage: null,
@@ -77,12 +79,12 @@ export function EditItemPage() {
       isSalesInfo: true,
       sellingPrice: rawItem.sellingPrice !== null && rawItem.sellingPrice !== undefined
         ? Number(rawItem.sellingPrice)
-        : (rawItem.rate !== null && rawItem.rate !== undefined ? Number(rawItem.rate) : null),
+        : (rawItem.rate !== null && rawItem.rate !== undefined ? Number(rawItem.rate) : null as unknown as number),
       salesDescription: (rawItem.salesDescription as string) || (rawItem.sales_description as string) || '',
       isPurchaseInfo: true,
       costPrice: rawItem.costPrice !== null && rawItem.costPrice !== undefined
         ? Number(rawItem.costPrice)
-        : (rawItem.purchase_rate !== null && rawItem.purchase_rate !== undefined ? Number(rawItem.purchase_rate) : null),
+        : (rawItem.purchase_rate !== null && rawItem.purchase_rate !== undefined ? Number(rawItem.purchase_rate) : null as unknown as number),
       purchaseDescription: (rawItem.purchaseDescription as string) || (rawItem.purchase_description as string) || '',
       packaging: rawItem.packaging || '',
       frontImage: rawItem.frontImage || rawItem.front_image || null,
@@ -302,7 +304,7 @@ export function EditItemPage() {
                   gap: '12px',
                 }}
               >
-                <label style={{ fontSize: 12, color: '#dc2626', fontWeight: 500 }}>Name*</label>
+                <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Name*</label>
                 <div>
                   <input
                     name="name"
@@ -552,10 +554,10 @@ export function EditItemPage() {
                       ↑
                     </div>
                     <div style={{ fontWeight: 500, fontSize: 12, color: '#1e293b', textAlign: 'center', wordBreak: 'break-all' }}>
-                      {frontImageFile 
-                        ? frontImageFile.name 
-                        : (formData.frontImage 
-                            ? ((formData.frontImage as ItemImageAttachment).name || 'Existing Front Image') 
+                      {frontImageFile
+                        ? frontImageFile.name
+                        : (formData.frontImage
+                            ? ((formData.frontImage as ItemImageAttachment).name || 'Existing Front Image')
                             : 'Upload Front Image')}
                     </div>
                   </button>
@@ -602,10 +604,10 @@ export function EditItemPage() {
                       ↑
                     </div>
                     <div style={{ fontWeight: 500, fontSize: 12, color: '#1e293b', textAlign: 'center', wordBreak: 'break-all' }}>
-                      {rearImageFile 
-                        ? rearImageFile.name 
-                        : (formData.rearImage 
-                            ? ((formData.rearImage as ItemImageAttachment).name || 'Existing Rear Image') 
+                      {rearImageFile
+                        ? rearImageFile.name
+                        : (formData.rearImage
+                            ? ((formData.rearImage as ItemImageAttachment).name || 'Existing Rear Image')
                             : 'Upload Rear Image')}
                     </div>
                   </button>
@@ -660,8 +662,8 @@ export function EditItemPage() {
                   >
                     {otherImageFiles.length > 0
                       ? `${otherImageFiles.length} new files selected`
-                      : (formData.images && formData.images.length > 0 
-                          ? `${formData.images.length} existing image(s)` 
+                      : (formData.images && formData.images.length > 0
+                          ? `${formData.images.length} existing image(s)`
                           : 'Drag & Drop Images (Max 3)')}
                   </div>
                   <div
@@ -704,7 +706,7 @@ export function EditItemPage() {
                 {formData.isSalesInfo && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Selling Price</label>
+                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Selling Price*</label>
                       <input
                         type="number"
                         step="0.01"
@@ -715,10 +717,15 @@ export function EditItemPage() {
                           width: '100%',
                           padding: '6px 10px',
                           borderRadius: '4px',
-                          border: '1px solid #d1d5db',
+                          border: errors.sellingPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
                           fontSize: 12,
                         }}
                       />
+                      {errors.sellingPrice && (
+                        <span style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}>
+                          {errors.sellingPrice}
+                        </span>
+                      )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Sales Description</label>
@@ -755,7 +762,7 @@ export function EditItemPage() {
                 {formData.isPurchaseInfo && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Cost Price</label>
+                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Cost Price*</label>
                       <input
                         type="number"
                         step="0.01"
@@ -766,10 +773,15 @@ export function EditItemPage() {
                           width: '100%',
                           padding: '6px 10px',
                           borderRadius: '4px',
-                          border: '1px solid #d1d5db',
+                          border: errors.costPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
                           fontSize: 12,
                         }}
                       />
+                      {errors.costPrice && (
+                        <span style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}>
+                          {errors.costPrice}
+                        </span>
+                      )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Purchase Description</label>
@@ -944,7 +956,7 @@ export function EditItemPage() {
                   color: '#1e293b',
                 }}
               >
-                Custom Fields
+                Custom Fields{customFields.some((f) => f.isRequired) && <span style={{ color: '#ef4444' }}>*</span>}
               </h3>
               <CustomFieldsSection
                 orgId={orgId}

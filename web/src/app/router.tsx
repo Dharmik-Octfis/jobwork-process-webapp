@@ -197,7 +197,6 @@ export const router = createBrowserRouter([
               { path: '/organizations/:orgId/items/:id/edit', element: <EditItemPage /> },
             ],
           },
-          { path: '/profile', element: <ProfilePage /> },
           { path: '/organizations', element: <OrganizationsList /> },
         ],
       },
@@ -207,6 +206,7 @@ export const router = createBrowserRouter([
         element: <SettingsLayout />,
         children: [
           { index: true, element: <OrganizationSettingsPage /> },
+          { path: 'profile', element: <ProfilePage /> },
           { path: 'users', element: <UsersPage /> },
           // "Members & Invites" became "Users" on 2026-07-30. The old path is kept
           // as a redirect rather than deleted: it is in people's bookmarks and in

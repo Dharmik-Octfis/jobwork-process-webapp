@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
@@ -12,6 +13,7 @@ import { useUoms } from '../inventory/uom/uom.api.ts';
 
 export function CreateItemPage() {
   const { orgId } = useParams<{ orgId: string }>();
+  const { data: customFields = [] } = useActiveCustomFields(orgId!, 'item');
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -33,12 +35,12 @@ export function CreateItemPage() {
         isSalesInfo: true,
         sellingPrice: itemToClone.sellingPrice !== null && itemToClone.sellingPrice !== undefined
           ? Number(itemToClone.sellingPrice)
-          : (itemToClone.rate !== null && itemToClone.rate !== undefined ? Number(itemToClone.rate) : null),
+          : (itemToClone.rate !== null && itemToClone.rate !== undefined ? Number(itemToClone.rate) : null as unknown as number),
         salesDescription: itemToClone.salesDescription || itemToClone.sales_description || '',
         isPurchaseInfo: true,
         costPrice: itemToClone.costPrice !== null && itemToClone.costPrice !== undefined
           ? Number(itemToClone.costPrice)
-          : (itemToClone.purchase_rate !== null && itemToClone.purchase_rate !== undefined ? Number(itemToClone.purchase_rate) : null),
+          : (itemToClone.purchase_rate !== null && itemToClone.purchase_rate !== undefined ? Number(itemToClone.purchase_rate) : null as unknown as number),
         purchaseDescription: itemToClone.purchaseDescription || itemToClone.purchase_description || '',
         packaging: itemToClone.packaging || '',
         frontImage: itemToClone.frontImage || itemToClone.front_image || null,
@@ -60,10 +62,10 @@ export function CreateItemPage() {
       unit: '',
       sku: '',
       isSalesInfo: true,
-      sellingPrice: null,
+      sellingPrice: null as unknown as number,
       salesDescription: '',
       isPurchaseInfo: true,
-      costPrice: null,
+      costPrice: null as unknown as number,
       purchaseDescription: '',
       packaging: '',
       frontImage: null,
@@ -294,7 +296,7 @@ export function CreateItemPage() {
                   gap: '12px',
                 }}
               >
-                <label style={{ fontSize: 12, color: '#dc2626', fontWeight: 500 }}>Name*</label>
+                <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Name*</label>
                 <div>
                   <input
                     name="name"
@@ -697,7 +699,7 @@ export function CreateItemPage() {
                 {formData.isSalesInfo && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Selling Price</label>
+                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Selling Price*</label>
                       <input
                         type="number"
                         step="0.01"
@@ -708,10 +710,15 @@ export function CreateItemPage() {
                           width: '100%',
                           padding: '6px 10px',
                           borderRadius: '4px',
-                          border: '1px solid #d1d5db',
+                          border: errors.sellingPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
                           fontSize: 12,
                         }}
                       />
+                      {errors.sellingPrice && (
+                        <span style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}>
+                          {errors.sellingPrice}
+                        </span>
+                      )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Sales Description</label>
@@ -748,7 +755,7 @@ export function CreateItemPage() {
                 {formData.isPurchaseInfo && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Cost Price</label>
+                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Cost Price*</label>
                       <input
                         type="number"
                         step="0.01"
@@ -759,10 +766,15 @@ export function CreateItemPage() {
                           width: '100%',
                           padding: '6px 10px',
                           borderRadius: '4px',
-                          border: '1px solid #d1d5db',
+                          border: errors.costPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
                           fontSize: 12,
                         }}
                       />
+                      {errors.costPrice && (
+                        <span style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}>
+                          {errors.costPrice}
+                        </span>
+                      )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Purchase Description</label>
@@ -937,7 +949,7 @@ export function CreateItemPage() {
                   color: '#1e293b',
                 }}
               >
-                Custom Fields
+                Custom Fields{customFields.some((f) => f.isRequired) && <span style={{ color: '#ef4444' }}>*</span>}
               </h3>
               <CustomFieldsSection
                 orgId={orgId}

@@ -141,7 +141,7 @@ export function PurchaseOrdersList() {
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  <SlidersHorizontal size={15} /> Customize
+                  <SlidersHorizontal size={15} />
                 </button>
               )}
 

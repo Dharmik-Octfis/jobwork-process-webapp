@@ -193,7 +193,7 @@ export function FieldForm({
 
       <form onSubmit={handleSubmit}>
         <div style={rowStyle}>
-          <label style={requiredCol}>Field Name*</label>
+          <label style={{ ...labelCol, color: '#ef4444' }}>Field Name*</label>
           <input
             value={fieldLabel}
             onChange={(e) => setFieldLabel(e.target.value)}
@@ -204,7 +204,7 @@ export function FieldForm({
         </div>
 
         <div style={rowStyle}>
-          <label style={requiredCol}>Data Type*</label>
+          <label style={{ ...labelCol, color: '#ef4444' }}>Data Type*</label>
           <div>
             <SearchableSelect
               options={DATA_TYPE_OPTIONS.map((t) => ({

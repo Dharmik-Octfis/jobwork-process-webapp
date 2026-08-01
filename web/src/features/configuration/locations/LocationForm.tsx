@@ -145,7 +145,7 @@ export function LocationForm({ initialData, onSubmit, isPending, onCancel }: Loc
           </>
         )}
 
-        <label style={{ ...labelStyle, color: '#e54d4d' }}>Name*</label>
+        <label style={{ ...labelStyle, color: '#ef4444' }}>Name*</label>
         <div>
           <input type="text" {...register('name', { required: true })} style={inputStyle} placeholder="Location Name" />
           {errors.name && <span style={{ color: '#e54d4d', fontSize: '11px', display: 'block', marginTop: '4px' }}>Name is required</span>}
@@ -162,7 +162,7 @@ export function LocationForm({ initialData, onSubmit, isPending, onCancel }: Loc
 
         {isChildLocation && (
           <>
-            <label style={{ ...labelStyle, color: '#e54d4d' }}>Parent Location*</label>
+            <label style={{ ...labelStyle, color: '#ef4444' }}>Parent Location*</label>
             <div>
               <Controller
                 name="parentId"

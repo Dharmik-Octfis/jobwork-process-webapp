@@ -33,8 +33,8 @@ export const itemSchema = openApiRegistry.register(
       .default('Single Item')
       .openapi({ example: 'Single Item' }),
     item_type: z.string().optional(),
-    unit: z.string().min(1, 'Unit is required').max(50).openapi({ example: 'pcs' }),
-    sku: z.string().min(1, 'SKU is required').max(100).openapi({ example: 'SKU-MBP-14-M3' }),
+    unit: z.string().max(50).optional().default('').openapi({ example: 'pcs' }),
+    sku: z.string().max(100).optional().default('').openapi({ example: 'SKU-MBP-14-M3' }),
     isSalesInfo: z.boolean().default(false).openapi({ example: true }),
     can_be_sold: z.boolean().optional(),
     sellingPrice: z.number().nullable().optional().openapi({ example: 150000.0 }),

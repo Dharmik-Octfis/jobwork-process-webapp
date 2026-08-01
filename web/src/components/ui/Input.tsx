@@ -32,8 +32,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
 
   return (
     <div className={styles.field}>
-      <label className={styles.label} htmlFor={inputId}>
+      <label className={styles.label} htmlFor={inputId} style={rest.required ? { color: '#ef4444' } : undefined}>
         {label}
+        {rest.required && '*'}
       </label>
 
       <div className={styles.inputWrap}>

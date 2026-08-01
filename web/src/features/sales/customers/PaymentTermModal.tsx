@@ -105,7 +105,7 @@ export function PaymentTermModal({ orgId, isOpen, onClose, onSuccess }: PaymentT
                 gap: '16px',
               }}
             >
-              <label style={{ color: '#ef4444', fontSize: '14px' }}>Term Name*</label>
+              <label style={{ fontSize: '14px', color: '#ef4444' }}>Term Name*</label>
               <div>
                 <input
                   type="text"
@@ -134,7 +134,7 @@ export function PaymentTermModal({ orgId, isOpen, onClose, onSuccess }: PaymentT
                 gap: '16px',
               }}
             >
-              <label style={{ color: '#ef4444', fontSize: '14px' }}>Due After*</label>
+              <label style={{ fontSize: '14px', color: '#ef4444' }}>Due After*</label>
               <div>
                 <div style={{ display: 'flex' }}>
                   <input

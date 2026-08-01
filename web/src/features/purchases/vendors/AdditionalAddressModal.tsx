@@ -4,12 +4,20 @@ import { useForm, Controller } from 'react-hook-form';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { vendorAddressSchema, type VendorAddress } from './vendors.schemas';
+import { organizationsApi } from '../../organizations/organizations.api';
+import { PhoneInput } from '../../../components/ui/PhoneInput';
 import { X } from 'lucide-react';
 
+type MasterData = {
+  industries: { id: string; code: string; name: string }[];
+  states: { code: string; name: string; countryCode: string; cities: { id: string; name: string }[] }[];
+  countries: { id: string; name: string; code: string; isoCode: string; dialCode: string }[];
+};
+
 const formSchema = vendorAddressSchema.extend({
-  street1: z.string().min(1, 'Address is required'),
-  city: z.string().min(1, 'City is required'),
-  state: z.string().min(1, 'State is required'),
+  street1: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
 });
 
 type AdditionalAddressFormValues = z.infer<typeof formSchema>;
@@ -23,12 +31,21 @@ interface AdditionalAddressModalProps {
 }
 
 export function AdditionalAddressModal({ isOpen, onClose, onSubmit, title = 'Additional Address', defaultValues }: AdditionalAddressModalProps) {
+  const [masterData, setMasterData] = React.useState<MasterData | null>(null);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      organizationsApi.getSeedData().then(setMasterData);
+    }
+  }, [isOpen]);
+
   const {
     register,
     control,
     handleSubmit,
     reset,
-    formState: { errors },
+    watch,
+    setValue,
   } = useForm<AdditionalAddressFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -62,11 +79,26 @@ export function AdditionalAddressModal({ isOpen, onClose, onSubmit, title = 'Add
 
   if (!isOpen) return null;
 
+  const formValues = watch();
+  const isAnyFieldFilled = Object.entries(formValues).some(([key, value]) => {
+    if (key === 'addressType') return false;
+    return typeof value === 'string' && value.trim().length > 0;
+  });
+
   const handleFormSubmit = (data: AdditionalAddressFormValues) => {
     onSubmit({ ...data, addressType: defaultValues?.addressType || 'additional' });
     reset();
     onClose();
   };
+
+  const country = watch('country');
+  const countryCode = masterData?.countries.find((c) => c.name === country)?.code;
+  const stateOptions = masterData?.states
+    .filter((s) => !countryCode || s.countryCode === countryCode)
+    .map((s) => ({ label: s.name, value: s.name })) || [];
+  const stateName = watch('state');
+  const stateObj = masterData?.states.find((s) => s.name === stateName && s.countryCode === countryCode);
+  const cityOptions = stateObj?.cities.map((c) => ({ label: c.name, value: c.name })) || [];
 
   const overlayStyle: React.CSSProperties = {
     position: 'fixed',
@@ -168,6 +200,14 @@ export function AdditionalAddressModal({ isOpen, onClose, onSubmit, title = 'Add
             </div>
 
             <div>
+              <label style={labelStyle}>Address</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <textarea {...register('street1')} placeholder="Street 1" rows={1} style={{ ...inputStyle, resize: 'vertical' }} />
+                <textarea {...register('street2')} placeholder="Street 2" rows={1} style={{ ...inputStyle, resize: 'vertical' }} />
+              </div>
+            </div>
+
+            <div>
               <label style={labelStyle}>Country/Region</label>
               <Controller
                 control={control}
@@ -175,37 +215,63 @@ export function AdditionalAddressModal({ isOpen, onClose, onSubmit, title = 'Add
                 render={({ field }) => (
                   <SearchableSelect
                     value={field.value || ''}
-                    onChange={field.onChange}
-                    options={[
-                      { value: 'India', label: 'India' },
-                      { value: 'USA', label: 'USA' },
-                    ]}
+                    onChange={(val) => {
+                      field.onChange(val);
+                      setValue('state', '');
+                      setValue('city', '');
+                    }}
+                    options={masterData?.countries.map((c) => ({ label: c.name, value: c.name })) || []}
                     placeholder="Select Country"
+                    disabled={!masterData}
                   />
                 )}
               />
             </div>
 
-            <div>
-              <label style={labelStyle}>Address *</label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <textarea {...register('street1')} placeholder="Street 1" rows={1} style={{ ...inputStyle, resize: 'vertical' }} />
-                {errors.street1 && <span style={{ color: '#ef4444', fontSize: '12px' }}>{errors.street1.message}</span>}
-                <textarea {...register('street2')} placeholder="Street 2" rows={1} style={{ ...inputStyle, resize: 'vertical' }} />
-              </div>
-            </div>
-
             <div style={{ display: 'flex', gap: '12px' }}>
               <div style={{ flex: 1 }}>
-                <label style={labelStyle}>City *</label>
-                <input {...register('city')} style={inputStyle} />
-                {errors.city && <span style={{ color: '#ef4444', fontSize: '12px', display: 'block', marginTop: '4px' }}>{errors.city.message}</span>}
+                <label style={labelStyle}>State</label>
+                {country === 'India' ? (
+                  <Controller
+                    control={control}
+                    name="state"
+                    render={({ field }) => (
+                      <SearchableSelect
+                        value={field.value || ''}
+                        onChange={(val) => {
+                          field.onChange(val);
+                          setValue('city', '');
+                        }}
+                        options={stateOptions}
+                        placeholder="Select State"
+                        disabled={stateOptions.length === 0}
+                      />
+                    )}
+                  />
+                ) : (
+                  <input {...register('state')} style={inputStyle} placeholder="State" />
+                )}
               </div>
 
               <div style={{ flex: 1 }}>
-                <label style={labelStyle}>State *</label>
-                <input {...register('state')} style={inputStyle} />
-                {errors.state && <span style={{ color: '#ef4444', fontSize: '12px', display: 'block', marginTop: '4px' }}>{errors.state.message}</span>}
+                <label style={labelStyle}>City</label>
+                {country === 'India' ? (
+                  <Controller
+                    control={control}
+                    name="city"
+                    render={({ field }) => (
+                      <SearchableSelect
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                        options={cityOptions}
+                        placeholder="Select City"
+                        disabled={!watch('state') || cityOptions.length === 0}
+                      />
+                    )}
+                  />
+                ) : (
+                  <input {...register('city')} style={inputStyle} placeholder="City" />
+                )}
               </div>
             </div>
 
@@ -217,7 +283,17 @@ export function AdditionalAddressModal({ isOpen, onClose, onSubmit, title = 'Add
 
               <div style={{ flex: 1 }}>
                 <label style={labelStyle}>Phone</label>
-                <input {...register('phone')} style={inputStyle} />
+                <Controller
+                  control={control}
+                  name="phone"
+                  render={({ field }) => (
+                    <PhoneInput
+                      value={field.value || ''}
+                      onChange={field.onChange}
+                      countries={masterData?.countries || []}
+                    />
+                  )}
+                />
               </div>
             </div>
           </div>
@@ -232,7 +308,14 @@ export function AdditionalAddressModal({ isOpen, onClose, onSubmit, title = 'Add
             </button>
             <button
               type="submit"
-              style={{ ...btnStyle, backgroundColor: '#0f172a', color: '#fff' }}
+              disabled={!isAnyFieldFilled}
+              style={{
+                ...btnStyle,
+                backgroundColor: isAnyFieldFilled ? '#3B82F6' : '#94a3b8',
+                color: '#fff',
+                cursor: isAnyFieldFilled ? 'pointer' : 'not-allowed',
+                opacity: isAnyFieldFilled ? 1 : 0.7
+              }}
             >
               Save
             </button>

@@ -24,6 +24,7 @@ import { permissionTemplatesRouter } from '../modules/settings/organization/perm
 import { membersRouter } from '../modules/settings/organization/members/members.routes.ts';
 import { itemsRouter } from '../modules/items/items.routes.ts';
 import { listViewsRouter } from '../modules/settings/list-views/listViews.routes.ts';
+import { storageRouter } from '../modules/storage/storage.routes.ts';
 import { diagnosticsRouter } from '../modules/diagnostics/diagnostics.routes.ts';
 import { env } from '../config/env.ts';
 
@@ -77,3 +78,4 @@ apiRouter.use('/invitations', invitationsRouter);
 // from `/invitations/:token` above, which is public and token-addressed.
 apiRouter.use('/me/invitations', myInvitationsRouter);
 apiRouter.use('/modules', appModulesRouter);
+apiRouter.use('/storage', storageRouter);

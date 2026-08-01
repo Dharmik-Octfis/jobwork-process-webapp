@@ -62,7 +62,6 @@ export const LIST_COLUMNS: Record<EntityType, readonly ColumnDef[]> = {
     { key: 'unit', label: 'Unit', defaultVisible: true },
     { key: 'category', label: 'Category' },
     { key: 'hsnCode', label: 'HSN Code' },
-    { key: 'packaging', label: 'Packaging' },
     { key: 'createdAt', label: 'Created At' },
     { key: 'updatedAt', label: 'Last Modified' },
   ],
