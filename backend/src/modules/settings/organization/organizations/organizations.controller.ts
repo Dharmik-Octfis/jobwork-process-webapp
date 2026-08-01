@@ -8,7 +8,7 @@ import { seedSystemTemplates } from '../permission-templates/permission-template
 import { seedSystemRoles } from '../roles/roles.service.ts';
 import { withOrgCodeRetry } from './orgCode.ts';
 import { composeFullName } from '../../../../lib/memberDirectory.ts';
-import { uploadFile, getFileUrl } from '../../../../lib/storage.ts';
+import { uploadFile} from '../../../../lib/storage.ts';
 
 import type { Organization, Prisma, Industry } from '../../../../../generated/prisma/client.ts';
 
