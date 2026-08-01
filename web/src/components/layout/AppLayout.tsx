@@ -1065,7 +1065,7 @@ function OrgDropdown({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            navigator.clipboard.writeText(org.orgCode);
+                            navigator.clipboard.writeText(org.orgCode || '');
                             setCopiedOrgId(org.organizationId);
                             setTimeout(() => setCopiedOrgId(null), 2000);
                           }}

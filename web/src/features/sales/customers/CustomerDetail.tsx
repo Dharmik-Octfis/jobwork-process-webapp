@@ -141,43 +141,6 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
     },
   });
 
-  const _deleteSpecificAddressMutation = useMutation({
-    mutationFn: (type: 'billing' | 'shipping') => {
-      if (!customer) throw new Error('Customer not found');
-      const {
-        id: _id,
-        createdAt: _createdAt,
-        updatedAt: _updatedAt,
-        organizationId: _organizationId,
-        ...rest
-      } = customer;
-
-      const dataToUpdate = { ...rest } as Partial<UpdateCustomerData>;
-      if (type === 'billing') {
-        dataToUpdate.billingStreet1 = '';
-        dataToUpdate.billingStreet2 = '';
-        dataToUpdate.billingCity = '';
-        dataToUpdate.billingState = '';
-        dataToUpdate.billingCountry = '';
-        dataToUpdate.billingPinCode = '';
-        dataToUpdate.billingAttention = '';
-        dataToUpdate.billingPhone = '';
-      } else {
-        dataToUpdate.shippingStreet1 = '';
-        dataToUpdate.shippingStreet2 = '';
-        dataToUpdate.shippingCity = '';
-        dataToUpdate.shippingState = '';
-        dataToUpdate.shippingCountry = '';
-        dataToUpdate.shippingPinCode = '';
-        dataToUpdate.shippingAttention = '';
-        dataToUpdate.shippingPhone = '';
-      }
-      return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] });
-    },
-  });
 
   const updateSpecificAddressMutation = useMutation({
     mutationFn: ({ type, address }: { type: 'billing' | 'shipping'; address: CustomerAddress }) => {

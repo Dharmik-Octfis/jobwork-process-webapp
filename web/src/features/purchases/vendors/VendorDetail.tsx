@@ -149,43 +149,6 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
     },
   });
 
-  const deleteSpecificAddressMutation = useMutation({
-    mutationFn: (type: 'billing' | 'shipping') => {
-      if (!vendor) throw new Error('Vendor not found');
-      const {
-        id: _id,
-        createdAt: _createdAt,
-        updatedAt: _updatedAt,
-        organizationId: _organizationId,
-        ...rest
-      } = vendor;
-
-      const dataToUpdate: Partial<UpdateVendorData> = { ...rest } as unknown as Partial<UpdateVendorData>;
-      if (type === 'billing') {
-        dataToUpdate.billingStreet1 = '';
-        dataToUpdate.billingStreet2 = '';
-        dataToUpdate.billingCity = '';
-        dataToUpdate.billingState = '';
-        dataToUpdate.billingCountry = '';
-        dataToUpdate.billingPinCode = '';
-        dataToUpdate.billingAttention = '';
-        dataToUpdate.billingPhone = '';
-      } else {
-        dataToUpdate.shippingStreet1 = '';
-        dataToUpdate.shippingStreet2 = '';
-        dataToUpdate.shippingCity = '';
-        dataToUpdate.shippingState = '';
-        dataToUpdate.shippingCountry = '';
-        dataToUpdate.shippingPinCode = '';
-        dataToUpdate.shippingAttention = '';
-        dataToUpdate.shippingPhone = '';
-      }
-      return updateVendor({ orgId: orgId!, id: vendorId, data: dataToUpdate as UpdateVendorData });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['vendor', orgId, vendorId] });
-    },
-  });
 
   const updateSpecificAddressMutation = useMutation({
     mutationFn: ({ type, address }: { type: 'billing' | 'shipping'; address: VendorAddress }) => {
