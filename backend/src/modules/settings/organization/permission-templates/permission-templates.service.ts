@@ -1,9 +1,13 @@
 import { runAsTenant, type TenantClient } from '../../../../db/prisma.ts';
 import { ApiError } from '../../../../lib/apiError.ts';
+import { getMemberDirectory, type MemberDirectory } from '../../../../lib/memberDirectory.ts';
+import { pageSlice, searchWhere, takeForPage, type ListQuery } from '../../../../lib/pagination.ts';
+import { filterWhere } from '../../list-views/listFilters.catalog.ts';
 import { invalidateTemplate } from './permissionTemplates.cache.ts';
 import { ALL_PERMISSIONS, SYSTEM_TEMPLATES } from './permissions.catalog.ts';
 import type { CreateTemplateInput, UpdateTemplateInput } from './permission-templates.schemas.ts';
 import type { PublicPermissionTemplate } from './permission-templates.types.ts';
+import type { Prisma } from '../../../../../generated/prisma/client.ts';
 
 type TemplateRow = {
   id: string;
@@ -12,11 +16,17 @@ type TemplateRow = {
   isSystem: boolean;
   grantsAllPermissions: boolean;
   permissions: string[];
+  createdBy: string | null;
+  updatedBy: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
 
-function toPublic(row: TemplateRow, memberCount: number): PublicPermissionTemplate {
+function toPublic(
+  row: TemplateRow,
+  memberCount: number,
+  directory: MemberDirectory,
+): PublicPermissionTemplate {
   return {
     id: row.id,
     name: row.name,
@@ -27,6 +37,9 @@ function toPublic(row: TemplateRow, memberCount: number): PublicPermissionTempla
     // so the UI renders its checkboxes (all ticked, read-only) like any other.
     permissions: row.grantsAllPermissions ? [...ALL_PERMISSIONS] : row.permissions,
     memberCount,
+    // Ids → this org's names. Never a join: see the header of memberDirectory.ts.
+    createdByName: directory.actorName(row.createdBy),
+    updatedByName: directory.actorName(row.updatedBy),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -39,6 +52,8 @@ const TEMPLATE_SELECT = {
   isSystem: true,
   grantsAllPermissions: true,
   permissions: true,
+  createdBy: true,
+  updatedBy: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -74,8 +89,8 @@ export async function seedSystemTemplates(
           updatedBy: actorUserId,
         },
         select: { id: true, isSystem: true },
-      })
-    )
+      }),
+    ),
   );
 
   const ownerTemplate = createdTemplates.find((t) => t.isSystem);
@@ -102,24 +117,81 @@ async function memberCounts(
   return new Map(rows.map((r) => [r.permissionTemplateId ?? '', r._count._all]));
 }
 
-/** All templates for the admin manager, newest system ones first, with usage. */
-export function listTemplates(organizationId: string): Promise<PublicPermissionTemplate[]> {
+/**
+ * The one `where` both the list and the count are built from — so the total can
+ * never disagree with the rows on screen because the two queries drifted.
+ *
+ * Search spans name AND description: an admin looking for "warehouse" is as
+ * likely to have written it in the sentence explaining the profile as in its name.
+ */
+function templateListWhere(
+  organizationId: string,
+  opts: ListQuery,
+): Prisma.PermissionTemplateWhereInput {
+  return {
+    // RLS covers `permission_templates`, but the filter stays — both layers, always
+    // (CLAUDE.md). The soft-delete rule is here too: a deleted profile must not
+    // resurface in a list, a search, or a count.
+    organizationId,
+    isDeleted: false,
+    ...filterWhere<Prisma.PermissionTemplateWhereInput>('permission_template', opts.filter),
+    ...searchWhere<Prisma.PermissionTemplateWhereInput>(opts.search, ['name', 'description']),
+  };
+}
+
+/**
+ * Settings → Permissions, on the same paginated + searchable contract as every
+ * other module list (`lib/pagination.ts`, memory: list-search-pagination-pattern),
+ * so the screen is built from the shared `useListSearch` / `useListColumns` /
+ * `Pagination` pieces rather than a bespoke card list.
+ *
+ * Built-in first, then A–Z: the Owner profile is the reference everyone compares
+ * against, and it is the one row that can never be edited.
+ */
+export async function listTemplates(organizationId: string, opts: ListQuery) {
+  // 🔴 Directory FIRST, outside the transaction — acquiring a second pooled
+  // connection while already holding one is how a 5-connection pool deadlocks.
+  // Same rule as members.service.ts.
+  const directory = await getMemberDirectory(organizationId);
+  const { page, perPage } = opts;
+
   return runAsTenant(organizationId, async (tx) => {
+    // No COUNT here — one row beyond the page answers "is there a next page?".
     const rows = await tx.permissionTemplate.findMany({
-      where: { organizationId, isDeleted: false },
+      where: templateListWhere(organizationId, opts),
       orderBy: [{ isSystem: 'desc' }, { name: 'asc' }],
+      skip: (page - 1) * perPage,
+      take: takeForPage(perPage),
       select: TEMPLATE_SELECT,
     });
+
+    const { results, pageContext } = pageSlice(rows, page, perPage);
+    // Counted for the page's rows only, never the whole table.
     const counts = await memberCounts(
       tx,
       organizationId,
-      rows.map((r) => r.id),
+      results.map((r) => r.id),
     );
-    return rows.map((r) => toPublic(r, counts.get(r.id) ?? 0));
+    return {
+      results: results.map((r) => toPublic(r, counts.get(r.id) ?? 0, directory)),
+      pageContext,
+    };
   });
 }
 
-export function getTemplate(organizationId: string, id: string): Promise<PublicPermissionTemplate> {
+/** The opt-in total behind the "Total count: view" link. Same `where` as the list. */
+export function countTemplates(organizationId: string, opts: ListQuery): Promise<number> {
+  return runAsTenant(organizationId, (tx) =>
+    tx.permissionTemplate.count({ where: templateListWhere(organizationId, opts) }),
+  );
+}
+
+export async function getTemplate(
+  organizationId: string,
+  id: string,
+): Promise<PublicPermissionTemplate> {
+  const directory = await getMemberDirectory(organizationId);
+
   return runAsTenant(organizationId, async (tx) => {
     const row = await tx.permissionTemplate.findFirst({
       where: { id, organizationId, isDeleted: false },
@@ -127,15 +199,17 @@ export function getTemplate(organizationId: string, id: string): Promise<PublicP
     });
     if (!row) throw new ApiError(404, 'Permission template not found.');
     const counts = await memberCounts(tx, organizationId, [row.id]);
-    return toPublic(row, counts.get(row.id) ?? 0);
+    return toPublic(row, counts.get(row.id) ?? 0, directory);
   });
 }
 
-export function createTemplate(
+export async function createTemplate(
   userId: string,
   organizationId: string,
   input: CreateTemplateInput,
 ): Promise<PublicPermissionTemplate> {
+  const directory = await getMemberDirectory(organizationId);
+
   return runAsTenant(organizationId, async (tx) => {
     try {
       const row = await tx.permissionTemplate.create({
@@ -153,7 +227,7 @@ export function createTemplate(
         },
         select: TEMPLATE_SELECT,
       });
-      return toPublic(row, 0);
+      return toPublic(row, 0, directory);
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw ApiError.conflict('A template with this name already exists.');
@@ -169,6 +243,8 @@ export async function updateTemplate(
   id: string,
   input: UpdateTemplateInput,
 ): Promise<PublicPermissionTemplate> {
+  const directory = await getMemberDirectory(organizationId);
+
   const result = await runAsTenant(organizationId, async (tx) => {
     const existing = await tx.permissionTemplate.findFirst({
       where: { id, organizationId, isDeleted: false },
@@ -204,7 +280,7 @@ export async function updateTemplate(
       select: TEMPLATE_SELECT,
     });
     const counts = await memberCounts(tx, organizationId, [id]);
-    return toPublic(row as TemplateRow, counts.get(id) ?? 0);
+    return toPublic(row as TemplateRow, counts.get(id) ?? 0, directory);
   });
 
   // 🔴 AFTER the transaction commits, never inside it. Invalidating early opens

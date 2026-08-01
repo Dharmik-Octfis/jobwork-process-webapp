@@ -1,13 +1,14 @@
 import { runAsTenant } from '../../../db/prisma.ts';
 import { ApiError } from '../../../lib/apiError.ts';
-import type { EntityType } from '../customization/custom-fields/customFields.constants.ts';
 import { filterOptions } from './listFilters.catalog.ts';
 import {
   CUSTOM_FIELD_PREFIX,
   LIST_COLUMNS,
   defaultVisibleKeys,
   lockedKeys,
+  supportsCustomFields,
   type ColumnDef,
+  type ListEntityType,
 } from './listViews.catalog.ts';
 
 export interface ListViewResponse {
@@ -32,8 +33,12 @@ export interface ListViewResponse {
 async function buildCatalog(
   tx: Parameters<Parameters<typeof runAsTenant>[1]>[0],
   organizationId: string,
-  entityType: EntityType,
+  entityType: ListEntityType,
 ): Promise<ColumnDef[]> {
+  // A list-only module (permission templates) has no `custom_fields` column, so
+  // there is nothing to merge and no query worth issuing.
+  if (!supportsCustomFields(entityType)) return [...LIST_COLUMNS[entityType]];
+
   const defs = await tx.customFieldDefinition.findMany({
     where: { organizationId, entityType, isDeleted: false, status: 'active' },
     orderBy: { displayOrder: 'asc' },
@@ -52,7 +57,11 @@ async function buildCatalog(
  * anything no longer in the catalog dropped. Applied on read AND on write, so a
  * layout stays valid when a custom field is later archived or a column removed.
  */
-function normalise(entityType: EntityType, catalog: ColumnDef[], requested: string[]): string[] {
+function normalise(
+  entityType: ListEntityType,
+  catalog: ColumnDef[],
+  requested: string[],
+): string[] {
   const known = new Set(catalog.map((c) => c.key));
   const locked = lockedKeys(entityType);
   const rest = requested.filter((k) => known.has(k) && !locked.includes(k));
@@ -63,7 +72,7 @@ function normalise(entityType: EntityType, catalog: ColumnDef[], requested: stri
 export async function getListView(
   organizationId: string,
   userId: string,
-  entityType: EntityType,
+  entityType: ListEntityType,
 ): Promise<ListViewResponse> {
   return runAsTenant(organizationId, async (tx) => {
     const catalog = await buildCatalog(tx, organizationId, entityType);
@@ -94,7 +103,7 @@ export async function getListView(
 export async function saveListView(
   organizationId: string,
   userId: string,
-  entityType: EntityType,
+  entityType: ListEntityType,
   columns: string[],
 ): Promise<ListViewResponse> {
   return runAsTenant(organizationId, async (tx) => {

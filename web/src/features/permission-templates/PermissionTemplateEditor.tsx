@@ -56,7 +56,8 @@ interface Props {
   orgId: string;
   /** null = creating a new template. */
   template: PermissionTemplate | null;
-  onDone: () => void | Promise<void>;
+  /** Handed the saved row, so a create can land on the profile it just made. */
+  onDone: (saved: PermissionTemplate) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -128,7 +129,7 @@ export function PermissionTemplateEditor({ orgId, template, onDone, onCancel }: 
         ? permissionTemplatesApi.update(orgId, template.id, body)
         : permissionTemplatesApi.create(orgId, body);
     },
-    onSuccess: () => onDone(),
+    onSuccess: (saved) => onDone(saved),
     onError: (err) => setError(toApiErrorMessage(err)),
   });
 

@@ -148,9 +148,11 @@ export function UsersPage() {
     enabled: Boolean(orgId),
   });
 
+  // `listAll`, not `list` — this feeds the assign/invite dropdowns, which have to
+  // offer every profile at once and cannot page.
   const { data: templates } = useQuery({
-    queryKey: ['permission-templates', orgId],
-    queryFn: () => permissionTemplatesApi.list(orgId!),
+    queryKey: ['permission-templates-all', orgId],
+    queryFn: () => permissionTemplatesApi.listAll(orgId!),
     enabled: Boolean(orgId),
   });
 
