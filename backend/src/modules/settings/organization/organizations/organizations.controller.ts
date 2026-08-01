@@ -7,7 +7,7 @@ import { createOrganizationSchema, updateOrganizationSchema } from './organizati
 import { seedSystemTemplates } from '../permission-templates/permission-templates.service.ts';
 import { seedSystemRoles } from '../roles/roles.service.ts';
 import { withOrgCodeRetry } from './orgCode.ts';
-import { uploadFile, getFileUrl } from '../../../../lib/storage.ts';
+import { uploadFile } from '../../../../lib/storage.ts';
 
 import type { Organization, Prisma, Industry } from '../../../../../generated/prisma/client.ts';
 
@@ -20,12 +20,8 @@ async function resolveLogoUrl(logoUrl: string | null | undefined): Promise<strin
   ) {
     return logoUrl;
   }
-  try {
-    return await getFileUrl(logoUrl);
-  } catch (err) {
-    console.warn(`Failed to resolve signed URL for logo key "${logoUrl}":`, err);
-    return logoUrl;
-  }
+  const { env } = await import('../../../../config/env.ts');
+  return `${env.appUrl}/api/storage/stream?key=${encodeURIComponent(logoUrl)}`;
 }
 
 // Mapper to convert Prisma Organization to Zoho-style format
@@ -86,7 +82,6 @@ export async function createOrganization(req: Request, res: Response, next: Next
             email: data.email,
             phone: data.phone,
             dialCode: data.dial_code,
-            taxIdValue: data.tax_id_value,
             orgAddress: data.address?.street_address1 || null,
             countryCode: data.address?.country || null,
             stateCode: data.address?.state_code || null,

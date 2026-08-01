@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Plus, Trash2, Info, Settings } from 'lucide-react';
+import { Plus, Trash2, Settings } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createVendorSchema, type CreateVendorData } from './vendors.schemas';
 import { fetchVendorNumberPreference, updateVendorNumberPreference } from './vendors.api';
@@ -42,6 +43,7 @@ export function VendorForm({
 }: VendorFormProps) {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
+  const { data: customFields = [] } = useActiveCustomFields(orgId!, 'vendor');
   const [activeTab, setActiveTab] = useState('other');
   const [isNumberConfigOpen, setIsNumberConfigOpen] = useState(false);
   const [masterData, setMasterData] = useState<MasterData | null>(null);
@@ -154,8 +156,7 @@ export function VendorForm({
     gap: '6px',
     color: '#111',
   };
-  const labelRequiredStyle = { ...labelStyle, color: '#e54d4d' };
-  const inputStyle = {
+    const inputStyle = {
     width: '100%',
     maxWidth: '440px',
     padding: '6px 8px',
@@ -209,7 +210,7 @@ export function VendorForm({
           }}
         >
           <label style={labelStyle}>
-            Primary Contact <Info size={14} color="#888" />
+            Primary Contact 
           </label>
           <div style={{ display: 'flex', gap: '12px', maxWidth: '440px' }}>
             <Controller
@@ -247,9 +248,8 @@ export function VendorForm({
           <label style={labelStyle}>Company Name</label>
           <input {...register('companyName')} style={inputStyle} />
 
-          <label style={labelRequiredStyle}>
-            Display Name* <Info size={14} color="#888" />
-          </label>
+          <label style={{ ...labelStyle, color: '#ef4444' }}>
+            Display Name*</label>
           <div>
             <input
               {...register('contactName')}
@@ -264,7 +264,7 @@ export function VendorForm({
           </div>
 
           <label style={labelStyle}>
-            Email Address <Info size={14} color="#888" />
+            Email Address 
           </label>
           <div style={{ position: 'relative', maxWidth: '440px' }}>
             <span
@@ -285,7 +285,7 @@ export function VendorForm({
             />
           </div>
 
-          <label style={labelRequiredStyle}>Vendor Number*</label>
+          <label style={{ ...labelStyle, color: '#ef4444' }}>Vendor Number*</label>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <input {...register('contactNumber')} style={{ ...inputStyle, flex: 1 }} />
@@ -312,7 +312,7 @@ export function VendorForm({
           </div>
 
           <label style={labelStyle}>
-            Phone <Info size={14} color="#888" />
+            Phone 
           </label>
           <div style={{ display: 'flex', gap: '16px', maxWidth: '440px' }}>
             <div style={{ flex: 1 }}>
@@ -379,7 +379,7 @@ export function VendorForm({
             onClick={() => setActiveTab('custom')}
             style={tabBtnStyle(activeTab === 'custom')}
           >
-            Custom Fields
+            Custom Fields{customFields.some((f: any) => f.isRequired) && <span style={{ color: '#ef4444' }}>*</span>}
           </button>
           <button
             type="button"

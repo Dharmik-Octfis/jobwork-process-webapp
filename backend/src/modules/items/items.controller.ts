@@ -79,8 +79,8 @@ export class ItemsController {
       throw new ApiError(403, 'Forbidden');
     }
 
-    const { getFileUrl } = await import('../../lib/storage.ts');
-    const url = await getFileUrl(key);
+    const { env } = await import('../../config/env.ts');
+    const url = `${env.appUrl}/api/storage/stream?key=${encodeURIComponent(key)}`;
     sendSuccess(res, { url });
   }
 }

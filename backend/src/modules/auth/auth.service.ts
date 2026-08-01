@@ -15,7 +15,7 @@ import type { AuthResult, PublicUser } from './auth.types.ts';
 import { env } from '../../config/env.ts';
 import ms from 'ms';
 
-import { uploadFile, getFileUrl } from '../../lib/storage.ts';
+import { uploadFile } from '../../lib/storage.ts';
 
 /** Postgres unique-constraint violation, surfaced by Prisma. */
 const UNIQUE_VIOLATION = 'P2002';
@@ -35,12 +35,7 @@ async function resolveAvatarUrl(avatarUrl: string | null | undefined): Promise<s
   if (avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://') || avatarUrl.startsWith('data:')) {
     return avatarUrl;
   }
-  try {
-    return await getFileUrl(avatarUrl);
-  } catch (err) {
-    console.warn(`Failed to resolve signed URL for avatar key "${avatarUrl}":`, err);
-    return avatarUrl;
-  }
+  return `${env.appUrl}/api/storage/stream?key=${encodeURIComponent(avatarUrl)}`;
 }
 
 export async function formatPublicUser(user: {

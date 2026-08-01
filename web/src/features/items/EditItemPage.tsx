@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { Select } from '../../components/ui/Select.tsx';
 import { CustomFieldsSection } from '../custom-fields/CustomFieldsSection.tsx';
 import { useUoms } from '../inventory/uom/uom.api.ts';
+import { useActiveCustomFields } from '../custom-fields/customFields.api.ts';
 
 
 export function EditItemPage() {
@@ -16,6 +17,7 @@ export function EditItemPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: uoms = [] } = useUoms(orgId!);
+  const { data: customFields = [] } = useActiveCustomFields(orgId!, 'item');
 
   const [formData, setFormData] = useState<ItemFormData>({
     name: '',
@@ -302,7 +304,7 @@ export function EditItemPage() {
                   gap: '12px',
                 }}
               >
-                <label style={{ fontSize: 12, color: '#dc2626', fontWeight: 500 }}>Name*</label>
+                <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Name*</label>
                 <div>
                   <input
                     name="name"
@@ -552,10 +554,10 @@ export function EditItemPage() {
                       ↑
                     </div>
                     <div style={{ fontWeight: 500, fontSize: 12, color: '#1e293b', textAlign: 'center', wordBreak: 'break-all' }}>
-                      {frontImageFile 
-                        ? frontImageFile.name 
-                        : (formData.frontImage 
-                            ? ((formData.frontImage as ItemImageAttachment).name || 'Existing Front Image') 
+                      {frontImageFile
+                        ? frontImageFile.name
+                        : (formData.frontImage
+                            ? ((formData.frontImage as ItemImageAttachment).name || 'Existing Front Image')
                             : 'Upload Front Image')}
                     </div>
                   </button>
@@ -602,10 +604,10 @@ export function EditItemPage() {
                       ↑
                     </div>
                     <div style={{ fontWeight: 500, fontSize: 12, color: '#1e293b', textAlign: 'center', wordBreak: 'break-all' }}>
-                      {rearImageFile 
-                        ? rearImageFile.name 
-                        : (formData.rearImage 
-                            ? ((formData.rearImage as ItemImageAttachment).name || 'Existing Rear Image') 
+                      {rearImageFile
+                        ? rearImageFile.name
+                        : (formData.rearImage
+                            ? ((formData.rearImage as ItemImageAttachment).name || 'Existing Rear Image')
                             : 'Upload Rear Image')}
                     </div>
                   </button>
@@ -660,8 +662,8 @@ export function EditItemPage() {
                   >
                     {otherImageFiles.length > 0
                       ? `${otherImageFiles.length} new files selected`
-                      : (formData.images && formData.images.length > 0 
-                          ? `${formData.images.length} existing image(s)` 
+                      : (formData.images && formData.images.length > 0
+                          ? `${formData.images.length} existing image(s)`
                           : 'Drag & Drop Images (Max 3)')}
                   </div>
                   <div
@@ -704,7 +706,7 @@ export function EditItemPage() {
                 {formData.isSalesInfo && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#dc2626', fontWeight: 500 }}>Selling Price*</label>
+                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Selling Price*</label>
                       <input
                         type="number"
                         step="0.01"
@@ -760,7 +762,7 @@ export function EditItemPage() {
                 {formData.isPurchaseInfo && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#dc2626', fontWeight: 500 }}>Cost Price*</label>
+                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Cost Price*</label>
                       <input
                         type="number"
                         step="0.01"
@@ -954,7 +956,7 @@ export function EditItemPage() {
                   color: '#1e293b',
                 }}
               >
-                Custom Fields
+                Custom Fields{customFields.some((f) => f.isRequired) && <span style={{ color: '#ef4444' }}>*</span>}
               </h3>
               <CustomFieldsSection
                 orgId={orgId}

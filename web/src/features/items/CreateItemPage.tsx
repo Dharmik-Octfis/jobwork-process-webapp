@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
@@ -12,6 +13,7 @@ import { useUoms } from '../inventory/uom/uom.api.ts';
 
 export function CreateItemPage() {
   const { orgId } = useParams<{ orgId: string }>();
+  const { data: customFields = [] } = useActiveCustomFields(orgId!, 'item');
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -294,7 +296,7 @@ export function CreateItemPage() {
                   gap: '12px',
                 }}
               >
-                <label style={{ fontSize: 12, color: '#dc2626', fontWeight: 500 }}>Name*</label>
+                <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Name*</label>
                 <div>
                   <input
                     name="name"
@@ -697,7 +699,7 @@ export function CreateItemPage() {
                 {formData.isSalesInfo && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#dc2626', fontWeight: 500 }}>Selling Price*</label>
+                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Selling Price*</label>
                       <input
                         type="number"
                         step="0.01"
@@ -753,7 +755,7 @@ export function CreateItemPage() {
                 {formData.isPurchaseInfo && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#dc2626', fontWeight: 500 }}>Cost Price*</label>
+                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Cost Price*</label>
                       <input
                         type="number"
                         step="0.01"
@@ -947,7 +949,7 @@ export function CreateItemPage() {
                   color: '#1e293b',
                 }}
               >
-                Custom Fields
+                Custom Fields{customFields.some((f) => f.isRequired) && <span style={{ color: '#ef4444' }}>*</span>}
               </h3>
               <CustomFieldsSection
                 orgId={orgId}

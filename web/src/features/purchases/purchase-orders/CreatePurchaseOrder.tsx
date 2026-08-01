@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useForm, useFieldArray, useWatch } from 'react-hook-form';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AxiosError } from 'axios';
-import { Plus, Trash2, Info, Pencil, Settings, Mail, Phone, PlusCircle, Check, Image, Upload, ChevronDown, FileText, X } from 'lucide-react';
+import { Plus, Trash2, Pencil, Settings, Mail, Phone, PlusCircle, Check, Image, Upload, ChevronDown, FileText, X } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchPaymentTerms } from './payment-terms.api';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
@@ -411,8 +411,7 @@ export function CreatePurchaseOrder() {
     gap: '6px',
     color: '#111',
   };
-  const labelRequiredStyle = { ...labelStyle, color: '#e54d4d' };
-  const inputStyle = {
+    const inputStyle = {
     width: '100%',
     maxWidth: '440px',
     padding: '8px 12px',
@@ -477,9 +476,8 @@ export function CreatePurchaseOrder() {
               fontSize: '13px',
             }}
           >
-          <label style={labelRequiredStyle}>
-            Vendor Name* <Info size={14} color="#888" />
-          </label>
+          <label style={{ ...labelStyle, color: '#ef4444' }}>
+            Vendor Name*</label>
           <SearchableSelect
             options={vendors.map((v) => ({ label: v.contactName, value: v.id }))}
             value={watch('vendor_id') || undefined}
@@ -588,9 +586,7 @@ export function CreatePurchaseOrder() {
             style={searchableSelectStyle}
           />
 
-          <label style={{ ...labelRequiredStyle, alignSelf: 'flex-start' }}>
-            Delivery Address*
-          </label>
+          <label style={{ ...labelStyle, alignSelf: 'flex-start', color: '#ef4444' }}>Delivery Address*</label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <div style={{ display: 'flex', gap: '16px', alignItems: 'center', minHeight: '20px' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0, lineHeight: 1 }}>
@@ -803,7 +799,7 @@ export function CreatePurchaseOrder() {
             )}
           </div>
 
-          <label style={labelRequiredStyle}>Purchase Order#*</label>
+          <label style={{ ...labelStyle, color: '#ef4444' }}>Purchase Order#*</label>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', maxWidth: '440px' }}>
               <input
@@ -833,7 +829,7 @@ export function CreatePurchaseOrder() {
             )}
           </div>
 
-          <label style={labelRequiredStyle}>Date*</label>
+          <label style={{ ...labelStyle, color: '#ef4444' }}>Date*</label>
           <div style={{ position: 'relative', width: '100%', maxWidth: '440px' }}>
             <input
               type="date"
