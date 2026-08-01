@@ -277,8 +277,14 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
         mobile: selectedContactPerson.mobile,
       };
 
+      const hasCurrentPrimary = currentPrimary.firstName || currentPrimary.lastName;
       const updatedContactPersons = [...vendor.contactPersons!];
-      updatedContactPersons[index] = currentPrimary;
+      
+      if (hasCurrentPrimary) {
+        updatedContactPersons[index] = currentPrimary;
+      } else {
+        updatedContactPersons.splice(index, 1);
+      }
 
       const dataToUpdate = { ...rest, ...newPrimary, contactPersons: updatedContactPersons };
       return updateVendor({ orgId: orgId!, id: vendorId, data: dataToUpdate as UpdateVendorData });

@@ -58,6 +58,30 @@ model UnitOfMeasurement {
   @@map("units_of_measurement")
 }
 
+model ItemCategory {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  parentId       String?  @map("parent_id") @db.Uuid
+  description    String?
+  isActive       Boolean  @default(true) @map("is_active")
+  isDeleted      Boolean  @default(false) @map("is_deleted")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by") @db.Uuid
+  updatedBy      String?  @map("updated_by") @db.Uuid
+
+  parent   ItemCategory?  @relation("CategoryToCategory", fields: [parentId], references: [id])
+  children ItemCategory[] @relation("CategoryToCategory")
+
+  createdByUser User?        @relation("CategoryCreatedBy", fields: [createdBy], references: [id])
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedByUser User?        @relation("CategoryUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@unique([organizationId, name, parentId])
+  @@map("item_categories")
+}
+
 model ItemActivity {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   itemId        String   @map("item_id") @db.Uuid

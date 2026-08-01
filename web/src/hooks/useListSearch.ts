@@ -10,10 +10,10 @@ import { DEFAULT_PER_PAGE, PER_PAGE_OPTIONS } from '../lib/pagination';
  * bookmarkable, shareable, and they survive a refresh. The page cursor resets
  * whenever any of them changes, since each produces a different result set.
  */
-export function useListSearch() {
+export function useListSearch(defaultFilter = 'all') {
   const [searchParams, setSearchParams] = useSearchParams();
   const search = searchParams.get('search') ?? '';
-  const filter = searchParams.get('filter') ?? 'all';
+  const filter = searchParams.get('filter') ?? defaultFilter;
 
   // Only honour a page size we actually offer — a hand-edited `?perPage=9999`
   // falls back to the default rather than being sent to the server.
@@ -47,8 +47,8 @@ export function useListSearch() {
     );
   };
 
-  /** Switch preset view. `all` is the default, so it is dropped from the URL. */
-  const setFilter = (next: string) => setParam('filter', next && next !== 'all' ? next : null);
+  /** Switch preset view. `defaultFilter` is dropped from the URL. */
+  const setFilter = (next: string) => setParam('filter', next && next !== defaultFilter ? next : null);
 
   /** Change page size. The default is dropped from the URL. */
   const setPerPage = (next: number) =>

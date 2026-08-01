@@ -84,7 +84,10 @@ const MODULE_GROUPS: readonly {
   {
     key: 'inventory',
     label: 'Item',
-    resources: [{ resource: 'item', label: 'Items' }],
+    resources: [
+      { resource: 'item', label: 'Items' },
+      { resource: 'item_category', label: 'Item Categories' }
+    ],
   },
   {
     key: 'purchases',

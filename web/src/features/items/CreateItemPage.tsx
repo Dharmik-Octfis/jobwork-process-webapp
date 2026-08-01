@@ -4,12 +4,15 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import { Select } from '../../components/ui/Select';
+import { CategorySelectDropdown } from './components/CategorySelectDropdown';
 import { itemsApi } from './items.api.ts';
 import type { ItemFormData, Item, ItemImageAttachment } from './items.schemas.ts';
 import { itemFormSchema } from './items.schemas.ts';
 import { z } from 'zod';
 import { CustomFieldsSection } from '../custom-fields/CustomFieldsSection.tsx';
 import { useUoms } from '../inventory/uom/uom.api.ts';
+import { UomFormModal } from '../inventory/uom/UomFormModal.tsx';
+import { Plus } from 'lucide-react';
 
 export function CreateItemPage() {
   const { orgId } = useParams<{ orgId: string }>();
@@ -19,6 +22,7 @@ export function CreateItemPage() {
   const queryClient = useQueryClient();
   
   const { data: uoms = [] } = useUoms(orgId!);
+  const [isUomModalOpen, setIsUomModalOpen] = useState(false);
 
   const itemToClone = (location.state as { itemToClone?: Partial<Item> & Record<string, unknown> })?.itemToClone;
 
@@ -392,21 +396,11 @@ export function CreateItemPage() {
                 }}
               >
                 <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Category</label>
-                <div style={{ maxWidth: '400px' }}>
-                  <Select
-                    value={formData.category || ''}
+                  <CategorySelectDropdown
+                    value={formData.category || null}
                     onChange={(val) => handleSelectChange('category', val)}
-                    options={[
-                      { value: '', label: 'Select a category' },
-                      { value: 'Electronics', label: 'Electronics' },
-                      { value: 'Furniture', label: 'Furniture' },
-                      { value: 'Foot wear', label: 'Foot wear' },
-                      ...(formData.category && !['Electronics', 'Furniture', 'Foot wear'].includes(formData.category)
-                        ? [{ value: formData.category, label: formData.category }]
-                        : []),
-                    ]}
+                    error={!!errors.category}
                   />
-                </div>
               </div>
 
               <div
@@ -455,6 +449,31 @@ export function CreateItemPage() {
                             : []),
                         ]}
                         buttonStyle={{ border: 'none' }}
+                        actionItem={
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setIsUomModalOpen(true);
+                            }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              width: '100%',
+                              padding: '8px 12px',
+                              color: '#0062ff',
+                              background: 'transparent',
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontSize: 13,
+                              textAlign: 'left',
+                            }}
+                          >
+                            <Plus size={14} /> New Unit Group
+                          </button>
+                        }
                       />
                     </div>
                   </div>
@@ -799,7 +818,6 @@ export function CreateItemPage() {
             </div>
           </div>
 
-
           {/* Inventory Tracking */}
           <div
             style={{
@@ -1017,6 +1035,11 @@ export function CreateItemPage() {
           </div>
         </form>
       </div>
+      <UomFormModal
+        orgId={orgId!}
+        isOpen={isUomModalOpen}
+        onClose={() => setIsUomModalOpen(false)}
+      />
     </div>
   );
 }

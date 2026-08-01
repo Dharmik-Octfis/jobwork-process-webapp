@@ -39,6 +39,7 @@ export function Select({
   ariaLabel,
   containerStyle,
   buttonStyle,
+  actionItem,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -52,6 +53,7 @@ export function Select({
   ariaLabel?: string;
   containerStyle?: React.CSSProperties;
   buttonStyle?: React.CSSProperties;
+  actionItem?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -127,52 +129,61 @@ export function Select({
             zIndex: 70,
             overflow: 'hidden auto',
             maxHeight: 260,
+            display: 'flex',
+            flexDirection: 'column',
           }}
         >
-          {options.length === 0 ? (
-            <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--color-text-subtle)' }}>
-              No options
+          <div style={{ overflow: 'hidden auto' }}>
+            {options.length === 0 ? (
+              <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--color-text-subtle)' }}>
+                No options
+              </div>
+            ) : (
+              options.map((opt) => {
+                const isSelected = opt.value === value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    onClick={() => {
+                      onChange(opt.value);
+                      setOpen(false);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 10,
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '8px 12px',
+                      border: 'none',
+                      background: isSelected ? 'var(--color-primary-soft)' : 'transparent',
+                      fontFamily: 'var(--font-sans)',
+                      fontSize: 13,
+                      color: 'var(--color-text)',
+                      cursor: 'pointer',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isSelected) e.currentTarget.style.background = 'var(--color-surface-2)';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSelected) e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    {opt.label}
+                    {isSelected && <Check size={14} color="var(--color-primary)" />}
+                  </button>
+                );
+              })
+            )}
+          </div>
+          {actionItem && (
+            <div style={{ borderTop: '1px solid var(--color-border)', padding: '4px' }} onClick={() => setOpen(false)}>
+              {actionItem}
             </div>
-          ) : (
-            options.map((opt) => {
-              const isSelected = opt.value === value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  role="option"
-                  aria-selected={isSelected}
-                  onClick={() => {
-                    onChange(opt.value);
-                    setOpen(false);
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 10,
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '8px 12px',
-                    border: 'none',
-                    background: isSelected ? 'var(--color-primary-soft)' : 'transparent',
-                    fontFamily: 'var(--font-sans)',
-                    fontSize: 13,
-                    color: 'var(--color-text)',
-                    cursor: 'pointer',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isSelected) e.currentTarget.style.background = 'var(--color-surface-2)';
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isSelected) e.currentTarget.style.background = 'transparent';
-                  }}
-                >
-                  {opt.label}
-                  {isSelected && <Check size={14} color="var(--color-primary)" />}
-                </button>
-              );
-            })
           )}
         </div>
       )}

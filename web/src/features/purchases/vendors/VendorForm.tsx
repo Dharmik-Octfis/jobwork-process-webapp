@@ -14,15 +14,22 @@ import { usePaymentTerms } from '../../sales/customers/payment-terms.api';
 import { PaymentTermModal } from '../../sales/customers/PaymentTermModal';
 import { PaymentTermDropdown } from '../../sales/customers/PaymentTermDropdown';
 import { CurrencyDropdown } from '../../sales/customers/CurrencyDropdown';
+import { CurrencyFormModal } from '../../configuration/currencies/CurrencyFormModal';
 import { Select } from '../../../components/ui/Select';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import { PhoneInput } from '../../../components/ui/PhoneInput';
+import { ComboBox } from '../../../components/ui/ComboBox';
 import { organizationsApi } from '../../organizations/organizations.api';
 import './vendor-form.css';
 
 type MasterData = {
   industries: { id: string; code: string; name: string }[];
-  states: { code: string; name: string; countryCode: string; cities: { id: string; name: string }[] }[];
+  states: {
+    code: string;
+    name: string;
+    countryCode: string;
+    cities: { id: string; name: string }[];
+  }[];
   countries: { id: string; name: string; code: string; isoCode: string; dialCode: string }[];
 };
 
@@ -47,6 +54,8 @@ export function VendorForm({
   const [activeTab, setActiveTab] = useState('other');
   const [isNumberConfigOpen, setIsNumberConfigOpen] = useState(false);
   const [masterData, setMasterData] = useState<MasterData | null>(null);
+  const [isDisplayNameManuallyEdited, setIsDisplayNameManuallyEdited] = useState(false);
+  const [hasCompanyNameBlurred, setHasCompanyNameBlurred] = useState(false);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -85,6 +94,7 @@ export function VendorForm({
   const { data: currencies } = useCurrencies(orgId!);
   const { data: paymentTerms } = usePaymentTerms(orgId!);
   const [isPaymentTermModalOpen, setIsPaymentTermModalOpen] = useState(false);
+  const [isCurrencyModalOpen, setIsCurrencyModalOpen] = useState(false);
 
   const [lastPrefilledNumber, setLastPrefilledNumber] = useState('');
 
@@ -100,6 +110,58 @@ export function VendorForm({
       }
     }
   }, [preference, isEdit, setValue, watch, lastPrefilledNumber]);
+
+  const companyName = watch('companyName');
+  const primaryContactFirstName = watch('primaryContactFirstName');
+  const primaryContactLastName = watch('primaryContactLastName');
+  const contactNameValue = watch('contactName');
+  const [displayNameOptions, setDisplayNameOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    const options = Array.from(
+      new Set(
+        [
+          contactNameValue,
+          companyName,
+          [primaryContactFirstName, primaryContactLastName].filter(Boolean).join(' '),
+          [primaryContactLastName, primaryContactFirstName].filter(Boolean).join(', '),
+          companyName && primaryContactFirstName
+            ? `${companyName} - ${primaryContactFirstName} ${primaryContactLastName}`.trim()
+            : '',
+        ].filter(Boolean),
+      ),
+    );
+    setDisplayNameOptions(options);
+  }, [companyName, primaryContactFirstName, primaryContactLastName, contactNameValue]);
+
+  // Auto-fill Display Name if it hasn't been manually edited by the user
+  useEffect(() => {
+    if (!companyName && !contactNameValue) {
+      setHasCompanyNameBlurred(false);
+      setIsDisplayNameManuallyEdited(false);
+    }
+  }, [companyName, contactNameValue]);
+
+  useEffect(() => {
+    if (
+      !hasCompanyNameBlurred &&
+      !isDisplayNameManuallyEdited &&
+      !isEdit &&
+      displayNameOptions.length > 0
+    ) {
+      const defaultName = companyName || displayNameOptions[0];
+      if (defaultName) {
+        setValue('contactName', defaultName, { shouldValidate: true });
+      }
+    }
+  }, [
+    companyName,
+    displayNameOptions,
+    hasCompanyNameBlurred,
+    isDisplayNameManuallyEdited,
+    isEdit,
+    setValue,
+  ]);
 
   const updatePreferenceMutation = useMutation({
     mutationFn: (data: { prefix: string; nextNumber: number }) =>
@@ -133,21 +195,29 @@ export function VendorForm({
 
   const billingCountry = watch('billingCountry');
   const billingCountryCode = masterData?.countries.find((c) => c.name === billingCountry)?.code;
-  const billingStateOptions = masterData?.states
-    .filter((s) => !billingCountryCode || s.countryCode === billingCountryCode)
-    .map((s) => ({ label: s.name, value: s.name })) || [];
+  const billingStateOptions =
+    masterData?.states
+      .filter((s) => !billingCountryCode || s.countryCode === billingCountryCode)
+      .map((s) => ({ label: s.name, value: s.name })) || [];
   const billingStateName = watch('billingState');
-  const billingStateObj = masterData?.states.find((s) => s.name === billingStateName && s.countryCode === billingCountryCode);
-  const billingCityOptions = billingStateObj?.cities.map((c) => ({ label: c.name, value: c.name })) || [];
+  const billingStateObj = masterData?.states.find(
+    (s) => s.name === billingStateName && s.countryCode === billingCountryCode,
+  );
+  const billingCityOptions =
+    billingStateObj?.cities.map((c) => ({ label: c.name, value: c.name })) || [];
 
   const shippingCountry = watch('shippingCountry');
   const shippingCountryCode = masterData?.countries.find((c) => c.name === shippingCountry)?.code;
-  const shippingStateOptions = masterData?.states
-    .filter((s) => !shippingCountryCode || s.countryCode === shippingCountryCode)
-    .map((s) => ({ label: s.name, value: s.name })) || [];
+  const shippingStateOptions =
+    masterData?.states
+      .filter((s) => !shippingCountryCode || s.countryCode === shippingCountryCode)
+      .map((s) => ({ label: s.name, value: s.name })) || [];
   const shippingStateName = watch('shippingState');
-  const shippingStateObj = masterData?.states.find((s) => s.name === shippingStateName && s.countryCode === shippingCountryCode);
-  const shippingCityOptions = shippingStateObj?.cities.map((c) => ({ label: c.name, value: c.name })) || [];
+  const shippingStateObj = masterData?.states.find(
+    (s) => s.name === shippingStateName && s.countryCode === shippingCountryCode,
+  );
+  const shippingCityOptions =
+    shippingStateObj?.cities.map((c) => ({ label: c.name, value: c.name })) || [];
 
   const labelStyle = {
     paddingTop: '0',
@@ -156,7 +226,7 @@ export function VendorForm({
     gap: '6px',
     color: '#111',
   };
-    const inputStyle = {
+  const inputStyle = {
     width: '100%',
     maxWidth: '440px',
     padding: '6px 8px',
@@ -165,7 +235,7 @@ export function VendorForm({
     borderRadius: '4px',
   };
 
-   const tabBtnStyle = (isActive: boolean) => ({
+  const tabBtnStyle = (isActive: boolean) => ({
     padding: '12px 0',
     border: 'none',
     background: 'none',
@@ -196,7 +266,15 @@ export function VendorForm({
         </h1>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} style={{ padding: '32px' }}>
+      <form onSubmit={handleSubmit((data) => {
+        const cleanedData = {
+          ...data,
+          contactPersons: data.contactPersons?.filter(cp =>
+            cp.firstName?.trim() || cp.lastName?.trim() || cp.email?.trim() || cp.phone?.trim() || cp.mobile?.trim()
+          )
+        };
+        onSubmit(cleanedData);
+      })} style={{ padding: '32px' }}>
         {/* Main Details Section */}
         <div
           style={{
@@ -209,9 +287,7 @@ export function VendorForm({
             fontSize: '13px',
           }}
         >
-          <label style={labelStyle}>
-            Primary Contact 
-          </label>
+          <label style={labelStyle}>Primary Contact</label>
           <div style={{ display: 'flex', gap: '12px', maxWidth: '440px' }}>
             <Controller
               control={control}
@@ -246,15 +322,29 @@ export function VendorForm({
           </div>
 
           <label style={labelStyle}>Company Name</label>
-          <input {...register('companyName')} style={inputStyle} />
+          <input
+            {...register('companyName', { onBlur: () => setHasCompanyNameBlurred(true) })}
+            style={inputStyle}
+          />
 
-          <label style={{ ...labelStyle, color: '#ef4444' }}>
-            Display Name*</label>
+          <label style={{ ...labelStyle, color: '#ef4444' }}>Display Name*</label>
           <div>
-            <input
-              {...register('contactName')}
-              placeholder="Type to add"
-              style={inputStyle}
+            <Controller
+              control={control}
+              name="contactName"
+              render={({ field }) => (
+                <ComboBox
+                  value={field.value || ''}
+                  onChange={(val) => {
+                    field.onChange(val);
+                    setIsDisplayNameManuallyEdited(true);
+                  }}
+                  options={displayNameOptions}
+                  placeholder=" Select or Type to add"
+                  hasError={!!errors.contactName}
+                  style={{ maxWidth: '440px' }}
+                />
+              )}
             />
             {errors.contactName && (
               <div style={{ color: 'red', fontSize: '12px', marginTop: '4px' }}>
@@ -263,9 +353,7 @@ export function VendorForm({
             )}
           </div>
 
-          <label style={labelStyle}>
-            Email Address 
-          </label>
+          <label style={labelStyle}>Email Address</label>
           <div style={{ position: 'relative', maxWidth: '440px' }}>
             <span
               style={{
@@ -311,9 +399,7 @@ export function VendorForm({
             )}
           </div>
 
-          <label style={labelStyle}>
-            Phone 
-          </label>
+          <label style={labelStyle}>Phone</label>
           <div style={{ display: 'flex', gap: '16px', maxWidth: '440px' }}>
             <div style={{ flex: 1 }}>
               <Controller
@@ -379,7 +465,8 @@ export function VendorForm({
             onClick={() => setActiveTab('custom')}
             style={tabBtnStyle(activeTab === 'custom')}
           >
-            Custom Fields{customFields.some((f: any) => f.isRequired) && <span style={{ color: '#ef4444' }}>*</span>}
+            Custom Fields
+            {customFields.some((f) => f.isRequired) && <span style={{ color: '#ef4444' }}>*</span>}
           </button>
           <button
             type="button"
@@ -407,15 +494,20 @@ export function VendorForm({
               <label style={labelStyle}>Currency</label>
               <CurrencyDropdown
                 value={watch('currency') || ''}
-                onChange={(val) => setValue('currency', val, { shouldValidate: true, shouldDirty: true })}
+                onChange={(val) =>
+                  setValue('currency', val, { shouldValidate: true, shouldDirty: true })
+                }
                 currencies={currencies || []}
+                onAddNew={() => setIsCurrencyModalOpen(true)}
                 style={{ maxWidth: '440px' }}
               />
 
               <label style={labelStyle}>Payment Terms</label>
               <PaymentTermDropdown
                 value={watch('paymentTerms') || ''}
-                onChange={(val) => setValue('paymentTerms', val, { shouldValidate: true, shouldDirty: true })}
+                onChange={(val) =>
+                  setValue('paymentTerms', val, { shouldValidate: true, shouldDirty: true })
+                }
                 paymentTerms={paymentTerms || []}
                 onAddNew={() => setIsPaymentTermModalOpen(true)}
                 style={{ maxWidth: '440px' }}
@@ -472,7 +564,9 @@ export function VendorForm({
                           setValue('billingState', ''); // Reset state on country change
                           setValue('billingCity', ''); // Reset city on country change
                         }}
-                        options={masterData?.countries.map((c) => ({ label: c.name, value: c.name })) || []}
+                        options={
+                          masterData?.countries.map((c) => ({ label: c.name, value: c.name })) || []
+                        }
                         placeholder="Select Country"
                         disabled={!masterData}
                       />
@@ -607,7 +701,9 @@ export function VendorForm({
                           setValue('shippingState', ''); // Reset state on country change
                           setValue('shippingCity', ''); // Reset city on country change
                         }}
-                        options={masterData?.countries.map((c) => ({ label: c.name, value: c.name })) || []}
+                        options={
+                          masterData?.countries.map((c) => ({ label: c.name, value: c.name })) || []
+                        }
                         placeholder="Select Country"
                         disabled={!masterData}
                       />
@@ -920,6 +1016,11 @@ export function VendorForm({
           setIsPaymentTermModalOpen(false);
           setValue('paymentTerms', newTerm.termName);
         }}
+      />
+      <CurrencyFormModal
+        isOpen={isCurrencyModalOpen}
+        onClose={() => setIsCurrencyModalOpen(false)}
+        orgId={orgId!}
       />
     </div>
   );

@@ -23,6 +23,7 @@ import { rolesRouter } from '../modules/settings/organization/roles/roles.routes
 import { permissionTemplatesRouter } from '../modules/settings/organization/permission-templates/permission-templates.routes.ts';
 import { membersRouter } from '../modules/settings/organization/members/members.routes.ts';
 import { itemsRouter } from '../modules/items/items.routes.ts';
+import { itemCategoriesRouter } from '../modules/settings/inventory/item-categories/item-categories.routes.ts';
 import { listViewsRouter } from '../modules/settings/list-views/listViews.routes.ts';
 import { storageRouter } from '../modules/storage/storage.routes.ts';
 import { diagnosticsRouter } from '../modules/diagnostics/diagnostics.routes.ts';
@@ -57,6 +58,7 @@ apiRouter.use('/organizations/:orgId/purchases/vendors', vendorsRouter);
 apiRouter.use('/organizations/:orgId/purchases/purchase-orders', purchaseOrdersRouter);
 apiRouter.use('/organizations/:orgId/sales/customers', customersRouter);
 apiRouter.use('/organizations/:orgId/inventory/uom', uomRouter);
+apiRouter.use('/organizations/:orgId/inventory/item-categories', itemCategoriesRouter);
 apiRouter.use('/organizations/:orgId/configuration/currencies', currenciesRouter);
 apiRouter.use('/organizations/:orgId/configuration/payment-terms', paymentTermsRouter);
 apiRouter.use('/organizations/:orgId/configuration/locations', locationsRouter);

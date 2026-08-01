@@ -7,10 +7,12 @@ import type { ItemFormData, ItemImageAttachment } from './items.schemas.ts';
 import { itemFormSchema } from './items.schemas.ts';
 import { z } from 'zod';
 import { Select } from '../../components/ui/Select.tsx';
+import { CategorySelectDropdown } from './components/CategorySelectDropdown.tsx';
 import { CustomFieldsSection } from '../custom-fields/CustomFieldsSection.tsx';
 import { useUoms } from '../inventory/uom/uom.api.ts';
 import { useActiveCustomFields } from '../custom-fields/customFields.api.ts';
-
+import { UomFormModal } from '../inventory/uom/UomFormModal.tsx';
+import { Plus } from 'lucide-react';
 
 export function EditItemPage() {
   const { id, orgId } = useParams<{ id: string; orgId: string }>();
@@ -18,6 +20,7 @@ export function EditItemPage() {
   const queryClient = useQueryClient();
   const { data: uoms = [] } = useUoms(orgId!);
   const { data: customFields = [] } = useActiveCustomFields(orgId!, 'item');
+  const [isUomModalOpen, setIsUomModalOpen] = useState(false);
 
   const [formData, setFormData] = useState<ItemFormData>({
     name: '',
@@ -400,21 +403,11 @@ export function EditItemPage() {
                 }}
               >
                 <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Category</label>
-                <div style={{ maxWidth: '400px' }}>
-                  <Select
-                    value={formData.category || ''}
+                  <CategorySelectDropdown
+                    value={formData.category || null}
                     onChange={(val) => handleSelectChange('category', val)}
-                    options={[
-                      { value: '', label: 'Select a category' },
-                      { value: 'Electronics', label: 'Electronics' },
-                      { value: 'Furniture', label: 'Furniture' },
-                      { value: 'Foot wear', label: 'Foot wear' },
-                      ...(formData.category && !['Electronics', 'Furniture', 'Foot wear'].includes(formData.category)
-                        ? [{ value: formData.category, label: formData.category }]
-                        : []),
-                    ]}
+                    error={!!errors.category}
                   />
-                </div>
               </div>
 
               <div
@@ -463,6 +456,31 @@ export function EditItemPage() {
                             : []),
                         ]}
                         buttonStyle={{ border: 'none' }}
+                        actionItem={
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setIsUomModalOpen(true);
+                            }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              width: '100%',
+                              padding: '8px 12px',
+                              color: '#0062ff',
+                              background: 'transparent',
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontSize: 13,
+                              textAlign: 'left',
+                            }}
+                          >
+                            <Plus size={14} /> New Unit Group
+                          </button>
+                        }
                       />
                     </div>
                   </div>
@@ -1023,6 +1041,11 @@ export function EditItemPage() {
           </div>
         </form>
       </div>
+      <UomFormModal
+        orgId={orgId!}
+        isOpen={isUomModalOpen}
+        onClose={() => setIsUomModalOpen(false)}
+      />
     </div>
   );
 }

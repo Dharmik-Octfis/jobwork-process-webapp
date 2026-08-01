@@ -216,9 +216,7 @@ export function UomFormModal({ orgId, isOpen, onClose, uomToEdit }: UomFormModal
               </div>
             )}
 
-            <form
-              id="uom-form"
-              onSubmit={handleSubmit(onSubmit)}
+            <div
               style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -308,8 +306,7 @@ export function UomFormModal({ orgId, isOpen, onClose, uomToEdit }: UomFormModal
                   </span>
                 )}
               </div>
-
-            </form>
+            </div>
           </div>
 
           {/* Footer */}
@@ -341,8 +338,8 @@ export function UomFormModal({ orgId, isOpen, onClose, uomToEdit }: UomFormModal
               Cancel
             </button>
             <button
-              form="uom-form"
-              type="submit"
+              type="button"
+              onClick={handleSubmit(onSubmit)}
               disabled={isSubmitting}
               style={{
                 padding: '8px 16px',

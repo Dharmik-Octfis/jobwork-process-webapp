@@ -106,6 +106,8 @@ model User {
   updatedVendorContactPersons   VendorContactPerson[]   @relation("VendorContactPersonUpdatedBy")
   createdVendors                Vendor[]                @relation("VendorCreatedBy")
   updatedVendors                Vendor[]                @relation("VendorUpdatedBy")
+  createdItemCategories         ItemCategory[]          @relation("CategoryCreatedBy")
+  updatedItemCategories         ItemCategory[]          @relation("CategoryUpdatedBy")
 
   @@map("users")
 }
@@ -220,6 +222,7 @@ model Organization {
   roles                  Role[]
   unitsOfMeasurement     UnitOfMeasurement[]
   vendors                Vendor[]
+  itemCategories         ItemCategory[]
 
   @@map("organizations")
 }

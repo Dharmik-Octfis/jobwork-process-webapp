@@ -53,7 +53,7 @@ export function VendorsList() {
 
   // Search term (from the global top-bar box, via `?search=`) + page cursor, both
   // from the shared hook so every list wires this the same way.
-  const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch();
+  const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch('active');
 
   const { data, isLoading } = useQuery({
     // orgId in the key or an org switch serves the previous tenant's cache;

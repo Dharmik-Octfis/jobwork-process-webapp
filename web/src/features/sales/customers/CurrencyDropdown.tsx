@@ -13,9 +13,10 @@ interface CurrencyDropdownProps {
   onChange: (value: string) => void;
   currencies?: Currency[];
   style?: React.CSSProperties;
+  onAddNew?: () => void;
 }
 
-export function CurrencyDropdown({ value, onChange, currencies = [], style }: CurrencyDropdownProps) {
+export function CurrencyDropdown({ value, onChange, currencies = [], style, onAddNew }: CurrencyDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -148,6 +149,56 @@ export function CurrencyDropdown({ value, onChange, currencies = [], style }: Cu
               </div>
             )}
           </div>
+          {onAddNew && (
+            <div
+              style={{
+                borderTop: '1px solid #e5e7eb',
+                padding: '4px',
+              }}
+              onClick={() => {
+                setIsOpen(false);
+              }}
+            >
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsOpen(false);
+                  onAddNew();
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  width: '100%',
+                  padding: '8px 12px',
+                  color: '#0062ff',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  textAlign: 'left',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: '#0062ff',
+                    color: '#fff',
+                    borderRadius: '50%',
+                    width: '16px',
+                    height: '16px',
+                  }}
+                >
+                  <span style={{ fontSize: '14px', lineHeight: '16px' }}>+</span>
+                </div>
+                New Currency
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

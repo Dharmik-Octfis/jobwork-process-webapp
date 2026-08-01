@@ -41,7 +41,7 @@ export function CustomersList() {
   const selectedCustomerId = searchParams.get('id');
 
   // Search term (from the global top-bar box, via `?search=`) + page cursor.
-  const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch();
+  const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch('active');
 
   const { data, isLoading } = useQuery({
     queryKey: ['customers', orgId, search, filter, page, perPage],
