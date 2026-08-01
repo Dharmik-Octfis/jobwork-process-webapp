@@ -70,9 +70,47 @@
 ## 10. Accessibility (build in, don't bolt on)
 
 - Touch targets **≥48×48px**.
-- Full keyboard navigation with visible focus states.
+- Full keyboard navigation with visible focus states — see _Tab navigation_ below.
 - Screen-reader labels (ARIA) on all controls.
 - Sufficient contrast; support text scaling and light/dark themes.
+
+### 10.1 Tab navigation — mandatory, and it has to be perfect
+
+**A control that Tab cannot reach is broken, no matter how it looks.** This is not a
+nice-to-have or a later pass: data-entry users work these forms all day and many of them never
+touch the mouse. A screen is not finished until you have completed it start to end using only
+the keyboard.
+
+The rules, in order of how often they're broken:
+
+1. **Use the real element.** `<button>`, `<input>`, `<select>`, `<textarea>`, `<a href>` are
+   focusable for free. A `<div onClick>` is invisible to Tab — the user lands on the field above,
+   presses Tab, and arrives at the field below, with no way to know a control was skipped.
+   If a div genuinely must stay, it needs `tabIndex={0}`, `role`, **and** Enter/Space handlers —
+   three things the real element gives you for nothing.
+2. **Tab order follows the DOM, not the layout.** In a multi-column grid the two drift apart and
+   focus zig-zags across the form. Read your form aloud in DOM order; if that isn't the order a
+   person would fill it in, reorder the markup.
+3. **Never use a positive `tabIndex`.** `tabIndex={1}` doesn't mean "first" — it lifts that
+   element above the entire document's natural order, and a single one breaks tab order for the
+   whole page. Only `0` (in the natural order) and `-1` (skipped by Tab, focusable from code).
+4. **Dropdowns and comboboxes are keyboard-operable**: Tab to focus, Enter/Space or ↓ to open,
+   ↑↓ to move, Enter to choose, Esc to close and return focus to the trigger, active option
+   scrolled into view.
+5. **Modals own focus.** Focus moves into the dialog on open (first field or primary action),
+   is trapped inside while open, Esc closes, and focus returns to whatever opened it. An
+   untrapped dialog lets Tab wander into the page behind it, which is disorienting and lets
+   users edit things they can't see.
+6. **Focus must be visible.** A focus ring is how a keyboard user knows where they are;
+   `outline: none` with nothing in its place is the same defect as an unreachable control, only
+   harder to notice.
+7. **Enter submits.** Inside a `<form>`, Enter should trigger the primary action — which comes
+   free from `<form onSubmit>` plus a `type="submit"` button, and breaks the moment a submit
+   button is a div.
+
+Skipping this creates work rather than saving it: unreachable controls are found by users, not
+by review, typecheck, or screenshots, and by then the pattern has been copy-pasted into a dozen
+screens.
 
 ## 11. Performance & Perceived Speed
 
@@ -168,7 +206,9 @@ surfaces (green wordmark). Favicon: the OCTFIS mark (`web/public/favicon.gif`).
 - [ ] Does every action give feedback?
 - [ ] Are empty, loading, error, and success states designed?
 - [ ] Can a first-time user figure it out without help?
-- [ ] Keyboard navigable, ≥48px targets, WCAG AA contrast, color-blind safe?
+- [ ] **Completed the whole screen using only the keyboard** — every control reachable by Tab, in a
+      sensible order, focus always visible, Esc closes dialogs? (§10.1 — mandatory)
+- [ ] ≥48px targets, WCAG AA contrast, color-blind safe?
 - [ ] Works on the target device sizes?
 - [ ] Uses Zoho Puvi + the design tokens (`var(--…)`) — no hard-coded fonts or hexes?
 

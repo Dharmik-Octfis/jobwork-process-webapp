@@ -331,6 +331,25 @@ sendSuccess(res, null, 'Vendor deleted.'); // 200, no payload
 - Tenant pages live at `/organizations/:orgId/...` — the org comes from `useParams`, never localStorage.
   Query keys must include `orgId` or switching org serves the previous tenant's cache.
 - No UI library; hand-built controls. See `docs/UI_UX_PRINCIPLES.md`.
+- 🔴 **Tab navigation is mandatory and must be perfect — a control you cannot reach with Tab is not
+  done.** Native elements (`input`, `textarea`, `select`, `button`, `a[href]`) are focusable for free;
+  a `<div onClick>` is **not**. Tab skips straight past it, so the control is unreachable by keyboard
+  and neither `tsc -b` nor a screenshot says a word — it looks perfect and half the users can't use it.
+  Because every form here is assembled from four shared controls, this is fixed **once per component,
+  never per field**:
+  - **Interactive means `<button type="button">`**, not a styled `div` — you get focus, Enter/Space,
+    and `disabled` semantics for free. `components/ui/Select.tsx` is the template: button trigger with
+    `onKeyDown`, real `<button>` options.
+  - **Every custom dropdown/combobox** handles ↑↓ to move, Enter to select, Esc to close, and scrolls
+    the active option into view.
+  - **Every modal** takes focus on open, traps it while open, closes on Esc, and returns focus to the
+    trigger on close. Without the trap, Tab walks out of the dialog and into the page behind it.
+  - **DOM order _is_ tab order.** In a multi-column grid the two silently diverge and focus jumps
+    around the form — nothing detects this, so keyboard-walk each form once. Never "fix" it with a
+    positive `tabIndex`: any value `>0` hoists that element above the entire document order, and one
+    stray `tabIndex={1}` breaks the whole page. Only `0` (reachable) and `-1` (focusable in code only).
+  - **Visible focus ring on everything focusable** — `outline: none` without a replacement is the same
+    bug, just harder to see.
 
 ## Commands
 
