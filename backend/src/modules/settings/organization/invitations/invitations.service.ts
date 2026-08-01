@@ -834,6 +834,6 @@ export async function acceptInvitation(
   // This org just gained a member whose name every audit column will resolve through.
   await invalidateMemberDirectory(invite.organizationId);
 
-  const autoLogin = await issueTokens(await formatPublicUser(newUser));
+  const autoLogin = await issueTokens(await formatPublicUser(newUser), { userAgent });
   return { organization: org, roleName, permissionTemplateName, autoLogin };
 }

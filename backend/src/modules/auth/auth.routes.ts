@@ -13,7 +13,6 @@ import {
 
 import { openApiRegistry } from '../../config/openapi.ts';
 
-
 openApiRegistry.registerPath({
   method: 'post',
   path: '/auth/signup',
@@ -61,18 +60,14 @@ authRouter.post('/login', validateBody(loginSchema), authController.login);
 authRouter.post('/refresh-token', authController.refresh);
 authRouter.post('/logout', authController.logout);
 authRouter.get('/me', authenticate, authController.me);
+authRouter.get('/me/sessions', authenticate, authController.mySessions);
 authRouter.put(
   '/me',
   authenticate,
   validateBody(updateProfileSchema),
   authController.updateProfile,
 );
-authRouter.post(
-  '/me/avatar',
-  authenticate,
-  upload.single('avatar'),
-  authController.uploadAvatar,
-);
+authRouter.post('/me/avatar', authenticate, upload.single('avatar'), authController.uploadAvatar);
 authRouter.delete('/me/avatar', authenticate, authController.deleteAvatar);
 
 authRouter.post(

@@ -42,7 +42,7 @@ async function makeUser(flags: { isActive?: boolean; isDeleted?: boolean } = {})
       lastName: 'Probe',
       fullName: 'Session Probe',
       userAgent: 'unknown',
-...flags,
+      ...flags,
     },
     select: { id: true },
   });
@@ -123,7 +123,11 @@ describe('authenticate — signature only', () => {
     const user = await makeUser();
     const token = signAccessToken(user.id, 'any-session-id');
 
-    await prisma.user.update({ where: { id: user.id }, data: { isActive: false } });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { isActive: false },
+      select: { id: true },
+    });
 
     // `authenticate` lets them through — it never asks the database. `/auth/me`
     // then 401s only because `getUserById` filters on ACTIVE_USER; a route that
@@ -135,7 +139,7 @@ describe('authenticate — signature only', () => {
 });
 
 describe('refresh — the only place an account is re-examined', () => {
-  it('rotates for a healthy account', async () => {
+  it('returns a new access token and the SAME refresh token', async () => {
     const user = await makeUser();
     const refreshToken = await issueRefreshToken(user.id);
 
@@ -143,37 +147,43 @@ describe('refresh — the only place an account is re-examined', () => {
 
     expect(result.accessToken).toBeTruthy();
     expect(result.user.id).toBe(user.id);
+    expect(result.refreshToken, 'the refresh token must NOT rotate').toBe(refreshToken);
   });
 
-  it('refuses a deactivated account and revokes every session', async () => {
+  /**
+   * 🔴 The regression this whole change exists to prevent.
+   *
+   * While tokens rotated, the server destroyed the presented token before the
+   * browser could receive its replacement — so any interrupted response (reload,
+   * dropped wifi, closed lid) left the browser holding a dead token. The next
+   * attempt was read as theft and deleted EVERY session the user had, on every
+   * device. Reproduced against a live server on 2026-07-31.
+   *
+   * Not rotating is what makes the same token work twice. If this test ever goes
+   * red, someone has reintroduced rotation and users are being logged out at
+   * random again.
+   */
+  it('accepts the same token twice — a lost response must not end the session', async () => {
     const user = await makeUser();
     const refreshToken = await issueRefreshToken(user.id);
-    await prisma.user.update({ where: { id: user.id }, data: { isActive: false } });
 
-    await expect(authService.refresh(refreshToken)).rejects.toMatchObject({ status: 403 });
+    const first = await authService.refresh(refreshToken);
+    const second = await authService.refresh(refreshToken);
 
-    const left = await prisma.refreshToken.count({ where: { userId: user.id } });
-    expect(left, 'sessions must be revoked, not left to expire').toBe(0);
+    expect(first.accessToken).toBeTruthy();
+    expect(second.accessToken).toBeTruthy();
+
+    const live = await prisma.refreshToken.count({
+      where: { userId: user.id, revokedAt: null },
+    });
+    expect(live, 'the session must still be live').toBe(1);
   });
 
-  it('refuses a soft-deleted account', async () => {
+  it('does not touch a second device when one session is rejected', async () => {
     const user = await makeUser();
-    const refreshToken = await issueRefreshToken(user.id);
-    // The flag `refresh` did not check before 2026-07-24 — a soft-deleted user
-    // rotated tokens indefinitely.
-    await prisma.user.update({ where: { id: user.id }, data: { isDeleted: true } });
+    const phone = await issueRefreshToken(user.id);
 
-    await expect(authService.refresh(refreshToken)).rejects.toMatchObject({ status: 403 });
-  });
-
-  it('treats a validly signed token that is not in the database as theft', async () => {
-    const user = await makeUser();
-    const live = await issueRefreshToken(user.id);
-
-    // NOT `signRefreshToken(user.id)`: its payload is `{}` + `sub` + a
-    // second-resolution `iat`, so calling it twice inside the same second
-    // returns a byte-identical token — which would find `live` and rotate
-    // happily. `jwtid` forces a distinct string with a valid signature.
+    // A validly signed token with no row — the case that used to nuke everything.
     const orphan = jwt.sign({}, env.jwt.refreshSecret, {
       subject: user.id,
       expiresIn: '7d',
@@ -182,9 +192,111 @@ describe('refresh — the only place an account is re-examined', () => {
 
     await expect(authService.refresh(orphan)).rejects.toMatchObject({ status: 401 });
 
-    // Reuse detection must nuke every session for the user, including the live one.
-    const left = await prisma.refreshToken.count({ where: { userId: user.id } });
-    expect(left, 'reuse detection must revoke all sessions').toBe(0);
-    expect(live).toBeTruthy();
+    // The other device is untouched, and still works.
+    const stillLive = await authService.refresh(phone);
+    expect(stillLive.accessToken).toBeTruthy();
+  });
+
+  it('refuses a session that was logged out, and keeps the row', async () => {
+    const user = await makeUser();
+    const refreshToken = await issueRefreshToken(user.id);
+    const session = await prisma.refreshToken.findUniqueOrThrow({
+      where: { token: refreshToken },
+      select: { id: true },
+    });
+
+    await authService.logout(session.id);
+
+    await expect(authService.refresh(refreshToken)).rejects.toMatchObject({ status: 401 });
+
+    const row = await prisma.refreshToken.findUniqueOrThrow({ where: { id: session.id } });
+    expect(
+      row.revokedAt,
+      'logout must stamp, not delete — the row is the login record',
+    ).not.toBeNull();
+    expect(row.revokedReason).toBe('logout');
+  });
+
+  it('refuses a deactivated account and ends every session', async () => {
+    const user = await makeUser();
+    const refreshToken = await issueRefreshToken(user.id);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { isActive: false },
+      select: { id: true },
+    });
+
+    await expect(authService.refresh(refreshToken)).rejects.toMatchObject({ status: 403 });
+
+    const live = await prisma.refreshToken.count({ where: { userId: user.id, revokedAt: null } });
+    expect(live, 'sessions must be revoked, not left to expire').toBe(0);
+
+    const [row] = await prisma.refreshToken.findMany({ where: { userId: user.id } });
+    expect(row?.revokedReason, 'and the history must survive the revocation').toBe(
+      'account_disabled',
+    );
+  });
+
+  it('refuses a soft-deleted account', async () => {
+    const user = await makeUser();
+    const refreshToken = await issueRefreshToken(user.id);
+    // The flag `refresh` did not check before 2026-07-24 — a soft-deleted user
+    // refreshed indefinitely.
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { isDeleted: true },
+      select: { id: true },
+    });
+
+    await expect(authService.refresh(refreshToken)).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+describe('session records', () => {
+  /**
+   * `signRefreshToken` used to sign `{ sub, iat, exp }` and nothing else. `iat` is
+   * second-resolution, so two tokens for one user in the same second came out
+   * byte-identical and the second insert failed `refresh_tokens.token`'s unique
+   * index — a 500 on a perfectly ordinary "log in on my phone too". `jti` is what
+   * makes them distinct.
+   */
+  it('issues distinct tokens for two logins in the same second', async () => {
+    const user = await makeUser();
+
+    const [a, b] = await Promise.all([issueRefreshToken(user.id), issueRefreshToken(user.id)]);
+
+    expect(a).not.toBe(b);
+    const rows = await prisma.refreshToken.count({ where: { userId: user.id } });
+    expect(rows, 'both logins must produce a session row').toBe(2);
+  });
+
+  it('keeps login time stable across refreshes, and records activity', async () => {
+    const user = await makeUser();
+    const refreshToken = await issueRefreshToken(user.id);
+    const atLogin = await prisma.refreshToken.findUniqueOrThrow({
+      where: { token: refreshToken },
+      select: { id: true, createdAt: true, lastUsedAt: true },
+    });
+    expect(atLogin.lastUsedAt, 'never used yet').toBeNull();
+
+    await authService.refresh(refreshToken);
+
+    const afterUse = await prisma.refreshToken.findUniqueOrThrow({ where: { id: atLogin.id } });
+    // This is the property the report depends on: `created_at` is the LOGIN, for
+    // the life of the session. Under rotation it moved every 15 minutes, so a
+    // user signed in since Monday looked like they signed in moments ago.
+    expect(afterUse.createdAt.getTime()).toBe(atLogin.createdAt.getTime());
+    expect(afterUse.lastUsedAt).not.toBeNull();
+  });
+
+  it("lists a user's sessions without leaking the token", async () => {
+    const user = await makeUser();
+    await issueRefreshToken(user.id);
+
+    const sessions = await authService.listUserSessions(user.id);
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).not.toHaveProperty('token');
+    expect(sessions[0]?.createdAt).toBeInstanceOf(Date);
   });
 });

@@ -106,7 +106,11 @@ export async function accept(req: Request, res: Response): Promise<void> {
   // A brand-new user was created during accept — sign them in exactly like signup:
   // refresh token as httpOnly cookie, access token in the body.
   if (result.autoLogin) {
-    setRefreshTokenAsCookie(res, result.autoLogin.refreshToken);
+    setRefreshTokenAsCookie(
+      res,
+      result.autoLogin.refreshToken,
+      result.autoLogin.refreshTokenExpiresAt,
+    );
     sendSuccess(
       res,
       {

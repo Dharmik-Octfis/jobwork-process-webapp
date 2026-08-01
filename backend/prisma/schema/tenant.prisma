@@ -110,14 +110,52 @@ model User {
   @@map("users")
 }
 
+/// One row per device session, from login to the moment it ends.
+///
+/// 🔴 The token is NOT rotated (changed 2026-07-31). A session's `token` is
+/// written once at login and never replaced, which is what makes this row a
+/// stable record: `created_at` is the real login time for the whole life of the
+/// session, and `id` — the access token's `sid` — never moves.
+///
+/// Rotation was removed because it cannot be made safe across a network: the
+/// server committed the new token before the browser had received it, so any
+/// interrupted refresh (reload, dropped wifi, closed lid) left the browser
+/// holding a token the server had already destroyed. That was read as theft and
+/// revoked every session the user had. See docs/AUTHENTICATION.md §4.4.
+///
+/// 🔴 Rows are NEVER deleted — ending a session stamps `revoked_at`. That is what
+/// makes login reporting possible, and it means every read must filter
+/// `revokedAt: null`, exactly like `isDeleted: false` elsewhere. A hard delete of
+/// the user still cascades, which is how test fixtures clean up.
 model RefreshToken {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   token     String   @unique
   userId    String   @map("user_id") @db.Uuid
   expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  /// Last time this session was exchanged for an access token. With `createdAt`
+  /// it gives session length; null means the user never came back after login.
+  lastUsedAt    DateTime? @map("last_used_at") @db.Timestamptz(6)
+  /// Null = live. Set = ended, and the row stays for reporting.
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(6)
+  /// logout | expired | password_reset | account_disabled | superseded
+  revokedReason String?   @map("revoked_reason") @db.VarChar(32)
+  /// Captured at login so a report can say WHICH device, rather than showing the
+  /// user's single most recent agent — `users.user_agent` is overwritten on every
+  /// login and cannot answer that.
+  ///
+  /// No IP address alongside it, deliberately: behind Catalyst's load balancer
+  /// `req.ip` is the balancer, not the client, unless `trust proxy` is configured
+  /// — so the column would hold one constant — and an IP is personal data in a
+  /// table that never deletes rows.
+  userAgent     String?   @map("user_agent")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// The live-session lookup on every refresh, and the per-user session history
+  /// a report reads.
+  @@index([userId, revokedAt])
   @@map("refresh_tokens")
 }
 

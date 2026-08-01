@@ -1,7 +1,12 @@
 import { Prisma } from '../../../generated/prisma/client.ts';
 import { prisma } from '../../db/prisma.ts';
 import { ApiError } from '../../lib/apiError.ts';
-import { ACTIVE_USER, isUsableAccount, revokeUserSessions } from '../../lib/authGuards.ts';
+import {
+  ACTIVE_USER,
+  isUsableAccount,
+  revokeUserSessions,
+  type RevokeReason,
+} from '../../lib/authGuards.ts';
 import {
   signAccessToken,
   signRefreshToken,
@@ -9,7 +14,12 @@ import {
   type RefreshTokenPayload,
 } from '../../lib/jwt.ts';
 import { hashPassword, verifyPassword } from '../../lib/password.ts';
-import type { LoginInput, SignupInput, ResetPasswordInput, ChangePasswordInput } from './auth.schemas.ts';
+import type {
+  LoginInput,
+  SignupInput,
+  ResetPasswordInput,
+  ChangePasswordInput,
+} from './auth.schemas.ts';
 import { sendOtpEmail } from '../../lib/mailer.ts';
 import type { AuthResult, PublicUser } from './auth.types.ts';
 import { env } from '../../config/env.ts';
@@ -32,7 +42,11 @@ const publicUserSelect = {
 
 async function resolveAvatarUrl(avatarUrl: string | null | undefined): Promise<string | null> {
   if (!avatarUrl) return null;
-  if (avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://') || avatarUrl.startsWith('data:')) {
+  if (
+    avatarUrl.startsWith('http://') ||
+    avatarUrl.startsWith('https://') ||
+    avatarUrl.startsWith('data:')
+  ) {
     return avatarUrl;
   }
   try {
@@ -60,7 +74,7 @@ export async function formatPublicUser(user: {
     fullName: user.fullName,
     email: user.email,
     avatar_url: signedAvatarUrl,
-    userAgent: user.userAgent ?? 'unknown', 
+    userAgent: user.userAgent ?? 'unknown',
   };
 }
 
@@ -77,10 +91,7 @@ export async function updateProfile(
   return await formatPublicUser(user);
 }
 
-export async function uploadAvatar(
-  userId: string,
-  file: Express.Multer.File,
-): Promise<PublicUser> {
+export async function uploadAvatar(userId: string, file: Express.Multer.File): Promise<PublicUser> {
   const timestamp = Date.now();
   const cleanName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
   const key = `users/${userId}/avatar-${timestamp}-${cleanName}`;
@@ -140,7 +151,7 @@ export async function signup(input: SignupInput, userAgent: string): Promise<Aut
       select: publicUserSelect,
     });
 
-    return await issueTokens(await formatPublicUser(user));
+    return await issueTokens(await formatPublicUser(user), { userAgent });
   } catch (error) {
     // Checking `findUnique` first would still race: two concurrent signups for
     // the same email both see "available", and one loses at the index. The
@@ -185,110 +196,182 @@ export async function login(input: LoginInput, userAgent: string): Promise<AuthR
     throw new ApiError(403, 'This account has been disabled.');
   }
 
-  return await issueTokens(await formatPublicUser(updatedUser));
+  return await issueTokens(await formatPublicUser(updatedUser), { userAgent });
+}
+
+/**
+ * Where this session was started from. Recorded once, at login, because that is
+ * the only moment the answer is meaningful — `users.user_agent` is overwritten on
+ * every login and so can never say which of your three devices a session is.
+ */
+export interface SessionMeta {
+  userAgent?: string | null;
 }
 
 /**
  * Shared helper to generate and store tokens. Exported so the invitation-accept
  * flow can sign a brand-new invited user straight in after they set a password.
+ *
+ * This is the ONLY place a `refresh_tokens` row is created. Since rotation was
+ * removed, one row here means exactly one login, for the life of that session —
+ * which is what makes `created_at` a login timestamp a report can trust.
  */
-export async function issueTokens(user: PublicUser): Promise<AuthResult> {
+export async function issueTokens(user: PublicUser, meta: SessionMeta = {}): Promise<AuthResult> {
   const refreshToken = signRefreshToken(user.id);
   const expiresAt = new Date(Date.now() + ms(env.jwt.refreshTtl as ms.StringValue));
 
   // Create the session row first: its id becomes the access token's `sid`,
-  // so logout can find and delete this exact session by primary key.
+  // so logout can find and end this exact session by primary key.
   const session = await prisma.refreshToken.create({
     data: {
       token: refreshToken,
       userId: user.id,
       expiresAt,
+      userAgent: meta.userAgent ?? null,
     },
     select: { id: true },
   });
 
   const accessToken = signAccessToken(user.id, session.id);
 
-  return { accessToken, refreshToken, user };
-}
-
-export async function refresh(oldRefreshToken: string): Promise<AuthResult> {
-  // ✅ 1. Verify JWT signature and expiry FIRST
-  let payload: RefreshTokenPayload;
-  try {
-    payload = verifyRefreshToken(oldRefreshToken); // throws if invalid/expired
-  } catch (_error) {
-    // Token is tampered or expired — also clean it up from DB if it exists
-    await prisma.refreshToken.deleteMany({ where: { token: oldRefreshToken } }).catch(() => {});
-    throw new ApiError(401, 'Invalid or expired refresh token.');
-  }
-
-  // ✅ 2. Check if it exists in DB (reuse/revocation check)
-  const storedToken = await prisma.refreshToken.findUnique({
-    where: { token: oldRefreshToken },
-    include: { user: { select: { ...publicUserSelect, isActive: true, isDeleted: true } } },
-  });
-
-  if (!storedToken) {
-    // Token had valid JWT signature but isn't in DB anymore —
-    // classic sign of token reuse/theft. Revoke ALL tokens for this user.
-    await prisma.refreshToken.deleteMany({ where: { userId: payload.sub } }).catch(() => {});
-    throw new ApiError(401, 'Invalid refresh token. All sessions have been revoked for security.');
-  }
-
-  // ✅ 3. Cross-check: JWT payload userId must match the DB record's userId
-  if (storedToken.userId !== payload.sub) {
-    await prisma.refreshToken.deleteMany({ where: { userId: payload.sub } }).catch(() => {});
-    throw new ApiError(401, 'Token mismatch detected.');
-  }
-
-  // DB expiry check (defense in depth, JWT already checked this)
-  if (storedToken.expiresAt < new Date()) {
-    await prisma.refreshToken.delete({ where: { token: oldRefreshToken } }).catch(() => {});
-    throw new ApiError(401, 'Refresh token has expired.');
-  }
-
-  // Same predicate as `login` and as `authenticate`'s session join, so a
-  // deactivated or soft-deleted user cannot keep rotating tokens indefinitely.
-  if (!isUsableAccount(storedToken.user)) {
-    await revokeUserSessions(payload.sub).catch(() => {});
-    throw new ApiError(403, 'This account has been disabled.');
-  }
-
-  // ✅ 4. Rotation — do delete + create atomically inside a transaction
-  const publicUser = await formatPublicUser(storedToken.user);
-
-  const newRefreshToken = signRefreshToken(publicUser.id);
-  const expiresAt = new Date(Date.now() + ms(env.jwt.refreshTtl as ms.StringValue));
-
-  // Rotate atomically. The freshly created row's id is the new session's `sid`,
-  // so the rotated access token points at the row that now backs this device.
-  const [, newSession] = await prisma.$transaction([
-    prisma.refreshToken.deleteMany({ where: { token: oldRefreshToken } }),
-    prisma.refreshToken.create({
-      data: {
-        token: newRefreshToken,
-        userId: publicUser.id,
-        expiresAt,
-      },
-      select: { id: true },
-    }),
-  ]);
-
-  const accessToken = signAccessToken(publicUser.id, newSession.id);
-
-  return { accessToken, refreshToken: newRefreshToken, user: publicUser };
+  return { accessToken, refreshToken, user, refreshTokenExpiresAt: expiresAt };
 }
 
 /**
- * End one device's session. `sessionId` is the `sid` claim carried in the
- * access token (the `refresh_tokens` row id), so we delete exactly that row and
- * leave the user's other devices logged in. `catch` swallows the case where the
- * row is already gone (double logout, or the session was rotated meanwhile).
+ * Exchange a live refresh token for a new access token.
+ *
+ * 🔴 **The refresh token is NOT rotated** (changed 2026-07-31). The same token
+ * goes back out, the same session row stays live, and only the short-lived access
+ * token is new.
+ *
+ * Rotation was removed because it cannot be made correct across a network. The
+ * old code deleted the presented token and created a replacement, then sent that
+ * replacement in the response — so the database was already committed by the time
+ * the browser had a chance to receive it. Any interrupted refresh (page reload,
+ * dropped connection, closed lid) left the browser holding a token the server had
+ * destroyed, and the next attempt landed in reuse detection, which deleted EVERY
+ * session the user had. Reproduced 2026-07-31: replaying an already-rotated
+ * cookie returned 401 and killed a second, healthy device's session too.
+ *
+ * The trade is explicit: a stolen refresh token now works until the session
+ * expires or someone revokes it, instead of being caught the second time it is
+ * used. Revocation is the mitigation — logout, password reset and deactivation
+ * all end sessions immediately, and every one of them is checked right here.
+ *
+ * The other consequence of not rotating: a session's expiry is **absolute**. The
+ * refresh JWT's `exp` is fixed when it is signed and cannot be extended without
+ * issuing a new token (which would be rotation), so a session ends exactly
+ * `JWT_REFRESH_TTL` after login however active the user is. The old code slid
+ * that window forward on every refresh, which meant an active session never
+ * ended at all.
+ */
+export async function refresh(refreshToken: string): Promise<AuthResult> {
+  // 1. Verify the signature and expiry before touching the database.
+  let payload: RefreshTokenPayload;
+  try {
+    payload = verifyRefreshToken(refreshToken); // throws if invalid/expired
+  } catch (_error) {
+    // A genuine token that has simply aged out still has a row, and that row is
+    // this login's record — so it is marked ended, never deleted. A tampered
+    // token matches nothing and this is a no-op.
+    await markSessionRevoked({ token: refreshToken }, 'expired');
+    throw new ApiError(401, 'Invalid or expired refresh token.');
+  }
+
+  // 2. Resolve the session. `revokedAt: null` is load-bearing: it is what makes
+  //    logout, password reset and deactivation take effect, now that the row
+  //    survives them instead of being deleted.
+  const session = await prisma.refreshToken.findUnique({
+    where: { token: refreshToken },
+    include: { user: { select: { ...publicUserSelect, isActive: true, isDeleted: true } } },
+  });
+
+  if (!session || session.revokedAt !== null) {
+    // Unknown or already-ended session. Nothing is revoked here on purpose:
+    // without rotation there is no legitimate way for a live session's token to
+    // go missing, so there is no honest user to punish — and the blanket
+    // `deleteMany WHERE userId` this replaced was exactly what logged people out
+    // of every device on one dropped response.
+    throw new ApiError(401, 'Your session has ended. Please sign in again.');
+  }
+
+  // 3. The row must belong to the subject the token names. Cannot happen through
+  //    any code path here — `token` is unique and written alongside its user — so
+  //    if it ever does, the row is not trustworthy and this one session ends.
+  if (session.userId !== payload.sub) {
+    await markSessionRevoked({ id: session.id }, 'token_mismatch');
+    throw new ApiError(401, 'Token mismatch detected.');
+  }
+
+  // 4. Expiry, checked against the row as well as the JWT. Belt and braces: the
+  //    two are written together, but only the row can be shortened by an admin.
+  if (session.expiresAt < new Date()) {
+    await markSessionRevoked({ id: session.id }, 'expired');
+    throw new ApiError(401, 'Refresh token has expired.');
+  }
+
+  // 5. Same predicate as `login`. This and `login` are the whole enforcement
+  //    surface for account standing, because `authenticate` never reads the
+  //    database — so a deactivated user must lose every session here.
+  if (!isUsableAccount(session.user)) {
+    await revokeUserSessions(payload.sub, prisma, 'account_disabled').catch(() => {});
+    throw new ApiError(403, 'This account has been disabled.');
+  }
+
+  const publicUser = await formatPublicUser(session.user);
+
+  // 6. No rotation: stamp activity and hand back the SAME token. `sid` still
+  //    names this row, so logout-by-`sid` and session reporting both keep
+  //    pointing at the login this session actually started from.
+  await prisma.refreshToken.update({
+    where: { id: session.id },
+    data: { lastUsedAt: new Date() },
+  });
+
+  const accessToken = signAccessToken(publicUser.id, session.id);
+
+  return {
+    accessToken,
+    refreshToken,
+    user: publicUser,
+    refreshTokenExpiresAt: session.expiresAt,
+  };
+}
+
+/**
+ * End one session by stamping the row, never deleting it.
+ *
+ * `revokedAt: null` in the `where` keeps the FIRST ending authoritative — a
+ * second logout, or an expiry check running against an already-revoked row, must
+ * not overwrite why and when the session actually ended.
+ *
+ * Swallows its errors: every caller is already on a path that is failing the
+ * request, and losing the bookkeeping must not turn a clean 401 into a 500.
+ */
+async function markSessionRevoked(
+  where: { id: string } | { token: string },
+  reason: RevokeReason,
+): Promise<void> {
+  await prisma.refreshToken
+    .updateMany({
+      where: { ...where, revokedAt: null },
+      data: { revokedAt: new Date(), revokedReason: reason },
+    })
+    .catch(() => {});
+}
+
+/**
+ * End one device's session. `sessionId` is the `sid` claim carried in the access
+ * token (the `refresh_tokens` row id), so we end exactly that row and leave the
+ * user's other devices signed in.
+ *
+ * Stamps rather than deletes: the row is this login's record, and a report that
+ * loses every session the moment someone signs out is not a report. `revoked_at`
+ * is also what turns a logout into "session lasted 4h 12m".
  */
 export async function logout(sessionId: string): Promise<void> {
   if (!sessionId) return;
-  await prisma.refreshToken.delete({ where: { id: sessionId } }).catch(() => {});
+  await markSessionRevoked({ id: sessionId }, 'logout');
 }
 
 /**
@@ -297,7 +380,32 @@ export async function logout(sessionId: string): Promise<void> {
  */
 export async function logoutByToken(refreshToken: string): Promise<void> {
   if (!refreshToken) return;
-  await prisma.refreshToken.delete({ where: { token: refreshToken } }).catch(() => {});
+  await markSessionRevoked({ token: refreshToken }, 'logout');
+}
+
+/**
+ * Every session this user has ever held, newest first — the login report.
+ *
+ * Reads the whole history, revoked rows included: that is the point of keeping
+ * them. `lastUsedAt` minus `createdAt` is how long the session was actually in
+ * use; a null `lastUsedAt` means they logged in and never came back.
+ */
+export async function listUserSessions(userId: string) {
+  return prisma.refreshToken.findMany({
+    where: { userId },
+    orderBy: { createdAt: 'desc' },
+    // `token` is deliberately absent — it is a live credential, and this list is
+    // the one place a session row would otherwise leave the server.
+    select: {
+      id: true,
+      createdAt: true,
+      lastUsedAt: true,
+      expiresAt: true,
+      revokedAt: true,
+      revokedReason: true,
+      userAgent: true,
+    },
+  });
 }
 
 export async function getUserById(userId: string): Promise<PublicUser> {
@@ -359,10 +467,11 @@ export async function resetPassword(input: ResetPasswordInput): Promise<void> {
       select: { id: true },
     });
 
-    // 2. Invalidate all existing sessions — in the same transaction as the
-    //    credential change, so no session can outlive the password it was
-    //    established with. `authenticate` refuses them from the next request on.
-    await revokeUserSessions(user.id, tx);
+    // 2. End all existing sessions — in the same transaction as the credential
+    //    change, so no session can outlive the password it was established with.
+    //    The rows stay, stamped `password_reset`, so the report still shows those
+    //    logins and why they ended.
+    await revokeUserSessions(user.id, tx, 'password_reset');
 
     // 3. Delete the used OTP token
     await tx.passwordResetToken.delete({ where: { id: token.id } });
@@ -391,4 +500,3 @@ export async function changePassword(userId: string, input: ChangePasswordInput)
     data: { passwordHash: newPasswordHash },
   });
 }
-

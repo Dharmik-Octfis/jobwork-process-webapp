@@ -4,7 +4,7 @@
 > tokens are, where they live, and how every flow (login, refresh, logout, multi-device, password
 > reset) behaves. Design context lives in `docs/ARCHITECTURE_AND_TECH_STACK.md` (§3.8).
 
-_Last updated: 2026-07-15._
+_Last updated: 2026-07-31 — rotation removed, session rows retained for reporting (§3, §4.4)._
 
 ---
 
@@ -12,10 +12,10 @@ _Last updated: 2026-07-15._
 
 Logging in gives the browser **two** tokens with very different jobs:
 
-| Token             | Lifetime          | Job                                              | Where it's kept                                           |
-| ----------------- | ----------------- | ------------------------------------------------ | --------------------------------------------------------- |
-| **Access token**  | short (**1 min**) | Proves who you are on every API call             | **In memory** in the React app (a JS variable)            |
-| **Refresh token** | long (**7 days**) | Gets a new access token when the old one expires | **httpOnly cookie** (browser stores it; JS can't read it) |
+| Token             | Lifetime                             | Job                                              | Where it's kept                                           |
+| ----------------- | ------------------------------------ | ------------------------------------------------ | --------------------------------------------------------- |
+| **Access token**  | short (**15 min**, `JWT_ACCESS_TTL`) | Proves who you are on every API call             | **In memory** in the React app (a JS variable)            |
+| **Refresh token** | long (**7 days**)                    | Gets a new access token when the old one expires | **httpOnly cookie** (browser stores it; JS can't read it) |
 
 Why two? The access token is checked on every request, so it must be fast to verify and cheap to
 throw away — we keep it short-lived so a stolen one is useless within a minute. The refresh token is
@@ -53,17 +53,26 @@ _also_ has a matching row in the database (the "session"), which is what lets us
 
 Each login (each device) creates **one row** in the `refresh_tokens` table:
 
-| Column      | Meaning                                                                        |
-| ----------- | ------------------------------------------------------------------------------ |
-| `id`        | The session id. This value is embedded in the access token as its `sid` claim. |
-| `token`     | The refresh token string.                                                      |
-| `userId`    | Which user this session belongs to.                                            |
-| `expiresAt` | When the refresh token dies.                                                   |
-| `createdAt` | When the session started.                                                      |
+| Column          | Meaning                                                                         |
+| --------------- | ------------------------------------------------------------------------------- |
+| `id`            | The session id. This value is embedded in the access token as its `sid` claim.  |
+| `token`         | The refresh token string.                                                       |
+| `userId`        | Which user this session belongs to.                                             |
+| `expiresAt`     | When the refresh token dies. Absolute — set at login, never extended.           |
+| `createdAt`     | When the session started. The real login time, stable for the session's life.   |
+| `lastUsedAt`    | Last refresh on this session. Null = logged in and never came back.             |
+| `revokedAt`     | Null while live. Set when the session ends — the row is **not** deleted.        |
+| `revokedReason` | `logout` / `expired` / `password_reset` / `account_disabled` / `token_mismatch` |
+| `userAgent`     | The device, captured at login.                                                  |
 
-Key idea: **one row = one logged-in device.** The same user on a laptop and a phone has two rows
-with the same `userId`. There is no separate "device info" — a session is identified purely by its
-`id` (the `sid`) or by its `token` string.
+Key idea: **one row = one logged-in device, for the whole life of that session.** The same user on a
+laptop and a phone has two rows with the same `userId`. A session is identified by its `id` (the
+`sid`) or by its `token` string, and since 2026-07-31 neither ever changes once written.
+
+🔴 **Rows are never deleted.** Ending a session stamps `revoked_at`, which is what turns this table
+into the login history — and which means **every live-session read must filter `revokedAt: null`**,
+exactly like `isDeleted: false` on domain tables. `users.user_agent` cannot answer "which device",
+because it is overwritten on every login; `refresh_tokens.user_agent` is per session and can.
 
 ---
 
@@ -96,14 +105,15 @@ This is the fast path: pure signature check, no DB hit, on every request.
 
 ### 4.3 Silent refresh (access token expired)
 
-Because the access token lasts only 1 minute, it expires constantly. The client handles this
+Because the access token lasts only 15 minutes, it expires regularly. The client handles this
 invisibly:
 
 ```
 1. Some API call returns 401 (access token expired).
 2. The axios response interceptor catches it and calls POST /auth/refresh-token.
    → The refresh cookie rides along automatically.
-3. Server checks the refresh token (see §4.4), ROTATES it, returns a new access token.
+3. Server checks the refresh token (see §4.4) and returns a new access token. The refresh
+   token itself is NOT changed.
 4. Client stores the new access token and REPLAYS the original request.
    → The user never notices.
 ```
@@ -115,21 +125,52 @@ On a **full page reload** the in-memory access token is gone, so `AuthProvider` 
 once on startup to restore the session from the cookie. `ProtectedRoute` waits for that to finish
 before deciding whether to redirect to `/login`.
 
-### 4.4 Refresh token rotation & theft detection
-
-Every refresh **replaces** the refresh token (single-use):
+### 4.4 The refresh token is NOT rotated (changed 2026-07-31)
 
 ```
 - Verify the refresh JWT signature/expiry.
-- Look it up in the database.
-    · Not found but signature is valid → likely a STOLEN, already-used token.
-      → Delete ALL of that user's sessions (nuke) and reject.
-- Delete the old row and create a new one, atomically (rotation).
-- Issue a new access token whose `sid` points at the new row.
+- Look up the session row; it must exist AND have revoked_at IS NULL.
+- Check the row's expiry, and that the account still satisfies ACTIVE_USER.
+- Stamp last_used_at.
+- Issue a new access token whose `sid` points at the SAME row.
+- Hand back the SAME refresh token.
 ```
 
-So a stolen refresh token gets caught the moment the real user and the thief both try to use the same
-one — the second use hits a row that's already gone, and every session for that user is revoked.
+Only the access token is new. The session row, its `id`, its `created_at` and its token all stay put
+for the whole life of the session.
+
+**Why rotation was removed.** It cannot be made correct across a network. The old code deleted the
+presented token and created its replacement, committing that to the database _before_ the response
+started travelling. If the browser never received it — a reload, a dropped connection, a closed lid —
+the browser was left holding a token the server had already destroyed. The next attempt found a valid
+signature with no row, read that as theft, and ran `deleteMany WHERE userId`: **every session on every
+device, gone**. Reproduced against a live server on 2026-07-31; replaying one stale cookie also killed
+a second, healthy device's session.
+
+No reordering fixes it. The database write is durable before the response leaves the process, and the
+browser's update happens on another machine. There is no way to make the two atomic.
+
+**The trade.** A stolen refresh token now works until the session expires or someone revokes it,
+rather than being caught on its second use. Revocation is the mitigation, and it is immediate:
+logout, password reset and deactivation all end sessions, and `refresh` checks for all three on every
+call. `authenticate.test.ts` pins the behaviour — the "accepts the same token twice" case is the
+regression guard.
+
+**Expiry is now absolute.** A refresh JWT's `exp` is fixed when it is signed and cannot be extended
+without issuing a new token (which would be rotation). So a session ends exactly `JWT_REFRESH_TTL`
+after login, however active the user is. The old rotating code recomputed the expiry on every refresh,
+which meant an active session never ended at all.
+
+### 4.4b The session row survives the session
+
+Ending a session stamps `revoked_at` + `revoked_reason`; nothing deletes the row. That is what makes
+login reporting possible — `created_at` is a real login timestamp for the life of the session, so
+"when, how often, from what device, and how did it end" are all answerable.
+
+**Every read of a live session must therefore filter `revokedAt: null`**, exactly like `isDeleted:
+false` on domain tables. Miss it and a logged-out session keeps working.
+
+`GET /api/auth/me/sessions` returns the caller's own history. It never includes `token`.
 
 ### 4.5 Logout (this device only)
 
@@ -142,14 +183,14 @@ one — the second use hits a row that's already gone, and every session for tha
 ```
 
 Only this device's row is deleted, so other devices stay logged in. The device's own access token
-stays technically valid until it expires (≤ 1 min), but it can no longer be refreshed, so the session
+stays technically valid until it expires (≤ 15 min), but it can no longer be refreshed, so the session
 is dead within a minute.
 
 ### 4.6 Logout everywhere / password reset
 
-On a password reset, the server (in one transaction) updates the password **and deletes every
-`refresh_tokens` row for that user**. All devices lose the ability to refresh and fall out within one
-access-token lifetime. The same `deleteMany WHERE userId` is how a future "log out all devices"
+On a password reset, the server (in one transaction) updates the password **and revokes every
+`refresh_tokens` row for that user** (stamped `password_reset`; the rows stay, for reporting). All devices lose the ability to refresh and fall out within one
+access-token lifetime. `revokeUserSessions()` is how a future "log out all devices"
 button would work.
 
 ---
@@ -162,8 +203,8 @@ User logs in on phone   → refresh_tokens row B  (sid B)  → access token B
 ```
 
 - The rows are independent; logging in on the phone does **not** touch the laptop.
-- Logout on the phone deletes row B only.
-- Password reset deletes rows A **and** B (everything for that `userId`).
+- Logout on the phone revokes row B only.
+- Password reset revokes rows A **and** B (everything for that `userId`); the rows remain.
 
 ---
 
@@ -180,14 +221,14 @@ User logs in on phone   → refresh_tokens row B  (sid B)  → access token B
 
 **Backend (`backend/src/`)**
 
-| Concern                                                         | File                              |
-| --------------------------------------------------------------- | --------------------------------- |
-| Sign/verify access token, read `sid`, sign/verify refresh token | `lib/jwt.ts`                      |
-| Set/clear the httpOnly refresh cookie                           | `lib/cookies.ts`                  |
-| Read the Bearer header, populate `req.user`                     | `middlewares/authenticate.ts`     |
-| login/signup/refresh/logout endpoints                           | `modules/auth/auth.controller.ts` |
-| Issue tokens, rotation, theft detection, logout, password reset | `modules/auth/auth.service.ts`    |
-| `refresh_tokens` table shape                                    | `prisma/schema/tenant.prisma`     |
+| Concern                                                                    | File                              |
+| -------------------------------------------------------------------------- | --------------------------------- |
+| Sign/verify access token, read `sid`, sign/verify refresh token            | `lib/jwt.ts`                      |
+| Set/clear the httpOnly refresh cookie                                      | `lib/cookies.ts`                  |
+| Read the Bearer header, populate `req.user`                                | `middlewares/authenticate.ts`     |
+| login/signup/refresh/logout endpoints                                      | `modules/auth/auth.controller.ts` |
+| Issue tokens, refresh, revocation, logout, password reset, session history | `modules/auth/auth.service.ts`    |
+| `refresh_tokens` table shape                                               | `prisma/schema/tenant.prisma`     |
 
 ---
 
@@ -200,7 +241,7 @@ User logs in on phone   → refresh_tokens row B  (sid B)  → access token B
   setup, but a move to a cross-site frontend would need explicit CSRF protection on
   `/auth/refresh-token` and `/auth/logout`.
 - **No instant global kill for access tokens.** Revoking sessions stops _refreshing_ immediately, but
-  an already-issued access token stays valid until it expires (≤ 1 min). A `tokenVersion` claim on the
+  an already-issued access token stays valid until it expires (≤ 15 min). A `tokenVersion` claim on the
   user row would close even that window instantly if ever needed.
 
 ---
@@ -215,5 +256,5 @@ User logs in on phone   → refresh_tokens row B  (sid B)  → access token B
 | **`sid`**           | Session id — the `refresh_tokens` row id, embedded in the access token.        |
 | **Bearer token**    | A token sent in the `Authorization: Bearer <token>` header.                    |
 | **httpOnly cookie** | A cookie JavaScript cannot read; protects against XSS theft.                   |
-| **Rotation**        | Replacing the refresh token with a new one on every refresh (single-use).      |
+| **Rotation**        | Replacing the refresh token on every refresh. **Not used here** — see §4.4.    |
 | **SameSite**        | Cookie setting controlling whether it's sent on cross-site requests.           |

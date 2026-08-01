@@ -14,37 +14,58 @@ import type {
 import * as authService from './auth.service.ts';
 
 export async function signup(req: Request, res: Response): Promise<void> {
-  const { accessToken, refreshToken, user } = await authService.signup(
+  const { accessToken, refreshToken, user, refreshTokenExpiresAt } = await authService.signup(
     req.body as SignupInput,
     req.get('user-agent') ?? 'unknown',
   );
 
-  setRefreshTokenAsCookie(res, refreshToken);
+  setRefreshTokenAsCookie(res, refreshToken, refreshTokenExpiresAt);
   sendSuccess(res, { user, accessToken }, 'Account created.', 201);
 }
 
 export async function login(req: Request, res: Response): Promise<void> {
   const userAgent = req.get('user-agent') ?? 'unknown';
-  const { accessToken, refreshToken, user } = await authService.login(
+  const { accessToken, refreshToken, user, refreshTokenExpiresAt } = await authService.login(
     req.body as LoginInput,
     userAgent,
   );
 
-  setRefreshTokenAsCookie(res, refreshToken);
+  setRefreshTokenAsCookie(res, refreshToken, refreshTokenExpiresAt);
   sendSuccess(res, { user, accessToken }, 'Signed in.');
 }
 
 export async function refresh(req: Request, res: Response): Promise<void> {
-  const oldRefreshToken = req.cookies.refreshToken as string | undefined;
+  const presentedToken = req.cookies.refreshToken as string | undefined;
 
-  if (!oldRefreshToken) {
+  if (!presentedToken) {
     throw new ApiError(401, 'No refresh token provided.');
   }
 
-  const { accessToken, refreshToken, user } = await authService.refresh(oldRefreshToken);
+  // `refreshToken` is the SAME token that came in — it is no longer rotated. The
+  // cookie is re-sent anyway so its expiry stays pinned to the session row, and
+  // so a browser that somehow lost it gets it back.
+  const { accessToken, refreshToken, user, refreshTokenExpiresAt } =
+    await authService.refresh(presentedToken);
 
-  setRefreshTokenAsCookie(res, refreshToken);
+  setRefreshTokenAsCookie(res, refreshToken, refreshTokenExpiresAt);
   sendSuccess(res, { user, accessToken }, 'Session refreshed.');
+}
+
+/**
+ * The signed-in user's own login history — every session, live and ended.
+ *
+ * No `requirePermission`: this is not tenant data, it is the caller's own
+ * account activity, and it is scoped to `req.user.id` rather than anything the
+ * client sends. An org-wide version would be a different route on the users
+ * module, gated on `user:read`.
+ */
+export async function mySessions(req: Request, res: Response): Promise<void> {
+  if (!req.user) {
+    throw new ApiError(401, 'Sign in to continue.');
+  }
+
+  const sessions = await authService.listUserSessions(req.user.id);
+  sendSuccess(res, { sessions });
 }
 
 export async function logout(req: Request, res: Response): Promise<void> {
@@ -101,7 +122,6 @@ export async function changePassword(req: Request, res: Response): Promise<void>
 }
 
 export async function uploadAvatar(req: Request, res: Response): Promise<void> {
-
   if (!req.user) {
     throw new ApiError(401, 'Sign in to continue.');
   }

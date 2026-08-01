@@ -36,8 +36,12 @@ export function isUsableAccount(user: AccountFlags): boolean {
   );
 }
 
+/** Why a session ended. Stored on the row, and read by session reporting. */
+export type RevokeReason =
+  'logout' | 'expired' | 'password_reset' | 'account_disabled' | 'token_mismatch';
+
 /**
- * End every session this user holds, on every device.
+ * End every live session this user holds, on every device.
  *
  * 🔴 Call this in the same transaction as any write that flips `isActive` to
  * false or `isDeleted` to true on a `User`. `onDelete: Cascade` on
@@ -48,10 +52,19 @@ export function isUsableAccount(user: AccountFlags): boolean {
  * shortens a disabled user's remaining access — and even then only from their
  * next refresh, not their next request. Their current access token keeps working
  * until it expires regardless.
+ *
+ * 🔴 This stamps `revoked_at`; it does NOT delete. The row is the login record —
+ * destroying it on logout would erase the history the table now exists to keep.
+ * `revokedAt: null` in the `where` is what stops a re-revoke from overwriting the
+ * original reason and timestamp of a session that already ended.
  */
 export async function revokeUserSessions(
   userId: string,
   client: Prisma.TransactionClient | typeof prisma = prisma,
+  reason: RevokeReason = 'account_disabled',
 ): Promise<void> {
-  await client.refreshToken.deleteMany({ where: { userId } });
+  await client.refreshToken.updateMany({
+    where: { userId, revokedAt: null },
+    data: { revokedAt: new Date(), revokedReason: reason },
+  });
 }

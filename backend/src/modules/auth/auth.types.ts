@@ -19,6 +19,16 @@ export interface AuthResult {
   accessToken: string;
   refreshToken: string;
   user: PublicUser;
+  /**
+   * When the refresh token — and therefore the session — dies.
+   *
+   * Carried out of the service so the cookie can be given this exact instant
+   * instead of a rolling `maxAge`. Since the token is no longer rotated, its
+   * expiry is fixed at login: a cookie handed a fresh 7 days on every refresh
+   * would outlive the token it carries and leave the browser presenting a dead
+   * credential for up to a week.
+   */
+  refreshTokenExpiresAt: Date;
 }
 
 /**

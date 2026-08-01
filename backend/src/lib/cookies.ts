@@ -1,5 +1,4 @@
 import type { CookieOptions, Response } from 'express';
-import ms from 'ms';
 import { env } from '../config/env.ts';
 
 /**
@@ -22,10 +21,24 @@ const refreshCookieOptions: CookieOptions = {
   path: '/api/auth',
 };
 
-export function setRefreshTokenAsCookie(res: Response, refreshToken: string): void {
+/**
+ * `expiresAt` comes from the session row so the cookie dies with the token it
+ * carries, to the second.
+ *
+ * It used to be a rolling `maxAge` of `JWT_REFRESH_TTL`, which was right only
+ * while tokens were rotated (each response carried a brand-new 7-day token).
+ * Now that a session's token is signed once at login and never replaced, a
+ * rolling window would push the cookie's death up to a week past the token's —
+ * leaving the browser confidently presenting a credential that expired days ago.
+ */
+export function setRefreshTokenAsCookie(
+  res: Response,
+  refreshToken: string,
+  expiresAt: Date,
+): void {
   res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
     ...refreshCookieOptions,
-    maxAge: ms(env.jwt.refreshTtl as ms.StringValue),
+    expires: expiresAt,
   });
 }
 

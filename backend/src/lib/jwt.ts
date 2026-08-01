@@ -1,10 +1,11 @@
+import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import type { SignOptions } from 'jsonwebtoken';
 import { env } from '../config/env.ts';
 
 /**
- * Short-lived access token (architecture §3.8). The client keeps it in an
- * httpOnly cookie — never localStorage.
+ * Short-lived access token (architecture §3.8). The client keeps it in a memory
+ * variable — never localStorage, and never a cookie (that is the refresh token).
  *
  * The payload carries identity (`sub`) plus the session it belongs to (`sid`,
  * the `refresh_tokens` row id). `sid` is what lets logout end exactly this
@@ -66,11 +67,30 @@ export function readSessionId(token: string): string {
   return decoded.sid;
 }
 
+/**
+ * 🔴 `jwtid` is not decoration — it is what makes two tokens distinguishable.
+ *
+ * The payload is otherwise `{ sub, iat, exp }`, and `iat` has one-SECOND
+ * resolution. So without a unique claim, two tokens signed for the same user in
+ * the same second are byte-identical — and `refresh_tokens.token` is unique, so
+ * the second insert fails the index. That is a real, reproduced failure, not a
+ * theoretical one: two devices logging in at the same moment returned 500, and so
+ * did two browser tabs refreshing together. `authenticate.test.ts` documented the
+ * quirk (it reached for `jwtid` to force a distinct token) instead of the code
+ * fixing it. `randomUUID()` is what fixes it.
+ *
+ * Nothing reads `jti` back — `verifyRefreshToken` ignores it. Its only job is to
+ * make the string unique.
+ */
 export function signRefreshToken(userId: string): string {
   const options: SignOptions = {
     expiresIn: env.jwt.refreshTtl as SignOptions['expiresIn'],
   };
-  return jwt.sign({}, env.jwt.refreshSecret, { ...options, subject: userId });
+  return jwt.sign({}, env.jwt.refreshSecret, {
+    ...options,
+    subject: userId,
+    jwtid: randomUUID(),
+  });
 }
 
 export function verifyRefreshToken(token: string): RefreshTokenPayload {

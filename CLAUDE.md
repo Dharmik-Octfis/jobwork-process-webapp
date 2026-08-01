@@ -31,9 +31,20 @@ the staleness bound is tunable. `middlewares/authenticate.test.ts` pins the curr
 included.
 
 **So revocation happens at the refresh boundary, and only there.** `auth.service.refresh` is the
-entire enforcement surface: row must exist, belong to `sub`, be unexpired, and the user must satisfy
-`ACTIVE_USER` — and it revokes every session when that fails. Weaken it and a disabled account works
-**forever** instead of for 15 minutes. It is guarded by the second describe block in that test file.
+entire enforcement surface: row must exist, **must not be revoked**, belong to `sub`, be unexpired,
+and the user must satisfy `ACTIVE_USER` — and it revokes every session when that last check fails.
+Weaken it and a disabled account works **forever** instead of for 15 minutes. It is guarded by the
+second describe block in that test file.
+
+🔴 **The refresh token is NOT rotated (2026-07-31), and reintroducing rotation will log users out at
+random.** The old code deleted the presented token and created a replacement, committing that before
+the response could reach the browser — so any interrupted refresh (reload, dropped wifi, closed lid)
+left the browser holding a token the server had destroyed, which the next call read as theft and
+answered with `deleteMany WHERE userId`: every session on every device. It is not fixable by
+reordering; the DB write is durable before the response leaves the process. `refresh` now returns the
+same token and only mints a new access token. The trade — a stolen refresh token is not caught on
+reuse — is paid for by revocation being immediate and checked on every refresh. The regression guard
+is `authenticate.test.ts` → "accepts the same token twice".
 
 What is _not_ bounded by 15 minutes, because it is re-read on every request: **org membership**
 (removal takes effect immediately, on every device), **permissions**, and **row visibility**.
@@ -48,6 +59,13 @@ which is exactly how `isDeleted` came to be checked in zero places while `isActi
 in the same transaction.** `onDelete: Cascade` on `refresh_tokens.user_id` only fires on a _hard_
 delete, and this codebase soft-deletes everywhere. Since nothing on the request path checks the
 account, this is what makes deactivation take effect at all — at the user's next refresh.
+
+🔴 **`refresh_tokens` rows are never deleted — ending a session stamps `revoked_at` + `revoked_reason`.**
+The table is also the login report (`created_at` = real login time, `last_used_at`, `user_agent`), so
+a delete destroys history. It therefore behaves like every soft-deleted table here: **a live-session
+read must filter `revokedAt: null`**, or a logged-out session keeps working. `GET /auth/me/sessions`
+returns the caller's own history. Nothing purges the table yet — decide a retention rule before it
+grows.
 
 **Tests:** suites run against the dev database **in parallel**, so a test that mutates a user it
 merely _found_ will break whatever another suite is doing with that user at that moment. Create your
@@ -143,6 +161,12 @@ Added in `migrations/20260720120300_add_default_audit_columns`. Copy this block 
 every new **domain** table (business/tenant data). **Exclude** ephemeral token tables
 (`refresh_tokens`, `password_reset_tokens`) and master-data reference tables
 (`countries`, `states`, `cities`, `industries`, `app_modules`).
+
+`refresh_tokens` stays on that exclusion list, but it is no longer ephemeral: since 2026-07-31 it
+keeps its rows and carries its own lifecycle columns (`revoked_at`, `revoked_reason`, `last_used_at`,
+`user_agent`) instead of the five audit columns. There is no acting user to record on a session — the
+session _is_ the user's action — so `created_by`/`updated_by` would be noise, and `revoked_at` plays
+the `is_deleted` role.
 
 ```prisma
   isDeleted     Boolean  @default(false) @map("is_deleted")           // soft-delete flag
