@@ -49,7 +49,7 @@ async function resolveAvatarUrl(avatarUrl: string | null | undefined): Promise<s
   ) {
     return avatarUrl;
   }
-  return `${env.appUrl}/api/storage/stream?key=${encodeURIComponent(avatarUrl)}`;
+  return `/api/storage/stream?key=${encodeURIComponent(avatarUrl)}`;
 }
 
 export async function formatPublicUser(user: {

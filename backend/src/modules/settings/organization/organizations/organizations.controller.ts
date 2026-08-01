@@ -21,8 +21,7 @@ async function resolveLogoUrl(logoUrl: string | null | undefined): Promise<strin
   ) {
     return logoUrl;
   }
-  const { env } = await import('../../../../config/env.ts');
-  return `${env.appUrl}/api/storage/stream?key=${encodeURIComponent(logoUrl)}`;
+  return `/api/storage/stream?key=${encodeURIComponent(logoUrl)}`;
 }
 
 // Mapper to convert Prisma Organization to Zoho-style format
