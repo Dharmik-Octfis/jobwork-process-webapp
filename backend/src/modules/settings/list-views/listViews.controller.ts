@@ -2,11 +2,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { ApiError } from '../../../lib/apiError.ts';
 import { sendSuccess } from '../../../lib/apiResponse.ts';
-import {
-  ENTITY_TYPES,
-  isEntityType,
-  type EntityType,
-} from '../customization/custom-fields/customFields.constants.ts';
+import { LIST_ENTITY_TYPES, isListEntityType, type ListEntityType } from './listViews.catalog.ts';
 import { getListView, saveListView } from './listViews.service.ts';
 
 /** Body for saving a layout: the ordered list of visible column keys. */
@@ -20,10 +16,10 @@ export type SaveListViewInput = z.infer<typeof saveListViewSchema>;
  * service (which indexes the catalog by it). An unknown module is a 400, not a
  * crash on `LIST_COLUMNS[undefined]`.
  */
-function entityTypeOf(req: Request): EntityType {
+function entityTypeOf(req: Request): ListEntityType {
   const raw = req.params.entityType;
-  if (typeof raw !== 'string' || !isEntityType(raw)) {
-    throw ApiError.badRequest(`Unknown module. Expected one of: ${ENTITY_TYPES.join(', ')}.`);
+  if (typeof raw !== 'string' || !isListEntityType(raw)) {
+    throw ApiError.badRequest(`Unknown module. Expected one of: ${LIST_ENTITY_TYPES.join(', ')}.`);
   }
   return raw;
 }

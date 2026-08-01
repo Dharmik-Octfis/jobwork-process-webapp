@@ -16,6 +16,15 @@ export interface PublicPermissionTemplate {
   /** How many memberships currently use this template — surfaced so admins can
    * spot single-user templates (sprawl) and know a template is safe to delete. */
   memberCount: number;
+  /**
+   * Attribution for the list's "Created By & Time" / "Modified By & Time" columns,
+   * resolved through `lib/memberDirectory.ts` — so it is THIS organization's name
+   * for the person, "System" for a seeded row (an org's templates are created
+   * during signup, before there is an acting user), and "Support" for an actor who
+   * is not a member here. Never the raw `users.fullName`.
+   */
+  createdByName: string;
+  updatedByName: string;
   createdAt: string;
   updatedAt: string;
 }

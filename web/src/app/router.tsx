@@ -72,6 +72,14 @@ const PermissionTemplatesPage = lazyPage(
   () => import('../features/permission-templates/PermissionTemplatesPage'),
   'PermissionTemplatesPage',
 );
+const NewPermissionTemplate = lazyPage(
+  () => import('../features/permission-templates/NewPermissionTemplate'),
+  'NewPermissionTemplate',
+);
+const EditPermissionTemplate = lazyPage(
+  () => import('../features/permission-templates/EditPermissionTemplate'),
+  'EditPermissionTemplate',
+);
 const VendorsList = lazyPage(
   () => import('../features/purchases/vendors/VendorsList'),
   'VendorsList',
@@ -219,7 +227,11 @@ export const router = createBrowserRouter([
           // Two screens, deliberately: `roles` is job titles (no access at all),
           // `permissions` is the access bundles. A member is assigned one of each.
           { path: 'roles', element: <RolesPage /> },
+          // The list carries its own detail pane at `?id=<uuid>`, like every other
+          // module — so there is no `permissions/:id` route, only new/edit.
           { path: 'permissions', element: <PermissionTemplatesPage /> },
+          { path: 'permissions/new', element: <NewPermissionTemplate /> },
+          { path: 'permissions/:id/edit', element: <EditPermissionTemplate /> },
           { path: 'inventory/uom', element: <UnitOfMeasurementPage /> },
           { path: 'configuration/currencies', element: <CurrenciesPage /> },
           { path: 'modules', element: <ModulesListPage /> },

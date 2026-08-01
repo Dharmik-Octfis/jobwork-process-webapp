@@ -1,5 +1,5 @@
 import { ApiError } from '../../../lib/apiError.ts';
-import type { EntityType } from '../customization/custom-fields/customFields.constants.ts';
+import type { ListEntityType } from './listViews.catalog.ts';
 
 /**
  * Preset list filters ("All Vendors ▾") — the saved views a user picks from.
@@ -20,7 +20,7 @@ export interface FilterPreset {
 }
 
 /** The first entry of each list is the default when no `?filter=` is given. */
-export const LIST_FILTERS: Record<EntityType, readonly FilterPreset[]> = {
+export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
   vendor: [
     { key: 'all', label: 'All Vendors', where: {} },
     { key: 'active', label: 'Active Vendors', where: { status: 'active' } },
@@ -58,6 +58,16 @@ export const LIST_FILTERS: Record<EntityType, readonly FilterPreset[]> = {
     { key: 'all_users', label: 'All Users', where: { isDeleted: false } },
     { key: 'unconfirmed', label: 'Unconfirmed Users', where: {} },
   ],
+  /**
+   * Permission templates. `isSystem` is the built-in Owner profile — it cannot be
+   * edited or deleted, so separating it out is the one split worth offering: an
+   * admin auditing access wants the profiles they can actually change.
+   */
+  permission_template: [
+    { key: 'all', label: 'All Profiles', where: {} },
+    { key: 'custom', label: 'Custom Profiles', where: { isSystem: false } },
+    { key: 'built_in', label: 'Built-in Profiles', where: { isSystem: true } },
+  ],
   purchase_order: [
     { key: 'all', label: 'All Purchase Orders', where: {} },
     { key: 'draft', label: 'Draft', where: { status: 'Draft' } },
@@ -68,7 +78,7 @@ export const LIST_FILTERS: Record<EntityType, readonly FilterPreset[]> = {
 };
 
 /** Key + label only — what the picker renders. */
-export function filterOptions(entityType: EntityType): { key: string; label: string }[] {
+export function filterOptions(entityType: ListEntityType): { key: string; label: string }[] {
   return LIST_FILTERS[entityType].map(({ key, label }) => ({ key, label }));
 }
 
@@ -78,7 +88,7 @@ export function filterOptions(entityType: EntityType): { key: string; label: str
  * asked for a view that does not exist, and quietly showing everything would look
  * like the filter worked.
  */
-export function filterWhere<TWhere>(entityType: EntityType, key: string | undefined): TWhere {
+export function filterWhere<TWhere>(entityType: ListEntityType, key: string | undefined): TWhere {
   const searchKey = !key ? 'all' : key;
   const preset = LIST_FILTERS[entityType].find((f) => f.key === searchKey);
   if (!preset) {

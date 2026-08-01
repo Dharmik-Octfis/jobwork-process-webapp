@@ -45,7 +45,10 @@ export const endpoints = {
   /** Permission templates = the access bundles. An org starts with only "Owner";
    * the owner creates the rest before anyone can be invited. */
   permissionTemplates: {
+    /** `?search=…&filter=…&page=…&perPage=…` → `{ results, pageContext }`. */
     forOrg: (orgId: string) => `/organizations/${orgId}/permission-templates`,
+    /** Opt-in total behind the "Total count: view" link, same as every other list. */
+    count: (orgId: string) => `/organizations/${orgId}/permission-templates/count`,
     byId: (orgId: string, id: string) => `/organizations/${orgId}/permission-templates/${id}`,
     /** The permission vocabulary the role editor renders as checkboxes. */
     catalog: (orgId: string) => `/organizations/${orgId}/permission-templates/catalog`,

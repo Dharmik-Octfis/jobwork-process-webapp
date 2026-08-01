@@ -5,7 +5,7 @@ import { tenantContext } from '../../../middlewares/tenantContext.ts';
 import { requirePermission } from '../../../middlewares/authorize.ts';
 import { validateBody } from '../../../middlewares/validate.ts';
 import { ApiError } from '../../../lib/apiError.ts';
-import { isEntityType } from '../customization/custom-fields/customFields.constants.ts';
+import { isListEntityType } from './listViews.catalog.ts';
 import { getListViewRoute, saveListViewRoute, saveListViewSchema } from './listViews.controller.ts';
 
 /**
@@ -28,11 +28,12 @@ router.use(authenticate, tenantContext);
  */
 function requireEntityRead(req: Request, res: Response, next: NextFunction): void {
   const entityType = req.params.entityType;
-  if (typeof entityType !== 'string' || !isEntityType(entityType)) {
+  if (typeof entityType !== 'string' || !isListEntityType(entityType)) {
     next(ApiError.badRequest('Unknown module.'));
     return;
   }
-  // vendor -> 'vendor:read', customer -> 'customer:read', item -> 'item:read'
+  // vendor -> 'vendor:read', item -> 'item:read',
+  // permission_template -> 'permission_template:read'
   requirePermission(`${entityType}:read`)(req, res, next);
 }
 

@@ -21,8 +21,11 @@ const router = Router({ mergeParams: true });
 
 router.use(authenticate, tenantContext);
 
-// `/catalog` before `/:id` so it isn't captured as an id.
+// 🔴 Both before `/:id`. Express matches in mount order, so a `/:id` route
+// declared first would swallow "catalog" and "count" and try to load a template
+// with that id.
 router.get('/catalog', requirePermission('permission_template:read'), controller.getCatalog);
+router.get('/count', requirePermission('permission_template:read'), controller.getTemplatesCount);
 
 router.get('/', requirePermission('permission_template:read'), controller.getTemplates);
 router.get('/:id', requirePermission('permission_template:read'), controller.getOneTemplate);
