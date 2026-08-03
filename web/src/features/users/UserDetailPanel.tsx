@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -6,7 +6,9 @@ import { z } from 'zod';
 import { Mail, Pencil, Trash2, UserCheck, UserX, X } from 'lucide-react';
 import { toApiErrorMessage } from '../../api/client';
 import { Select } from '../../components/ui/Select';
+import { SearchableSelect } from '../../components/ui/SearchableSelect';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { organizationsApi } from '../organizations/organizations.api';
 import { membersApi, type Member, type OrgUser, isMember } from '../members/members.api';
 import { invitationsApi } from '../invitations/invitations.api';
 import type { Role } from '../roles/roles.api';
@@ -39,11 +41,24 @@ const profileSchema = z.object({
   addressLine1: z.string().trim().max(255).optional(),
   addressLine2: z.string().trim().max(255).optional(),
   zip: z.string().trim().max(20).optional(),
+  countryCode: z.string().optional(),
+  stateCode: z.string().optional(),
+  cityId: z.string().optional(),
   roleId: z.string().optional(),
   permissionTemplateId: z.string().optional(),
 });
 
 type ProfileValues = z.infer<typeof profileSchema>;
+
+type MasterData = {
+  states: {
+    code: string;
+    name: string;
+    countryCode: string;
+    cities: { id: string; name: string }[];
+  }[];
+  countries: { id: string; code: string; name: string }[];
+};
 
 interface UserDetailPanelProps {
   orgId: string;
@@ -108,6 +123,15 @@ export function UserDetailPanel({
   const [serverError, setServerError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<'remove' | 'revoke' | 'deactivate' | null>(null);
 
+  const [masterData, setMasterData] = useState<MasterData | null>(null);
+
+  useEffect(() => {
+    organizationsApi
+      .getSeedData()
+      .then(setMasterData)
+      .catch((err) => console.error('Failed to load master data:', err));
+  }, []);
+
   const assignableRoles = roles.filter((r) => !r.isSystem);
   const assignableTemplates = templates.filter((t) => !t.isSystem);
 
@@ -131,7 +155,9 @@ export function UserDetailPanel({
     register,
     handleSubmit,
     control,
-    formState: { errors },
+    watch,
+    setValue,
+    formState: { errors, isDirty },
   } = useForm<ProfileValues>({
     resolver: zodResolver(profileSchema),
     defaultValues: member
@@ -144,11 +170,25 @@ export function UserDetailPanel({
           addressLine1: member.address.line1 ?? '',
           addressLine2: member.address.line2 ?? '',
           zip: member.address.zip ?? '',
+          countryCode: member.address.countryCode ?? '',
+          stateCode: member.address.stateCode ?? '',
+          cityId: member.address.cityId ?? '',
           roleId: member.roleId ?? '',
           permissionTemplateId: member.permissionTemplateId ?? '',
         }
       : { firstName: '', lastName: '' },
   });
+
+  const selectedCountryCode = watch('countryCode');
+  const selectedStateCode = watch('stateCode');
+
+  const availableStates =
+    masterData?.states.filter(
+      (s) => !selectedCountryCode || s.countryCode === selectedCountryCode,
+    ) || [];
+
+  const availableCities =
+    masterData?.states.find((s) => s.code === selectedStateCode)?.cities || [];
 
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: ['org-users', orgId] });
@@ -220,6 +260,9 @@ export function UserDetailPanel({
       addressLine1: orNull(values.addressLine1),
       addressLine2: orNull(values.addressLine2),
       zip: orNull(values.zip),
+      countryCode: orNull(values.countryCode),
+      stateCode: orNull(values.stateCode),
+      cityId: orNull(values.cityId),
       // Role and access are only sent when this pane is allowed to change them.
       ...(isLocked
         ? {}
@@ -362,23 +405,7 @@ export function UserDetailPanel({
         </div>
 
         <div className="users-detail-actions">
-          {isEditing ? (
-            <>
-              {/* No close-panel button while editing: it would sit beside Cancel
-                  meaning almost the same thing, and discard typed changes silently. */}
-              <button type="button" className="users-btn" onClick={() => setIsEditing(false)}>
-                <X size={15} /> Cancel
-              </button>
-              <button
-                type="submit"
-                form="user-detail-form"
-                className="users-btn is-primary"
-                disabled={updateMutation.isPending}
-              >
-                {updateMutation.isPending ? 'Saving…' : 'Save changes'}
-              </button>
-            </>
-          ) : (
+          {!isEditing && (
             <>
               {/* Without this the table stays collapsed to the narrow master pane
                   with no way back — the only other route out is removing the person. */}
@@ -635,12 +662,67 @@ export function UserDetailPanel({
                 </label>
                 <input id="ud-zip" className="users-input" {...register('zip')} />
               </div>
-              {/* Country/state/city use the shared master-data pickers and are edited
-                  on their own; leaving them out of this form keeps it from having to
-                  cascade three dependent dropdowns. They still render below. */}
-              <ReadField label="City" value={member.address.cityName} />
-              <ReadField label="State" value={member.address.stateName} />
-              <ReadField label="Country" value={member.address.countryName} />
+              <div>
+                <label className="users-field-label">Country</label>
+                <Controller
+                  name="countryCode"
+                  control={control}
+                  render={({ field }) => (
+                    <SearchableSelect
+                      options={
+                        masterData?.countries.map((c) => ({ label: c.name, value: c.code })) || []
+                      }
+                      value={field.value ?? ''}
+                      onChange={(val) => {
+                        if (val !== field.value) {
+                          field.onChange(val);
+                          setValue('stateCode', '');
+                          setValue('cityId', '');
+                        }
+                      }}
+                      disabled={!masterData}
+                      placeholder="Select Country"
+                    />
+                  )}
+                />
+              </div>
+              <div>
+                <label className="users-field-label">State</label>
+                <Controller
+                  name="stateCode"
+                  control={control}
+                  render={({ field }) => (
+                    <SearchableSelect
+                      options={availableStates.map((s) => ({ label: s.name, value: s.code }))}
+                      value={field.value ?? ''}
+                      onChange={(val) => {
+                        if (val !== field.value) {
+                          field.onChange(val);
+                          setValue('cityId', '');
+                        }
+                      }}
+                      disabled={!selectedCountryCode}
+                      placeholder="Select State"
+                    />
+                  )}
+                />
+              </div>
+              <div>
+                <label className="users-field-label">City</label>
+                <Controller
+                  name="cityId"
+                  control={control}
+                  render={({ field }) => (
+                    <SearchableSelect
+                      options={availableCities.map((c) => ({ label: c.name, value: c.id }))}
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      disabled={!selectedStateCode}
+                      placeholder="Select City"
+                    />
+                  )}
+                />
+              </div>
             </div>
           ) : (
             <div className="users-grid">
@@ -648,6 +730,30 @@ export function UserDetailPanel({
             </div>
           )}
         </div>
+
+        {isEditing && (
+          <div
+            style={{
+              padding: '12px 24px',
+              borderTop: '1px solid var(--color-border)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 8,
+              background: '#fafafa',
+            }}
+          >
+            <button type="button" className="users-btn" onClick={() => setIsEditing(false)}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="users-btn is-primary"
+              disabled={updateMutation.isPending || !isDirty}
+            >
+              {updateMutation.isPending ? 'Saving…' : 'Save changes'}
+            </button>
+          </div>
+        )}
       </form>
 
       <ConfirmDialog

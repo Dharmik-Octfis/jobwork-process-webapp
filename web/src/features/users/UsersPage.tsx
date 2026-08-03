@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, SlidersHorizontal, Users as UsersIcon } from 'lucide-react';
 import { organizationsApi } from '../organizations/organizations.api';
 import { rolesApi } from '../roles/roles.api';
 import { permissionTemplatesApi } from '../permission-templates/permissionTemplates.api';
-import { membersApi, isMember, type OrgUser } from '../members/members.api';
+import { membersApi, isMember, type OrgUser, type Member } from '../members/members.api';
 import { useListSearch } from '../../hooks/useListSearch';
 import { useListCount } from '../../hooks/useListCount';
 import { useListColumns } from '../../hooks/useListColumns';
@@ -42,7 +42,11 @@ import './Users.css';
  * its position in this table is the `display_order` an admin set by dragging it in
  * Settings → Modules → Users.
  */
-function renderUserCell(user: OrgUser, key: string): string {
+function renderUserCell(
+  user: OrgUser,
+  key: string,
+  onToggleStatus?: (user: Member) => void
+): React.ReactNode {
   if (key.startsWith(CUSTOM_FIELD_PREFIX)) {
     // Only a joined member has custom-field values; an invitation has no record yet.
     const values = isMember(user) ? user.customFields : undefined;
@@ -66,7 +70,33 @@ function renderUserCell(user: OrgUser, key: string): string {
       if (!isMember(user)) {
         return user.inviteStatus === 'declined' ? 'Declined' : 'Unconfirmed';
       }
-      return user.isOwner ? 'Owner' : user.status === 'active' ? 'Active' : 'Inactive';
+      if (user.isOwner) {
+        return (
+          <span style={{ color: '#059669', fontWeight: 500 }}>
+            Active
+          </span>
+        );
+      }
+      return (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleStatus?.(user);
+          }}
+          style={{
+            background: user.status === 'active' ? '#dcfce7' : '#fee2e2',
+            color: user.status === 'active' ? '#166534' : '#991b1b',
+            border: 'none',
+            padding: '2px 8px',
+            borderRadius: '12px',
+            fontSize: '12px',
+            fontWeight: 500,
+            cursor: 'pointer',
+          }}
+        >
+          {user.status === 'active' ? 'Active' : 'Inactive'}
+        </button>
+      );
     case 'addedByName':
       return user.addedByName;
     case 'phone':
@@ -100,6 +130,8 @@ export function UsersPage() {
   // Search term (from the global top-bar box, via `?search=`) + filter + page
   // cursor, all from the shared hook so every list wires this the same way.
   const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch();
+
+  const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
     // orgId in the key or an org switch serves the previous tenant's cache;
@@ -147,6 +179,22 @@ export function UsersPage() {
     queryFn: () => rolesApi.list(orgId!),
     enabled: Boolean(orgId),
   });
+
+  const toggleStatusMutation = useMutation({
+    mutationFn: (user: Member) =>
+      membersApi.update(orgId!, user.id, {
+        isActive: user.status === 'inactive', // toggle it
+      }),
+    onSuccess: () => {
+      // Invalidate the users list so it refetches
+      queryClient.invalidateQueries({ queryKey: ['org-users', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['org-users-count', orgId] });
+    },
+  });
+
+  const handleToggleStatus = (user: Member) => {
+    toggleStatusMutation.mutate(user);
+  };
 
   // `listAll`, not `list` — this feeds the assign/invite dropdowns, which have to
   // offer every profile at once and cannot page.
@@ -382,7 +430,7 @@ export function UsersPage() {
                             fontWeight: col.locked ? 500 : 400,
                           }}
                         >
-                          {renderUserCell(user, col.key)}
+                          {renderUserCell(user, col.key, handleToggleStatus)}
                         </td>
                       ))}
                     </tr>

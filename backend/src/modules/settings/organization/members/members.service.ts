@@ -201,6 +201,18 @@ function rolePathFor(roleId: string | null, tree: Map<string, RoleNode>): string
   return path;
 }
 
+function resolveAvatarUrl(avatarUrl: string | null): string | null {
+  if (!avatarUrl) return null;
+  if (
+    avatarUrl.startsWith('http://') ||
+    avatarUrl.startsWith('https://') ||
+    avatarUrl.startsWith('data:')
+  ) {
+    return avatarUrl;
+  }
+  return `/api/storage/stream?key=${encodeURIComponent(avatarUrl)}`;
+}
+
 function toPublicMember(
   row: MemberRow,
   tree: Map<string, RoleNode>,
@@ -216,7 +228,7 @@ function toPublicMember(
     fullName: row.fullName,
     // Everything from here to `address` is the ACCOUNT's, not this org's.
     email: row.user.email,
-    avatarUrl: row.user.avatarUrl,
+    avatarUrl: resolveAvatarUrl(row.user.avatarUrl),
     phone: row.user.phone,
     mobile: row.user.mobile,
     dateOfBirth: toDateOnly(row.user.dateOfBirth),
@@ -579,10 +591,16 @@ export async function updateMember(
     });
     if (!membership) throw ApiError.notFound('User not found.');
 
-    if (membership.isOwner) {
-      throw new ApiError(403, "The organization owner's record cannot be changed here.");
+    if (membership.isOwner && membership.userId !== actingUserId) {
+      throw new ApiError(403, "The organization owner's record cannot be changed by other members.");
     }
-    if (membership.userId === actingUserId) {
+
+    const isEscalating = 
+      input.permissionTemplateId !== undefined || 
+      input.roleId !== undefined || 
+      input.isActive !== undefined;
+
+    if (membership.userId === actingUserId && isEscalating) {
       throw new ApiError(
         403,
         'You cannot change your own role, permissions or status. Edit your own details under your profile.',
