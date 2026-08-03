@@ -259,7 +259,7 @@ export function SettingsLayout() {
                 })}
               >
                 <ShieldCheck size={18} />
-                <span style={{ fontSize: 14 }}>Permissions</span>
+                <span style={{ fontSize: 14 }}>Profiles</span>
               </NavLink>
 
               <NavLink
