@@ -8,7 +8,6 @@ import { useListCount } from '../../hooks/useListCount';
 import { useListColumns } from '../../hooks/useListColumns';
 import { Pagination } from '../../components/ui/Pagination';
 import { CustomizeColumnsModal } from '../../components/ui/CustomizeColumnsModal';
-import { ListFilterDropdown } from '../../components/ui/ListFilterDropdown';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { permissionTemplatesApi, type PermissionTemplate } from './permissionTemplates.api';
 import { PermissionTemplateDetail } from './PermissionTemplateDetail';
@@ -19,8 +18,14 @@ import { PermissionTemplateDetail } from './PermissionTemplateDetail';
  * permissions and the ONLY thing that decides what a member may do.
  *
  * Built from the same pieces as every other module list — `useListSearch`,
- * `useListColumns`, `ListFilterDropdown`, `CustomizeColumnsModal`, `Pagination`,
- * and a `?id=` detail pane — so it behaves identically to Users and Vendors.
+ * `useListColumns`, `CustomizeColumnsModal`, `Pagination`, and a `?id=` detail
+ * pane — so it behaves identically to Users and Vendors.
+ *
+ * The one piece it does NOT have is the preset-view picker every other list
+ * carries. This screen shows every profile, always: the splits it used to offer
+ * ("Custom" / "Built-in") were removed on 2026-08-03, so the heading is static
+ * text rather than a `ListFilterDropdown` and no `?filter=` is sent. A stale
+ * bookmarked `?filter=built_in` is therefore ignored rather than 400ing.
  *
  * 🔴 A profile is NOT a job title. Titles live in Settings → Roles and are assigned
  * independently: the same title can hold different access, and one profile can span
@@ -72,14 +77,14 @@ export function PermissionTemplatesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
 
-  const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch();
+  const { search, perPage, setPerPage, page, setPage } = useListSearch();
 
   const { data, isLoading } = useQuery({
     // orgId in the key or an org switch serves the previous tenant's cache;
-    // search + filter + page so each combination is cached separately.
-    queryKey: ['permission-templates', orgId, search, filter, page, perPage],
+    // search + page so each combination is cached separately.
+    queryKey: ['permission-templates', orgId, search, page, perPage],
     queryFn: () =>
-      permissionTemplatesApi.list(orgId!, { search: search || undefined, filter, page, perPage }),
+      permissionTemplatesApi.list(orgId!, { search: search || undefined, page, perPage }),
     enabled: Boolean(orgId),
     // Keep the current page visible while the next one loads.
     placeholderData: (prev) => prev,
@@ -92,15 +97,14 @@ export function PermissionTemplatesPage() {
     total,
     isCounting,
     request: requestCount,
-  } = useListCount(['permission-templates-count', orgId, search, filter], () =>
-    permissionTemplatesApi.count(orgId!, { search: search || undefined, filter }),
+  } = useListCount(['permission-templates-count', orgId, search], () =>
+    permissionTemplatesApi.count(orgId!, { search: search || undefined }),
   );
 
   // Column layout ("Customize Columns") — per user, per org, per module.
   const {
     catalog,
     visible,
-    filters,
     columns,
     save: saveColumns,
   } = useListColumns(orgId, 'permission_template');
@@ -162,12 +166,19 @@ export function PermissionTemplatesPage() {
               borderBottom: '1px solid #eef0f3',
             }}
           >
-            <ListFilterDropdown
-              filters={filters}
-              value={filter}
-              onChange={setFilter}
-              fallbackLabel="All Profiles"
-            />
+            <h1
+              style={{
+                fontSize: '18px',
+                fontWeight: 600,
+                color: '#000',
+                margin: 0,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              Profiles
+            </h1>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               {!selectedId && (

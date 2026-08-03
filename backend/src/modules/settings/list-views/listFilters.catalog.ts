@@ -59,15 +59,13 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
     { key: 'unconfirmed', label: 'Unconfirmed Users', where: {} },
   ],
   /**
-   * Permission templates. `isSystem` is the built-in Owner profile — it cannot be
-   * edited or deleted, so separating it out is the one split worth offering: an
-   * admin auditing access wants the profiles they can actually change.
+   * Profiles. Deliberately a single unfiltered view — the "Custom Profiles" /
+   * "Built-in Profiles" splits were removed on 2026-08-03 because an org holds a
+   * handful of profiles and the built-in one is already labelled in the Type
+   * column. The `all` entry must stay: `filterWhere` resolves an absent `?filter=`
+   * to `all`, so an empty list here would 400 every request.
    */
-  permission_template: [
-    { key: 'all', label: 'All Profiles', where: {} },
-    { key: 'custom', label: 'Custom Profiles', where: { isSystem: false } },
-    { key: 'built_in', label: 'Built-in Profiles', where: { isSystem: true } },
-  ],
+  permission_template: [{ key: 'all', label: 'All Profiles', where: {} }],
   purchase_order: [
     { key: 'all', label: 'All Purchase Orders', where: {} },
     { key: 'draft', label: 'Draft', where: { status: 'Draft' } },
