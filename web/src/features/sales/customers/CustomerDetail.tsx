@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchCustomerById, deleteCustomer, updateCustomer, fetchCustomerActivities } from './customers.api';
-import { type UpdateCustomerData, type CustomerAddress, type CustomerContactPerson } from './customers.schemas';
+import { type Customer, type UpdateCustomerData, type CustomerAddress, type CustomerContactPerson } from './customers.schemas';
 import { useParams, useNavigate } from 'react-router-dom';
 import { X, Edit, ChevronDown, ChevronUp, Pencil, Trash, Settings, User, Plus } from 'lucide-react';
 import { useState, useRef, useEffect, Fragment } from 'react';
@@ -175,7 +175,8 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
       }
       return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
     },
-    onSuccess: () => {
+    onSuccess: (updatedCustomer) => {
+      queryClient.setQueryData(['customer', orgId, customerId], updatedCustomer);
       queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] });
       setAddressModalType(null);
     },
@@ -211,7 +212,8 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
       const dataToUpdate = { ...rest, ...mappedData };
       return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
     },
-    onSuccess: () => {
+    onSuccess: (updatedCustomer) => {
+      queryClient.setQueryData(['customer', orgId, customerId], updatedCustomer);
       queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] });
       setIsContactPersonModalOpen(false);
     },
@@ -240,7 +242,8 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
       const dataToUpdate = { ...rest, contactPersons: updatedPersons };
       return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
     },
-    onSuccess: () => {
+    onSuccess: (updatedCustomer) => {
+      queryClient.setQueryData(['customer', orgId, customerId], updatedCustomer);
       queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] });
       setIsContactPersonModalOpen(false);
       setContactPersonEditIndex(null);
@@ -264,7 +267,8 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
       const dataToUpdate = { ...rest, contactPersons: updatedPersons };
       return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
     },
-    onSuccess: () => {
+    onSuccess: (updatedCustomer) => {
+      queryClient.setQueryData(['customer', orgId, customerId], updatedCustomer);
       queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] });
     },
   });
@@ -314,7 +318,52 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
 
       return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
     },
-    onSuccess: () => {
+    onMutate: async (index: number) => {
+      await queryClient.cancelQueries({ queryKey: ['customer', orgId, customerId] });
+      const previousCustomer = queryClient.getQueryData<Customer>(['customer', orgId, customerId]);
+      
+      if (previousCustomer) {
+        const persons = previousCustomer.contactPersons || [];
+        const newPrimary = persons[index];
+        
+        const currentPrimary = {
+          salutation: previousCustomer.primaryContactSalutation,
+          firstName: previousCustomer.primaryContactFirstName,
+          lastName: previousCustomer.primaryContactLastName,
+          email: previousCustomer.email,
+          phone: previousCustomer.phone,
+          mobile: previousCustomer.mobile,
+        };
+
+        const hasCurrentPrimary = currentPrimary.firstName || currentPrimary.lastName;
+        const updatedPersons = [...persons];
+        
+        if (hasCurrentPrimary) {
+          updatedPersons[index] = currentPrimary;
+        } else {
+          updatedPersons.splice(index, 1);
+        }
+
+        queryClient.setQueryData(['customer', orgId, customerId], {
+          ...previousCustomer,
+          primaryContactSalutation: newPrimary.salutation,
+          primaryContactFirstName: newPrimary.firstName,
+          primaryContactLastName: newPrimary.lastName,
+          email: newPrimary.email,
+          phone: newPrimary.phone,
+          mobile: newPrimary.mobile,
+          contactPersons: updatedPersons,
+        });
+      }
+      return { previousCustomer };
+    },
+    onError: (err, index, context) => {
+      if (context?.previousCustomer) {
+        queryClient.setQueryData(['customer', orgId, customerId], context.previousCustomer);
+      }
+    },
+    onSuccess: (updatedCustomer) => {
+      queryClient.setQueryData(['customer', orgId, customerId], updatedCustomer);
       queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] });
       queryClient.invalidateQueries({ queryKey: ['customers', orgId] });
     },

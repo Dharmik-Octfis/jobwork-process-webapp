@@ -75,6 +75,7 @@ export function Pagination({
           <span style={{ fontWeight: 600, color: 'var(--color-text)' }}>{total}</span>
         ) : (
           <button
+            type="button"
             onClick={onRequestCount}
             style={{
               background: 'none',
@@ -110,6 +111,7 @@ export function Pagination({
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span>Page {pageContext.page}</span>
           <button
+            type="button"
             onClick={() => onPageChange(Math.max(1, page - 1))}
             disabled={!canPrev}
             title="Previous page"
@@ -119,6 +121,7 @@ export function Pagination({
             <ChevronLeft size={16} />
           </button>
           <button
+            type="button"
             onClick={() => onPageChange(page + 1)}
             disabled={!canNext}
             title="Next page"

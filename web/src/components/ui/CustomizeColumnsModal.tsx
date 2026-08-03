@@ -133,6 +133,7 @@ export function CustomizeColumnsModal({
               {selectedCount} of {rows.length} Selected
             </span>
             <button
+              type="button"
               onClick={onClose}
               aria-label="Close"
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444' }}
@@ -226,6 +227,7 @@ export function CustomizeColumnsModal({
           style={{ display: 'flex', gap: 10, padding: '14px 20px', borderTop: '1px solid #eef0f3' }}
         >
           <button
+            type="button"
             onClick={handleSave}
             disabled={isSaving}
             style={{
@@ -243,6 +245,7 @@ export function CustomizeColumnsModal({
             {isSaving ? 'Saving…' : 'Save'}
           </button>
           <button
+            type="button"
             onClick={onClose}
             style={{
               background: '#fff',

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchVendorById, deleteVendor, updateVendor, fetchVendorActivities } from './vendors.api';
 import {
+  type Vendor,
   type UpdateVendorData,
   type VendorAddress,
   type VendorContactPerson,
@@ -182,7 +183,8 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
       }
       return updateVendor({ orgId: orgId!, id: vendorId, data: dataToUpdate as UpdateVendorData });
     },
-    onSuccess: () => {
+    onSuccess: (updatedVendor) => {
+      queryClient.setQueryData(['vendor', orgId, vendorId], updatedVendor);
       queryClient.invalidateQueries({ queryKey: ['vendor', orgId, vendorId] });
       setAddressModalType(null);
     },
@@ -218,7 +220,8 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
       const dataToUpdate = { ...rest, ...mappedData };
       return updateVendor({ orgId: orgId!, id: vendorId, data: dataToUpdate as UpdateVendorData });
     },
-    onSuccess: () => {
+    onSuccess: (updatedVendor) => {
+      queryClient.setQueryData(['vendor', orgId, vendorId], updatedVendor);
       queryClient.invalidateQueries({ queryKey: ['vendor', orgId, vendorId] });
       setIsPrimaryContactModalOpen(false);
     },
@@ -241,7 +244,8 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
       const dataToUpdate = { ...rest, contactPersons: updatedContactPersons };
       return updateVendor({ orgId: orgId!, id: vendorId, data: dataToUpdate as UpdateVendorData });
     },
-    onSuccess: () => {
+    onSuccess: (updatedVendor) => {
+      queryClient.setQueryData(['vendor', orgId, vendorId], updatedVendor);
       queryClient.invalidateQueries({ queryKey: ['vendor', orgId, vendorId] });
     },
   });
@@ -289,7 +293,52 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
       const dataToUpdate = { ...rest, ...newPrimary, contactPersons: updatedContactPersons };
       return updateVendor({ orgId: orgId!, id: vendorId, data: dataToUpdate as UpdateVendorData });
     },
-    onSuccess: () => {
+    onMutate: async (index: number) => {
+      await queryClient.cancelQueries({ queryKey: ['vendor', orgId, vendorId] });
+      const previousVendor = queryClient.getQueryData<Vendor>(['vendor', orgId, vendorId]);
+      
+      if (previousVendor) {
+        const currentPrimary = {
+          salutation: previousVendor.primaryContactSalutation || '',
+          firstName: previousVendor.primaryContactFirstName || '',
+          lastName: previousVendor.primaryContactLastName || '',
+          email: previousVendor.email || '',
+          phone: previousVendor.phone || '',
+          mobile: previousVendor.mobile || '',
+        };
+        const selectedContactPerson = previousVendor.contactPersons![index];
+        const newPrimary = {
+          primaryContactSalutation: selectedContactPerson.salutation,
+          primaryContactFirstName: selectedContactPerson.firstName,
+          primaryContactLastName: selectedContactPerson.lastName,
+          email: selectedContactPerson.email,
+          phone: selectedContactPerson.phone,
+          mobile: selectedContactPerson.mobile,
+        };
+        const hasCurrentPrimary = currentPrimary.firstName || currentPrimary.lastName;
+        const updatedContactPersons = [...previousVendor.contactPersons!];
+        
+        if (hasCurrentPrimary) {
+          updatedContactPersons[index] = currentPrimary;
+        } else {
+          updatedContactPersons.splice(index, 1);
+        }
+        
+        queryClient.setQueryData(['vendor', orgId, vendorId], {
+          ...previousVendor,
+          ...newPrimary,
+          contactPersons: updatedContactPersons,
+        });
+      }
+      return { previousVendor };
+    },
+    onError: (err, index, context) => {
+      if (context?.previousVendor) {
+        queryClient.setQueryData(['vendor', orgId, vendorId], context.previousVendor);
+      }
+    },
+    onSuccess: (updatedVendor) => {
+      queryClient.setQueryData(['vendor', orgId, vendorId], updatedVendor);
       queryClient.invalidateQueries({ queryKey: ['vendor', orgId, vendorId] });
       queryClient.invalidateQueries({ queryKey: ['vendors', orgId] });
       setActiveContactPersonMenu(null);
@@ -320,7 +369,8 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
       const dataToUpdate = { ...rest, contactPersons: updatedContactPersons };
       return updateVendor({ orgId: orgId!, id: vendorId, data: dataToUpdate as UpdateVendorData });
     },
-    onSuccess: () => {
+    onSuccess: (updatedVendor) => {
+      queryClient.setQueryData(['vendor', orgId, vendorId], updatedVendor);
       queryClient.invalidateQueries({ queryKey: ['vendor', orgId, vendorId] });
       setIsContactPersonModalOpen(false);
       setContactPersonEditIndex(null);

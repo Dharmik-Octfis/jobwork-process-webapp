@@ -20,9 +20,9 @@ export function EditVendor() {
 
   const mutation = useMutation({
     mutationFn: (data: CreateVendorData) => updateVendor({ id: id!, orgId: orgId!, data }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['vendors'] });
-      queryClient.invalidateQueries({ queryKey: ['vendor'] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['vendors'] });
+      await queryClient.invalidateQueries({ queryKey: ['vendor'] });
       navigate(`/organizations/${orgId}/purchases/vendors`);
     },
     onError: (

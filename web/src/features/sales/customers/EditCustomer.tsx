@@ -20,9 +20,9 @@ export function EditCustomer() {
 
   const mutation = useMutation({
     mutationFn: (data: CreateCustomerData) => updateCustomer({ id: id!, orgId: orgId!, data }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customers'] });
-      queryClient.invalidateQueries({ queryKey: ['customer'] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['customers'] });
+      await queryClient.invalidateQueries({ queryKey: ['customer'] });
       navigate(`/organizations/${orgId}/sales/customers`);
     },
     onError: (

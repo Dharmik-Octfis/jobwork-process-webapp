@@ -57,6 +57,7 @@ export function Select({
   return (
     <div style={{ position: 'relative', minWidth, width: fullWidth ? '100%' : minWidth, ...containerStyle }}>
       <button
+        type="button"
         {...getToggleButtonProps({
           disabled,
           'aria-label': ariaLabel,
