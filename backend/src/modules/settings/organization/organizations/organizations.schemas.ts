@@ -45,7 +45,7 @@ export const createOrganizationSchema = openApiRegistry.register(
 
   website: z
     .string()
-    .url('Invalid website URL')
+    .regex(/^(https?:\/\/)?([\w.-]+)\.([a-z]{2,})([/\w .-]*)*\/?$/i, 'Invalid website URL')
     .optional()
     .or(z.literal(''))
     .openapi({ example: 'https://acmecorp.in' }),

@@ -127,7 +127,7 @@ export function VendorForm({
           companyName && primaryContactFirstName
             ? `${companyName} - ${primaryContactFirstName} ${primaryContactLastName}`.trim()
             : '',
-        ].filter(Boolean),
+        ].filter((val): val is string => Boolean(val)),
       ),
     );
     setDisplayNameOptions(options);
