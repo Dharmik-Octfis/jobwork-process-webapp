@@ -63,7 +63,7 @@ export async function createOrganization(req: Request, res: Response, next: Next
     if (!userId) {
       throw new ApiError(401, 'Sign in to continue.');
     }
-    // force restart for prisma length fix
+    // force restart for prisma base currency schema update
 
     const orgId = crypto.randomUUID();
 
@@ -105,6 +105,7 @@ export async function createOrganization(req: Request, res: Response, next: Next
               decimalPlaces: 2,
               format: '1,234,567.89',
               exchangeRate: 1,
+              isBaseCurrency: true,
               createdBy: userId,
               updatedBy: userId,
             },

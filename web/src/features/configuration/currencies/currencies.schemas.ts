@@ -36,6 +36,7 @@ export interface Currency {
   exchangeRate: number;
   isDeleted: boolean;
   isActive: boolean;
+  isBaseCurrency: boolean;
   createdBy: string | null;
   updatedBy: string | null;
   createdAt: string;

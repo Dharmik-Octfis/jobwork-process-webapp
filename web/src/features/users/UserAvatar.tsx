@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 /**
  * Initials avatar with a deterministic colour.
  *
@@ -36,8 +38,11 @@ function initialsFor(name: string): string {
     .join('');
 }
 
-export function UserAvatar({ name, url, size = 34 }: UserAvatarProps) {
+export function UserAvatar({ name, url: initialUrl, size = 34 }: UserAvatarProps) {
+  const [imgFailed, setImgFailed] = useState(false);
   const hue = hueFor(name);
+
+  const url = !imgFailed ? initialUrl : null;
 
   return (
     <span
@@ -52,7 +57,7 @@ export function UserAvatar({ name, url, size = 34 }: UserAvatarProps) {
         background: url ? 'var(--color-border)' : `hsl(${hue} 58% 45%)`,
       }}
     >
-      {url ? <img src={url} alt="" /> : initialsFor(name)}
+      {url ? <img src={url} alt="" onError={() => setImgFailed(true)} /> : initialsFor(name)}
     </span>
   );
 }

@@ -433,6 +433,7 @@ model Currency {
   decimalPlaces  Int          @default(2) @map("decimal_places")
   isDeleted      Boolean      @default(false) @map("is_deleted")
   isActive       Boolean      @default(true) @map("is_active")
+  isBaseCurrency Boolean      @default(false) @map("is_base_currency")
   createdBy      String?      @map("created_by") @db.Uuid
   updatedBy      String?      @map("updated_by") @db.Uuid
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)

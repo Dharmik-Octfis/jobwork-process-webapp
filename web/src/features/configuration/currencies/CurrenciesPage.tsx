@@ -192,7 +192,26 @@ export function CurrenciesPage() {
                           fontWeight: 500,
                         }}
                       >
-                        {currency.currencyName}
+                        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px' }}>
+                          <span>{currency.currencyName}</span>
+                          {currency.isBaseCurrency && (
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                padding: '2px 6px',
+                                background: '#dcfce7',
+                                color: '#166534',
+                                borderRadius: '4px',
+                                fontWeight: 600,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.05em',
+                                display: 'inline-flex'
+                              }}
+                            >
+                              Base Currency
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td style={{ padding: '12px 16px', color: 'var(--color-text)' }}>
                         {currency.symbol}
