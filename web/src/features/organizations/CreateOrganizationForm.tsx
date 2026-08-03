@@ -386,7 +386,7 @@ export function CreateOrganizationForm() {
             <label className="org-form-label">Website</label>
             <input
               {...register('website')}
-              type="url"
+              type="text"
               className={`org-form-input ${errors.website ? 'has-error' : ''}`}
               placeholder="https://example.com"
             />

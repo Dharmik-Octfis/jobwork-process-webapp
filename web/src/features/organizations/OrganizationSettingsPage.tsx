@@ -660,7 +660,7 @@ export function OrganizationSettingsPage() {
               <div className="org-form-group">
                 <label>Website</label>
                 <input
-                  type="url"
+                  type="text"
                   className={`org-form-input ${errors.website ? 'error' : ''}`}
                   placeholder="https://example.com"
                   {...register('website')}
