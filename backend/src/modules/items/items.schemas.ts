@@ -23,7 +23,7 @@ export const itemSchema = openApiRegistry.register(
       .min(1, 'Name is required')
       .max(200)
       .openapi({ example: 'Apple MacBook Pro M3' }),
-    type: z.enum(['Goods', 'Service']).default('Goods').openapi({ example: 'Goods' }),
+    type: z.enum(['Goods', 'Service']).optional().openapi({ example: 'Goods' }),
     product_type: z.string().optional(),
     category: z.string().max(100).nullable().optional().openapi({ example: 'Electronics' }),
     hsnCode: z.string().max(50).nullable().optional().openapi({ example: '84713010' }),
@@ -53,9 +53,9 @@ export const itemSchema = openApiRegistry.register(
     front_image: z.union([itemImageAttachmentSchema, z.string()]).nullable().optional(),
     rearImage: z.union([itemImageAttachmentSchema, z.string()]).nullable().optional(),
     rear_image: z.union([itemImageAttachmentSchema, z.string()]).nullable().optional(),
-    images: z.array(z.union([itemImageAttachmentSchema, z.string()])).default([]),
+    images: z.array(z.union([itemImageAttachmentSchema, z.string()])).optional(),
 
-    trackInventory: z.boolean().default(false),
+    trackInventory: z.boolean().optional(),
     track_inventory: z.boolean().optional(),
     inventoryTracking: z.string().nullable().optional(),
     inventory_tracking: z.string().nullable().optional(),
@@ -71,7 +71,7 @@ export const itemSchema = openApiRegistry.register(
     created_by: z.string().nullable().optional(),
     updatedBy: z.string().nullable().optional(),
     updated_by: z.string().nullable().optional(),
-    isActive: z.boolean().default(true).openapi({ example: true }),
+    isActive: z.boolean().optional().openapi({ example: true }),
     is_active: z.boolean().optional(),
     isDeleted: z.boolean().optional(),
     is_deleted: z.boolean().optional(),
