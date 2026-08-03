@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, Search, Settings } from 'lucide-react';
+import { ChevronDown, Search, Settings, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { fetchItemCategories } from '../../inventory/item-categories/item-categories.api';
@@ -50,7 +50,6 @@ export function CategorySelectDropdown({ value, onChange, error }: CategorySelec
     ? allFlattened.filter((item) => item.cat.name.toLowerCase().includes(search.toLowerCase()))
     : allFlattened;
 
-  const selectedItem = allFlattened.find(item => item.cat.name === value) || null;
 
   const {
     isOpen,
@@ -63,13 +62,19 @@ export function CategorySelectDropdown({ value, onChange, error }: CategorySelec
   } = useCombobox({
     items: filtered,
     itemToString: (item) => (item ? item.cat.name : ''),
-    selectedItem,
-    onInputValueChange: ({ inputValue }) => {
+    inputValue: search,
+    onInputValueChange: ({ inputValue, type }) => {
       setSearch(inputValue || '');
+      if (type === useCombobox.stateChangeTypes.InputChange && inputValue === '') {
+        onChange('');
+      }
     },
     onSelectedItemChange: ({ selectedItem }) => {
       if (selectedItem) {
         onChange(selectedItem.cat.name);
+        setSearch('');
+      } else {
+        onChange('');
         setSearch('');
       }
     },
@@ -78,6 +83,9 @@ export function CategorySelectDropdown({ value, onChange, error }: CategorySelec
       switch (type) {
         case useCombobox.stateChangeTypes.InputBlur:
           return { ...changes, isOpen: state.isOpen };
+        case useCombobox.stateChangeTypes.ItemClick:
+        case useCombobox.stateChangeTypes.InputKeyDownEnter:
+          return { ...changes, inputValue: '' };
         default:
           return changes;
       }
@@ -109,7 +117,21 @@ export function CategorySelectDropdown({ value, onChange, error }: CategorySelec
           <span style={{ color: value ? '#000' : '#6b7280' }}>
             {value || 'Select a category'}
           </span>
-          <ChevronDown size={14} color="#6b7280" style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {value && (
+              <div 
+                style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px' }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onChange('');
+                  setSearch('');
+                }}
+              >
+                <X size={14} color="#94a3b8" />
+              </div>
+            )}
+            <ChevronDown size={14} color="#6b7280" style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+          </div>
         </button>
 
         <div

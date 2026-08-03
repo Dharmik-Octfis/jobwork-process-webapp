@@ -64,7 +64,7 @@ export function OrganizationSettingsPage() {
       name: '',
       email: '',
       phone: '',
-      dialCode: '+91',
+      dialCode: '91',
       address: {
         streetAddress1: '',
         country: 'IN',
@@ -84,7 +84,7 @@ export function OrganizationSettingsPage() {
         name: activeOrg.name,
         email: activeOrg.email || '',
         phone: activeOrg.phone || '',
-        dialCode: activeOrg.dialCode || '+91',
+        dialCode: activeOrg.dialCode || '91',
         address: {
           streetAddress1: activeOrg.address?.streetAddress1 || '',
           country: activeOrg.address?.country || 'IN',
@@ -541,16 +541,33 @@ export function OrganizationSettingsPage() {
 
                 <div className="org-form-group">
                   <label>Phone</label>
-                  <input
-                    type="tel"
-                    className={`org-form-input ${errors.phone ? 'error' : ''}`}
-                    placeholder="9876543210"
-                    {...register('phone')}
-                    onInput={(e) => {
-                      e.currentTarget.value = e.currentTarget.value.replace(/\D/g, '');
-                    }}
-                    maxLength={10}
-                  />
+                  <div className={`org-form-input-group ${errors.phone || errors.dialCode ? 'error' : ''}`}>
+                    <Controller
+                      name="dialCode"
+                      control={control}
+                      render={({ field }) => (
+                        <SearchableSelect
+                          options={masterData?.countries ? masterData.countries.map(c => ({ label: `${c.code} ${c.dialCode}`, value: c.dialCode })) : [{ label: 'IND 91', value: '91' }]}
+                          value={field.value}
+                          onChange={field.onChange}
+                          style={{ width: '130px', flexShrink: 0 }}
+                          className="org-form-select"
+                          placeholder="Code"
+                        />
+                      )}
+                    />
+                    <div className="divider"></div>
+                    <input
+                      {...register('phone')}
+                      type="tel"
+                      maxLength={10}
+                      className="org-form-input"
+                      placeholder="9876543210"
+                      onInput={(e) => {
+                        e.currentTarget.value = e.currentTarget.value.replace(/\D/g, '');
+                      }}
+                    />
+                  </div>
                   {errors.phone && <p className="org-form-error-msg">{errors.phone.message}</p>}
                 </div>
               </div>
@@ -660,7 +677,7 @@ export function OrganizationSettingsPage() {
               <div className="org-form-group">
                 <label>Website</label>
                 <input
-                  type="url"
+                  type="text"
                   className={`org-form-input ${errors.website ? 'error' : ''}`}
                   placeholder="https://example.com"
                   {...register('website')}

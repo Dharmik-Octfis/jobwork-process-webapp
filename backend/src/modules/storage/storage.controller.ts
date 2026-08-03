@@ -8,7 +8,7 @@ export async function proxyFile(req: Request, res: Response, next: NextFunction)
       res.status(400).send('Missing key');
       return;
     }
-    
+
     // Basic validation to prevent arbitrary proxying
     if (!key.startsWith('users/') && !key.startsWith('organizations/') && !key.startsWith('items/')) {
       res.status(403).send('Forbidden key prefix');
@@ -27,10 +27,7 @@ export async function proxyFile(req: Request, res: Response, next: NextFunction)
     if (contentType) {
       res.setHeader('Content-Type', contentType);
     }
-    const contentLength = response.headers.get('content-length');
-    if (contentLength) {
-      res.setHeader('Content-Length', contentLength);
-    }
+
     const cacheControl = response.headers.get('cache-control');
     if (cacheControl) {
       res.setHeader('Cache-Control', cacheControl);

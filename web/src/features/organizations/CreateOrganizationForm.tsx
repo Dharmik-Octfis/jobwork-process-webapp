@@ -69,7 +69,7 @@ export function CreateOrganizationForm() {
         city: '',
       },
       industryType: '',
-      dialCode: '+91',
+      dialCode: '91',
     },
   });
 
@@ -80,7 +80,7 @@ export function CreateOrganizationForm() {
         setMasterData(data);
         // Re-assert India once the country options exist: an uncontrolled
         // <select> can drop its selection when its options load in asynchronously.
-        setValue('dialCode', '+91');
+        setValue('dialCode', '91');
         setValue('address.country', 'IN');
         setValue('address.stateCode', 'IN-GJ');
       })
@@ -357,7 +357,7 @@ export function CreateOrganizationForm() {
                   control={control}
                   render={({ field }) => (
                     <SearchableSelect
-                      options={masterData?.countries ? masterData.countries.map(c => ({ label: `${c.isoCode} ${c.dialCode}`, value: c.dialCode })) : [{ label: 'IND +91', value: '+91' }]}
+                      options={masterData?.countries ? masterData.countries.map(c => ({ label: `${c.isoCode} ${c.dialCode}`, value: c.dialCode })) : [{ label: 'IND 91', value: '91' }]}
                       value={field.value}
                       onChange={field.onChange}
                       style={{ width: '130px', flexShrink: 0 }}
@@ -386,7 +386,7 @@ export function CreateOrganizationForm() {
             <label className="org-form-label">Website</label>
             <input
               {...register('website')}
-              type="url"
+              type="text"
               className={`org-form-input ${errors.website ? 'has-error' : ''}`}
               placeholder="https://example.com"
             />
