@@ -54,8 +54,7 @@ export function VendorForm({
   const [activeTab, setActiveTab] = useState('other');
   const [isNumberConfigOpen, setIsNumberConfigOpen] = useState(false);
   const [masterData, setMasterData] = useState<MasterData | null>(null);
-  const [isDisplayNameManuallyEdited, setIsDisplayNameManuallyEdited] = useState(false);
-  const [hasCompanyNameBlurred, setHasCompanyNameBlurred] = useState(false);
+
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -134,34 +133,7 @@ export function VendorForm({
     setDisplayNameOptions(options);
   }, [companyName, primaryContactFirstName, primaryContactLastName, contactNameValue]);
 
-  // Auto-fill Display Name if it hasn't been manually edited by the user
-  useEffect(() => {
-    if (!companyName && !contactNameValue) {
-      setHasCompanyNameBlurred(false);
-      setIsDisplayNameManuallyEdited(false);
-    }
-  }, [companyName, contactNameValue]);
 
-  useEffect(() => {
-    if (
-      !hasCompanyNameBlurred &&
-      !isDisplayNameManuallyEdited &&
-      !isEdit &&
-      displayNameOptions.length > 0
-    ) {
-      const defaultName = companyName || displayNameOptions[0];
-      if (defaultName) {
-        setValue('contactName', defaultName, { shouldValidate: true });
-      }
-    }
-  }, [
-    companyName,
-    displayNameOptions,
-    hasCompanyNameBlurred,
-    isDisplayNameManuallyEdited,
-    isEdit,
-    setValue,
-  ]);
 
   const updatePreferenceMutation = useMutation({
     mutationFn: (data: { prefix: string; nextNumber: number }) =>
@@ -323,7 +295,7 @@ export function VendorForm({
 
           <label style={labelStyle}>Company Name</label>
           <input
-            {...register('companyName', { onBlur: () => setHasCompanyNameBlurred(true) })}
+            {...register('companyName')}
             style={inputStyle}
           />
 
@@ -337,7 +309,6 @@ export function VendorForm({
                   value={field.value || ''}
                   onChange={(val) => {
                     field.onChange(val);
-                    setIsDisplayNameManuallyEdited(true);
                   }}
                   options={displayNameOptions}
                   placeholder=" Select or Type to add"

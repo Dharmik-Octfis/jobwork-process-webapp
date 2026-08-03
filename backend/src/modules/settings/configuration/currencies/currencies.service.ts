@@ -143,6 +143,15 @@ export const updateCurrencyById = async (
       throw ApiError.notFound('Currency not found');
     }
 
+    if (existingCurrency.currencyCode === 'INR') {
+      if (data.isActive === false) {
+        throw ApiError.badRequest('Default INR currency cannot be deactivated');
+      }
+      if (data.currencyCode && data.currencyCode !== 'INR') {
+        throw ApiError.badRequest('Default INR currency code cannot be changed');
+      }
+    }
+
     return withUniqueViolation(DUPLICATE_CODE, () =>
       tx.currency.update({
         where: { id },
@@ -163,6 +172,10 @@ export const deleteCurrencyById = async (orgId: string, id: string, userId?: str
 
     if (!existingCurrency) {
       throw ApiError.notFound('Currency not found');
+    }
+
+    if (existingCurrency.currencyCode === 'INR') {
+      throw ApiError.badRequest('Default INR currency cannot be deleted');
     }
 
     return tx.currency.update({

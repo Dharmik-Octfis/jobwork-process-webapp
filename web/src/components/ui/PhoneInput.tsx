@@ -14,8 +14,25 @@ type PhoneInputProps = {
 
 export const PhoneInput: React.FC<PhoneInputProps> = ({ value, onChange, countries }) => {
   const [prevValue, setPrevValue] = useState(value);
-  const [dialCode, setDialCode] = useState('+91');
-  const [number, setNumber] = useState('');
+  const [dialCode, setDialCode] = useState(() => {
+    if (value) {
+      const parts = value.split(' ');
+      if (parts.length > 1 && parts[0].startsWith('+')) {
+        return parts[0];
+      }
+    }
+    return '+91';
+  });
+  const [number, setNumber] = useState(() => {
+    if (value) {
+      const parts = value.split(' ');
+      if (parts.length > 1 && parts[0].startsWith('+')) {
+        return parts.slice(1).join(' ');
+      }
+      return value;
+    }
+    return '';
+  });
   
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
