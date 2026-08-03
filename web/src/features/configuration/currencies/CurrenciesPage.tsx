@@ -291,14 +291,15 @@ export function CurrenciesPage() {
                               background: 'none',
                               border: 'none',
                               padding: 6,
-                              cursor: 'pointer',
-                              color: '#dc2626',
+                              cursor: currency.currencyCode === 'INR' ? 'not-allowed' : 'pointer',
+                              color: currency.currencyCode === 'INR' ? '#94a3b8' : '#dc2626',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
                               borderRadius: '4px',
                             }}
-                            title="Delete"
+                            title={currency.currencyCode === 'INR' ? "Default INR currency cannot be deleted" : "Delete"}
+                            disabled={currency.currencyCode === 'INR'}
                           >
                             <Trash2 size={15} />
                           </button>

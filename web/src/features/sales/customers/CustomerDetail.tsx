@@ -636,8 +636,15 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                     >
                       <User size={40} color="#fff" fill="#fff" style={{ marginBottom: '-6px' }} />
                     </div>
-                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#000' }}>
-                      {primaryContactName}
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#000' }}>
+                        {primaryContactName}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
+                        {customer.email && <div>Email: {customer.email}</div>}
+                        {customer.phone && <div>Phone: {customer.phone}</div>}
+                        {customer.mobile && <div>Mobile: {customer.mobile}</div>}
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -1041,6 +1048,11 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                             <div style={{ flex: 1 }}>
                               <div style={{ fontSize: '14px', fontWeight: 500, color: '#0f172a' }}>
                                 {hasName ? `${contact.salutation || ''} ${contact.firstName || ''} ${contact.lastName || ''}`.trim() : 'Unnamed Contact'}
+                              </div>
+                              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                                {contact.email && <div>Email: {contact.email}</div>}
+                                {contact.phone && <div>Phone: {contact.phone}</div>}
+                                {contact.mobile && <div>Mobile: {contact.mobile}</div>}
                               </div>
                             </div>
                             <div style={{ position: 'relative' }}>

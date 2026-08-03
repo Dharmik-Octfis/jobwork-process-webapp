@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { toast } from 'react-hot-toast';
 import { updateOrganizationSchema, type UpdateOrganizationData } from './organizations.schemas';
 import { organizationsApi } from './organizations.api';
 import { toApiErrorMessage } from '../../api/client';
@@ -106,35 +107,13 @@ export function OrganizationSettingsPage() {
       (s) => !selectedCountryCode || s.countryCode === selectedCountryCode,
     ) || [];
 
-  // Clear city when state changes, unless we are just initializing
-  const [isInitializing, setIsInitializing] = useState(true);
-  useEffect(() => {
-    if (activeOrg && isInitializing) {
-      setIsInitializing(false);
-      return;
-    }
-    if (selectedCountryCode && !isInitializing) {
-      setValue('address.stateCode', '');
-      setValue('address.city', '');
-    }
-  }, [selectedCountryCode, setValue, isInitializing]);
-
-  useEffect(() => {
-    if (activeOrg && isInitializing) {
-      return;
-    }
-    if (selectedStateCode && !isInitializing) {
-      setValue('address.city', '');
-    }
-  }, [selectedStateCode, setValue, activeOrg, isInitializing]);
-
   const onSubmit = async (data: UpdateOrganizationData) => {
     if (!id) return;
     try {
       setServerError(null);
       await organizationsApi.updateOrganization(id, data);
       await queryClient.invalidateQueries({ queryKey: ['organizations'] });
-      navigate('/');
+      toast.success('Organization updated successfully');
     } catch (err) {
       setServerError(toApiErrorMessage(err));
     }
@@ -609,7 +588,13 @@ export function OrganizationSettingsPage() {
                             []
                           }
                           value={field.value}
-                          onChange={field.onChange}
+                          onChange={(val) => {
+                            if (val !== field.value) {
+                              field.onChange(val);
+                              setValue('address.stateCode', '');
+                              setValue('address.city', '');
+                            }
+                          }}
                           disabled={!masterData}
                           placeholder="Select Country"
                         />
@@ -628,7 +613,12 @@ export function OrganizationSettingsPage() {
                         <SearchableSelect
                           options={availableStates.map((s) => ({ label: s.name, value: s.code }))}
                           value={field.value}
-                          onChange={field.onChange}
+                          onChange={(val) => {
+                            if (val !== field.value) {
+                              field.onChange(val);
+                              setValue('address.city', '');
+                            }
+                          }}
                           disabled={!selectedCountryCode}
                           placeholder="Select State"
                         />

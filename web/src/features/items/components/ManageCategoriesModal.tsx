@@ -128,7 +128,7 @@ export function ManageCategoriesModal({ categories, onClose, onSelectCategory }:
     }
   });
 
-  const renderCategoryNode = (category: ItemCategory, level = 0) => {
+  const renderCategoryNode = (category: ItemCategory, level = 0, isLastChild = true) => {
     const children = childrenMap.get(category.id) || [];
     const isExpanded = expandedIds.has(category.id);
     const hasChildren = children.length > 0;
@@ -136,15 +136,16 @@ export function ManageCategoriesModal({ categories, onClose, onSelectCategory }:
     return (
       <div key={category.id} style={{ position: 'relative' }}>
         <div
+          className="category-row"
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '12px 16px',
-            paddingLeft: `${16 + level * 24}px`,
-            borderBottom: '1px solid #f1f5f9',
+            padding: '8px 16px',
+            paddingLeft: level === 0 ? '16px' : `${20 + level * 20}px`,
             cursor: hasChildren ? 'pointer' : 'default',
-            transition: 'background-color 0.2s',
+            transition: 'background-color 0.15s ease',
+            height: '40px',
           }}
           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
@@ -152,31 +153,52 @@ export function ManageCategoriesModal({ categories, onClose, onSelectCategory }:
             if (hasChildren) toggleExpand(category.id, e);
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
             {level > 0 && (
-              <div style={{
-                position: 'absolute',
-                left: `${16 + (level - 1) * 24 + 11}px`,
-                top: '22px',
-                width: '12px',
-                height: '1px',
-                backgroundColor: '#cbd5e1'
-              }} />
+              <>
+                <div style={{
+                  position: 'absolute',
+                  left: `${4 + level * 20}px`,
+                  top: 0,
+                  height: isLastChild ? '20px' : '100%',
+                  width: '1px',
+                  backgroundColor: '#cbd5e1'
+                }} />
+                <div style={{
+                  position: 'absolute',
+                  left: `${4 + level * 20}px`,
+                  top: '20px',
+                  width: '12px',
+                  height: '1px',
+                  backgroundColor: '#cbd5e1'
+                }} />
+              </>
             )}
-            <div style={{ width: 16, height: 16, marginRight: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-               {hasChildren ? (
-                 isExpanded ? <ChevronDown size={14} color="#64748b" /> : <ChevronRight size={14} color="#64748b" />
-               ) : (
-                 <div style={{ width: 14 }} />
-               )}
-            </div>
-            <Folder size={16} style={{ color: '#3b82f6', marginRight: 8, fill: isExpanded || !hasChildren ? '#eff6ff' : 'transparent' }} />
-            <span style={{ fontSize: 14, color: '#334155', fontWeight: level === 0 ? 500 : 400 }}>
+            
+            {level === 0 && (
+              <Folder size={16} style={{ color: '#3b82f6', marginRight: 8, fill: isExpanded || !hasChildren ? '#eff6ff' : 'transparent', flexShrink: 0 }} />
+            )}
+            
+            <span style={{ 
+              fontSize: 14, 
+              color: '#334155', 
+              fontWeight: level === 0 ? 500 : 400,
+              textTransform: level === 0 ? 'uppercase' : 'none',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis'
+            }}>
               {category.name}
             </span>
+
+            {hasChildren && (
+              <div style={{ marginLeft: 6, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                {isExpanded ? <ChevronDown size={14} color="#64748b" /> : <ChevronRight size={14} color="#64748b" />}
+              </div>
+            )}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div className="category-actions" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             {onSelectCategory && (
               <button
                 onClick={(e) => {
@@ -243,15 +265,7 @@ export function ManageCategoriesModal({ categories, onClose, onSelectCategory }:
         
         {isExpanded && children.length > 0 && (
           <div style={{ position: 'relative' }}>
-             <div style={{ 
-                position: 'absolute', 
-                left: `${16 + level * 24 + 11}px`, 
-                top: 0, 
-                bottom: 0, 
-                width: 1, 
-                backgroundColor: '#cbd5e1' 
-             }} />
-             {children.map((child) => renderCategoryNode(child, level + 1))}
+             {children.map((child, index) => renderCategoryNode(child, level + 1, index === children.length - 1))}
           </div>
         )}
       </div>
@@ -288,6 +302,18 @@ export function ManageCategoriesModal({ categories, onClose, onSelectCategory }:
   );
 
   return (
+    <>
+      <style>{`
+        .category-row .category-actions {
+          opacity: 0;
+          transition: opacity 0.15s ease;
+          pointer-events: none;
+        }
+        .category-row:hover .category-actions {
+          opacity: 1;
+          pointer-events: auto;
+        }
+      `}</style>
     <div
       style={{
         position: 'fixed',
@@ -480,5 +506,6 @@ export function ManageCategoriesModal({ categories, onClose, onSelectCategory }:
         </div>
       </div>
     </div>
+    </>
   );
 }

@@ -249,6 +249,7 @@ export function CurrencyFormModal({
                     <SearchableSelect
                       options={currencyOptions}
                       value={field.value}
+                      disabled={currencyToEdit?.currencyCode === 'INR'}
                       onChange={(val) => {
                         field.onChange(val);
                         const option = currencyOptions.find(
@@ -487,15 +488,16 @@ export function CurrencyFormModal({
                   name="isActive"
                   control={control}
                   render={({ field: { value, onChange } }) => (
-                    <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '8px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', cursor: currencyToEdit?.currencyCode === 'INR' ? 'not-allowed' : 'pointer', gap: '8px' }}>
                       <input
                         type="checkbox"
                         checked={value}
                         onChange={(e) => onChange(e.target.checked)}
+                        disabled={currencyToEdit?.currencyCode === 'INR'}
                         style={{
                           width: '16px',
                           height: '16px',
-                          cursor: 'pointer',
+                          cursor: currencyToEdit?.currencyCode === 'INR' ? 'not-allowed' : 'pointer',
                           accentColor: 'var(--color-primary)',
                         }}
                       />

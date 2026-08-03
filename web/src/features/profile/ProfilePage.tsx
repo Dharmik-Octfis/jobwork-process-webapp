@@ -1,10 +1,10 @@
+import { toast } from 'react-hot-toast';
 import { useAuth } from '../../providers/auth-context';
 import {
   ArrowLeft,
   Trash2,
   User,
   UploadCloud,
-  CheckCircle2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useState, useRef } from 'react';
@@ -29,7 +29,6 @@ export function ProfilePage() {
   const [lastName, setLastName] = useState(user?.lastName || '');
   const [logoPreview, setLogoPreview] = useState<string | null>(user?.avatar_url || null);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [profileSuccessMsg, setProfileSuccessMsg] = useState<string | null>(null);
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -57,13 +56,11 @@ export function ProfilePage() {
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
-    setProfileSuccessMsg(null);
     updateProfileMutation.mutate(
       { firstName, lastName },
       {
         onSuccess: () => {
-          setProfileSuccessMsg('Profile updated successfully.');
-          navigate(-1);
+          toast.success('Profile updated successfully.');
         },
       },
     );
@@ -81,7 +78,7 @@ export function ProfilePage() {
       {/* Top Header & Navigation */}
       <div style={{ marginBottom: 28 }}>
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => navigate('/')}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -156,25 +153,7 @@ export function ProfilePage() {
             </div>
           </div>
 
-          {profileSuccessMsg && (
-            <div
-              style={{
-                padding: '10px 14px',
-                borderRadius: '8px',
-                background: '#f0fdf4',
-                border: '1px solid #bbf7d0',
-                color: '#166534',
-                fontSize: 13,
-                marginBottom: 20,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-              }}
-            >
-              <CheckCircle2 size={16} color="#166534" />
-              {profileSuccessMsg}
-            </div>
-          )}
+
 
           {/* Profile Picture Upload Section */}
           <div

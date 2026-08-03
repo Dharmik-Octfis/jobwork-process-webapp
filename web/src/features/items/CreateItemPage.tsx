@@ -308,7 +308,6 @@ export function CreateItemPage() {
                     onChange={handleChange}
                     style={{
                       width: '100%',
-                      maxWidth: '400px',
                       padding: '6px 10px',
                       borderRadius: '4px',
                       border: errors.name ? '1px solid #ef4444' : '1px solid #d1d5db',
@@ -372,7 +371,6 @@ export function CreateItemPage() {
                     onChange={handleChange}
                     style={{
                       width: '100%',
-                      maxWidth: '400px',
                       padding: '6px 10px',
                       borderRadius: '4px',
                       border: errors.sku ? '1px solid #ef4444' : '1px solid #d1d5db',
@@ -418,7 +416,7 @@ export function CreateItemPage() {
                       display: 'flex',
                       border: errors.unit ? '1px solid #ef4444' : '1px solid #d1d5db',
                       borderRadius: '4px',
-                      maxWidth: '400px',
+                      width: '100%',
                     }}
                   >
                     <div
@@ -500,7 +498,6 @@ export function CreateItemPage() {
                   onChange={handleChange}
                   style={{
                     width: '100%',
-                    maxWidth: '400px',
                     padding: '6px 10px',
                     borderRadius: '4px',
                     border: '1px solid #d1d5db',

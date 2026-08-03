@@ -19,6 +19,7 @@ interface CurrencyDropdownProps {
 export function CurrencyDropdown({ value, onChange, currencies = [], style, onAddNew }: CurrencyDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -42,7 +43,18 @@ export function CurrencyDropdown({ value, onChange, currencies = [], style, onAd
   return (
     <div ref={dropdownRef} style={{ position: 'relative', width: '100%', ...style }}>
       <div
-        onClick={() => setIsOpen(!isOpen)}
+        tabIndex={0}
+        onClick={() => {
+          if (!isOpen) setHighlightedIndex(0);
+          setIsOpen(!isOpen);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            if (!isOpen) setHighlightedIndex(0);
+            setIsOpen(!isOpen);
+          }
+        }}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -88,7 +100,26 @@ export function CurrencyDropdown({ value, onChange, currencies = [], style, onAd
               <input
                 type="text"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setHighlightedIndex(0);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setHighlightedIndex((prev) => Math.min(prev + 1, filteredCurrencies.length - 1));
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setHighlightedIndex((prev) => Math.max(prev - 1, 0));
+                  } else if (e.key === 'Enter' && filteredCurrencies.length > 0) {
+                    e.preventDefault();
+                    onChange(filteredCurrencies[highlightedIndex].currencyCode);
+                    setIsOpen(false);
+                    setSearch('');
+                  } else if (e.key === 'Escape' || e.key === 'Tab') {
+                    setIsOpen(false);
+                  }
+                }}
                 placeholder="Search"
                 style={{
                   width: '100%',
@@ -105,8 +136,9 @@ export function CurrencyDropdown({ value, onChange, currencies = [], style, onAd
           </div>
 
           <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-            {filteredCurrencies.map((c) => {
+            {filteredCurrencies.map((c, index) => {
               const isSelected = value === c.currencyCode;
+              const isHighlighted = highlightedIndex === index;
               return (
                 <div
                   key={c.id}
@@ -115,18 +147,7 @@ export function CurrencyDropdown({ value, onChange, currencies = [], style, onAd
                     setIsOpen(false);
                     setSearch('');
                   }}
-                  onMouseEnter={(e) => {
-                    if (!isSelected) {
-                      e.currentTarget.style.backgroundColor = '#3b82f6';
-                      e.currentTarget.style.color = '#fff';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isSelected) {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                      e.currentTarget.style.color = '#374151';
-                    }
-                  }}
+                  onMouseEnter={() => setHighlightedIndex(index)}
                   style={{
                     padding: '6px 12px',
                     fontSize: '13px',
@@ -134,8 +155,8 @@ export function CurrencyDropdown({ value, onChange, currencies = [], style, onAd
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    backgroundColor: isSelected ? '#f3f4f6' : 'transparent',
-                    color: '#374151',
+                    backgroundColor: isHighlighted ? '#f3f4f6' : isSelected ? '#eff6ff' : 'transparent',
+                    color: isSelected ? '#2563eb' : '#374151',
                   }}
                 >
                   <span>{c.currencyCode} - {c.currencyName}</span>

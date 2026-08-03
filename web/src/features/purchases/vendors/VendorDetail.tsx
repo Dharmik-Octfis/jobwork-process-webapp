@@ -645,8 +645,15 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                     >
                       <User size={40} color="#fff" fill="#fff" style={{ marginBottom: '-6px' }} />
                     </div>
-                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#000' }}>
-                      {primaryContactName}
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#000' }}>
+                        {primaryContactName}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
+                        {vendor.email && <div>Email: {vendor.email}</div>}
+                        {vendor.phone && <div>Phone: {vendor.phone}</div>}
+                        {vendor.mobile && <div>Mobile: {vendor.mobile}</div>}
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -1182,7 +1189,11 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                               <div style={{ fontSize: '14px', fontWeight: 500, color: '#0f172a' }}>
                                 {hasName ? `${contact.salutation || ''} ${contact.firstName || ''} ${contact.lastName || ''}`.trim() : 'Unnamed Contact'}
                               </div>
-                              {/* Contact details intentionally omitted for clean UI */}
+                              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                                {contact.email && <div>Email: {contact.email}</div>}
+                                {contact.phone && <div>Phone: {contact.phone}</div>}
+                                {contact.mobile && <div>Mobile: {contact.mobile}</div>}
+                              </div>
                             </div>
                             <div style={{ position: 'relative' }}>
                               <button
