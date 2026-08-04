@@ -9,6 +9,13 @@ export function useAuthRedirect() {
   const navigate = useNavigate();
 
   const redirectAfterAuth = async (defaultRedirect = '/') => {
+    // Invite flows pass a concrete destination (for example, /invite/accept?...).
+    // Only the generic home redirect should try to decide between onboarding and an org route.
+    if (defaultRedirect !== '/') {
+      navigate(defaultRedirect, { replace: true });
+      return;
+    }
+
     try {
       const orgs = await organizationsApi.getOrganizations();
       if (orgs.length === 0) {

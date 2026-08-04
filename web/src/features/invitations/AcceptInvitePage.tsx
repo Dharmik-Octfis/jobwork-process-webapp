@@ -1,8 +1,9 @@
+import { useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { toApiErrorMessage } from '../../api/client';
 import { useAuth } from '../../providers/auth-context';
 import { Button } from '../../components/ui/Button';
@@ -34,6 +35,7 @@ export function AcceptInvitePage() {
   const token = params.get('token') ?? '';
   const navigate = useNavigate();
   const { user, isAuthenticated, isLoading: authLoading, setSession } = useAuth();
+  const autoAcceptStarted = useRef(false);
 
   const lookup = useQuery({
     queryKey: ['invitation', token],
@@ -47,7 +49,7 @@ export function AcceptInvitePage() {
     onSuccess: (result) => {
       // New account created during accept → store the session, then go in.
       if (result.user) setSession(result.user);
-      navigate('/', { replace: true });
+      navigate('/organizations/' + result.organization.id, { replace: true });
     },
   });
 
@@ -66,6 +68,21 @@ export function AcceptInvitePage() {
     resolver: zodResolver(signupSchema),
     defaultValues: { firstName: '', lastName: '', password: '' },
   });
+
+  const lookupEmail = lookup.data?.email ?? '';
+  const shouldAutoAccept = Boolean(
+    isAuthenticated &&
+    user &&
+    lookup.data?.status === 'valid' &&
+    user.email.toLowerCase() === lookupEmail.toLowerCase(),
+  );
+
+  useEffect(() => {
+    if (!shouldAutoAccept) return;
+    if (acceptMutation.isPending || acceptMutation.isSuccess || autoAcceptStarted.current) return;
+    autoAcceptStarted.current = true;
+    acceptMutation.mutate({});
+  }, [acceptMutation, acceptMutation.isPending, acceptMutation.isSuccess, shouldAutoAccept]);
 
   // ── Guard states ────────────────────────────────────────────────────────────
   if (!token) {
@@ -107,6 +124,16 @@ export function AcceptInvitePage() {
 
   const orgName = invite.organizationName ?? 'the organization';
   const inviteEmail = invite.email ?? '';
+  const loginPath =
+    '/login?email=' +
+    encodeURIComponent(inviteEmail) +
+    '&next=' +
+    encodeURIComponent('/invite/accept?token=' + token);
+  const signupPath =
+    '/signup?email=' +
+    encodeURIComponent(inviteEmail) +
+    '&next=' +
+    encodeURIComponent('/invite/accept?token=' + token);
   // The job title if the inviter set one, otherwise the access they're getting —
   // a title is optional, and "invited as undefined" helps nobody.
   const invitedAs = invite.roleName ?? invite.permissionTemplateName ?? 'a member';
@@ -117,17 +144,7 @@ export function AcceptInvitePage() {
     const emailMatches = user.email.toLowerCase() === inviteEmail.toLowerCase();
 
     if (!emailMatches) {
-      return (
-        <Shell
-          title={`Join ${orgName}`}
-          subtitle={`This invitation was sent to ${inviteEmail}, but you're signed in as ${user.email}.`}
-        >
-          <p className={styles.switch}>
-            Sign in with <strong>{inviteEmail}</strong> to accept it.{' '}
-            <Link to="/login">Switch account</Link>
-          </p>
-        </Shell>
-      );
+      return <Navigate to={invite.accountExists ? loginPath : signupPath} replace />;
     }
 
     return (
@@ -151,14 +168,7 @@ export function AcceptInvitePage() {
 
   // ── Case B: not signed in, but an account already exists ─────────────────────
   if (invite.accountExists) {
-    return (
-      <Shell title={`Join ${orgName}`} subtitle={`You already have an account for ${inviteEmail}.`}>
-        <Button fullWidth className={styles.submit} onClick={() => navigate('/login')}>
-          Sign in to accept
-        </Button>
-        <p className={styles.switch}>After signing in, open this invitation link again to join.</p>
-      </Shell>
-    );
+    return <Navigate to={loginPath} replace />;
   }
 
   // ── Case C: not signed in, brand-new person → create account + accept ────────

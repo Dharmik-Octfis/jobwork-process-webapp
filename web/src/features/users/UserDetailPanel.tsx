@@ -207,20 +207,20 @@ export function UserDetailPanel({
 
   const removeMutation = useMutation({
     mutationFn: () => membersApi.remove(orgId, member!.id),
-    onSuccess: async () => {
+    onSuccess: () => {
       setServerError(null);
       onDeselect();
-      await invalidate();
+      void invalidate();
     },
     onError: (err) => setServerError(toApiErrorMessage(err)),
   });
 
   const revokeMutation = useMutation({
     mutationFn: () => invitationsApi.revoke(orgId, user!.id),
-    onSuccess: async () => {
+    onSuccess: () => {
       setServerError(null);
       onDeselect();
-      await invalidate();
+      void invalidate();
     },
     onError: (err) => setServerError(toApiErrorMessage(err)),
   });
@@ -239,9 +239,9 @@ export function UserDetailPanel({
         ...(invite.roleId ? { roleId: invite.roleId } : {}),
       });
     },
-    onSuccess: async () => {
+    onSuccess: () => {
       setServerError(null);
-      await invalidate();
+      void invalidate();
     },
     onError: (err) => setServerError(toApiErrorMessage(err)),
   });

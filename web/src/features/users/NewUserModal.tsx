@@ -51,6 +51,7 @@ export function NewUserModal({
 }: NewUserModalProps) {
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [isSubmittingInvite, setIsSubmittingInvite] = useState(false);
 
   // Neither Owner one is assignable — ownership comes from creating the org.
   const assignableRoles = roles.filter((r) => !r.isSystem);
@@ -84,18 +85,28 @@ export function NewUserModal({
         permissionTemplateId: values.permissionTemplateId,
         ...(values.roleId ? { roleId: values.roleId } : {}),
       }),
-    onSuccess: async () => {
+    onSuccess: () => {
       setServerError(null);
       // The new row lands in the Unconfirmed tab, so the roster and its counts both
       // have to refetch — they come from the same query.
-      await queryClient.invalidateQueries({ queryKey: ['org-users', orgId] });
-      await queryClient.invalidateQueries({ queryKey: ['invitations', orgId] });
+      void queryClient.invalidateQueries({ queryKey: ['org-users', orgId] });
+      void queryClient.invalidateQueries({ queryKey: ['invitations', orgId] });
       onClose();
     },
     onError: (err) => setServerError(toApiErrorMessage(err)),
   });
 
-  const onSubmit = handleSubmit((values) => createMutation.mutate(values));
+  const onSubmit = handleSubmit(async (values) => {
+    if (isSubmittingInvite) return;
+    setIsSubmittingInvite(true);
+    setServerError(null);
+
+    try {
+      await createMutation.mutateAsync(values);
+    } finally {
+      setIsSubmittingInvite(false);
+    }
+  });
 
   /** Indented so the org chart is legible in a flat `<select>`: the list arrives as
    * a depth-first walk, so `depth` alone is enough to show the shape. */
@@ -275,7 +286,7 @@ export function NewUserModal({
             type="submit"
             form="new-user-form"
             className="users-btn is-primary"
-            disabled={!hasTemplates || isSubmitting || createMutation.isPending}
+            disabled={!hasTemplates || isSubmitting || createMutation.isPending || isSubmittingInvite}
           >
             <Mail size={15} />
             {createMutation.isPending ? 'Sending…' : 'Send invite'}

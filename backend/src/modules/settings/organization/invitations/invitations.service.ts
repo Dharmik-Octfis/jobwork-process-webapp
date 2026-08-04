@@ -62,7 +62,7 @@ function toPublicInvitation(invite: {
   createdAt: Date;
   invitedBy: { fullName: string };
   role: { name: string } | null;
-  permissionTemplate: { name: string };
+  permissionTemplate: { name: string } | null;
 }): PublicInvitation {
   const composed = composeFullName(invite.firstName ?? '', invite.lastName ?? '');
 
@@ -77,7 +77,6 @@ function toPublicInvitation(invite: {
     roleId: invite.roleId,
     roleName: invite.role?.name ?? null,
     permissionTemplateId: invite.permissionTemplateId,
-    permissionTemplateName: invite.permissionTemplate.name,
     status: invite.status,
     // The inviter's ACCOUNT name. This is the one place an account-level name is
     // correct on an org screen: it is read before the reader has a tenant context
@@ -408,7 +407,6 @@ export async function getInvitationByToken(rawToken: string): Promise<Invitation
       organizationName: null,
       email: null,
       roleName: null,
-      permissionTemplateName: null,
       accountExists: false,
     };
   }
@@ -419,7 +417,6 @@ export async function getInvitationByToken(rawToken: string): Promise<Invitation
     organizationName: invite.organization.name,
     email: invite.email,
     roleName: invite.role?.name ?? null,
-    permissionTemplateName: invite.permissionTemplate.name,
     accountExists,
   };
 
@@ -548,7 +545,6 @@ export async function acceptMyInvitation(
   return {
     organization: { id: invite.organization.id, name: invite.organization.name },
     roleName: invite.role?.name ?? null,
-    permissionTemplateName: invite.permissionTemplate.name,
     // Already signed in — no session to issue, unlike the anonymous token flow.
     autoLogin: null,
   };
@@ -728,7 +724,6 @@ export async function acceptInvitation(
 
   const org = { id: invite.organization.id, name: invite.organization.name };
   const roleName = invite.role?.name ?? null;
-  const permissionTemplateName = invite.permissionTemplate.name;
 
   // ── Case A: a logged-in user is accepting ──────────────────────────────────
   if (currentUserId) {
@@ -750,7 +745,7 @@ export async function acceptInvitation(
 
     await joinOrganization(invite, currentUser.id);
 
-    return { organization: org, roleName, permissionTemplateName, autoLogin: null };
+    return { organization: org, roleName, autoLogin: null };
   }
 
   // ── Case B: anonymous acceptor ─────────────────────────────────────────────
@@ -841,5 +836,5 @@ export async function acceptInvitation(
   await invalidateMemberDirectory(invite.organizationId);
 
   const autoLogin = await issueTokens(await formatPublicUser(newUser), { userAgent });
-  return { organization: org, roleName, permissionTemplateName, autoLogin };
+  return { organization: org, roleName, autoLogin };
 }

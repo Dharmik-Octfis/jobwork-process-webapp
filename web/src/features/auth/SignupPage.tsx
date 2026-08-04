@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import { toApiErrorMessage } from '../../api/client';
 import { Button } from '../../components/ui/Button';
@@ -16,6 +16,9 @@ import styles from './Auth.module.css';
 import layoutStyles from '../../components/ui/LogisticsBackground.module.css';
 
 export function SignupPage() {
+  const [params] = useSearchParams();
+  const inviteEmail = params.get('email') ?? '';
+  const redirectTo = params.get('next') ?? '/';
   const {
     register,
     handleSubmit,
@@ -25,13 +28,13 @@ export function SignupPage() {
     defaultValues: {
       firstName: '',
       lastName: '',
-      email: '',
+      email: inviteEmail,
       password: '',
       confirmPassword: '',
     },
   });
 
-  const signupMutation = useSignup();
+  const signupMutation = useSignup(redirectTo);
 
   const onSubmit = handleSubmit((values) => {
     signupMutation.mutate(values);
@@ -83,6 +86,7 @@ export function SignupPage() {
             autoComplete="email"
             placeholder="Email address"
             error={errors.email?.message}
+            readOnly={Boolean(inviteEmail)}
             {...register('email')}
           />
         </div>
@@ -111,6 +115,12 @@ export function SignupPage() {
             />
           </div>
         </div>
+
+        {inviteEmail && (
+          <p style={{ margin: '-4px 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+            This email comes from the invitation and cannot be changed.
+          </p>
+        )}
 
         {/* Compact Legal Disclaimer */}
         <p className={styles.termsText}>

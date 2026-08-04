@@ -18,7 +18,6 @@ export interface PublicInvitation {
   roleName: string | null;
   /** The permission template this invite grants — the invitee's actual access. */
   permissionTemplateId: string;
-  permissionTemplateName: string;
   status: string;
   invitedByName: string;
   expiresAt: string;
@@ -36,8 +35,6 @@ export interface MyInvitation {
   organizationName: string;
   /** The job title offered, if any. */
   roleName: string | null;
-  /** The access bundle offered — always present. */
-  permissionTemplateName: string;
   invitedByName: string;
   expiresAt: string;
   createdAt: string;
@@ -45,7 +42,12 @@ export interface MyInvitation {
 
 /** Lifecycle state the public accept page resolves a token to. */
 export type InvitationLookupStatus =
-  'valid' | 'expired' | 'accepted' | 'revoked' | 'declined' | 'invalid';
+  | 'valid'
+  | 'expired'
+  | 'accepted'
+  | 'revoked'
+  | 'declined'
+  | 'invalid';
 
 /**
  * What the public accept page needs before it can render — without leaking
@@ -58,8 +60,6 @@ export interface InvitationLookupResult {
   email: string | null;
   /** Job title offered, for display on the accept page. Null when none was set. */
   roleName: string | null;
-  /** Name of the permission template this invite grants. */
-  permissionTemplateName: string | null;
   /** Whether a user account already exists for the invited email. */
   accountExists: boolean;
 }
@@ -73,7 +73,5 @@ export interface AcceptInvitationResult {
   organization: { id: string; name: string };
   /** The job title they joined with, if the invite carried one. */
   roleName: string | null;
-  /** The permission template they joined with — what they may actually do. */
-  permissionTemplateName: string;
   autoLogin: AuthResult | null;
 }

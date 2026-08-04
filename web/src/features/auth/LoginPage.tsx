@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 
 import { toApiErrorMessage } from '../../api/client';
 import { Button } from '../../components/ui/Button';
@@ -23,9 +23,11 @@ interface LocationState {
 
 export function LoginPage() {
   const location = useLocation();
+  const [params] = useSearchParams();
 
+  const invitedEmail = params.get('email') ?? '';
   const redirectTo =
-    (location.state as LocationState | null)?.from?.pathname ?? '/';
+    params.get('next') ?? (location.state as LocationState | null)?.from?.pathname ?? '/';
 
   const {
     register,
@@ -48,7 +50,7 @@ export function LoginPage() {
   return (
     <AuthShell
       title="Sign in"
-      subtitle="to access your workspace"
+      subtitle={invitedEmail ? 'Sign in with the invited email to continue' : 'to access your workspace'}
     >
       <form
         className={layoutStyles.formGrid}
