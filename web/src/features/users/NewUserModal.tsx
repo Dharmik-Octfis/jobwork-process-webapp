@@ -182,7 +182,7 @@ export function NewUserModal({
             <form id="new-user-form" onSubmit={onSubmit} noValidate>
               <div className="users-form-row">
                 <div>
-                  <label className="users-field-label" htmlFor="nu-first">
+                  <label className="users-field-label required" htmlFor="nu-first">
                     First name *
                   </label>
                   <input
@@ -196,7 +196,7 @@ export function NewUserModal({
                   )}
                 </div>
                 <div>
-                  <label className="users-field-label" htmlFor="nu-last">
+                  <label className="users-field-label required" htmlFor="nu-last">
                     Last name *
                   </label>
                   <input
@@ -210,7 +210,7 @@ export function NewUserModal({
               </div>
 
               <div className="users-form-field">
-                <label className="users-field-label" htmlFor="nu-email">
+                <label className="users-field-label required" htmlFor="nu-email">
                   Email address *
                 </label>
                 <input
@@ -237,7 +237,9 @@ export function NewUserModal({
                   grants nothing; the template is what they will actually be able to do. */}
               <div className="users-form-row">
                 <div>
-                  <label className="users-field-label">Role</label>
+                  <label className="users-field-label" htmlFor="nu-role">
+                    Role
+                  </label>
                   <Controller
                     control={control}
                     name="roleId"
@@ -252,7 +254,9 @@ export function NewUserModal({
                   />
                 </div>
                 <div>
-                  <label className="users-field-label">Permissions *</label>
+                  <label className="users-field-label required" htmlFor="nu-permissions">
+                    Permissions *
+                  </label>
                   <Controller
                     control={control}
                     name="permissionTemplateId"
@@ -286,7 +290,9 @@ export function NewUserModal({
             type="submit"
             form="new-user-form"
             className="users-btn is-primary"
-            disabled={!hasTemplates || isSubmitting || createMutation.isPending || isSubmittingInvite}
+            disabled={
+              !hasTemplates || isSubmitting || createMutation.isPending || isSubmittingInvite
+            }
           >
             <Mail size={15} />
             {createMutation.isPending ? 'Sending…' : 'Send invite'}

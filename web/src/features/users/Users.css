@@ -113,6 +113,10 @@
   margin-bottom: 4px;
 }
 
+.users-field-label.required {
+  color: var(--color-danger);
+}
+
 .users-field-value {
   font-size: 13.5px;
   color: var(--color-text);

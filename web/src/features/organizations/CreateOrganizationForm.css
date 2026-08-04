@@ -120,8 +120,14 @@
   margin-bottom: 4px;
 }
 
-.org-form-label span.required {
+.org-form-label span.required,
+.org-form-group label span.required,
+.org-form-required-label {
   color: var(--color-danger);
+}
+
+.org-form-group label span.org-form-required,
+.org-form-label span.required {
   margin-left: 2px;
 }
 

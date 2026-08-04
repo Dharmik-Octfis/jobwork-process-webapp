@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Copy, Check } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
@@ -26,7 +27,6 @@ export function OrganizationSettingsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
-
 
   const {
     data: organizations,
@@ -73,7 +73,6 @@ export function OrganizationSettingsPage() {
         zip: '',
       },
       industryType: '',
-
     },
   });
 
@@ -118,8 +117,6 @@ export function OrganizationSettingsPage() {
       setServerError(toApiErrorMessage(err));
     }
   };
-
-
 
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [deletingLogo, setDeletingLogo] = useState(false);
@@ -357,12 +354,19 @@ export function OrganizationSettingsPage() {
                 )}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <label style={{ fontWeight: 600, fontSize: 14, display: 'block', marginBottom: 4, color: 'var(--color-text)' }}>
+                <label
+                  style={{
+                    fontWeight: 600,
+                    fontSize: 14,
+                    display: 'block',
+                    marginBottom: 4,
+                    color: 'var(--color-text)',
+                  }}
+                >
                   Organization Logo
                 </label>
                 <p style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: '0 0 12px 0' }}>
-                  Upload your company logo. Recommended format: PNG, JPG, or SVG up to
-                  2MB.
+                  Upload your company logo. Recommended format: PNG, JPG, or SVG up to 2MB.
                 </p>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <label
@@ -441,7 +445,7 @@ export function OrganizationSettingsPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                   <span
                     style={{
-                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                      fontFamily: 'var(--font-sans)',
                       fontSize: 15,
                       letterSpacing: '0.08em',
                       color: 'var(--color-text)',
@@ -455,17 +459,22 @@ export function OrganizationSettingsPage() {
                     <button
                       type="button"
                       onClick={copyOrgCode}
+                      title={copiedOrgCode ? 'Copied' : 'Copy Organization Code'}
                       style={{
                         border: '1px solid var(--color-border)',
                         background: 'var(--color-surface)',
-                        color: 'var(--color-text-muted)',
-                        borderRadius: 6,
-                        padding: '2px 8px',
-                        fontSize: 12,
+                        color: copiedOrgCode
+                          ? 'var(--color-success, #10b981)'
+                          : 'var(--color-text-muted)',
+                        borderRadius: 4,
+                        padding: '8px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                         cursor: 'pointer',
                       }}
                     >
-                      {copiedOrgCode ? 'Copied' : 'Copy'}
+                      {copiedOrgCode ? <Check size={16} /> : <Copy size={12} />}
                     </button>
                   )}
                 </div>
@@ -481,9 +490,11 @@ export function OrganizationSettingsPage() {
               </div>
 
               {/* Name and Industry */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
+              <div
+                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}
+              >
                 <div className="org-form-group">
-                  <label>
+                  <label className="org-form-required-label">
                     Organization Name <span className="org-form-required">*</span>
                   </label>
                   <input
@@ -496,8 +507,8 @@ export function OrganizationSettingsPage() {
                 </div>
 
                 <div className="org-form-group">
-                  <label>
-                    Industry Type <span className="required">*</span>
+                  <label className="org-form-required-label">
+                    Industry Type <span className="org-form-required">*</span>
                   </label>
                   <Controller
                     name="industryType"
@@ -506,11 +517,11 @@ export function OrganizationSettingsPage() {
                       <div className={errors.industryType ? 'error' : ''}>
                         <SearchableSelect
                           options={
-                          masterData?.industries.map((ind) => ({
-                            label: ind.name,
-                            value: ind.code,
-                          })) || []
-                        }
+                            masterData?.industries.map((ind) => ({
+                              label: ind.name,
+                              value: ind.code,
+                            })) || []
+                          }
                           value={field.value}
                           onChange={field.onChange}
                           placeholder="Select Industry"
@@ -541,13 +552,22 @@ export function OrganizationSettingsPage() {
 
                 <div className="org-form-group">
                   <label>Phone</label>
-                  <div className={`org-form-input-group ${errors.phone || errors.dialCode ? 'error' : ''}`}>
+                  <div
+                    className={`org-form-input-group ${errors.phone || errors.dialCode ? 'error' : ''}`}
+                  >
                     <Controller
                       name="dialCode"
                       control={control}
                       render={({ field }) => (
                         <SearchableSelect
-                          options={masterData?.countries ? masterData.countries.map(c => ({ label: `${c.code} ${c.dialCode}`, value: c.dialCode })) : [{ label: 'IND 91', value: '91' }]}
+                          options={
+                            masterData?.countries
+                              ? masterData.countries.map((c) => ({
+                                  label: `${c.code} ${c.dialCode}`,
+                                  value: c.dialCode,
+                                }))
+                              : [{ label: 'IND 91', value: '91' }]
+                          }
                           value={field.value}
                           onChange={field.onChange}
                           style={{ width: '130px', flexShrink: 0 }}
@@ -664,7 +684,7 @@ export function OrganizationSettingsPage() {
                 </div>
 
                 <div className="org-form-group">
-                  <label>ZIP Code</label>
+                  <label>Pin Code</label>
                   <input
                     type="text"
                     className={`org-form-input ${errors.address?.zip ? 'error' : ''}`}
@@ -682,9 +702,7 @@ export function OrganizationSettingsPage() {
                   placeholder="https://example.com"
                   {...register('website')}
                 />
-                {errors.website && (
-                  <p className="org-form-error-msg">{errors.website.message}</p>
-                )}
+                {errors.website && <p className="org-form-error-msg">{errors.website.message}</p>}
               </div>
 
               <div

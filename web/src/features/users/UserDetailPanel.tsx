@@ -30,8 +30,18 @@ import { UserAvatar } from './UserAvatar';
 const profileSchema = z.object({
   firstName: z.string().trim().min(1, 'First name is required').max(40),
   lastName: z.string().trim().min(1, 'Last name is required').max(40),
-  phone: z.string().trim().max(20).optional(),
-  mobile: z.string().trim().max(20).optional(),
+  phone: z
+    .string()
+    .trim()
+    .regex(/^\d{10}$/, 'Phone must be exactly 10 digits')
+    .optional()
+    .or(z.literal('')),
+  mobile: z
+    .string()
+    .trim()
+    .regex(/^\d{10}$/, 'Mobile must be exactly 10 digits')
+    .optional()
+    .or(z.literal('')),
   dateOfBirth: z
     .string()
     .trim()
@@ -45,7 +55,7 @@ const profileSchema = z.object({
   stateCode: z.string().optional(),
   cityId: z.string().optional(),
   roleId: z.string().optional(),
-  permissionTemplateId: z.string().optional(),
+  permissionTemplateId: z.string().min(1, 'Select a permission template'),
 });
 
 type ProfileValues = z.infer<typeof profileSchema>;
@@ -200,7 +210,8 @@ export function UserDetailPanel({
     onSuccess: async () => {
       setServerError(null);
       setIsEditing(false);
-      await invalidate();
+      await queryClient.invalidateQueries({ queryKey: ['org-users', orgId], exact: false });
+      await queryClient.invalidateQueries({ queryKey: ['org-users-count', orgId], exact: false });
     },
     onError: (err) => setServerError(toApiErrorMessage(err)),
   });
@@ -383,6 +394,34 @@ export function UserDetailPanel({
     })),
   ];
 
+  const permissionTemplateOptions = [
+    { value: '', label: 'Select a template…' },
+    ...assignableTemplates.map((t) => ({ value: t.id, label: t.name })),
+  ];
+
+  const currentRoleOption = member?.roleId ? roles.find((r) => r.id === member.roleId) : null;
+
+  const currentTemplateOption = member?.permissionTemplateId
+    ? templates.find((t) => t.id === member.permissionTemplateId)
+    : null;
+
+  const roleSelectOptions = currentRoleOption
+    ? [
+        {
+          value: currentRoleOption.id,
+          label: `${'  '.repeat(currentRoleOption.depth)}${currentRoleOption.depth > 0 ? '└ ' : ''}${currentRoleOption.name}`,
+        },
+        ...roleOptions.filter((option) => option.value !== currentRoleOption.id),
+      ]
+    : roleOptions;
+
+  const templateSelectOptions = currentTemplateOption
+    ? [
+        { value: currentTemplateOption.id, label: currentTemplateOption.name },
+        ...permissionTemplateOptions.filter((option) => option.value !== currentTemplateOption.id),
+      ]
+    : permissionTemplateOptions;
+
   return (
     <section className="users-detail">
       <div className="users-detail-head">
@@ -395,9 +434,7 @@ export function UserDetailPanel({
             </span>
           </h2>
           <div className="users-detail-sub">
-            {[rolePathLabel(member.rolePath, member.roleName), member.permissionTemplateName]
-              .filter(Boolean)
-              .join(' · ')}
+            {[member.roleName, member.permissionTemplateName].filter(Boolean).join(' · ')}
           </div>
           <div className="users-detail-sub">{member.email}</div>
         </div>
@@ -477,7 +514,7 @@ export function UserDetailPanel({
             {isEditing ? (
               <>
                 <div>
-                  <label className="users-field-label" htmlFor="ud-first">
+                  <label className="users-field-label required" htmlFor="ud-first">
                     First name *
                   </label>
                   <input
@@ -490,7 +527,7 @@ export function UserDetailPanel({
                   )}
                 </div>
                 <div>
-                  <label className="users-field-label" htmlFor="ud-last">
+                  <label className="users-field-label required" htmlFor="ud-last">
                     Last name *
                   </label>
                   <input
@@ -516,7 +553,7 @@ export function UserDetailPanel({
 
             <div>
               <span className="users-field-label">Role</span>
-              {isEditing && !isLocked ? (
+              {isEditing ? (
                 <Controller
                   control={control}
                   name="roleId"
@@ -524,21 +561,22 @@ export function UserDetailPanel({
                     <Select
                       value={field.value || ''}
                       onChange={field.onChange}
-                      options={roleOptions}
+                      options={roleSelectOptions}
                       ariaLabel="Role"
+                      disabled={isLocked}
                     />
                   )}
                 />
               ) : (
                 <div className={`users-field-value ${member.roleName ? '' : 'is-empty'}`}>
-                  {rolePathLabel(member.rolePath, member.roleName) || '—'}
+                  {member.roleName || '—'}
                 </div>
               )}
             </div>
 
             <div>
               <span className="users-field-label">Profile (permissions)</span>
-              {isEditing && !isLocked ? (
+              {isEditing ? (
                 <Controller
                   control={control}
                   name="permissionTemplateId"
@@ -546,10 +584,9 @@ export function UserDetailPanel({
                     <Select
                       value={field.value || ''}
                       onChange={field.onChange}
-                      options={[
-                        ...(member.permissionTemplateId ? [] : [{ value: '', label: 'No access' }]),
-                        ...assignableTemplates.map((t) => ({ value: t.id, label: t.name })),
-                      ]}
+                      disabled={isLocked}
+                      hasError={Boolean(errors.permissionTemplateId)}
+                      options={templateSelectOptions}
                       ariaLabel="Permission template"
                     />
                   )}
@@ -590,13 +627,41 @@ export function UserDetailPanel({
                   <label className="users-field-label" htmlFor="ud-phone">
                     Phone
                   </label>
-                  <input id="ud-phone" className="users-input" {...register('phone')} />
+                  <input
+                    id="ud-phone"
+                    type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={10}
+                    placeholder="0123456789"
+                    className={`users-input ${errors.phone ? 'error' : ''}`}
+                    onInput={(event) => {
+                      const input = event.currentTarget as HTMLInputElement;
+                      input.value = input.value.replace(/\D/g, '');
+                    }}
+                    {...register('phone')}
+                  />
+                  {errors.phone && <p className="users-error-msg">{errors.phone.message}</p>}
                 </div>
                 <div>
                   <label className="users-field-label" htmlFor="ud-mobile">
                     Mobile
                   </label>
-                  <input id="ud-mobile" className="users-input" {...register('mobile')} />
+                  <input
+                    id="ud-mobile"
+                    type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={10}
+                    placeholder="0123456789"
+                    className={`users-input ${errors.mobile ? 'error' : ''}`}
+                    onInput={(event) => {
+                      const input = event.currentTarget as HTMLInputElement;
+                      input.value = input.value.replace(/\D/g, '');
+                    }}
+                    {...register('mobile')}
+                  />
+                  {errors.mobile && <p className="users-error-msg">{errors.mobile.message}</p>}
                 </div>
                 <div>
                   <label className="users-field-label" htmlFor="ud-dob">
@@ -656,7 +721,7 @@ export function UserDetailPanel({
               </div>
               <div>
                 <label className="users-field-label" htmlFor="ud-zip">
-                  ZIP / postal code
+                  Pin Code
                 </label>
                 <input id="ud-zip" className="users-input" {...register('zip')} />
               </div>

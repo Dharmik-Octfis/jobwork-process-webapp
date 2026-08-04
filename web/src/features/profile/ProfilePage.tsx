@@ -1,12 +1,6 @@
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../../providers/auth-context';
-import {
-  ArrowLeft,
-  Trash2,
-  User,
-  UploadCloud,
-} from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Trash2, User, UploadCloud } from 'lucide-react';
 import { useState, useRef } from 'react';
 import { useUpdateProfile } from '../auth/useUpdateProfile';
 import { useUploadAvatar } from '../auth/useUploadAvatar';
@@ -17,7 +11,6 @@ import { Button } from '../../components/ui/Button';
 
 export function ProfilePage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const updateProfileMutation = useUpdateProfile();
   const uploadAvatarMutation = useUploadAvatar();
   const deleteAvatarMutation = useDeleteAvatar();
@@ -75,30 +68,8 @@ export function ProfilePage() {
         fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
       }}
     >
-      {/* Top Header & Navigation */}
+      {/* Top Header */}
       <div style={{ marginBottom: 28 }}>
-        <button
-          onClick={() => navigate('/')}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            color: '#475569',
-            fontSize: 13,
-            fontWeight: 500,
-            padding: 0,
-            marginBottom: 16,
-            transition: 'color 0.15s ease',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = '#0f172a')}
-          onMouseLeave={(e) => (e.currentTarget.style.color = '#475569')}
-        >
-          <ArrowLeft size={16} /> Back to Dashboard
-        </button>
-
         <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 6px 0', color: '#0f172a' }}>
           Account Settings
         </h1>
@@ -153,8 +124,6 @@ export function ProfilePage() {
             </div>
           </div>
 
-
-
           {/* Profile Picture Upload Section */}
           <div
             style={{
@@ -198,7 +167,15 @@ export function ProfilePage() {
             </div>
 
             <div style={{ flex: 1 }}>
-              <label style={{ fontWeight: 600, fontSize: 13, color: '#0f172a', display: 'block', marginBottom: 4 }}>
+              <label
+                style={{
+                  fontWeight: 600,
+                  fontSize: 13,
+                  color: '#0f172a',
+                  display: 'block',
+                  marginBottom: 4,
+                }}
+              >
                 Profile Picture
               </label>
               <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 10px 0', lineHeight: 1.4 }}>
@@ -278,7 +255,7 @@ export function ProfilePage() {
             <div style={{ display: 'flex', gap: 16, marginBottom: 18 }}>
               <div style={{ flex: 1 }}>
                 <Input
-                  label="First Name *"
+                  label="First Name"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
                   placeholder="First name"
@@ -287,7 +264,7 @@ export function ProfilePage() {
               </div>
               <div style={{ flex: 1 }}>
                 <Input
-                  label="Last Name *"
+                  label="Last Name"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
                   placeholder="Last name"
@@ -322,5 +299,3 @@ export function ProfilePage() {
     </div>
   );
 }
-
-
