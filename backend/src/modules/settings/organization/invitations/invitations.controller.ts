@@ -70,7 +70,6 @@ export async function acceptMine(req: Request, res: Response): Promise<void> {
     {
       organization: result.organization,
       roleName: result.roleName,
-      permissionTemplateName: result.permissionTemplateName,
     },
     'Invitation accepted.',
   );
@@ -116,7 +115,6 @@ export async function accept(req: Request, res: Response): Promise<void> {
       {
         organization: result.organization,
         roleName: result.roleName,
-        permissionTemplateName: result.permissionTemplateName,
         user: result.autoLogin.user,
         accessToken: result.autoLogin.accessToken,
       },
@@ -131,7 +129,6 @@ export async function accept(req: Request, res: Response): Promise<void> {
     {
       organization: result.organization,
       roleName: result.roleName,
-      permissionTemplateName: result.permissionTemplateName,
     },
     'Invitation accepted.',
   );
