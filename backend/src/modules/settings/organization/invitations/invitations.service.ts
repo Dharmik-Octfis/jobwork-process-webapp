@@ -297,11 +297,17 @@ export async function createInvitation(
   });
 
   const inviteLink = `${env.appUrl}/invite/accept?token=${rawToken}`;
-  await sendInvitationEmail({
-    to: invite.email,
-    inviteLink,
-    organizationName: invite.organization.name,
-  });
+  try {
+    await sendInvitationEmail({
+      to: invite.email,
+      inviteLink,
+      organizationName: invite.organization.name,
+    });
+  } catch (e) {
+    // Log, but do not fail the request; the user can trigger a retry via the
+    // dashboard or re-sending the invite.
+    console.error('Failed to send invitation email', e);
+  }
 
   return toPublicInvitation(invite);
 }

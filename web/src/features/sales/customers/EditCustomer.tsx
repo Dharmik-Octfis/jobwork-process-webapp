@@ -13,7 +13,7 @@ export function EditCustomer() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const { data: customer, isLoading: isFetching } = useQuery({
-    queryKey: ['customers', id, orgId],
+    queryKey: ['customer', orgId, id],
     queryFn: () => fetchCustomerById(orgId!, id!),
     enabled: !!id && !!orgId,
   });

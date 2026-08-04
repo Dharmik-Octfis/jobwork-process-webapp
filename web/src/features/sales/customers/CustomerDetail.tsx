@@ -215,7 +215,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
     onSuccess: (updatedCustomer) => {
       queryClient.setQueryData(['customer', orgId, customerId], updatedCustomer);
       queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] });
-      setIsContactPersonModalOpen(false);
+      setIsPrimaryContactModalOpen(false);
     },
   });
 

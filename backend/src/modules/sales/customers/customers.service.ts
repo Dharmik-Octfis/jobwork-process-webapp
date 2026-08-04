@@ -251,7 +251,7 @@ export async function updateCustomerById(
       });
     }
 
-    return tx.customer.update({
+    await tx.customer.update({
       where: { id },
       data: {
         ...customerData,
@@ -282,12 +282,20 @@ export async function updateCustomerById(
               description: activityDesc,
               performedBy,
               createdBy: userId ?? null,
-              updatedBy: userId ?? null,
+      updatedBy: userId ?? null,
             },
           ],
         },
       },
-      include: { contactPersons: true, addresses: true },
+    });
+
+    // Fetch the updated customer with deterministic ordering
+    return tx.customer.findUnique({
+      where: { id },
+      include: {
+        contactPersons: { orderBy: { createdAt: 'asc' } },
+        addresses: { orderBy: { createdAt: 'asc' } },
+      },
     });
   });
 }
