@@ -45,7 +45,7 @@ import './Users.css';
 function renderUserCell(
   user: OrgUser,
   key: string,
-  onToggleStatus?: (user: Member) => void
+  onToggleStatus?: (user: Member) => void,
 ): React.ReactNode {
   if (key.startsWith(CUSTOM_FIELD_PREFIX)) {
     // Only a joined member has custom-field values; an invitation has no record yet.
@@ -71,11 +71,7 @@ function renderUserCell(
         return user.inviteStatus === 'declined' ? 'Declined' : 'Unconfirmed';
       }
       if (user.isOwner) {
-        return (
-          <span style={{ color: '#059669', fontWeight: 500 }}>
-            Active
-          </span>
-        );
+        return <span style={{ color: '#059669', fontWeight: 500 }}>Active</span>;
       }
       return (
         <button
@@ -384,6 +380,10 @@ export function UsersPage() {
                       }}
                     >
                       {user.fullName}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '2px' }}>
+                      Role:-{user.rolePath?.at(-1) ?? user.roleName ?? '-'} ,{' '}
+                      Profile:-{user.permissionTemplateName ?? '-'}
                     </div>
                     <div style={{ fontSize: '12px', color: '#64748b' }}>{user.email}</div>
                   </div>

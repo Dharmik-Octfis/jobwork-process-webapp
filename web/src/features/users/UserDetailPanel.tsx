@@ -390,11 +390,9 @@ export function UserDetailPanel({
         <div className="users-detail-identity">
           <h2 className="users-detail-name">
             {member.fullName}
-            {member.isOwner && <span className="users-badge is-owner">Owner</span>}
             <span className={`users-badge is-${member.status}`}>
               {member.status === 'active' ? 'Active' : 'Inactive'}
             </span>
-            {isSelf && <span className="users-badge is-unconfirmed">You</span>}
           </h2>
           <div className="users-detail-sub">
             {[rolePathLabel(member.rolePath, member.roleName), member.permissionTemplateName]
