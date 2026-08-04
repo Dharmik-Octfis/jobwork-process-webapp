@@ -1,6 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchCustomerById, deleteCustomer, updateCustomer, fetchCustomerActivities } from './customers.api';
-import { type Customer, type UpdateCustomerData, type CustomerAddress, type CustomerContactPerson } from './customers.schemas';
+import {
+  fetchCustomerById,
+  deleteCustomer,
+  updateCustomer,
+  fetchCustomerActivities,
+} from './customers.api';
+import {
+  type Customer,
+  type UpdateCustomerData,
+  type CustomerAddress,
+  type CustomerContactPerson,
+} from './customers.schemas';
 import { useParams, useNavigate } from 'react-router-dom';
 import { X, Edit, ChevronDown, ChevronUp, Pencil, Trash, Settings, User, Plus } from 'lucide-react';
 import { useState, useRef, useEffect, Fragment } from 'react';
@@ -22,7 +32,9 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
   const [activeTab, setActiveTab] = useState('Overview');
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [addressModalType, setAddressModalType] = useState<'billing' | 'shipping' | 'additional' | null>(null);
+  const [addressModalType, setAddressModalType] = useState<
+    'billing' | 'shipping' | 'additional' | null
+  >(null);
   const [addressEditIndex, setAddressEditIndex] = useState<number | null>(null);
   const [isOtherDetailsOpen, setIsOtherDetailsOpen] = useState(true);
   const [isAddressOpen, setIsAddressOpen] = useState(true);
@@ -33,7 +45,9 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
   const [isContactPersonModalOpen, setIsContactPersonModalOpen] = useState(false);
   const [contactPersonEditIndex, setContactPersonEditIndex] = useState<number | null>(null);
   const [activeContactPersonMenu, setActiveContactPersonMenu] = useState<number | null>(null);
-  const [hoveredContactPersonSetting, setHoveredContactPersonSetting] = useState<'Edit' | 'Mark as Primary' | 'Delete'>('Edit');
+  const [hoveredContactPersonSetting, setHoveredContactPersonSetting] = useState<
+    'Edit' | 'Mark as Primary' | 'Delete'
+  >('Edit');
   const [hoveredSettingsIcon, setHoveredSettingsIcon] = useState<number | null>(null);
 
   const moreMenuRef = useRef<HTMLDivElement>(null);
@@ -44,7 +58,10 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
       if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
         setIsMoreOpen(false);
       }
-      if (contactSettingsRef.current && !contactSettingsRef.current.contains(event.target as Node)) {
+      if (
+        contactSettingsRef.current &&
+        !contactSettingsRef.current.contains(event.target as Node)
+      ) {
         setIsContactSettingsOpen(false);
       }
     }
@@ -84,7 +101,11 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
       } = customer;
 
       const dataToUpdate = { ...rest, status: newStatus };
-      return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
+      return updateCustomer({
+        orgId: orgId!,
+        id: customerId,
+        data: dataToUpdate as UpdateCustomerData,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] });
@@ -110,7 +131,11 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
         updatedAddresses.push(newAddress);
       }
       const dataToUpdate = { ...rest, addresses: updatedAddresses };
-      return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
+      return updateCustomer({
+        orgId: orgId!,
+        id: customerId,
+        data: dataToUpdate as UpdateCustomerData,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] });
@@ -132,15 +157,18 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
 
       const updatedAddresses = [...(customer.addresses || [])];
       updatedAddresses.splice(index, 1);
-      
+
       const dataToUpdate = { ...rest, addresses: updatedAddresses };
-      return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
+      return updateCustomer({
+        orgId: orgId!,
+        id: customerId,
+        data: dataToUpdate as UpdateCustomerData,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] });
     },
   });
-
 
   const updateSpecificAddressMutation = useMutation({
     mutationFn: ({ type, address }: { type: 'billing' | 'shipping'; address: CustomerAddress }) => {
@@ -173,7 +201,11 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
         dataToUpdate.shippingAttention = address.attention;
         dataToUpdate.shippingPhone = address.phone;
       }
-      return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
+      return updateCustomer({
+        orgId: orgId!,
+        id: customerId,
+        data: dataToUpdate as UpdateCustomerData,
+      });
     },
     onSuccess: (updatedCustomer) => {
       queryClient.setQueryData(['customer', orgId, customerId], updatedCustomer);
@@ -210,7 +242,11 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
       };
 
       const dataToUpdate = { ...rest, ...mappedData };
-      return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
+      return updateCustomer({
+        orgId: orgId!,
+        id: customerId,
+        data: dataToUpdate as UpdateCustomerData,
+      });
     },
     onSuccess: (updatedCustomer) => {
       queryClient.setQueryData(['customer', orgId, customerId], updatedCustomer);
@@ -234,13 +270,20 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
       const updatedPersons = [...currentPersons];
 
       if (contactPersonEditIndex !== null) {
-        updatedPersons[contactPersonEditIndex] = { ...updatedPersons[contactPersonEditIndex], ...data };
+        updatedPersons[contactPersonEditIndex] = {
+          ...updatedPersons[contactPersonEditIndex],
+          ...data,
+        };
       } else {
         updatedPersons.push(data);
       }
 
       const dataToUpdate = { ...rest, contactPersons: updatedPersons };
-      return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
+      return updateCustomer({
+        orgId: orgId!,
+        id: customerId,
+        data: dataToUpdate as UpdateCustomerData,
+      });
     },
     onSuccess: (updatedCustomer) => {
       queryClient.setQueryData(['customer', orgId, customerId], updatedCustomer);
@@ -265,7 +308,11 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
       updatedPersons.splice(index, 1);
 
       const dataToUpdate = { ...rest, contactPersons: updatedPersons };
-      return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
+      return updateCustomer({
+        orgId: orgId!,
+        id: customerId,
+        data: dataToUpdate as UpdateCustomerData,
+      });
     },
     onSuccess: (updatedCustomer) => {
       queryClient.setQueryData(['customer', orgId, customerId], updatedCustomer);
@@ -286,7 +333,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
 
       const persons = customer.contactPersons || [];
       const newPrimary = persons[index];
-      
+
       const currentPrimary = {
         salutation: customer.primaryContactSalutation,
         firstName: customer.primaryContactFirstName,
@@ -298,7 +345,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
 
       const hasCurrentPrimary = currentPrimary.firstName || currentPrimary.lastName;
       const updatedPersons = [...persons];
-      
+
       if (hasCurrentPrimary) {
         updatedPersons[index] = currentPrimary;
       } else {
@@ -316,16 +363,20 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
         contactPersons: updatedPersons,
       };
 
-      return updateCustomer({ orgId: orgId!, id: customerId, data: dataToUpdate as UpdateCustomerData });
+      return updateCustomer({
+        orgId: orgId!,
+        id: customerId,
+        data: dataToUpdate as UpdateCustomerData,
+      });
     },
     onMutate: async (index: number) => {
       await queryClient.cancelQueries({ queryKey: ['customer', orgId, customerId] });
       const previousCustomer = queryClient.getQueryData<Customer>(['customer', orgId, customerId]);
-      
+
       if (previousCustomer) {
         const persons = previousCustomer.contactPersons || [];
         const newPrimary = persons[index];
-        
+
         const currentPrimary = {
           salutation: previousCustomer.primaryContactSalutation,
           firstName: previousCustomer.primaryContactFirstName,
@@ -337,7 +388,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
 
         const hasCurrentPrimary = currentPrimary.firstName || currentPrimary.lastName;
         const updatedPersons = [...persons];
-        
+
         if (hasCurrentPrimary) {
           updatedPersons[index] = currentPrimary;
         } else {
@@ -357,7 +408,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
       }
       return { previousCustomer };
     },
-    onError: (err, index, context) => {
+    onError: (_err, _index, context) => {
       if (context?.previousCustomer) {
         queryClient.setQueryData(['customer', orgId, customerId], context.previousCustomer);
       }
@@ -637,7 +688,6 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
             paddingBottom: '120px',
           }}
         >
-
           <div
             style={{
               display: 'flex',
@@ -809,7 +859,9 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                             setIsContactSettingsOpen(false);
                             setTimeout(() => {
                               if (
-                                window.confirm('Are you sure you want to delete the primary contact?')
+                                window.confirm(
+                                  'Are you sure you want to delete the primary contact?',
+                                )
                               ) {
                                 updatePrimaryContactMutation.mutate({
                                   salutation: null,
@@ -844,126 +896,256 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                     borderBottom: '1px solid #e2e8f0',
                   }}
                 >
-                  <div style={{ ...sectionHeaderStyle, borderBottom: 'none', paddingBottom: 0, marginBottom: 0 }}>
+                  <div
+                    style={{
+                      ...sectionHeaderStyle,
+                      borderBottom: 'none',
+                      paddingBottom: 0,
+                      marginBottom: 0,
+                    }}
+                  >
                     Address
                   </div>
-                  {isAddressOpen ? <ChevronUp size={16} color="#64748b" /> : <ChevronDown size={16} color="#64748b" />}
+                  {isAddressOpen ? (
+                    <ChevronUp size={16} color="#64748b" />
+                  ) : (
+                    <ChevronDown size={16} color="#64748b" />
+                  )}
                 </div>
                 {isAddressOpen && (
                   <div>
-
-                <div style={{ marginBottom: '16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={labelStyle}>Billing Address</div>
-                    {customer.billingStreet1 && (
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button onClick={() => { setAddressEditIndex(null); setAddressModalType('billing'); }} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: '#64748b' }} title="Edit Address">
-                          <Pencil size={12} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  {customer.billingStreet1 ? (
-                    <div style={{ fontSize: '12px', color: '#333' }}>
-                      {customer.billingStreet1}
-                      <br />
-                      {customer.billingStreet2 && (
-                        <>
-                          {customer.billingStreet2}
-                          <br />
-                        </>
-                      )}
-                      {customer.billingCity && <>{customer.billingCity}, </>}
-                      {customer.billingState}
-                      <br />
-                      {customer.billingCountry} {customer.billingPinCode}
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                      No Billing Address -{' '}
-                      <button
-                        onClick={() => setAddressModalType('billing')}
-                        style={{ color: '#0062ff', textDecoration: 'none', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '12px' }}
+                    <div style={{ marginBottom: '16px' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
                       >
-                        New Address
+                        <div style={labelStyle}>Billing Address</div>
+                        {customer.billingStreet1 && (
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                              onClick={() => {
+                                setAddressEditIndex(null);
+                                setAddressModalType('billing');
+                              }}
+                              style={{
+                                border: 'none',
+                                background: 'none',
+                                cursor: 'pointer',
+                                padding: 0,
+                                color: '#64748b',
+                              }}
+                              title="Edit Address"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {customer.billingStreet1 ? (
+                        <div style={{ fontSize: '12px', color: '#333' }}>
+                          {customer.billingStreet1}
+                          <br />
+                          {customer.billingStreet2 && (
+                            <>
+                              {customer.billingStreet2}
+                              <br />
+                            </>
+                          )}
+                          {customer.billingCity && <>{customer.billingCity}, </>}
+                          {customer.billingState}
+                          <br />
+                          {customer.billingCountry} {customer.billingPinCode}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                          No Billing Address -{' '}
+                          <button
+                            onClick={() => setAddressModalType('billing')}
+                            style={{
+                              color: '#0062ff',
+                              textDecoration: 'none',
+                              background: 'none',
+                              border: 'none',
+                              padding: 0,
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                            }}
+                          >
+                            New Address
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ marginBottom: '16px' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <div style={labelStyle}>Shipping Address</div>
+                        {customer.shippingStreet1 && (
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                              onClick={() => {
+                                setAddressEditIndex(null);
+                                setAddressModalType('shipping');
+                              }}
+                              style={{
+                                border: 'none',
+                                background: 'none',
+                                cursor: 'pointer',
+                                padding: 0,
+                                color: '#64748b',
+                              }}
+                              title="Edit Address"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {customer.shippingStreet1 ? (
+                        <div style={{ fontSize: '12px', color: '#333' }}>
+                          {customer.shippingStreet1}
+                          <br />
+                          {customer.shippingStreet2 && (
+                            <>
+                              {customer.shippingStreet2}
+                              <br />
+                            </>
+                          )}
+                          {customer.shippingCity && <>{customer.shippingCity}, </>}
+                          {customer.shippingState}
+                          <br />
+                          {customer.shippingCountry} {customer.shippingPinCode}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                          No Shipping Address -{' '}
+                          <button
+                            onClick={() => setAddressModalType('shipping')}
+                            style={{
+                              color: '#0062ff',
+                              textDecoration: 'none',
+                              background: 'none',
+                              border: 'none',
+                              padding: 0,
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                            }}
+                          >
+                            New Address
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {customer.addresses
+                      ?.filter(
+                        (a: CustomerAddress) =>
+                          a.addressType !== 'billing' && a.addressType !== 'shipping',
+                      )
+                      .map((addr: CustomerAddress, index: number) => (
+                        <div key={index} style={{ marginTop: '12px' }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <div style={labelStyle}>Additional Address</div>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <button
+                                onClick={() => {
+                                  setAddressEditIndex(index);
+                                  setAddressModalType('additional');
+                                }}
+                                style={{
+                                  border: 'none',
+                                  background: 'none',
+                                  cursor: 'pointer',
+                                  padding: 0,
+                                  color: '#64748b',
+                                }}
+                                title="Edit Address"
+                              >
+                                <Pencil size={12} />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (
+                                    window.confirm('Are you sure you want to remove this address?')
+                                  )
+                                    deleteAdditionalAddressMutation.mutate(index);
+                                }}
+                                style={{
+                                  border: 'none',
+                                  background: 'none',
+                                  cursor: 'pointer',
+                                  padding: 0,
+                                  color: '#64748b',
+                                }}
+                                title="Remove Address"
+                              >
+                                <Trash size={12} />
+                              </button>
+                            </div>
+                          </div>
+                          <div style={{ fontSize: '12px', color: '#333' }}>
+                            {addr.attention && (
+                              <>
+                                {addr.attention}
+                                <br />
+                              </>
+                            )}
+                            {addr.street1 && (
+                              <>
+                                {addr.street1}
+                                <br />
+                              </>
+                            )}
+                            {addr.street2 && (
+                              <>
+                                {addr.street2}
+                                <br />
+                              </>
+                            )}
+                            {addr.city && <>{addr.city}, </>}
+                            {addr.state}
+                            <br />
+                            {addr.country} {addr.pinCode}
+                            {addr.phone && (
+                              <>
+                                <br />
+                                Phone: {addr.phone}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+
+                    <div style={{ marginTop: '12px' }}>
+                      <button
+                        onClick={() => setAddressModalType('additional')}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#0062ff',
+                          cursor: 'pointer',
+                          padding: 0,
+                          fontSize: '13px',
+                        }}
+                      >
+                        + Add additional address
                       </button>
                     </div>
-                  )}
-                </div>
-
-                <div style={{ marginBottom: '16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={labelStyle}>Shipping Address</div>
-                    {customer.shippingStreet1 && (
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button onClick={() => { setAddressEditIndex(null); setAddressModalType('shipping'); }} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: '#64748b' }} title="Edit Address">
-                          <Pencil size={12} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  {customer.shippingStreet1 ? (
-                    <div style={{ fontSize: '12px', color: '#333' }}>
-                      {customer.shippingStreet1}
-                      <br />
-                      {customer.shippingStreet2 && (
-                        <>
-                          {customer.shippingStreet2}
-                          <br />
-                        </>
-                      )}
-                      {customer.shippingCity && <>{customer.shippingCity}, </>}
-                      {customer.shippingState}
-                      <br />
-                      {customer.shippingCountry} {customer.shippingPinCode}
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                      No Shipping Address -{' '}
-                      <button
-                        onClick={() => setAddressModalType('shipping')}
-                        style={{ color: '#0062ff', textDecoration: 'none', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '12px' }}
-                      >
-                        New Address
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {customer.addresses?.filter((a: CustomerAddress) => a.addressType !== 'billing' && a.addressType !== 'shipping').map((addr: CustomerAddress, index: number) => (
-                  <div key={index} style={{ marginTop: '12px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={labelStyle}>Additional Address</div>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button onClick={() => { setAddressEditIndex(index); setAddressModalType('additional'); }} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: '#64748b' }} title="Edit Address">
-                          <Pencil size={12} />
-                        </button>
-                        <button onClick={() => { if(window.confirm('Are you sure you want to remove this address?')) deleteAdditionalAddressMutation.mutate(index); }} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: '#64748b' }} title="Remove Address">
-                          <Trash size={12} />
-                        </button>
-                      </div>
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#333' }}>
-                      {addr.attention && <>{addr.attention}<br/></>}
-                      {addr.street1 && <>{addr.street1}<br/></>}
-                      {addr.street2 && <>{addr.street2}<br/></>}
-                      {addr.city && <>{addr.city}, </>}
-                      {addr.state}
-                      <br />
-                      {addr.country} {addr.pinCode}
-                      {addr.phone && <><br/>Phone: {addr.phone}</>}
-                    </div>
-                  </div>
-                ))}
-
-                <div style={{ marginTop: '12px' }}>
-                  <button
-                    onClick={() => setAddressModalType('additional')}
-                    style={{ background: 'none', border: 'none', color: '#0062ff', cursor: 'pointer', padding: 0, fontSize: '13px' }}
-                  >
-                    + Add additional address
-                  </button>
-                </div>
                   </div>
                 )}
               </div>
@@ -1078,154 +1260,207 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                 {isContactPersonOpen && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {customer.contactPersons && customer.contactPersons.length > 0 ? (
-                      customer.contactPersons.map((contact: CustomerContactPerson, index: number) => {
-                        const hasName = contact.firstName || contact.lastName;
-                        return (
-                          <div key={index} style={{ marginBottom: '16px', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                            <div style={{
-                              width: '40px',
-                              height: '40px',
-                              backgroundColor: '#e2e8f0',
-                              borderRadius: '4px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              flexShrink: 0
-                            }}>
-                              <User size={24} color="#fff" />
-                            </div>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: '14px', fontWeight: 500, color: '#0f172a' }}>
-                                {hasName ? `${contact.salutation || ''} ${contact.firstName || ''} ${contact.lastName || ''}`.trim() : 'Unnamed Contact'}
-                              </div>
-                              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                                {contact.email && <div>Email: {contact.email}</div>}
-                                {contact.phone && <div>Phone: {contact.phone}</div>}
-                                {contact.mobile && <div>Mobile: {contact.mobile}</div>}
-                              </div>
-                            </div>
-                            <div style={{ position: 'relative' }}>
-                              <button
-                                onClick={() => setActiveContactPersonMenu(activeContactPersonMenu === index ? null : index)}
-                                onMouseEnter={() => setHoveredSettingsIcon(index)}
-                                onMouseLeave={() => setHoveredSettingsIcon(null)}
+                      customer.contactPersons.map(
+                        (contact: CustomerContactPerson, index: number) => {
+                          const hasName = contact.firstName || contact.lastName;
+                          return (
+                            <div
+                              key={index}
+                              style={{
+                                marginBottom: '16px',
+                                display: 'flex',
+                                alignItems: 'flex-start',
+                                gap: '12px',
+                              }}
+                            >
+                              <div
                                 style={{
-                                  border: 'none',
-                                  background: 'none',
-                                  cursor: 'pointer',
-                                  padding: '4px',
-                                  color: hoveredSettingsIcon === index || activeContactPersonMenu === index ? '#64748b' : '#cbd5e1',
-                                  transition: 'color 0.2s ease',
+                                  width: '40px',
+                                  height: '40px',
+                                  backgroundColor: '#e2e8f0',
+                                  borderRadius: '4px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  flexShrink: 0,
                                 }}
                               >
-                                <Settings size={14} />
-                              </button>
-                              {activeContactPersonMenu === index && (
-                                <>
-                                  <div
-                                    onClick={() => setActiveContactPersonMenu(null)}
-                                    style={{
-                                      position: 'fixed',
-                                      top: 0,
-                                      left: 0,
-                                      right: 0,
-                                      bottom: 0,
-                                      zIndex: 40
-                                    }}
-                                  />
-                                  <div
-                                    style={{
-                                      position: 'absolute',
-                                      top: '100%',
-                                      right: 0,
-                                      marginTop: '4px',
-                                      backgroundColor: '#fff',
-                                      border: '1px solid #e2e8f0',
-                                      borderRadius: '6px',
-                                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-                                      padding: '4px',
-                                      zIndex: 50,
-                                      minWidth: '160px',
-                                      overflow: 'hidden',
-                                    }}
-                                  >
-                                    <button
-                                      onMouseEnter={() => setHoveredContactPersonSetting('Edit')}
-                                      onClick={() => {
-                                        setContactPersonEditIndex(index);
-                                        setIsContactPersonModalOpen(true);
-                                        setActiveContactPersonMenu(null);
-                                      }}
+                                <User size={24} color="#fff" />
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                <div
+                                  style={{ fontSize: '14px', fontWeight: 500, color: '#0f172a' }}
+                                >
+                                  {hasName
+                                    ? `${contact.salutation || ''} ${contact.firstName || ''} ${contact.lastName || ''}`.trim()
+                                    : 'Unnamed Contact'}
+                                </div>
+                                <div
+                                  style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}
+                                >
+                                  {contact.email && <div>Email: {contact.email}</div>}
+                                  {contact.phone && <div>Phone: {contact.phone}</div>}
+                                  {contact.mobile && <div>Mobile: {contact.mobile}</div>}
+                                </div>
+                              </div>
+                              <div style={{ position: 'relative' }}>
+                                <button
+                                  onClick={() =>
+                                    setActiveContactPersonMenu(
+                                      activeContactPersonMenu === index ? null : index,
+                                    )
+                                  }
+                                  onMouseEnter={() => setHoveredSettingsIcon(index)}
+                                  onMouseLeave={() => setHoveredSettingsIcon(null)}
+                                  style={{
+                                    border: 'none',
+                                    background: 'none',
+                                    cursor: 'pointer',
+                                    padding: '4px',
+                                    color:
+                                      hoveredSettingsIcon === index ||
+                                      activeContactPersonMenu === index
+                                        ? '#64748b'
+                                        : '#cbd5e1',
+                                    transition: 'color 0.2s ease',
+                                  }}
+                                >
+                                  <Settings size={14} />
+                                </button>
+                                {activeContactPersonMenu === index && (
+                                  <>
+                                    <div
+                                      onClick={() => setActiveContactPersonMenu(null)}
                                       style={{
-                                        display: 'block',
-                                        width: '100%',
-                                        padding: '8px 12px',
-                                        textAlign: 'left',
-                                        backgroundColor: hoveredContactPersonSetting === 'Edit' ? '#3b82f6' : 'transparent',
-                                        color: hoveredContactPersonSetting === 'Edit' ? '#fff' : '#334155',
-                                        border: 'none',
-                                        cursor: 'pointer',
-                                        fontSize: '13px',
-                                        borderRadius: '4px',
+                                        position: 'fixed',
+                                        top: 0,
+                                        left: 0,
+                                        right: 0,
+                                        bottom: 0,
+                                        zIndex: 40,
+                                      }}
+                                    />
+                                    <div
+                                      style={{
+                                        position: 'absolute',
+                                        top: '100%',
+                                        right: 0,
+                                        marginTop: '4px',
+                                        backgroundColor: '#fff',
+                                        border: '1px solid #e2e8f0',
+                                        borderRadius: '6px',
+                                        boxShadow:
+                                          '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                                        padding: '4px',
+                                        zIndex: 50,
+                                        minWidth: '160px',
+                                        overflow: 'hidden',
                                       }}
                                     >
-                                      Edit
-                                    </button>
-                                    <button
-                                      onMouseEnter={() => setHoveredContactPersonSetting('Mark as Primary')}
-                                      onClick={() => {
-                                        markAsPrimaryMutation.mutate(index);
-                                        setActiveContactPersonMenu(null);
-                                      }}
-                                      style={{
-                                        display: 'block',
-                                        width: '100%',
-                                        padding: '8px 12px',
-                                        textAlign: 'left',
-                                        backgroundColor: hoveredContactPersonSetting === 'Mark as Primary' ? '#3b82f6' : 'transparent',
-                                        color: hoveredContactPersonSetting === 'Mark as Primary' ? '#fff' : '#334155',
-                                        border: 'none',
-                                        cursor: 'pointer',
-                                        fontSize: '13px',
-                                        borderRadius: '4px',
-                                        marginTop: '2px',
-                                      }}
-                                    >
-                                      Mark as Primary
-                                    </button>
-                                    <button
-                                      onMouseEnter={() => setHoveredContactPersonSetting('Delete')}
-                                      onClick={() => {
-                                        setActiveContactPersonMenu(null);
-                                        setTimeout(() => {
-                                          if (window.confirm('Are you sure you want to remove this contact person?')) {
-                                            deleteContactPersonMutation.mutate(index);
-                                          }
-                                        }, 10);
-                                      }}
-                                      style={{
-                                        display: 'block',
-                                        width: '100%',
-                                        padding: '8px 12px',
-                                        textAlign: 'left',
-                                        backgroundColor: hoveredContactPersonSetting === 'Delete' ? '#3b82f6' : 'transparent',
-                                        color: hoveredContactPersonSetting === 'Delete' ? '#fff' : '#334155',
-                                        border: 'none',
-                                        cursor: 'pointer',
-                                        fontSize: '13px',
-                                        borderRadius: '4px',
-                                        marginTop: '2px',
-                                      }}
-                                    >
-                                      Delete
-                                    </button>
-                                  </div>
-                                </>
-                              )}
+                                      <button
+                                        onMouseEnter={() => setHoveredContactPersonSetting('Edit')}
+                                        onClick={() => {
+                                          setContactPersonEditIndex(index);
+                                          setIsContactPersonModalOpen(true);
+                                          setActiveContactPersonMenu(null);
+                                        }}
+                                        style={{
+                                          display: 'block',
+                                          width: '100%',
+                                          padding: '8px 12px',
+                                          textAlign: 'left',
+                                          backgroundColor:
+                                            hoveredContactPersonSetting === 'Edit'
+                                              ? '#3b82f6'
+                                              : 'transparent',
+                                          color:
+                                            hoveredContactPersonSetting === 'Edit'
+                                              ? '#fff'
+                                              : '#334155',
+                                          border: 'none',
+                                          cursor: 'pointer',
+                                          fontSize: '13px',
+                                          borderRadius: '4px',
+                                        }}
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                        onMouseEnter={() =>
+                                          setHoveredContactPersonSetting('Mark as Primary')
+                                        }
+                                        onClick={() => {
+                                          markAsPrimaryMutation.mutate(index);
+                                          setActiveContactPersonMenu(null);
+                                        }}
+                                        style={{
+                                          display: 'block',
+                                          width: '100%',
+                                          padding: '8px 12px',
+                                          textAlign: 'left',
+                                          backgroundColor:
+                                            hoveredContactPersonSetting === 'Mark as Primary'
+                                              ? '#3b82f6'
+                                              : 'transparent',
+                                          color:
+                                            hoveredContactPersonSetting === 'Mark as Primary'
+                                              ? '#fff'
+                                              : '#334155',
+                                          border: 'none',
+                                          cursor: 'pointer',
+                                          fontSize: '13px',
+                                          borderRadius: '4px',
+                                          marginTop: '2px',
+                                        }}
+                                      >
+                                        Mark as Primary
+                                      </button>
+                                      <button
+                                        onMouseEnter={() =>
+                                          setHoveredContactPersonSetting('Delete')
+                                        }
+                                        onClick={() => {
+                                          setActiveContactPersonMenu(null);
+                                          setTimeout(() => {
+                                            if (
+                                              window.confirm(
+                                                'Are you sure you want to remove this contact person?',
+                                              )
+                                            ) {
+                                              deleteContactPersonMutation.mutate(index);
+                                            }
+                                          }, 10);
+                                        }}
+                                        style={{
+                                          display: 'block',
+                                          width: '100%',
+                                          padding: '8px 12px',
+                                          textAlign: 'left',
+                                          backgroundColor:
+                                            hoveredContactPersonSetting === 'Delete'
+                                              ? '#3b82f6'
+                                              : 'transparent',
+                                          color:
+                                            hoveredContactPersonSetting === 'Delete'
+                                              ? '#fff'
+                                              : '#334155',
+                                          border: 'none',
+                                          cursor: 'pointer',
+                                          fontSize: '13px',
+                                          borderRadius: '4px',
+                                          marginTop: '2px',
+                                        }}
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })
+                          );
+                        },
+                      )
                     ) : (
                       <div
                         style={{
@@ -1255,8 +1490,6 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                 borderBottomRightRadius: '8px',
               }}
             >
-
-
               <div style={{ padding: '16px' }}>
                 <div
                   style={{
@@ -1312,9 +1545,11 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
       <AdditionalAddressModal
         isOpen={addressModalType !== null}
         title={
-          addressModalType === 'billing' ? 'Billing Address' :
-          addressModalType === 'shipping' ? 'Shipping Address' :
-          'Additional Address'
+          addressModalType === 'billing'
+            ? 'Billing Address'
+            : addressModalType === 'shipping'
+              ? 'Shipping Address'
+              : 'Additional Address'
         }
         defaultValues={
           addressModalType === 'billing'
@@ -1330,20 +1565,20 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                 addressType: 'billing',
               }
             : addressModalType === 'shipping'
-            ? {
-                street1: customer.shippingStreet1 || '',
-                street2: customer.shippingStreet2 || '',
-                city: customer.shippingCity || '',
-                state: customer.shippingState || '',
-                country: customer.shippingCountry || '',
-                pinCode: customer.shippingPinCode || '',
-                attention: customer.shippingAttention || '',
-                phone: customer.shippingPhone || '',
-                addressType: 'shipping',
-              }
-            : addressEditIndex !== null
-            ? customer.addresses?.[addressEditIndex]
-            : { addressType: 'additional' }
+              ? {
+                  street1: customer.shippingStreet1 || '',
+                  street2: customer.shippingStreet2 || '',
+                  city: customer.shippingCity || '',
+                  state: customer.shippingState || '',
+                  country: customer.shippingCountry || '',
+                  pinCode: customer.shippingPinCode || '',
+                  attention: customer.shippingAttention || '',
+                  phone: customer.shippingPhone || '',
+                  addressType: 'shipping',
+                }
+              : addressEditIndex !== null
+                ? customer.addresses?.[addressEditIndex]
+                : { addressType: 'additional' }
         }
         onClose={() => {
           setAddressModalType(null);

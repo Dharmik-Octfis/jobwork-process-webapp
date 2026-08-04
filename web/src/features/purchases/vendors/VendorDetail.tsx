@@ -42,7 +42,9 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
   const [isContactPersonModalOpen, setIsContactPersonModalOpen] = useState(false);
   const [contactPersonEditIndex, setContactPersonEditIndex] = useState<number | null>(null);
   const [activeContactPersonMenu, setActiveContactPersonMenu] = useState<number | null>(null);
-  const [hoveredContactPersonSetting, setHoveredContactPersonSetting] = useState<'Edit' | 'Mark as Primary' | 'Delete'>('Edit');
+  const [hoveredContactPersonSetting, setHoveredContactPersonSetting] = useState<
+    'Edit' | 'Mark as Primary' | 'Delete'
+  >('Edit');
   const [hoveredSettingsIcon, setHoveredSettingsIcon] = useState<number | null>(null);
 
   useEffect(() => {
@@ -150,7 +152,6 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
     },
   });
 
-
   const updateSpecificAddressMutation = useMutation({
     mutationFn: ({ type, address }: { type: 'billing' | 'shipping'; address: VendorAddress }) => {
       if (!vendor) throw new Error('Vendor not found');
@@ -161,7 +162,9 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
         organizationId: _organizationId,
         ...rest
       } = vendor;
-      const dataToUpdate: Partial<UpdateVendorData> = { ...rest } as unknown as Partial<UpdateVendorData>;
+      const dataToUpdate: Partial<UpdateVendorData> = {
+        ...rest,
+      } as unknown as Partial<UpdateVendorData>;
       if (type === 'billing') {
         dataToUpdate.billingStreet1 = address.street1;
         dataToUpdate.billingStreet2 = address.street2;
@@ -283,7 +286,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
 
       const hasCurrentPrimary = currentPrimary.firstName || currentPrimary.lastName;
       const updatedContactPersons = [...vendor.contactPersons!];
-      
+
       if (hasCurrentPrimary) {
         updatedContactPersons[index] = currentPrimary;
       } else {
@@ -296,7 +299,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
     onMutate: async (index: number) => {
       await queryClient.cancelQueries({ queryKey: ['vendor', orgId, vendorId] });
       const previousVendor = queryClient.getQueryData<Vendor>(['vendor', orgId, vendorId]);
-      
+
       if (previousVendor) {
         const currentPrimary = {
           salutation: previousVendor.primaryContactSalutation || '',
@@ -317,13 +320,13 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
         };
         const hasCurrentPrimary = currentPrimary.firstName || currentPrimary.lastName;
         const updatedContactPersons = [...previousVendor.contactPersons!];
-        
+
         if (hasCurrentPrimary) {
           updatedContactPersons[index] = currentPrimary;
         } else {
           updatedContactPersons.splice(index, 1);
         }
-        
+
         queryClient.setQueryData(['vendor', orgId, vendorId], {
           ...previousVendor,
           ...newPrimary,
@@ -332,7 +335,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
       }
       return { previousVendor };
     },
-    onError: (err, index, context) => {
+    onError: (_err, _index, context) => {
       if (context?.previousVendor) {
         queryClient.setQueryData(['vendor', orgId, vendorId], context.previousVendor);
       }
@@ -819,7 +822,9 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                             setIsContactSettingsOpen(false);
                             setTimeout(() => {
                               if (
-                                window.confirm('Are you sure you want to delete the primary contact?')
+                                window.confirm(
+                                  'Are you sure you want to delete the primary contact?',
+                                )
                               ) {
                                 updatePrimaryContactMutation.mutate({
                                   salutation: null,
@@ -1222,22 +1227,34 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                       vendor.contactPersons.map((contact: VendorContactPerson, index: number) => {
                         const hasName = contact.firstName || contact.lastName;
                         return (
-                          <div key={index} style={{ marginBottom: '16px', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                            <div style={{
-                              width: '40px',
-                              height: '40px',
-                              backgroundColor: '#e2e8f0',
-                              borderRadius: '4px',
+                          <div
+                            key={index}
+                            style={{
+                              marginBottom: '16px',
                               display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              flexShrink: 0
-                            }}>
+                              alignItems: 'flex-start',
+                              gap: '12px',
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: '40px',
+                                height: '40px',
+                                backgroundColor: '#e2e8f0',
+                                borderRadius: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                              }}
+                            >
                               <User size={24} color="#fff" />
                             </div>
                             <div style={{ flex: 1 }}>
                               <div style={{ fontSize: '14px', fontWeight: 500, color: '#0f172a' }}>
-                                {hasName ? `${contact.salutation || ''} ${contact.firstName || ''} ${contact.lastName || ''}`.trim() : 'Unnamed Contact'}
+                                {hasName
+                                  ? `${contact.salutation || ''} ${contact.firstName || ''} ${contact.lastName || ''}`.trim()
+                                  : 'Unnamed Contact'}
                               </div>
                               <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
                                 {contact.email && <div>Email: {contact.email}</div>}
@@ -1247,7 +1264,11 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                             </div>
                             <div style={{ position: 'relative' }}>
                               <button
-                                onClick={() => setActiveContactPersonMenu(activeContactPersonMenu === index ? null : index)}
+                                onClick={() =>
+                                  setActiveContactPersonMenu(
+                                    activeContactPersonMenu === index ? null : index,
+                                  )
+                                }
                                 onMouseEnter={() => setHoveredSettingsIcon(index)}
                                 onMouseLeave={() => setHoveredSettingsIcon(null)}
                                 style={{
@@ -1255,7 +1276,11 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                                   background: 'none',
                                   cursor: 'pointer',
                                   padding: '4px',
-                                  color: hoveredSettingsIcon === index || activeContactPersonMenu === index ? '#64748b' : '#cbd5e1',
+                                  color:
+                                    hoveredSettingsIcon === index ||
+                                    activeContactPersonMenu === index
+                                      ? '#64748b'
+                                      : '#cbd5e1',
                                   transition: 'color 0.2s ease',
                                 }}
                               >
@@ -1271,7 +1296,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                                       left: 0,
                                       right: 0,
                                       bottom: 0,
-                                      zIndex: 40
+                                      zIndex: 40,
                                     }}
                                   />
                                   <div
@@ -1283,7 +1308,8 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                                       backgroundColor: '#fff',
                                       border: '1px solid #e2e8f0',
                                       borderRadius: '6px',
-                                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                                      boxShadow:
+                                        '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
                                       padding: '4px',
                                       zIndex: 50,
                                       minWidth: '160px',
@@ -1302,8 +1328,14 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                                         width: '100%',
                                         padding: '8px 12px',
                                         textAlign: 'left',
-                                        backgroundColor: hoveredContactPersonSetting === 'Edit' ? '#3b82f6' : 'transparent',
-                                        color: hoveredContactPersonSetting === 'Edit' ? '#fff' : '#334155',
+                                        backgroundColor:
+                                          hoveredContactPersonSetting === 'Edit'
+                                            ? '#3b82f6'
+                                            : 'transparent',
+                                        color:
+                                          hoveredContactPersonSetting === 'Edit'
+                                            ? '#fff'
+                                            : '#334155',
                                         border: 'none',
                                         cursor: 'pointer',
                                         fontSize: '13px',
@@ -1313,7 +1345,9 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                                       Edit
                                     </button>
                                     <button
-                                      onMouseEnter={() => setHoveredContactPersonSetting('Mark as Primary')}
+                                      onMouseEnter={() =>
+                                        setHoveredContactPersonSetting('Mark as Primary')
+                                      }
                                       onClick={() => {
                                         markAsPrimaryMutation.mutate(index);
                                         setActiveContactPersonMenu(null);
@@ -1323,8 +1357,14 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                                         width: '100%',
                                         padding: '8px 12px',
                                         textAlign: 'left',
-                                        backgroundColor: hoveredContactPersonSetting === 'Mark as Primary' ? '#3b82f6' : 'transparent',
-                                        color: hoveredContactPersonSetting === 'Mark as Primary' ? '#fff' : '#334155',
+                                        backgroundColor:
+                                          hoveredContactPersonSetting === 'Mark as Primary'
+                                            ? '#3b82f6'
+                                            : 'transparent',
+                                        color:
+                                          hoveredContactPersonSetting === 'Mark as Primary'
+                                            ? '#fff'
+                                            : '#334155',
                                         border: 'none',
                                         cursor: 'pointer',
                                         fontSize: '13px',
@@ -1339,7 +1379,11 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                                       onClick={() => {
                                         setActiveContactPersonMenu(null);
                                         setTimeout(() => {
-                                          if (window.confirm('Are you sure you want to remove this contact person?')) {
+                                          if (
+                                            window.confirm(
+                                              'Are you sure you want to remove this contact person?',
+                                            )
+                                          ) {
                                             deleteContactPersonMutation.mutate(index);
                                           }
                                         }, 10);
@@ -1349,8 +1393,14 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                                         width: '100%',
                                         padding: '8px 12px',
                                         textAlign: 'left',
-                                        backgroundColor: hoveredContactPersonSetting === 'Delete' ? '#3b82f6' : 'transparent',
-                                        color: hoveredContactPersonSetting === 'Delete' ? '#fff' : '#334155',
+                                        backgroundColor:
+                                          hoveredContactPersonSetting === 'Delete'
+                                            ? '#3b82f6'
+                                            : 'transparent',
+                                        color:
+                                          hoveredContactPersonSetting === 'Delete'
+                                            ? '#fff'
+                                            : '#334155',
                                         border: 'none',
                                         cursor: 'pointer',
                                         fontSize: '13px',
