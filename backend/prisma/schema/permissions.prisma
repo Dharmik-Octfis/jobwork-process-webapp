@@ -43,7 +43,14 @@ model Role {
 
   // One role name per org, spanning soft-deleted rows — same trade-off as
   // PermissionTemplate below (role churn is low).
-  @@unique([organizationId, name])
+  /// 🔴 `(organization_id, name)` IS unique, but only across LIVE rows — the index
+  /// is `WHERE is_deleted = false` and therefore cannot be written as `@@unique`
+  /// here (Prisma has no partial-index syntax). It lives in
+  /// `migrations/20260805130000_roles_partial_unique_name` and nowhere else, so
+  /// **do not "restore" `@@unique([organizationId, name])`** — that re-creates the
+  /// full index and a deleted title reserves its name again, forever. Postgres
+  /// still raises 23505, which Prisma still reports as P2002, so
+  /// `withUniqueViolation` in roles.service is unaffected.
   @@index([organizationId, isDeleted])
   @@map("roles")
 }
