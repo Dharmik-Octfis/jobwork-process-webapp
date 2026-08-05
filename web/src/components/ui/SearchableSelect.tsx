@@ -35,7 +35,10 @@ export function SearchableSelect({
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [menuPlacement, setMenuPlacement] = useState<'bottom' | 'top'>('bottom');
+  const [focusedIndex, setFocusedIndex] = useState(-1);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const optionsContainerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const selectedOption = options.find((opt) => opt.value === value);
 
@@ -59,6 +62,8 @@ export function SearchableSelect({
       } else {
         setMenuPlacement('bottom');
       }
+      setSearchTerm('');
+      setFocusedIndex(-1);
     }
   }, [isOpen]);
 
@@ -67,6 +72,64 @@ export function SearchableSelect({
       opt.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
       opt.value.toLowerCase().includes(searchTerm.toLowerCase()),
   );
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!isOpen) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        setIsOpen(true);
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setFocusedIndex((prev) => {
+        const next = Math.min(prev + 1, filteredOptions.length - 1);
+        scrollToIndex(next);
+        return next;
+      });
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setFocusedIndex((prev) => {
+        const next = Math.max(prev - 1, 0);
+        scrollToIndex(next);
+        return next;
+      });
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (focusedIndex >= 0 && focusedIndex < filteredOptions.length) {
+        const opt = filteredOptions[focusedIndex];
+        if (!opt.disabled) {
+          onChange(opt.value);
+          setIsOpen(false);
+        }
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setIsOpen(false);
+    } else if (e.key === 'Tab') {
+      setIsOpen(false);
+    }
+  };
+
+  const scrollToIndex = (index: number) => {
+    if (optionsContainerRef.current) {
+      const container = optionsContainerRef.current;
+      const optionElements = container.children;
+      if (index >= 0 && index < optionElements.length) {
+        const el = optionElements[index] as HTMLElement;
+        const containerRect = container.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
+
+        if (elRect.bottom > containerRect.bottom) {
+          container.scrollTop += elRect.bottom - containerRect.bottom;
+        } else if (elRect.top < containerRect.top) {
+          container.scrollTop -= containerRect.top - elRect.top;
+        }
+      }
+    }
+  };
 
   return (
     <div
@@ -77,9 +140,11 @@ export function SearchableSelect({
         ...style,
         zIndex: isOpen ? 100 : (style?.zIndex ?? 'auto'),
       }}
+      onKeyDown={handleKeyDown}
     >
       <div
         className={className}
+        tabIndex={disabled ? -1 : 0}
         onClick={() => !disabled && setIsOpen(!isOpen)}
         style={{
           padding: '8px 12px',
@@ -94,6 +159,17 @@ export function SearchableSelect({
           minHeight: '38px',
           boxShadow: isOpen ? '0 0 0 1px var(--color-primary)' : 'none',
           borderColor: isOpen ? 'var(--color-primary)' : 'var(--color-border)',
+          outline: 'none',
+        }}
+        onFocus={(e) => {
+          if (!isOpen && !disabled) {
+            e.currentTarget.style.borderColor = 'var(--color-primary)';
+          }
+        }}
+        onBlur={(e) => {
+          if (!isOpen && !disabled) {
+            e.currentTarget.style.borderColor = 'var(--color-border)';
+          }
         }}
       >
         <span
@@ -143,10 +219,14 @@ export function SearchableSelect({
                 style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)' }}
               />
               <input
+                ref={searchInputRef}
                 type="text"
                 placeholder="Search"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setFocusedIndex(-1);
+                }}
                 onClick={(e) => e.stopPropagation()}
                 style={{
                   width: '100%',
@@ -164,6 +244,7 @@ export function SearchableSelect({
             </div>
           </div>
           <div
+            ref={optionsContainerRef}
             style={{
               overflowY: 'auto',
               flex: 1,
@@ -174,7 +255,7 @@ export function SearchableSelect({
             }}
           >
             {filteredOptions.length > 0 ? (
-              filteredOptions.map((opt) => (
+              filteredOptions.map((opt, idx) => (
                 <div
                   key={opt.value}
                   onClick={() => {
@@ -188,7 +269,11 @@ export function SearchableSelect({
                     cursor: opt.disabled ? 'not-allowed' : 'pointer',
                     fontSize: 13,
                     borderRadius: '4px',
-                    backgroundColor: opt.value === value ? 'var(--color-primary)' : 'transparent',
+                    backgroundColor: opt.value === value
+                      ? 'var(--color-primary)'
+                      : focusedIndex === idx
+                        ? '#EFF6FF'
+                        : 'transparent',
                     color: opt.disabled
                       ? 'var(--color-text-muted)'
                       : opt.value === value
@@ -198,12 +283,14 @@ export function SearchableSelect({
                   }}
                   onMouseEnter={(e) => {
                     if (opt.value !== value && !opt.disabled) {
-                      e.currentTarget.style.backgroundColor = '#EFF6FF'; // light blue for hover
+                      e.currentTarget.style.backgroundColor = '#EFF6FF';
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (opt.value !== value && !opt.disabled) {
-                      e.currentTarget.style.backgroundColor = 'transparent';
+                      if (focusedIndex !== idx) {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }
                     }
                   }}
                 >

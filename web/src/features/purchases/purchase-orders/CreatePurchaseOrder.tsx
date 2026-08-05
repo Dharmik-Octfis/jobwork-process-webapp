@@ -155,8 +155,8 @@ export function CreatePurchaseOrder() {
   useEffect(() => {
     if (existingPo) {
       const formattedLineItems = (existingPo.line_items || []).map((item) => {
-        const discountVal = item.discountValue !== undefined && item.discountValue !== null 
-          ? item.discountValue 
+        const discountVal = item.discountValue !== undefined && item.discountValue !== null
+          ? item.discountValue
           : item.discount_percentage || item.discount || 0;
         return {
           item_id: item.item_id,
@@ -383,6 +383,7 @@ export function CreatePurchaseOrder() {
         rate: rate,
         item_total: item_total,
         discount: discountAmount,
+        discount_percentage: discType === 'percentage' ? discountVal : null,
       };
     });
 
@@ -538,32 +539,7 @@ export function CreatePurchaseOrder() {
                 </div>
               );
             }}
-            renderValue={(option) => {
-              const vendor = vendors.find((v) => v.id === option.value);
-              if (!vendor) return <>{option.label}</>;
-              return (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div
-                    style={{
-                      width: '20px',
-                      height: '20px',
-                      borderRadius: '50%',
-                      backgroundColor: '#e2e8f0',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: '#64748b',
-                      fontSize: '10px',
-                      fontWeight: 500,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {vendor.contactName.charAt(0).toUpperCase()}
-                  </div>
-                  <span>{vendor.contactName}</span>
-                </div>
-              );
-            }}
+
             footerAction={{
               text: 'New Vendor',
               icon: <PlusCircle size={16} />,
@@ -571,6 +547,7 @@ export function CreatePurchaseOrder() {
             }}
             style={searchableSelectStyle}
           />
+
 
           <label style={labelStyle}>Location</label>
           <SearchableSelect
@@ -585,6 +562,7 @@ export function CreatePurchaseOrder() {
             }}
             style={searchableSelectStyle}
           />
+
 
           <label style={{ ...labelStyle, alignSelf: 'flex-start', color: '#ef4444' }}>Delivery Address*</label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -1184,7 +1162,6 @@ export function CreatePurchaseOrder() {
                           border: '1px solid #d1d5db',
                           borderRadius: '6px',
                           background: '#ffffff',
-                          overflow: 'hidden',
                         }}
                       >
                         <input
@@ -1218,6 +1195,7 @@ export function CreatePurchaseOrder() {
                             { value: 'percentage', label: '%' },
                             { value: 'fixed', label: '₹' },
                           ]}
+                          minWidth={50}
                           fullWidth={false}
                           containerStyle={{ flexShrink: 0, height: '100%' }}
                           buttonStyle={{
@@ -1230,6 +1208,7 @@ export function CreatePurchaseOrder() {
                             color: '#475569',
                             borderRadius: '0 6px 6px 0',
                             height: '100%',
+                            gap: '4px',
                           }}
                         />
                       </div>
@@ -1533,7 +1512,7 @@ export function CreatePurchaseOrder() {
               fontSize: '13px',
             }}
           >
-            {mutation.isPending ? 'Saving...' : 'Save as Draft'}
+            {mutation.isPending ? 'Saving...' : 'Save'}
           </button>
           <button
             type="button"
