@@ -93,10 +93,19 @@ export async function updateLocation(
   longitude: number | null | undefined,
 ): Promise<void> {
   if (latitude == null || longitude == null) return;
-  await prisma.user.update({
+  
+  const user = await prisma.user.findUnique({
     where: { id: userId },
-    data: { latitude, longitude },
+    select: { latitude: true },
   });
+
+  if (user && user.latitude == null) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { latitude, longitude },
+    });
+  }
+
   await prisma.refreshToken.update({
     where: { id: sessionId },
     data: { latitude, longitude },
@@ -205,12 +214,7 @@ export async function login(
   // even for users created before this column was introduced.
   const updatedUser = await prisma.user.update({
     where: { id: user.id },
-    data: {
-      userAgent: userAgent || 'unknown',
-      ipAddress,
-      latitude: input.latitude,
-      longitude: input.longitude,
-    },
+    data: { userAgent: userAgent || 'unknown' },
     select: publicUserSelect,
   });
 
