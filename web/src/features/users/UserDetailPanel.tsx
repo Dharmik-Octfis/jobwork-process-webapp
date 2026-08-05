@@ -515,7 +515,7 @@ export function UserDetailPanel({
               <>
                 <div>
                   <label className="users-field-label required" htmlFor="ud-first">
-                    First name *
+                    First Name *
                   </label>
                   <input
                     id="ud-first"
@@ -528,7 +528,7 @@ export function UserDetailPanel({
                 </div>
                 <div>
                   <label className="users-field-label required" htmlFor="ud-last">
-                    Last name *
+                    Last Name *
                   </label>
                   <input
                     id="ud-last"

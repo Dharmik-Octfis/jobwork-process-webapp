@@ -183,7 +183,7 @@ export function NewUserModal({
               <div className="users-form-row">
                 <div>
                   <label className="users-field-label required" htmlFor="nu-first">
-                    First name *
+                    First Name *
                   </label>
                   <input
                     id="nu-first"
@@ -197,7 +197,7 @@ export function NewUserModal({
                 </div>
                 <div>
                   <label className="users-field-label required" htmlFor="nu-last">
-                    Last name *
+                    Last Name *
                   </label>
                   <input
                     id="nu-last"
@@ -211,7 +211,7 @@ export function NewUserModal({
 
               <div className="users-form-field">
                 <label className="users-field-label required" htmlFor="nu-email">
-                  Email address *
+                  Email *
                 </label>
                 <input
                   id="nu-email"
@@ -255,7 +255,7 @@ export function NewUserModal({
                 </div>
                 <div>
                   <label className="users-field-label required" htmlFor="nu-permissions">
-                    Permissions *
+                    Profile *
                   </label>
                   <Controller
                     control={control}

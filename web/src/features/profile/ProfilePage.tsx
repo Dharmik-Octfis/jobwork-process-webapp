@@ -275,11 +275,11 @@ export function ProfilePage() {
 
             <div style={{ marginBottom: 24 }}>
               <Input
-                label="Email Address"
+                label="Email"
                 type="email"
                 value={user?.email || ''}
                 disabled
-                hint="Email address is managed by organization admin."
+                hint="Email is managed by organization admin."
               />
             </div>
 

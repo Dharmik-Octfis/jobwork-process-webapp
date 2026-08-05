@@ -78,7 +78,7 @@ export function SignupPage() {
           </div>
         </div>
 
-        {/* Email Address */}
+        {/* Email */}
         <div className={layoutStyles.formGroup}>
           <Input
             label=""

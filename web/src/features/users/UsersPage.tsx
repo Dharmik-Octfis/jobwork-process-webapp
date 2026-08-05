@@ -71,23 +71,15 @@ function renderUserCell(
         return user.inviteStatus === 'declined' ? 'Declined' : 'Unconfirmed';
       }
       if (user.isOwner) {
-        return <span style={{ color: '#059669', fontWeight: 500 }}>Active</span>;
+        return <span className="users-badge is-active">Active</span>;
       }
       return (
         <button
+          type="button"
+          className={`users-badge ${user.status === 'active' ? 'is-active' : 'is-inactive'}`}
           onClick={(e) => {
             e.stopPropagation();
             onToggleStatus?.(user);
-          }}
-          style={{
-            background: user.status === 'active' ? '#dcfce7' : '#fee2e2',
-            color: user.status === 'active' ? '#166534' : '#991b1b',
-            border: 'none',
-            padding: '2px 8px',
-            borderRadius: '12px',
-            fontSize: '12px',
-            fontWeight: 500,
-            cursor: 'pointer',
           }}
         >
           {user.status === 'active' ? 'Active' : 'Inactive'}
@@ -382,8 +374,8 @@ export function UsersPage() {
                       {user.fullName}
                     </div>
                     <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '2px' }}>
-                      Role:-{user.rolePath?.at(-1) ?? user.roleName ?? '-'} ,{' '}
-                      Profile:-{user.permissionTemplateName ?? '-'}
+                      Role:-{user.rolePath?.at(-1) ?? user.roleName ?? '-'} , Profile:-
+                      {user.permissionTemplateName ?? '-'}
                     </div>
                     <div style={{ fontSize: '12px', color: '#64748b' }}>{user.email}</div>
                   </div>
