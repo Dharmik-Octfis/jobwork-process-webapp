@@ -10,6 +10,7 @@ import type {
   ResetPasswordInput,
   UpdateProfileInput,
   ChangePasswordInput,
+  UpdateLocationInput,
 } from './auth.schemas.ts';
 import * as authService from './auth.service.ts';
 
@@ -17,6 +18,7 @@ export async function signup(req: Request, res: Response): Promise<void> {
   const { accessToken, refreshToken, user, refreshTokenExpiresAt } = await authService.signup(
     req.body as SignupInput,
     req.get('user-agent') ?? 'unknown',
+    req.ip,
   );
 
   setRefreshTokenAsCookie(res, refreshToken, refreshTokenExpiresAt);
@@ -28,6 +30,7 @@ export async function login(req: Request, res: Response): Promise<void> {
   const { accessToken, refreshToken, user, refreshTokenExpiresAt } = await authService.login(
     req.body as LoginInput,
     userAgent,
+    req.ip,
   );
 
   setRefreshTokenAsCookie(res, refreshToken, refreshTokenExpiresAt);
@@ -110,6 +113,27 @@ export async function updateProfile(req: Request, res: Response): Promise<void> 
 
   const user = await authService.updateProfile(req.user.id, req.body as UpdateProfileInput);
   sendSuccess(res, { user });
+}
+
+export async function updateLocation(req: Request, res: Response): Promise<void> {
+  if (!req.user) {
+    throw new ApiError(401, 'Sign in to continue.');
+  }
+  
+  const header = req.headers.authorization;
+  const accessToken = header?.startsWith('Bearer ')
+    ? header.slice('Bearer '.length).trim()
+    : undefined;
+
+  if (!accessToken) {
+    throw new ApiError(401, 'No active session.');
+  }
+
+  const sessionId = readSessionId(accessToken);
+  const input = req.body as UpdateLocationInput;
+  
+  await authService.updateLocation(req.user.id, sessionId, input.latitude, input.longitude);
+  sendSuccess(res, null);
 }
 
 export async function changePassword(req: Request, res: Response): Promise<void> {

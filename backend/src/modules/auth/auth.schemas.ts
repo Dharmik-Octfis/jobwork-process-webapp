@@ -18,6 +18,14 @@ const email = z
   .email('Enter a valid email address')
   .openapi({ example: 'johndoe@example.com' });
 
+const passwordField = z
+  .string()
+  .min(8, 'Use at least 8 characters')
+  .max(72, 'Keep your password under 72 characters')
+  .regex(/[a-zA-Z]/, 'Password must contain at least one letter')
+  .regex(/[0-9]/, 'Password must contain at least one number')
+  .regex(/[^a-zA-Z0-9]/, 'Password must contain at least one special character');
+
 export const signupSchema = openApiRegistry.register(
   'SignupRequest',
   z.object({
@@ -38,11 +46,10 @@ export const signupSchema = openApiRegistry.register(
     email,
     // 72 is the classic bcrypt input ceiling; argon2 has no such limit, but the
     // cap keeps a megabyte-long password from becoming a CPU denial-of-service.
-    password: z
-      .string()
-      .min(8, 'Use at least 8 characters')
-      .max(72, 'Keep your password under 72 characters')
-      .openapi({ example: 'SecureP@ss123' }),
+    // cap keeps a megabyte-long password from becoming a CPU denial-of-service.
+    password: passwordField.openapi({ example: 'SecureP@ss123' }),
+    latitude: z.number().nullable().optional(),
+    longitude: z.number().nullable().optional(),
   }),
 );
 
@@ -52,7 +59,9 @@ export const loginSchema = openApiRegistry.register(
   'LoginRequest',
   z.object({
     email,
-    password: z.string().min(1, 'Password is required').openapi({ example: 'SecureP@ss123' }),
+    password: passwordField.openapi({ example: 'SecureP@ss123' }),
+    latitude: z.number().nullable().optional(),
+    longitude: z.number().nullable().optional(),
   }),
 );
 
@@ -67,10 +76,7 @@ export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export const resetPasswordSchema = z.object({
   email,
   otp: z.string().length(6, 'OTP must be exactly 6 characters'),
-  newPassword: z
-    .string()
-    .min(8, 'Use at least 8 characters')
-    .max(72, 'Keep your password under 72 characters'),
+  newPassword: passwordField,
 });
 
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
@@ -90,12 +96,16 @@ export const updateProfileSchema = z.object({
 
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 
+export const updateLocationSchema = z.object({
+  latitude: z.number().nullable().optional(),
+  longitude: z.number().nullable().optional(),
+});
+
+export type UpdateLocationInput = z.infer<typeof updateLocationSchema>;
+
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, 'Current password is required'),
-  newPassword: z
-    .string()
-    .min(8, 'Use at least 8 characters')
-    .max(72, 'Keep your password under 72 characters'),
+  newPassword: passwordField,
 });
 
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;

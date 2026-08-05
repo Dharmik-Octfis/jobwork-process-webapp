@@ -39,6 +39,9 @@ model User {
   updatedBy                     String?                 @map("updated_by") @db.Uuid
   avatarUrl                     String?                 @map("avatar_url")
   userAgent                     String?                 @map("user_agent")
+  ipAddress                     String?                 @map("ip_address")
+  latitude                      Float?
+  longitude                     Float?
   city                          City?                   @relation(fields: [cityId], references: [id])
   country                       Country?                @relation(fields: [countryCode], references: [code])
   state                         State?                  @relation(fields: [stateCode], references: [code])
@@ -152,6 +155,9 @@ model RefreshToken {
   /// — so the column would hold one constant — and an IP is personal data in a
   /// table that never deletes rows.
   userAgent     String?   @map("user_agent")
+  ipAddress     String?   @map("ip_address")
+  latitude      Float?
+  longitude     Float?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

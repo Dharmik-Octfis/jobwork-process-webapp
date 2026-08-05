@@ -86,6 +86,23 @@ export async function updateProfile(
   return await formatPublicUser(user);
 }
 
+export async function updateLocation(
+  userId: string,
+  sessionId: string,
+  latitude: number | null | undefined,
+  longitude: number | null | undefined,
+): Promise<void> {
+  if (latitude == null || longitude == null) return;
+  await prisma.user.update({
+    where: { id: userId },
+    data: { latitude, longitude },
+  });
+  await prisma.refreshToken.update({
+    where: { id: sessionId },
+    data: { latitude, longitude },
+  });
+}
+
 export async function uploadAvatar(userId: string, file: Express.Multer.File): Promise<PublicUser> {
   const timestamp = Date.now();
   const cleanName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
@@ -122,7 +139,11 @@ function getDecoyHash(): Promise<string> {
   return decoyHash;
 }
 
-export async function signup(input: SignupInput, userAgent: string): Promise<AuthResult> {
+export async function signup(
+  input: SignupInput,
+  userAgent: string,
+  ipAddress?: string,
+): Promise<AuthResult> {
   const passwordHash = await hashPassword(input.password);
   const fullName = `${input.firstName} ${input.lastName}`.trim();
 
@@ -135,11 +156,19 @@ export async function signup(input: SignupInput, userAgent: string): Promise<Aut
         email: input.email,
         passwordHash,
         userAgent,
+        ipAddress,
+        latitude: input.latitude,
+        longitude: input.longitude,
       },
       select: publicUserSelect,
     });
 
-    return await issueTokens(await formatPublicUser(user), { userAgent });
+    return await issueTokens(await formatPublicUser(user), {
+      userAgent,
+      ipAddress,
+      latitude: input.latitude,
+      longitude: input.longitude,
+    });
   } catch (error) {
     // Checking `findUnique` first would still race: two concurrent signups for
     // the same email both see "available", and one loses at the index. The
@@ -151,7 +180,11 @@ export async function signup(input: SignupInput, userAgent: string): Promise<Aut
   }
 }
 
-export async function login(input: LoginInput, userAgent: string): Promise<AuthResult> {
+export async function login(
+  input: LoginInput,
+  userAgent: string,
+  ipAddress?: string,
+): Promise<AuthResult> {
   const user = await prisma.user.findUnique({
     where: { email: input.email },
     select: { ...publicUserSelect, passwordHash: true, isActive: true, isDeleted: true },
@@ -172,7 +205,12 @@ export async function login(input: LoginInput, userAgent: string): Promise<AuthR
   // even for users created before this column was introduced.
   const updatedUser = await prisma.user.update({
     where: { id: user.id },
-    data: { userAgent: userAgent || 'unknown' },
+    data: {
+      userAgent: userAgent || 'unknown',
+      ipAddress,
+      latitude: input.latitude,
+      longitude: input.longitude,
+    },
     select: publicUserSelect,
   });
 
@@ -184,7 +222,12 @@ export async function login(input: LoginInput, userAgent: string): Promise<AuthR
     throw new ApiError(403, 'This account has been disabled.');
   }
 
-  return await issueTokens(await formatPublicUser(updatedUser), { userAgent });
+  return await issueTokens(await formatPublicUser(updatedUser), {
+    userAgent,
+    ipAddress,
+    latitude: input.latitude,
+    longitude: input.longitude,
+  });
 }
 
 /**
@@ -194,6 +237,9 @@ export async function login(input: LoginInput, userAgent: string): Promise<AuthR
  */
 export interface SessionMeta {
   userAgent?: string | null;
+  ipAddress?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 /**
@@ -216,6 +262,9 @@ export async function issueTokens(user: PublicUser, meta: SessionMeta = {}): Pro
       userId: user.id,
       expiresAt,
       userAgent: meta.userAgent ?? null,
+      ipAddress: meta.ipAddress ?? null,
+      latitude: meta.latitude ?? null,
+      longitude: meta.longitude ?? null,
     },
     select: { id: true },
   });

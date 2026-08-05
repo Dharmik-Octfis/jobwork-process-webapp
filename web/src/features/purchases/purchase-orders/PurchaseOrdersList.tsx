@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchPurchaseOrders, fetchPurchaseOrderCount, deletePurchaseOrder } from './purchase-orders.api';
+import { fetchPaymentTerms, type PaymentTerm } from './payment-terms.api';
 import { Plus, SlidersHorizontal, FileText } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
@@ -14,7 +15,11 @@ import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 import type { PurchaseOrder } from './purchase-orders.schemas';
 
-function renderPoCell(po: PurchaseOrder, key: string): string {
+function renderPoCell(po: PurchaseOrder, key: string, paymentTerms: PaymentTerm[] = []): string {
+  if (key === 'payment_terms') {
+    const term = paymentTerms.find((t) => t.id === po.payment_terms);
+    return term ? term.termName : (po.payment_terms || '-');
+  }
   if (key.startsWith(CUSTOM_FIELD_PREFIX)) {
     const value = po.custom_fields?.[key.slice(CUSTOM_FIELD_PREFIX.length)];
     if (value === null || value === undefined || value === '') return '-';
@@ -47,6 +52,12 @@ export function PurchaseOrdersList() {
     queryFn: () => fetchPurchaseOrders(orgId!, { search: search || undefined, filter, page, perPage }),
     enabled: Boolean(orgId),
     placeholderData: (prev) => prev,
+  });
+
+  const { data: paymentTerms = [] } = useQuery({
+    queryKey: ['paymentTerms', orgId],
+    queryFn: () => fetchPaymentTerms(orgId!),
+    enabled: Boolean(orgId),
   });
 
   const purchaseOrders = data?.results ?? [];
@@ -292,7 +303,7 @@ export function PurchaseOrdersList() {
                                 fontWeight: col.key === 'purchaseorder_number' ? 500 : 400,
                               }}
                             >
-                              {renderPoCell(po, col.key)}
+                              {renderPoCell(po, col.key, paymentTerms)}
                             </td>
                           ))}
                         </tr>

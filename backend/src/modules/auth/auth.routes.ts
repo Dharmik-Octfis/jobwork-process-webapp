@@ -8,6 +8,7 @@ import {
   forgotPasswordSchema,
   resetPasswordSchema,
   updateProfileSchema,
+  updateLocationSchema,
   changePasswordSchema,
 } from './auth.schemas.ts';
 
@@ -67,6 +68,7 @@ authRouter.put(
   validateBody(updateProfileSchema),
   authController.updateProfile,
 );
+authRouter.post('/me/location', authenticate, validateBody(updateLocationSchema), authController.updateLocation);
 authRouter.post('/me/avatar', authenticate, upload.single('avatar'), authController.uploadAvatar);
 authRouter.delete('/me/avatar', authenticate, authController.deleteAvatar);
 

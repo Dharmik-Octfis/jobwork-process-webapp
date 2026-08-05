@@ -14,7 +14,13 @@ import { useUoms } from '../inventory/uom/uom.api.ts';
 import { UomFormModal } from '../inventory/uom/UomFormModal.tsx';
 import { Plus } from 'lucide-react';
 
-export function CreateItemPage() {
+interface CreateItemPageProps {
+  isModal?: boolean;
+  onSuccess?: (itemId: string) => void;
+  onCancel?: () => void;
+}
+
+export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateItemPageProps = {}) {
   const { orgId } = useParams<{ orgId: string }>();
   const { data: customFields = [] } = useActiveCustomFields(orgId!, 'item');
   const navigate = useNavigate();
@@ -117,7 +123,13 @@ export function CreateItemPage() {
         }
       }
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
-      navigate(`/organizations/${orgId}/items`);
+      const itemId = createdItem.id;
+          
+      if (isModal && onSuccess) {
+        onSuccess(itemId);
+      } else {
+        navigate(`/organizations/${orgId}/items`);
+      }
     },
     onError: (error: unknown) => {
       const err = error as {
@@ -243,35 +255,51 @@ export function CreateItemPage() {
         margin: 0,
         background: '#fff',
         width: '100%',
-        minHeight: '100vh',
+        minHeight: isModal ? 'auto' : '100vh',
         display: 'block',
-        paddingBottom: '80px',
+        paddingBottom: isModal ? '0' : '80px',
       }}
     >
-      <div style={{ padding: '16px 24px' }}>
-        <button
-          type="button"
-          onClick={() => navigate(`/organizations/${orgId}/items`)}
+      <div
+        style={{
+          padding: isModal ? '20px' : '24px 32px 100px',
+          maxWidth: isModal ? '100%' : '1200px',
+          margin: isModal ? '0' : '0 auto',
+        }}
+      >
+        {!isModal && (
+          <button
+            onClick={() => navigate(`/organizations/${orgId}/items`)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: 'none',
+              border: 'none',
+              color: '#64748b',
+              cursor: 'pointer',
+              padding: 0,
+              fontSize: '14px',
+              marginBottom: '20px',
+            }}
+          >
+            <ArrowLeft size={16} />
+            Back to Items
+          </button>
+        )}
+        <h1
           style={{
-            background: 'none',
-            border: 'none',
-            color: '#0062ff',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: 0,
-            marginBottom: '12px',
-            fontSize: 12,
-            fontWeight: 500,
+            fontSize: isModal ? '20px' : '24px',
+            fontWeight: 600,
+            marginBottom: '24px',
+            color: '#1e293b',
           }}
         >
-          <ArrowLeft size={14} /> Back to Items
-        </button>
-        <h1 style={{ fontSize: '22px', fontWeight: 400, margin: 0, color: '#000' }}>New Item</h1>
+          New Item
+        </h1>
       </div>
 
-      <div style={{ padding: '0 32px 32px' }}>
+      <div style={{ padding: isModal ? '0 20px 0px' : '0 32px 32px' }}>
         <form
           onSubmit={handleSubmit}
           style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}
@@ -981,12 +1009,13 @@ export function CreateItemPage() {
             style={{
               height: '56px',
               boxSizing: 'border-box',
-              position: 'fixed',
+              position: isModal ? 'sticky' : 'fixed',
               bottom: 0,
-              left: 220,
+              left: isModal ? 0 : 220,
               right: 0,
               background: '#fff',
-              padding: '0 32px',
+              padding: isModal ? '0 20px' : '0 32px',
+              margin: isModal ? '20px -20px 0 -20px' : 0,
               borderTop: '1px solid #cbd5e1',
               display: 'flex',
               alignItems: 'center',
@@ -1015,7 +1044,7 @@ export function CreateItemPage() {
             <button
               type="button"
               disabled={createMutation.isPending}
-              onClick={() => navigate(`/organizations/${orgId}/items`)}
+              onClick={() => (isModal && onCancel ? onCancel() : navigate(`/organizations/${orgId}/items`))}
               style={{
                 padding: '8px 24px',
                 background: 'white',

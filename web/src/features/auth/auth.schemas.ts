@@ -10,12 +10,21 @@ const email = z
   .string()
   .trim()
   .min(1, 'Email is required')
-  .max(254, 'That email address is too long')
   .email('Enter a valid email address');
+
+const passwordField = z
+  .string()
+  .min(8, 'Use at least 8 characters')
+  .max(72, 'Keep your password under 72 characters')
+  .regex(/[a-zA-Z]/, 'Password must contain at least one letter')
+  .regex(/[0-9]/, 'Password must contain at least one number')
+  .regex(/[^a-zA-Z0-9]/, 'Password must contain at least one special character');
 
 export const loginSchema = z.object({
   email,
-  password: z.string().min(1, 'Password is required'),
+  password: passwordField,
+  latitude: z.number().nullable().optional(),
+  longitude: z.number().nullable().optional(),
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;
@@ -38,11 +47,10 @@ export const signupSchema = z
       .min(1, 'Last name is required')
       .max(40, 'Keep last name under 40 characters'),
     email,
-    password: z
-      .string()
-      .min(8, 'Use at least 8 characters')
-      .max(72, 'Keep your password under 72 characters'),
+    password: passwordField,
     confirmPassword: z.string().min(1, 'Please confirm your password'),
+    latitude: z.number().nullable().optional(),
+    longitude: z.number().nullable().optional(),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: 'Passwords do not match',
@@ -61,10 +69,7 @@ export const resetPasswordSchema = z
   .object({
     email,
     otp: z.string().length(6, 'OTP must be exactly 6 characters'),
-    newPassword: z
-      .string()
-      .min(8, 'Use at least 8 characters')
-      .max(72, 'Keep your password under 72 characters'),
+    newPassword: passwordField,
     confirmPassword: z.string().min(1, 'Please confirm your new password'),
   })
   .refine((data) => data.newPassword === data.confirmPassword, {
@@ -92,10 +97,7 @@ export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1, 'Current password is required'),
-    newPassword: z
-      .string()
-      .min(8, 'Use at least 8 characters')
-      .max(72, 'Keep your password under 72 characters'),
+    newPassword: passwordField,
     confirmPassword: z.string().min(1, 'Please confirm your new password'),
   })
   .refine((data) => data.newPassword === data.confirmPassword, {

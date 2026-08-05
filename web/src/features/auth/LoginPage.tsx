@@ -11,6 +11,7 @@ import { FormErrorBanner } from './FormErrorBanner';
 import { loginSchema } from './auth.schemas';
 import type { LoginInput } from './auth.schemas';
 import { useLogin } from './useLogin';
+import { updateLocation } from './auth.api';
 
 import styles from './Auth.module.css';
 import layoutStyles from '../../components/ui/LogisticsBackground.module.css';
@@ -44,7 +45,22 @@ export function LoginPage() {
   const loginMutation = useLogin(redirectTo);
 
   const onSubmit = handleSubmit((values) => {
-    loginMutation.mutate(values);
+    loginMutation.mutate(values, {
+      onSuccess: () => {
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              updateLocation({
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+              }).catch(() => {});
+            },
+            (error) => console.warn('Geolocation background error:', error.message),
+            { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+          );
+        }
+      },
+    });
   });
 
   return (

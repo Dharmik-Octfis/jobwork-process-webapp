@@ -26,6 +26,10 @@ export async function updateProfile(input: UpdateProfileInput): Promise<{ user: 
   return data;
 }
 
+export async function updateLocation(input: { latitude: number; longitude: number }): Promise<void> {
+  await apiClient.post(endpoints.auth.location, input);
+}
+
 export async function uploadAvatar(file: File): Promise<{ user: AuthResponse['user'] }> {
   const formData = new FormData();
   formData.append('avatar', file);

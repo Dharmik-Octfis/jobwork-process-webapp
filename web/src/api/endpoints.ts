@@ -6,6 +6,7 @@ export const endpoints = {
     logout: '/auth/logout',
     refresh: '/auth/refresh-token',
     me: '/auth/me',
+    location: '/auth/me/location',
     avatar: '/auth/me/avatar',
     forgotPassword: '/auth/forgot-password',
     resetPassword: '/auth/reset-password',

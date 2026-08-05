@@ -39,6 +39,7 @@ interface VendorFormProps {
   isSubmitting: boolean;
   isEdit?: boolean;
   customFieldErrors?: Record<string, string>;
+  onCancel?: () => void;
 }
 
 export function VendorForm({
@@ -47,6 +48,7 @@ export function VendorForm({
   isSubmitting,
   isEdit = false,
   customFieldErrors,
+  onCancel,
 }: VendorFormProps) {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
@@ -953,7 +955,7 @@ export function VendorForm({
           </button>
           <button
             type="button"
-            onClick={() => navigate(`/organizations/${orgId}/purchases/vendors`)}
+            onClick={() => (onCancel ? onCancel() : navigate(`/organizations/${orgId}/purchases/vendors`))}
             style={{
               padding: '6px 20px',
               background: 'white',

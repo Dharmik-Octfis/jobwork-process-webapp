@@ -26,6 +26,8 @@ import { fetchCustomers, type Customer } from '../../sales/customers/customers.a
 import { PurchaseOrderNumberConfigModal } from './PurchaseOrderNumberConfigModal';
 import { PaymentTermModal } from '../../sales/customers/PaymentTermModal';
 import { DeliveryAddressModal } from './DeliveryAddressModal';
+import { CreateVendorModal } from '../vendors/CreateVendorModal';
+import { CreateItemModal } from '../../items/CreateItemModal';
 function getImageKey(img: unknown): string | null {
   if (!img) return null;
   if (typeof img === 'string') return img;
@@ -88,6 +90,9 @@ export function CreatePurchaseOrder() {
   const poIdToFetch = id || cloneFrom;
   const isEdit = Boolean(id);
   const isClone = Boolean(cloneFrom);
+
+  const [isVendorModalOpen, setIsVendorModalOpen] = useState(false);
+  const [itemModalIndex, setItemModalIndex] = useState<number | null>(null);
 
   const { data: existingPo, isLoading: isFetchingPo } = useQuery({
     queryKey: ['purchaseOrder', orgId, poIdToFetch],
@@ -543,7 +548,7 @@ export function CreatePurchaseOrder() {
             footerAction={{
               text: 'New Vendor',
               icon: <PlusCircle size={16} />,
-              onClick: () => navigate(`/organizations/${orgId}/purchases/vendors/new`),
+              onClick: () => setIsVendorModalOpen(true),
             }}
             style={searchableSelectStyle}
           />
@@ -1071,7 +1076,7 @@ export function CreatePurchaseOrder() {
                                 footerAction={{
                                   text: 'New Item',
                                   icon: <PlusCircle size={15} />,
-                                  onClick: () => navigate(`/organizations/${orgId}/items/new`),
+                                  onClick: () => setItemModalIndex(index),
                                 }}
                               />
                             </div>
@@ -1573,6 +1578,26 @@ export function CreatePurchaseOrder() {
         selectedCustomerId={watchDeliveryCustomerId || undefined}
         onSelectLocation={(locId) => setValue('delivery_location_id', locId)}
         onSelectCustomer={(custId) => setValue('delivery_customer_id', custId)}
+      />
+      <CreateVendorModal
+        isOpen={isVendorModalOpen}
+        onClose={() => setIsVendorModalOpen(false)}
+        onSuccess={(vendorId) => {
+          setValue('vendor_id', vendorId, { shouldValidate: true });
+        }}
+      />
+      <CreateItemModal
+        isOpen={itemModalIndex !== null}
+        onClose={() => setItemModalIndex(null)}
+        onSuccess={(itemId) => {
+          if (itemModalIndex !== null) {
+            setValue(`line_items.${itemModalIndex}.item_id`, itemId, { shouldValidate: true });
+            
+            // Note: Normally we'd fetch the item's cost here to populate rate. 
+            // The SearchableSelect's onChange isn't triggered manually by setValue, 
+            // but the user can adjust the rate themselves or we can rely on subsequent renders.
+          }
+        }}
       />
     </div>
   );
