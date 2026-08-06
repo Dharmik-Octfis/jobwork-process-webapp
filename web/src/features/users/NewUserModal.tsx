@@ -26,9 +26,8 @@ const inviteSchema = z.object({
   firstName: z.string().trim().min(1, 'First name is required').max(40),
   lastName: z.string().trim().min(1, 'Last name is required').max(40),
   email: z.string().trim().min(1, 'Email is required').email('Enter a valid email address'),
-  // A job title is optional — it grants nothing, so requiring one would block
-  // inviting for no gain. Access is not optional.
-  roleId: z.string().optional(),
+  // A job title is now required.
+  roleId: z.string().min(1, 'Select a role'),
   permissionTemplateId: z.string().min(1, 'Select a permission template'),
 });
 
@@ -83,7 +82,7 @@ export function NewUserModal({
         lastName: values.lastName,
         email: values.email,
         permissionTemplateId: values.permissionTemplateId,
-        ...(values.roleId ? { roleId: values.roleId } : {}),
+        roleId: values.roleId,
       }),
     onSuccess: () => {
       setServerError(null);
@@ -108,13 +107,11 @@ export function NewUserModal({
     }
   });
 
-  /** Indented so the org chart is legible in a flat `<select>`: the list arrives as
-   * a depth-first walk, so `depth` alone is enough to show the shape. */
   const roleOptions = [
-    { value: '', label: 'No role' },
+    { value: '', label: 'Select a role…' },
     ...assignableRoles.map((r) => ({
       value: r.id,
-      label: `${'  '.repeat(r.depth)}${r.depth > 0 ? '└ ' : ''}${r.name}`,
+      label: r.name,
     })),
   ];
 
@@ -237,8 +234,8 @@ export function NewUserModal({
                   grants nothing; the template is what they will actually be able to do. */}
               <div className="users-form-row">
                 <div>
-                  <label className="users-field-label" htmlFor="nu-role">
-                    Role
+                  <label className="users-field-label required" htmlFor="nu-role">
+                    Role *
                   </label>
                   <Controller
                     control={control}
@@ -247,11 +244,16 @@ export function NewUserModal({
                       <Select
                         value={field.value || ''}
                         onChange={field.onChange}
+                        hasError={Boolean(errors.roleId)}
                         options={roleOptions}
                         ariaLabel="Role"
+                        dropUp
                       />
                     )}
                   />
+                  {errors.roleId && (
+                    <p className="users-error-msg">{errors.roleId.message}</p>
+                  )}
                 </div>
                 <div>
                   <label className="users-field-label required" htmlFor="nu-permissions">
@@ -270,6 +272,7 @@ export function NewUserModal({
                           ...assignableTemplates.map((t) => ({ value: t.id, label: t.name })),
                         ]}
                         ariaLabel="Permission template"
+                        dropUp
                       />
                     )}
                   />

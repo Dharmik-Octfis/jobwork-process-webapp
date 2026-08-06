@@ -11,6 +11,7 @@ interface ConfirmDialogProps {
   onConfirm: () => void;
   onCancel: () => void;
   isConfirming?: boolean;
+  hideCancel?: boolean;
 }
 
 export function ConfirmDialog({
@@ -22,6 +23,7 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
   isConfirming = false,
+  hideCancel = false,
 }: ConfirmDialogProps) {
   if (!isOpen) return null;
 
@@ -31,9 +33,11 @@ export function ConfirmDialog({
         <h2 className={styles.title}>{title}</h2>
         <div className={styles.message}>{message}</div>
         <div className={styles.actions}>
-          <Button variant="secondary" onClick={onCancel} disabled={isConfirming}>
-            {cancelText}
-          </Button>
+          {!hideCancel && (
+            <Button variant="secondary" onClick={onCancel} disabled={isConfirming}>
+              {cancelText}
+            </Button>
+          )}
           <Button variant="primary" onClick={onConfirm} isLoading={isConfirming}>
             {confirmText}
           </Button>

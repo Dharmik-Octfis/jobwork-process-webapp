@@ -204,7 +204,7 @@ export function AcceptInvitePage() {
           type="password"
           autoComplete="new-password"
           placeholder="Create a password"
-          hint="At least 8 chars."
+          hint="* Password must contain at least 8 characters (1 uppercase, 1 lowercase, 1 number, 1 special)."
           error={errors.password?.message}
           {...register('password')}
         />

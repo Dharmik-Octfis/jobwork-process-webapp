@@ -2,7 +2,6 @@ import { useState, useRef } from 'react';
 import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
 import { Select } from '../../components/ui/Select';
 import { CategorySelectDropdown } from './components/CategorySelectDropdown';
 import { itemsApi } from './items.api.ts';
@@ -26,7 +25,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  
+
   const { data: uoms = [] } = useUoms(orgId!);
   const [isUomModalOpen, setIsUomModalOpen] = useState(false);
 
@@ -124,7 +123,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
       }
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
       const itemId = createdItem.id;
-          
+
       if (isModal && onSuccess) {
         onSuccess(itemId);
       } else {
@@ -262,31 +261,11 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
     >
       <div
         style={{
-          padding: isModal ? '20px' : '24px 32px 100px',
+          padding: isModal ? '20px' : '24px 32px 24px',
           maxWidth: isModal ? '100%' : '1200px',
           margin: isModal ? '0' : '0 auto',
         }}
       >
-        {!isModal && (
-          <button
-            onClick={() => navigate(`/organizations/${orgId}/items`)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              background: 'none',
-              border: 'none',
-              color: '#64748b',
-              cursor: 'pointer',
-              padding: 0,
-              fontSize: '14px',
-              marginBottom: '20px',
-            }}
-          >
-            <ArrowLeft size={16} />
-            Back to Items
-          </button>
-        )}
         <h1
           style={{
             fontSize: isModal ? '20px' : '24px',
@@ -590,10 +569,10 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       ↑
                     </div>
                     <div style={{ fontWeight: 500, fontSize: 12, color: '#1e293b', textAlign: 'center', wordBreak: 'break-all' }}>
-                      {frontImageFile 
-                        ? frontImageFile.name 
-                        : (formData.frontImage 
-                            ? ((formData.frontImage as ItemImageAttachment).name || 'Existing Front Image') 
+                      {frontImageFile
+                        ? frontImageFile.name
+                        : (formData.frontImage
+                            ? ((formData.frontImage as ItemImageAttachment).name || 'Existing Front Image')
                             : 'Upload Front Image')}
                     </div>
                   </button>
@@ -640,10 +619,10 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       ↑
                     </div>
                     <div style={{ fontWeight: 500, fontSize: 12, color: '#1e293b', textAlign: 'center', wordBreak: 'break-all' }}>
-                      {rearImageFile 
-                        ? rearImageFile.name 
-                        : (formData.rearImage 
-                            ? ((formData.rearImage as ItemImageAttachment).name || 'Existing Rear Image') 
+                      {rearImageFile
+                        ? rearImageFile.name
+                        : (formData.rearImage
+                            ? ((formData.rearImage as ItemImageAttachment).name || 'Existing Rear Image')
                             : 'Upload Rear Image')}
                     </div>
                   </button>
@@ -698,8 +677,8 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                   >
                     {otherImageFiles.length > 0
                       ? `${otherImageFiles.length} new files selected`
-                      : (formData.images && formData.images.length > 0 
-                          ? `${formData.images.length} existing image(s)` 
+                      : (formData.images && formData.images.length > 0
+                          ? `${formData.images.length} existing image(s)`
                           : 'Drag & Drop Images (Max 3)')}
                   </div>
                   <div

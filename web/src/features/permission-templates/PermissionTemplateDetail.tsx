@@ -1,9 +1,10 @@
 import { Fragment, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Edit, Lock, X } from 'lucide-react';
+import { Edit, Lock, X, Users } from 'lucide-react';
 import { permissionTemplatesApi } from './permissionTemplates.api';
 import type { PermissionTemplate } from './permissionTemplates.api';
+import { membersApi, isMember } from '../members/members.api';
 
 interface Props {
   orgId: string;
@@ -24,6 +25,7 @@ interface Props {
 export function PermissionTemplateDetail({ orgId, templateId, onClose, onDelete }: Props) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'Overview' | 'Permissions'>('Overview');
+  const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
 
   const { data: template, isLoading } = useQuery({
     queryKey: ['permission-template', orgId, templateId],
@@ -36,6 +38,16 @@ export function PermissionTemplateDetail({ orgId, templateId, onClose, onDelete 
     queryFn: () => permissionTemplatesApi.catalog(orgId),
     staleTime: 60 * 60 * 1000, // static vocabulary — no need to refetch
   });
+
+  const { data: membersData, isLoading: isLoadingMembers } = useQuery({
+    queryKey: ['template-members', orgId, templateId],
+    queryFn: () => membersApi.list(orgId, { filter: 'all_users', perPage: 500 }),
+    enabled: isMembersModalOpen,
+  });
+
+  const assignedMembers = membersData?.results.filter(
+    (u) => isMember(u) && u.permissionTemplateId === templateId
+  ) ?? [];
 
   if (isLoading) {
     return (
@@ -64,6 +76,7 @@ export function PermissionTemplateDetail({ orgId, templateId, onClose, onDelete 
         height: '100%',
         background: '#fff',
         borderLeft: '1px solid #eef0f3',
+        position: 'relative',
       }}
     >
       {/* Header */}
@@ -105,6 +118,22 @@ export function PermissionTemplateDetail({ orgId, templateId, onClose, onDelete 
               delete it, so offering the buttons would only produce a 403. */}
           {!template.isSystem && (
             <>
+              <button
+                onClick={() => setIsMembersModalOpen(!isMembersModalOpen)}
+                style={{
+                  padding: '6px 12px',
+                  border: '1px solid #d1d5db',
+                  background: isMembersModalOpen ? '#f1f5f9' : 'white',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                <Users size={14} /> Assigned Members
+              </button>
               <button
                 onClick={() =>
                   navigate(`/organizations/${orgId}/settings/permissions/${templateId}/edit`)
@@ -153,6 +182,61 @@ export function PermissionTemplateDetail({ orgId, templateId, onClose, onDelete 
           </button>
         </div>
       </div>
+
+      {isMembersModalOpen && (
+        <div 
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15,23,42,0.45)',
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'center',
+            paddingTop: 0,
+            zIndex: 100,
+          }}
+          onClick={(e) => { e.stopPropagation(); setIsMembersModalOpen(false); }}
+        >
+          <div
+            style={{
+              width: 500,
+              maxWidth: '92vw',
+              maxHeight: '80vh',
+              background: '#fff',
+              borderRadius: '0 0 8px 8px',
+              boxShadow: '0 20px 45px rgba(0,0,0,0.22)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              textAlign: 'left',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #eef0f3', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#0f172a' }}>{template.name} — Assigned Members</h3>
+              <button onClick={() => setIsMembersModalOpen(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ padding: 0, overflowY: 'auto', flex: 1 }}>
+              {isLoadingMembers ? (
+                <div style={{ padding: '32px', fontSize: 13, color: '#64748b', textAlign: 'center' }}>Loading...</div>
+              ) : assignedMembers.length === 0 ? (
+                <div style={{ padding: '48px 32px', fontSize: 13, color: '#64748b', textAlign: 'center' }}>This profile is not assigned to anyone</div>
+              ) : (
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                  {assignedMembers.map(member => (
+                    <li key={member.id} style={{ display: 'flex', flexDirection: 'column', padding: '12px 20px', borderBottom: '1px solid #f8fafc' }}>
+                      <span style={{ fontSize: 14, fontWeight: 500, color: '#1e293b' }}>{member.fullName}</span>
+                      <span style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>{member.email}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div

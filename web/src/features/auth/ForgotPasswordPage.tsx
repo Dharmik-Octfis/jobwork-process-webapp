@@ -164,6 +164,9 @@ export function ForgotPasswordPage() {
               />
             </div>
           </div>
+          <p style={{ margin: '4px 0 16px 4px', color: 'var(--color-text-muted)', fontSize: 12, lineHeight: 1.4 }}>
+            <span style={{ color: 'var(--color-primary)', fontWeight: 'bold' }}>*</span> Password must contain at least 8 characters (1 uppercase, 1 lowercase, 1 number, 1 special).
+          </p>
 
           <Button
             type="submit"

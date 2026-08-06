@@ -54,7 +54,7 @@ const profileSchema = z.object({
   countryCode: z.string().optional(),
   stateCode: z.string().optional(),
   cityId: z.string().optional(),
-  roleId: z.string().optional(),
+  roleId: z.string().min(1, 'Select a role'),
   permissionTemplateId: z.string().min(1, 'Select a permission template'),
 });
 
@@ -103,8 +103,7 @@ function ReadField({
 
 /** "Owner › Manager › Supervisor", or the bare name when the tree is flat. */
 function rolePathLabel(path: string[], fallback: string | null): string | null {
-  if (path.length > 1) return path.join(' › ');
-  return path[0] ?? fallback;
+  return fallback;
 }
 
 function formatAddress(user: Member): string | null {
@@ -385,12 +384,11 @@ export function UserDetailPanel({
     );
   }
 
-  // ── A joined member ───────────────────────────────────────────────────────
   const roleOptions = [
-    { value: '', label: 'No role' },
+    { value: '', label: 'Select a role…' },
     ...assignableRoles.map((r) => ({
       value: r.id,
-      label: `${'  '.repeat(r.depth)}${r.depth > 0 ? '└ ' : ''}${r.name}`,
+      label: r.name,
     })),
   ];
 
@@ -409,7 +407,7 @@ export function UserDetailPanel({
     ? [
         {
           value: currentRoleOption.id,
-          label: `${'  '.repeat(currentRoleOption.depth)}${currentRoleOption.depth > 0 ? '└ ' : ''}${currentRoleOption.name}`,
+          label: currentRoleOption.name,
         },
         ...roleOptions.filter((option) => option.value !== currentRoleOption.id),
       ]
@@ -554,19 +552,26 @@ export function UserDetailPanel({
             <div>
               <span className="users-field-label">Role</span>
               {isEditing ? (
-                <Controller
-                  control={control}
-                  name="roleId"
-                  render={({ field }) => (
-                    <Select
-                      value={field.value || ''}
-                      onChange={field.onChange}
-                      options={roleSelectOptions}
-                      ariaLabel="Role"
-                      disabled={isLocked}
-                    />
+                <>
+                  <Controller
+                    control={control}
+                    name="roleId"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                        hasError={Boolean(errors.roleId)}
+                        options={roleSelectOptions}
+                        ariaLabel="Role"
+                        disabled={isLocked}
+                        dropUp
+                      />
+                    )}
+                  />
+                  {errors.roleId && (
+                    <p className="users-error-msg">{errors.roleId.message}</p>
                   )}
-                />
+                </>
               ) : (
                 <div className={`users-field-value ${member.roleName ? '' : 'is-empty'}`}>
                   {member.roleName || '—'}
@@ -588,6 +593,7 @@ export function UserDetailPanel({
                       hasError={Boolean(errors.permissionTemplateId)}
                       options={templateSelectOptions}
                       ariaLabel="Permission template"
+                      dropUp
                     />
                   )}
                 />

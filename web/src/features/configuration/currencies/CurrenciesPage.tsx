@@ -1,20 +1,26 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Plus, Edit2, Trash2, ChevronDown, Coins } from 'lucide-react';
+import { Plus, Edit2, Coins } from 'lucide-react';
 import { format } from 'date-fns';
-import { useCurrencies, useDeleteCurrency } from './currencies.api';
+import { useCurrencies, useUpdateCurrency } from './currencies.api';
 import { CurrencyFormModal } from './CurrencyFormModal';
 import type { Currency } from './currencies.schemas';
-import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 
 export function CurrenciesPage() {
   const { orgId } = useParams<{ orgId: string }>();
   const { data: currencies = [], isLoading, error } = useCurrencies(orgId!);
-  const deleteMutation = useDeleteCurrency(orgId!);
+  const updateMutation = useUpdateCurrency(orgId!);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currencyToEdit, setCurrencyToEdit] = useState<Currency | null>(null);
-  const [currencyToDelete, setCurrencyToDelete] = useState<string | null>(null);
+
+  const handleToggleStatus = async (currency: Currency) => {
+    if (currency.isBaseCurrency) return;
+    await updateMutation.mutateAsync({
+      id: currency.id,
+      data: { isActive: !currency.isActive }
+    });
+  };
 
   const handleEdit = (currency: Currency) => {
     setCurrencyToEdit(currency);
@@ -59,11 +65,10 @@ export function CurrenciesPage() {
               borderBottom: '1px solid #eef0f3',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <h1 style={{ fontSize: '18px', fontWeight: 600, color: '#000', margin: 0 }}>
                 Currencies
               </h1>
-              <ChevronDown size={16} color="var(--color-primary)" strokeWidth={2.5} />
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -165,14 +170,15 @@ export function CurrenciesPage() {
                     <th style={{ ...headerStyle, width: '25%', textAlign: 'left' }}>
                       Currency Name
                     </th>
-                    <th style={{ ...headerStyle, width: '15%', textAlign: 'left' }}>Symbol</th>
-                    <th style={{ ...headerStyle, width: '15%', textAlign: 'center' }}>Status</th>
-                    <th style={{ ...headerStyle, width: '20%', textAlign: 'left' }}>
+                    <th style={{ ...headerStyle, width: '10%', textAlign: 'left' }}>Symbol</th>
+                    <th style={{ ...headerStyle, width: '15%', textAlign: 'right' }}>Exchange Rate</th>
+                    <th style={{ ...headerStyle, width: '15%', textAlign: 'left' }}>
                       Created By & Time
                     </th>
-                    <th style={{ ...headerStyle, width: '20%', textAlign: 'left' }}>
+                    <th style={{ ...headerStyle, width: '15%', textAlign: 'left' }}>
                       Modified By & Time
                     </th>
+                    <th style={{ ...headerStyle, width: '15%', textAlign: 'left' }}>Status</th>
                     <th style={{ ...headerStyle, width: '5%', textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
@@ -216,20 +222,8 @@ export function CurrenciesPage() {
                       <td style={{ padding: '12px 16px', color: 'var(--color-text)' }}>
                         {currency.symbol}
                       </td>
-                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            padding: '4px 8px',
-                            borderRadius: '12px',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            backgroundColor: currency.isActive ? '#dcfce7' : '#f1f5f9',
-                            color: currency.isActive ? '#166534' : '#64748b',
-                          }}
-                        >
-                          {currency.isActive ? 'Active' : 'Inactive'}
-                        </span>
+                      <td style={{ padding: '12px 16px', color: 'var(--color-text)', textAlign: 'right' }}>
+                        {currency.exchangeRate}
                       </td>
                       <td
                         style={{
@@ -278,6 +272,66 @@ export function CurrenciesPage() {
                             : '-'}
                         </div>
                       </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        {currency.isBaseCurrency ? (
+                          <div
+                            style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'default', width: 100 }}
+                          >
+                            <div style={{ position: 'relative', width: 34, height: 20, borderRadius: 10, background: '#22c55e', opacity: 0.6 }}>
+                              <div style={{ position: 'absolute', top: 2, left: 16, width: 16, height: 16, borderRadius: 8, background: '#fff' }} />
+                            </div>
+                            <span style={{ fontSize: 13, color: '#15803d', fontWeight: 500 }}>Active</span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleStatus(currency);
+                            }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 8,
+                              background: 'none',
+                              border: 'none',
+                              padding: 0,
+                              cursor: 'pointer',
+                              fontFamily: 'inherit',
+                              width: 100,
+                              textAlign: 'left',
+                            }}
+                          >
+                            <div
+                              style={{
+                                position: 'relative',
+                                width: 34,
+                                height: 20,
+                                borderRadius: 10,
+                                background: currency.isActive ? '#22c55e' : '#cbd5e1',
+                                transition: 'background 0.2s ease',
+                              }}
+                            >
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  top: 2,
+                                  left: currency.isActive ? 16 : 2,
+                                  width: 16,
+                                  height: 16,
+                                  borderRadius: 8,
+                                  background: '#fff',
+                                  boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                                  transition: 'left 0.2s ease',
+                                }}
+                              />
+                            </div>
+                            <span style={{ fontSize: 13, color: currency.isActive ? '#15803d' : '#64748b', fontWeight: 500 }}>
+                              {currency.isActive ? 'Active' : 'Inactive'}
+                            </span>
+                          </button>
+                        )}
+                      </td>
                       <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                         <div
                           style={{
@@ -304,24 +358,6 @@ export function CurrenciesPage() {
                           >
                             <Edit2 size={15} />
                           </button>
-                          <button
-                            onClick={() => setCurrencyToDelete(currency.id)}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              padding: 6,
-                              cursor: currency.currencyCode === 'INR' ? 'not-allowed' : 'pointer',
-                              color: currency.currencyCode === 'INR' ? '#94a3b8' : '#dc2626',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              borderRadius: '4px',
-                            }}
-                            title={currency.currencyCode === 'INR' ? "Default INR currency cannot be deleted" : "Delete"}
-                            disabled={currency.currencyCode === 'INR'}
-                          >
-                            <Trash2 size={15} />
-                          </button>
                         </div>
                       </td>
                     </tr>
@@ -341,21 +377,6 @@ export function CurrenciesPage() {
           setCurrencyToEdit(null);
         }}
         currencyToEdit={currencyToEdit}
-      />
-
-      <ConfirmDialog
-        isOpen={!!currencyToDelete}
-        onCancel={() => setCurrencyToDelete(null)}
-        onConfirm={async () => {
-          if (currencyToDelete) {
-            await deleteMutation.mutateAsync(currencyToDelete);
-            setCurrencyToDelete(null);
-          }
-        }}
-        title="Delete Currency"
-        message="Are you sure you want to delete this currency? This action cannot be undone."
-        confirmText="Delete"
-        isConfirming={deleteMutation.isPending}
       />
     </div>
   );

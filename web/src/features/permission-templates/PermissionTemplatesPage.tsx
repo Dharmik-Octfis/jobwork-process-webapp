@@ -118,6 +118,7 @@ export function PermissionTemplatesPage() {
     mutationFn: (id: string) => permissionTemplatesApi.remove(orgId!, id),
     onSuccess: async (_result, id) => {
       setServerError(null);
+      setToDelete(null);
       // Clear the detail pane if it was showing the row that just went away.
       if (selectedId === id) setSearchParams({});
       await queryClient.invalidateQueries({ queryKey: ['permission-templates', orgId] });
@@ -430,19 +431,29 @@ export function PermissionTemplatesPage() {
 
       <ConfirmDialog
         isOpen={!!toDelete}
-        title="Delete profile"
+        title={toDelete && toDelete.memberCount > 0 ? "Cannot delete profile" : "Delete profile"}
         message={
           toDelete && toDelete.memberCount > 0
             ? `"${toDelete.name}" is assigned to ${toDelete.memberCount} member(s). Move them to another profile first.`
             : `Delete "${toDelete?.name}"? This cannot be undone.`
         }
-        confirmText={deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+        confirmText={
+          toDelete && toDelete.memberCount > 0
+            ? "Got it"
+            : deleteMutation.isPending
+              ? 'Deleting...'
+              : 'Delete'
+        }
         onConfirm={() => {
-          if (toDelete) deleteMutation.mutate(toDelete.id);
-          setToDelete(null);
+          if (toDelete && toDelete.memberCount === 0) {
+            deleteMutation.mutate(toDelete.id);
+          } else {
+            setToDelete(null);
+          }
         }}
         onCancel={() => setToDelete(null)}
         isConfirming={deleteMutation.isPending}
+        hideCancel={toDelete ? toDelete.memberCount > 0 : false}
       />
     </div>
   );

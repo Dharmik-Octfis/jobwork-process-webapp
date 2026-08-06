@@ -6,6 +6,7 @@ import { toApiErrorMessage } from '../../api/client';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { Select } from '../../components/ui/Select';
 import { rolesApi, type Role } from './roles.api';
+import { membersApi, isMember } from '../members/members.api';
 import '../organizations/CreateOrganizationForm.css';
 
 /**
@@ -28,6 +29,7 @@ export function RolesPage() {
   const [parentRoleId, setParentRoleId] = useState('');
   const [toDelete, setToDelete] = useState<Role | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [viewingMembersFor, setViewingMembersFor] = useState<string | null>(null);
 
   const rolesKey = ['roles', orgId];
   const { data: roles, isLoading } = useQuery({
@@ -35,6 +37,16 @@ export function RolesPage() {
     queryFn: () => rolesApi.list(orgId!),
     enabled: Boolean(orgId),
   });
+
+  const { data: membersData, isLoading: isLoadingMembers } = useQuery({
+    queryKey: ['role-members', orgId, viewingMembersFor],
+    queryFn: () => membersApi.list(orgId!, { filter: 'all_users', perPage: 500 }),
+    enabled: Boolean(viewingMembersFor),
+  });
+
+  const assignedMembers = membersData?.results.filter(
+    (u) => isMember(u) && u.roleId === viewingMembersFor
+  ) ?? [];
 
   const openForm = (role: Role | 'new') => {
     setServerError(null);
@@ -77,6 +89,7 @@ export function RolesPage() {
     mutationFn: (id: string) => rolesApi.remove(orgId!, id),
     onSuccess: async () => {
       setServerError(null);
+      setToDelete(null);
       await queryClient.invalidateQueries({ queryKey: rolesKey });
     },
     onError: (err) => setServerError(toApiErrorMessage(err)),
@@ -85,6 +98,7 @@ export function RolesPage() {
   if (!orgId) return null;
 
   const customRoles = roles?.filter((r) => !r.isSystem) ?? [];
+  const viewingRole = roles?.find((r) => r.id === viewingMembersFor) ?? null;
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: 'var(--space-6) var(--space-5)' }}>
@@ -326,6 +340,7 @@ export function RolesPage() {
                   gap: 12,
                   padding: 'var(--space-4) var(--space-6)',
                   borderBottom: '1px solid var(--color-border)',
+                  position: 'relative',
                 }}
               >
                 <div
@@ -370,18 +385,26 @@ export function RolesPage() {
                       {role.description}
                     </div>
                   )}
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: 'var(--color-text-muted)',
-                      marginTop: 4,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                    }}
-                  >
-                    <Users size={12} />
-                    {role.memberCount} member{role.memberCount === 1 ? '' : 's'}
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      onClick={() => setViewingMembersFor(viewingMembersFor === role.id ? null : role.id)}
+                      style={{
+                        fontSize: 12,
+                        color: '#0062ff',
+                        marginTop: 4,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: 0,
+                        fontWeight: 500,
+                      }}
+                    >
+                      <Users size={12} />
+                      {role.memberCount} member{role.memberCount === 1 ? '' : 's'}
+                    </button>
                   </div>
                 </div>
 
@@ -417,21 +440,80 @@ export function RolesPage() {
         )}
       </section>
 
+      {viewingRole && (
+        <div 
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15,23,42,0.45)',
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'center',
+            paddingTop: 0,
+            zIndex: 100,
+          }}
+          onClick={(e) => { e.stopPropagation(); setViewingMembersFor(null); }}
+        >
+          <div
+            style={{
+              width: 500,
+              maxWidth: '92vw',
+              maxHeight: '80vh',
+              background: '#fff',
+              borderRadius: '0 0 8px 8px',
+              boxShadow: '0 20px 45px rgba(0,0,0,0.22)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              textAlign: 'left',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #eef0f3', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#0f172a' }}>{viewingRole.name} — Assigned Members</h3>
+              <button onClick={() => setViewingMembersFor(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ padding: 0, overflowY: 'auto', flex: 1 }}>
+              {isLoadingMembers ? (
+                <div style={{ padding: '32px', fontSize: 13, color: '#64748b', textAlign: 'center' }}>Loading...</div>
+              ) : assignedMembers.length === 0 ? (
+                <div style={{ padding: '48px 32px', fontSize: 13, color: '#64748b', textAlign: 'center' }}>This role is not assigned to anyone</div>
+              ) : (
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                  {assignedMembers.map(member => (
+                    <li key={member.id} style={{ display: 'flex', flexDirection: 'column', padding: '12px 20px', borderBottom: '1px solid #f8fafc' }}>
+                      <span style={{ fontSize: 14, fontWeight: 500, color: '#1e293b' }}>{member.fullName}</span>
+                      <span style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>{member.email}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <ConfirmDialog
         isOpen={!!toDelete}
-        title="Delete role"
+        title={toDelete && toDelete.memberCount > 0 ? "Cannot delete role" : "Delete role"}
         message={
           toDelete && toDelete.memberCount > 0
             ? `"${toDelete.name}" is assigned to ${toDelete.memberCount} member(s). Give them a different role first.`
             : `Delete "${toDelete?.name}"? This cannot be undone.`
         }
-        confirmText="Delete"
+        confirmText={toDelete && toDelete.memberCount > 0 ? "Got it" : "Delete"}
         onConfirm={() => {
-          if (toDelete) deleteMutation.mutate(toDelete.id);
-          setToDelete(null);
+          if (toDelete && toDelete.memberCount === 0) {
+            deleteMutation.mutate(toDelete.id);
+          } else {
+            setToDelete(null);
+          }
         }}
         onCancel={() => setToDelete(null)}
         isConfirming={deleteMutation.isPending}
+        hideCancel={toDelete ? toDelete.memberCount > 0 : false}
       />
     </div>
   );

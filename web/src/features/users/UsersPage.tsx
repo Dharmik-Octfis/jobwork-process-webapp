@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, SlidersHorizontal, Users as UsersIcon } from 'lucide-react';
+import { Plus, SlidersHorizontal, Users as UsersIcon, Info } from 'lucide-react';
 import { organizationsApi } from '../organizations/organizations.api';
 import { rolesApi } from '../roles/roles.api';
 import { permissionTemplatesApi } from '../permission-templates/permissionTemplates.api';
@@ -71,18 +71,73 @@ function renderUserCell(
         return user.inviteStatus === 'declined' ? 'Declined' : 'Unconfirmed';
       }
       if (user.isOwner) {
-        return <span className="users-badge is-active">Active</span>;
+        return (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'default', width: 120 }}
+          >
+            <div style={{ position: 'relative', width: 34, height: 20, borderRadius: 10, background: '#22c55e', opacity: 0.6 }}>
+              <div style={{ position: 'absolute', top: 2, left: 16, width: 16, height: 16, borderRadius: 8, background: '#fff' }} />
+            </div>
+            <span style={{ fontSize: 13, color: '#15803d', fontWeight: 500 }}>Active</span>
+            <span className="users-tooltip-wrapper">
+              <Info
+                size={14}
+                color="#94a3b8"
+                style={{ marginLeft: 2, cursor: 'default' }}
+              />
+              <span className="users-tooltip-text">The CEO cannot be made inactive</span>
+            </span>
+          </div>
+        );
       }
       return (
         <button
           type="button"
-          className={`users-badge ${user.status === 'active' ? 'is-active' : 'is-inactive'}`}
           onClick={(e) => {
             e.stopPropagation();
             onToggleStatus?.(user);
           }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            width: 100,
+            textAlign: 'left',
+          }}
         >
-          {user.status === 'active' ? 'Active' : 'Inactive'}
+          <div
+            style={{
+              position: 'relative',
+              width: 34,
+              height: 20,
+              borderRadius: 10,
+              background: user.status === 'active' ? '#22c55e' : '#cbd5e1',
+              transition: 'background 0.2s ease',
+            }}
+          >
+            <div
+              style={{
+                position: 'absolute',
+                top: 2,
+                left: user.status === 'active' ? 16 : 2,
+                width: 16,
+                height: 16,
+                borderRadius: 8,
+                background: '#fff',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                transition: 'left 0.2s ease',
+              }}
+            />
+          </div>
+          <span style={{ fontSize: 13, color: user.status === 'active' ? '#15803d' : '#64748b', fontWeight: 500 }}>
+            {user.status === 'active' ? 'Active' : 'Inactive'}
+          </span>
         </button>
       );
     case 'addedByName':
@@ -173,8 +228,36 @@ export function UsersPage() {
       membersApi.update(orgId!, user.id, {
         isActive: user.status === 'inactive', // toggle it
       }),
-    onSuccess: () => {
-      // Invalidate the users list so it refetches
+    onMutate: async (user: Member) => {
+      // Cancel any outgoing refetches so they don't overwrite our optimistic update
+      await queryClient.cancelQueries({ queryKey: ['org-users', orgId] });
+
+      // Snapshot the previous value
+      const queryKey = ['org-users', orgId, search, filter, page, perPage];
+      const previousData = queryClient.getQueryData(queryKey);
+
+      // Optimistically update the list
+      queryClient.setQueryData(queryKey, (old: { results: OrgUser[] } | undefined) => {
+        if (!old) return old;
+        return {
+          ...old,
+          results: old.results.map((u: OrgUser) =>
+            u.id === user.id
+              ? { ...u, status: user.status === 'active' ? 'inactive' : 'active' }
+              : u
+          ),
+        };
+      });
+
+      return { previousData, queryKey };
+    },
+    onError: (err, user, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(context.queryKey, context.previousData);
+      }
+    },
+    onSettled: () => {
+      // Refetch to ensure sync
       queryClient.invalidateQueries({ queryKey: ['org-users', orgId] });
       queryClient.invalidateQueries({ queryKey: ['org-users-count', orgId] });
     },
@@ -288,7 +371,7 @@ export function UsersPage() {
             </div>
           </header>
 
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div style={{ flex: 1, overflowY: 'auto', scrollbarGutter: 'stable' }}>
             {isLoading && users.length === 0 ? (
               <div style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
                 Loading users...
@@ -355,7 +438,13 @@ export function UsersPage() {
                 {users.map((user) => (
                   <div
                     key={user.id}
-                    onClick={() => setSearchParams({ id: user.id })}
+                    onClick={() => {
+                      setSearchParams((prev) => {
+                        const next = new URLSearchParams(prev);
+                        next.set('id', user.id);
+                        return next;
+                      });
+                    }}
                     style={{
                       padding: '12px 16px',
                       borderBottom: '1px solid #eef0f3',
@@ -382,7 +471,7 @@ export function UsersPage() {
                 ))}
               </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', tableLayout: 'fixed' }}>
                 <thead>
                   <tr
                     style={{
@@ -392,7 +481,15 @@ export function UsersPage() {
                     }}
                   >
                     {columns.map((col) => (
-                      <th key={col.key} style={headerStyle}>
+                      <th
+                        key={col.key}
+                        style={{
+                          ...headerStyle,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
                         {col.label}
                       </th>
                     ))}
@@ -402,7 +499,13 @@ export function UsersPage() {
                   {users.map((user) => (
                     <tr
                       key={user.id}
-                      onClick={() => setSearchParams({ id: user.id })}
+                      onClick={() => {
+                        setSearchParams((prev) => {
+                          const next = new URLSearchParams(prev);
+                          next.set('id', user.id);
+                          return next;
+                        });
+                      }}
                       style={{
                         borderBottom: '1px solid #eef0f3',
                         transition: 'background 0.1s',
@@ -420,6 +523,9 @@ export function UsersPage() {
                             // The locked column is the identity you click through on.
                             color: col.locked ? '#0062ff' : '#333',
                             fontWeight: col.locked ? 500 : 400,
+                            whiteSpace: 'nowrap',
+                            overflow: col.key === 'status' ? 'visible' : 'hidden',
+                            textOverflow: col.key === 'status' ? 'clip' : 'ellipsis',
                           }}
                         >
                           {renderUserCell(user, col.key, handleToggleStatus)}
@@ -448,7 +554,7 @@ export function UsersPage() {
         </div>
 
         {selectedId && selected && (
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div style={{ flex: 1, overflowY: 'auto', scrollbarGutter: 'stable' }}>
             {/* `key` remounts the pane per person, which resets the edit form and its
                 dirty state for free — without it, clicking a second name while
                 editing a first shows one person's typed values under another's
@@ -461,7 +567,13 @@ export function UsersPage() {
               roles={roles ?? []}
               templates={templates ?? []}
               myMembershipId={me?.id ?? null}
-              onDeselect={() => setSearchParams({})}
+              onDeselect={() => {
+                setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.delete('id');
+                  return next;
+                });
+              }}
             />
           </div>
         )}

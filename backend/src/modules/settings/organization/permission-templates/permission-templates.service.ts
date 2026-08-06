@@ -211,6 +211,15 @@ export async function createTemplate(
   const directory = await getMemberDirectory(organizationId);
 
   return runAsTenant(organizationId, async (tx) => {
+    const lowerName = input.name.trim().toLowerCase();
+    const existingTemplates = await tx.permissionTemplate.findMany({
+      where: { organizationId, isDeleted: false },
+      select: { id: true, name: true },
+    });
+    if (existingTemplates.some((t) => t.name.toLowerCase() === lowerName)) {
+      throw ApiError.conflict('A profile with this name already exists.');
+    }
+
     try {
       const row = await tx.permissionTemplate.create({
         data: {
@@ -230,7 +239,7 @@ export async function createTemplate(
       return toPublic(row, 0, directory);
     } catch (error) {
       if (isUniqueViolation(error)) {
-        throw ApiError.conflict('A template with this name already exists.');
+        throw ApiError.conflict('A profile with this name already exists.');
       }
       throw error;
     }
@@ -261,7 +270,19 @@ export async function updateTemplate(
       description?: string | null;
       permissions?: string[];
     } = { updatedBy: userId };
-    if (input.name !== undefined) data.name = input.name;
+    
+    if (input.name !== undefined) {
+      const lowerName = input.name.trim().toLowerCase();
+      const existingTemplates = await tx.permissionTemplate.findMany({
+        where: { organizationId, isDeleted: false },
+        select: { id: true, name: true },
+      });
+      if (existingTemplates.some((t) => t.id !== id && t.name.toLowerCase() === lowerName)) {
+        throw ApiError.conflict('A profile with this name already exists.');
+      }
+      data.name = input.name;
+    }
+    
     if (input.description !== undefined) data.description = input.description;
     if (input.permissions !== undefined) data.permissions = input.permissions; // wholesale replace
 
@@ -270,7 +291,7 @@ export async function updateTemplate(
       await tx.permissionTemplate.updateMany({ where: { id, organizationId }, data });
     } catch (error) {
       if (isUniqueViolation(error)) {
-        throw ApiError.conflict('A template with this name already exists.');
+        throw ApiError.conflict('A profile with this name already exists.');
       }
       throw error;
     }
@@ -334,3 +355,4 @@ export async function deleteTemplate(
 function isUniqueViolation(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
 }
+

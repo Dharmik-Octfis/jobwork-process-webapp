@@ -659,6 +659,35 @@ function ModuleNavGroup({
   );
 }
 
+function TopBarAvatar({ user, size }: { user: User; size: number }) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const url = !imgFailed ? user.avatar_url : null;
+  const iconSize = size === 32 ? 18 : 28;
+
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {!url && (
+        <UserIcon size={iconSize} color={size === 32 ? "inherit" : "var(--color-text-secondary)"} />
+      )}
+      {url && (
+        <img
+          src={url}
+          alt={user.fullName}
+          onError={() => setImgFailed(true)}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 function ProfileDropdown({
   user,
   logoutMutation,
@@ -703,15 +732,7 @@ function ProfileDropdown({
           overflow: 'hidden',
         }}
       >
-        {user?.avatar_url ? (
-          <img
-            src={user.avatar_url}
-            alt={user.fullName}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          />
-        ) : (
-          <UserIcon size={18} />
-        )}
+        {user ? <TopBarAvatar user={user} size={32} /> : <UserIcon size={18} />}
       </button>
 
       {isOpen && (
@@ -755,11 +776,7 @@ function ProfileDropdown({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div style={{ display: 'flex', gap: 16 }}>
               <div style={{ width: 56, height: 56, borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                {user?.avatar_url ? (
-                  <img src={user.avatar_url} alt={user.fullName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <UserIcon size={28} color="var(--color-text-secondary)" />
-                )}
+                {user ? <TopBarAvatar user={user} size={56} /> : <UserIcon size={28} color="var(--color-text-secondary)" />}
               </div>
               <div>
                 <div style={{ fontSize: 18, fontWeight: 500, color: 'var(--color-text)', marginBottom: 2 }}>{user?.fullName}</div>

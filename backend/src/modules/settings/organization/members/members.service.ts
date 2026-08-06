@@ -298,14 +298,13 @@ function toPublicInvite(
  *
  * 🔴 ONE FILTER, ONE TABLE. Each preset resolves to exactly one source:
  *
- *   all (Active Users) · inactive · all_users   → `memberships`
- *   unconfirmed                                 → `invitations`
+ *   all (Active Users) · inactive                 → `memberships`
+ *   unconfirmed                                   → `invitations`
+ *   all_users (All Users)                         → COMBINED (in-memory slice)
  *
- * That is what keeps pagination honest. A genuine UNION of the two tables cannot be
- * paged with `skip`/`take` — you would have to over-fetch both and slice in memory,
- * and `hasMore` would start lying the moment either side had more rows than the
- * page. Since an admin picks one view at a time anyway, the presets are drawn so
- * the question never arises. See listFilters.catalog.ts.
+ * A genuine UNION of the two tables cannot be paged with `skip`/`take` in Prisma.
+ * For `all_users`, we over-fetch both tables and slice in memory. This is acceptable
+ * because an organization typically has <1000 members, making in-memory slicing fast.
  */
 async function listUnconfirmed(
   organizationId: string,
@@ -393,6 +392,48 @@ export async function listOrgUsers(organizationId: string, opts: ListQuery) {
 
   const { page, perPage } = opts;
 
+  if (opts.filter === 'all_users') {
+    return runAsTenant(organizationId, async (tx) => {
+      const tree = await loadRoleTree(tx, organizationId);
+
+      const unconfirmedRows = await tx.invitation.findMany({
+        where: {
+          organizationId,
+          status: { in: ['pending', 'declined'] },
+          ...searchWhere<Prisma.InvitationWhereInput>(opts.search, [
+            'email',
+            'firstName',
+            'lastName',
+          ]),
+        },
+        orderBy: { createdAt: 'desc' },
+        select: INVITE_SELECT,
+      });
+
+      const memberRows = await tx.membership.findMany({
+        where: memberListWhere(organizationId, opts),
+        orderBy: [{ isOwner: 'desc' }, { fullName: 'asc' }],
+        select: MEMBER_SELECT,
+      });
+
+      const invites = unconfirmedRows.map((r) =>
+        toPublicInvite(r, tree, directory.actorName(r.invitedById)),
+      );
+      const members = memberRows.map((r) =>
+        toPublicMember(r as MemberRow, tree, directory.actorName(r.createdBy)),
+      );
+
+      // We put invites at the top, then members.
+      const combined = [...invites, ...members];
+      const { results, pageContext } = pageSlice(combined, page, perPage);
+
+      return {
+        results,
+        pageContext,
+      };
+    });
+  }
+
   return runAsTenant(organizationId, async (tx) => {
     const tree = await loadRoleTree(tx, organizationId);
 
@@ -431,6 +472,26 @@ export async function countOrgUsers(organizationId: string, opts: ListQuery): Pr
         },
       }),
     );
+  }
+
+  if (opts.filter === 'all_users') {
+    return runAsTenant(organizationId, async (tx) => {
+      const invitesCount = await tx.invitation.count({
+        where: {
+          organizationId,
+          status: { in: ['pending', 'declined'] },
+          ...searchWhere<Prisma.InvitationWhereInput>(opts.search, [
+            'email',
+            'firstName',
+            'lastName',
+          ]),
+        },
+      });
+      const membersCount = await tx.membership.count({
+        where: memberListWhere(organizationId, opts),
+      });
+      return invitesCount + membersCount;
+    });
   }
 
   return runAsTenant(organizationId, (tx) =>

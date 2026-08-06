@@ -6,8 +6,10 @@ import { AxiosError } from 'axios';
 import { Plus, Trash2, Pencil, Settings, Mail, Phone, PlusCircle, Check, Image, Upload, ChevronDown, FileText, X } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchPaymentTerms } from './payment-terms.api';
-import { SearchableSelect } from '../../../components/ui/SearchableSelect';
+import { MultiSelectItemModal } from '../../items/components/MultiSelectItemModal';
+import { ItemComboBox } from '../../../components/ui/ItemComboBox';
 import { Select } from '../../../components/ui/Select';
+import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import type { CreatePurchaseOrderData, PurchaseOrderItem } from './purchase-orders.schemas';
 import {
   createPurchaseOrder,
@@ -93,6 +95,8 @@ export function CreatePurchaseOrder() {
 
   const [isVendorModalOpen, setIsVendorModalOpen] = useState(false);
   const [itemModalIndex, setItemModalIndex] = useState<number | null>(null);
+  const [isMultiSelectItemModalOpen, setIsMultiSelectItemModalOpen] = useState(false);
+  const [multiSelectTargetIndex, setMultiSelectTargetIndex] = useState<number | null>(null);
 
   const { data: existingPo, isLoading: isFetchingPo } = useQuery({
     queryKey: ['purchaseOrder', orgId, poIdToFetch],
@@ -949,139 +953,45 @@ export function CreatePurchaseOrder() {
                   >
                     <td style={{ padding: '14px 16px', verticalAlign: 'top', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        {selectedItem ? (
-                          /* Selected Item View (Zoho Books Style) */
-                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                            <div
-                              style={{
-                                width: '44px',
-                                height: '44px',
-                                borderRadius: '6px',
-                                border: '1px solid #e2e8f0',
-                                background: '#ffffff',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                color: '#64748b',
-                                flexShrink: 0,
-                                overflow: 'hidden',
-                                marginTop: '2px',
-                                boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                            <ItemComboBox
+                              options={itemsList.map((i) => ({ id: i.id, name: i.name, sku: i.sku }))}
+                              value={watchItems?.[index]?.item_id}
+                              selectedImage={selectedItem ? (
+                                <ItemImage
+                                  orgId={orgId}
+                                  itemId={selectedItem.id}
+                                  imageKey={itemImageUrl}
+                                  alt={selectedItem.name}
+                                  iconSize={14}
+                                />
+                              ) : null}
+                              onOpenMultiSelect={() => {
+                                setMultiSelectTargetIndex(index);
+                                setIsMultiSelectItemModalOpen(true);
                               }}
-                            >
-                              <ItemImage
-                                orgId={orgId}
-                                itemId={selectedItem.id}
-                                imageKey={itemImageUrl}
-                                alt={selectedItem.name}
-                                iconSize={20}
-                              />
-                            </div>
-
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                                <span style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a', lineHeight: '1.2' }}>
-                                  {selectedItem.name}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => setValue(`line_items.${index}.item_id`, '', { shouldValidate: true })}
-                                  title="Change item"
-                                  style={{
-                                    background: 'none',
-                                    border: 'none',
-                                    color: '#2563eb',
-                                    cursor: 'pointer',
-                                    fontSize: '11px',
-                                    fontWeight: 500,
-                                    padding: '2px 4px',
-                                  }}
-                                >
-                                  Change
-                                </button>
-                              </div>
-                              {selectedItem.sku && (
-                                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px', fontWeight: 500 }}>
-                                  SKU: {selectedItem.sku}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          /* Unselected Item Search Dropdown */
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <div
-                              style={{
-                                width: '44px',
-                                height: '44px',
-                                borderRadius: '6px',
-                                border: '1px solid #e2e8f0',
-                                background: '#f8fafc',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                color: '#64748b',
-                                flexShrink: 0,
+                              onChange={(val) => {
+                                setValue(`line_items.${index}.item_id`, val, { shouldValidate: true });
+                                const selected = itemsList.find((i) => i.id === val);
+                                if (selected) {
+                                  setValue(`line_items.${index}.rate`, (selected.costPrice || selected.sellingPrice || '') as unknown as number);
+                                  setValue(`line_items.${index}.quantity`, 1 as unknown as number);
+                                  setValue(`line_items.${index}.description`, selected.purchaseDescription || selected.purchase_description || selected.salesDescription || selected.sales_description || '');
+                                } else {
+                                  setValue(`line_items.${index}.rate`, '' as unknown as number);
+                                  setValue(`line_items.${index}.quantity`, '' as unknown as number);
+                                  setValue(`line_items.${index}.discountValue`, '' as unknown as number);
+                                  setValue(`line_items.${index}.discountType`, 'percentage');
+                                  setValue(`line_items.${index}.description`, '');
+                                }
                               }}
-                            >
-                              <Image size={20} color="#94a3b8" />
-                            </div>
-                            <div style={{ flex: 1 }}>
-                              <SearchableSelect
-                                options={itemsList.map((i) => ({ label: i.name, value: i.id }))}
-                                value={watchItems?.[index]?.item_id}
-                                onChange={(val) => {
-                                  setValue(`line_items.${index}.item_id`, val, { shouldValidate: true });
-                                  const selected = itemsList.find((i) => i.id === val);
-                                  if (selected) {
-                                    setValue(`line_items.${index}.rate`, (selected.costPrice || selected.sellingPrice || '') as unknown as number);
-                                  }
-                                }}
-                                placeholder="Type or click to select an item."
-                                style={{ ...searchableSelectStyle, maxWidth: 'none', width: '100%' }}
-                                renderOption={(option) => {
-                                  const item = itemsList.find((i) => i.id === option.value);
-                                  const img = getImageKey(item?.frontImage) || getImageKey(item?.images?.[0]);
-                                  return (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                      <div
-                                        style={{
-                                          width: '22px',
-                                          height: '22px',
-                                          borderRadius: '4px',
-                                          background: '#f1f5f9',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                          color: '#94a3b8',
-                                          flexShrink: 0,
-                                          overflow: 'hidden',
-                                        }}
-                                      >
-                                        <ItemImage
-                                          orgId={orgId}
-                                          itemId={item?.id}
-                                          imageKey={img}
-                                          alt={option.label}
-                                          iconSize={12}
-                                        />
-                                      </div>
-                                      <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                        <span style={{ fontWeight: 500 }}>{option.label}</span>
-                                        {item?.sku && <span style={{ fontSize: '11px', color: '#64748b' }}>SKU: {item.sku}</span>}
-                                      </div>
-                                    </div>
-                                  );
-                                }}
-                                footerAction={{
-                                  text: 'New Item',
-                                  icon: <PlusCircle size={15} />,
-                                  onClick: () => setItemModalIndex(index),
-                                }}
-                              />
-                            </div>
+                              placeholder="Type or click to select an item."
+                              footerAction={{
+                                text: 'New Product',
+                                onClick: () => setItemModalIndex(index),
+                              }}
+                            />
                           </div>
-                        )}
 
                         {/* Description Field - only shown when an item is selected */}
                         {selectedItem && (
@@ -1266,7 +1176,7 @@ export function CreatePurchaseOrder() {
           <div style={{ padding: '12px 16px', borderTop: '1px solid #e2e8f0', background: '#ffffff', borderBottomLeftRadius: '8px', borderBottomRightRadius: '8px', position: 'relative', zIndex: 1 }}>
             <button
               type="button"
-              onClick={() => appendItem({ item_id: '', quantity: '' as unknown as number, rate: '' as unknown as number, discountValue: '' as unknown as number, discountType: 'percentage', item_total: 0 } as PurchaseOrderItem)}
+              onClick={() => appendItem({ item_id: '', quantity: '' as unknown as number, rate: '' as unknown as number, discountValue: '' as unknown as number, discountType: 'percentage', item_total: 0 } as PurchaseOrderItem, { shouldFocus: false })}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -1597,6 +1507,57 @@ export function CreatePurchaseOrder() {
             // The SearchableSelect's onChange isn't triggered manually by setValue, 
             // but the user can adjust the rate themselves or we can rely on subsequent renders.
           }
+        }}
+      />
+
+      {/* Multi-Select Item Modal */}
+      <MultiSelectItemModal
+        isOpen={isMultiSelectItemModalOpen}
+        onClose={() => {
+          setIsMultiSelectItemModalOpen(false);
+          setMultiSelectTargetIndex(null);
+        }}
+        items={itemsList}
+        onAddNewItem={() => {
+          setItemModalIndex(multiSelectTargetIndex !== null ? multiSelectTargetIndex : 0);
+        }}
+        onAssign={(selectedItems) => {
+          if (selectedItems.length === 0 || multiSelectTargetIndex === null) return;
+          
+          const targetIndex = multiSelectTargetIndex;
+          const currentItems = watch('line_items');
+          
+          selectedItems.forEach((item, i) => {
+            const isFirst = i === 0;
+            const targetRow = currentItems?.[targetIndex];
+            const isEmptyRow = !targetRow?.item_id;
+            
+            const qty = item._quantity ?? 1;
+            const rate = item._rate ?? (item.costPrice || item.sellingPrice || '');
+            const disc = item._discount ?? '';
+            
+            if (isFirst && isEmptyRow) {
+              setValue(`line_items.${targetIndex}.item_id`, item.id, { shouldValidate: true });
+              setValue(`line_items.${targetIndex}.rate`, rate as unknown as number);
+              setValue(`line_items.${targetIndex}.quantity`, qty as unknown as number);
+              setValue(`line_items.${targetIndex}.discountValue`, disc as unknown as number);
+              setValue(`line_items.${targetIndex}.discountType`, item._discountType ?? 'percentage');
+              setValue(`line_items.${targetIndex}.description`, item.purchaseDescription || item.purchase_description || item.salesDescription || item.sales_description || '');
+            } else {
+              appendItem({
+                item_id: item.id,
+                quantity: qty as unknown as number,
+                rate: rate as unknown as number,
+                description: item.purchaseDescription || item.purchase_description || item.salesDescription || item.sales_description || '',
+                discountValue: disc as unknown as number,
+                discountType: item._discountType ?? 'percentage',
+                item_total: 0,
+              } as PurchaseOrderItem, { shouldFocus: false });
+            }
+          });
+          
+          setIsMultiSelectItemModalOpen(false);
+          setMultiSelectTargetIndex(null);
         }}
       />
     </div>

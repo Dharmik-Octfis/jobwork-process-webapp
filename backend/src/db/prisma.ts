@@ -99,9 +99,19 @@ const poolConfig: PoolConfig = {
   keepAliveInitialDelayMillis: 10_000,
 };
 
-const pool = new Pool(poolConfig);
+const globalForDb = globalThis as unknown as {
+  prismaPool?: Pool;
+  prismaAdapter?: PrismaPg;
+  prismaClient?: PrismaClient;
+};
 
-const adapter = new PrismaPg(pool);
+const pool = globalForDb.prismaPool ?? new Pool(poolConfig);
+const adapter = globalForDb.prismaAdapter ?? new PrismaPg(pool);
+
+if (!env.isProduction) {
+  globalForDb.prismaPool = pool;
+  globalForDb.prismaAdapter = adapter;
+}
 
 /**
  * Live pool counters, for the diagnostics endpoint.
@@ -151,10 +161,17 @@ export async function timeFreshConnection(): Promise<number> {
   }
 }
 
-export const prisma = new PrismaClient({
-  adapter,
-  log: env.isProduction ? ['warn', 'error'] : ['query', 'warn', 'error'],
-});
+export const prisma =
+  globalForDb.prismaClient ??
+  new PrismaClient({
+    adapter,
+    log: env.isProduction ? ['warn', 'error'] : ['query', 'warn', 'error'],
+  });
+
+if (!env.isProduction) {
+  globalForDb.prismaClient = prisma;
+}
+
 
 /** Transaction-scoped Prisma client handed to `runAsTenant` callbacks. */
 export type TenantClient = Omit<

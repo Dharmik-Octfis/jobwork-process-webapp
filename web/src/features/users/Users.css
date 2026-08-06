@@ -184,13 +184,24 @@
 
 button.users-badge {
   appearance: none;
-  border: none;
-  background: transparent;
   font: inherit;
   font-size: 11px;
   line-height: 1;
   margin: 0;
   cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+button.users-badge:hover {
+  filter: brightness(0.95);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+button.users-badge:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
 }
 
 .users-badge.is-owner {
@@ -348,6 +359,7 @@ button.users-badge {
 .users-modal-body {
   padding: var(--space-5);
   overflow-y: auto;
+  scrollbar-gutter: stable;
   flex: 1;
 }
 
@@ -389,4 +401,53 @@ button.users-badge {
   .users-form-row {
     grid-template-columns: 1fr;
   }
+}
+
+/* ── Tooltips ────────────────────────────────────────────────────────────── */
+
+.users-tooltip-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  cursor: default;
+}
+
+.users-tooltip-text {
+  visibility: hidden;
+  background-color: #1e293b;
+  color: #fff;
+  text-align: center;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+  
+  /* Position the tooltip */
+  position: absolute;
+  z-index: 10;
+  bottom: 150%;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+  font-weight: 500;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.users-tooltip-text::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: #1e293b transparent transparent transparent;
+}
+
+.users-tooltip-wrapper:hover .users-tooltip-text {
+  visibility: visible;
+  opacity: 1;
+  transform: translateX(-50%) translateY(-2px);
 }

@@ -1,5 +1,5 @@
 import { runAsTenant, type TenantClient } from '../../../../db/prisma.ts';
-import { ApiError, withUniqueViolation } from '../../../../lib/apiError.ts';
+import { ApiError } from '../../../../lib/apiError.ts';
 import { SYSTEM_ROLES } from '../permission-templates/permissions.catalog.ts';
 import type { CreateRoleInput, UpdateRoleInput } from './roles.schemas.ts';
 import type { PublicRole } from './roles.types.ts';
@@ -364,20 +364,27 @@ export function createRole(
       await assertValidParent(tx, organizationId, null, input.parentRoleId);
     }
 
-    const created = await withUniqueViolation('A role with this name already exists.', () =>
-      tx.role.create({
-        data: {
-          organizationId,
-          name: input.name,
-          description: input.description ?? null,
-          parentRoleId: input.parentRoleId ?? null,
-          isSystem: false,
-          createdBy: userId,
-          updatedBy: userId,
-        },
-        select: ROLE_SELECT,
-      }),
-    );
+    const lowerName = input.name.trim().toLowerCase();
+    const existingRoles = await tx.role.findMany({
+      where: { organizationId, isDeleted: false },
+      select: { id: true, name: true },
+    });
+    if (existingRoles.some((r) => r.name.toLowerCase() === lowerName)) {
+      throw ApiError.conflict('A role with this name already exists.');
+    }
+
+    const created = await tx.role.create({
+      data: {
+        organizationId,
+        name: input.name,
+        description: input.description ?? null,
+        parentRoleId: input.parentRoleId ?? null,
+        isSystem: false,
+        createdBy: userId,
+        updatedBy: userId,
+      },
+      select: ROLE_SELECT,
+    });
 
     // Re-read the set so `path`/`depth` include the row just written.
     const rows = (await tx.role.findMany({
@@ -415,7 +422,17 @@ export function updateRole(
       parentRoleId?: string | null;
     } = { updatedBy: userId };
 
-    if (input.name !== undefined) data.name = input.name;
+    if (input.name !== undefined) {
+      const lowerName = input.name.trim().toLowerCase();
+      const existingRoles = await tx.role.findMany({
+        where: { organizationId, isDeleted: false },
+        select: { id: true, name: true },
+      });
+      if (existingRoles.some((r) => r.id !== id && r.name.toLowerCase() === lowerName)) {
+        throw ApiError.conflict('A role with this name already exists.');
+      }
+      data.name = input.name;
+    }
     if (input.description !== undefined) data.description = input.description;
 
     if (input.parentRoleId !== undefined) {
@@ -426,10 +443,7 @@ export function updateRole(
       data.parentRoleId = input.parentRoleId;
     }
 
-    // Scoped to the org so an id from another tenant is a no-op (RLS also guards).
-    await withUniqueViolation('A role with this name already exists.', () =>
-      tx.role.updateMany({ where: { id, organizationId }, data }),
-    );
+    await tx.role.updateMany({ where: { id, organizationId }, data });
 
     const rows = (await tx.role.findMany({
       where: { organizationId, isDeleted: false },
