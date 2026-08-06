@@ -63,7 +63,14 @@ model PermissionTemplate {
   organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   updatedByUser        User?        @relation("PermissionTemplateUpdatedBy", fields: [updatedBy], references: [id])
 
-  @@unique([organizationId, name])
+  /// 🔴 Unique on `(organization_id, name)` across LIVE rows only — same shape as
+  /// `Role` above, and unwritable here for the same reason: the index carries
+  /// `WHERE is_deleted = false` and Prisma has no partial-index syntax. It lives
+  /// in `migrations/20260805133000_permission_templates_partial_unique_name`, so
+  /// **do not "restore" `@@unique([organizationId, name])`** — that re-creates the
+  /// full index and a deleted template reserves its name again, forever. Postgres
+  /// still raises 23505 → Prisma P2002, so the `isUniqueViolation` branches in
+  /// permission-templates.service are unaffected.
   @@index([organizationId, isDeleted])
   @@map("permission_templates")
 }
