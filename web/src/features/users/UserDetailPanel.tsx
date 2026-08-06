@@ -103,7 +103,7 @@ function ReadField({
 
 /** "Owner › Manager › Supervisor", or the bare name when the tree is flat. */
 function rolePathLabel(path: string[], fallback: string | null): string | null {
-  return fallback;
+  return path && path.length > 0 ? path.join(' › ') : fallback;
 }
 
 function formatAddress(user: Member): string | null {

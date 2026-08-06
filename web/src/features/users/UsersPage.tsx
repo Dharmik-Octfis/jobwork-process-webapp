@@ -251,7 +251,7 @@ export function UsersPage() {
 
       return { previousData, queryKey };
     },
-    onError: (err, user, context) => {
+    onError: (_err, _user, context) => {
       if (context?.previousData) {
         queryClient.setQueryData(context.queryKey, context.previousData);
       }

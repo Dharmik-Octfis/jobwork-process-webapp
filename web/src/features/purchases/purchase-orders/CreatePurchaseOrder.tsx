@@ -971,7 +971,7 @@ export function CreatePurchaseOrder() {
                                 setIsMultiSelectItemModalOpen(true);
                               }}
                               onChange={(val) => {
-                                setValue(`line_items.${index}.item_id`, val, { shouldValidate: true });
+                                setValue(`line_items.${index}.item_id`, val ?? undefined, { shouldValidate: true });
                                 const selected = itemsList.find((i) => i.id === val);
                                 if (selected) {
                                   setValue(`line_items.${index}.rate`, (selected.costPrice || selected.sellingPrice || '') as unknown as number);
