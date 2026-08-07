@@ -53,7 +53,7 @@ export async function getPurchaseOrderById(orgId: string, id: string) {
       include: {
         line_items: {
           where: { is_deleted: false },
-          include: { item: { select: { name: true, sku: true } } },
+          include: { item: true },
         },
         vendor: { select: { contactName: true, email: true, phone: true, addresses: true } },
         deliveryLocation: true,

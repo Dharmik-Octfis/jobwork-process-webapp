@@ -37,9 +37,11 @@ export function ItemComboBox({
   onOpenMultiSelect,
   footerAction,
 }: ItemComboBoxProps) {
-  const [inputValue, setInputValue] = useState('');
-  const [debouncedValue, setDebouncedValue] = useState('');
-  const prevValueRef = useRef(value);
+  const [inputValue, setInputValue] = useState(() => {
+    if (initialItem && initialItem.id === value) return initialItem.name;
+    return '';
+  });
+  const [debouncedValue, setDebouncedValue] = useState(inputValue);
   const isInternalChange = useRef(false);
   const [isInteracted, setIsInteracted] = useState(false);
 
@@ -84,14 +86,12 @@ export function ItemComboBox({
   }, [fetchedOptions, value, initialItem]);
 
   useEffect(() => {
-    if (value !== prevValueRef.current) {
-      prevValueRef.current = value;
-      if (!isInternalChange.current) {
-        setInputValue(selectedItem ? selectedItem.name : '');
-      }
+    if (!isInternalChange.current) {
+      setInputValue(selectedItem ? selectedItem.name : '');
+    } else {
       isInternalChange.current = false;
     }
-  }, [value, selectedItem]);
+  }, [selectedItem]);
 
   const {
     isOpen,
