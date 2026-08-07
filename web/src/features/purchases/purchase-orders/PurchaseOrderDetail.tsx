@@ -17,6 +17,7 @@ interface Html2PdfOptions {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchPurchaseOrderById, getPOSignedUrl, deletePurchaseOrder, type POAttachment } from './purchase-orders.api';
 import { fetchPaymentTerms } from './payment-terms.api';
+import { organizationsApi } from '../../organizations/organizations.api';
 import { useParams, useNavigate } from 'react-router-dom';
 import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer } from 'lucide-react';
 import { useState, useRef, useEffect, Fragment } from 'react';
@@ -134,6 +135,13 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
     queryFn: () => fetchPaymentTerms(orgId!),
     enabled: Boolean(orgId),
   });
+
+  const { data: orgs } = useQuery({
+    queryKey: ['organizations'],
+    queryFn: () => organizationsApi.getOrganizations(),
+    enabled: Boolean(orgId),
+  });
+  const currentOrg = orgs?.find((o) => o.organizationId === orgId);
 
   const getPaymentTermLabel = (termVal?: string | null) => {
     if (!termVal) return '-';
@@ -802,12 +810,17 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                 <tbody>
                   <tr>
                     <td style={{ width: '50%', padding: '12px', verticalAlign: 'top', borderRight: '1px solid #000' }}>
-                      <div style={{ fontSize: '16px', fontWeight: 800, color: '#000' }}>OCTFIS TECHNO LLP.</div>
+                      <div style={{ fontSize: '16px', fontWeight: 800, color: '#000' }}>
+                        {currentOrg?.name || 'Company Name'}
+                      </div>
                       <div style={{ fontSize: '11px', color: '#333', marginTop: '4px', lineHeight: 1.4 }}>
-                        Turning Point, Utran<br />
-                        Surat Gujarat 395600<br />
-                        India<br />
-                        GSTIN 24AAABB7689H1ZR
+                        {currentOrg?.address?.streetAddress1 && <>{currentOrg.address.streetAddress1}<br /></>}
+                        {currentOrg?.address?.city || currentOrg?.address?.stateCode || currentOrg?.address?.zip ? (
+                          <>
+                            {[currentOrg.address.city, currentOrg.address.stateCode, currentOrg.address.zip].filter(Boolean).join(' ')}<br />
+                          </>
+                        ) : null}
+                        {currentOrg?.address?.country && <>{currentOrg.address.country}</>}
                       </div>
                     </td>
                     <td style={{ width: '50%', padding: '12px', verticalAlign: 'middle', textAlign: 'right' }}>
@@ -927,7 +940,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                       </div>
 
                       <div style={{ marginTop: '40px', fontSize: '11px', color: '#333' }}>
-                        <div>For, OCTFIS TECHNO LLP.</div>
+                        <div>For, {currentOrg?.name || 'Company Name'}</div>
                         <div style={{ marginTop: '30px', fontWeight: 600 }}>Authorized Signature</div>
                       </div>
                     </td>
