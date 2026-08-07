@@ -38,6 +38,37 @@ const TENANT_TABLES = [
   'roles',
   'permission_templates',
   'list_view_preferences',
+  // Jobwork / inventory, added in 20260804120247_jobwork_sprint1_foundation.
+  // `lot_packages` carries its own organization_id (denormalised from its lot)
+  // rather than scoping through the parent, so its policy compares directly.
+  // `stock_ledger` has no UI at all — which is exactly why it needs to be listed
+  // here: nothing else would ever notice its policy going missing.
+  'processes',
+  'lots',
+  'lot_packages',
+  'stock_ledger',
+  // Sprints 2–4, added in 20260805070926_jobwork_sprints_2_to_4. The LINE tables
+  // are here for the same reason as `lot_packages`: each carries its own
+  // `organization_id` and its own policy rather than being scoped through its
+  // header, so a query that reads one directly is still covered.
+  'routes',
+  'route_steps',
+  'job_orders',
+  'job_order_steps',
+  'job_issues',
+  'job_issue_lines',
+  'rejection_reasons',
+  'job_receipts',
+  'job_receipt_lines',
+  // Multi-item steps (domain §5.7), added in 20260806112805_multi_item_steps.
+  // A step's inputs and outputs are its bill of materials — which items an org
+  // runs through which process is exactly the kind of thing a competitor would
+  // like to read, so these are as tenant-sensitive as the steps they hang off.
+  'route_step_inputs',
+  'route_step_outputs',
+  'job_order_step_inputs',
+  'job_order_step_outputs',
+  'job_receipt_outputs',
 ] as const;
 
 /**

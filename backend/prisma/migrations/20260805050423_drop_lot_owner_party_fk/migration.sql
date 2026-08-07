@@ -1,0 +1,44 @@
+-- drop_lot_owner_party_fk
+--
+-- Drops the foreign key from `lots.owner_party_id` to `customers`, and with it
+-- the `Customer.ownedLots` back-relation in the Prisma schema (Prisma has no
+-- one-sided relations, so the two are the same decision).
+--
+-- 🔴 THE COLUMN STAYS. `owner_party_id` is half of the ownership pair that
+-- decides whether stock is our asset or someone else's, and retrofitting it
+-- means revisiting every valuation query ever written (domain doc §11.3). Only
+-- the constraint is going. Nothing in this file touches data.
+--
+-- WHY THE CONSTRAINT IS NOT WORTH KEEPING
+--
+-- 1. It was enforcing less than it appeared to. Postgres checks foreign keys
+--    OUTSIDE row-level security, so this one accepted a customer id belonging to
+--    ANY organization — it rejected only an id that existed nowhere at all. The
+--    check that actually matters, "is this a customer in THIS org", was never
+--    what it did and has to live in the service regardless.
+--
+-- 2. `stock_ledger.owner_party_id` never had a foreign key. The same value being
+--    constrained on one table and unconstrained on the other is an asymmetry
+--    nobody remembers the reason for six months later; after this they match.
+--
+-- 3. The relation forced an `ownedLots` collection onto `Customer` that nothing
+--    ever navigated. A customer's lots are a query — `WHERE owner_party_id = :id`
+--    — and every real use of them (valuation, the return challan, traceability)
+--    filters on more than the customer anyway.
+--
+-- WHAT THIS GIVES UP, STATED PLAINLY
+--
+-- A `lots.owner_party_id` pointing at a customer that does not exist is now
+-- possible at the database level. Today that value can only be set by
+-- `stockLedger.createLot`, which is reached by no HTTP route at all — Sprint 1
+-- ships no lot endpoints — so the id cannot come from a client. When Sprint 2's
+-- Material In does accept one, it must validate the customer against
+-- `req.tenantId` in the service, the way `processes.service.ts` validates a uom
+-- id (`assertUomsBelongToOrg`). That check is STRONGER than this constraint was,
+-- because it is org-scoped and this was not.
+--
+-- Reversible: re-adding the constraint is one ALTER, provided no orphan rows
+-- have accumulated by then.
+
+-- DropForeignKey
+ALTER TABLE "lots" DROP CONSTRAINT "lots_owner_party_id_fkey";

@@ -111,6 +111,45 @@ model User {
   updatedVendors                Vendor[]                @relation("VendorUpdatedBy")
   createdItemCategories         ItemCategory[]          @relation("CategoryCreatedBy")
   updatedItemCategories         ItemCategory[]          @relation("CategoryUpdatedBy")
+  createdProcesses              Process[]               @relation("ProcessCreatedBy")
+  updatedProcesses              Process[]               @relation("ProcessUpdatedBy")
+  createdLots                   Lot[]                   @relation("LotCreatedBy")
+  updatedLots                   Lot[]                   @relation("LotUpdatedBy")
+  createdLotPackages            LotPackage[]            @relation("LotPackageCreatedBy")
+  updatedLotPackages            LotPackage[]            @relation("LotPackageUpdatedBy")
+  /// No `updatedStockLedgerEntries` — a ledger row is never edited. See
+  /// inventory.prisma.
+  createdStockLedgerEntries     StockLedgerEntry[]      @relation("StockLedgerCreatedBy")
+  createdRoutes                 Route[]                 @relation("RouteCreatedBy")
+  updatedRoutes                 Route[]                 @relation("RouteUpdatedBy")
+  createdRouteSteps             RouteStep[]             @relation("RouteStepCreatedBy")
+  updatedRouteSteps             RouteStep[]             @relation("RouteStepUpdatedBy")
+  createdJobOrders              JobOrder[]              @relation("JobOrderCreatedBy")
+  updatedJobOrders              JobOrder[]              @relation("JobOrderUpdatedBy")
+  createdJobOrderSteps          JobOrderStep[]          @relation("JobOrderStepCreatedBy")
+  updatedJobOrderSteps          JobOrderStep[]          @relation("JobOrderStepUpdatedBy")
+  createdJobIssues              JobIssue[]              @relation("JobIssueCreatedBy")
+  updatedJobIssues              JobIssue[]              @relation("JobIssueUpdatedBy")
+  createdJobIssueLines          JobIssueLine[]          @relation("JobIssueLineCreatedBy")
+  updatedJobIssueLines          JobIssueLine[]          @relation("JobIssueLineUpdatedBy")
+  createdJobReceipts            JobReceipt[]            @relation("JobReceiptCreatedBy")
+  updatedJobReceipts            JobReceipt[]            @relation("JobReceiptUpdatedBy")
+  createdJobReceiptLines        JobReceiptLine[]        @relation("JobReceiptLineCreatedBy")
+  updatedJobReceiptLines        JobReceiptLine[]        @relation("JobReceiptLineUpdatedBy")
+
+  // Multi-item steps (domain §5.7) — the six new child tables.
+  createdRouteStepInputs      RouteStepInput[]     @relation("RouteStepInputCreatedBy")
+  updatedRouteStepInputs      RouteStepInput[]     @relation("RouteStepInputUpdatedBy")
+  createdRouteStepOutputs     RouteStepOutput[]    @relation("RouteStepOutputCreatedBy")
+  updatedRouteStepOutputs     RouteStepOutput[]    @relation("RouteStepOutputUpdatedBy")
+  createdJobOrderStepInputs   JobOrderStepInput[]  @relation("JobOrderStepInputCreatedBy")
+  updatedJobOrderStepInputs   JobOrderStepInput[]  @relation("JobOrderStepInputUpdatedBy")
+  createdJobOrderStepOutputs  JobOrderStepOutput[] @relation("JobOrderStepOutputCreatedBy")
+  updatedJobOrderStepOutputs  JobOrderStepOutput[] @relation("JobOrderStepOutputUpdatedBy")
+  createdJobReceiptOutputs    JobReceiptOutput[]   @relation("JobReceiptOutputCreatedBy")
+  updatedJobReceiptOutputs    JobReceiptOutput[]   @relation("JobReceiptOutputUpdatedBy")
+  createdRejectionReasons       RejectionReason[]       @relation("RejectionReasonCreatedBy")
+  updatedRejectionReasons       RejectionReason[]       @relation("RejectionReasonUpdatedBy")
 
   @@map("users")
 }
@@ -229,6 +268,29 @@ model Organization {
   unitsOfMeasurement     UnitOfMeasurement[]
   vendors                Vendor[]
   itemCategories         ItemCategory[]
+  processes              Process[]
+  lots                   Lot[]
+  lotPackages            LotPackage[]
+  stockLedgerEntries     StockLedgerEntry[]
+  routes                 Route[]
+  routeSteps             RouteStep[]
+  jobOrders              JobOrder[]
+  jobOrderSteps          JobOrderStep[]
+  jobIssues              JobIssue[]
+  jobIssueLines          JobIssueLine[]
+  jobReceipts            JobReceipt[]
+  jobReceiptLines        JobReceiptLine[]
+  rejectionReasons       RejectionReason[]
+
+  // Multi-item steps (domain §5.7). Every one of these carries its own
+  // `organization_id` so it can hold its own RLS policy, exactly like
+  // `lot_packages` — a child table that has to join its parent to be filtered is
+  // a table whose policy is one forgotten join away from leaking.
+  routeStepInputs        RouteStepInput[]
+  routeStepOutputs       RouteStepOutput[]
+  jobOrderStepInputs     JobOrderStepInput[]
+  jobOrderStepOutputs    JobOrderStepOutput[]
+  jobReceiptOutputs      JobReceiptOutput[]
 
   @@map("organizations")
 }
@@ -526,15 +588,35 @@ model Location {
   state                  String?
   street1                String?
   street2                String?
+  /// Business | Warehouse | godown | shopfloor | work_centre | processor |
+  /// in_transit | customer_site
+  ///
+  /// The last five arrived with jobwork (domain doc §5.4). Goods at a processor
+  /// are OUR stock at THEIR location — one axis, not a location plus a separate
+  /// "with-processor" state — which is what makes "stock lying with processors" a
+  /// plain ledger query grouped by location and aged by movement date. That report
+  /// is not a nicety: Indian GST reverses the input credit if jobwork goods do not
+  /// come back within 180/365 days.
   type                   String          @default("Business")
+  /// The jobworker a `processor` location stands for. Auto-provisioned the first
+  /// time a vendor is used for jobwork, so nobody has to create the location by
+  /// hand before they can issue material to them.
+  vendorId               String?         @map("vendor_id") @db.Uuid
   zip                    String?
   createdByUser          User?           @relation("LocationCreatedBy", fields: [createdBy], references: [id])
   organization           Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   parentLocation         Location?       @relation("LocationHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
   childLocations         Location[]      @relation("LocationHierarchy")
   updatedByUser          User?           @relation("LocationUpdatedBy", fields: [updatedBy], references: [id])
+  vendor                 Vendor?         @relation("LocationVendor", fields: [vendorId], references: [id])
   deliveryPurchaseOrders PurchaseOrder[]
   sourcePurchaseOrders   PurchaseOrder[] @relation("PoSourceLocation")
+  ledgerEntries          StockLedgerEntry[] @relation("StockLedgerLocation")
+  routeStepWorkCentres   RouteStep[]        @relation("RouteStepWorkCentre")
+  jobOrderStepWorkCentres JobOrderStep[]    @relation("JobOrderStepWorkCentre")
+  jobIssuesFrom          JobIssue[]         @relation("JobIssueSource")
+  jobIssuesTo            JobIssue[]         @relation("JobIssueDestination")
+  jobReceipts            JobReceipt[]       @relation("JobReceiptLocation")
 
   @@unique([organizationId, name])
   @@map("locations")

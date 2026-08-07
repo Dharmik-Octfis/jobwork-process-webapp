@@ -351,6 +351,18 @@ sendSuccess(res, null, 'Vendor deleted.'); // 200, no payload
   - **Visible focus ring on everything focusable** — `outline: none` without a replacement is the same
     bug, just harder to see.
 
+## Comments
+
+Comment sparingly. The code already says _what_; a comment earns its place only by saying _why_ — a
+non-obvious constraint, a trade-off, the bug it prevents. One short line, at the line that needs it.
+No banner headers, no restating the next statement, no JSDoc on self-explanatory functions. Match the
+file you are editing: if it has few comments, add few.
+
+```ts
+// filter here, not in RLS — memberships has no policy (read before a tenant exists)
+const rows = await tx.membership.findMany({ where: { userId, isDeleted: false } });
+```
+
 ## Commands
 
 ```bash

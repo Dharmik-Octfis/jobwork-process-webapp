@@ -20,7 +20,16 @@ model Vendor {
   updatedBy                String?               @map("updated_by") @db.Uuid
   customFields             Json                  @default("{}") @map("custom_fields")
   notes                    String?
+  /// material_supplier | job_worker | broker | transporter | general
+  ///
+  /// Multi-valued: one vendor is often both a supplier and a jobworker. This is
+  /// what filters the lookups — the Issue screen must offer job workers only, the
+  /// PO's broker field brokers only (domain doc §7.1). Empty means "not yet
+  /// classified", which is what every existing row is after the migration; nothing
+  /// treats that as an error.
+  vendorTypes              String[]              @default([]) @map("vendor_types")
   purchaseOrders           PurchaseOrder[]
+  locations                Location[]            @relation("LocationVendor")
   activities               VendorActivity[]
   addresses                VendorAddress[]
   comments                 VendorComment[]

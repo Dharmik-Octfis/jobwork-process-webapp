@@ -1,0 +1,953 @@
+/// Jobwork — the operation master.
+///
+/// Sprint 1 ships only `Process`. Routes, job orders, issues and receipts land in
+/// Sprints 2–4 and belong in THIS file (see docs/JOBWORK_IMPLEMENTATION_PLAN.md §8.1).
+///
+/// A Process is what someone DOES to material: dyeing, printing, cutting,
+/// stitching. It is a small per-org master, but four of its flags are read by the
+/// issue and receipt screens later and decide what those screens are even allowed
+/// to offer — so they exist from the first migration rather than being bolted on:
+///
+///   itemChanges         the thing that comes back is a DIFFERENT item (cloth → shirt).
+///                       Domain doc §5.1: a changed unit means a changed item, never
+///                       a conversion factor.
+///   preservesPackaging  does the physical package survive? Dyeing returns the same
+///                       roll (taka-wise receipt is possible); cutting destroys it
+///                       (bulk only). §5.2.3 — this is a property of the process,
+///                       NOT a user preference, so the Receive dialog offers only
+///                       the mode that is physically possible.
+///   requiresSingleLot   shade-lot matching (§5.2.4). Mixing two dye lots in one
+///                       garment produces a reject no inspection catches until the
+///                       garment is assembled, so the Issue dialog blocks a second lot.
+///   rateBasis           how the processor charges (§9.2). Decides which quantity the
+///                       cost is multiplied by, so it cannot be inferred later.
+model Process {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  name           String @db.VarChar(150)
+  /// Optional short code the shop floor uses on paperwork. Free text — nothing
+  /// derives meaning from it, exactly like `Lot.supplierLotRef`.
+  code           String? @db.VarChar(50)
+  description    String?
+
+  /// true when the output is a different item from the input (§5.1).
+  itemChanges Boolean @default(false) @map("item_changes")
+
+  /// per_issued_unit | per_received_unit | per_kg | lump_sum
+  rateBasis String @default("per_issued_unit") @map("rate_basis") @db.VarChar(30)
+
+  /// Does the taka/roll/bundle survive the operation? Decides unit-wise vs bulk
+  /// receipt in Sprint 4 (§5.2.3).
+  preservesPackaging Boolean @default(false) @map("preserves_packaging")
+
+  /// Blocks mixing lots on one issue — shade matching (§5.2.4).
+  requiresSingleLot Boolean @default(false) @map("requires_single_lot")
+
+  /// Default over-receipt allowance, in percent. Nullable: "no default" is a real
+  /// answer and is not the same as 0 (which means "no tolerance at all").
+  defaultTolerancePct Decimal? @map("default_tolerance_pct") @db.Decimal(6, 3)
+
+  /// Defaults a route step copies when this process is picked. Two fields, not
+  /// one, because in and out can differ (§5.1).
+  defaultIssueUomId   String? @map("default_issue_uom_id") @db.Uuid
+  defaultReceiveUomId String? @map("default_receive_uom_id") @db.Uuid
+
+  isActive Boolean @default(true) @map("is_active")
+
+  customFields Json    @default("{}") @map("custom_fields")
+  isDeleted    Boolean @default(false) @map("is_deleted")
+  createdBy    String? @map("created_by") @db.Uuid
+  updatedBy    String? @map("updated_by") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  defaultIssueUom   UnitOfMeasurement? @relation("ProcessDefaultIssueUom", fields: [defaultIssueUomId], references: [id])
+  defaultReceiveUom UnitOfMeasurement? @relation("ProcessDefaultReceiveUom", fields: [defaultReceiveUomId], references: [id])
+  createdByUser     User?              @relation("ProcessCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser     User?              @relation("ProcessUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  /// A soft-deleted row still occupies this key (CLAUDE.md). The service therefore
+  /// REVIVES a soft-deleted process on a name collision rather than 409-ing —
+  /// "Dyeing" deleted last month must be creatable again.
+  /// Route steps and job order steps both point here. The job order step ALSO
+  /// carries `processNameSnapshot`, because this relation is for reporting and
+  /// the snapshot is what prints (§2.4).
+  routeSteps    RouteStep[]    @relation("RouteStepProcess")
+  jobOrderSteps JobOrderStep[] @relation("JobOrderStepProcess")
+
+  @@unique([organizationId, name])
+  @@map("processes")
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 2 — Process Routes
+// ---------------------------------------------------------------------------
+
+/// A reusable sequence of operations: grey → dyeing → printing → finishing.
+///
+/// A route is a TEMPLATE and nothing else. It is read exactly once, when a job
+/// order is created, and never again — `JobOrderStep` below is a full snapshot,
+/// not a link (field-sources doc §2.4). Editing a route must never rewrite a job
+/// order already running against it, because the rate on a released order is a
+/// number someone agreed with a processor.
+model Route {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  name           String  @db.VarChar(150)
+  code           String? @db.VarChar(50)
+  description    String?
+
+  isActive Boolean @default(true) @map("is_active")
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser User?        @relation("RouteCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?        @relation("RouteUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  steps     RouteStep[]
+  jobOrders JobOrder[]
+
+  @@unique([organizationId, name])
+  @@map("routes")
+}
+
+/// One operation inside a route, with the defaults a job order step copies.
+///
+/// Every default here is NULLABLE on purpose. The default chain (§2.5) runs
+/// Process master → route step → job order step → the document, and each level
+/// only overrides what it actually knows: a route that says nothing about rate
+/// must fall through to the process, not overwrite it with a zero.
+model RouteStep {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised from the route so this table carries its own RLS policy,
+  /// exactly like `lot_packages` (inventory.prisma).
+  organizationId String @map("organization_id") @db.Uuid
+  routeId        String @map("route_id") @db.Uuid
+
+  /// Position in the sequence, 1-based. Renumbered on drag, which is why it is
+  /// an ordinary column and not part of the primary key.
+  seq       Int
+  processId String @map("process_id") @db.Uuid
+
+  /// vendor | customer | internal. `customer` covers the case where the party who
+  /// owns the goods also performs a step on them (inward jobwork, shape D).
+  processorType String @default("vendor") @map("processor_type") @db.VarChar(20)
+
+  /// The default processor. A PLAIN uuid with no FK, for the same reason as
+  /// `lots.owner_party_id`: it points at `vendors` OR `customers` depending on
+  /// `processorType`, so a constraint covering one of the two would enforce
+  /// nothing on the other. The service checks it against the org instead.
+  processorId String? @map("processor_id") @db.Uuid
+
+  /// Where an `internal` step happens — a `work_centre` location.
+  workCentreLocationId String? @map("work_centre_location_id") @db.Uuid
+
+  rate      Decimal? @db.Decimal(18, 4)
+  rateBasis String?  @map("rate_basis") @db.VarChar(30)
+
+  /// In and out are separate items AND separate units (§5.1). Cloth in metres,
+  /// shirts out in pieces — two different things, never a conversion factor.
+  issueItemId   String? @map("issue_item_id") @db.Uuid
+  issueUomId    String? @map("issue_uom_id") @db.Uuid
+  receiveItemId String? @map("receive_item_id") @db.Uuid
+  receiveUomId  String? @map("receive_uom_id") @db.Uuid
+
+  /// 🔴 PRIMARY OUTPUT ÷ PRINCIPAL INPUT, and nothing else.
+  ///
+  /// Since §5.7 a step has several of each, and one ratio cannot relate three
+  /// inputs to two outputs — so it relates exactly one pair, and every other
+  /// output carries an expected quantity of its own (`RouteStepOutput`, and
+  /// `JobOrderStepOutput.expectedQty`). Its whole job is to fill that one number
+  /// in.
+  ///
+  /// An expectation used to flag variance — 🔴 NEVER a conversion factor, which
+  /// would invent or destroy stock (§6.3).
+  expectedYield Decimal? @map("expected_yield") @db.Decimal(18, 6)
+  /// The step's default over-issue allowance. `RouteStepInput` carries no
+  /// per-item override — a template holds policy, and which item needs a looser
+  /// tolerance is a per-run answer (`JobOrderStepInput.tolerancePct`).
+  tolerancePct  Decimal? @map("tolerance_pct") @db.Decimal(6, 3)
+
+  remarks String?
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  route         Route              @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  process       Process            @relation("RouteStepProcess", fields: [processId], references: [id])
+  issueItem     Item?              @relation("RouteStepIssueItem", fields: [issueItemId], references: [id])
+  receiveItem   Item?              @relation("RouteStepReceiveItem", fields: [receiveItemId], references: [id])
+  issueUom      UnitOfMeasurement? @relation("RouteStepIssueUom", fields: [issueUomId], references: [id])
+  receiveUom    UnitOfMeasurement? @relation("RouteStepReceiveUom", fields: [receiveUomId], references: [id])
+  workCentre    Location?          @relation("RouteStepWorkCentre", fields: [workCentreLocationId], references: [id])
+  createdByUser User?              @relation("RouteStepCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?              @relation("RouteStepUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  /// A FULL index — a soft-deleted step would still occupy its seq. That is why
+  /// the service hard-replaces a route's steps on edit rather than soft-deleting
+  /// them; see processRoutes.service.ts for why that is safe here and nowhere
+  /// else in this codebase.
+  @@unique([routeId, seq])
+  @@index([organizationId, routeId])
+  @@map("route_steps")
+
+  inputs  RouteStepInput[]
+  outputs RouteStepOutput[]
+}
+
+/// 🔴 THE BILL OF MATERIALS, on the template side (domain doc §5.7).
+///
+/// A step consumes a SET of items — stitching takes panels AND thread AND
+/// buttons — so this replaces `RouteStep.issueItemId/issueUomId`. Those columns
+/// survive until Migration B only so the old build keeps running while this one
+/// rolls out; nothing reads them after that.
+///
+/// No quantity here on purpose. A route is a template and has no idea how much
+/// anyone will run through it; `JobOrderStepInput.plannedQty` is where a number
+/// first means something.
+model RouteStepInput {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised for its own RLS policy, exactly like `route_steps` itself.
+  organizationId String @map("organization_id") @db.Uuid
+  routeStepId    String @map("route_step_id") @db.Uuid
+
+  /// Display order only. Inputs are a set — nothing depends on which is first
+  /// except the job order form, which seeds step 1's first row from the header.
+  seq    Int
+  itemId String  @map("item_id") @db.Uuid
+  /// Snapshot of the item's stocking uom. One item, one stocking unit (§5.1), so
+  /// this is forced from the item and never chosen.
+  uomId  String? @map("uom_id") @db.Uuid
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  routeStep     RouteStep          @relation(fields: [routeStepId], references: [id], onDelete: Cascade)
+  item          Item               @relation("RouteStepInputItem", fields: [itemId], references: [id])
+  uom           UnitOfMeasurement? @relation("RouteStepInputUom", fields: [uomId], references: [id])
+  createdByUser User?              @relation("RouteStepInputCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?              @relation("RouteStepInputUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  /// One row per item. Listing an item twice is a data-entry slip, not a second
+  /// requirement — the quantities would have to be added anyway.
+  @@unique([routeStepId, itemId])
+  @@index([organizationId, routeStepId])
+  @@map("route_step_inputs")
+}
+
+/// What the template expects a step to produce. Same shape as the input side.
+model RouteStepOutput {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  routeStepId    String @map("route_step_id") @db.Uuid
+
+  seq    Int
+  itemId String  @map("item_id") @db.Uuid
+  uomId  String? @map("uom_id") @db.Uuid
+
+  /// 🔴 Exactly one output per step carries this. It absorbs the step's whole
+  /// cost; every other output is a by-product carrying an explicit value that is
+  /// deducted from this one's share (§9.2.1). Apportioning by quantity is not
+  /// available — 2,910 PCS and 80 KG have no ratio between them.
+  isPrimary Boolean @default(false) @map("is_primary")
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  routeStep     RouteStep          @relation(fields: [routeStepId], references: [id], onDelete: Cascade)
+  item          Item               @relation("RouteStepOutputItem", fields: [itemId], references: [id])
+  uom           UnitOfMeasurement? @relation("RouteStepOutputUom", fields: [uomId], references: [id])
+  createdByUser User?              @relation("RouteStepOutputCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?              @relation("RouteStepOutputUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([routeStepId, itemId])
+  @@index([organizationId, routeStepId])
+  @@map("route_step_outputs")
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 2 — Job Orders
+// ---------------------------------------------------------------------------
+
+/// One run of work: this much of this item, through these steps.
+///
+/// 🔴 `sourceSalesOrderId` is deliberately ABSENT, not stubbed (plan §1.2). A
+/// nullable uuid costs one migration the day Sales Orders ship; a column nothing
+/// writes is a field every form has to explain in the meantime.
+model JobOrder {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  /// `NumberSequence('job_order')`, allocated inside the save transaction — never
+  /// when the form opens, or every abandoned form burns a number (§2.2).
+  jobOrderNumber String @map("job_order_number") @db.VarChar(50)
+
+  /// When the work was ordered. Editable, because paperwork arrives late.
+  orderDate  DateTime  @default(now()) @map("order_date") @db.Timestamptz(6)
+  targetDate DateTime? @map("target_date") @db.Timestamptz(6)
+
+  /// 🔴 CALC+, and no longer a field anyone fills in.
+  ///
+  /// A step consumes a SET of items (§5.7), so a single item and quantity on the
+  /// header could only ever name one of them — and naming one of three on the
+  /// document that owns all three is worse than naming none. The form dropped
+  /// both; the service now DERIVES them from step 1's first consumed row, purely
+  /// so the list page has something to show and old orders keep reading.
+  ///
+  /// Nullable since 2026-08-07: a step that lists no inputs yet has nothing to
+  /// derive from, and a required column would force a value to be invented.
+  inputItemId String?  @map("input_item_id") @db.Uuid
+  inputUomId  String?  @map("input_uom_id") @db.Uuid
+  inputQty    Decimal? @map("input_qty") @db.Decimal(18, 4)
+
+  routeId String? @map("route_id") @db.Uuid
+  /// 🔴 The frozen name, which is what prints. The FK above is for joins and
+  /// reporting; this is what an old job order keeps showing after the route is
+  /// renamed or deleted (§2.4). Store BOTH — that is the rule, not a choice.
+  routeNameSnapshot String? @map("route_name_snapshot") @db.VarChar(150)
+
+  /// own | customer. Decides valuation, invoice type, and 🔴 which lots the issue
+  /// picker may even offer — one customer's goods must never be issued into
+  /// another's order (§5.3).
+  ownership    String  @default("own") @db.VarChar(20)
+  ownerPartyId String? @map("owner_party_id") @db.Uuid
+
+  /// draft | in_progress | completed | short_closed | cancelled.
+  ///
+  /// CALC+ (field-sources §4.3): stored, but only ever written by
+  /// `jobOrders.status.ts` recomputing it from the steps underneath. Never taken
+  /// from a request body — a status a user can type is a status that disagrees
+  /// with the documents it claims to summarise.
+  status String @default("draft") @db.VarChar(30)
+
+  remarks String?
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inputItem     Item?              @relation("JobOrderInputItem", fields: [inputItemId], references: [id])
+  inputUom      UnitOfMeasurement? @relation("JobOrderInputUom", fields: [inputUomId], references: [id])
+  route         Route?             @relation(fields: [routeId], references: [id])
+  createdByUser User?              @relation("JobOrderCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?              @relation("JobOrderUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  steps    JobOrderStep[]
+  issues   JobIssue[]
+  receipts JobReceipt[]
+
+  @@unique([organizationId, jobOrderNumber])
+  @@index([organizationId, status])
+  @@map("job_orders")
+}
+
+/// 🔴 A FULL SNAPSHOT OF A ROUTE STEP, NEVER A LIVE LINK.
+///
+/// Everything the route knew is copied here at creation, and the route is never
+/// read again (§2.4). That is what lets a route be edited — or deleted — while
+/// twenty job orders keep running against the version that existed when they were
+/// released. The `processId` FK survives for reporting; `processNameSnapshot` is
+/// what prints.
+///
+/// A job order with NO route at all is normal: the steps are simply typed by
+/// hand. That is what "fully flexible" means in the domain doc, and it is why
+/// nothing in this table is required to have come from a route.
+model JobOrderStep {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  jobOrderId     String @map("job_order_id") @db.Uuid
+
+  seq       Int
+  processId String @map("process_id") @db.Uuid
+  /// Frozen at creation. A process renamed from "Dyeing" to "Reactive Dyeing"
+  /// must not retitle the challans already printed against this step.
+  processNameSnapshot String @map("process_name_snapshot") @db.VarChar(150)
+
+  processorType         String  @default("vendor") @map("processor_type") @db.VarChar(20)
+  processorId           String? @map("processor_id") @db.Uuid
+  processorNameSnapshot String? @map("processor_name_snapshot") @db.VarChar(255)
+  workCentreLocationId  String? @map("work_centre_location_id") @db.Uuid
+
+  rate      Decimal? @db.Decimal(18, 4)
+  rateBasis String?  @map("rate_basis") @db.VarChar(30)
+
+  issueItemId   String? @map("issue_item_id") @db.Uuid
+  issueUomId    String? @map("issue_uom_id") @db.Uuid
+  receiveItemId String? @map("receive_item_id") @db.Uuid
+  receiveUomId  String? @map("receive_uom_id") @db.Uuid
+
+  /// 🔴 Primary output ÷ principal input — see `RouteStep.expectedYield`. It
+  /// fills in `JobOrderStepOutput.expectedQty` for the primary output alone;
+  /// by-products carry their own expected quantity, because no single ratio can
+  /// relate three inputs to two outputs.
+  expectedYield Decimal? @map("expected_yield") @db.Decimal(18, 6)
+  /// The step's default over-issue allowance. `JobOrderStepInput.tolerancePct`
+  /// overrides it per item — fabric at 3% beside thread at 25%.
+  tolerancePct  Decimal? @map("tolerance_pct") @db.Decimal(6, 3)
+
+  /// How much this step is expected to consume. Step 1 inherits the job order's
+  /// input quantity; later steps are planned from the previous step's expected
+  /// yield, and stay editable because a plan is a plan.
+  plannedInputQty Decimal? @map("planned_input_qty") @db.Decimal(18, 4)
+
+  /// pending | issued | partially_received | completed | short_closed.
+  /// CALC+, like `JobOrder.status` — recomputed from issues and receipts, never
+  /// sent by a client.
+  status String @default("pending") @db.VarChar(30)
+
+  remarks String?
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jobOrder      JobOrder           @relation(fields: [jobOrderId], references: [id], onDelete: Cascade)
+  process       Process            @relation("JobOrderStepProcess", fields: [processId], references: [id])
+  issueItem     Item?              @relation("JobOrderStepIssueItem", fields: [issueItemId], references: [id])
+  receiveItem   Item?              @relation("JobOrderStepReceiveItem", fields: [receiveItemId], references: [id])
+  issueUom      UnitOfMeasurement? @relation("JobOrderStepIssueUom", fields: [issueUomId], references: [id])
+  receiveUom    UnitOfMeasurement? @relation("JobOrderStepReceiveUom", fields: [receiveUomId], references: [id])
+  workCentre    Location?          @relation("JobOrderStepWorkCentre", fields: [workCentreLocationId], references: [id])
+  createdByUser User?              @relation("JobOrderStepCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?              @relation("JobOrderStepUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  issues   JobIssue[]
+  receipts JobReceipt[]
+  inputs   JobOrderStepInput[]
+  outputs  JobOrderStepOutput[]
+
+  @@unique([jobOrderId, seq])
+  @@index([organizationId, jobOrderId])
+  @@map("job_order_steps")
+}
+
+/// 🔴 WHAT THE STEP CONSUMES. One row per item (domain doc §5.7).
+///
+/// Replaces `JobOrderStep.issueItemId/issueUomId`, which could only ever name
+/// one. Stitching consumes panels, thread and buttons in one operation, on one
+/// challan, from one processor — splitting that into three steps would multiply
+/// the paperwork by the bill of materials and let three step statuses disagree
+/// about whether stitching happened.
+model JobOrderStepInput {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  jobOrderStepId String @map("job_order_step_id") @db.Uuid
+
+  seq    Int
+  itemId String  @map("item_id") @db.Uuid
+  uomId  String? @map("uom_id") @db.Uuid
+
+  /// How much of THIS item the step expects to consume, in THIS item's unit.
+  /// Per item, because there is no single number that covers metres, cones and
+  /// pieces at once.
+  plannedQty Decimal? @map("planned_qty") @db.Decimal(18, 4)
+
+  /// Over-issue allowance for THIS item, overriding the step's. Fabric may allow
+  /// 3% while thread allows 25% — small quantities vary more, and one percentage
+  /// across three items is either too tight for one or meaningless for another.
+  ///
+  /// NULL means "use the step's", which is why it is nullable rather than
+  /// defaulted: 0 is a real answer meaning no tolerance at all, and a default
+  /// would make that indistinguishable from "not set" (§2.5).
+  tolerancePct Decimal? @map("tolerance_pct") @db.Decimal(6, 3)
+
+  /// 🔴 true when no EARLIER step produces this item, so it is drawn from stock.
+  ///
+  /// Computed once at save and stored rather than re-derived, because the
+  /// Overview and the Issue dialog both label it and neither should re-walk the
+  /// whole chain to render a row. It is a classification, never a rejection
+  /// (§6.4): thread comes from the godown, not from the operation above, and a
+  /// rule that refused it would refuse most real steps.
+  fromStock Boolean @default(false) @map("from_stock")
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  step          JobOrderStep       @relation(fields: [jobOrderStepId], references: [id], onDelete: Cascade)
+  item          Item               @relation("JobOrderStepInputItem", fields: [itemId], references: [id])
+  uom           UnitOfMeasurement? @relation("JobOrderStepInputUom", fields: [uomId], references: [id])
+  createdByUser User?              @relation("JobOrderStepInputCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?              @relation("JobOrderStepInputUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([jobOrderStepId, itemId])
+  @@index([organizationId, jobOrderStepId])
+  @@map("job_order_step_inputs")
+}
+
+/// What the step is expected to produce. The receipt is what says what actually
+/// came back — these are the plan, and a receipt may add rows the plan never had.
+model JobOrderStepOutput {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  jobOrderStepId String @map("job_order_step_id") @db.Uuid
+
+  seq    Int
+  itemId String  @map("item_id") @db.Uuid
+  uomId  String? @map("uom_id") @db.Uuid
+
+  expectedQty Decimal? @map("expected_qty") @db.Decimal(18, 4)
+
+  /// 🔴 Exactly one per step. See `RouteStepOutput.isPrimary`.
+  isPrimary Boolean @default(false) @map("is_primary")
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  step          JobOrderStep       @relation(fields: [jobOrderStepId], references: [id], onDelete: Cascade)
+  item          Item               @relation("JobOrderStepOutputItem", fields: [itemId], references: [id])
+  uom           UnitOfMeasurement? @relation("JobOrderStepOutputUom", fields: [uomId], references: [id])
+  createdByUser User?              @relation("JobOrderStepOutputCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?              @relation("JobOrderStepOutputUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([jobOrderStepId, itemId])
+  @@index([organizationId, jobOrderStepId])
+  @@map("job_order_step_outputs")
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 3 — Issue (the challan out)
+// ---------------------------------------------------------------------------
+
+/// Material leaving for a processor. The document the goods physically travel
+/// with, which is why it cannot be deferred: they cannot legally move without it.
+///
+/// 🔴 Every party detail is stored TWICE — the FK for joins, a snapshot for print
+/// (§2.4). Sunrise Dyers moves premises in October; reprinting August's challan
+/// must show the August address, because that is where the goods went and that is
+/// what the e-way bill will be compared against.
+model JobIssue {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  jobOrderId     String @map("job_order_id") @db.Uuid
+  jobOrderStepId String @map("job_order_step_id") @db.Uuid
+
+  /// `NumberSequence('job_issue')`. It is printed on a challan, so it is
+  /// allocated on save and never reused.
+  challanNumber String   @map("challan_number") @db.VarChar(50)
+  issueDate     DateTime @default(now()) @map("issue_date") @db.Timestamptz(6)
+
+  processorType         String  @default("vendor") @map("processor_type") @db.VarChar(20)
+  processorId           String? @map("processor_id") @db.Uuid
+  processorNameSnapshot String? @map("processor_name_snapshot") @db.VarChar(255)
+  /// One text blob, not five columns. It is never queried, only printed, and the
+  /// shape of an Indian address varies enough that parsing it back out would be a
+  /// project of its own.
+  processorAddressSnapshot String? @map("processor_address_snapshot")
+  processorGstinSnapshot   String? @map("processor_gstin_snapshot") @db.VarChar(20)
+
+  /// Stock moves OUT of source and IN to destination — one axis, so
+  /// godown-to-processor and godown-to-godown are the same operation (§5.4). The
+  /// destination is auto-provisioned the first time a processor is used.
+  sourceLocationId      String @map("source_location_id") @db.Uuid
+  destinationLocationId String @map("destination_location_id") @db.Uuid
+
+  /// What is being issued. Copied from the step, which is why the dialog locks
+  /// it: changing it would break the chain the job order validated at save.
+  itemId String  @map("item_id") @db.Uuid
+  uomId  String? @map("uom_id") @db.Uuid
+
+  /// Rework goes back to the SAME step, with the attempt counted so a second pass
+  /// is not mistaken for over-issue (Sprint 4).
+  isRework  Boolean @default(false) @map("is_rework")
+  attemptNo Int     @default(1) @map("attempt_no")
+
+  /// Transport, for the challan and for the e-way bill generated from it later.
+  /// Recorded from Sprint 3 even though nothing calls that API yet — these cannot
+  /// be back-filled onto a challan whose goods have already moved (plan §11).
+  transporterId String?   @map("transporter_id") @db.Uuid
+  vehicleNo     String?   @map("vehicle_no") @db.VarChar(30)
+  lrNo          String?   @map("lr_no") @db.VarChar(50)
+  lrDate        DateTime? @map("lr_date") @db.Timestamptz(6)
+  ewayBillNo    String?   @map("eway_bill_no") @db.VarChar(30)
+
+  /// The sum of the lines, denormalised. Cheap to keep correct — the lines are
+  /// written once, in this document's own transaction, and never edited — and it
+  /// keeps the list page off a per-row aggregate.
+  totalQty Decimal @default(0) @map("total_qty") @db.Decimal(18, 4)
+
+  /// Why an issue past `plannedInputQty × (1 + tolerance)` was allowed. A
+  /// tolerance breach that leaves no trace is a tolerance that does not exist
+  /// (§5.4).
+  toleranceOverrideReason String? @map("tolerance_override_reason")
+
+  /// issued | partially_received | closed | cancelled. CALC+.
+  status String @default("issued") @db.VarChar(30)
+
+  remarks String?
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jobOrder       JobOrder           @relation(fields: [jobOrderId], references: [id], onDelete: Cascade)
+  step           JobOrderStep       @relation(fields: [jobOrderStepId], references: [id], onDelete: Cascade)
+  item           Item               @relation("JobIssueItem", fields: [itemId], references: [id])
+  uom            UnitOfMeasurement? @relation("JobIssueUom", fields: [uomId], references: [id])
+  sourceLocation Location           @relation("JobIssueSource", fields: [sourceLocationId], references: [id])
+  destination    Location           @relation("JobIssueDestination", fields: [destinationLocationId], references: [id])
+  createdByUser  User?              @relation("JobIssueCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser  User?              @relation("JobIssueUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  lines        JobIssueLine[]
+  receiptLines JobReceiptLine[]
+
+  @@unique([organizationId, challanNumber])
+  @@index([organizationId, jobOrderStepId])
+  @@map("job_issues")
+}
+
+/// One lot — or one taka inside a lot — on a challan.
+///
+/// A package-level line carries BOTH `lotId` and `lotPackageId`: the package says
+/// which physical roll went, the lot is what every balance groups by, and
+/// deriving one from the other on read puts a join in the middle of an
+/// availability query.
+model JobIssueLine {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  jobIssueId     String @map("job_issue_id") @db.Uuid
+
+  /// 🔴 THE ITEM LIVES HERE, not on the header (domain doc §5.7).
+  ///
+  /// One challan carries fabric, thread and buttons together — it is one physical
+  /// movement to one processor, so it is one document. `JobIssue.itemId` survives
+  /// until Migration B only so the old build keeps running during the rollout.
+  ///
+  /// Nullable for exactly that window: rows written before this column existed
+  /// are backfilled from the header, and the service refuses to write a null.
+  itemId String? @map("item_id") @db.Uuid
+  uomId  String? @map("uom_id") @db.Uuid
+
+  lotId String @map("lot_id") @db.Uuid
+  /// Null for a lot-level issue — i.e. any item below `lot_and_package` tracking.
+  lotPackageId String? @map("lot_package_id") @db.Uuid
+
+  qty Decimal @db.Decimal(18, 4)
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jobIssue      JobIssue           @relation(fields: [jobIssueId], references: [id], onDelete: Cascade)
+  item          Item?              @relation("JobIssueLineItem", fields: [itemId], references: [id])
+  uom           UnitOfMeasurement? @relation("JobIssueLineUom", fields: [uomId], references: [id])
+  lot           Lot                @relation("JobIssueLineLot", fields: [lotId], references: [id])
+  lotPackage    LotPackage?        @relation("JobIssueLinePackage", fields: [lotPackageId], references: [id])
+  createdByUser User?              @relation("JobIssueLineCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?              @relation("JobIssueLineUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  receiptLines JobReceiptLine[]
+
+  @@index([organizationId, jobIssueId])
+  @@map("job_issue_lines")
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 4 — Receipt (goods back), and the reason master it needs
+// ---------------------------------------------------------------------------
+
+/// Why material was rejected. A small per-org master, and it has to BE a master:
+/// free text cannot be GROUPED, and "which defect is costing us the most" is the
+/// whole point of recording a reason at all (plan §2).
+model RejectionReason {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  name           String  @db.VarChar(150)
+  code           String? @db.VarChar(50)
+  description    String?
+
+  /// ours | theirs — whether this defect usually points at us or the processor. A
+  /// DEFAULT the receive dialog pre-fills, never a rule: the same defect can be
+  /// either, and what gets billed is decided per receipt line.
+  defaultResponsibility String? @map("default_responsibility") @db.VarChar(20)
+
+  isActive Boolean @default(true) @map("is_active")
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser User?        @relation("RejectionReasonCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?        @relation("RejectionReasonUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  receiptLines   JobReceiptLine[]
+  receiptOutputs JobReceiptOutput[] @relation("JobReceiptOutputReason")
+
+  @@unique([organizationId, name])
+  @@map("rejection_reasons")
+}
+
+/// Goods coming back from a processor.
+///
+/// 🔴 `mode` is decided by `Process.preservesPackaging`, NOT by the user (§6.1).
+/// Dyeing returns the same roll, so taka-by-taka is possible; cutting destroys
+/// the roll, so only a bulk quantity exists. Offering it as a choice is how
+/// someone picks unit-wise for an operation where no 1:1 mapping can exist.
+model JobReceipt {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  jobOrderId     String @map("job_order_id") @db.Uuid
+  jobOrderStepId String @map("job_order_step_id") @db.Uuid
+
+  receiptNumber String   @map("receipt_number") @db.VarChar(50)
+  receiptDate   DateTime @default(now()) @map("receipt_date") @db.Timestamptz(6)
+
+  processorType         String  @default("vendor") @map("processor_type") @db.VarChar(20)
+  processorId           String? @map("processor_id") @db.Uuid
+  processorNameSnapshot String? @map("processor_name_snapshot") @db.VarChar(255)
+
+  /// unit_wise | bulk — copied from the process at save time, so a later edit to
+  /// the process cannot retell what this receipt did.
+  mode String @default("bulk") @db.VarChar(20)
+
+  /// What came back. A DIFFERENT item from what went out whenever the process
+  /// says so (§5.1), and the unit changes with it.
+  outputItemId String  @map("output_item_id") @db.Uuid
+  outputUomId  String? @map("output_uom_id") @db.Uuid
+  /// Where the goods landed — ours again, so a godown.
+  locationId String @map("location_id") @db.Uuid
+
+  /// The lots this receipt created. 🔴 `Lot.parentLotIds` is what carries
+  /// genealogy; these two are the shortcut back the other way, so the receipt
+  /// screen does not have to search lots by source document.
+  outputLotId String? @map("output_lot_id") @db.Uuid
+  /// A SEPARATE lot for the rework pieces, always. Merging them into the accepted
+  /// lot loses the piece count rework has to be measured by (plan §7).
+  reworkLotId String? @map("rework_lot_id") @db.Uuid
+
+  /// The disposition split, summed. The four MUST add up to `totalReceivedQty` —
+  /// the service refuses the save otherwise, and that one check is what makes a
+  /// separate "Rejection Note" document unnecessary (§6.4).
+  totalIssuedQty   Decimal @default(0) @map("total_issued_qty") @db.Decimal(18, 4)
+  totalReceivedQty Decimal @default(0) @map("total_received_qty") @db.Decimal(18, 4)
+  totalAcceptedQty Decimal @default(0) @map("total_accepted_qty") @db.Decimal(18, 4)
+  totalReworkQty   Decimal @default(0) @map("total_rework_qty") @db.Decimal(18, 4)
+  totalScrapQty    Decimal @default(0) @map("total_scrap_qty") @db.Decimal(18, 4)
+  /// Sent straight back to the processor. 🔴 It never entered our stock, so NO
+  /// ledger row is written for it (§6.4) — a row here would create quantity that
+  /// was never physically ours.
+  totalReturnedQty Decimal @default(0) @map("total_returned_qty") @db.Decimal(18, 4)
+
+  /// posted | cancelled. A cancellation posts REVERSING ledger rows and flips
+  /// this; it never deletes anything (inventory.prisma).
+  status String @default("posted") @db.VarChar(30)
+
+  remarks String?
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jobOrder      JobOrder           @relation(fields: [jobOrderId], references: [id], onDelete: Cascade)
+  step          JobOrderStep       @relation(fields: [jobOrderStepId], references: [id], onDelete: Cascade)
+  outputItem    Item               @relation("JobReceiptOutputItem", fields: [outputItemId], references: [id])
+  outputUom     UnitOfMeasurement? @relation("JobReceiptOutputUom", fields: [outputUomId], references: [id])
+  location      Location           @relation("JobReceiptLocation", fields: [locationId], references: [id])
+  outputLot     Lot?               @relation("JobReceiptOutputLot", fields: [outputLotId], references: [id])
+  reworkLot     Lot?               @relation("JobReceiptReworkLot", fields: [reworkLotId], references: [id])
+  createdByUser User?              @relation("JobReceiptCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?              @relation("JobReceiptUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  lines   JobReceiptLine[]
+  outputs JobReceiptOutput[]
+
+  @@unique([organizationId, receiptNumber])
+  @@index([organizationId, jobOrderStepId])
+  @@map("job_receipts")
+}
+
+/// 🔴 WHAT CAME BACK. One row per item (domain doc §5.7).
+///
+/// The receipt now has TWO child lists and they are different lengths: what was
+/// consumed (`JobReceiptLine`, keyed to the challan lines it closes) and what was
+/// returned (this). Cutting consumes one fabric and returns panels, offcuts and
+/// waste; stitching consumes three items and returns two. One table holding both
+/// would leave half its columns null on every row, and neither sum check could
+/// then add up its own rows.
+///
+/// The disposition split lives HERE rather than on the consumption row, because
+/// "2,880 accepted" is a statement about shirts, not about the panels that went
+/// out. Same for `parentPackageId`: it says which returned roll came from which
+/// issued roll, which is a fact about the roll that came back.
+model JobReceiptOutput {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  jobReceiptId   String @map("job_receipt_id") @db.Uuid
+
+  seq    Int
+  itemId String  @map("item_id") @db.Uuid
+  uomId  String? @map("uom_id") @db.Uuid
+
+  receivedQty Decimal @default(0) @map("received_qty") @db.Decimal(18, 4)
+
+  /// The four MUST sum to `receivedQty`, per row. That single check is what makes
+  /// a separate "Rejection Note" document unnecessary (§6.2) — two documents can
+  /// disagree about how much came back; one row cannot disagree with itself.
+  acceptedQty Decimal @default(0) @map("accepted_qty") @db.Decimal(18, 4)
+  reworkQty   Decimal @default(0) @map("rework_qty") @db.Decimal(18, 4)
+  scrapQty    Decimal @default(0) @map("scrap_qty") @db.Decimal(18, 4)
+  /// Handed straight back at the gate. 🔴 It never entered our stock, so NO ledger
+  /// row is written for it — a row here would create quantity that was never ours.
+  returnedQty Decimal @default(0) @map("returned_qty") @db.Decimal(18, 4)
+
+  /// 🔴 Exactly one output per receipt. It absorbs the pot — consumed value plus
+  /// the process charge — less whatever the by-products were given (§9.2.1).
+  isPrimary Boolean @default(false) @map("is_primary")
+
+  /// By-products only: what this output is worth. NULL on the primary, which
+  /// takes the remainder. Default zero is the honest answer rather than a
+  /// placeholder — offcuts carry no cost until somebody sells them, and the
+  /// surviving primary should carry the cost of the whole operation.
+  valueShare Decimal? @map("value_share") @db.Decimal(18, 4)
+
+  /// The lots this row created. `Lot.parentLotIds` carries genealogy; these are
+  /// the shortcut back the other way.
+  outputLotId String? @map("output_lot_id") @db.Uuid
+  reworkLotId String? @map("rework_lot_id") @db.Uuid
+
+  /// Set only in unit-wise mode, and only on the PRIMARY output — a by-product has
+  /// no package that went out to map back to.
+  parentPackageId String? @map("parent_package_id") @db.Uuid
+
+  reasonId String? @map("reason_id") @db.Uuid
+  /// ours | theirs.
+  responsibility String? @db.VarChar(20)
+
+  remarks String?
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jobReceipt    JobReceipt         @relation(fields: [jobReceiptId], references: [id], onDelete: Cascade)
+  item          Item               @relation("JobReceiptOutputRowItem", fields: [itemId], references: [id])
+  uom           UnitOfMeasurement? @relation("JobReceiptOutputRowUom", fields: [uomId], references: [id])
+  outputLot     Lot?               @relation("JobReceiptOutputRowLot", fields: [outputLotId], references: [id])
+  reworkLot     Lot?               @relation("JobReceiptOutputRowReworkLot", fields: [reworkLotId], references: [id])
+  parentPackage LotPackage?        @relation("JobReceiptOutputParentPackage", fields: [parentPackageId], references: [id])
+  reason        RejectionReason?   @relation("JobReceiptOutputReason", fields: [reasonId], references: [id])
+  createdByUser User?              @relation("JobReceiptOutputCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?              @relation("JobReceiptOutputUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, jobReceiptId])
+  @@map("job_receipt_outputs")
+}
+
+/// One returned taka in unit-wise mode, or the single collapsed row in bulk mode.
+///
+/// The four disposition columns live on the LINE, not the header, because a
+/// forty-taka receipt where two takas are shade-off has to say WHICH two — and
+/// `parentPackageId` is the only place that mapping can ever be recorded (§6.2).
+/// It cannot be reconstructed from quantities afterwards.
+model JobReceiptLine {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  jobReceiptId   String @map("job_receipt_id") @db.Uuid
+
+  /// Which issue, and which line of it, this closes. Nullable because a bulk
+  /// receipt spanning several issues has no single line to point at.
+  jobIssueId     String? @map("job_issue_id") @db.Uuid
+  jobIssueLineId String? @map("job_issue_line_id") @db.Uuid
+
+  /// The package that went out and came back — 🔴 the 1:1 mapping that makes
+  /// taka-level traceability possible. Only ever set when the process preserves
+  /// packaging.
+  parentPackageId String? @map("parent_package_id") @db.Uuid
+
+  issuedQty   Decimal @default(0) @map("issued_qty") @db.Decimal(18, 4)
+  receivedQty Decimal @default(0) @map("received_qty") @db.Decimal(18, 4)
+
+  acceptedQty Decimal @default(0) @map("accepted_qty") @db.Decimal(18, 4)
+  reworkQty   Decimal @default(0) @map("rework_qty") @db.Decimal(18, 4)
+  scrapQty    Decimal @default(0) @map("scrap_qty") @db.Decimal(18, 4)
+  returnedQty Decimal @default(0) @map("returned_qty") @db.Decimal(18, 4)
+
+  reasonId String? @map("reason_id") @db.Uuid
+  /// ours | theirs. Drives whether rework is re-charged or done free, and the
+  /// vendor scorecard that comes later.
+  responsibility String? @db.VarChar(20)
+
+  remarks String?
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jobReceipt    JobReceipt       @relation(fields: [jobReceiptId], references: [id], onDelete: Cascade)
+  jobIssue      JobIssue?        @relation(fields: [jobIssueId], references: [id])
+  jobIssueLine  JobIssueLine?    @relation(fields: [jobIssueLineId], references: [id])
+  parentPackage LotPackage?      @relation("JobReceiptLineParentPackage", fields: [parentPackageId], references: [id])
+  reason        RejectionReason? @relation(fields: [reasonId], references: [id])
+  createdByUser User?            @relation("JobReceiptLineCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?            @relation("JobReceiptLineUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, jobReceiptId])
+  @@map("job_receipt_lines")
+}

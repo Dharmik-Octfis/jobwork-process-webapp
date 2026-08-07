@@ -23,11 +23,28 @@ export const itemSchema = z.object({
   is_taxable: z.boolean().optional(),
   itemType: z.enum(['Single Item', 'Contains Variants']).default('Single Item'),
   item_type: z.string().optional(),
-  unit: z.string().default(""),
-  sku: z.string().default(""),
+  unit: z.string().default(''),
+  sku: z.string().default(''),
+  /**
+   * The jobwork columns (migration 20260804120247). Optional here because the
+   * Item screens do not edit them yet — but they must survive the parse, because
+   * zod STRIPS what it does not declare and the jobwork screens read all three:
+   *
+   *   stockingUomId  the input unit a job order shows read-only — one item, one
+   *                  stocking unit (§5.1)
+   *   lotTracking    none | lot | lot_and_package — gates whether Material In may
+   *                  record takas at all, and whether the Issue picker expands
+   *   defaultRouteId pre-selects the route on a new job order (§4.1)
+   */
+  stockingUomId: z.string().nullable().optional(),
+  lotTracking: z.string().optional(),
+  nature: z.string().optional(),
+  defaultRouteId: z.string().nullable().optional(),
   isSalesInfo: z.boolean().default(true),
   can_be_sold: z.boolean().optional(),
-  sellingPrice: z.number({ message: 'Selling price is required' }).min(0, 'Selling price must be positive'),
+  sellingPrice: z
+    .number({ message: 'Selling price is required' })
+    .min(0, 'Selling price must be positive'),
   rate: z.number().nullable().optional(),
   account_id: z.string().max(100).nullable().optional(),
   salesDescription: z.string().nullable().optional(),
@@ -79,11 +96,24 @@ export const itemFormSchema = z.object({
   category: z.string().optional().nullable(),
   hsnCode: z.string().optional().nullable(),
   itemType: z.enum(['Single Item', 'Contains Variants']).default('Single Item'),
-  unit: z.string().optional().default(""),
-  sku: z.string().optional().default(""),
+  unit: z.string().optional().default(''),
+  /**
+   * 🔴 The unit the STOCK LEDGER moves this item in. One item, one stocking unit
+   * (jobwork domain §5.1): every lot, challan line and balance is denominated in
+   * it, and nothing converts between units anywhere in the system.
+   *
+   * Set from the same dropdown as `unit` above, which is the legacy free string
+   * the lists still render. Nullable because items created before the field
+   * existed have none — the jobwork screens then fall back to asking, rather
+   * than inventing one.
+   */
+  stockingUomId: z.string().nullable().optional(),
+  sku: z.string().optional().default(''),
 
   isSalesInfo: z.boolean().default(true),
-  sellingPrice: z.number({ message: 'Selling price is required' }).min(0, 'Selling price must be positive'),
+  sellingPrice: z
+    .number({ message: 'Selling price is required' })
+    .min(0, 'Selling price must be positive'),
   salesDescription: z.string().optional().nullable(),
 
   isPurchaseInfo: z.boolean().default(true),

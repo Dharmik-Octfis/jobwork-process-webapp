@@ -40,6 +40,16 @@ export const vendorSchema = z.object({
   currency: z.string().nullable(),
   paymentTerms: z.string().nullable(),
   notes: z.string().nullable().optional(),
+  /**
+   * material_supplier | job_worker | broker | transporter | general.
+   *
+   * Optional here because the vendor form does not edit it yet, but it must
+   * survive the parse — zod strips what it does not declare, and the jobwork
+   * screens filter on it. An unfiltered processor dropdown that offers
+   * transporters as dyers is the most common defect on that kind of screen
+   * (field-sources §10). Empty means "not yet classified", not "not a jobworker".
+   */
+  vendorTypes: z.array(z.string()).optional(),
   billingAttention: z.string().nullable(),
   billingCountry: z.string().nullable(),
   billingStreet1: z.string().nullable(),

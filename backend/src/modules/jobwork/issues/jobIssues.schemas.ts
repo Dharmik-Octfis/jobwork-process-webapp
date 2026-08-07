@@ -1,0 +1,126 @@
+import { z } from 'zod';
+import { openApiRegistry } from '../../../config/openapi.ts';
+import { PROCESSOR_TYPES } from '../jobwork.types.ts';
+
+/**
+ * Request shapes for Issues — the challan out.
+ *
+ * 🔴 WHAT IS NOT HERE IS THE POINT.
+ *
+ * No `itemId`, no `uomId`, no `jobOrderId`: all three come from the step, which
+ * the service reads. The dialog shows them locked (field-sources §5.1) and
+ * accepting them from the body would let a payload issue an item the step never
+ * planned for — breaking the chain the job order validated at save, with the
+ * failure surfacing days later as an empty picker at the next step.
+ *
+ * No `challanNumber` either: `NumberSequence('job_issue')` allocates it in the
+ * save transaction, so an abandoned dialog burns nothing (§2.2). A gap in a
+ * statutory series is a question an auditor asks.
+ */
+
+export const jobIssueLineSchema = z.object({
+  /**
+   * 🔴 WHICH ITEM THIS LINE IS (domain §5.7). One challan carries fabric, thread
+   * and buttons — one physical movement to one processor, so one document — and
+   * the dialog renders a lot picker per input item, each section stamping its own
+   * `itemId` onto the lines it produces.
+   *
+   * Optional only for the rollout: a client that sends nothing gets the step's
+   * principal input, which is what every line meant before Sprint 5. The service
+   * still refuses an item the step does not consume — the lot picker can only
+   * offer what the step declared, so a line naming anything else was hand-made.
+   */
+  itemId: z.string().uuid().nullable().optional(),
+
+  /**
+   * ⚠️ TEMPORARY — optional, and null means "there is no stock on record".
+   *
+   * Material In was retired before Purchase Received and Opening Stock exist, so
+   * an item can legitimately have no lots at all right now. Rather than make the
+   * whole loop untestable, a line with no lot has one created for it at ZERO
+   * value (`resolveLines`), and the dialog says so on screen.
+   *
+   * 🔴 Make this required again the day Purchase Received lands. Issuing stock
+   * that was never received is a defect, not a feature.
+   */
+  lotId: z.string().uuid().nullable().optional(),
+  /**
+   * Set only for a package-granular issue. When it is set the quantity is the
+   * package's own measured quantity — ticking a taka takes ALL of it (§5.3), so
+   * `qty` is checked against the package rather than typed freely.
+   */
+  lotPackageId: z.string().uuid().nullable().optional(),
+  qty: z.coerce.number().positive('Every line needs a quantity greater than zero.'),
+});
+
+export type JobIssueLineInput = z.infer<typeof jobIssueLineSchema>;
+
+export const createJobIssueSchema = openApiRegistry.register(
+  'CreateJobIssueRequest',
+  z.object({
+    /** The step whose `[+ Issue]` was clicked. Everything else follows from it. */
+    jobOrderStepId: z.string().uuid({ message: 'An issue must belong to a job order step.' }),
+
+    issueDate: z.coerce.date().optional(),
+
+    /** Defaults to the step's processor. Present so a one-off substitution does
+     * not require editing the job order. */
+    processorType: z.enum(PROCESSOR_TYPES).optional(),
+    processorId: z.string().uuid().nullable().optional(),
+
+    /** Which godown the goods leave. The dialog offers only locations that
+     * actually hold the item — a ledger query, not a location list (§5.1). */
+    sourceLocationId: z.string().uuid({ message: 'Pick where the material is going out from.' }),
+
+    /**
+     * Where they land. Normally omitted: the service derives the processor's own
+     * location and creates it on first use, because making someone set up a
+     * location for a dyer before they can send anything to that dyer is a gate
+     * with no purpose (§5.1).
+     */
+    destinationLocationId: z.string().uuid().nullable().optional(),
+
+    /** Set when launched from a receipt's rework line — same step, next attempt. */
+    isRework: z.boolean().optional(),
+
+    transporterId: z.string().uuid().nullable().optional(),
+    vehicleNo: z.string().trim().max(30).nullable().optional(),
+    lrNo: z.string().trim().max(50).nullable().optional(),
+    lrDate: z.coerce.date().nullable().optional(),
+    /** Manual in release 1; an API response later. Recorded now because it cannot
+     * be back-filled onto a challan whose goods have already moved (plan §11). */
+    ewayBillNo: z.string().trim().max(30).nullable().optional(),
+
+    /**
+     * Required by the SERVICE, not by this schema, and only when the issue goes
+     * past the step's tolerance ceiling. Making it conditionally required here
+     * would mean this file knowing the planned quantity, which it cannot.
+     */
+    toleranceOverrideReason: z.string().trim().max(2000).nullable().optional(),
+
+    lines: z.array(jobIssueLineSchema).min(1, 'Pick at least one lot to issue.'),
+
+    remarks: z.string().trim().max(2000).nullable().optional(),
+    customFields: z.record(z.string(), z.unknown()).optional(),
+  }),
+);
+
+export type CreateJobIssueInput = z.infer<typeof createJobIssueSchema>;
+
+/**
+ * Cancelling a challan. Not a delete and not an edit.
+ *
+ * 🔴 A posted issue has moved stock, and the ledger's only legal correction is a
+ * REVERSING ENTRY (inventory.prisma). Cancelling posts the opposite rows and
+ * flips the status; the original rows stay, so the history of "this went out and
+ * came back on paper" survives. The reason is required for the same purpose —
+ * a cancelled challan number is a question somebody will ask.
+ */
+export const cancelJobIssueSchema = openApiRegistry.register(
+  'CancelJobIssueRequest',
+  z.object({
+    reason: z.string().trim().min(1, 'Say why this challan is being cancelled.').max(2000),
+  }),
+);
+
+export type CancelJobIssueInput = z.infer<typeof cancelJobIssueSchema>;

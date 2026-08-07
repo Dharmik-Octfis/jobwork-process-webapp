@@ -98,6 +98,46 @@ export const CUSTOM_FIELD_MODULES: Array<{
   },
   { entityType: 'item', label: 'Item', description: 'Add fields to the item create & edit form.' },
   {
+    entityType: 'process',
+    label: 'Process',
+    description: 'Add fields to the jobwork process create & edit form.',
+  },
+  {
+    entityType: 'process_route',
+    label: 'Process Route',
+    description: 'Add fields to the route create & edit form.',
+  },
+  {
+    entityType: 'job_order',
+    label: 'Job Order',
+    description: 'Add fields to the job order form and its steps.',
+  },
+  {
+    entityType: 'job_issue',
+    label: 'Issue (Challan Out)',
+    // This is where the mind map's "lot-wise pcs, cutper, meter" lands. One org's
+    // cutper is another org's nothing, so it must never become a column.
+    description: 'Add fields captured when material is issued to a processor.',
+  },
+  {
+    entityType: 'job_receipt',
+    label: 'Receipt',
+    description: 'Add fields captured when goods come back from a processor.',
+  },
+  {
+    entityType: 'rejection_reason',
+    label: 'Rejection Reason',
+    description: 'Add fields to the rejection reason master.',
+  },
+  {
+    entityType: 'lot',
+    label: 'Lot',
+    // No list page — lots are picked from an availability query, never browsed —
+    // but Material In creates one, and an org may need to record what its own tags
+    // carry.
+    description: 'Add fields recorded against a lot when material is taken in.',
+  },
+  {
     entityType: 'member',
     label: 'User',
     // Dragging rows in this module's field list sets their display order, which is

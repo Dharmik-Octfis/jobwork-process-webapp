@@ -130,8 +130,50 @@ async function main() {
   await prisma.appModule.upsert({
     where: { code: 'ITEMS' },
     update: { parentId: inventory.id },
-    create: { code: 'ITEMS', name: 'Items', parentId: inventory.id, sortIndex: 1, icon: 'FileText' },
+    create: {
+      code: 'ITEMS',
+      name: 'Items',
+      parentId: inventory.id,
+      sortIndex: 1,
+      icon: 'FileText',
+    },
   });
+
+  // Jobwork.
+  //
+  // sortIndex 5 puts it after Purchases — the sidebar order is Home, Item, Sales,
+  // Purchases, Jobwork, which is roughly the order a jobworker's day runs in.
+  const jobwork = await prisma.appModule.upsert({
+    where: { code: 'JOBWORK' },
+    update: { name: 'Jobwork', sortIndex: 5 },
+    create: { code: 'JOBWORK', name: 'Jobwork', sortIndex: 5, icon: 'Factory' },
+  });
+
+  /**
+   * The children, in the order the work actually happens: you raise a job order,
+   * you issue material, you receive it back. Processes and Routes are masters and
+   * sit above them because that is where you go to set the shop up — but Job
+   * Orders is what people open the module for, which is why the parent
+   * `/jobwork` route lands there rather than on a master list.
+   *
+   * A child here with no page behind it is a sidebar link that goes nowhere, so
+   * every entry below has a route in `web/src/app/router.tsx` in the same change.
+   */
+  const jobworkChildren = [
+    { code: 'PROCESSES', name: 'Processes', sortIndex: 1, icon: 'Workflow' },
+    { code: 'ROUTES', name: 'Process Routes', sortIndex: 2, icon: 'Route' },
+    { code: 'JOB_ORDERS', name: 'Job Orders', sortIndex: 3, icon: 'ClipboardList' },
+    { code: 'ISSUES', name: 'Issues', sortIndex: 4, icon: 'Send' },
+    { code: 'RECEIPTS', name: 'Receipts', sortIndex: 5, icon: 'PackageCheck' },
+  ];
+
+  for (const child of jobworkChildren) {
+    await prisma.appModule.upsert({
+      where: { code: child.code },
+      update: { parentId: jobwork.id, name: child.name, sortIndex: child.sortIndex },
+      create: { ...child, parentId: jobwork.id },
+    });
+  }
   console.log('Seeded app modules.');
 
   console.log('Seeding finished.');

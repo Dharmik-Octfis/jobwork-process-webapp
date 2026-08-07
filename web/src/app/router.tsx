@@ -109,6 +109,56 @@ const EditCustomer = lazyPage(
   () => import('../features/sales/customers/EditCustomer'),
   'EditCustomer',
 );
+const JobworkPage = lazyPage(() => import('../features/jobwork/JobworkPage'), 'JobworkPage');
+const ProcessesList = lazyPage(
+  () => import('../features/jobwork/processes/ProcessesList'),
+  'ProcessesList',
+);
+const CreateProcess = lazyPage(
+  () => import('../features/jobwork/processes/CreateProcess'),
+  'CreateProcess',
+);
+const EditProcess = lazyPage(
+  () => import('../features/jobwork/processes/EditProcess'),
+  'EditProcess',
+);
+const RoutesList = lazyPage(
+  () => import('../features/jobwork/process-routes/RoutesList'),
+  'RoutesList',
+);
+const CreateRoute = lazyPage(
+  () => import('../features/jobwork/process-routes/CreateRoute'),
+  'CreateRoute',
+);
+const EditRoute = lazyPage(
+  () => import('../features/jobwork/process-routes/EditRoute'),
+  'EditRoute',
+);
+const JobOrdersList = lazyPage(
+  () => import('../features/jobwork/job-orders/JobOrdersList'),
+  'JobOrdersList',
+);
+const CreateJobOrder = lazyPage(
+  () => import('../features/jobwork/job-orders/CreateJobOrder'),
+  'CreateJobOrder',
+);
+const EditJobOrder = lazyPage(
+  () => import('../features/jobwork/job-orders/EditJobOrder'),
+  'EditJobOrder',
+);
+const JobOrderOverview = lazyPage(
+  () => import('../features/jobwork/job-orders/JobOrderOverview'),
+  'JobOrderOverview',
+);
+const IssuesList = lazyPage(() => import('../features/jobwork/issues/IssuesList'), 'IssuesList');
+const ReceiptsList = lazyPage(
+  () => import('../features/jobwork/receipts/ReceiptsList'),
+  'ReceiptsList',
+);
+const RejectionReasonsList = lazyPage(
+  () => import('../features/jobwork/rejection-reasons/RejectionReasonsList'),
+  'RejectionReasonsList',
+);
 const ItemsList = lazyPage(() => import('../features/items/ItemsList'), 'ItemsList');
 const CreateItemPage = lazyPage(() => import('../features/items/CreateItemPage'), 'CreateItemPage');
 const EditItemPage = lazyPage(() => import('../features/items/EditItemPage'), 'EditItemPage');
@@ -200,6 +250,41 @@ export const router = createBrowserRouter([
               { path: '/organizations/:orgId/sales/customers/:id/edit', element: <EditCustomer /> },
               { path: '/organizations/:orgId/purchases/po', element: <PurchasesPage /> },
               { path: '/organizations/:orgId/purchases/bills', element: <PurchasesPage /> },
+              // Jobwork, Sprints 1–4.
+              //
+              // 🔴 There is no `issues/new` and no `receipts/new`, deliberately.
+              // Both documents are raised from a job order step — the dialogs
+              // live on the Overview page — because a challan with no step has no
+              // process, no rate, no tolerance and nothing to come back to. A
+              // standalone create route would be a form that cannot be filled in
+              // correctly.
+              { path: '/organizations/:orgId/jobwork', element: <JobworkPage /> },
+              { path: '/organizations/:orgId/jobwork/processes', element: <ProcessesList /> },
+              { path: '/organizations/:orgId/jobwork/processes/new', element: <CreateProcess /> },
+              {
+                path: '/organizations/:orgId/jobwork/processes/:id/edit',
+                element: <EditProcess />,
+              },
+              { path: '/organizations/:orgId/jobwork/routes', element: <RoutesList /> },
+              { path: '/organizations/:orgId/jobwork/routes/new', element: <CreateRoute /> },
+              { path: '/organizations/:orgId/jobwork/routes/:id/edit', element: <EditRoute /> },
+              { path: '/organizations/:orgId/jobwork/job-orders', element: <JobOrdersList /> },
+              { path: '/organizations/:orgId/jobwork/job-orders/new', element: <CreateJobOrder /> },
+              // Before ':id', or "new" is read as a job order id.
+              {
+                path: '/organizations/:orgId/jobwork/job-orders/:id',
+                element: <JobOrderOverview />,
+              },
+              {
+                path: '/organizations/:orgId/jobwork/job-orders/:id/edit',
+                element: <EditJobOrder />,
+              },
+              { path: '/organizations/:orgId/jobwork/issues', element: <IssuesList /> },
+              { path: '/organizations/:orgId/jobwork/receipts', element: <ReceiptsList /> },
+              {
+                path: '/organizations/:orgId/jobwork/rejection-reasons',
+                element: <RejectionReasonsList />,
+              },
               { path: '/organizations/:orgId/items', element: <ItemsList /> },
               { path: '/organizations/:orgId/items/new', element: <CreateItemPage /> },
               { path: '/organizations/:orgId/items/:id/edit', element: <EditItemPage /> },

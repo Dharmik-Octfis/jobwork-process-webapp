@@ -1,0 +1,31 @@
+-- per_item_tolerance
+--
+-- An over-issue allowance per input item, overriding the step's own (domain
+-- §5.7 + §2.5). Fabric may allow 3% while thread allows 25%; one percentage
+-- across three items is either too tight for one or meaningless for another.
+--
+-- Nullable, and deliberately NOT defaulted: NULL means "use the step's", while
+-- 0 means "no tolerance at all". A default would make those two the same value.
+--
+-- Additive only. Nothing reads the column until jobIssues.service.ts does, and
+-- an instance still running the old build is unaffected.
+--
+-- 🔴 TWO `DROP INDEX` STATEMENTS WERE REMOVED FROM THIS DRAFT BY HAND — the same
+-- pair stripped from 20260806112805_multi_item_steps, for the same reason.
+--
+-- `migrate diff` wanted to drop `permission_templates_organization_id_name_key`
+-- and `roles_organization_id_name_key`. Those are the PARTIAL unique indexes
+-- shipped on 2026-08-05 (migrations 20260805130000 and 20260805133000):
+--
+--     CREATE UNIQUE INDEX ... ON roles (organization_id, name) WHERE is_deleted = false
+--
+-- Prisma cannot express a partial index, so its `@@unique` renders as the plain
+-- one and EVERY future draft will keep asking to "fix" the difference. Applying
+-- it would silently undo the soft-delete-aware uniqueness those migrations exist
+-- for — a deleted role's name would occupy the key forever again.
+--
+-- Strip them from every future draft too. `db:check-drift` reports this as
+-- permanent drift, and that drift is correct.
+
+-- AlterTable
+ALTER TABLE "job_order_step_inputs" ADD COLUMN     "tolerance_pct" DECIMAL(6,3);

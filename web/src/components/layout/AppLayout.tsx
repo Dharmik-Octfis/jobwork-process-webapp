@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Suspense} from 'react';
+import { useState, useRef, useEffect, Suspense } from 'react';
 import {
   NavLink,
   Outlet,
@@ -22,6 +22,12 @@ import {
   ShoppingCart,
   ShoppingBag,
   Receipt,
+  Factory,
+  Workflow,
+  Route as RouteIcon,
+  ClipboardList,
+  Send,
+  PackageCheck,
   ChevronRight,
   Copy,
   Check,
@@ -39,6 +45,9 @@ import { LAST_ORG_KEY } from '../../routes/OrgRedirect';
 import { fetchVendors } from '../../features/purchases/vendors/vendors.api';
 import { fetchCustomers } from '../../features/sales/customers/customers.api';
 import { itemsApi } from '../../features/items/items.api';
+import { fetchProcesses } from '../../features/jobwork/processes/processes.api';
+import { fetchJobOrders } from '../../features/jobwork/job-orders/jobOrders.api';
+import { fetchJobIssues } from '../../features/jobwork/issues/jobIssues.api';
 
 /* eslint-disable @typescript-eslint/naming-convention */
 /**
@@ -56,6 +65,12 @@ const ROUTE_MAP: Record<string, string> = {
   SALES: '/sales',
   CUSTOMERS: '/sales/customers',
   ITEMS: '/items',
+  JOBWORK: '/jobwork',
+  PROCESSES: '/jobwork/processes',
+  ROUTES: '/jobwork/routes',
+  JOB_ORDERS: '/jobwork/job-orders',
+  ISSUES: '/jobwork/issues',
+  RECEIPTS: '/jobwork/receipts',
 };
 
 function navPath(moduleCode: string, orgId: string | undefined): string {
@@ -72,6 +87,14 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Users,
   FileText,
   Receipt,
+  Factory,
+  Workflow,
+  // The jobwork children. `Route` is aliased on import because react-router
+  // exports a component of the same name and this file uses both.
+  Route: RouteIcon,
+  ClipboardList,
+  Send,
+  PackageCheck,
 };
 /* eslint-enable @typescript-eslint/naming-convention */
 
@@ -138,6 +161,52 @@ const SEARCHABLE_ROUTES: SearchModule[] = [
         subtitle: i.sku ? `SKU: ${i.sku}` : undefined,
       })),
     to: (orgId, id) => `/organizations/${orgId}/items?id=${id}`,
+  },
+  {
+    match: '/jobwork/processes',
+    label: 'Processes',
+    fetch: async (orgId, term) =>
+      // `filter: 'all'` — the list defaults to active processes, but someone
+      // searching by name is looking for a specific one and an inactive hit that
+      // silently does not appear reads as "it was deleted".
+      (
+        await fetchProcesses(orgId, { search: term, filter: 'all_processes', perPage: 6 })
+      ).results.map((p) => ({
+        id: p.id,
+        title: p.name,
+        subtitle: p.code || undefined,
+      })),
+    to: (orgId, id) => `/organizations/${orgId}/jobwork/processes?id=${id}`,
+  },
+  {
+    // Before the bare '/jobwork' rule would ever match — these paths are checked
+    // with `includes`, so the more specific entries have to come first.
+    match: '/jobwork/job-orders',
+    label: 'Job Orders',
+    fetch: async (orgId, term) =>
+      // `all_orders`, not the default view: someone searching by number wants
+      // that job order, and a completed one silently missing reads as deleted.
+      (await fetchJobOrders(orgId, { search: term, filter: 'all_orders', perPage: 6 })).results.map(
+        (o) => ({
+          id: o.id,
+          title: o.jobOrderNumber,
+          subtitle: o.inputItem?.name ?? undefined,
+        }),
+      ),
+    to: (orgId, id) => `/organizations/${orgId}/jobwork/job-orders/${id}`,
+  },
+  {
+    match: '/jobwork/issues',
+    label: 'Challans',
+    fetch: async (orgId, term) =>
+      (await fetchJobIssues(orgId, { search: term, filter: 'all_issues', perPage: 6 })).results.map(
+        (i) => ({
+          id: i.id,
+          title: i.challanNumber,
+          subtitle: i.processorNameSnapshot ?? undefined,
+        }),
+      ),
+    to: (orgId, id) => `/organizations/${orgId}/jobwork/issues?id=${id}`,
   },
 ];
 
@@ -513,7 +582,11 @@ export function AppLayout() {
               activeOrgId={effectiveOrgId ?? null}
               onSelectOrg={switchOrg}
             />
-            <ProfileDropdown user={user} logoutMutation={logoutMutation} activeOrgCode={activeOrg?.orgCode} />
+            <ProfileDropdown
+              user={user}
+              logoutMutation={logoutMutation}
+              activeOrgCode={activeOrg?.orgCode}
+            />
           </div>
         </header>
 
@@ -665,9 +738,18 @@ function TopBarAvatar({ user, size }: { user: User; size: number }) {
   const iconSize = size === 32 ? 18 : 28;
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
       {!url && (
-        <UserIcon size={iconSize} color={size === 32 ? "inherit" : "var(--color-text-secondary)"} />
+        <UserIcon size={iconSize} color={size === 32 ? 'inherit' : 'var(--color-text-secondary)'} />
       )}
       {url && (
         <img
@@ -761,36 +843,89 @@ function ProfileDropdown({
             `}
           </style>
 
-          <div style={{
-            position: 'absolute',
-            top: -6,
-            right: 18,
-            width: 12,
-            height: 12,
-            background: 'var(--color-surface)',
-            borderTop: '1px solid var(--color-border)',
-            borderLeft: '1px solid var(--color-border)',
-            transform: 'rotate(45deg)'
-          }} />
+          <div
+            style={{
+              position: 'absolute',
+              top: -6,
+              right: 18,
+              width: 12,
+              height: 12,
+              background: 'var(--color-surface)',
+              borderTop: '1px solid var(--color-border)',
+              borderLeft: '1px solid var(--color-border)',
+              transform: 'rotate(45deg)',
+            }}
+          />
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
+          >
             <div style={{ display: 'flex', gap: 16 }}>
-              <div style={{ width: 56, height: 56, borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                {user ? <TopBarAvatar user={user} size={56} /> : <UserIcon size={28} color="var(--color-text-secondary)" />}
+              <div
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--color-bg)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  overflow: 'hidden',
+                }}
+              >
+                {user ? (
+                  <TopBarAvatar user={user} size={56} />
+                ) : (
+                  <UserIcon size={28} color="var(--color-text-secondary)" />
+                )}
               </div>
               <div>
-                <div style={{ fontSize: 18, fontWeight: 500, color: 'var(--color-text)', marginBottom: 2 }}>{user?.fullName}</div>
-                <div style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>{user?.email}</div>
+                <div
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 500,
+                    color: 'var(--color-text)',
+                    marginBottom: 2,
+                  }}
+                >
+                  {user?.fullName}
+                </div>
+                <div style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>
+                  {user?.email}
+                </div>
               </div>
             </div>
-            <button onClick={() => setIsOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-danger)', padding: 4 }}>
+            <button
+              onClick={() => setIsOpen(false)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--color-danger)',
+                padding: 4,
+              }}
+            >
               <X size={18} />
             </button>
           </div>
 
-          <div style={{ marginTop: 16, fontSize: 14, color: 'var(--color-text-secondary)', borderBottom: '1px solid var(--color-border)', paddingBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div
+            style={{
+              marginTop: 16,
+              fontSize: 14,
+              color: 'var(--color-text-secondary)',
+              borderBottom: '1px solid var(--color-border)',
+              paddingBottom: 16,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
             <div>
-              Organization Code: <span style={{ fontWeight: 500, color: 'var(--color-text)' }}>{activeOrgCode || 'N/A'}</span>
+              Organization Code:{' '}
+              <span style={{ fontWeight: 500, color: 'var(--color-text)' }}>
+                {activeOrgCode || 'N/A'}
+              </span>
             </div>
             {activeOrgCode && (
               <button
@@ -833,7 +968,7 @@ function ProfileDropdown({
                 cursor: 'pointer',
                 fontSize: 14,
                 fontWeight: 500,
-                padding: '4px 8px'
+                padding: '4px 8px',
               }}
             >
               <LogOut size={16} /> Sign Out
@@ -945,17 +1080,19 @@ function OrgDropdown({
           </style>
 
           {/* Caret pointing to Org button */}
-          <div style={{
-            position: 'absolute',
-            top: -6,
-            right: 76,
-            width: 12,
-            height: 12,
-            background: 'var(--color-surface)',
-            borderTop: '1px solid var(--color-border)',
-            borderLeft: '1px solid var(--color-border)',
-            transform: 'rotate(45deg)'
-          }} />
+          <div
+            style={{
+              position: 'absolute',
+              top: -6,
+              right: 76,
+              width: 12,
+              height: 12,
+              background: 'var(--color-surface)',
+              borderTop: '1px solid var(--color-border)',
+              borderLeft: '1px solid var(--color-border)',
+              transform: 'rotate(45deg)',
+            }}
+          />
 
           {/* Header */}
           <div
@@ -1072,7 +1209,8 @@ function OrgDropdown({
                           Organization Code:{' '}
                           <span
                             style={{
-                              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                              fontFamily:
+                                'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
                               letterSpacing: '0.03em',
                             }}
                           >
@@ -1091,14 +1229,21 @@ function OrgDropdown({
                             background: 'none',
                             border: 'none',
                             cursor: 'pointer',
-                            color: copiedOrgId === org.organizationId ? 'var(--color-success, #10b981)' : 'var(--color-text-muted)',
+                            color:
+                              copiedOrgId === org.organizationId
+                                ? 'var(--color-success, #10b981)'
+                                : 'var(--color-text-muted)',
                             display: 'flex',
                             alignItems: 'center',
                             padding: 2,
                             borderRadius: 'var(--radius-sm)',
                           }}
                         >
-                          {copiedOrgId === org.organizationId ? <Check size={12} /> : <Copy size={12} />}
+                          {copiedOrgId === org.organizationId ? (
+                            <Check size={12} />
+                          ) : (
+                            <Copy size={12} />
+                          )}
                         </button>
                       </div>
                     )}
