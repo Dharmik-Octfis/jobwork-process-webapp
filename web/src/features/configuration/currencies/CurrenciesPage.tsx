@@ -1,6 +1,14 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { Plus, Edit2, Coins } from 'lucide-react';
+import { useParams, useSearchParams } from 'react-router-dom';
+import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
+import '../../users/Users.css';
+
+const CURRENCY_FILTERS = [
+  { key: 'active', label: 'Active Currencies' },
+  { key: 'inactive', label: 'Inactive Currencies' },
+  { key: 'all', label: 'All Currencies' },
+];
+import { Plus, Edit2, Coins, Info } from 'lucide-react';
 import { format } from 'date-fns';
 import { useCurrencies, useUpdateCurrency } from './currencies.api';
 import { CurrencyFormModal } from './CurrencyFormModal';
@@ -8,8 +16,28 @@ import type { Currency } from './currencies.schemas';
 
 export function CurrenciesPage() {
   const { orgId } = useParams<{ orgId: string }>();
+  const [params, setParams] = useSearchParams();
+  const filter = params.get('filter') ?? 'active';
+
+  const setFilter = (key: string) => {
+    setParams((prev) => {
+      if (key === 'active') {
+        prev.delete('filter');
+      } else {
+        prev.set('filter', key);
+      }
+      return prev;
+    }, { replace: true });
+  };
+
   const { data: currencies = [], isLoading, error } = useCurrencies(orgId!);
   const updateMutation = useUpdateCurrency(orgId!);
+
+  const filteredCurrencies = currencies.filter((currency) => {
+    if (filter === 'active') return currency.isActive;
+    if (filter === 'inactive') return !currency.isActive;
+    return true;
+  });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currencyToEdit, setCurrencyToEdit] = useState<Currency | null>(null);
@@ -66,9 +94,12 @@ export function CurrenciesPage() {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <h1 style={{ fontSize: '18px', fontWeight: 600, color: '#000', margin: 0 }}>
-                Currencies
-              </h1>
+              <ListFilterDropdown
+                filters={CURRENCY_FILTERS}
+                value={filter}
+                onChange={setFilter}
+                fallbackLabel="Active Currencies"
+              />
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -103,7 +134,7 @@ export function CurrenciesPage() {
               >
                 Loading...
               </div>
-            ) : currencies.length === 0 ? (
+            ) : filteredCurrencies.length === 0 ? (
               <div
                 style={{
                   display: 'flex',
@@ -134,32 +165,36 @@ export function CurrenciesPage() {
                 >
                   No Currencies found
                 </h3>
-                <p style={{ margin: '0 0 24px 0', color: '#64748b', fontSize: 14, maxWidth: 300 }}>
-                  Get started by adding your first currency.
-                </p>
-                <button
-                  onClick={() => {
-                    setCurrencyToEdit(null);
-                    setIsModalOpen(true);
-                  }}
-                  style={{
-                    background: '#fff',
-                    color: 'var(--color-primary)',
-                    border: '1px solid var(--color-border)',
-                    padding: '8px 16px',
-                    borderRadius: 'var(--radius-md)',
-                    fontWeight: 500,
-                    fontSize: 14,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    boxShadow: 'var(--shadow-sm)',
-                  }}
-                >
-                  <Plus size={16} />
-                  Add Currency
-                </button>
+                {currencies.length === 0 && (
+                  <>
+                    <p style={{ margin: '0 0 24px 0', color: '#64748b', fontSize: 14, maxWidth: 300 }}>
+                      Get started by adding your first currency.
+                    </p>
+                    <button
+                      onClick={() => {
+                        setCurrencyToEdit(null);
+                        setIsModalOpen(true);
+                      }}
+                      style={{
+                        background: '#fff',
+                        color: 'var(--color-primary)',
+                        border: '1px solid var(--color-border)',
+                        padding: '8px 16px',
+                        borderRadius: 'var(--radius-md)',
+                        fontWeight: 500,
+                        fontSize: 14,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        boxShadow: 'var(--shadow-sm)',
+                      }}
+                    >
+                      <Plus size={16} />
+                      Add Currency
+                    </button>
+                  </>
+                )}
               </div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -171,7 +206,7 @@ export function CurrenciesPage() {
                       Currency Name
                     </th>
                     <th style={{ ...headerStyle, width: '10%', textAlign: 'left' }}>Symbol</th>
-                    <th style={{ ...headerStyle, width: '15%', textAlign: 'right' }}>Exchange Rate</th>
+                    <th style={{ ...headerStyle, width: '15%', textAlign: 'left' }}>Exchange Rate</th>
                     <th style={{ ...headerStyle, width: '15%', textAlign: 'left' }}>
                       Created By & Time
                     </th>
@@ -183,7 +218,7 @@ export function CurrenciesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {currencies.map((currency) => (
+                  {filteredCurrencies.map((currency) => (
                     <tr
                       key={currency.id}
                       style={{
@@ -222,7 +257,7 @@ export function CurrenciesPage() {
                       <td style={{ padding: '12px 16px', color: 'var(--color-text)' }}>
                         {currency.symbol}
                       </td>
-                      <td style={{ padding: '12px 16px', color: 'var(--color-text)', textAlign: 'right' }}>
+                      <td style={{ padding: '12px 16px', color: 'var(--color-text)', textAlign: 'left' }}>
                         {currency.exchangeRate}
                       </td>
                       <td
@@ -275,12 +310,16 @@ export function CurrenciesPage() {
                       <td style={{ padding: '12px 16px' }}>
                         {currency.isBaseCurrency ? (
                           <div
-                            style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'default', width: 100 }}
+                            style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'default', width: 120 }}
                           >
                             <div style={{ position: 'relative', width: 34, height: 20, borderRadius: 10, background: '#22c55e', opacity: 0.6 }}>
                               <div style={{ position: 'absolute', top: 2, left: 16, width: 16, height: 16, borderRadius: 8, background: '#fff' }} />
                             </div>
                             <span style={{ fontSize: 13, color: '#15803d', fontWeight: 500 }}>Active</span>
+                            <span className="users-tooltip-wrapper">
+                              <Info size={14} color="#94a3b8" />
+                              <span className="users-tooltip-text">Base currency cannot be made inactive</span>
+                            </span>
                           </div>
                         ) : (
                           <button
