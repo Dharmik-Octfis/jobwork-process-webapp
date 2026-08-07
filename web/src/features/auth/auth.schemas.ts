@@ -23,7 +23,7 @@ const passwordField = z
 
 export const loginSchema = z.object({
   email,
-  password: passwordField,
+  password: z.string().min(1, 'Password is required'),
   latitude: z.number().nullable().optional(),
   longitude: z.number().nullable().optional(),
 });

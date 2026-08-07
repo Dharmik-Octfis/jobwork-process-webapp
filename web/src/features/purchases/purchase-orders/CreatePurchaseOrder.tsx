@@ -115,12 +115,6 @@ export function CreatePurchaseOrder() {
     queryFn: () => fetchLocations(orgId!),
   });
 
-  const { data: itemsPage } = useQuery({
-    queryKey: ['items', orgId],
-    queryFn: () => itemsApi.getItems(orgId!),
-  });
-  const itemsList = itemsPage?.results || [];
-
   const { data: paymentTerms } = useQuery({
     queryKey: ['payment-terms', orgId],
     queryFn: () => fetchPaymentTerms(orgId!),
@@ -131,6 +125,8 @@ export function CreatePurchaseOrder() {
     queryFn: () => fetchCustomers(orgId!),
   });
   const customers = customersPage?.results || [];
+
+
 
   const {
     register,
@@ -169,6 +165,7 @@ export function CreatePurchaseOrder() {
           : item.discount_percentage || item.discount || 0;
         return {
           item_id: item.item_id,
+          item: item.item,
           quantity: item.quantity || ('' as unknown as number),
           rate: item.rate || ('' as unknown as number),
           discountValue: discountVal || ('' as unknown as number),
@@ -488,11 +485,13 @@ export function CreatePurchaseOrder() {
           >
           <label style={{ ...labelStyle, color: '#ef4444' }}>
             Vendor Name*</label>
-          <SearchableSelect
-            options={vendors.map((v) => ({ label: v.contactName, value: v.id }))}
-            value={watch('vendor_id') || undefined}
-            onChange={(val) => setValue('vendor_id', val)}
-            placeholder="Select a Vendor"
+          <div>
+            <input type="hidden" {...register('vendor_id', { required: true })} />
+            <SearchableSelect
+              options={vendors.map((v) => ({ label: v.contactName, value: v.id }))}
+              value={watch('vendor_id') || undefined}
+              onChange={(val) => setValue('vendor_id', val, { shouldValidate: true })}
+              placeholder="Select a Vendor"
             renderOption={(option, isSelected) => {
               const vendor = vendors.find((v) => v.id === option.value);
               if (!vendor) return <>{option.label}</>;
@@ -556,6 +555,12 @@ export function CreatePurchaseOrder() {
             }}
             style={searchableSelectStyle}
           />
+          {errors.vendor_id && (
+            <div style={{ color: '#e54d4d', fontSize: '12px', marginTop: '4px' }}>
+              Vendor Name is required
+            </div>
+          )}
+          </div>
 
 
           <label style={labelStyle}>Location</label>
@@ -932,7 +937,7 @@ export function CreatePurchaseOrder() {
             <tbody>
               {itemFields.map((field, index) => {
                 const curItem = watchItems?.[index];
-                const selectedItem = itemsList.find((i) => i.id === curItem?.item_id);
+                const selectedItem = curItem?.item;
                 const itemImageUrl = getImageKey(selectedItem?.frontImage) || getImageKey(selectedItem?.images?.[0]);
                 const qty = isNaN(Number(curItem?.quantity)) ? 0 : Number(curItem?.quantity);
                 const rate = isNaN(Number(curItem?.rate)) ? 0 : Number(curItem?.rate);
@@ -955,8 +960,9 @@ export function CreatePurchaseOrder() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
                             <ItemComboBox
-                              options={itemsList.map((i) => ({ id: i.id, name: i.name, sku: i.sku }))}
+                              orgId={orgId!}
                               value={watchItems?.[index]?.item_id}
+                              initialItem={watchItems?.[index]?.item}
                               selectedImage={selectedItem ? (
                                 <ItemImage
                                   orgId={orgId}
@@ -971,8 +977,9 @@ export function CreatePurchaseOrder() {
                                 setIsMultiSelectItemModalOpen(true);
                               }}
                               onChange={(val) => {
-                                setValue(`line_items.${index}.item_id`, val, { shouldValidate: true });
-                                const selected = itemsList.find((i) => i.id === val);
+                                setValue(`line_items.${index}.item_id`, val?.id || '', { shouldValidate: true });
+                                setValue(`line_items.${index}.item`, val);
+                                const selected = val;
                                 if (selected) {
                                   setValue(`line_items.${index}.rate`, (selected.costPrice || selected.sellingPrice || '') as unknown as number);
                                   setValue(`line_items.${index}.quantity`, 1 as unknown as number);
@@ -1399,20 +1406,6 @@ export function CreatePurchaseOrder() {
             zIndex: 100,
           }}
         >
-          {Object.keys(errors).length > 0 && (
-            <div
-              style={{
-                color: '#e54d4d',
-                display: 'flex',
-                alignItems: 'center',
-                marginRight: 'auto',
-                fontSize: '13px',
-                fontWeight: 500,
-              }}
-            >
-              Please check the required fields above (marked with *).
-            </div>
-          )}
           <button
             type="submit"
             disabled={mutation.isPending}
@@ -1517,7 +1510,7 @@ export function CreatePurchaseOrder() {
           setIsMultiSelectItemModalOpen(false);
           setMultiSelectTargetIndex(null);
         }}
-        items={itemsList}
+        orgId={orgId!}
         onAddNewItem={() => {
           setItemModalIndex(multiSelectTargetIndex !== null ? multiSelectTargetIndex : 0);
         }}
@@ -1538,6 +1531,7 @@ export function CreatePurchaseOrder() {
             
             if (isFirst && isEmptyRow) {
               setValue(`line_items.${targetIndex}.item_id`, item.id, { shouldValidate: true });
+              setValue(`line_items.${targetIndex}.item`, item);
               setValue(`line_items.${targetIndex}.rate`, rate as unknown as number);
               setValue(`line_items.${targetIndex}.quantity`, qty as unknown as number);
               setValue(`line_items.${targetIndex}.discountValue`, disc as unknown as number);
@@ -1546,6 +1540,7 @@ export function CreatePurchaseOrder() {
             } else {
               appendItem({
                 item_id: item.id,
+                item: item,
                 quantity: qty as unknown as number,
                 rate: rate as unknown as number,
                 description: item.purchaseDescription || item.purchase_description || item.salesDescription || item.sales_description || '',

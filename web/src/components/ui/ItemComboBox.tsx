@@ -1,17 +1,15 @@
-import { Check, Archive, X } from 'lucide-react';
+import { Check, Archive, X, Loader2, } from 'lucide-react';
 import { useCombobox } from 'downshift';
-import { useState, useMemo } from 'react';
-
-export interface ItemComboBoxOption {
-  id: string;
-  name: string;
-  sku?: string | null;
-}
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { itemsApi } from '../../features/items/items.api';
+import type { Item } from '../../features/items/items.schemas';
 
 interface ItemComboBoxProps {
+  orgId: string;
   value?: string | null;
-  onChange: (value: string | null) => void;
-  options: ItemComboBoxOption[];
+  initialItem?: Item | null;
+  onChange: (item: Item | null) => void;
   placeholder?: string;
   hasError?: boolean;
   style?: React.CSSProperties;
@@ -26,9 +24,10 @@ interface ItemComboBoxProps {
 }
 
 export function ItemComboBox({
+  orgId,
   value,
+  initialItem,
   onChange,
-  options,
   placeholder,
   hasError,
   style,
@@ -39,28 +38,60 @@ export function ItemComboBox({
   footerAction,
 }: ItemComboBoxProps) {
   const [inputValue, setInputValue] = useState('');
-  const [prevValue, setPrevValue] = useState(value);
+  const [debouncedValue, setDebouncedValue] = useState('');
+  const prevValueRef = useRef(value);
+  const isInternalChange = useRef(false);
+  const [isInteracted, setIsInteracted] = useState(false);
 
-  // Find the selected item object based on the value (id) prop
-  const selectedItem = useMemo(
-    () => options.find((opt) => opt.id === value) || null,
-    [options, value]
-  );
 
-  if (value !== prevValue) {
-    setPrevValue(value);
-    setInputValue(selectedItem ? selectedItem.name : '');
-  }
+  const handleOnChange = (newVal: Item | null) => {
+    isInternalChange.current = true;
+    onChange(newVal);
+  };
 
-  // Filter options based on input value
-  const filteredOptions = useMemo(() => {
-    if (!inputValue) return options;
-    const lowerInput = inputValue.toLowerCase();
-    return options.filter((opt) => {
-      const searchStr = `${opt.name} ${opt.sku || ''}`.toLowerCase();
-      return searchStr.includes(lowerInput);
-    });
-  }, [options, inputValue]);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(inputValue.length >= 3 ? inputValue : '');
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [inputValue]);
+
+  const {
+    data: itemsData,
+    isFetching,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: ['items-search', orgId, debouncedValue],
+    queryFn: ({ pageParam }) => itemsApi.getItems(orgId, { search: debouncedValue || undefined, perPage: 10, page: pageParam }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => lastPage.pageContext.hasMore ? lastPage.pageContext.page + 1 : undefined,
+    enabled: Boolean(orgId) && isInteracted,
+    refetchOnWindowFocus: false,
+  });
+
+  const fetchedOptions = useMemo(() => {
+    return itemsData?.pages.flatMap(page => page.results) || [];
+  }, [itemsData]);
+
+  const selectedItem = useMemo(() => {
+    if (!value) return null;
+    const found = fetchedOptions.find((opt) => opt.id === value);
+    if (found) return found;
+    if (initialItem && initialItem.id === value) return initialItem;
+    return null;
+  }, [fetchedOptions, value, initialItem]);
+
+  useEffect(() => {
+    if (value !== prevValueRef.current) {
+      prevValueRef.current = value;
+      if (!isInternalChange.current) {
+        setInputValue(selectedItem ? selectedItem.name : '');
+      }
+      isInternalChange.current = false;
+    }
+  }, [value, selectedItem]);
 
   const {
     isOpen,
@@ -69,26 +100,41 @@ export function ItemComboBox({
     getInputProps,
     highlightedIndex,
     getItemProps,
+    openMenu,
   } = useCombobox({
-    items: filteredOptions,
+    stateReducer: (state, actionAndChanges) => {
+      const { type, changes } = actionAndChanges;
+      switch (type) {
+        case useCombobox.stateChangeTypes.InputClick:
+          return {
+            ...changes,
+            isOpen: true,
+          };
+        default:
+          return changes;
+      }
+    },
+    items: fetchedOptions,
     itemToString: (item) => (item ? item.name : ''),
     selectedItem,
     inputValue,
     onInputValueChange: ({ inputValue: newInputValue, type }) => {
       setInputValue(newInputValue || '');
-      // If user clears the input, clear the selection
-      if (newInputValue === '' && type === useCombobox.stateChangeTypes.InputChange) {
-        onChange(null);
+      if (type === useCombobox.stateChangeTypes.InputChange) {
+        if (selectedItem && newInputValue !== selectedItem.name) {
+          handleOnChange(null);
+        } else if (!newInputValue) {
+          handleOnChange(null);
+        }
       }
     },
     onSelectedItemChange: ({ selectedItem: newSelectedItem }) => {
-      onChange(newSelectedItem ? newSelectedItem.id : null);
+      handleOnChange(newSelectedItem || null);
       if (newSelectedItem) {
         setInputValue(newSelectedItem.name);
       }
     },
   });
-
 
   return (
     <div style={{ position: 'relative', width: '100%', ...style }}>
@@ -110,6 +156,16 @@ export function ItemComboBox({
               e.target.style.borderColor = 'var(--color-primary)';
               // Select all text on focus for easy typing
               e.target.select();
+              setIsInteracted(true);
+              if (!isOpen) {
+                openMenu();
+              }
+            },
+            onClick: () => {
+              setIsInteracted(true);
+              if (!isOpen) {
+                openMenu();
+              }
             },
             style: {
               width: '100%',
@@ -131,12 +187,25 @@ export function ItemComboBox({
             {selectedImage}
           </div>
         )}
+        <style>
+          {`
+            @keyframes combobox-spin {
+              from { transform: rotate(0deg); }
+              to { transform: rotate(360deg); }
+            }
+          `}
+        </style>
         <div style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', gap: '2px' }}>
+          {isFetching && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px' }}>
+              <Loader2 size={14} color="#9ca3af" style={{ animation: 'combobox-spin 1s linear infinite' }} />
+            </div>
+          )}
           {selectedItem && (
             <div
               onClick={(e) => {
                 e.stopPropagation();
-                onChange(null);
+                handleOnChange(null);
                 setInputValue('');
               }}
               style={{
@@ -192,13 +261,23 @@ export function ItemComboBox({
           flexDirection: 'column',
         }}
       >
-        <div style={{ overflowY: 'auto', flex: 1, maxHeight: '220px' }}>
-          {isOpen && filteredOptions.length === 0 && (
+        <div
+          style={{ overflowY: 'auto', flex: 1, maxHeight: '220px' }}
+          onScroll={(e) => {
+            const target = e.currentTarget;
+            if (target.scrollHeight - target.scrollTop <= target.clientHeight + 10) {
+              if (hasNextPage && !isFetchingNextPage) {
+                fetchNextPage();
+              }
+            }
+          }}
+        >
+          {isOpen && fetchedOptions.length === 0 && (
             <div style={{ padding: '8px 12px', fontSize: '13px', color: 'var(--color-text-muted)' }}>
               No matching items.
             </div>
           )}
-          {isOpen && filteredOptions.map((opt, index) => (
+          {isOpen && fetchedOptions.map((opt, index) => (
             <div
               {...getItemProps({ item: opt, index })}
               key={opt.id}
@@ -220,6 +299,8 @@ export function ItemComboBox({
             </div>
           ))}
         </div>
+
+
 
         {/* Footer Action */}
         {isOpen && footerAction && (

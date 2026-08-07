@@ -1,5 +1,7 @@
-import React, { useState, useMemo } from 'react';
-import { Search, X, Plus, SlidersHorizontal, Filter } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { itemsApi } from '../items.api';
+import { Search, X, Plus, SlidersHorizontal, Filter, ChevronLeft, ChevronRight,} from 'lucide-react';
 import type { Item } from '../items.schemas';
 import { Button } from '../../../components/ui/Button';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
@@ -46,7 +48,7 @@ export interface MultiSelectItem extends Item {
 export interface MultiSelectItemModalProps {
   isOpen: boolean;
   onClose: () => void;
-  items: Item[];
+  orgId: string;
   onAssign: (selectedItems: MultiSelectItem[]) => void;
   onAddNewItem?: () => void;
 }
@@ -54,12 +56,12 @@ export interface MultiSelectItemModalProps {
 export function MultiSelectItemModal({
   isOpen,
   onClose,
-  items,
+  orgId,
   onAssign,
   onAddNewItem,
 }: MultiSelectItemModalProps) {
   const [query, setQuery] = useState('');
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedItemsMap, setSelectedItemsMap] = useState<Map<string, Item>>(new Map());
   const [itemInputs, setItemInputs] = useState<
     Record<
       string,
@@ -76,13 +78,30 @@ export function MultiSelectItemModal({
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
 
+  const [page, setPage] = useState(1);
+
+  const [debouncedQuery, setDebouncedQuery] = useState(query);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedQuery(query.length >= 3 ? query : '');
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [query]);
+
+  const { data: itemsPage} = useQuery({
+    queryKey: ['items-modal', orgId, debouncedQuery, page],
+    queryFn: () => itemsApi.getItems(orgId, { ...(debouncedQuery ? { search: debouncedQuery } : {}), page, perPage: 50 }),
+    enabled: Boolean(orgId) && isOpen,
+    refetchOnWindowFocus: false,
+  });
+
   const categories = useMemo(() => {
     const cats = new Set<string>();
-    items.forEach((item) => {
+    (itemsPage?.results || []).forEach((item) => {
       if (item.category) cats.add(item.category);
     });
     return Array.from(cats).sort();
-  }, [items]);
+  }, [itemsPage?.results]);
 
   const [prevIsOpen, setPrevIsOpen] = React.useState(isOpen);
 
@@ -90,18 +109,20 @@ export function MultiSelectItemModal({
     setPrevIsOpen(isOpen);
     if (!isOpen) {
       setQuery('');
-      setSelectedIds(new Set());
+      setSelectedItemsMap(new Map());
       setItemInputs({});
       setColumnFilters({});
       setIsFilterOpen(false);
+      setPage(1);
     }
   }
+
 
   const fullCatalog = useMemo(() => {
     const base = [...ITEM_MODAL_CATALOG];
     const customKeys = new Set<string>();
 
-    items.forEach((item) => {
+    (itemsPage?.results || []).forEach((item) => {
       const fields = item.custom_fields || item.customFields;
       if (fields) {
         Object.keys(fields).forEach((k) => customKeys.add(k));
@@ -113,7 +134,7 @@ export function MultiSelectItemModal({
     });
 
     return base;
-  }, [items]);
+  }, [itemsPage?.results]);
 
   const activeColumns = useMemo(() => {
     return visibleColumns
@@ -122,42 +143,35 @@ export function MultiSelectItemModal({
   }, [visibleColumns, fullCatalog]);
 
   const shownItems = useMemo(() => {
-    let filtered = items;
-    if (query.trim()) {
-      const searchStr = query.trim().toLowerCase();
-      filtered = filtered.filter((item) => {
-        const itemStr = `${item.name} ${item.sku || ''}`.toLowerCase();
-        return itemStr.includes(searchStr);
-      });
-    }
-
+    let filtered = itemsPage?.results || [];
     if (isFilterOpen) {
       Object.entries(columnFilters).forEach(([key, value]) => {
         if (!value) return;
         const searchVal = value.toLowerCase();
-
         filtered = filtered.filter((item) => {
           if (key === 'name') return item.name.toLowerCase().includes(searchVal);
           if (key === 'sku') return (item.sku || '').toLowerCase().includes(searchVal);
           if (key === 'hsn') return (item.hsnCode || item.hsn_or_sac || '').toLowerCase().includes(searchVal);
           if (key === 'type') return (item.type || item.item_type || '').toLowerCase() === searchVal;
           if (key === 'category') return (item.category || '').toLowerCase() === searchVal;
-
           const cfKey = key.replace('cf_', '');
           const val = item.custom_fields?.[cfKey] ?? item.customFields?.[cfKey];
           return val != null && String(val).toLowerCase().includes(searchVal);
         });
       });
     }
-
     return filtered;
-  }, [items, query, isFilterOpen, columnFilters]);
+  }, [itemsPage?.results, isFilterOpen, columnFilters]);
+
+  const paginatedItems = shownItems;
 
   const handleSelectAll = () => {
-    if (selectedIds.size === shownItems.length && shownItems.length > 0) {
-      setSelectedIds(new Set());
+    if (selectedItemsMap.size >= shownItems.length && shownItems.length > 0 && shownItems.every(i => selectedItemsMap.has(i.id))) {
+      setSelectedItemsMap(new Map());
     } else {
-      setSelectedIds(new Set(shownItems.map((i) => i.id)));
+      const next = new Map(selectedItemsMap);
+      shownItems.forEach(i => next.set(i.id, i));
+      setSelectedItemsMap(next);
       const nextInputs = { ...itemInputs };
       shownItems.forEach((i) => {
         if (!nextInputs[i.id]) {
@@ -173,14 +187,14 @@ export function MultiSelectItemModal({
     }
   };
 
-  const toggleSelect = (id: string) => {
-    const next = new Set(selectedIds);
+  const toggleSelect = (item: Item) => {
+    const id = item.id;
+    const next = new Map(selectedItemsMap);
     if (next.has(id)) {
       next.delete(id);
     } else {
-      next.add(id);
+      next.set(id, item);
       if (!itemInputs[id]) {
-        const item = items.find((i) => i.id === id);
         if (item) {
           setItemInputs((prev) => ({
             ...prev,
@@ -194,12 +208,11 @@ export function MultiSelectItemModal({
         }
       }
     }
-    setSelectedIds(next);
+    setSelectedItemsMap(next);
   };
 
   const handleAssign = () => {
-    const selected = items
-      .filter((i) => selectedIds.has(i.id))
+    const selected = Array.from(selectedItemsMap.values())
       .map((i) => {
         const inputs = itemInputs[i.id];
         if (inputs) {
@@ -214,9 +227,10 @@ export function MultiSelectItemModal({
         return i;
       });
     onAssign(selected);
-    setSelectedIds(new Set()); // Reset for next time
+    setSelectedItemsMap(new Map()); // Reset for next time
     setQuery('');
     setItemInputs({});
+    setPage(1);
   };
 
   if (!isOpen) return null;
@@ -288,7 +302,10 @@ export function MultiSelectItemModal({
               type="text"
               placeholder="Search products..."
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(1);
+              }}
               style={{
                 width: '100%',
                 padding: '8px 12px 8px 34px',
@@ -305,7 +322,10 @@ export function MultiSelectItemModal({
           <div style={{ display: 'flex', gap: 12 }}>
             <Button
               variant={isFilterOpen ? 'primary' : 'secondary'}
-              onClick={() => setIsFilterOpen(!isFilterOpen)}
+              onClick={() => {
+                setIsFilterOpen(!isFilterOpen);
+                setPage(1);
+              }}
               style={{
                 padding: '8px',
                 display: 'flex',
@@ -368,7 +388,7 @@ export function MultiSelectItemModal({
                 >
                   <input
                     type="checkbox"
-                    checked={shownItems.length > 0 && selectedIds.size === shownItems.length}
+                    checked={shownItems.length > 0 && shownItems.every(i => selectedItemsMap.has(i.id))}
                     onChange={handleSelectAll}
                     style={{ cursor: 'pointer' }}
                   />
@@ -440,7 +460,10 @@ export function MultiSelectItemModal({
                   >
                     <button
                       type="button"
-                      onClick={() => setColumnFilters({})}
+                      onClick={() => {
+                        setColumnFilters({});
+                        setPage(1);
+                      }}
                       style={{
                         background: 'none',
                         border: 'none',
@@ -458,6 +481,7 @@ export function MultiSelectItemModal({
                     const val = columnFilters[col.key] || '';
                     const onChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
                       setColumnFilters((prev) => ({ ...prev, [col.key]: e.target.value }));
+                      setPage(1);
                     };
                     const inputStyle = {
                       width: '100%',
@@ -467,7 +491,7 @@ export function MultiSelectItemModal({
                       borderRadius: 4,
                       outline: 'none',
                     };
-                    
+
                     return (
                       <th
                         key={`filter-${col.key}`}
@@ -517,27 +541,28 @@ export function MultiSelectItemModal({
               )}
             </thead>
             <tbody>
-              {shownItems.length === 0 ? (
+              {paginatedItems.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={activeColumns.length + 1}
-                    style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8' }}
+                    colSpan={activeColumns.length + 2}
+                    style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}
                   >
                     No products found.
                   </td>
                 </tr>
               ) : (
-                shownItems.map((item) => (
+                paginatedItems.map((item) => (
                   <tr
                     key={item.id}
-                    onClick={() => toggleSelect(item.id)}
+                    onClick={() => toggleSelect(item)}
                     style={{
-                      cursor: 'pointer',
                       borderBottom: '1px solid #eef0f3',
-                      background: selectedIds.has(item.id) ? '#eff6ff' : '#ffffff',
+                      cursor: 'pointer',
+                      background: selectedItemsMap.has(item.id) ? '#f8fafc' : '#ffffff',
                     }}
                   >
                     <td
+                      onClick={(e) => e.stopPropagation()}
                       style={{
                         padding: '12px 12px',
                         width: 44,
@@ -545,14 +570,13 @@ export function MultiSelectItemModal({
                         position: 'sticky',
                         left: 0,
                         zIndex: 1,
-                        background: 'inherit',
+                        background: selectedItemsMap.has(item.id) ? '#f8fafc' : '#ffffff',
                       }}
                     >
                       <input
                         type="checkbox"
-                        checked={selectedIds.has(item.id)}
-                        onChange={() => toggleSelect(item.id)}
-                        onClick={(e) => e.stopPropagation()}
+                        checked={selectedItemsMap.has(item.id)}
+                        onChange={() => toggleSelect(item)}
                         style={{ cursor: 'pointer' }}
                       />
                     </td>
@@ -561,13 +585,13 @@ export function MultiSelectItemModal({
                         key={col.key}
                         style={{
                           padding: '12px 20px',
-                          color: '#475569',
+                          color: '#334155',
                           ...(col.key === 'name'
                             ? {
                                 position: 'sticky',
                                 left: 44,
                                 zIndex: 1,
-                                background: 'inherit',
+                                background: selectedItemsMap.has(item.id) ? '#f8fafc' : '#ffffff',
                                 boxShadow: '4px 0 4px -4px rgba(0,0,0,0.1)',
                               }
                             : {}),
@@ -576,7 +600,7 @@ export function MultiSelectItemModal({
                         {renderCell(item, col.key)}
                       </td>
                     ))}
-                    {selectedIds.has(item.id) ? (
+                    {selectedItemsMap.has(item.id) ? (
                       <>
                         <td style={{ padding: '8px 20px' }}>
                           <input
@@ -601,10 +625,7 @@ export function MultiSelectItemModal({
                         <td style={{ padding: '8px 20px' }}>
                           <input
                             type="number"
-                            value={
-                              itemInputs[item.id]?.rate ??
-                              (item.costPrice || item.sellingPrice || 0)
-                            }
+                            value={itemInputs[item.id]?.rate ?? 0}
                             onChange={(e) =>
                               setItemInputs((prev) => ({
                                 ...prev,
@@ -693,12 +714,33 @@ export function MultiSelectItemModal({
             borderRadius: '0 0 8px 8px',
           }}
         >
-          <span style={{ fontSize: 13, color: '#64748b' }}>{selectedIds.size} selected</span>
+          <span style={{ fontSize: 13, color: '#64748b' }}>{selectedItemsMap.size} selected</span>
+          <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+            <span style={{ fontSize: '13px', color: '#64748b' }}>
+              {shownItems.length > 0 ? ((page - 1) * 50) + 1 : 0} - {Math.min(page * 50, shownItems.length)} of {shownItems.length}
+            </span>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                disabled={page === 1}
+                onClick={() => setPage(p => p - 1)}
+                style={{ cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.5 : 1, background: 'none', border: 'none', padding: '2px', display: 'flex', alignItems: 'center' }}
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                disabled={page * 50 >= shownItems.length}
+                onClick={() => setPage(p => p + 1)}
+                style={{ cursor: page * 50 >= shownItems.length ? 'not-allowed' : 'pointer', opacity: page * 50 >= shownItems.length ? 0.5 : 1, background: 'none', border: 'none', padding: '2px', display: 'flex', alignItems: 'center' }}
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
           <div style={{ display: 'flex', gap: 12 }}>
             <Button variant="secondary" onClick={onClose}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleAssign} disabled={selectedIds.size === 0}>
+            <Button variant="primary" onClick={handleAssign} disabled={selectedItemsMap.size === 0}>
               Assign
             </Button>
           </div>
@@ -718,3 +760,5 @@ export function MultiSelectItemModal({
     </div>
   );
 }
+
+

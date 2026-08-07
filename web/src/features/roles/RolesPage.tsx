@@ -82,7 +82,12 @@ export function RolesPage() {
       closeForm();
       await queryClient.invalidateQueries({ queryKey: rolesKey });
     },
-    onError: (err) => setServerError(toApiErrorMessage(err)),
+    onError: (err) => {
+      const msg = toApiErrorMessage(err);
+      if (msg !== 'A role with this name already exists.') {
+        setServerError(msg);
+      }
+    },
   });
 
   const deleteMutation = useMutation({

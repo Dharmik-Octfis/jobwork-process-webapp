@@ -60,7 +60,7 @@ export const loginSchema = openApiRegistry.register(
   'LoginRequest',
   z.object({
     email,
-    password: passwordField.openapi({ example: 'SecureP@ss123' }),
+    password: z.string().min(1, 'Password is required').openapi({ example: 'SecureP@ss123' }),
     latitude: z.number().nullable().optional(),
     longitude: z.number().nullable().optional(),
   }),
