@@ -102,7 +102,7 @@ export function ItemComboBox({
     getItemProps,
     openMenu,
   } = useCombobox({
-    stateReducer: (state, actionAndChanges) => {
+    stateReducer: (_state, actionAndChanges) => {
       const { type, changes } = actionAndChanges;
       switch (type) {
         case useCombobox.stateChangeTypes.InputClick:
