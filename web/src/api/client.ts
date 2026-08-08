@@ -21,38 +21,10 @@ export const apiClient = axios.create({
 // --- In-memory access token ------------------------------------------------
 
 let accessToken: string | null = null;
-let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** Set (or clear, with `null`) the in-memory access token. */
 export function setAccessToken(token: string | null): void {
   accessToken = token;
-
-  if (refreshTimer) {
-    clearTimeout(refreshTimer);
-    refreshTimer = null;
-  }
-
-  if (token && typeof window !== 'undefined') {
-    try {
-      const base64Url = token.split('.')[1];
-      if (base64Url) {
-        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-        const payload = JSON.parse(window.atob(base64));
-        if (payload.exp) {
-          const timeUntilExpiry = payload.exp * 1000 - Date.now();
-          // Schedule refresh 1 minute before expiry
-          const timeUntilRefresh = timeUntilExpiry - 60000;
-          if (timeUntilRefresh > 0) {
-            refreshTimer = setTimeout(() => {
-              refreshAccessToken();
-            }, timeUntilRefresh);
-          }
-        }
-      }
-    } catch (_error) {
-      // Ignore token decoding errors
-    }
-  }
 }
 
 export function getAccessToken(): string | null {

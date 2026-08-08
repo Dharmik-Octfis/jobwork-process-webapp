@@ -119,7 +119,7 @@ export async function updateLocation(req: Request, res: Response): Promise<void>
   if (!req.user) {
     throw new ApiError(401, 'Sign in to continue.');
   }
-  
+
   const header = req.headers.authorization;
   const accessToken = header?.startsWith('Bearer ')
     ? header.slice('Bearer '.length).trim()
@@ -131,7 +131,7 @@ export async function updateLocation(req: Request, res: Response): Promise<void>
 
   const sessionId = readSessionId(accessToken);
   const input = req.body as UpdateLocationInput;
-  
+
   await authService.updateLocation(req.user.id, sessionId, input.latitude, input.longitude);
   sendSuccess(res, null);
 }

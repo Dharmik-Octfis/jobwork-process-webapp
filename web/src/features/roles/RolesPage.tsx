@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, Lock, Users, ShieldCheck, X, CornerDownRight, SlidersHorizontal, Info } from 'lucide-react';
+import { Plus, Pencil, Trash2, Lock, Users, ShieldCheck, X, SlidersHorizontal, Info} from 'lucide-react';
 import { toApiErrorMessage } from '../../api/client';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { Select } from '../../components/ui/Select';
@@ -104,6 +104,212 @@ export function RolesPage() {
 
   const customRoles = roles?.filter((r) => !r.isSystem) ?? [];
   const viewingRole = roles?.find((r) => r.id === viewingMembersFor) ?? null;
+
+  const rootRoles = (roles ?? []).filter((r) => !r.parentRoleId);
+  const getChildRoles = (parentId: string) => (roles ?? []).filter((r) => r.parentRoleId === parentId);
+
+  const renderRoleRow = (role: Role, depth = 0, isLastArray: boolean[] = []) => {
+    const children = getChildRoles(role.id);
+    const hasChildren = children.length > 0;
+
+    return (
+      <Fragment key={role.id}>
+        <tr
+          style={{
+            borderBottom: '1px solid #eef0f3',
+            transition: 'background 0.1s',
+            background: 'transparent',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+        >
+          <td style={{ padding: 0 }} title={role.name}>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', height: 48, paddingLeft: depth * 32 + 24, paddingRight: 24, maxWidth: 300, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {/* 1. Vertical lines for passing-through ancestors */}
+              {Array.from({ length: Math.max(0, depth - 1) }).map((_, i) => {
+                if (isLastArray[i]) return null;
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      position: 'absolute',
+                      left: i * 32 + 24 + 5.5,
+                      top: 0,
+                      bottom: -1,
+                      width: 1,
+                      background: '#cbd5e1',
+                    }}
+                  />
+                );
+              })}
+
+              {/* 2. L-connector from parent to current node (if not root) */}
+              {depth > 0 && (
+                <>
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: (depth - 1) * 32 + 24 + 5.5,
+                      top: 0,
+                      bottom: isLastArray[depth - 1] ? '50%' : -1,
+                      width: 1,
+                      background: '#cbd5e1',
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: (depth - 1) * 32 + 24 + 6,
+                      top: '50%',
+                      width: 22,
+                      height: 1,
+                      background: '#cbd5e1',
+                    }}
+                  >
+                    {/* CSS Triangle Arrowhead */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        right: -4,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: 0,
+                        height: 0,
+                        borderTop: '3.5px solid transparent',
+                        borderBottom: '3.5px solid transparent',
+                        borderLeft: '4.5px solid #cbd5e1',
+                      }}
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* 3. Line going down to children from THIS node (if it has children) */}
+              {hasChildren && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: depth * 32 + 24 + 5.5,
+                    top: '50%',
+                    bottom: -1,
+                    width: 1,
+                    background: '#cbd5e1',
+                  }}
+                />
+              )}
+
+              {/* 4. Gap between connector and text */}
+              {depth > 0 && <div style={{ width: 6, flexShrink: 0 }} />}
+
+              <span style={{ color: '#0062ff', fontSize: 13, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+                {role.name}
+                {role.isSystem && (
+                  <span
+                    title="Built-in role — cannot be edited or deleted"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: '#475569',
+                      background: '#f1f5f9',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: 999,
+                      padding: '2px 8px',
+                    }}
+                  >
+                    <Lock size={11} /> Built-in
+                  </span>
+                )}
+              </span>
+            </div>
+          </td>
+          <td className="col-description" style={{ padding: '12px 16px', fontSize: 13, color: '#64748b', maxWidth: 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={role.description ?? undefined}>
+            {role.description || '-'}
+          </td>
+          <td style={{ padding: '12px 16px', fontSize: 13, color: '#64748b' }}>
+            {role.memberCount === 0 ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Users size={14} color="#94a3b8" style={{ flexShrink: 0 }} />
+                <span style={{ color: '#94a3b8' }} className="col-members-text">No members yet</span>
+              </div>
+            ) : (
+              <button
+                onClick={() => setViewingMembersFor(viewingMembersFor === role.id ? null : role.id)}
+                style={{
+                  fontSize: 13,
+                  color: '#2563eb',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontWeight: 500,
+                }}
+                title={`${role.memberCount} members`}
+              >
+                <Users size={14} style={{ flexShrink: 0 }} />
+                <span className="col-members-text">{role.memberCount} member{role.memberCount === 1 ? '' : 's'}</span>
+              </button>
+            )}
+          </td>
+          <td style={{ padding: '12px 16px', fontSize: 13 }}>
+            {role.isSystem ? (
+              <span style={{ color: '#94a3b8', fontSize: 13, fontWeight: 500 }}>Locked</span>
+            ) : (
+              <div style={{ display: 'flex', gap: 12 }}>
+                <button
+                  onClick={() => openForm(role)}
+                  title="Edit role"
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: '#475569',
+                    padding: 0,
+                    display: 'flex',
+                  }}
+                >
+                  <Pencil size={15} />
+                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <button
+                    onClick={() => {
+                      if (role.memberCount === 0) {
+                        setToDelete(role);
+                      }
+                    }}
+                    title={role.memberCount > 0 ? undefined : "Delete role"}
+                    disabled={role.memberCount > 0}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: role.memberCount > 0 ? 'not-allowed' : 'pointer',
+                      color: role.memberCount > 0 ? '#cbd5e1' : '#ef4444',
+                      padding: 0,
+                      display: 'flex',
+                    }}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                  {role.memberCount > 0 && (
+                    <span className="users-tooltip-wrapper" style={{ display: 'inline-flex' }}>
+                      <Info size={14} color="#94a3b8" />
+                      <span className="users-tooltip-text">Reassign members before deleting.</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </td>
+        </tr>
+        {hasChildren && children.map((child, index) => renderRoleRow(child, depth + 1, [...isLastArray, index === children.length - 1]))}
+      </Fragment>
+    );
+  };
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -409,128 +615,7 @@ export function RolesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(roles ?? []).map((role) => (
-                    <tr
-                      key={role.id}
-                      style={{
-                        borderBottom: '1px solid #eef0f3',
-                        transition: 'background 0.1s',
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      <td style={{ padding: '12px 24px', fontSize: 13, color: '#333', fontWeight: 500, maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={role.name}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingLeft: Math.min(role.depth, 4) * 24 }}>
-                          {role.depth > 0 && <CornerDownRight size={14} color="#94a3b8" style={{ flexShrink: 0 }} />}
-                          {role.depth > 4 && (
-                            <span style={{ fontSize: 10, background: '#f1f5f9', color: '#64748b', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>
-                              L{role.depth}
-                            </span>
-                          )}
-                          {role.name}
-                          {role.isSystem && (
-                            <span
-                              title="Built-in role — cannot be edited or deleted"
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: 4,
-                                fontSize: 11,
-                                fontWeight: 600,
-                                color: '#475569',
-                                background: '#f1f5f9',
-                                border: '1px solid #e2e8f0',
-                                borderRadius: 999,
-                                padding: '2px 8px',
-                              }}
-                            >
-                              <Lock size={11} /> Built-in
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="col-description" style={{ padding: '12px 16px', fontSize: 13, color: '#64748b', maxWidth: 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={role.description ?? undefined}>
-                        {role.description || '-'}
-                      </td>
-                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#64748b' }}>
-                        {role.memberCount === 0 ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <Users size={14} color="#94a3b8" style={{ flexShrink: 0 }} />
-                            <span style={{ color: '#94a3b8' }} className="col-members-text">No members yet</span>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setViewingMembersFor(viewingMembersFor === role.id ? null : role.id)}
-                            style={{
-                              fontSize: 13,
-                              color: '#2563eb',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 6,
-                              background: 'transparent',
-                              border: 'none',
-                              cursor: 'pointer',
-                              padding: 0,
-                              fontWeight: 500,
-                            }}
-                            title={`${role.memberCount} members`}
-                          >
-                            <Users size={14} style={{ flexShrink: 0 }} />
-                            <span className="col-members-text">{role.memberCount} member{role.memberCount === 1 ? '' : 's'}</span>
-                          </button>
-                        )}
-                      </td>
-                      <td style={{ padding: '12px 16px', fontSize: 13 }}>
-                        {role.isSystem ? (
-                          <span style={{ color: '#94a3b8', fontSize: 13, fontWeight: 500 }}>Locked</span>
-                        ) : (
-                          <div style={{ display: 'flex', gap: 12 }}>
-                            <button
-                              onClick={() => openForm(role)}
-                              title="Edit role"
-                              style={{
-                                background: 'transparent',
-                                border: 'none',
-                                cursor: 'pointer',
-                                color: '#475569',
-                                padding: 0,
-                                display: 'flex',
-                              }}
-                            >
-                              <Pencil size={15} />
-                            </button>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <button
-                                onClick={() => {
-                                  if (role.memberCount === 0) {
-                                    setToDelete(role);
-                                  }
-                                }}
-                                title={role.memberCount > 0 ? undefined : "Delete role"}
-                                disabled={role.memberCount > 0}
-                                style={{
-                                  background: 'transparent',
-                                  border: 'none',
-                                  cursor: role.memberCount > 0 ? 'not-allowed' : 'pointer',
-                                  color: role.memberCount > 0 ? '#cbd5e1' : '#ef4444',
-                                  padding: 0,
-                                  display: 'flex',
-                                }}
-                              >
-                                <Trash2 size={15} />
-                              </button>
-                              {role.memberCount > 0 && (
-                                <span className="users-tooltip-wrapper" style={{ display: 'inline-flex' }}>
-                                  <Info size={14} color="#94a3b8" />
-                                  <span className="users-tooltip-text">Reassign members before deleting.</span>
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {rootRoles.map((role) => renderRoleRow(role, 0))}
                 </tbody>
               </table>
             )}
