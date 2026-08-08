@@ -212,6 +212,18 @@ sendSuccess(res, null, 'Vendor deleted.'); // 200, no payload
     stray `tabIndex={1}` breaks the whole page. Only `0` (reachable) and `-1` (focusable in code only).
   - **Visible focus ring on everything focusable** — `outline: none` without a replacement is the same
     bug, just harder to see.
+  - **Every new page inherits this — it is not optional and not a follow-up.** A page is done when Tab
+    walks it exactly the way it walks Vendors or Items: same order, same Enter to open/submit, same Esc
+    to close. Build it out of the shared controls (`components/ui/Input`, `Select`, `ComboBox`,
+    `ItemComboBox`, `Modal`); a page that hand-rolls its own control is precisely where the behaviour
+    diverges from the rest of the app. Keyboard-walk the new page once before calling it finished.
+  - **Keep it native first; reach for `downshift` only when the widget actually needs it.** Buttons,
+    links, inputs, textareas and native `<select>` already do the right thing for free — wrapping them
+    buys nothing and hides simple behaviour behind an abstraction. `downshift` earns its place only for
+    a listbox/typeahead where ↑↓ movement, active-option scrolling, Esc, and open/close state would
+    otherwise be hand-written: `Select.tsx` (`useSelect`), `ComboBox.tsx` / `ItemComboBox.tsx`
+    (`useCombobox`). Anything simpler — a static list of two or three options, a toggle, a menu of
+    plain buttons — stays lightweight and plain.
 
 ## Commands
 

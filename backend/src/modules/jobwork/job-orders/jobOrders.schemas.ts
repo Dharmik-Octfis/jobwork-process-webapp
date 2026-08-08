@@ -176,6 +176,29 @@ export const updateJobOrderSchema = createJobOrderSchema.omit({ jobOrderNumber: 
 export type UpdateJobOrderInput = z.infer<typeof updateJobOrderSchema>;
 
 /**
+ * Adding work to the END of an order that has already started.
+ *
+ * 🔴 There is no position field, and there must not be one until insert is built.
+ * Append is safe precisely because it renumbers nothing; a `seq` or `afterStepId`
+ * here would let a client shift steps whose numbers are printed on challans a
+ * processor is holding.
+ *
+ * An array rather than a single step: "wash, then pack" is one decision, and
+ * `buildSteps` already chains a list — the second new step can consume what the
+ * first produces, which two separate calls could not express.
+ */
+export const appendJobOrderStepsSchema = openApiRegistry.register(
+  'AppendJobOrderStepsRequest',
+  z.object({
+    steps: z.array(jobOrderStepSchema).min(1, 'Add at least one step.'),
+    /** Why the order grew. Optional, but it lands in `remarks` when given. */
+    reason: z.string().trim().max(2000).optional(),
+  }),
+);
+
+export type AppendJobOrderStepsInput = z.infer<typeof appendJobOrderStepsSchema>;
+
+/**
  * Closing an order short. Not a status the client may simply set — it takes a
  * reason, because "finished 150 m light" is a decision someone has to own.
  */

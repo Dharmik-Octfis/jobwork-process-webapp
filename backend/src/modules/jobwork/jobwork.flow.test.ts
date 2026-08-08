@@ -10,6 +10,7 @@ import { SOURCE_DOC_TYPES, runAsDocument } from './jobwork.types.ts';
 import { createNewProcess } from './processes/processes.service.ts';
 import { createNewRoute } from './process-routes/processRoutes.service.ts';
 import {
+  appendJobOrderSteps,
   createNewJobOrder,
   getJobOrderOverview,
   shortCloseJobOrder,
@@ -1307,5 +1308,144 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
         },
       ]),
     ).rejects.toMatchObject({ status: 400 });
+  });
+
+  /**
+   * 🔴 APPENDING WORK TO AN ORDER THAT HAS ALREADY STARTED.
+   *
+   * The whole safety argument is that nothing existing is touched: `seq = max +
+   * 1` renumbers nobody, and no row is rewritten — so the challans hanging off
+   * the steps already there keep describing steps that still say what they said.
+   * `updateJobOrderById` is the contrast; it hard-deletes the grid, and
+   * `JobIssue.step` is `onDelete: Cascade`, which is exactly why it refuses
+   * anything but a draft.
+   *
+   * The other half is what is NOT checked. No step's status gates this — a step
+   * at a processor is no reason to withhold it, because the appended step arrives
+   * `pending` and `chainNotReady` already refuses to let it issue until the step
+   * above has delivered. Only the ORDER refuses, and only when it is closed.
+   */
+  describe('appending steps to a running order', () => {
+    it('appends after the last step while it is still at the processor, and leaves its challan intact', async () => {
+      const cutting = await createNewProcess(orgId, {
+        name: `Cutting ${unique()}`,
+        itemChanges: true,
+      });
+      const stitching = await createNewProcess(orgId, {
+        name: `Stitching ${unique()}`,
+        itemChanges: true,
+      });
+
+      await stockUp(dyedId, 100);
+
+      const jobOrder = await createNewJobOrder(orgId, {
+        steps: [
+          {
+            processId: cutting.id,
+            processorId: cutterId,
+            inputs: [{ itemId: dyedId, plannedQty: 100 }],
+            outputs: [{ itemId: shirtId, isPrimary: true, expectedQty: 90 }],
+          },
+        ],
+      });
+      const step1 = jobOrder.steps[0]!;
+
+      // Material is out with the cutter — the state the old edit path refuses
+      // outright, and the one this must handle.
+      const issue = await createNewJobIssue(orgId, {
+        jobOrderStepId: step1.id,
+        sourceLocationId: godownId,
+        lines: [{ itemId: dyedId, qty: 100 }],
+      });
+
+      const after = await appendJobOrderSteps(orgId, jobOrder.id, {
+        steps: [
+          {
+            processId: stitching.id,
+            processorId: cutterId,
+            inputs: [{ itemId: shirtId }],
+            outputs: [{ itemId: shirtsId, isPrimary: true }],
+          },
+        ],
+        reason: 'Party asked for stitching too',
+      });
+
+      expect(after.steps).toHaveLength(2);
+      expect(after.steps.map((s) => s.seq)).toEqual([1, 2]);
+
+      // 🔴 The step already issued against is the SAME ROW, untouched.
+      expect(after.steps[0]!.id).toBe(step1.id);
+      expect(after.steps[0]!.status).toBe('issued');
+
+      // …and its challan still exists and still points at it. A cascade would
+      // have taken this with it and left its ledger rows explaining nothing.
+      const survivingIssue = await runAsTenant(orgId, (tx) =>
+        tx.jobIssue.findFirst({ where: { id: issue.id }, select: { jobOrderStepId: true } }),
+      );
+      expect(survivingIssue?.jobOrderStepId).toBe(step1.id);
+
+      /**
+       * 🔴 The new step is classified against the steps ALREADY on the order, not
+       * only against the ones in the request. Without that it reads as drawn from
+       * stock, and `classifyStepInputs` would be free to throw "produced only by
+       * a later step" at an item step 1 really does produce.
+       */
+      const appended = after.steps[1]!;
+      expect(appended.inputs[0]!.itemId).toBe(shirtId);
+      expect(appended.inputs[0]!.fromStock).toBe(false);
+      // Planned from what step 1 expects to produce, seeded across the boundary.
+      expect(Number(appended.inputs[0]!.plannedQty)).toBe(90);
+
+      // Work added to a released order is a decision somebody reviews later.
+      expect(after.remarks).toContain('Added step 2');
+      expect(after.remarks).toContain('Party asked for stitching too');
+
+      // The chain sequences it without any status check on our side: cutting has
+      // returned nothing, so stitching has nothing to send on.
+      const overview = await getJobOrderOverview(orgId, jobOrder.id);
+      expect(overview.steps[1]!.canIssue).toBe(false);
+      expect(overview.steps[1]!.blockedReason).toContain('Nothing has come back from step 1');
+    });
+
+    it('refuses an order that has been closed short', async () => {
+      const cutting = await createNewProcess(orgId, {
+        name: `Cutting ${unique()}`,
+        itemChanges: true,
+      });
+      const stitching = await createNewProcess(orgId, {
+        name: `Stitching ${unique()}`,
+        itemChanges: true,
+      });
+
+      const jobOrder = await createNewJobOrder(orgId, {
+        steps: [
+          {
+            processId: cutting.id,
+            processorId: cutterId,
+            inputs: [{ itemId: dyedId, plannedQty: 10 }],
+            outputs: [{ itemId: shirtId, isPrimary: true }],
+          },
+        ],
+      });
+      await shortCloseJobOrder(orgId, jobOrder.id, 'finished light');
+
+      /**
+       * 🔴 The one refusal. `short_closed` is sticky, so the order would keep
+       * that label forever while `chainNotReady` waives the chain after a
+       * short-closed step — a document that reads as finished and still takes
+       * challans.
+       */
+      await expect(
+        appendJobOrderSteps(orgId, jobOrder.id, {
+          steps: [
+            {
+              processId: stitching.id,
+              inputs: [{ itemId: shirtId }],
+              outputs: [{ itemId: shirtsId, isPrimary: true }],
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({ status: 409 });
+    });
   });
 });

@@ -10,6 +10,7 @@ import {
   type JobOrder,
   type JobOrderOverviewData,
   type JobOrdersPage,
+  type JobOrderStepData,
   type UpdateJobOrderData,
 } from './jobOrders.schemas';
 
@@ -56,6 +57,31 @@ export async function updateJobOrder({
   data: UpdateJobOrderData;
 }): Promise<JobOrder> {
   const response = await apiClient.put(`${endpoints.jobwork.jobOrders(orgId)}/${id}`, data);
+  return jobOrderSchema.parse(response.data);
+}
+
+/**
+ * Add work to the END of an order that has already started.
+ *
+ * A separate call from `updateJobOrder` because it is a different operation, not
+ * a relaxed one: the update endpoint rewrites the whole grid and refuses anything
+ * but a draft, while this only ever inserts after the last step.
+ */
+export async function appendJobOrderSteps({
+  orgId,
+  id,
+  steps,
+  reason,
+}: {
+  orgId: string;
+  id: string;
+  steps: JobOrderStepData[];
+  reason?: string;
+}): Promise<JobOrder> {
+  const response = await apiClient.post(`${endpoints.jobwork.jobOrders(orgId)}/${id}/steps`, {
+    steps,
+    reason,
+  });
   return jobOrderSchema.parse(response.data);
 }
 

@@ -4,11 +4,13 @@ import { tenantContext } from '../../../middlewares/tenantContext.ts';
 import { requirePermission } from '../../../middlewares/authorize.ts';
 import { validateBody } from '../../../middlewares/validate.ts';
 import {
+  appendJobOrderStepsSchema,
   createJobOrderSchema,
   shortCloseSchema,
   updateJobOrderSchema,
 } from './jobOrders.schemas.ts';
 import {
+  appendSteps,
   createJobOrder,
   deleteJobOrder,
   getJobOrder,
@@ -61,6 +63,17 @@ router.put(
   requirePermission('job_order:update'),
   validateBody(updateJobOrderSchema),
   updateJobOrder,
+);
+/**
+ * Appending a step is an `update` on the order, not a `create` of its own: it is
+ * the same authority as editing the grid while the order is still a draft, just
+ * narrowed to the one change a released order can take safely.
+ */
+router.post(
+  '/:id/steps',
+  requirePermission('job_order:update'),
+  validateBody(appendJobOrderStepsSchema),
+  appendSteps,
 );
 /**
  * Closing short is an `update`, not a `delete`. It ends the order but destroys

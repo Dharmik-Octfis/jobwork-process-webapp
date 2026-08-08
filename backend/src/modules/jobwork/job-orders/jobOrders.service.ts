@@ -25,6 +25,7 @@ import { runAsDocument, type ProcessorType } from '../jobwork.types.ts';
 import { chainNotReady, getStepTotals, recomputeJobOrder } from './jobOrders.status.ts';
 import type { ItemFlow, OutputFlow, StepTotals } from './jobOrders.status.ts';
 import type {
+  AppendJobOrderStepsInput,
   CreateJobOrderInput,
   JobOrderStepInput,
   StepInputRow,
@@ -274,6 +275,13 @@ function flagPrimaryOutput(rows: readonly StepOutputRow[], stepIndex: number): R
 function classifyStepInputs(
   steps: readonly { resolvedInputs: ResolvedInput[]; resolvedOutputs: ResolvedOutput[] }[],
   itemNames: ReadonlyMap<string, string>,
+  /**
+   * Items produced by steps that already exist on the order and are NOT in
+   * `steps` — the append path (§append). Everything here ran before everything
+   * being built, so an input matching one is chain-fed and cannot possibly be
+   * "produced only by a later step".
+   */
+  producedEarlier: ReadonlySet<string> = new Set(),
 ) {
   const producedAt = new Map<string, number[]>();
   for (const [index, step] of steps.entries()) {
@@ -286,6 +294,10 @@ function classifyStepInputs(
 
   for (const [index, step] of steps.entries()) {
     for (const [rowIndex, input] of step.resolvedInputs.entries()) {
+      if (producedEarlier.has(input.itemId)) {
+        input.fromStock = false;
+        continue;
+      }
       const producers = producedAt.get(input.itemId) ?? [];
       if (producers.some((at) => at < index)) {
         input.fromStock = false;
@@ -392,9 +404,10 @@ function applyRowUnits<T extends { itemId: string; uomId: string | null }>(
  * conversion factor at receipt time (§6.3). What actually comes back is measured,
  * not derived.
  */
-function planQuantities(steps: ResolvedStep[]) {
-  // What the nearest earlier step expects to produce of each item.
-  const producedQty = new Map<string, number>();
+function planQuantities(steps: ResolvedStep[], seeded: ReadonlyMap<string, number> = new Map()) {
+  // What the nearest earlier step expects to produce of each item. Seeded on the
+  // append path with what the steps ALREADY on the order expect to produce.
+  const producedQty = new Map<string, number>(seeded);
 
   return steps.map((step) => {
     const resolvedInputs = step.resolvedInputs.map((row, rowIndex) => {
@@ -466,10 +479,30 @@ async function assertStepRefs(
  * The processor NAME is resolved here and frozen, not joined at read time. A
  * vendor deleted next year must still print on this order's step (§2.3).
  */
+/**
+ * What the steps already on the order produce, for the append path. Empty on
+ * create and on the full-rewrite edit, where the array IS the whole order.
+ */
+interface PriorSteps {
+  /** Items an existing step produces — chain-fed, not from stock. */
+  producedItemIds: ReadonlySet<string>;
+  /** …and how much of each is expected, so a new step can plan from it. */
+  producedQty: ReadonlyMap<string, number>;
+  /** `seq` of the first new step. `1` everywhere except append. */
+  startSeq: number;
+}
+
+const NO_PRIOR_STEPS: PriorSteps = {
+  producedItemIds: new Set(),
+  producedQty: new Map(),
+  startSeq: 1,
+};
+
 async function buildSteps(
   tx: TenantClient,
   organizationId: string,
   steps: readonly JobOrderStepInput[],
+  prior: PriorSteps = NO_PRIOR_STEPS,
 ) {
   const processes = await tx.process.findMany({
     where: {
@@ -557,9 +590,9 @@ async function buildSteps(
     };
   });
 
-  classifyStepInputs(withUnits, itemNames);
+  classifyStepInputs(withUnits, itemNames, prior.producedItemIds);
 
-  const planned = planQuantities(withUnits);
+  const planned = planQuantities(withUnits, prior.producedQty);
 
   const rows = [];
   for (const [index, step] of planned.entries()) {
@@ -567,7 +600,7 @@ async function buildSteps(
     const principalInput = step.resolvedInputs[0] ?? null;
     const primaryOutput = step.resolvedOutputs.find((row) => row.isPrimary) ?? null;
     rows.push({
-      seq: index + 1,
+      seq: prior.startSeq + index,
       processId: step.processId,
       processNameSnapshot: step.processNameSnapshot,
       processorType,
@@ -850,6 +883,130 @@ export async function updateJobOrderById(
     // issue and no receipt can exist against a draft order.
     await tx.jobOrderStep.deleteMany({ where: { jobOrderId: id } });
     await writeSteps(tx, organizationId, id, stepRows, userId);
+
+    return readBack(tx, organizationId, id);
+  });
+}
+
+/**
+ * Add work to the END of a running order — the one change a released order does
+ * accept.
+ *
+ * 🔴 APPEND ONLY, and that is what makes it safe. `seq = max + 1` touches no
+ * existing row, so nothing is renumbered and nothing is rewritten: the issues and
+ * receipts already hanging off the existing steps keep pointing at steps that
+ * still say what their challans say. Contrast `updateJobOrderById`, which
+ * hard-deletes the whole grid and can only ever run on a draft — `JobIssue.step`
+ * and `JobReceipt.step` are `onDelete: Cascade`, so doing that to a running order
+ * would silently delete every challan and receipt and orphan their ledger rows.
+ *
+ * 🔴 NO STEP'S STATUS IS CHECKED, deliberately. Appending after a step that is
+ * pending, at a processor, or complete is the same operation each time — the new
+ * step arrives `pending` and `chainNotReady` already refuses to let it issue until
+ * the step above it has returned something. A guard here would defend against a
+ * hazard that only exists for INSERT, which renumbers.
+ *
+ * The ORDER's status is another matter, and there is exactly one refusal: see
+ * below.
+ */
+export async function appendJobOrderSteps(
+  organizationId: string,
+  id: string,
+  data: AppendJobOrderStepsInput,
+  userId?: string,
+) {
+  const { steps, reason } = data;
+
+  return runAsTenant(organizationId, async (tx) => {
+    const order = await tx.jobOrder.findFirst({
+      where: { id, organizationId, isDeleted: false },
+      select: { id: true, status: true, remarks: true },
+    });
+    if (!order) throw ApiError.notFound('Job order not found');
+
+    /**
+     * 🔴 A closed order must refuse, or it becomes a document that reads as
+     * finished and still takes challans. Two mechanisms combine: `short_closed`
+     * and `cancelled` are sticky, so `recomputeJobOrder` returns early and the
+     * order keeps its label forever; and `chainNotReady` waives the chain when
+     * the step above is short-closed, so the new step would happily issue.
+     */
+    if (order.status === 'short_closed' || order.status === 'cancelled') {
+      throw ApiError.conflict(
+        'This job order is closed, so no more work can be added to it. Raise a new order instead.',
+      );
+    }
+
+    await assertStepRefs(tx, organizationId, steps);
+
+    // Deleted steps included, on purpose: `@@unique([jobOrderId, seq])` is a full
+    // index, so a soft-deleted step still occupies its number.
+    const existing = await tx.jobOrderStep.findMany({
+      where: { organizationId, jobOrderId: id },
+      select: {
+        seq: true,
+        isDeleted: true,
+        outputs: { where: { isDeleted: false }, select: { itemId: true, expectedQty: true } },
+      },
+    });
+    const startSeq = existing.reduce((max, step) => Math.max(max, step.seq), 0) + 1;
+
+    /**
+     * What the order ALREADY produces, so the new steps classify and plan against
+     * it. Without this the new step's input reads as drawn from stock when it is
+     * fed by the step above, and — worse — `classifyStepInputs` would be free to
+     * throw "produced only by a later step" at an item an existing step really
+     * does produce.
+     *
+     * Expected, not received. What actually came back is measured at receipt time
+     * and never derived (§6.3); this is a plan, and it stays typed-over-able.
+     */
+    const producedItemIds = new Set<string>();
+    const producedQty = new Map<string, number>();
+    for (const step of existing) {
+      if (step.isDeleted) continue;
+      for (const output of step.outputs) {
+        producedItemIds.add(output.itemId);
+        if (output.expectedQty !== null) {
+          producedQty.set(output.itemId, Number(output.expectedQty));
+        }
+      }
+    }
+
+    const stepRows = await buildSteps(tx, organizationId, steps, {
+      producedItemIds,
+      producedQty,
+      startSeq,
+    });
+
+    // Two people appending at the same moment read the same `startSeq`. The
+    // unique index catches the loser; this is what it says instead of a
+    // constraint name.
+    await withUniqueViolation(
+      'Someone else added a step to this job order a moment ago. Reopen it and try again.',
+      () => writeSteps(tx, organizationId, id, stepRows, userId),
+    );
+
+    // 🔴 The header's item and quantity are NOT recomputed. They derive from step
+    // 1 (`headerItemFrom`), and an append never reaches step 1.
+
+    // Work added to a released order is a decision somebody will need to review —
+    // the same reasoning that puts the short-close reason in `remarks`.
+    const seqs = stepRows.map((row) => row.seq).join(', ');
+    const note =
+      `Added step${stepRows.length === 1 ? '' : 's'} ${seqs}` +
+      (reason ? `: ${reason.trim()}` : '');
+    await tx.jobOrder.update({
+      where: { id },
+      data: {
+        remarks: order.remarks ? `${order.remarks}\n${note}` : note,
+        updatedBy: userId ?? null,
+      },
+    });
+
+    // A `completed` order reopens as `in_progress` — there is a pending step on it
+    // again. That is the point of the feature, not a side effect.
+    await recomputeJobOrder(tx, organizationId, id);
 
     return readBack(tx, organizationId, id);
   });

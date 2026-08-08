@@ -5,6 +5,7 @@ import { ApiError } from '../../../lib/apiError.ts';
 import { sendSuccess } from '../../../lib/apiResponse.ts';
 import { listQuerySchema } from '../../../lib/pagination.ts';
 import {
+  appendJobOrderSteps,
   countJobOrders,
   createNewJobOrder,
   deleteJobOrderById,
@@ -17,8 +18,10 @@ import {
   updateJobOrderNumberPreference,
 } from './jobOrders.service.ts';
 import {
+  appendJobOrderStepsSchema,
   createJobOrderSchema,
   shortCloseSchema,
+  type AppendJobOrderStepsInput,
   type CreateJobOrderInput,
   type ShortCloseInput,
   type UpdateJobOrderInput,
@@ -97,6 +100,21 @@ openApiRegistry.registerPath({
 
 openApiRegistry.registerPath({
   method: 'post',
+  path: '/organizations/{orgId}/jobwork/job-orders/{id}/steps',
+  tags: ['Job Orders'],
+  summary: 'Append one or more steps to the end of a job order',
+  request: {
+    params: orgParam.extend({ id: z.string() }),
+    body: { content: { 'application/json': { schema: appendJobOrderStepsSchema } } },
+  },
+  responses: {
+    201: { description: 'Step appended' },
+    409: { description: 'The order is closed short or cancelled' },
+  },
+});
+
+openApiRegistry.registerPath({
+  method: 'post',
   path: '/organizations/{orgId}/jobwork/job-orders/{id}/short-close',
   tags: ['Job Orders'],
   summary: 'Close a job order short, with a reason',
@@ -148,6 +166,18 @@ export const updateJobOrder = async (req: Request, res: Response) => {
     req.user?.id,
   );
   sendSuccess(res, updated, 'Job order updated.');
+};
+
+/** Append work to a running order. `PUT /:id` refuses anything but a draft — this
+ * is the narrow, insert-only path that a released order does accept. */
+export const appendSteps = async (req: Request, res: Response) => {
+  const updated = await appendJobOrderSteps(
+    req.tenantId!,
+    req.params.id as string,
+    req.body as AppendJobOrderStepsInput,
+    req.user?.id,
+  );
+  sendSuccess(res, updated, 'Step added.', 201);
 };
 
 export const shortClose = async (req: Request, res: Response) => {

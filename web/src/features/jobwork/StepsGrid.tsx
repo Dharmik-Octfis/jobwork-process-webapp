@@ -47,6 +47,21 @@ interface Props<T extends StepGridRow> {
    * beside it, because one header unit cannot caption metres, cones and pieces.
    */
   showPlannedQty?: boolean;
+  /**
+   * How many steps already exist above these. The grid captions positions, and on
+   * the append dialog position 1 of the array is step 4 of the order — a block
+   * headed "Step 1" there would name a step that already exists and has challans
+   * against it. Error keys stay on the ARRAY index, which is what the server
+   * numbers its `details` by.
+   */
+  seqOffset?: number;
+  /**
+   * Items produced by steps above these, `itemId → seq`. Only the append dialog
+   * passes it: the chain badge can otherwise only see the steps in this array, so
+   * an input fed by an existing step would be labelled "From stock" — the exact
+   * mistake the badge exists to catch.
+   */
+  priorProducers?: ReadonlyMap<string, number>;
 }
 
 const cellInput: React.CSSProperties = {
@@ -128,7 +143,10 @@ interface ItemListProps {
   uomOptions: { value: string; label: string }[];
   showQty?: boolean;
   disabled?: boolean;
+  /** Array position — error keys and control ids. */
   stepIndex: number;
+  /** Position in the ORDER — what a human is told. The two differ when appending. */
+  stepNumber: number;
   errors?: Record<string, string>;
   badgeFor: (row: StepItemRow) => { text: string; tone: 'chain' | 'stock' } | null;
   /** Shown when the list is empty. Says what an empty list MEANS, never what the
@@ -167,6 +185,7 @@ function ItemList({
   showQty,
   disabled,
   stepIndex,
+  stepNumber,
   errors,
   badgeFor,
   emptyHint,
@@ -226,7 +245,7 @@ function ItemList({
                       ...items.map((i) => ({ value: i.id, label: i.name })),
                     ]}
                     disabled={disabled}
-                    ariaLabel={`Step ${stepIndex + 1} ${isInput ? 'input' : 'output'} ${rowIndex + 1} item`}
+                    ariaLabel={`Step ${stepNumber} ${isInput ? 'input' : 'output'} ${rowIndex + 1} item`}
                     minWidth={0}
                   />
                 </div>
@@ -247,7 +266,7 @@ function ItemList({
                       onChange={(value) => update(rowIndex, { uomId: value || null })}
                       options={uomOptions}
                       disabled={disabled}
-                      ariaLabel={`Step ${stepIndex + 1} ${isInput ? 'input' : 'output'} ${rowIndex + 1} unit`}
+                      ariaLabel={`Step ${stepNumber} ${isInput ? 'input' : 'output'} ${rowIndex + 1} unit`}
                       minWidth={0}
                     />
                   )}
@@ -259,7 +278,7 @@ function ItemList({
                 {showQty && (
                   <div style={{ flex: '0 0 84px' }}>
                     <label htmlFor={qtyId} style={srOnly}>
-                      {`Step ${stepIndex + 1} ${isInput ? 'planned' : 'expected'} quantity for row ${rowIndex + 1}`}
+                      {`Step ${stepNumber} ${isInput ? 'planned' : 'expected'} quantity for row ${rowIndex + 1}`}
                     </label>
                     <input
                       id={qtyId}
@@ -289,7 +308,7 @@ function ItemList({
                 {showQty && isInput && (
                   <div style={{ flex: '0 0 66px' }}>
                     <label htmlFor={`${qtyId}-tol`} style={srOnly}>
-                      {`Step ${stepIndex + 1} tolerance percent for row ${rowIndex + 1}`}
+                      {`Step ${stepNumber} tolerance percent for row ${rowIndex + 1}`}
                     </label>
                     <input
                       id={`${qtyId}-tol`}
@@ -340,7 +359,7 @@ function ItemList({
                   onClick={() => onChange(rows.filter((_, i) => i !== rowIndex))}
                   disabled={disabled}
                   title="Remove item"
-                  aria-label={`Remove ${isInput ? 'input' : 'output'} ${rowIndex + 1} from step ${stepIndex + 1}`}
+                  aria-label={`Remove ${isInput ? 'input' : 'output'} ${rowIndex + 1} from step ${stepNumber}`}
                   style={{ ...iconButton, flex: '0 0 26px' }}
                 >
                   <Trash2 size={12} />
@@ -421,6 +440,8 @@ export function StepsGrid<T extends StepGridRow>({
   errors,
   disabled,
   showPlannedQty,
+  seqOffset = 0,
+  priorProducers,
 }: Props<T>) {
   const { orgId } = useParams<{ orgId: string }>();
   const { data: uoms = [] } = useUoms(orgId!);
@@ -504,6 +525,8 @@ export function StepsGrid<T extends StepGridRow>({
               key.startsWith(`steps.${index}.inputs`) || key.startsWith(`steps.${index}.outputs`),
           )?.[1];
           const field = (id: string) => `step-${index}-${id}`;
+          // Position in the order, not in this array — they differ when appending.
+          const stepNo = index + 1 + seqOffset;
 
           /**
            * A step that lists no inputs of its own takes what the step above
@@ -540,7 +563,7 @@ export function StepsGrid<T extends StepGridRow>({
                 }}
               >
                 <span style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>
-                  Step {index + 1}
+                  Step {stepNo}
                 </span>
                 <div style={{ display: 'flex', gap: 4 }}>
                   <button
@@ -548,7 +571,7 @@ export function StepsGrid<T extends StepGridRow>({
                     onClick={() => move(index, -1)}
                     disabled={disabled || index === 0}
                     title="Move up"
-                    aria-label={`Move step ${index + 1} up`}
+                    aria-label={`Move step ${stepNo} up`}
                     style={{ ...iconButton, opacity: index === 0 ? 0.4 : 1 }}
                   >
                     <ArrowUp size={13} />
@@ -558,7 +581,7 @@ export function StepsGrid<T extends StepGridRow>({
                     onClick={() => move(index, 1)}
                     disabled={disabled || index === steps.length - 1}
                     title="Move down"
-                    aria-label={`Move step ${index + 1} down`}
+                    aria-label={`Move step ${stepNo} down`}
                     style={{ ...iconButton, opacity: index === steps.length - 1 ? 0.4 : 1 }}
                   >
                     <ArrowDown size={13} />
@@ -568,7 +591,7 @@ export function StepsGrid<T extends StepGridRow>({
                     onClick={() => onChange(steps.filter((_, i) => i !== index))}
                     disabled={disabled || steps.length === 1}
                     title="Remove step"
-                    aria-label={`Remove step ${index + 1}`}
+                    aria-label={`Remove step ${stepNo}`}
                     style={{ ...iconButton, opacity: steps.length === 1 ? 0.4 : 1 }}
                   >
                     <Trash2 size={13} />
@@ -630,7 +653,7 @@ export function StepsGrid<T extends StepGridRow>({
                       })
                     }
                     disabled={disabled}
-                    ariaLabel={`Step ${index + 1} process`}
+                    ariaLabel={`Step ${stepNo} process`}
                     minWidth="100%"
                   />
                 </div>
@@ -653,7 +676,7 @@ export function StepsGrid<T extends StepGridRow>({
                     }
                     options={[...PROCESSOR_TYPE_OPTIONS]}
                     disabled={disabled}
-                    ariaLabel={`Step ${index + 1} performed by`}
+                    ariaLabel={`Step ${stepNo} performed by`}
                     minWidth={0}
                   />
                 </div>
@@ -671,7 +694,7 @@ export function StepsGrid<T extends StepGridRow>({
                         ...workCentres.map((l) => ({ value: l.id, label: l.name })),
                       ]}
                       disabled={disabled}
-                      ariaLabel={`Step ${index + 1} work centre`}
+                      ariaLabel={`Step ${stepNo} work centre`}
                       minWidth={0}
                     />
                   ) : (
@@ -686,7 +709,7 @@ export function StepsGrid<T extends StepGridRow>({
                         })),
                       ]}
                       disabled={disabled}
-                      ariaLabel={`Step ${index + 1} processor`}
+                      ariaLabel={`Step ${stepNo} processor`}
                       minWidth={0}
                     />
                   )}
@@ -726,7 +749,7 @@ export function StepsGrid<T extends StepGridRow>({
                     onChange={(value) => update(index, { rateBasis: value || null })}
                     options={[{ value: '', label: 'From the process' }, ...RATE_BASIS_OPTIONS]}
                     disabled={disabled}
-                    ariaLabel={`Step ${index + 1} rate basis`}
+                    ariaLabel={`Step ${stepNo} rate basis`}
                     minWidth={0}
                   />
                 </div>
@@ -782,6 +805,7 @@ export function StepsGrid<T extends StepGridRow>({
                   showQty={showPlannedQty}
                   disabled={disabled}
                   stepIndex={index}
+                  stepNumber={stepNo}
                   errors={errors}
                   /* Step 1's row for the order's item is a REAL row, locked to
                      that item but carrying its own quantity — see `lockedItemId`.
@@ -791,14 +815,19 @@ export function StepsGrid<T extends StepGridRow>({
                      plans it from that step's expected output. */
                   emptyHint={
                     previousPrimaryLabel
-                      ? `Nothing listed — this step will consume nothing. Add ${previousPrimaryLabel} if it carries on from step ${index}.`
+                      ? `Nothing listed — this step will consume nothing. Add ${previousPrimaryLabel} if it carries on from step ${stepNo - 1}.`
                       : 'Nothing listed — this step will consume nothing.'
                   }
                   badgeFor={(row) => {
                     if (!row.itemId) return null;
-                    const from = producedByStep(steps, index, row.itemId);
-                    return from
-                      ? { text: `From step ${from}`, tone: 'chain' as const }
+                    // Steps in this array first, then the ones already on the
+                    // order — otherwise appending labels a chain-fed input "From
+                    // stock", which is the mistake the badge exists to catch.
+                    const within = producedByStep(steps, index, row.itemId);
+                    const from = within === null ? null : within + seqOffset;
+                    const fed = from ?? priorProducers?.get(row.itemId) ?? null;
+                    return fed
+                      ? { text: `From step ${fed}`, tone: 'chain' as const }
                       : { text: 'From stock', tone: 'stock' as const };
                   }}
                 />
@@ -813,11 +842,14 @@ export function StepsGrid<T extends StepGridRow>({
                   showQty={showPlannedQty}
                   disabled={disabled}
                   stepIndex={index}
+                  stepNumber={stepNo}
                   errors={errors}
                   emptyHint="Nothing listed — this step will produce nothing, and nothing can be received against it. Add what comes back, even if it is the same item that went in."
                   badgeFor={(row) => {
                     if (!row.itemId) return null;
-                    const fed = feedsSteps(steps, index, row.itemId, Boolean(row.isPrimary));
+                    const fed = feedsSteps(steps, index, row.itemId, Boolean(row.isPrimary)).map(
+                      (at) => at + seqOffset,
+                    );
                     return fed.length
                       ? { text: `Feeds step ${fed.join(', ')}`, tone: 'chain' as const }
                       : { text: 'Ends here', tone: 'stock' as const };
