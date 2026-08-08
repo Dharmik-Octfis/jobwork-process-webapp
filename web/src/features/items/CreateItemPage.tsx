@@ -29,7 +29,8 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
   const { data: uoms = [] } = useUoms(orgId!);
   const [isUomModalOpen, setIsUomModalOpen] = useState(false);
 
-  const itemToClone = (location.state as { itemToClone?: Partial<Item> & Record<string, unknown> })?.itemToClone;
+  const itemToClone = (location.state as { itemToClone?: Partial<Item> & Record<string, unknown> })
+    ?.itemToClone;
 
   const [formData, setFormData] = useState<ItemFormData>(() => {
     if (itemToClone) {
@@ -38,28 +39,46 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
         type: (itemToClone.type || itemToClone.product_type || 'Goods') as 'Goods' | 'Service',
         category: itemToClone.category || '',
         hsnCode: itemToClone.hsnCode || itemToClone.hsn_or_sac || '',
-        itemType: (itemToClone.itemType || itemToClone.item_type || 'Single Item') as 'Single Item' | 'Contains Variants',
+        itemType: (itemToClone.itemType || itemToClone.item_type || 'Single Item') as
+          'Single Item' | 'Contains Variants',
         unit: itemToClone.unit || '',
+        stockingUomId: itemToClone.stockingUomId ?? null,
         sku: itemToClone.sku || '',
         isSalesInfo: true,
-        sellingPrice: itemToClone.sellingPrice !== null && itemToClone.sellingPrice !== undefined
-          ? Number(itemToClone.sellingPrice)
-          : (itemToClone.rate !== null && itemToClone.rate !== undefined ? Number(itemToClone.rate) : null as unknown as number),
+        sellingPrice:
+          itemToClone.sellingPrice !== null && itemToClone.sellingPrice !== undefined
+            ? Number(itemToClone.sellingPrice)
+            : itemToClone.rate !== null && itemToClone.rate !== undefined
+              ? Number(itemToClone.rate)
+              : (null as unknown as number),
         salesDescription: itemToClone.salesDescription || itemToClone.sales_description || '',
         isPurchaseInfo: true,
-        costPrice: itemToClone.costPrice !== null && itemToClone.costPrice !== undefined
-          ? Number(itemToClone.costPrice)
-          : (itemToClone.purchase_rate !== null && itemToClone.purchase_rate !== undefined ? Number(itemToClone.purchase_rate) : null as unknown as number),
-        purchaseDescription: itemToClone.purchaseDescription || itemToClone.purchase_description || '',
+        costPrice:
+          itemToClone.costPrice !== null && itemToClone.costPrice !== undefined
+            ? Number(itemToClone.costPrice)
+            : itemToClone.purchase_rate !== null && itemToClone.purchase_rate !== undefined
+              ? Number(itemToClone.purchase_rate)
+              : (null as unknown as number),
+        purchaseDescription:
+          itemToClone.purchaseDescription || itemToClone.purchase_description || '',
         packaging: itemToClone.packaging || '',
         frontImage: itemToClone.frontImage || itemToClone.front_image || null,
         rearImage: itemToClone.rearImage || itemToClone.rear_image || null,
         images: itemToClone.images || [],
         trackInventory: true,
-        inventoryTracking: itemToClone.inventoryTracking || itemToClone.inventory_tracking || 'None',
-        openingStock: itemToClone.openingStock !== null && itemToClone.openingStock !== undefined ? Number(itemToClone.openingStock) : null,
-        openingStockValuePerUnit: itemToClone.openingStockValuePerUnit !== null && itemToClone.openingStockValuePerUnit !== undefined ? Number(itemToClone.openingStockValuePerUnit) : null,
-        customFields: (itemToClone.customFields || itemToClone.custom_fields as Record<string, unknown>) || {},
+        inventoryTracking:
+          itemToClone.inventoryTracking || itemToClone.inventory_tracking || 'None',
+        openingStock:
+          itemToClone.openingStock !== null && itemToClone.openingStock !== undefined
+            ? Number(itemToClone.openingStock)
+            : null,
+        openingStockValuePerUnit:
+          itemToClone.openingStockValuePerUnit !== null &&
+          itemToClone.openingStockValuePerUnit !== undefined
+            ? Number(itemToClone.openingStockValuePerUnit)
+            : null,
+        customFields:
+          itemToClone.customFields || (itemToClone.custom_fields as Record<string, unknown>) || {},
       };
     }
     return {
@@ -69,6 +88,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
       hsnCode: '',
       itemType: 'Single Item',
       unit: '',
+      stockingUomId: null,
       sku: '',
       isSalesInfo: true,
       sellingPrice: null as unknown as number,
@@ -214,7 +234,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
   const handleOtherImagesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files);
-      const validFiles = files.filter(f => f.size <= 2 * 1024 * 1024);
+      const validFiles = files.filter((f) => f.size <= 2 * 1024 * 1024);
       if (validFiles.length < files.length) {
         alert('Some images were ignored because they exceed the 2 MB limit.');
       }
@@ -322,7 +342,9 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                     }}
                   />
                   {errors.name && (
-                    <span style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}>
+                    <span
+                      style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}
+                    >
                       {errors.name}
                     </span>
                   )}
@@ -339,7 +361,15 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
               >
                 <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Type</label>
                 <div style={{ display: 'flex', gap: 16 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 12,
+                      cursor: 'pointer',
+                    }}
+                  >
                     <input
                       type="radio"
                       name="type"
@@ -349,7 +379,15 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                     />{' '}
                     Goods
                   </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 12,
+                      cursor: 'pointer',
+                    }}
+                  >
                     <input
                       type="radio"
                       name="type"
@@ -385,9 +423,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                     }}
                   />
                   {errors.sku && (
-                    <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>
-                      {errors.sku}
-                    </div>
+                    <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>{errors.sku}</div>
                   )}
                 </div>
               </div>
@@ -401,11 +437,11 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                 }}
               >
                 <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Category</label>
-                  <CategorySelectDropdown
-                    value={formData.category || null}
-                    onChange={(val) => handleSelectChange('category', val)}
-                    error={!!errors.category}
-                  />
+                <CategorySelectDropdown
+                  value={formData.category || null}
+                  onChange={(val) => handleSelectChange('category', val)}
+                  error={!!errors.category}
+                />
               </div>
 
               <div
@@ -445,12 +481,33 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                     </div>
                     <div style={{ flex: 1 }}>
                       <Select
-                        value={formData.unit || ''}
-                        onChange={(val) => handleSelectChange('unit', val)}
+                        value={formData.stockingUomId ?? ''}
+                        /**
+                         * 🔴 SETS BOTH. `stockingUomId` is the FK the stock
+                         * ledger denominates every lot, challan line and balance
+                         * in — one item, one stocking unit (jobwork §5.1) —
+                         * while `unit` is the legacy free string this form has
+                         * always shown and the lists still render. One dropdown
+                         * writes them together so they cannot drift; a second
+                         * "unit" control beside the first would be the confusion,
+                         * not the fix.
+                         */
+                        onChange={(val) => {
+                          const picked = uoms.find((u) => u.id === val);
+                          setFormData((prev) => ({
+                            ...prev,
+                            stockingUomId: val || null,
+                            unit: picked?.unitName ?? '',
+                          }));
+                        }}
                         options={[
-                          ...uoms.map(u => ({ value: u.unitName, label: u.unitName })),
-                          ...(formData.unit && !uoms.some(u => u.unitName === formData.unit)
-                            ? [{ value: formData.unit, label: formData.unit }]
+                          ...uoms.map((u) => ({ value: u.id, label: u.unitName })),
+                          // An item saved before this field existed carries only
+                          // the legacy name, and no id to select by. Show it so
+                          // the box is not mysteriously blank; picking anything
+                          // replaces it with a real unit.
+                          ...(formData.unit && !uoms.some((u) => u.id === formData.stockingUomId)
+                            ? [{ value: '', label: `${formData.unit} — no stocking unit set` }]
                             : []),
                         ]}
                         buttonStyle={{ border: 'none' }}
@@ -528,7 +585,9 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
                 <div>
-                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>Front View</div>
+                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>
+                    Front View
+                  </div>
                   <input
                     type="file"
                     ref={frontImageRef}
@@ -568,17 +627,28 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                     >
                       ↑
                     </div>
-                    <div style={{ fontWeight: 500, fontSize: 12, color: '#1e293b', textAlign: 'center', wordBreak: 'break-all' }}>
+                    <div
+                      style={{
+                        fontWeight: 500,
+                        fontSize: 12,
+                        color: '#1e293b',
+                        textAlign: 'center',
+                        wordBreak: 'break-all',
+                      }}
+                    >
                       {frontImageFile
                         ? frontImageFile.name
-                        : (formData.frontImage
-                            ? ((formData.frontImage as ItemImageAttachment).name || 'Existing Front Image')
-                            : 'Upload Front Image')}
+                        : formData.frontImage
+                          ? (formData.frontImage as ItemImageAttachment).name ||
+                            'Existing Front Image'
+                          : 'Upload Front Image'}
                     </div>
                   </button>
                 </div>
                 <div>
-                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>Rear View</div>
+                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>
+                    Rear View
+                  </div>
                   <input
                     type="file"
                     ref={rearImageRef}
@@ -618,18 +688,29 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                     >
                       ↑
                     </div>
-                    <div style={{ fontWeight: 500, fontSize: 12, color: '#1e293b', textAlign: 'center', wordBreak: 'break-all' }}>
+                    <div
+                      style={{
+                        fontWeight: 500,
+                        fontSize: 12,
+                        color: '#1e293b',
+                        textAlign: 'center',
+                        wordBreak: 'break-all',
+                      }}
+                    >
                       {rearImageFile
                         ? rearImageFile.name
-                        : (formData.rearImage
-                            ? ((formData.rearImage as ItemImageAttachment).name || 'Existing Rear Image')
-                            : 'Upload Rear Image')}
+                        : formData.rearImage
+                          ? (formData.rearImage as ItemImageAttachment).name ||
+                            'Existing Rear Image'
+                          : 'Upload Rear Image'}
                     </div>
                   </button>
                 </div>
               </div>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>Other Images</div>
+                <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>
+                  Other Images
+                </div>
                 <input
                   type="file"
                   ref={otherImagesRef}
@@ -673,13 +754,19 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                     ↑
                   </div>
                   <div
-                    style={{ fontWeight: 500, fontSize: 12, color: '#1e293b', textAlign: 'center', wordBreak: 'break-all' }}
+                    style={{
+                      fontWeight: 500,
+                      fontSize: 12,
+                      color: '#1e293b',
+                      textAlign: 'center',
+                      wordBreak: 'break-all',
+                    }}
                   >
                     {otherImageFiles.length > 0
                       ? `${otherImageFiles.length} new files selected`
-                      : (formData.images && formData.images.length > 0
-                          ? `${formData.images.length} existing image(s)`
-                          : 'Drag & Drop Images (Max 3)')}
+                      : formData.images && formData.images.length > 0
+                        ? `${formData.images.length} existing image(s)`
+                        : 'Drag & Drop Images (Max 3)'}
                   </div>
                   <div
                     style={{ fontSize: 10, color: '#64748b', textAlign: 'center', lineHeight: 1.3 }}
@@ -690,10 +777,6 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
               </div>
             </div>
           </div>
-
-
-
-
 
           {/* Sales and Purchase Information */}
           <div
@@ -710,7 +793,17 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
               {/* Sales Information */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    cursor: 'pointer',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: '#1e293b',
+                  }}
+                >
                   <input
                     type="checkbox"
                     name="isSalesInfo"
@@ -720,9 +813,13 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                   Sales Information
                 </label>
                 {formData.isSalesInfo && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
+                  <div
+                    style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}
+                  >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Selling Price*</label>
+                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>
+                        Selling Price*
+                      </label>
                       <input
                         type="number"
                         step="0.01"
@@ -738,17 +835,23 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                         }}
                       />
                       {errors.sellingPrice && (
-                        <span style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}>
+                        <span
+                          style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}
+                        >
                           {errors.sellingPrice}
                         </span>
                       )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Sales Description</label>
+                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
+                        Sales Description
+                      </label>
                       <textarea
                         name="salesDescription"
                         value={formData.salesDescription || ''}
-                        onChange={(e) => handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)}
+                        onChange={(e) =>
+                          handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
+                        }
                         rows={3}
                         style={{
                           width: '100%',
@@ -766,7 +869,17 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
 
               {/* Purchase Information */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    cursor: 'pointer',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: '#1e293b',
+                  }}
+                >
                   <input
                     type="checkbox"
                     name="isPurchaseInfo"
@@ -776,9 +889,13 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                   Purchase Information
                 </label>
                 {formData.isPurchaseInfo && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
+                  <div
+                    style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}
+                  >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Cost Price*</label>
+                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>
+                        Cost Price*
+                      </label>
                       <input
                         type="number"
                         step="0.01"
@@ -794,17 +911,23 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                         }}
                       />
                       {errors.costPrice && (
-                        <span style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}>
+                        <span
+                          style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}
+                        >
                           {errors.costPrice}
                         </span>
                       )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Purchase Description</label>
+                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
+                        Purchase Description
+                      </label>
                       <textarea
                         name="purchaseDescription"
                         value={formData.purchaseDescription || ''}
-                        onChange={(e) => handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)}
+                        onChange={(e) =>
+                          handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
+                        }
                         rows={3}
                         style={{
                           width: '100%',
@@ -880,9 +1003,19 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                     gap: 12,
                   }}
                 >
-                  <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Inventory Tracking</label>
+                  <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
+                    Inventory Tracking
+                  </label>
                   <div style={{ display: 'flex', gap: 16 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        fontSize: 12,
+                        cursor: 'pointer',
+                      }}
+                    >
                       <input
                         type="radio"
                         name="inventoryTracking"
@@ -893,7 +1026,15 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       None
                     </label>
                     {formData.type !== 'Service' && (
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                      <label
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          fontSize: 12,
+                          cursor: 'pointer',
+                        }}
+                      >
                         <input
                           type="radio"
                           name="inventoryTracking"
@@ -910,7 +1051,9 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                 {formData.inventoryTracking === 'None' && (
                   <div style={{ display: 'flex', gap: 24, marginTop: 12 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Opening Stock</label>
+                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
+                        Opening Stock
+                      </label>
                       <input
                         type="number"
                         step="0.01"
@@ -928,7 +1071,9 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       />
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Value of Opening Stock (per quantity)</label>
+                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
+                        Value of Opening Stock (per quantity)
+                      </label>
                       <input
                         type="number"
                         step="0.01"
@@ -951,7 +1096,6 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
             )}
           </div>
 
-
           {/* Custom Fields */}
           {orgId && (
             <div
@@ -971,7 +1115,10 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                   color: '#1e293b',
                 }}
               >
-                Custom Fields{customFields.some((f) => f.isRequired) && <span style={{ color: '#ef4444' }}>*</span>}
+                Custom Fields
+                {customFields.some((f) => f.isRequired) && (
+                  <span style={{ color: '#ef4444' }}>*</span>
+                )}
               </h3>
               <CustomFieldsSection
                 orgId={orgId}
@@ -1023,7 +1170,9 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
             <button
               type="button"
               disabled={createMutation.isPending}
-              onClick={() => (isModal && onCancel ? onCancel() : navigate(`/organizations/${orgId}/items`))}
+              onClick={() =>
+                isModal && onCancel ? onCancel() : navigate(`/organizations/${orgId}/items`)
+              }
               style={{
                 padding: '8px 24px',
                 background: 'white',

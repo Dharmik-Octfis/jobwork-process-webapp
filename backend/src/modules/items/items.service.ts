@@ -1,4 +1,4 @@
-import { runAsTenant } from '../../db/prisma.ts';
+import { runAsTenant, type TenantClient } from '../../db/prisma.ts';
 import { ApiError } from '../../lib/apiError.ts';
 import type { CreateItemDto, UpdateItemDto } from './items.schemas.ts';
 import { uploadFile } from '../../lib/storage.ts';
@@ -19,15 +19,25 @@ export function toItemResponse(item: Record<string, unknown> | null | undefined)
     hsn_or_sac: item.hsnCode,
     item_type: item.itemType,
     can_be_sold: item.isSalesInfo,
-    rate: item.sellingPrice !== null && item.sellingPrice !== undefined ? Number(item.sellingPrice) : null,
+    rate:
+      item.sellingPrice !== null && item.sellingPrice !== undefined
+        ? Number(item.sellingPrice)
+        : null,
     sales_description: item.salesDescription,
     can_be_purchased: item.isPurchaseInfo,
-    purchase_rate: item.costPrice !== null && item.costPrice !== undefined ? Number(item.costPrice) : null,
+    purchase_rate:
+      item.costPrice !== null && item.costPrice !== undefined ? Number(item.costPrice) : null,
     purchase_description: item.purchaseDescription,
     inventory_tracking: item.inventoryTracking,
     track_inventory: item.trackInventory,
-    openingStock: item.openingStock !== null && item.openingStock !== undefined ? Number(item.openingStock) : null,
-    openingStockValuePerUnit: item.openingStockValuePerUnit !== null && item.openingStockValuePerUnit !== undefined ? Number(item.openingStockValuePerUnit) : null,
+    openingStock:
+      item.openingStock !== null && item.openingStock !== undefined
+        ? Number(item.openingStock)
+        : null,
+    openingStockValuePerUnit:
+      item.openingStockValuePerUnit !== null && item.openingStockValuePerUnit !== undefined
+        ? Number(item.openingStockValuePerUnit)
+        : null,
     custom_fields: item.customFields,
     front_image: item.frontImage,
     rear_image: item.rearImage,
@@ -40,6 +50,27 @@ export function toItemResponse(item: Record<string, unknown> | null | undefined)
   };
 }
 
+/**
+ * 🔴 The stocking unit must belong to THIS organization.
+ *
+ * Postgres checks foreign keys OUTSIDE row-level security, so an insert naming
+ * another tenant's uom id succeeds and the row that lands is invisible to both
+ * tenants' queries afterwards (jobwork.refs.ts). The id arrives from a client
+ * and is therefore a claim; this is what turns it into a fact.
+ */
+async function assertStockingUom(
+  tx: TenantClient,
+  organizationId: string,
+  stockingUomId: string | null | undefined,
+) {
+  if (!stockingUomId) return;
+  const uom = await tx.unitOfMeasurement.findFirst({
+    where: { id: stockingUomId, organizationId, isDeleted: false },
+    select: { id: true },
+  });
+  if (!uom) throw ApiError.badRequest('Unknown unit of measurement.');
+}
+
 export function normalizeItemDto<T extends Record<string, unknown>>(rawData: T): T {
   if (!rawData) return rawData;
   const copy: Record<string, unknown> = { ...rawData };
@@ -47,16 +78,26 @@ export function normalizeItemDto<T extends Record<string, unknown>>(rawData: T):
   if (copy.product_type !== undefined && copy.type === undefined) copy.type = copy.product_type;
   if (copy.hsn_or_sac !== undefined && copy.hsnCode === undefined) copy.hsnCode = copy.hsn_or_sac;
   if (copy.rate !== undefined && copy.sellingPrice === undefined) copy.sellingPrice = copy.rate;
-  if (copy.sales_description !== undefined && copy.salesDescription === undefined) copy.salesDescription = copy.sales_description;
-  if (copy.purchase_rate !== undefined && copy.costPrice === undefined) copy.costPrice = copy.purchase_rate;
-  if (copy.purchase_description !== undefined && copy.purchaseDescription === undefined) copy.purchaseDescription = copy.purchase_description;
-  if (copy.can_be_sold !== undefined && copy.isSalesInfo === undefined) copy.isSalesInfo = copy.can_be_sold;
-  if (copy.can_be_purchased !== undefined && copy.isPurchaseInfo === undefined) copy.isPurchaseInfo = copy.can_be_purchased;
-  if (copy.track_inventory !== undefined && copy.trackInventory === undefined) copy.trackInventory = copy.track_inventory;
-  if (copy.custom_fields !== undefined && copy.customFields === undefined) copy.customFields = copy.custom_fields;
-  if (copy.front_image !== undefined && copy.frontImage === undefined) copy.frontImage = copy.front_image;
-  if (copy.rear_image !== undefined && copy.rearImage === undefined) copy.rearImage = copy.rear_image;
-  if (copy.inventory_tracking !== undefined && copy.inventoryTracking === undefined) copy.inventoryTracking = copy.inventory_tracking;
+  if (copy.sales_description !== undefined && copy.salesDescription === undefined)
+    copy.salesDescription = copy.sales_description;
+  if (copy.purchase_rate !== undefined && copy.costPrice === undefined)
+    copy.costPrice = copy.purchase_rate;
+  if (copy.purchase_description !== undefined && copy.purchaseDescription === undefined)
+    copy.purchaseDescription = copy.purchase_description;
+  if (copy.can_be_sold !== undefined && copy.isSalesInfo === undefined)
+    copy.isSalesInfo = copy.can_be_sold;
+  if (copy.can_be_purchased !== undefined && copy.isPurchaseInfo === undefined)
+    copy.isPurchaseInfo = copy.can_be_purchased;
+  if (copy.track_inventory !== undefined && copy.trackInventory === undefined)
+    copy.trackInventory = copy.track_inventory;
+  if (copy.custom_fields !== undefined && copy.customFields === undefined)
+    copy.customFields = copy.custom_fields;
+  if (copy.front_image !== undefined && copy.frontImage === undefined)
+    copy.frontImage = copy.front_image;
+  if (copy.rear_image !== undefined && copy.rearImage === undefined)
+    copy.rearImage = copy.rear_image;
+  if (copy.inventory_tracking !== undefined && copy.inventoryTracking === undefined)
+    copy.inventoryTracking = copy.inventory_tracking;
   if (copy.is_active !== undefined && copy.isActive === undefined) {
     copy.isActive = copy.is_active;
   }
@@ -96,12 +137,7 @@ export class ItemsService {
       isDeleted: false,
       // Preset view ("Goods"), spread in so it narrows rather than replaces.
       ...filterWhere<Prisma.ItemWhereInput>('item', opts.filter),
-      ...searchWhere<Prisma.ItemWhereInput>(opts.search, [
-        'name',
-        'sku',
-        'category',
-        'hsnCode',
-      ]),
+      ...searchWhere<Prisma.ItemWhereInput>(opts.search, ['name', 'sku', 'category', 'hsnCode']),
     };
   }
 
@@ -165,13 +201,9 @@ export class ItemsService {
   async create(organizationId: string, rawData: CreateItemDto, userId?: string) {
     const data = normalizeItemDto(rawData);
     return runAsTenant(organizationId, async (tx) => {
-      const {
-        customFields: rawCustomFields,
-        frontImage,
-        rearImage,
-        images,
-        ...rest
-      } = data;
+      const { customFields: rawCustomFields, frontImage, rearImage, images, ...rest } = data;
+
+      await assertStockingUom(tx, organizationId, rest.stockingUomId);
 
       const defs = await loadActiveDefinitions(tx, organizationId, 'item');
       const customFields = validateCustomFields({
@@ -226,13 +258,9 @@ export class ItemsService {
         throw ApiError.notFound('Item not found');
       }
 
-      const {
-        customFields: rawCustomFields,
-        frontImage,
-        rearImage,
-        images,
-        ...rest
-      } = data;
+      const { customFields: rawCustomFields, frontImage, rearImage, images, ...rest } = data;
+
+      await assertStockingUom(tx, organizationId, rest.stockingUomId);
 
       // Only re-validate when the client sends custom fields; otherwise leave the
       // stored blob untouched. Required policy (b) uses the existing values.
@@ -261,14 +289,18 @@ export class ItemsService {
           ...rest,
           ...(customFields !== undefined ? { customFields } : {}),
           ...(frontImage !== undefined
-            ? { frontImage: frontImage === null ? Prisma.DbNull : (frontImage as Prisma.InputJsonValue) }
+            ? {
+                frontImage:
+                  frontImage === null ? Prisma.DbNull : (frontImage as Prisma.InputJsonValue),
+              }
             : {}),
           ...(rearImage !== undefined
-            ? { rearImage: rearImage === null ? Prisma.DbNull : (rearImage as Prisma.InputJsonValue) }
+            ? {
+                rearImage:
+                  rearImage === null ? Prisma.DbNull : (rearImage as Prisma.InputJsonValue),
+              }
             : {}),
-          ...(images !== undefined
-            ? { images: images as unknown as Prisma.InputJsonValue }
-            : {}),
+          ...(images !== undefined ? { images: images as unknown as Prisma.InputJsonValue } : {}),
           updatedBy: userId ?? null,
         },
       });
@@ -371,11 +403,15 @@ export class ItemsService {
         };
 
         if (files.frontImage && files.frontImage.length > 0 && files.frontImage[0]) {
-          updateData.frontImage = (await processFile(files.frontImage[0])) as unknown as Prisma.InputJsonValue;
+          updateData.frontImage = (await processFile(
+            files.frontImage[0],
+          )) as unknown as Prisma.InputJsonValue;
         }
 
         if (files.rearImage && files.rearImage.length > 0 && files.rearImage[0]) {
-          updateData.rearImage = (await processFile(files.rearImage[0])) as unknown as Prisma.InputJsonValue;
+          updateData.rearImage = (await processFile(
+            files.rearImage[0],
+          )) as unknown as Prisma.InputJsonValue;
         }
 
         if (files.images && files.images.length > 0) {

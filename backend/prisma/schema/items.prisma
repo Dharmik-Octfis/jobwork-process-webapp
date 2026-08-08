@@ -29,11 +29,62 @@ model Item {
   frontImage               Json?               @map("front_image")
   images                   Json?               @default("[]")
   rearImage                Json?               @map("rear_image")
+
+  /// 🔴 THE stocking unit, as a real FK. `unit` above is the legacy free-text
+  /// string it was backfilled from and is still what the item form shows; this is
+  /// what the stock ledger and every lot reference.
+  ///
+  /// Nullable because the backfill matched `unit` against
+  /// `units_of_measurement.unit_name` per organization and some rows had no match
+  /// (typos, units never defined). An unmatched item simply has no stocking uom
+  /// yet — jobwork screens ask for one before they will move its stock, which is a
+  /// loud, fixable failure rather than a silently wrong balance.
+  ///
+  /// One item has exactly ONE stocking unit (§5.1). If the unit of a thing changes
+  /// because the thing changed, it is a DIFFERENT item — cloth (METER) and shirt
+  /// (PCS) are two items, not one item with two units.
+  stockingUomId String? @map("stocking_uom_id") @db.Uuid
+
+  /// none | lot | lot_and_package — how much lot detail the USER sees (§5.2.1).
+  /// A lot is always created internally whatever this says; `none` just means no
+  /// lot field ever appears on screen. Use it for thread, buttons, dye chemicals,
+  /// packing tape — forcing a lot number there is how a system gets abandoned.
+  lotTracking String @default("none") @map("lot_tracking") @db.VarChar(20)
+
+  /// raw | semi_finished | finished | consumable | scrap | service — what role the
+  /// item plays in production. Filters the lookups on the jobwork screens.
+  nature String @default("raw") @db.VarChar(20)
+
+  /// The route a new job order for this item starts from. A plain uuid, NOT an FK:
+  /// `routes` does not exist until Sprint 2, and adding the constraint then is one
+  /// line. Nothing reads it yet.
+  defaultRouteId String? @map("default_route_id") @db.Uuid
+
   activities               ItemActivity[]
   createdByUser            User?               @relation("ItemCreatedBy", fields: [createdBy], references: [id])
   organization             Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   updatedByUser            User?               @relation("ItemUpdatedBy", fields: [updatedBy], references: [id])
+  stockingUom              UnitOfMeasurement?  @relation("ItemStockingUom", fields: [stockingUomId], references: [id])
   purchaseOrderItems       PurchaseOrderItem[]
+  lots                     Lot[]
+  ledgerEntries            StockLedgerEntry[]
+
+  routeStepIssues       RouteStep[]    @relation("RouteStepIssueItem")
+  routeStepReceipts     RouteStep[]    @relation("RouteStepReceiveItem")
+  jobOrderInputs        JobOrder[]     @relation("JobOrderInputItem")
+  jobOrderStepIssues    JobOrderStep[] @relation("JobOrderStepIssueItem")
+  jobOrderStepReceipts  JobOrderStep[] @relation("JobOrderStepReceiveItem")
+  jobIssues             JobIssue[]     @relation("JobIssueItem")
+  jobReceiptOutputs     JobReceipt[]   @relation("JobReceiptOutputItem")
+
+  /// Multi-item steps (domain §5.7). The seven above are the single-item columns
+  /// they replace; those go in Migration B.
+  routeStepInputRows      RouteStepInput[]     @relation("RouteStepInputItem")
+  routeStepOutputRows     RouteStepOutput[]    @relation("RouteStepOutputItem")
+  jobOrderStepInputRows   JobOrderStepInput[]  @relation("JobOrderStepInputItem")
+  jobOrderStepOutputRows  JobOrderStepOutput[] @relation("JobOrderStepOutputItem")
+  jobIssueLineItems       JobIssueLine[]       @relation("JobIssueLineItem")
+  jobReceiptOutputRows    JobReceiptOutput[]   @relation("JobReceiptOutputRowItem")
 
   @@map("items")
 }
@@ -53,6 +104,27 @@ model UnitOfMeasurement {
   createdByUser  User?        @relation("UomCreatedBy", fields: [createdBy], references: [id])
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   updatedByUser  User?        @relation("UomUpdatedBy", fields: [updatedBy], references: [id])
+
+  stockedItems           Item[]             @relation("ItemStockingUom")
+  lots                   Lot[]              @relation("LotUom")
+  ledgerEntries          StockLedgerEntry[] @relation("StockLedgerUom")
+  processDefaultIssues   Process[]          @relation("ProcessDefaultIssueUom")
+  processDefaultReceipts Process[]          @relation("ProcessDefaultReceiveUom")
+
+  routeStepIssueUoms      RouteStep[]    @relation("RouteStepIssueUom")
+  routeStepReceiveUoms    RouteStep[]    @relation("RouteStepReceiveUom")
+  jobOrderInputUoms       JobOrder[]     @relation("JobOrderInputUom")
+  jobOrderStepIssueUoms   JobOrderStep[] @relation("JobOrderStepIssueUom")
+  jobOrderStepReceiveUoms JobOrderStep[] @relation("JobOrderStepReceiveUom")
+  jobIssueUoms            JobIssue[]     @relation("JobIssueUom")
+  jobReceiptOutputUoms    JobReceipt[]   @relation("JobReceiptOutputUom")
+
+  routeStepInputUoms     RouteStepInput[]     @relation("RouteStepInputUom")
+  routeStepOutputUoms    RouteStepOutput[]    @relation("RouteStepOutputUom")
+  jobOrderStepInputUoms  JobOrderStepInput[]  @relation("JobOrderStepInputUom")
+  jobOrderStepOutputUoms JobOrderStepOutput[] @relation("JobOrderStepOutputUom")
+  jobIssueLineUoms       JobIssueLine[]       @relation("JobIssueLineUom")
+  jobReceiptOutputRowUoms JobReceiptOutput[]  @relation("JobReceiptOutputRowUom")
 
   @@unique([organizationId, unitName])
   @@map("units_of_measurement")

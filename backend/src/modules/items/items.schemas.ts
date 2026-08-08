@@ -34,6 +34,20 @@ export const itemSchema = openApiRegistry.register(
       .openapi({ example: 'Single Item' }),
     item_type: z.string().optional(),
     unit: z.string().max(50).optional().default('').openapi({ example: 'pcs' }),
+    /**
+     * 🔴 THE UNIT THE LEDGER MOVES THIS ITEM IN. One item, one stocking unit
+     * (jobwork domain §5.1) — every lot, every challan line and every balance is
+     * denominated in it, and nothing converts between units anywhere.
+     *
+     * Distinct from `unit` above, which is a free string this form has always
+     * shown. The two are set together from the same dropdown; collapsing them is
+     * a larger change and is not blocking (spec I-5).
+     *
+     * Nullable: the Sprint 1 backfill matched `unit` against the UoM master and
+     * left the rows that did not match with none. A loud, fixable gap beats a
+     * value invented for every unmatched row (spec I-2).
+     */
+    stockingUomId: z.string().uuid().nullable().optional(),
     sku: z.string().max(100).optional().default('').openapi({ example: 'SKU-MBP-14-M3' }),
     isSalesInfo: z.boolean().default(false).openapi({ example: true }),
     can_be_sold: z.boolean().optional(),

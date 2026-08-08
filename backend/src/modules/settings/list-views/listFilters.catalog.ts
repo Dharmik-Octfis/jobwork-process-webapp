@@ -66,6 +66,77 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
    * to `all`, so an empty list here would 400 every request.
    */
   permission_template: [{ key: 'all', label: 'All Profiles', where: {} }],
+  /**
+   * Processes. The first entry is the default, so opening the list lands on
+   * **Active Processes** — the operations that can actually be put on a route
+   * today, which is what someone is looking for almost every time. Same trick the
+   * `item` list uses: the key stays `all` because that is the default slot, while
+   * the label and `where` narrow it.
+   */
+  process: [
+    { key: 'all', label: 'Active Processes', where: { isActive: true } },
+    { key: 'all_processes', label: 'All Processes', where: {} },
+    { key: 'inactive', label: 'Inactive Processes', where: { isActive: false } },
+    /** Where the taka survives the operation, so unit-wise receipt is possible
+     * at all (§5.2.3) — dyeing yes, cutting no. */
+    { key: 'changes_item', label: 'Changes The Item', where: { itemChanges: true } },
+  ],
+  process_route: [
+    { key: 'all', label: 'Active Routes', where: { isActive: true } },
+    { key: 'all_routes', label: 'All Routes', where: {} },
+    { key: 'inactive', label: 'Inactive Routes', where: { isActive: false } },
+  ],
+  /**
+   * Job orders. The default is **Open** — everything not yet finished — because
+   * this list is a work queue and a completed order is history. The key stays
+   * `all` because that is the default slot (same trick as `item`).
+   */
+  job_order: [
+    {
+      key: 'all',
+      label: 'Open Job Orders',
+      where: { status: { in: ['draft', 'in_progress'] } },
+    },
+    { key: 'all_orders', label: 'All Job Orders', where: {} },
+    { key: 'draft', label: 'Draft', where: { status: 'draft' } },
+    { key: 'in_progress', label: 'In Progress', where: { status: 'in_progress' } },
+    { key: 'completed', label: 'Completed', where: { status: 'completed' } },
+    { key: 'short_closed', label: 'Closed Short', where: { status: 'short_closed' } },
+  ],
+  /**
+   * Issues. The default is **Open** — material that is still at a processor.
+   * That is the list someone actually chases; a closed challan is paperwork.
+   */
+  job_issue: [
+    {
+      key: 'all',
+      label: 'Open Challans',
+      where: { status: { in: ['issued', 'partially_received'] } },
+    },
+    { key: 'all_issues', label: 'All Challans', where: {} },
+    { key: 'closed', label: 'Closed', where: { status: 'closed' } },
+    { key: 'rework', label: 'Rework Issues', where: { isRework: true } },
+    { key: 'cancelled', label: 'Cancelled', where: { status: 'cancelled' } },
+  ],
+  job_receipt: [
+    { key: 'all', label: 'All Receipts', where: {} },
+    { key: 'with_rework', label: 'With Rework', where: { totalReworkQty: { gt: 0 } } },
+    { key: 'with_scrap', label: 'With Scrap', where: { totalScrapQty: { gt: 0 } } },
+    { key: 'cancelled', label: 'Cancelled', where: { status: 'cancelled' } },
+  ],
+  rejection_reason: [
+    { key: 'all', label: 'Active Reasons', where: { isActive: true } },
+    { key: 'all_reasons', label: 'All Reasons', where: {} },
+    { key: 'inactive', label: 'Inactive Reasons', where: { isActive: false } },
+  ],
+  /** Lots have no list page (see the column catalog), but `filterWhere` resolves
+   * an absent `?filter=` to `all`, so the entry must exist or every read 400s. */
+  lot: [
+    { key: 'all', label: 'All Lots', where: {} },
+    { key: 'open', label: 'Open Lots', where: { state: 'open' } },
+    { key: 'own', label: 'Our Stock', where: { ownership: 'own' } },
+    { key: 'customer', label: 'Customer Stock', where: { ownership: 'customer' } },
+  ],
   purchase_order: [
     { key: 'all', label: 'All Purchase Orders', where: {} },
     { key: 'draft', label: 'Draft', where: { status: 'Draft' } },

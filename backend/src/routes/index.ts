@@ -23,6 +23,13 @@ import { rolesRouter } from '../modules/settings/organization/roles/roles.routes
 import { permissionTemplatesRouter } from '../modules/settings/organization/permission-templates/permission-templates.routes.ts';
 import { membersRouter } from '../modules/settings/organization/members/members.routes.ts';
 import { itemsRouter } from '../modules/items/items.routes.ts';
+import { processesRouter } from '../modules/jobwork/processes/processes.routes.ts';
+import { processRoutesRouter } from '../modules/jobwork/process-routes/processRoutes.routes.ts';
+import { jobOrdersRouter } from '../modules/jobwork/job-orders/jobOrders.routes.ts';
+import { jobIssuesRouter } from '../modules/jobwork/issues/jobIssues.routes.ts';
+import { jobReceiptsRouter } from '../modules/jobwork/receipts/jobReceipts.routes.ts';
+import { rejectionReasonsRouter } from '../modules/jobwork/rejection-reasons/rejectionReasons.routes.ts';
+import { lotsRouter } from '../modules/inventory/lots/lots.routes.ts';
 import { itemCategoriesRouter } from '../modules/settings/inventory/item-categories/item-categories.routes.ts';
 import { listViewsRouter } from '../modules/settings/list-views/listViews.routes.ts';
 import { storageRouter } from '../modules/storage/storage.routes.ts';
@@ -57,6 +64,20 @@ apiRouter.use('/auth', authRouter);
 apiRouter.use('/organizations/:orgId/purchases/vendors', vendorsRouter);
 apiRouter.use('/organizations/:orgId/purchases/purchase-orders', purchaseOrdersRouter);
 apiRouter.use('/organizations/:orgId/sales/customers', customersRouter);
+// Jobwork, Sprints 1–4 (plan §8.1).
+//
+// 🔴 `stock_ledger` still has NO router and must never get one. It is plumbing
+// behind stockLedger.service.ts, and an HTTP surface on it would be a way to
+// write history from outside the documents that caused it. `lots` gets a
+// READ-ONLY router — the Issue dialog's picker needs the availability query, and
+// nothing else.
+apiRouter.use('/organizations/:orgId/jobwork/processes', processesRouter);
+apiRouter.use('/organizations/:orgId/jobwork/routes', processRoutesRouter);
+apiRouter.use('/organizations/:orgId/jobwork/job-orders', jobOrdersRouter);
+apiRouter.use('/organizations/:orgId/jobwork/issues', jobIssuesRouter);
+apiRouter.use('/organizations/:orgId/jobwork/receipts', jobReceiptsRouter);
+apiRouter.use('/organizations/:orgId/jobwork/rejection-reasons', rejectionReasonsRouter);
+apiRouter.use('/organizations/:orgId/inventory/lots', lotsRouter);
 apiRouter.use('/organizations/:orgId/inventory/uom', uomRouter);
 apiRouter.use('/organizations/:orgId/inventory/item-categories', itemCategoriesRouter);
 apiRouter.use('/organizations/:orgId/configuration/currencies', currenciesRouter);

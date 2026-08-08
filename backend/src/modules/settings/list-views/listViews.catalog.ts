@@ -140,6 +140,121 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'permissionCount', label: 'Permissions' },
     { key: 'type', label: 'Type' },
   ],
+  /**
+   * Processes — the jobwork operation master. The four flag columns are all
+   * default-visible on purpose: they are not decoration, they decide what the
+   * Issue and Receive dialogs are allowed to offer later (taka-wise vs bulk
+   * receipt, single-lot enforcement), so someone scanning this list needs to see
+   * them without opening each row.
+   */
+  process: [
+    { key: 'name', label: 'Process Name', locked: true },
+    { key: 'code', label: 'Code', defaultVisible: true },
+    { key: 'rateBasis', label: 'Rate Basis', defaultVisible: true },
+    { key: 'itemChanges', label: 'Changes Item', defaultVisible: true },
+    { key: 'defaultTolerancePct', label: 'Tolerance %' },
+    { key: 'defaultIssueUom', label: 'Default Issue Unit' },
+    { key: 'defaultReceiveUom', label: 'Default Receive Unit' },
+    { key: 'description', label: 'Description' },
+    { key: 'isActive', label: 'Status', defaultVisible: true },
+    { key: 'createdAt', label: 'Created At' },
+    { key: 'updatedAt', label: 'Last Modified' },
+  ],
+  /**
+   * Process routes. `stepCount` and `firstProcess` are default-visible because
+   * the only question anyone asks of a route list is "which one is this" — and a
+   * route's identity is its sequence, not its name.
+   */
+  process_route: [
+    { key: 'name', label: 'Route Name', locked: true },
+    { key: 'code', label: 'Code', defaultVisible: true },
+    { key: 'stepCount', label: 'Steps', defaultVisible: true },
+    { key: 'stepSummary', label: 'Sequence', defaultVisible: true },
+    { key: 'description', label: 'Description' },
+    { key: 'isActive', label: 'Status', defaultVisible: true },
+    { key: 'createdAt', label: 'Created At' },
+    { key: 'updatedAt', label: 'Last Modified' },
+  ],
+  /**
+   * Job orders. `status` is default-visible and non-negotiable in practice: this
+   * list is a work queue, and a queue that does not say what is running is a
+   * directory.
+   */
+  job_order: [
+    { key: 'jobOrderNumber', label: 'Job Order #', locked: true },
+    { key: 'orderDate', label: 'Date', defaultVisible: true },
+    { key: 'inputItem', label: 'Item', defaultVisible: true },
+    { key: 'inputQty', label: 'Quantity', defaultVisible: true },
+    { key: 'routeNameSnapshot', label: 'Route', defaultVisible: true },
+    { key: 'status', label: 'Status', defaultVisible: true },
+    { key: 'ownership', label: 'Ownership' },
+    { key: 'targetDate', label: 'Target Date' },
+    { key: 'stepCount', label: 'Steps' },
+    { key: 'remarks', label: 'Remarks' },
+    { key: 'createdAt', label: 'Created At' },
+    { key: 'updatedAt', label: 'Last Modified' },
+  ],
+  /** Issues — the challans out. Ordered the way someone chases material: number,
+   * who has it, how much, when it went. */
+  job_issue: [
+    { key: 'challanNumber', label: 'Challan #', locked: true },
+    { key: 'issueDate', label: 'Date', defaultVisible: true },
+    { key: 'jobOrderNumber', label: 'Job Order', defaultVisible: true },
+    { key: 'processorName', label: 'Processor', defaultVisible: true },
+    { key: 'item', label: 'Item', defaultVisible: true },
+    { key: 'totalQty', label: 'Quantity', defaultVisible: true },
+    { key: 'status', label: 'Status', defaultVisible: true },
+    { key: 'processName', label: 'Process' },
+    { key: 'sourceLocation', label: 'From' },
+    { key: 'destinationLocation', label: 'To' },
+    { key: 'isRework', label: 'Rework' },
+    { key: 'vehicleNo', label: 'Vehicle No' },
+    { key: 'ewayBillNo', label: 'E-way Bill' },
+    { key: 'createdAt', label: 'Created At' },
+  ],
+  /** Receipts. The disposition columns are the reason anyone opens this list. */
+  job_receipt: [
+    { key: 'receiptNumber', label: 'Receipt #', locked: true },
+    { key: 'receiptDate', label: 'Date', defaultVisible: true },
+    { key: 'jobOrderNumber', label: 'Job Order', defaultVisible: true },
+    { key: 'processorName', label: 'Processor', defaultVisible: true },
+    { key: 'outputItem', label: 'Output Item', defaultVisible: true },
+    { key: 'totalReceivedQty', label: 'Received', defaultVisible: true },
+    { key: 'totalAcceptedQty', label: 'Accepted', defaultVisible: true },
+    { key: 'totalReworkQty', label: 'Rework' },
+    { key: 'totalScrapQty', label: 'Scrap' },
+    { key: 'totalReturnedQty', label: 'Returned' },
+    { key: 'mode', label: 'Mode' },
+    { key: 'status', label: 'Status', defaultVisible: true },
+    { key: 'createdAt', label: 'Created At' },
+  ],
+  rejection_reason: [
+    { key: 'name', label: 'Reason', locked: true },
+    { key: 'code', label: 'Code', defaultVisible: true },
+    { key: 'defaultResponsibility', label: 'Usually', defaultVisible: true },
+    { key: 'description', label: 'Description' },
+    { key: 'isActive', label: 'Status', defaultVisible: true },
+    { key: 'createdAt', label: 'Created At' },
+  ],
+  /**
+   * Lots. There is no lot LIST PAGE — lots are picked from an availability query
+   * over the ledger, never browsed (§10) — but the catalog has to exist because
+   * `LIST_COLUMNS` is keyed by every entity type that supports custom fields, and
+   * lots do. It also gives the read-only lots endpoint a column vocabulary.
+   *
+   * 🔴 There is no `availableQty` column here on purpose. Availability is a
+   * ledger SUM, never a column on the lot, and offering it as one would be the
+   * first step towards someone storing it.
+   */
+  lot: [
+    { key: 'lotNumber', label: 'Lot #', locked: true },
+    { key: 'item', label: 'Item', defaultVisible: true },
+    { key: 'supplierLotRef', label: 'Supplier Ref', defaultVisible: true },
+    { key: 'ownership', label: 'Ownership', defaultVisible: true },
+    { key: 'state', label: 'State', defaultVisible: true },
+    { key: 'packageCount', label: 'Takas' },
+    { key: 'createdAt', label: 'Created At', defaultVisible: true },
+  ],
   purchase_order: [
     { key: 'purchaseorder_number', label: 'PO Number', locked: true },
     { key: 'vendor', label: 'Vendor', defaultVisible: true },

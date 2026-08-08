@@ -30,6 +30,7 @@ export function EditItemPage() {
     hsnCode: '',
     itemType: 'Single Item',
     unit: '',
+    stockingUomId: null,
     sku: '',
     isSalesInfo: true,
     sellingPrice: null as unknown as number,
@@ -73,31 +74,48 @@ export function EditItemPage() {
     setInitializedId(id!);
     setFormData({
       name: (rawItem.name as string) || '',
-      type: ((rawItem.type || rawItem.product_type || 'Goods') as 'Goods' | 'Service'),
+      type: (rawItem.type || rawItem.product_type || 'Goods') as 'Goods' | 'Service',
       category: (rawItem.category as string) || '',
       hsnCode: rawItem.hsnCode || rawItem.hsn_or_sac || '',
-      itemType: (rawItem.itemType || rawItem.item_type || 'Single Item') as 'Single Item' | 'Contains Variants',
+      itemType: (rawItem.itemType || rawItem.item_type || 'Single Item') as
+        'Single Item' | 'Contains Variants',
       unit: rawItem.unit || '',
+      stockingUomId: rawItem.stockingUomId ?? null,
       sku: rawItem.sku || '',
       isSalesInfo: true,
-      sellingPrice: rawItem.sellingPrice !== null && rawItem.sellingPrice !== undefined
-        ? Number(rawItem.sellingPrice)
-        : (rawItem.rate !== null && rawItem.rate !== undefined ? Number(rawItem.rate) : null as unknown as number),
-      salesDescription: (rawItem.salesDescription as string) || (rawItem.sales_description as string) || '',
+      sellingPrice:
+        rawItem.sellingPrice !== null && rawItem.sellingPrice !== undefined
+          ? Number(rawItem.sellingPrice)
+          : rawItem.rate !== null && rawItem.rate !== undefined
+            ? Number(rawItem.rate)
+            : (null as unknown as number),
+      salesDescription:
+        (rawItem.salesDescription as string) || (rawItem.sales_description as string) || '',
       isPurchaseInfo: true,
-      costPrice: rawItem.costPrice !== null && rawItem.costPrice !== undefined
-        ? Number(rawItem.costPrice)
-        : (rawItem.purchase_rate !== null && rawItem.purchase_rate !== undefined ? Number(rawItem.purchase_rate) : null as unknown as number),
-      purchaseDescription: (rawItem.purchaseDescription as string) || (rawItem.purchase_description as string) || '',
+      costPrice:
+        rawItem.costPrice !== null && rawItem.costPrice !== undefined
+          ? Number(rawItem.costPrice)
+          : rawItem.purchase_rate !== null && rawItem.purchase_rate !== undefined
+            ? Number(rawItem.purchase_rate)
+            : (null as unknown as number),
+      purchaseDescription:
+        (rawItem.purchaseDescription as string) || (rawItem.purchase_description as string) || '',
       packaging: rawItem.packaging || '',
       frontImage: rawItem.frontImage || rawItem.front_image || null,
       rearImage: rawItem.rearImage || rawItem.rear_image || null,
       images: rawItem.images || [],
       trackInventory: true,
       inventoryTracking: rawItem.inventoryTracking || rawItem.inventory_tracking || 'None',
-      openingStock: rawItem.openingStock !== null && rawItem.openingStock !== undefined ? Number(rawItem.openingStock) : null,
-      openingStockValuePerUnit: rawItem.openingStockValuePerUnit !== null && rawItem.openingStockValuePerUnit !== undefined ? Number(rawItem.openingStockValuePerUnit) : null,
-      customFields: (rawItem.customFields || rawItem.custom_fields as Record<string, unknown>) || {},
+      openingStock:
+        rawItem.openingStock !== null && rawItem.openingStock !== undefined
+          ? Number(rawItem.openingStock)
+          : null,
+      openingStockValuePerUnit:
+        rawItem.openingStockValuePerUnit !== null && rawItem.openingStockValuePerUnit !== undefined
+          ? Number(rawItem.openingStockValuePerUnit)
+          : null,
+      customFields:
+        rawItem.customFields || (rawItem.custom_fields as Record<string, unknown>) || {},
     });
   }
 
@@ -204,7 +222,7 @@ export function EditItemPage() {
   const handleOtherImagesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files);
-      const validFiles = files.filter(f => f.size <= 2 * 1024 * 1024);
+      const validFiles = files.filter((f) => f.size <= 2 * 1024 * 1024);
       if (validFiles.length < files.length) {
         alert('Some images were ignored because they exceed the 2 MB limit.');
       }
@@ -322,7 +340,9 @@ export function EditItemPage() {
                     }}
                   />
                   {errors.name && (
-                    <span style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}>
+                    <span
+                      style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}
+                    >
                       {errors.name}
                     </span>
                   )}
@@ -339,7 +359,15 @@ export function EditItemPage() {
               >
                 <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Type</label>
                 <div style={{ display: 'flex', gap: 16 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 12,
+                      cursor: 'pointer',
+                    }}
+                  >
                     <input
                       type="radio"
                       name="type"
@@ -349,7 +377,15 @@ export function EditItemPage() {
                     />{' '}
                     Goods
                   </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 12,
+                      cursor: 'pointer',
+                    }}
+                  >
                     <input
                       type="radio"
                       name="type"
@@ -385,9 +421,7 @@ export function EditItemPage() {
                     }}
                   />
                   {errors.sku && (
-                    <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>
-                      {errors.sku}
-                    </div>
+                    <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>{errors.sku}</div>
                   )}
                 </div>
               </div>
@@ -401,11 +435,11 @@ export function EditItemPage() {
                 }}
               >
                 <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Category</label>
-                  <CategorySelectDropdown
-                    value={formData.category || null}
-                    onChange={(val) => handleSelectChange('category', val)}
-                    error={!!errors.category}
-                  />
+                <CategorySelectDropdown
+                  value={formData.category || null}
+                  onChange={(val) => handleSelectChange('category', val)}
+                  error={!!errors.category}
+                />
               </div>
 
               <div
@@ -445,12 +479,33 @@ export function EditItemPage() {
                     </div>
                     <div style={{ flex: 1 }}>
                       <Select
-                        value={formData.unit || ''}
-                        onChange={(val) => handleSelectChange('unit', val)}
+                        value={formData.stockingUomId ?? ''}
+                        /**
+                         * 🔴 SETS BOTH. `stockingUomId` is the FK the stock
+                         * ledger denominates every lot, challan line and balance
+                         * in — one item, one stocking unit (jobwork §5.1) —
+                         * while `unit` is the legacy free string this form has
+                         * always shown and the lists still render. One dropdown
+                         * writes them together so they cannot drift; a second
+                         * "unit" control beside the first would be the confusion,
+                         * not the fix.
+                         */
+                        onChange={(val) => {
+                          const picked = uoms.find((u) => u.id === val);
+                          setFormData((prev) => ({
+                            ...prev,
+                            stockingUomId: val || null,
+                            unit: picked?.unitName ?? '',
+                          }));
+                        }}
                         options={[
-                          ...uoms.map(u => ({ value: u.unitName, label: u.unitName })),
-                          ...(formData.unit && !uoms.some(u => u.unitName === formData.unit)
-                            ? [{ value: formData.unit, label: formData.unit }]
+                          ...uoms.map((u) => ({ value: u.id, label: u.unitName })),
+                          // An item saved before this field existed carries only
+                          // the legacy name, and no id to select by. Show it so
+                          // the box is not mysteriously blank; picking anything
+                          // replaces it with a real unit.
+                          ...(formData.unit && !uoms.some((u) => u.id === formData.stockingUomId)
+                            ? [{ value: '', label: `${formData.unit} — no stocking unit set` }]
                             : []),
                         ]}
                         buttonStyle={{ border: 'none' }}
@@ -528,7 +583,9 @@ export function EditItemPage() {
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
                 <div>
-                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>Front View</div>
+                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>
+                    Front View
+                  </div>
                   <input
                     type="file"
                     ref={frontImageRef}
@@ -568,17 +625,28 @@ export function EditItemPage() {
                     >
                       ↑
                     </div>
-                    <div style={{ fontWeight: 500, fontSize: 12, color: '#1e293b', textAlign: 'center', wordBreak: 'break-all' }}>
+                    <div
+                      style={{
+                        fontWeight: 500,
+                        fontSize: 12,
+                        color: '#1e293b',
+                        textAlign: 'center',
+                        wordBreak: 'break-all',
+                      }}
+                    >
                       {frontImageFile
                         ? frontImageFile.name
-                        : (formData.frontImage
-                            ? ((formData.frontImage as ItemImageAttachment).name || 'Existing Front Image')
-                            : 'Upload Front Image')}
+                        : formData.frontImage
+                          ? (formData.frontImage as ItemImageAttachment).name ||
+                            'Existing Front Image'
+                          : 'Upload Front Image'}
                     </div>
                   </button>
                 </div>
                 <div>
-                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>Rear View</div>
+                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>
+                    Rear View
+                  </div>
                   <input
                     type="file"
                     ref={rearImageRef}
@@ -618,18 +686,29 @@ export function EditItemPage() {
                     >
                       ↑
                     </div>
-                    <div style={{ fontWeight: 500, fontSize: 12, color: '#1e293b', textAlign: 'center', wordBreak: 'break-all' }}>
+                    <div
+                      style={{
+                        fontWeight: 500,
+                        fontSize: 12,
+                        color: '#1e293b',
+                        textAlign: 'center',
+                        wordBreak: 'break-all',
+                      }}
+                    >
                       {rearImageFile
                         ? rearImageFile.name
-                        : (formData.rearImage
-                            ? ((formData.rearImage as ItemImageAttachment).name || 'Existing Rear Image')
-                            : 'Upload Rear Image')}
+                        : formData.rearImage
+                          ? (formData.rearImage as ItemImageAttachment).name ||
+                            'Existing Rear Image'
+                          : 'Upload Rear Image'}
                     </div>
                   </button>
                 </div>
               </div>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>Other Images</div>
+                <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>
+                  Other Images
+                </div>
                 <input
                   type="file"
                   ref={otherImagesRef}
@@ -673,13 +752,19 @@ export function EditItemPage() {
                     ↑
                   </div>
                   <div
-                    style={{ fontWeight: 500, fontSize: 12, color: '#1e293b', textAlign: 'center', wordBreak: 'break-all' }}
+                    style={{
+                      fontWeight: 500,
+                      fontSize: 12,
+                      color: '#1e293b',
+                      textAlign: 'center',
+                      wordBreak: 'break-all',
+                    }}
                   >
                     {otherImageFiles.length > 0
                       ? `${otherImageFiles.length} new files selected`
-                      : (formData.images && formData.images.length > 0
-                          ? `${formData.images.length} existing image(s)`
-                          : 'Drag & Drop Images (Max 3)')}
+                      : formData.images && formData.images.length > 0
+                        ? `${formData.images.length} existing image(s)`
+                        : 'Drag & Drop Images (Max 3)'}
                   </div>
                   <div
                     style={{ fontSize: 10, color: '#64748b', textAlign: 'center', lineHeight: 1.3 }}
@@ -690,9 +775,6 @@ export function EditItemPage() {
               </div>
             </div>
           </div>
-
-
-
 
           {/* Sales and Purchase Information */}
           <div
@@ -709,7 +791,17 @@ export function EditItemPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
               {/* Sales Information */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    cursor: 'pointer',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: '#1e293b',
+                  }}
+                >
                   <input
                     type="checkbox"
                     name="isSalesInfo"
@@ -719,9 +811,13 @@ export function EditItemPage() {
                   Sales Information
                 </label>
                 {formData.isSalesInfo && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
+                  <div
+                    style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}
+                  >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Selling Price*</label>
+                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>
+                        Selling Price*
+                      </label>
                       <input
                         type="number"
                         step="0.01"
@@ -737,17 +833,23 @@ export function EditItemPage() {
                         }}
                       />
                       {errors.sellingPrice && (
-                        <span style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}>
+                        <span
+                          style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}
+                        >
                           {errors.sellingPrice}
                         </span>
                       )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Sales Description</label>
+                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
+                        Sales Description
+                      </label>
                       <textarea
                         name="salesDescription"
                         value={formData.salesDescription || ''}
-                        onChange={(e) => handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)}
+                        onChange={(e) =>
+                          handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
+                        }
                         rows={3}
                         style={{
                           width: '100%',
@@ -765,7 +867,17 @@ export function EditItemPage() {
 
               {/* Purchase Information */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    cursor: 'pointer',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: '#1e293b',
+                  }}
+                >
                   <input
                     type="checkbox"
                     name="isPurchaseInfo"
@@ -775,9 +887,13 @@ export function EditItemPage() {
                   Purchase Information
                 </label>
                 {formData.isPurchaseInfo && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
+                  <div
+                    style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}
+                  >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Cost Price*</label>
+                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>
+                        Cost Price*
+                      </label>
                       <input
                         type="number"
                         step="0.01"
@@ -793,17 +909,23 @@ export function EditItemPage() {
                         }}
                       />
                       {errors.costPrice && (
-                        <span style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}>
+                        <span
+                          style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}
+                        >
                           {errors.costPrice}
                         </span>
                       )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Purchase Description</label>
+                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
+                        Purchase Description
+                      </label>
                       <textarea
                         name="purchaseDescription"
                         value={formData.purchaseDescription || ''}
-                        onChange={(e) => handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)}
+                        onChange={(e) =>
+                          handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
+                        }
                         rows={3}
                         style={{
                           width: '100%',
@@ -820,7 +942,6 @@ export function EditItemPage() {
               </div>
             </div>
           </div>
-
 
           {/* Inventory Tracking */}
           <div
@@ -880,9 +1001,19 @@ export function EditItemPage() {
                     gap: 12,
                   }}
                 >
-                  <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Inventory Tracking</label>
+                  <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
+                    Inventory Tracking
+                  </label>
                   <div style={{ display: 'flex', gap: 16 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        fontSize: 12,
+                        cursor: 'pointer',
+                      }}
+                    >
                       <input
                         type="radio"
                         name="inventoryTracking"
@@ -893,7 +1024,15 @@ export function EditItemPage() {
                       None
                     </label>
                     {formData.type !== 'Service' && (
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                      <label
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          fontSize: 12,
+                          cursor: 'pointer',
+                        }}
+                      >
                         <input
                           type="radio"
                           name="inventoryTracking"
@@ -910,7 +1049,9 @@ export function EditItemPage() {
                 {formData.inventoryTracking === 'None' && (
                   <div style={{ display: 'flex', gap: 24, marginTop: 12 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Opening Stock</label>
+                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
+                        Opening Stock
+                      </label>
                       <input
                         type="number"
                         step="0.01"
@@ -928,7 +1069,9 @@ export function EditItemPage() {
                       />
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Value of Opening Stock (per quantity)</label>
+                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
+                        Value of Opening Stock (per quantity)
+                      </label>
                       <input
                         type="number"
                         step="0.01"
@@ -951,7 +1094,6 @@ export function EditItemPage() {
             )}
           </div>
 
-
           {/* Custom Fields */}
           {orgId && (
             <div
@@ -971,7 +1113,10 @@ export function EditItemPage() {
                   color: '#1e293b',
                 }}
               >
-                Custom Fields{customFields.some((f) => f.isRequired) && <span style={{ color: '#ef4444' }}>*</span>}
+                Custom Fields
+                {customFields.some((f) => f.isRequired) && (
+                  <span style={{ color: '#ef4444' }}>*</span>
+                )}
               </h3>
               <CustomFieldsSection
                 orgId={orgId}

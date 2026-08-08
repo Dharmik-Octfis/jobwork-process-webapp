@@ -93,6 +93,40 @@ export const endpoints = {
     purchaseOrderPreferences: (orgId: string) =>
       `/organizations/${orgId}/purchases/purchase-orders/preferences/number-sequence`,
   },
+  /**
+   * Jobwork. `stock_ledger` has no HTTP surface at all, deliberately: it is
+   * plumbing behind one backend service, and a route onto it would be a way to
+   * write stock history from outside the documents that caused it.
+   */
+  jobwork: {
+    processes: (orgId: string) => `/organizations/${orgId}/jobwork/processes`,
+    routes: (orgId: string) => `/organizations/${orgId}/jobwork/routes`,
+    jobOrders: (orgId: string) => `/organizations/${orgId}/jobwork/job-orders`,
+    /** The prefix + next number new job orders are numbered from. */
+    jobOrderPreferences: (orgId: string) =>
+      `/organizations/${orgId}/jobwork/job-orders/preferences/number-sequence`,
+    /** The stepper page — one request, so every tile describes the same moment. */
+    jobOrderOverview: (orgId: string, id: string) =>
+      `/organizations/${orgId}/jobwork/job-orders/${id}/overview`,
+    issues: (orgId: string) => `/organizations/${orgId}/jobwork/issues`,
+    receipts: (orgId: string) => `/organizations/${orgId}/jobwork/receipts`,
+    /** The Receive dialog's opening state: mode, open challans, per-taka rows. */
+    receiptPrefill: (orgId: string) => `/organizations/${orgId}/jobwork/receipts/prefill`,
+    rejectionReasons: (orgId: string) => `/organizations/${orgId}/jobwork/rejection-reasons`,
+  },
+  /**
+   * Lots — READ ONLY. There is no create/update/delete path here because a lot is
+   * born from the document that physically brought material in, never a form.
+   */
+  inventory: {
+    lots: (orgId: string) => `/organizations/${orgId}/inventory/lots`,
+    /** 🔴 The picker's query. Reads the LEDGER, not the lots table — a lot row
+     * outlives its last metre. */
+    availableLots: (orgId: string) => `/organizations/${orgId}/inventory/lots/available`,
+    /** Locations that actually hold an item, with balances. Also a ledger query:
+     * offering a godown with no stock is how users get stuck. */
+    stockLocations: (orgId: string) => `/organizations/${orgId}/inventory/lots/locations`,
+  },
   sales: {
     customers: (orgId: string) => `/organizations/${orgId}/sales/customers`,
     customerPreferences: (orgId: string) =>

@@ -17,7 +17,32 @@
  * a per-org field like "Employee Code" is scoped to one organization exactly like
  * the member's name is.
  */
-export const ENTITY_TYPES = ['vendor', 'customer', 'item', 'purchase_order', 'member'] as const;
+export const ENTITY_TYPES = [
+  'vendor',
+  'customer',
+  'item',
+  'purchase_order',
+  'member',
+  /** Jobwork's operation master. `processes` carries a `custom_fields` column, so
+   * it belongs here as well as in the list catalogs. */
+  'process',
+  /**
+   * Sprints 2–4. Every one of these tables carries `custom_fields`, which is
+   * where the mind map's "extra fields at time of issue — lot-wise pcs, cutper,
+   * meter" lands (field-sources §2.6). Those must never become hardcoded
+   * columns: one org's cutper is another org's nothing.
+   *
+   * `lot` has no list page of its own — lots are picked from an availability
+   * query, not browsed — but it earns an entry because Material In writes a lot
+   * and an org needs somewhere to record the tag details it cares about.
+   */
+  'process_route',
+  'job_order',
+  'job_issue',
+  'job_receipt',
+  'rejection_reason',
+  'lot',
+] as const;
 export type EntityType = (typeof ENTITY_TYPES)[number];
 
 export function isEntityType(value: string): value is EntityType {

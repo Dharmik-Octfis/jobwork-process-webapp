@@ -86,7 +86,7 @@ const MODULE_GROUPS: readonly {
     label: 'Item',
     resources: [
       { resource: 'item', label: 'Items' },
-      { resource: 'item_category', label: 'Item Categories' }
+      { resource: 'item_category', label: 'Item Categories' },
     ],
   },
   {
@@ -98,6 +98,30 @@ const MODULE_GROUPS: readonly {
     key: 'sales',
     label: 'Sales',
     resources: [{ resource: 'customer', label: 'Customers' }],
+  },
+  {
+    /**
+     * Jobwork. A resource here with no `requirePermission` behind it is worse
+     * than a missing one: it renders as a checkbox, an admin ticks it believing
+     * they granted something, and nothing happens. So each of these lands in the
+     * same change as the routes that enforce it.
+     *
+     * 🔴 `lot` is READ-ONLY, and deliberately. Lots are not created or edited by
+     * anyone — `stockLedger.service.ts` is the only thing that makes one, from a
+     * Material In or a receipt. A `lot:create` checkbox would describe a screen
+     * that does not and must not exist.
+     */
+    key: 'jobwork',
+    label: 'Jobwork',
+    resources: [
+      { resource: 'process', label: 'Processes' },
+      { resource: 'process_route', label: 'Process Routes' },
+      { resource: 'job_order', label: 'Job Orders' },
+      { resource: 'job_issue', label: 'Issues (Challans Out)' },
+      { resource: 'job_receipt', label: 'Receipts' },
+      { resource: 'rejection_reason', label: 'Rejection Reasons' },
+      { resource: 'lot', label: 'Lots & Stock', actions: ['read'] },
+    ],
   },
   {
     key: 'settings',

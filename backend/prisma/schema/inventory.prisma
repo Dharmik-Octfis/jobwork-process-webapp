@@ -1,0 +1,268 @@
+/// Inventory core — the spine everything else attaches to.
+///
+/// 🔴 THESE THREE TABLES HAVE NO MODULE. They are plumbing: one service
+/// (`modules/inventory/stock-ledger/stockLedger.service.ts`), no controller, no
+/// routes, no list page, no sidebar entry. Sprint 1 ships them empty-of-UI on
+/// purpose — see docs/JOBWORK_IMPLEMENTATION_PLAN.md §1.4.
+///
+/// 🔴 NOTHING WRITES `stock_ledger` EXCEPT THAT SERVICE. Not a seed, not a script,
+/// not a "quick fix". A wrong number can be recomputed; a wrong history cannot.
+/// Same class of rule as "`authenticate` never touches the database".
+///
+/// Three decisions are baked in here and are expensive to reverse (plan §3):
+///   1. Lot value is DERIVED from the ledger, never stored on the lot. That is why
+///      there is no `value` column below — `valueIn`/`valueOut` on the ledger make
+///      value the same SUM shape as quantity.
+///   2. `lot_packages`, not `lot_units` — "unit" already means unit-of-measurement
+///      in this codebase (`Item.unit`, `units_of_measurement`).
+///   3. Valuation is SPECIFIC-LOT, implied by lot tracking being mandatory.
+
+/// A traceable quantity of one item. Every ledger row references exactly one.
+///
+/// 🔴 `ownership` and `parentLotIds` exist from the FIRST migration even though
+/// nothing reads them until Sprints 2–4 (domain doc §11.3). Retrofitting ownership
+/// means revisiting every valuation query ever written; genealogy cannot be
+/// reconstructed from history that was never recorded.
+model Lot {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  /// One global sequence per org (`number_sequences`, entityType `lot`). Manual
+  /// entry is allowed — mills carry the supplier's number on a physical tag.
+  ///
+  /// 🔴 The number carries NO meaning. A child lot has a higher number than its
+  /// parents only because it was created later. Parentage lives ONLY in
+  /// `parentLotIds` (§5.2.2).
+  lotNumber String @map("lot_number") @db.VarChar(50)
+
+  /// The vendor's own lot/batch number, or whatever the physical tag says. Steel's
+  /// heat number lands here too. Searchable, not unique, no effect on numbering —
+  /// this is what stops anyone binding the lot number to a PO (§5.2.2).
+  supplierLotRef String? @map("supplier_lot_ref") @db.VarChar(100)
+
+  itemId String  @map("item_id") @db.Uuid
+  /// Snapshot of the item's stocking uom at creation. A balance is always one
+  /// number in one unit (§5.1), so the unit belongs on the lot, not on each row.
+  uomId  String? @map("uom_id") @db.Uuid
+
+  /// own | customer — §5.3. `own` enters valuation and COGS; `customer` is always
+  /// zero-valued and its exit is a SERVICE sale, not a goods sale. Every valuation
+  /// query filters on this; no quantity query does.
+  ownership String @default("own") @db.VarChar(20)
+
+  /// The customer whose goods these are, when `ownership = 'customer'`. This one
+  /// pair is what makes inward jobwork (shape D) nearly free.
+  ///
+  /// A PLAIN uuid with no foreign key and no back-relation on `Customer`,
+  /// deliberately (2026-08-05). Three reasons:
+  ///
+  ///   1. The FK was doing less than it looked like. Postgres checks foreign keys
+  ///      OUTSIDE row-level security, so it accepted a customer id from any
+  ///      organization — it only rejected an id that existed nowhere at all. The
+  ///      check that actually matters, "is this a customer in THIS org", has to
+  ///      live in the service either way.
+  ///   2. `stock_ledger.owner_party_id` never had one. The same value being
+  ///      constrained on one table and not the other is the kind of asymmetry
+  ///      nobody remembers the reason for six months later.
+  ///   3. Prisma has no one-sided relations, so keeping the FK meant carrying an
+  ///      `ownedLots` collection on `Customer` that nothing ever navigated. A
+  ///      customer's lots are a query — `WHERE owner_party_id = :id` — and every
+  ///      real use of them (valuation, the return challan, traceability) filters
+  ///      by more than the customer anyway.
+  ///
+  /// 🔴 The COLUMN is still load-bearing and must not be dropped. It is half of
+  /// the ownership pair that decides whether stock is our asset or someone
+  /// else's, and retrofitting it means revisiting every valuation query ever
+  /// written (domain doc §11.3). Only the constraint went.
+  ownerPartyId String? @map("owner_party_id") @db.Uuid
+
+  /// Genealogy. Zero, one, or MANY parents — grey from two POs dyed together comes
+  /// back as one lot. A plain uuid array rather than a join table: it is read whole,
+  /// never joined against, and a lot's parents never change after creation.
+  parentLotIds String[] @default([]) @map("parent_lot_ids") @db.Uuid
+
+  /// What brought this lot into existence: job_order_material_in (Sprint 2),
+  /// job_receipt (Sprint 4), and later purchase_receipt / opening_stock /
+  /// sales_return.
+  sourceDocType String? @map("source_doc_type") @db.VarChar(40)
+  sourceDocId   String? @map("source_doc_id") @db.Uuid
+
+  /// open | consumed | closed
+  state String @default("open") @db.VarChar(20)
+
+  customFields Json    @default("{}") @map("custom_fields")
+  isDeleted    Boolean @default(false) @map("is_deleted")
+  createdBy    String? @map("created_by") @db.Uuid
+  updatedBy    String? @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  item          Item               @relation(fields: [itemId], references: [id])
+  uom           UnitOfMeasurement? @relation("LotUom", fields: [uomId], references: [id])
+  createdByUser User?              @relation("LotCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?              @relation("LotUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  packages     LotPackage[]
+  ledgerEntries StockLedgerEntry[]
+
+  issueLines        JobIssueLine[] @relation("JobIssueLineLot")
+  receiptsAsOutput  JobReceipt[]   @relation("JobReceiptOutputLot")
+  receiptsAsRework  JobReceipt[]   @relation("JobReceiptReworkLot")
+
+  /// Multi-item receipts (domain §5.7): one output ROW per returned item, each
+  /// creating its own lot. The two above are the single-output header columns.
+  receiptOutputRows       JobReceiptOutput[] @relation("JobReceiptOutputRowLot")
+  receiptOutputReworkRows JobReceiptOutput[] @relation("JobReceiptOutputRowReworkLot")
+
+  @@unique([organizationId, lotNumber])
+  @@index([organizationId, itemId])
+  @@map("lots")
+}
+
+/// The physical package inside a lot — the taka, roll, bale, coil, plate, bundle.
+/// "Taka" is a per-org LABEL, not a table name: textile is the first customer, not
+/// the product.
+///
+/// These exist only when individual packages have DIFFERENT quantities that must be
+/// recorded separately (§5.2.1). 40 rolls of fabric at 98.5 m / 103.2 m / 96.8 m:
+/// yes. 10 identical 50 kg bags of dye: no — numbering them is data entry with no
+/// information in it. Gated per item by `Item.lotTracking`.
+model LotPackage {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised from the parent lot so this table carries its own RLS policy and
+  /// its own tenant filter, instead of every query having to join `lots`.
+  organizationId String @map("organization_id") @db.Uuid
+  lotId          String @map("lot_id") @db.Uuid
+
+  /// 🔴 RESTARTS AT 1 INSIDE EACH LOT — `LOT-00088/1 … /40`. Scoped numbering is
+  /// correct here and nowhere else: a package always has exactly one parent lot,
+  /// can never merge across lots, and cannot exist without one (§5.2.2).
+  packageNumber Int @map("package_number")
+
+  /// What is printed on the tag. Defaults to `<lotNumber>/<packageNumber>` but is
+  /// overridable — mills reuse the supplier's own taka numbers.
+  label String? @db.VarChar(60)
+
+  /// The MEASURED quantity of this package, in the lot's uom. The whole reason this
+  /// table exists.
+  qty Decimal @db.Decimal(18, 4)
+
+  /// Unit parentage — only meaningful when the process preserves packaging
+  /// (`Process.preservesPackaging`). Dyeing: the same roll returns, so the mapping
+  /// exists. Cutting: rolls are destroyed, so it is null (§5.2.3).
+  parentPackageId String? @map("parent_package_id") @db.Uuid
+
+  /// available | issued | consumed | scrapped
+  state String @default("available") @db.VarChar(20)
+
+  customFields Json    @default("{}") @map("custom_fields")
+  isDeleted    Boolean @default(false) @map("is_deleted")
+  createdBy    String? @map("created_by") @db.Uuid
+  updatedBy    String? @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lot           Lot          @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  parentPackage LotPackage?  @relation("LotPackageGenealogy", fields: [parentPackageId], references: [id])
+  childPackages LotPackage[] @relation("LotPackageGenealogy")
+  createdByUser User?        @relation("LotPackageCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?        @relation("LotPackageUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  ledgerEntries StockLedgerEntry[]
+
+  issueLines        JobIssueLine[]   @relation("JobIssueLinePackage")
+  receiptLinesAsParent JobReceiptLine[] @relation("JobReceiptLineParentPackage")
+  receiptOutputsAsParent JobReceiptOutput[] @relation("JobReceiptOutputParentPackage")
+
+  @@unique([lotId, packageNumber])
+  @@index([organizationId, lotId])
+  @@map("lot_packages")
+}
+
+/// 🔴 EVERY MOVEMENT OF EVERY QUANTITY. Append-only.
+///
+/// There is no `stock_balance` table and there will not be one. Availability is
+/// `SUM(qty_in − qty_out)` grouped by item × lot × location × ownership (§5.6). A
+/// corrected mistake is a REVERSING ENTRY, never an edit and never a delete;
+/// cancelling a posted document posts the opposite rows and flips the document's
+/// status. History survives and the balance is still right.
+///
+/// This is why the table takes `created_by` / `created_at` but NOT `is_deleted` or
+/// `updated_by`, and no `custom_fields`: a ledger row is not a domain entity with a
+/// form behind it, it is a fact that happened. Same reasoning that made
+/// `refresh_tokens` a retained log (CLAUDE.md's exclusion list).
+model StockLedgerEntry {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  itemId       String  @map("item_id") @db.Uuid
+  lotId        String  @map("lot_id") @db.Uuid
+  /// Set only when the movement is package-granular (`lotTracking =
+  /// 'lot_and_package'`). A lot-level movement leaves it null.
+  lotPackageId String? @map("lot_package_id") @db.Uuid
+
+  /// WHERE the stock is. Goods at a processor are OUR stock at THEIR location
+  /// (§5.4) — one axis, not a location plus a separate "with-processor" state, so
+  /// a godown-to-godown transfer and a send-to-processor are the same operation.
+  locationId String @map("location_id") @db.Uuid
+
+  /// Copied from the lot at post time, deliberately. A ledger row is a historical
+  /// fact; re-deriving ownership through a join would let a later edit to the lot
+  /// silently rewrite what a past valuation said.
+  ownership    String  @default("own") @db.VarChar(20)
+  ownerPartyId String? @map("owner_party_id") @db.Uuid
+
+  uomId String? @map("uom_id") @db.Uuid
+
+  /// One direction per row, the other zero — never a signed quantity. Two columns
+  /// make "how much came in" and "how much went out" separate SUMs rather than two
+  /// filtered ones, and a sign error becomes impossible to write.
+  qtyIn  Decimal @default(0) @map("qty_in") @db.Decimal(18, 4)
+  qtyOut Decimal @default(0) @map("qty_out") @db.Decimal(18, 4)
+
+  /// Value moves with quantity, which is what makes lot value derived rather than
+  /// stored (plan §3, decision 1). Customer-owned stock always posts ZERO value.
+  valueIn  Decimal @default(0) @map("value_in") @db.Decimal(18, 4)
+  valueOut Decimal @default(0) @map("value_out") @db.Decimal(18, 4)
+
+  /// What kind of movement this is, for reporting and for reversal pairing:
+  /// opening | receipt | issue | transfer_in | transfer_out | consume | produce |
+  /// scrap | adjustment | reversal
+  movementType String @map("movement_type") @db.VarChar(30)
+
+  /// The document that caused it. Not an FK — the referenced table differs per
+  /// `sourceDocType` (job_issue, job_receipt, job_order, …) and several of those
+  /// tables do not exist yet.
+  sourceDocType   String  @map("source_doc_type") @db.VarChar(40)
+  sourceDocId     String? @map("source_doc_id") @db.Uuid
+  sourceDocLineId String? @map("source_doc_line_id") @db.Uuid
+
+  /// Free-text why, for adjustments and reversals.
+  remarks String?
+
+  /// When the movement HAPPENED, which is not always when the row was written —
+  /// a challan dated yesterday entered this morning must age from yesterday. GST
+  /// requires jobwork goods back within 180/365 days, so the ageing report reads
+  /// this column, never `created_at`.
+  postedAt DateTime @default(now()) @map("posted_at") @db.Timestamptz(6)
+
+  createdBy String?  @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  item          Item               @relation(fields: [itemId], references: [id])
+  lot           Lot                @relation(fields: [lotId], references: [id])
+  lotPackage    LotPackage?        @relation(fields: [lotPackageId], references: [id])
+  location      Location           @relation("StockLedgerLocation", fields: [locationId], references: [id])
+  uom           UnitOfMeasurement? @relation("StockLedgerUom", fields: [uomId], references: [id])
+  createdByUser User?              @relation("StockLedgerCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  /// The balance query's index, per §5.6. A materialised balance view comes only
+  /// when a real query proves it necessary — do not pre-optimise a correctness
+  /// guarantee away.
+  @@index([organizationId, itemId, lotId, locationId])
+  @@index([organizationId, locationId, postedAt])
+  @@map("stock_ledger")
+}
