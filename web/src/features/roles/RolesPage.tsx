@@ -124,7 +124,7 @@ export function RolesPage() {
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         >
           <td style={{ padding: 0 }} title={role.name}>
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', height: 48, paddingLeft: depth * 32 + 24, paddingRight: 24, maxWidth: 300, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', height: 48, paddingLeft: depth * 32 + 40, paddingRight: 24, maxWidth: 300, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {/* 1. Vertical lines for passing-through ancestors */}
               {Array.from({ length: Math.max(0, depth - 1) }).map((_, i) => {
                 if (isLastArray[i]) return null;
@@ -159,9 +159,9 @@ export function RolesPage() {
                   <div
                     style={{
                       position: 'absolute',
-                      left: (depth - 1) * 32 + 24 + 6,
+                      left: (depth - 1) * 32 + 24 + 5.5,
                       top: '50%',
-                      width: 22,
+                      width: 32,
                       height: 1,
                       background: '#cbd5e1',
                     }}
@@ -197,9 +197,6 @@ export function RolesPage() {
                   }}
                 />
               )}
-
-              {/* 4. Gap between connector and text */}
-              {depth > 0 && <div style={{ width: 6, flexShrink: 0 }} />}
 
               <span style={{ color: '#0062ff', fontSize: 13, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
                 {role.name}
