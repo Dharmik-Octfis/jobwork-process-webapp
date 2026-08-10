@@ -15,7 +15,7 @@ export function EditRoute() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
 
-  const listPath = `/organizations/${orgId}/jobwork/routes`;
+  const listPath = `/organizations/${orgId}/settings/jobwork/routes`;
   /** Back to the list with this row still open — the split view is where Edit was
    * pressed from, and a bare list reads as having navigated somewhere else. */
   const backPath = `${listPath}?id=${id}`;
@@ -58,20 +58,14 @@ export function EditRoute() {
       <header
         style={{
           display: 'flex',
-          alignItems: 'flex-start',
+          alignItems: 'center',
           gap: 12,
           padding: '16px 24px',
           borderBottom: '1px solid #eef0f3',
         }}
       >
         <BackButton onClick={() => navigate(backPath)} label="Back to the route" />
-        <div>
-          <h1 style={{ fontSize: 18, fontWeight: 600, color: '#000', margin: 0 }}>{route.name}</h1>
-          <p style={{ fontSize: 12, color: '#64748b', margin: '4px 0 0 0' }}>
-            Job orders already created from this route keep the steps they copied — changes here
-            only affect job orders created from now on.
-          </p>
-        </div>
+        <h1 style={{ fontSize: 18, fontWeight: 600, color: '#000', margin: 0 }}>{route.name}</h1>
       </header>
       {message && (
         <p

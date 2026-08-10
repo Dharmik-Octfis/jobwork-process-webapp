@@ -120,7 +120,6 @@ export function AddStepsDialog({
       isOpen={isOpen}
       onClose={onClose}
       title={`Add work to ${jobOrderNumber}`}
-      subtitle={`Goes on the end, as step ${startSeq}. Nothing already on the order is renumbered or changed, and the new step cannot issue until the step above it has sent something back.`}
       footer={
         <>
           <button
@@ -217,11 +216,6 @@ export function AddStepsDialog({
             minHeight: 32,
           }}
         />
-        {/* Work added to a released order is a decision somebody will review — it
-            lands in the order's remarks, the way a short-close reason does. */}
-        <p style={{ fontSize: 11, color: '#94a3b8', margin: '4px 0 0 0' }}>
-          Optional. Saved to the order&rsquo;s remarks.
-        </p>
       </div>
     </Modal>
   );

@@ -6,6 +6,7 @@ import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage';
 import { ProtectedRoute } from '../routes/ProtectedRoute';
 import { RequireOrganization } from '../routes/RequireOrganization';
 import { OrgRedirect } from '../routes/OrgRedirect';
+import { LegacyJobworkMasterRedirect } from '../routes/LegacyJobworkMasterRedirect';
 import { AcceptInvitePage } from '../features/invitations/AcceptInvitePage';
 import { CreateOrganizationForm } from '../features/organizations/CreateOrganizationForm';
 import { AppLayout } from '../components/layout/AppLayout';
@@ -259,15 +260,16 @@ export const router = createBrowserRouter([
               // standalone create route would be a form that cannot be filled in
               // correctly.
               { path: '/organizations/:orgId/jobwork', element: <JobworkPage /> },
-              { path: '/organizations/:orgId/jobwork/processes', element: <ProcessesList /> },
-              { path: '/organizations/:orgId/jobwork/processes/new', element: <CreateProcess /> },
+              // The Processes and Process Routes masters now live under Settings —
+              // these two only forward the old URLs there.
               {
-                path: '/organizations/:orgId/jobwork/processes/:id/edit',
-                element: <EditProcess />,
+                path: '/organizations/:orgId/jobwork/processes/*',
+                element: <LegacyJobworkMasterRedirect />,
               },
-              { path: '/organizations/:orgId/jobwork/routes', element: <RoutesList /> },
-              { path: '/organizations/:orgId/jobwork/routes/new', element: <CreateRoute /> },
-              { path: '/organizations/:orgId/jobwork/routes/:id/edit', element: <EditRoute /> },
+              {
+                path: '/organizations/:orgId/jobwork/routes/*',
+                element: <LegacyJobworkMasterRedirect />,
+              },
               { path: '/organizations/:orgId/jobwork/job-orders', element: <JobOrdersList /> },
               { path: '/organizations/:orgId/jobwork/job-orders/new', element: <CreateJobOrder /> },
               // Before ':id', or "new" is read as a job order id.
@@ -319,6 +321,14 @@ export const router = createBrowserRouter([
           { path: 'permissions/:id/edit', element: <EditPermissionTemplate /> },
           { path: 'inventory/uom', element: <UnitOfMeasurementPage /> },
           { path: 'configuration/currencies', element: <CurrenciesPage /> },
+          // Jobwork masters. Like every other settings list, each carries its own
+          // detail pane at `?id=<uuid>` rather than a `:id` route.
+          { path: 'jobwork/processes', element: <ProcessesList /> },
+          { path: 'jobwork/processes/new', element: <CreateProcess /> },
+          { path: 'jobwork/processes/:id/edit', element: <EditProcess /> },
+          { path: 'jobwork/routes', element: <RoutesList /> },
+          { path: 'jobwork/routes/new', element: <CreateRoute /> },
+          { path: 'jobwork/routes/:id/edit', element: <EditRoute /> },
           { path: 'modules', element: <ModulesListPage /> },
           { path: 'modules/:entityType', element: <ModuleFieldsPage /> },
           { path: 'locations', element: <LocationsList /> },

@@ -77,12 +77,24 @@ const poolConfig: PoolConfig = {
   connectionString: toPoolConnectionString(env.databaseUrl),
   ssl: resolveSsl(),
   /**
+   * Names every connection in `pg_stat_activity.application_name`. Without it the
+   * app's rows read `(none)`, and "who is holding 65 connections?" — the question
+   * asked on 2026-08-10, when the server hit its 79-connection ceiling — cannot be
+   * answered from the database alone.
+   */
+  application_name: 'jobwork-api',
+  /**
    * Deliberately small: AppSail runs many short-lived instances (§6) against one
    * managed Postgres with a connection cap, and `max` is per instance — so this
    * multiplies by the instance count. Raise it only with evidence of contention
    * (`waiting > 0` in `poolStats()`), never reflexively.
+   *
+   * Vitest forks one worker per core and every worker imports this file, so under
+   * test `max` multiplies by the worker count too — a full run can reach the
+   * server's ceiling on its own. The suites are IO-bound against one dev database;
+   * two connections each is enough.
    */
-  max: 5,
+  max: process.env.VITEST ? 2 : 5,
   /**
    * 0 = never close an idle connection, rather than pg's 10s default. Correct
    * here because `max` is already low, so an idle connection costs one slot on
@@ -106,7 +118,14 @@ const globalForDb = globalThis as unknown as {
 };
 
 const pool = globalForDb.prismaPool ?? new Pool(poolConfig);
-const adapter = globalForDb.prismaAdapter ?? new PrismaPg(pool);
+/**
+ * `disposeExternalPool` is what makes `prisma.$disconnect()` in `server.ts` close
+ * the sockets. The adapter only ends a pool it created itself; hand it one of ours
+ * and, without this flag, `$disconnect()` releases Prisma's handle and leaves every
+ * connection open on the server (`@prisma/adapter-pg` 7.8 `PrismaPgAdapterFactory`).
+ * On a crash-restart loop that is how a process leaves its connections behind.
+ */
+const adapter = globalForDb.prismaAdapter ?? new PrismaPg(pool, { disposeExternalPool: true });
 
 if (!env.isProduction) {
   globalForDb.prismaPool = pool;
@@ -171,7 +190,6 @@ export const prisma =
 if (!env.isProduction) {
   globalForDb.prismaClient = prisma;
 }
-
 
 /** Transaction-scoped Prisma client handed to `runAsTenant` callbacks. */
 export type TenantClient = Omit<

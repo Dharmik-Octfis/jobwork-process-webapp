@@ -13,7 +13,7 @@ export function CreateProcess() {
   const { orgId } = useParams<{ orgId: string }>();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  const listPath = `/organizations/${orgId}/jobwork/processes`;
+  const listPath = `/organizations/${orgId}/settings/jobwork/processes`;
 
   const mutation = useMutation({
     mutationFn: (data: CreateProcessData) => createProcess(orgId!, data),

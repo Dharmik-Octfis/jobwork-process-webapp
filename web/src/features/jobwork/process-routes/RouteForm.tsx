@@ -33,19 +33,11 @@ const inputStyle: React.CSSProperties = {
   minHeight: 32,
 };
 
-const hintStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: '#64748b',
-  margin: '4px 0 0 0',
-  lineHeight: 1.5,
-  maxWidth: 560,
-};
-
 const sectionHeading: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 600,
   color: '#111',
-  margin: '0 0 4px 0',
+  margin: '0 0 16px 0',
   textTransform: 'uppercase',
   letterSpacing: 0.4,
 };
@@ -74,14 +66,7 @@ function toFormSteps(route?: Partial<Route>): RouteStepData[] {
   }));
 }
 
-/**
- * One form for both Create and Edit.
- *
- * The note about editing being safe is on the screen on purpose. People hesitate
- * to change a route that job orders were built from, and the honest answer —
- * that a job order took a full copy and never looks at the route again (§2.4) —
- * is not something anyone can infer from the UI.
- */
+/** One form for both Create and Edit. */
 export function RouteForm({ initialData, onSubmit, isPending, onCancel, fieldErrors }: Props) {
   const { orgId } = useParams<{ orgId: string }>();
   const isEdit = Boolean(initialData?.id);
@@ -190,10 +175,6 @@ export function RouteForm({ initialData, onSubmit, isPending, onCancel, fieldErr
 
       <section style={{ marginBottom: 32 }}>
         <h2 style={sectionHeading}>Steps</h2>
-        <p style={{ ...hintStyle, marginBottom: 16 }}>
-          The order the work happens in. Each step supplies defaults that a job order copies —
-          editing this route later never changes a job order that was already created from it.
-        </p>
 
         {stepError && (
           <p
@@ -212,16 +193,10 @@ export function RouteForm({ initialData, onSubmit, isPending, onCancel, fieldErr
         )}
 
         <StepsGrid steps={steps} onChange={setSteps} errors={fieldErrors} />
-
-        <p style={{ ...hintStyle, marginTop: 10 }}>
-          Leave a receive item blank when the item does not change — dyeing returns the same fabric.
-          When it does change, the next step must issue exactly what this one produces, or that step
-          will have nothing to draw on.
-        </p>
       </section>
 
       <section style={{ maxWidth: 640, marginBottom: 32 }}>
-        <h2 style={{ ...sectionHeading, marginBottom: 16 }}>Custom Fields</h2>
+        <h2 style={sectionHeading}>Custom Fields</h2>
         <CustomFieldsSection
           orgId={orgId!}
           entityType="process_route"
@@ -238,7 +213,9 @@ export function RouteForm({ initialData, onSubmit, isPending, onCancel, fieldErr
           boxSizing: 'border-box',
           position: 'fixed',
           bottom: 0,
-          left: 220,
+          // 250, not 220: this form renders inside SettingsLayout, whose sidebar is
+          // wider than the main one.
+          left: 250,
           right: 0,
           background: '#fff',
           padding: '0 24px',

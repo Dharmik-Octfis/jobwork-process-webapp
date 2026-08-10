@@ -66,7 +66,9 @@ export function ProcessDetail({ processId, onClose }: Props) {
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             type="button"
-            onClick={() => navigate(`/organizations/${orgId}/jobwork/processes/${process.id}/edit`)}
+            onClick={() =>
+              navigate(`/organizations/${orgId}/settings/jobwork/processes/${process.id}/edit`)
+            }
             style={{
               display: 'flex',
               alignItems: 'center',

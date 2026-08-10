@@ -24,19 +24,8 @@ const sectionLabel: React.CSSProperties = {
   margin: '0 0 8px 0',
 };
 
-/** One number on the strip. `note` is the caveat that keeps the number honest —
- * a figure whose basis is invisible is a figure somebody will misread. */
-function Tile({
-  label,
-  value,
-  unit,
-  note,
-}: {
-  label: string;
-  value: string;
-  unit?: string;
-  note?: string;
-}) {
+/** One number on the strip. */
+function Tile({ label, value, unit }: { label: string; value: string; unit?: string }) {
   return (
     <div style={{ padding: '2px 18px 2px 0', minWidth: 120 }}>
       <span
@@ -55,11 +44,6 @@ function Tile({
         {value}
         {unit && <span style={{ fontSize: 11, color: '#64748b', marginLeft: 3 }}>{unit}</span>}
       </span>
-      {note && (
-        <span style={{ display: 'block', fontSize: 10, color: '#94a3b8', marginTop: 1 }}>
-          {note}
-        </span>
-      )}
     </div>
   );
 }
@@ -335,21 +319,15 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
               <div style={{ width: `${donePct}%`, height: '100%', background: status.color }} />
             </div>
           </div>
-          <Tile label="Issued" value={formatQty(summary.issuedQty)} unit={unit} note="step 1" />
-          <Tile
-            label="In hand"
-            value={formatQty(summary.inHandQty)}
-            note="this order’s lots, wherever they are"
-          />
+          <Tile label="Issued" value={formatQty(summary.issuedQty)} unit={unit} />
+          <Tile label="In hand" value={formatQty(summary.inHandQty)} />
           <Tile
             label="Wastage"
             value={summary.wastagePct === null ? '—' : `${summary.wastagePct}%`}
-            note="closed steps only"
           />
           <Tile
             label="Cost / unit"
             value={summary.costPerUnit === null ? '—' : formatQty(summary.costPerUnit)}
-            note="derived, never stored"
           />
         </div>
       </header>

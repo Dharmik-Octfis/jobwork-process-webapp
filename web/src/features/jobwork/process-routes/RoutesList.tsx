@@ -95,7 +95,7 @@ export function RoutesList() {
   });
 
   const openDetail = (id: string) => setSearchParams({ id });
-  const newPath = `/organizations/${orgId}/jobwork/routes/new`;
+  const newPath = `/organizations/${orgId}/settings/jobwork/routes/new`;
 
   return (
     <div

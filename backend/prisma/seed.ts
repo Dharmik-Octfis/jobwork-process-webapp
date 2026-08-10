@@ -151,20 +151,17 @@ async function main() {
 
   /**
    * The children, in the order the work actually happens: you raise a job order,
-   * you issue material, you receive it back. Processes and Routes are masters and
-   * sit above them because that is where you go to set the shop up — but Job
-   * Orders is what people open the module for, which is why the parent
-   * `/jobwork` route lands there rather than on a master list.
+   * you issue material, you receive it back. Only the documents live here — the
+   * Processes and Process Routes masters moved to Settings on 2026-08-10, because
+   * they are shop setup you do once, not work you do daily.
    *
    * A child here with no page behind it is a sidebar link that goes nowhere, so
    * every entry below has a route in `web/src/app/router.tsx` in the same change.
    */
   const jobworkChildren = [
-    { code: 'PROCESSES', name: 'Processes', sortIndex: 1, icon: 'Workflow' },
-    { code: 'ROUTES', name: 'Process Routes', sortIndex: 2, icon: 'Route' },
-    { code: 'JOB_ORDERS', name: 'Job Orders', sortIndex: 3, icon: 'ClipboardList' },
-    { code: 'ISSUES', name: 'Issues', sortIndex: 4, icon: 'Send' },
-    { code: 'RECEIPTS', name: 'Receipts', sortIndex: 5, icon: 'PackageCheck' },
+    { code: 'JOB_ORDERS', name: 'Job Orders', sortIndex: 1, icon: 'ClipboardList' },
+    { code: 'ISSUES', name: 'Issues', sortIndex: 2, icon: 'Send' },
+    { code: 'RECEIPTS', name: 'Receipts', sortIndex: 3, icon: 'PackageCheck' },
   ];
 
   for (const child of jobworkChildren) {
@@ -174,6 +171,15 @@ async function main() {
       create: { ...child, parentId: jobwork.id },
     });
   }
+
+  // Their pages now hang off SettingsLayout, which reads no module tree, so the
+  // rows have nothing to drive. Deactivated rather than deleted: `buildTree`
+  // filters on `isActive`, and an active row with no `ROUTE_MAP` entry renders as
+  // a sidebar link to '#'. Deleting is the destructive way to say the same thing.
+  await prisma.appModule.updateMany({
+    where: { code: { in: ['PROCESSES', 'ROUTES'] } },
+    data: { isActive: false, parentId: null },
+  });
   console.log('Seeded app modules.');
 
   console.log('Seeding finished.');

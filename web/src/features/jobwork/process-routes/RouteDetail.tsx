@@ -88,7 +88,9 @@ export function RouteDetail({ routeId, onClose }: Props) {
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             type="button"
-            onClick={() => navigate(`/organizations/${orgId}/jobwork/routes/${route.id}/edit`)}
+            onClick={() =>
+              navigate(`/organizations/${orgId}/settings/jobwork/routes/${route.id}/edit`)
+            }
             style={{
               display: 'flex',
               alignItems: 'center',

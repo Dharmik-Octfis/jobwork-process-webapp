@@ -14,7 +14,7 @@ export function CreateRoute() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
 
-  const listPath = `/organizations/${orgId}/jobwork/routes`;
+  const listPath = `/organizations/${orgId}/settings/jobwork/routes`;
 
   const mutation = useMutation({
     mutationFn: (data: CreateRouteData) => createRoute(orgId!, data),

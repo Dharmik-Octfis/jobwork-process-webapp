@@ -23,8 +23,6 @@ import {
   ShoppingBag,
   Receipt,
   Factory,
-  Workflow,
-  Route as RouteIcon,
   ClipboardList,
   Send,
   PackageCheck,
@@ -45,7 +43,6 @@ import { LAST_ORG_KEY } from '../../routes/OrgRedirect';
 import { fetchVendors } from '../../features/purchases/vendors/vendors.api';
 import { fetchCustomers } from '../../features/sales/customers/customers.api';
 import { itemsApi } from '../../features/items/items.api';
-import { fetchProcesses } from '../../features/jobwork/processes/processes.api';
 import { fetchJobOrders } from '../../features/jobwork/job-orders/jobOrders.api';
 import { fetchJobIssues } from '../../features/jobwork/issues/jobIssues.api';
 
@@ -66,8 +63,8 @@ const ROUTE_MAP: Record<string, string> = {
   CUSTOMERS: '/sales/customers',
   ITEMS: '/items',
   JOBWORK: '/jobwork',
-  PROCESSES: '/jobwork/processes',
-  ROUTES: '/jobwork/routes',
+  // No PROCESSES/ROUTES — both masters live under Settings since 2026-08-10 and
+  // are reached from SettingsLayout's nav, not this one.
   JOB_ORDERS: '/jobwork/job-orders',
   ISSUES: '/jobwork/issues',
   RECEIPTS: '/jobwork/receipts',
@@ -79,6 +76,29 @@ function navPath(moduleCode: string, orgId: string | undefined): string {
   return `/organizations/${orgId}${suffix}`;
 }
 
+/**
+ * 🔴 `ROUTE_MAP` — not the API — decides what this sidebar shows.
+ *
+ * `app_modules` is master data cached hard: the serialized tree sits in backend
+ * instance memory for 6h and the response carries `max-age=3600`, so a row that
+ * goes inactive can keep appearing here for an hour after the database says
+ * otherwise. Worse, a module with no `ROUTE_MAP` entry renders as a link to '#' —
+ * a nav item that looks live and goes nowhere.
+ *
+ * Filtering here makes the code the source of truth and both problems disappear
+ * together. Adding a module still needs its `ROUTE_MAP` entry (as it always did);
+ * forgetting one now means the item is simply absent, which is the loud failure.
+ * A parent survives on its children — `JOBWORK` keeps its own '/jobwork' entry, so
+ * it stays whatever happens to the masters beneath it.
+ */
+function navigableModules(modules: AppModule[]): AppModule[] {
+  return modules.flatMap((module) => {
+    const children = navigableModules(module.children ?? []);
+    if (ROUTE_MAP[module.code] === undefined && children.length === 0) return [];
+    return [{ ...module, children }];
+  });
+}
+
 const ICON_MAP: Record<string, React.ElementType> = {
   LayoutDashboard,
   Home,
@@ -88,10 +108,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   FileText,
   Receipt,
   Factory,
-  Workflow,
-  // The jobwork children. `Route` is aliased on import because react-router
-  // exports a component of the same name and this file uses both.
-  Route: RouteIcon,
+  // The jobwork children.
   ClipboardList,
   Send,
   PackageCheck,
@@ -163,22 +180,9 @@ const SEARCHABLE_ROUTES: SearchModule[] = [
     to: (orgId, id) => `/organizations/${orgId}/items?id=${id}`,
   },
   {
-    match: '/jobwork/processes',
-    label: 'Processes',
-    fetch: async (orgId, term) =>
-      // `filter: 'all'` — the list defaults to active processes, but someone
-      // searching by name is looking for a specific one and an inactive hit that
-      // silently does not appear reads as "it was deleted".
-      (
-        await fetchProcesses(orgId, { search: term, filter: 'all_processes', perPage: 6 })
-      ).results.map((p) => ({
-        id: p.id,
-        title: p.name,
-        subtitle: p.code || undefined,
-      })),
-    to: (orgId, id) => `/organizations/${orgId}/jobwork/processes?id=${id}`,
-  },
-  {
+    // No Processes entry: that list moved under Settings, which renders outside
+    // this layout and so has no top bar for this box to sit in.
+    //
     // Before the bare '/jobwork' rule would ever match — these paths are checked
     // with `includes`, so the more specific entries have to come first.
     match: '/jobwork/job-orders',
@@ -391,10 +395,11 @@ export function AppLayout() {
     queryFn: () => organizationsApi.getOrganizations(),
   });
 
-  const { data: modules = [] } = useQuery({
+  const { data: fetchedModules = [] } = useQuery({
     queryKey: ['modules'],
     queryFn: fetchAppModules,
   });
+  const modules = navigableModules(fetchedModules);
 
   // The URL is the single source of truth for which organization is active.
   // Previously this was React state mirrored into localStorage, which meant the

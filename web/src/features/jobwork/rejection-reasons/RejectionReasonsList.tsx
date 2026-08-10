@@ -130,30 +130,15 @@ export function RejectionReasonsList() {
         style={{
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'flex-start',
+          alignItems: 'center',
           padding: '16px 24px',
           borderBottom: '1px solid #eef0f3',
           gap: 16,
         }}
       >
-        <div>
-          <h1 style={{ fontSize: 18, fontWeight: 600, color: '#000', margin: 0 }}>
-            Rejection Reasons
-          </h1>
-          <p
-            style={{
-              fontSize: 12,
-              color: '#64748b',
-              margin: '4px 0 0 0',
-              maxWidth: 620,
-              lineHeight: 1.5,
-            }}
-          >
-            Picked on a receipt when goods come back short or defective. They are a list rather than
-            a text box because &ldquo;which defect is costing us the most&rdquo; is a question you
-            can only answer if the answers can be grouped.
-          </p>
-        </div>
+        <h1 style={{ fontSize: 18, fontWeight: 600, color: '#000', margin: 0 }}>
+          Rejection Reasons
+        </h1>
         <button
           type="button"
           onClick={openCreate}
@@ -382,10 +367,6 @@ export function RejectionReasonsList() {
             ariaLabel="Default responsibility"
             fullWidth
           />
-          <p style={{ fontSize: 11, color: '#64748b', margin: '4px 0 0 0' }}>
-            Pre-fills the receipt line. A default, never a rule — the same defect can be either
-            side&rsquo;s.
-          </p>
         </div>
 
         <label style={{ display: 'flex', gap: 10, alignItems: 'center', cursor: 'pointer' }}>
