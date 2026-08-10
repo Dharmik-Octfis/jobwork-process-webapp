@@ -67,25 +67,19 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
    */
   permission_template: [{ key: 'all', label: 'All Profiles', where: {} }],
   /**
-   * Processes. The first entry is the default, so opening the list lands on
-   * **Active Processes** — the operations that can actually be put on a route
-   * today, which is what someone is looking for almost every time. Same trick the
-   * `item` list uses: the key stays `all` because that is the default slot, while
-   * the label and `where` narrow it.
+   * Processes. One unfiltered default view: the active/inactive split went with
+   * the `is_active` column on 2026-08-10 — a process you have stopped running is
+   * deleted (soft), not retired. The `all` entry must stay whatever else changes:
+   * `filterWhere` resolves an absent `?filter=` to `all`, so an empty list here
+   * would 400 every request.
    */
   process: [
-    { key: 'all', label: 'Active Processes', where: { isActive: true } },
-    { key: 'all_processes', label: 'All Processes', where: {} },
-    { key: 'inactive', label: 'Inactive Processes', where: { isActive: false } },
+    { key: 'all', label: 'All Processes', where: {} },
     /** Where the taka survives the operation, so unit-wise receipt is possible
      * at all (§5.2.3) — dyeing yes, cutting no. */
     { key: 'changes_item', label: 'Changes The Item', where: { itemChanges: true } },
   ],
-  process_route: [
-    { key: 'all', label: 'Active Routes', where: { isActive: true } },
-    { key: 'all_routes', label: 'All Routes', where: {} },
-    { key: 'inactive', label: 'Inactive Routes', where: { isActive: false } },
-  ],
+  process_route: [{ key: 'all', label: 'All Routes', where: {} }],
   /**
    * Job orders. The default is **Open** — everything not yet finished — because
    * this list is a work queue and a completed order is history. The key stays
@@ -124,11 +118,7 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
     { key: 'with_scrap', label: 'With Scrap', where: { totalScrapQty: { gt: 0 } } },
     { key: 'cancelled', label: 'Cancelled', where: { status: 'cancelled' } },
   ],
-  rejection_reason: [
-    { key: 'all', label: 'Active Reasons', where: { isActive: true } },
-    { key: 'all_reasons', label: 'All Reasons', where: {} },
-    { key: 'inactive', label: 'Inactive Reasons', where: { isActive: false } },
-  ],
+  rejection_reason: [{ key: 'all', label: 'All Reasons', where: {} }],
   /** Lots have no list page (see the column catalog), but `filterWhere` resolves
    * an absent `?filter=` to `all`, so the entry must exist or every read 400s. */
   lot: [

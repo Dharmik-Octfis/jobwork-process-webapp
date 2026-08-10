@@ -51,8 +51,9 @@ export function ProcessSelect({ value, onChange, disabled, ariaLabel, minWidth =
   const triggerRef = useRef<HTMLDivElement>(null);
 
   const { data } = useQuery({
-    // Active processes only. An inactive one is an operation the org has stopped
-    // running; offering it here is how it ends up on a live route.
+    // Every process the org has. There is no active/inactive split any more — an
+    // operation you have stopped running is deleted, and soft-deleted rows are
+    // already excluded server-side.
     queryKey: ['processes', orgId, '', 'all', 1, 500],
     queryFn: () => fetchProcesses(orgId!, { filter: 'all', perPage: 500 }),
     enabled: Boolean(orgId),

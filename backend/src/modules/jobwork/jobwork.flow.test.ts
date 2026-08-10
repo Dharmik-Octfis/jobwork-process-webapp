@@ -8,10 +8,11 @@ import {
 } from '../inventory/stock-ledger/stockLedger.service.ts';
 import { SOURCE_DOC_TYPES, runAsDocument } from './jobwork.types.ts';
 import { createNewProcess } from './processes/processes.service.ts';
-import { createNewRoute } from './process-routes/processRoutes.service.ts';
+import { createNewRoute, updateRouteById } from './process-routes/processRoutes.service.ts';
 import {
   appendJobOrderSteps,
   createNewJobOrder,
+  getJobOrderById,
   getJobOrderOverview,
   shortCloseJobOrder,
 } from './job-orders/jobOrders.service.ts';
@@ -727,6 +728,76 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     expect(step.issueUomId).toBe(pieceId);
     expect(step.receiveItemId).toBe(shirtsId);
     expect(Number(step.plannedInputQty)).toBe(2910);
+  });
+
+  it('carries a default quantity on a route’s CONSUMES rows, and copies it into a job order', async () => {
+    const stitching = await createNewProcess(orgId, {
+      name: `Stitching template ${unique()}`,
+      itemChanges: true,
+    });
+
+    const route = await createNewRoute(orgId, {
+      name: `Shirts from panels ${unique()}`,
+      steps: [
+        {
+          processId: stitching.id,
+          inputs: [
+            { itemId: shirtId, plannedQty: 2910 },
+            { itemId: threadId, plannedQty: 12 },
+          ],
+          // 🔴 A quantity sent on an OUTPUT is dropped, not stored. What comes
+          // back is a per-run answer; only the consumed side has a default.
+          outputs: [{ itemId: shirtsId, isPrimary: true, plannedQty: 2880 }],
+        },
+      ],
+    });
+
+    const routeStep = route.steps[0]!;
+    expect(Number(routeStep.inputs[0]!.plannedQty)).toBe(2910);
+    expect(Number(routeStep.inputs[1]!.plannedQty)).toBe(12);
+    expect(routeStep.outputs[0]).not.toHaveProperty('plannedQty');
+
+    // What the Create form does when a route is picked: copy the rows once and
+    // let go (§2.4). The default becomes the order's plan, editable from here.
+    const jobOrder = await createNewJobOrder(orgId, {
+      routeId: route.id,
+      steps: route.steps.map((step) => ({
+        processId: step.processId,
+        inputs: step.inputs.map((row) => ({
+          itemId: row.itemId,
+          plannedQty: row.plannedQty === null ? null : Number(row.plannedQty),
+        })),
+        outputs: step.outputs.map((row) => ({
+          itemId: row.itemId,
+          isPrimary: row.isPrimary,
+        })),
+      })),
+    });
+
+    const step = jobOrder.steps[0]!;
+    expect(Number(step.inputs[0]!.plannedQty)).toBe(2910);
+    expect(Number(step.inputs[1]!.plannedQty)).toBe(12);
+    // The principal row's quantity IS the step's plan — one number, not two.
+    expect(Number(step.plannedInputQty)).toBe(2910);
+    // The copied default reaches the output side too, but by the JOB ORDER's own
+    // rule, not the route's: the primary output is planned from the principal
+    // input times the yield (`planQuantities`), which with no yield is 1:1. The
+    // route still said nothing about what comes back.
+    expect(Number(step.outputs[0]!.expectedQty)).toBe(2910);
+
+    // Editing the route afterwards cannot reach the order that copied it.
+    await updateRouteById(orgId, route.id, {
+      name: route.name,
+      steps: [
+        {
+          processId: stitching.id,
+          inputs: [{ itemId: shirtId, plannedQty: 99 }],
+          outputs: [{ itemId: shirtsId, isPrimary: true }],
+        },
+      ],
+    });
+    const after = await getJobOrderById(orgId, jobOrder.id);
+    expect(Number(after!.steps[0]!.inputs[0]!.plannedQty)).toBe(2910);
   });
 
   it('labels a chain-fed input, and plans it from what the step above produces', async () => {

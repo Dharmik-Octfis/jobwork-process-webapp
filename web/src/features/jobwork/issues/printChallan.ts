@@ -17,6 +17,11 @@ import type { JobIssue } from './jobIssues.schemas';
  * string is exactly what comes out of the printer, in every browser, and "Save as
  * PDF" in the print dialog produces the PDF.
  *
+ * ⚠️ NO TRANSPORT BLOCK (2026-08-10). Vehicle, LR and e-way bill number were
+ * dropped from `job_issues` altogether, so the challan prints without them — the
+ * driver's details go on whatever the transporter issues. Restoring them means
+ * restoring the columns and the dialog fields first, not just this markup.
+ *
  * 🔴 EVERY PARTY DETAIL COMES FROM THE SNAPSHOT COLUMNS, never from a join
  * (field-sources §2.4). Sunrise Dyers moves premises in October; reprinting
  * August's challan must show the August address, because that is where the goods
@@ -98,7 +103,6 @@ export function buildChallanHtml(issue: JobIssue, orgName: string): string {
   th { background: #f2f2f2; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; }
   td.num, th.num { text-align: right; }
   tfoot td { font-weight: 600; }
-  .meta { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 14px; font-size: 11px; }
   .note { margin-top: 16px; font-size: 10px; color: #555; line-height: 1.6; }
   .signs { display: flex; justify-content: space-between; margin-top: 48px; font-size: 11px; }
   .signs div { width: 30%; border-top: 1px solid #111; padding-top: 4px; text-align: center; }
@@ -148,12 +152,6 @@ export function buildChallanHtml(issue: JobIssue, orgName: string): string {
       </tr>
     </tfoot>
   </table>
-
-  <div class="meta">
-    ${issue.vehicleNo ? `<span>Vehicle: <strong>${escapeHtml(issue.vehicleNo)}</strong></span>` : ''}
-    ${issue.lrNo ? `<span>LR no: <strong>${escapeHtml(issue.lrNo)}</strong></span>` : ''}
-    ${issue.ewayBillNo ? `<span>E-way bill: <strong>${escapeHtml(issue.ewayBillNo)}</strong></span>` : ''}
-  </div>
 
   ${issue.remarks ? `<div class="note">Remarks: ${escapeHtml(issue.remarks)}</div>` : ''}
 

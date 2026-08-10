@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Pencil, X } from 'lucide-react';
 import { Spinner } from '../../../components/ui/Spinner';
-import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { fetchProcessById } from './processes.api';
 import { rateBasisLabel } from './processes.schemas';
 
@@ -29,10 +28,6 @@ export function ProcessDetail({ processId, onClose }: Props) {
     queryFn: () => fetchProcessById(orgId!, processId),
     enabled: Boolean(orgId && processId),
   });
-
-  // Only ACTIVE definitions, so an archived field's stored value stays in the
-  // database without reappearing on screen.
-  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId!, 'process');
 
   if (isLoading) {
     return (
@@ -116,12 +111,6 @@ export function ProcessDetail({ processId, onClose }: Props) {
         <table style={{ borderCollapse: 'collapse' }}>
           <tbody>
             <tr>
-              <td style={rowLabel}>Status</td>
-              <td style={{ padding: '6px 0' }}>
-                <Flag on={process.isActive} yes="Active" no="Inactive" />
-              </td>
-            </tr>
-            <tr>
               <td style={rowLabel}>Rate basis</td>
               <td style={{ padding: '6px 0', ...rowValue }}>{rateBasisLabel(process.rateBasis)}</td>
             </tr>
@@ -145,33 +134,10 @@ export function ProcessDetail({ processId, onClose }: Props) {
                   : `${process.defaultTolerancePct}%`}
               </td>
             </tr>
-            <tr>
-              <td style={rowLabel}>Default issue unit</td>
-              <td style={{ padding: '6px 0', ...rowValue }}>
-                {process.defaultIssueUom?.unitName ?? '-'}
-              </td>
-            </tr>
-            <tr>
-              <td style={rowLabel}>Default receive unit</td>
-              <td style={{ padding: '6px 0', ...rowValue }}>
-                {process.defaultReceiveUom?.unitName ?? '-'}
-              </td>
-            </tr>
-            {customFieldDefs.map((def) => {
-              const value = process.customFields?.[def.key];
-              return (
-                <tr key={def.id}>
-                  <td style={rowLabel}>{def.label}</td>
-                  <td style={{ padding: '6px 0', ...rowValue }}>
-                    {value === null || value === undefined || value === ''
-                      ? '-'
-                      : Array.isArray(value)
-                        ? value.join(', ')
-                        : String(value)}
-                  </td>
-                </tr>
-              );
-            })}
+            {/* Default issue/receive unit are not shown: a step transacts in its
+                items' stocking units, so an org-wide default here was a guess
+                about one item. Custom fields went with them — `process` is no
+                longer a custom-field module. */}
           </tbody>
         </table>
       </div>

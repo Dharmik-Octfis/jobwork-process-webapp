@@ -168,18 +168,27 @@ database" — cheap to hold from day one, unrecoverable once broken.
 ### 4.3 Processes module
 
 Full CRUD. The simplest module in the plan, chosen deliberately as the first — it validates routes →
-controller → service → schemas → permissions → list view → custom fields end to end before anything
-complicated depends on that path working.
+controller → service → schemas → permissions → list view end to end before anything complicated
+depends on that path working.
 
 - [ ] `backend/src/modules/jobwork/processes/` — copy `src/modules/purchases/vendors/` for shape
 - [ ] `web/src/features/jobwork/processes/` — list, create, edit, detail
 - [ ] Inline creation from a dropdown (`+ Create "Calendaring"`) so the master never becomes a gate
 
+The module shipped with **default issue / receive units** and a **custom-fields section**, and both
+were removed on 2026-08-10. The units because a step transacts in its _items'_ stocking units
+(domain §5.1) — an org-wide default on the operation master was a guess about one item, and it let a
+challan and the ledger describe one movement in two units. The custom fields because the operation
+master is a short list of names an org types once, so the section went unfilled; `process` moved from
+`ENTITY_TYPES` to `LIST_ONLY_ENTITY_TYPES`, keeping Customize Columns without offering custom fields.
+The `custom_fields` column stays on the table and is simply never written.
+
 ### 4.4 Registration
 
 - [ ] `permissions.catalog.ts` — new `jobwork` group; add `process`
 - [ ] `app_modules` seed — Jobwork parent + children
-- [ ] `ENTITY_TYPES` (`customFields.constants.ts`) + `CUSTOM_FIELD_MODULES` (frontend)
+- [ ] `ENTITY_TYPES` (`customFields.constants.ts`) + `CUSTOM_FIELD_MODULES` (frontend) — **not
+      `process`**, which is list-only (§4.3); a module belongs here only if it will really be used
 - [ ] `listViews.catalog.ts` + `listFilters.catalog.ts` — TypeScript will not compile without both
 - [ ] `NumberSequence` entity types: `lot`, `job_order`, `job_issue`, `job_receipt`
 

@@ -10,9 +10,10 @@ import { RATE_BASES } from './processes.types.ts';
  * one copies, and a schema file is what the frontend's mirror of it can be diffed
  * against.
  *
- * `customFields` is deliberately an open record. Its real shape is this org's
- * `custom_field_definitions`, which the service validates against inside the same
- * transaction as the write — a static schema here could only ever be wrong.
+ * There is no `customFields` here. Processes left `ENTITY_TYPES` on 2026-08-10 —
+ * the operation master is a short list of names an org types once, so per-org
+ * fields on it were a form section nobody filled in. The `custom_fields` COLUMN
+ * stays on the table (CLAUDE.md's default block), it is simply never written.
  */
 
 /** Optional free text. Empty and absent both reach the service, which normalises
@@ -45,14 +46,6 @@ export const createProcessSchema = openApiRegistry.register(
      * warning, which is a data-entry error every time.
      */
     defaultTolerancePct: z.coerce.number().min(0).max(100).nullable().optional(),
-
-    /** Two, not one: in and out can differ (§5.1). */
-    defaultIssueUomId: z.string().uuid().nullable().optional(),
-    defaultReceiveUomId: z.string().uuid().nullable().optional(),
-
-    isActive: z.boolean().optional(),
-
-    customFields: z.record(z.string(), z.unknown()).optional(),
   }),
 );
 

@@ -1,0 +1,30 @@
+-- add_route_input_planned_qty
+--
+-- A default quantity per consumed item on a ROUTE step (2026-08-10). The
+-- template side had no quantity at all; this is the amount an org usually runs,
+-- copied into `job_order_step_inputs.planned_qty` once when a job order is built
+-- from the route and edited freely from there. It is not a per-unit ratio —
+-- nothing in this system converts or scales quantities.
+--
+-- Nullable, because "the template says nothing" is the normal case and 0 is a
+-- real answer meaning "consume none of this".
+--
+-- 🔴 EVERYTHING ELSE `migrate diff` GENERATED HERE WAS DELETED BY HAND.
+--
+-- The generated draft carried 57 further lines: DROP TABLE for the three
+-- composite-item tables, DROP COLUMN for `processes.is_active`,
+-- `rejection_reasons.is_active`, `routes.is_active` and
+-- `stock_ledger.stock_effect`, and the 21 foreign keys belonging to them. None
+-- of that is this change. It is pre-existing drift — the composite-items
+-- migration is applied in the database but its models are not in the schema
+-- files (`20260810053834_composite_items` is applied-but-missing-from-disk), so
+-- every diff proposes deleting the tables to make the database match the files.
+-- Applying that would destroy real tables to ship one nullable column.
+--
+-- So `npm run db:check-drift` still reports that drift after this migration, and
+-- that is correct: it was there before and is a separate decision. Closing it
+-- means restoring the composite-item models to the schema files, not dropping
+-- the tables.
+
+-- AlterTable
+ALTER TABLE "route_step_inputs" ADD COLUMN     "planned_qty" DECIMAL(18,4);

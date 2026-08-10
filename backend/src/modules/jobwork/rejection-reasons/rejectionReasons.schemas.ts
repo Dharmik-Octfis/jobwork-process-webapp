@@ -19,7 +19,6 @@ export const createRejectionReasonSchema = openApiRegistry.register(
     /** Pre-fills the receipt line. A DEFAULT, never a rule — the same defect can
      * be either side's fault, and what gets billed is decided per line. */
     defaultResponsibility: z.enum(RESPONSIBILITIES).nullable().optional(),
-    isActive: z.boolean().optional(),
     customFields: z.record(z.string(), z.unknown()).optional(),
   }),
 );

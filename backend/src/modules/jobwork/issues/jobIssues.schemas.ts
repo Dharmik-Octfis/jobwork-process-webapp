@@ -16,6 +16,11 @@ import { PROCESSOR_TYPES } from '../jobwork.types.ts';
  * No `challanNumber` either: `NumberSequence('job_issue')` allocates it in the
  * save transaction, so an abandoned dialog burns nothing (§2.2). A gap in a
  * statutory series is a question an auditor asks.
+ *
+ * And since 2026-08-10, no transport (`transporterId`, `vehicleNo`, `lrNo`,
+ * `lrDate`, `ewayBillNo`) and no `customFields`. The four transport columns were
+ * dropped from `job_issues` and `job_issue` is no longer a custom-field module,
+ * so accepting any of them here would 500 on the write instead of 400ing here.
  */
 
 export const jobIssueLineSchema = z.object({
@@ -83,14 +88,6 @@ export const createJobIssueSchema = openApiRegistry.register(
     /** Set when launched from a receipt's rework line — same step, next attempt. */
     isRework: z.boolean().optional(),
 
-    transporterId: z.string().uuid().nullable().optional(),
-    vehicleNo: z.string().trim().max(30).nullable().optional(),
-    lrNo: z.string().trim().max(50).nullable().optional(),
-    lrDate: z.coerce.date().nullable().optional(),
-    /** Manual in release 1; an API response later. Recorded now because it cannot
-     * be back-filled onto a challan whose goods have already moved (plan §11). */
-    ewayBillNo: z.string().trim().max(30).nullable().optional(),
-
     /**
      * Required by the SERVICE, not by this schema, and only when the issue goes
      * past the step's tolerance ceiling. Making it conditionally required here
@@ -101,7 +98,6 @@ export const createJobIssueSchema = openApiRegistry.register(
     lines: z.array(jobIssueLineSchema).min(1, 'Pick at least one lot to issue.'),
 
     remarks: z.string().trim().max(2000).nullable().optional(),
-    customFields: z.record(z.string(), z.unknown()).optional(),
   }),
 );
 

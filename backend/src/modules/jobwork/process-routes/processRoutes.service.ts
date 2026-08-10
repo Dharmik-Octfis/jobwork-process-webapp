@@ -4,10 +4,6 @@ import type { Prisma } from '../../../../generated/prisma/client.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import {
-  loadActiveDefinitions,
-  validateCustomFields,
-} from '../../settings/customization/custom-fields/customFields.engine.ts';
-import {
   assertItemsBelongToOrg,
   assertLocationsBelongToOrg,
   assertProcessesBelongToOrg,
@@ -107,7 +103,6 @@ function writableFields(data: CreateRouteInput) {
     name: data.name.trim(),
     code: data.code?.trim() || null,
     description: data.description?.trim() || null,
-    isActive: data.isActive ?? true,
   };
 }
 
@@ -160,6 +155,9 @@ async function assertStepRefs(
 interface ResolvedRow {
   itemId: string;
   uomId: string | null;
+  /** Consumed side only — a default the job order copies. Always null on an
+   * output, where the template has nothing to say. */
+  plannedQty: number | null;
   isPrimary: boolean;
 }
 
@@ -212,6 +210,7 @@ function resolveStepRows(
     inputs: inputs.map((row) => ({
       itemId: row.itemId,
       uomId: row.uomId ?? null,
+      plannedQty: row.plannedQty ?? null,
       isPrimary: false,
     })),
     outputs: flagPrimaryOutput(outputs, index),
@@ -250,6 +249,9 @@ function flagPrimaryOutput(rows: readonly RouteStepRow[], stepIndex: number): Re
   return rows.map((row, index) => ({
     itemId: row.itemId,
     uomId: row.uomId ?? null,
+    // Dropped, not stored: a quantity sent on an output is a client sending a
+    // field this side does not have. What comes back is a per-run answer.
+    plannedQty: null,
     isPrimary: flagged.length === 1 ? Boolean(row.isPrimary) : index === 0,
   }));
 }
@@ -375,7 +377,7 @@ export async function createNewRoute(
   data: CreateRouteInput,
   userId?: string,
 ) {
-  const { customFields: rawCustomFields, steps, ...rest } = data;
+  const { steps, ...rest } = data;
   const fields = writableFields({ ...rest, steps, name: data.name });
 
   return runAsTenant(organizationId, async (tx) => {
@@ -383,13 +385,6 @@ export async function createNewRoute(
     // Resolved inside the transaction now: the lists take their units from the
     // items, which means a query, which means a tx.
     const resolvedSteps = await resolveSteps(tx, organizationId, steps);
-
-    const defs = await loadActiveDefinitions(tx, organizationId, 'process_route');
-    const customFields = validateCustomFields({
-      defs,
-      input: rawCustomFields,
-      mode: 'create',
-    }) as Prisma.InputJsonValue;
 
     // Same revive-on-collision rule as processes: a soft-deleted row still holds
     // the (organizationId, name) key, and a route deleted last month must be
@@ -403,7 +398,7 @@ export async function createNewRoute(
       await tx.routeStep.deleteMany({ where: { routeId: softDeleted.id } });
       await tx.route.update({
         where: { id: softDeleted.id },
-        data: { ...fields, customFields, isDeleted: false, updatedBy: userId ?? null },
+        data: { ...fields, isDeleted: false, updatedBy: userId ?? null },
       });
       await createSteps(tx, organizationId, softDeleted.id, steps, resolvedSteps, userId);
       return readBack(tx, organizationId, softDeleted.id);
@@ -413,7 +408,6 @@ export async function createNewRoute(
       tx.route.create({
         data: {
           ...fields,
-          customFields,
           organizationId,
           createdBy: userId ?? null,
           updatedBy: userId ?? null,
@@ -435,31 +429,25 @@ async function createSteps(
   userId?: string,
 ) {
   for (const [index, step] of steps.entries()) {
-    const defs = await loadActiveDefinitions(tx, organizationId, 'process_route');
-    const customFields = validateCustomFields({
-      defs,
-      input: step.customFields,
-      mode: 'create',
-    }) as Prisma.InputJsonValue;
-
     const resolved = resolvedSteps[index]!;
     await tx.routeStep.create({
       data: {
         ...stepData(step, index, resolved),
         organizationId,
         routeId,
-        customFields,
         createdBy: userId ?? null,
         updatedBy: userId ?? null,
-        // `custom_fields` on the rows is left at its default — neither list is a
-        // registered entity type (`customFields.constants.ts`), so there is
-        // nothing an org could have defined to put in it.
+        // `custom_fields` is left at its default on the step and on both lists.
+        // Routes are not a registered entity type any more
+        // (`customFields.constants.ts`), so there is nothing an org could have
+        // defined to put in any of them.
         inputs: {
           create: resolved.inputs.map((row, rowIndex) => ({
             organizationId,
             seq: rowIndex + 1,
             itemId: row.itemId,
             uomId: row.uomId,
+            plannedQty: row.plannedQty,
             createdBy: userId ?? null,
             updatedBy: userId ?? null,
           })),
@@ -493,7 +481,7 @@ export async function updateRouteById(
   data: CreateRouteInput,
   userId?: string,
 ) {
-  const { customFields: rawCustomFields, steps, ...rest } = data;
+  const { steps, ...rest } = data;
   const fields = writableFields({ ...rest, steps, name: data.name });
 
   return runAsTenant(organizationId, async (tx) => {
@@ -505,25 +493,14 @@ export async function updateRouteById(
     await assertStepRefs(tx, organizationId, steps);
     const resolvedSteps = await resolveSteps(tx, organizationId, steps);
 
-    let customFields: Prisma.InputJsonValue | undefined;
-    if (rawCustomFields !== undefined) {
-      const defs = await loadActiveDefinitions(tx, organizationId, 'process_route');
-      customFields = validateCustomFields({
-        defs,
-        input: rawCustomFields,
-        mode: 'update',
-        existing: existing.customFields,
-      }) as Prisma.InputJsonValue;
-    }
-
+    // `customFields` is deliberately absent from the update: whatever the column
+    // already holds stays exactly as it is. Routes stopped being a custom-field
+    // entity type, and an edit is not the moment to erase data an org typed
+    // while they were one.
     await withUniqueViolation(DUPLICATE_NAME, () =>
       tx.route.update({
         where: { id },
-        data: {
-          ...fields,
-          ...(customFields !== undefined ? { customFields } : {}),
-          updatedBy: userId ?? null,
-        },
+        data: { ...fields, updatedBy: userId ?? null },
       }),
     );
 

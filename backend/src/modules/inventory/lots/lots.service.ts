@@ -108,10 +108,11 @@ export interface AvailabilityQuery {
 /**
  * What can actually be issued: the picker's grid.
  *
- * Age is computed here rather than on the client because it drives two different
- * things that must agree — the FIFO suggestion, and the GST clock that reverses
- * input credit if jobwork goods are not back within 180 days. Two implementations
- * of "how old is this" is one too many.
+ * The picker shows the lot, what is left of it and what that is worth — nothing
+ * else. Lot age and the supplier's own reference were dropped from this payload
+ * on 2026-08-10: both were display-only columns nobody read off the dialog. If a
+ * FIFO suggestion or the 180-day GST clock ever needs age, compute it HERE and
+ * not on the client — the two must agree.
  */
 export async function getAvailableStock(organizationId: string, query: AvailabilityQuery) {
   return runAsTenant(organizationId, async (tx) => {
@@ -125,11 +126,10 @@ export async function getAvailableStock(organizationId: string, query: Availabil
 
     const rows = await tx.lot.findMany({
       where: { id: { in: lots.map((l) => l.lotId) }, organizationId, isDeleted: false },
-      select: { id: true, createdAt: true, state: true, item: { select: { lotTracking: true } } },
+      select: { id: true, state: true, item: { select: { lotTracking: true } } },
     });
     const metaById = new Map(rows.map((r) => [r.id, r]));
 
-    const now = Date.now();
     const out = [];
     for (const lot of lots) {
       const meta = metaById.get(lot.lotId);
@@ -142,7 +142,6 @@ export async function getAvailableStock(organizationId: string, query: Availabil
       out.push({
         lotId: lot.lotId,
         lotNumber: lot.lotNumber,
-        supplierLotRef: lot.supplierLotRef,
         itemId: lot.itemId,
         uomId: lot.uomId,
         ownership: lot.ownership,
@@ -154,7 +153,6 @@ export async function getAvailableStock(organizationId: string, query: Availabil
         costPerUnit: lot.availableQty.greaterThan(0)
           ? balance.value.dividedBy(lot.availableQty).toDecimalPlaces(4).toString()
           : null,
-        ageDays: meta ? Math.floor((now - meta.createdAt.getTime()) / (1000 * 60 * 60 * 24)) : null,
         lotTracking: meta?.item.lotTracking ?? 'none',
         packages:
           query.withPackages && meta?.item.lotTracking === 'lot_and_package'

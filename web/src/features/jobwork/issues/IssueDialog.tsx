@@ -4,8 +4,6 @@ import { useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { Modal } from '../../../components/ui/Modal';
 import { Select } from '../../../components/ui/Select';
-import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
-import type { CustomFieldValues } from '../../custom-fields/customFields.schemas';
 import { fetchVendors } from '../../purchases/vendors/vendors.api';
 import { fetchLocations } from '../../configuration/locations/locations.api';
 import { fetchAvailableLots, fetchStockLocations } from '../lots/lots.api';
@@ -66,7 +64,11 @@ const sectionHeading: React.CSSProperties = {
  * the next step, long after anyone connects it to this dialog (§5.1).
  *
  * WHAT THE USER ACTUALLY DECIDES: where it goes out from, who it goes to, which
- * lots and takas, and the transport details on the challan.
+ * lots, and a free-text remark.
+ *
+ * ⚠️ Transport (vehicle / LR / e-way bill) and per-org custom fields were both
+ * removed on 2026-08-10 — the columns are gone from `job_issues` and `job_issue`
+ * is no longer a custom-field module, so there is nowhere left for either to go.
  *
  * The destination is not asked at all. It is the processor's own location, and
  * it is created on first use — making someone set up a location for a dyer
@@ -84,13 +86,9 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
    * see the note in `lines` below. */
   const [unstocked, setUnstocked] = useState<Record<string, number>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [vehicleNo, setVehicleNo] = useState('');
-  const [lrNo, setLrNo] = useState('');
-  const [ewayBillNo, setEwayBillNo] = useState('');
   const [remarks, setRemarks] = useState('');
   const [overrideReason, setOverrideReason] = useState('');
   const [needsOverride, setNeedsOverride] = useState(false);
-  const [customFields, setCustomFields] = useState<CustomFieldValues>({});
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -299,12 +297,8 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
         processorId,
         sourceLocationId: effectiveSourceId,
         lines,
-        vehicleNo: vehicleNo.trim() || null,
-        lrNo: lrNo.trim() || null,
-        ewayBillNo: ewayBillNo.trim() || null,
         toleranceOverrideReason: overrideReason.trim() || null,
         remarks: remarks.trim() || null,
-        customFields,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, jobOrder.id] });
@@ -507,6 +501,23 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
               style={readOnlyStyle}
             />
           </div>
+
+          {/* Remarks sat in the Transport section until that section was removed
+              (2026-08-10). It is not a transport field — it is the one free-text
+              note the challan prints — so it moved up here rather than going with
+              vehicle / LR / e-way bill. */}
+          <div>
+            <label style={labelStyle} htmlFor="issue-remarks">
+              Remarks
+            </label>
+            <input
+              id="issue-remarks"
+              type="text"
+              value={remarks}
+              onChange={(e) => setRemarks(e.target.value)}
+              style={inputStyle}
+            />
+          </div>
         </div>
       </section>
 
@@ -657,77 +668,6 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
             />
           </div>
         )}
-      </section>
-
-      <section style={{ marginBottom: 20 }}>
-        <h3 style={sectionHeading}>Transport</h3>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-            gap: 14,
-          }}
-        >
-          <div>
-            <label style={labelStyle} htmlFor="issue-vehicle">
-              Vehicle no
-            </label>
-            <input
-              id="issue-vehicle"
-              type="text"
-              value={vehicleNo}
-              onChange={(e) => setVehicleNo(e.target.value)}
-              style={inputStyle}
-            />
-          </div>
-          <div>
-            <label style={labelStyle} htmlFor="issue-lr">
-              LR no
-            </label>
-            <input
-              id="issue-lr"
-              type="text"
-              value={lrNo}
-              onChange={(e) => setLrNo(e.target.value)}
-              style={inputStyle}
-            />
-          </div>
-          <div>
-            <label style={labelStyle} htmlFor="issue-eway">
-              E-way bill no
-            </label>
-            <input
-              id="issue-eway"
-              type="text"
-              value={ewayBillNo}
-              onChange={(e) => setEwayBillNo(e.target.value)}
-              style={inputStyle}
-            />
-          </div>
-          <div>
-            <label style={labelStyle} htmlFor="issue-remarks">
-              Remarks
-            </label>
-            <input
-              id="issue-remarks"
-              type="text"
-              value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
-              style={inputStyle}
-            />
-          </div>
-        </div>
-      </section>
-
-      <section>
-        <h3 style={sectionHeading}>Additional fields</h3>
-        <CustomFieldsSection
-          orgId={orgId!}
-          entityType="job_issue"
-          values={customFields}
-          onChange={setCustomFields}
-          applyDefaults
-        />
       </section>
     </Modal>
   );

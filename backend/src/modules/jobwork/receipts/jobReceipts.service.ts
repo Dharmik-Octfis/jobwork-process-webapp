@@ -304,18 +304,6 @@ function processCharge(
       return rate.times(issuedQty);
     case 'per_received_unit':
       return rate.times(receivedQty);
-    case 'lump_sum':
-      return rate;
-    case 'per_kg':
-      /**
-       * Charged against the received quantity, which is only correct when the
-       * item is measured in kilograms — and no weight is captured anywhere in the
-       * system yet, so there is nothing better to multiply. The alternative is
-       * silently charging zero, which would understate every bill. Flagged here
-       * rather than hidden: when a weight field lands on `items`, this is the
-       * line that changes.
-       */
-      return rate.times(receivedQty);
     default:
       return ZERO;
   }

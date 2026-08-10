@@ -8,7 +8,6 @@ import { Pagination } from '../../../components/ui/Pagination';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { useListCount } from '../../../hooks/useListCount';
 import { useListSearch } from '../../../hooks/useListSearch';
-import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 import { ISSUE_STATUS_META, formatQty, statusMeta } from '../jobwork.schemas';
 import { fetchIssuesForStep, fetchJobIssueCount, fetchJobIssues } from './jobIssues.api';
 import { IssueDetail } from './IssueDetail';
@@ -22,13 +21,10 @@ const headerStyle: React.CSSProperties = {
   textTransform: 'uppercase',
 };
 
+// No `cf:` branch — `job_issue` is list-only since 2026-08-10, so the server
+// merges no custom-field columns into this catalog. A `cf:` key left in someone's
+// saved preferences falls through to the default and renders "-".
 function renderCell(issue: JobIssue, key: string): React.ReactNode {
-  if (key.startsWith(CUSTOM_FIELD_PREFIX)) {
-    const value = issue.customFields?.[key.slice(CUSTOM_FIELD_PREFIX.length)];
-    if (value === null || value === undefined || value === '') return '-';
-    return Array.isArray(value) ? value.join(', ') : String(value);
-  }
-
   switch (key) {
     case 'status': {
       const meta = statusMeta(ISSUE_STATUS_META, issue.status);

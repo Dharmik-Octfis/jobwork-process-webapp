@@ -33,8 +33,21 @@ import {
  * So the two sets are separate and this one is the superset. Add a module here
  * when it needs Customize Columns and nothing else; add it to `ENTITY_TYPES` only
  * when the table actually carries `custom_fields`.
+ *
+ * `process`, `process_route` and `job_issue` are here rather than in
+ * `ENTITY_TYPES` for a different reason: all three tables DO carry
+ * `custom_fields`, but nothing fills it in any more (all removed 2026-08-10) —
+ * the two masters are set up once and rarely revisited, and the Issue dialog lost
+ * its "Additional fields" section. The columns stay, with whatever they already
+ * hold; the modules are simply no longer offered in Settings → Modules. Their
+ * lists still need Customize Columns, which is exactly what this set is for.
  */
-export const LIST_ONLY_ENTITY_TYPES = ['permission_template'] as const;
+export const LIST_ONLY_ENTITY_TYPES = [
+  'permission_template',
+  'process',
+  'process_route',
+  'job_issue',
+] as const;
 
 export const LIST_ENTITY_TYPES = [...ENTITY_TYPES, ...LIST_ONLY_ENTITY_TYPES] as const;
 export type ListEntityType = (typeof LIST_ENTITY_TYPES)[number];
@@ -141,11 +154,13 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'type', label: 'Type' },
   ],
   /**
-   * Processes — the jobwork operation master. The four flag columns are all
-   * default-visible on purpose: they are not decoration, they decide what the
-   * Issue and Receive dialogs are allowed to offer later (taka-wise vs bulk
-   * receipt, single-lot enforcement), so someone scanning this list needs to see
-   * them without opening each row.
+   * Processes — the jobwork operation master. `rateBasis` and `itemChanges` are
+   * default-visible on purpose: they are not decoration, they decide what a later
+   * step is allowed to charge and whether a different item comes back, so someone
+   * scanning this list needs to see them without opening each row.
+   *
+   * No `cf:` columns are merged into this one — `process` is list-only now
+   * (LIST_ONLY_ENTITY_TYPES above).
    */
   process: [
     { key: 'name', label: 'Process Name', locked: true },
@@ -153,10 +168,7 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'rateBasis', label: 'Rate Basis', defaultVisible: true },
     { key: 'itemChanges', label: 'Changes Item', defaultVisible: true },
     { key: 'defaultTolerancePct', label: 'Tolerance %' },
-    { key: 'defaultIssueUom', label: 'Default Issue Unit' },
-    { key: 'defaultReceiveUom', label: 'Default Receive Unit' },
     { key: 'description', label: 'Description' },
-    { key: 'isActive', label: 'Status', defaultVisible: true },
     { key: 'createdAt', label: 'Created At' },
     { key: 'updatedAt', label: 'Last Modified' },
   ],
@@ -164,6 +176,9 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
    * Process routes. `stepCount` and `firstProcess` are default-visible because
    * the only question anyone asks of a route list is "which one is this" — and a
    * route's identity is its sequence, not its name.
+   *
+   * No `cf:` columns are merged into this one — `process_route` is list-only now
+   * (LIST_ONLY_ENTITY_TYPES above).
    */
   process_route: [
     { key: 'name', label: 'Route Name', locked: true },
@@ -171,7 +186,6 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'stepCount', label: 'Steps', defaultVisible: true },
     { key: 'stepSummary', label: 'Sequence', defaultVisible: true },
     { key: 'description', label: 'Description' },
-    { key: 'isActive', label: 'Status', defaultVisible: true },
     { key: 'createdAt', label: 'Created At' },
     { key: 'updatedAt', label: 'Last Modified' },
   ],
@@ -194,8 +208,14 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'createdAt', label: 'Created At' },
     { key: 'updatedAt', label: 'Last Modified' },
   ],
-  /** Issues — the challans out. Ordered the way someone chases material: number,
-   * who has it, how much, when it went. */
+  /**
+   * Issues — the challans out. Ordered the way someone chases material: number,
+   * who has it, how much, when it went.
+   *
+   * No `cf:` columns are merged into this one — `job_issue` is list-only now
+   * (LIST_ONLY_ENTITY_TYPES above). Vehicle No and E-way Bill went with the
+   * columns themselves on 2026-08-10.
+   */
   job_issue: [
     { key: 'challanNumber', label: 'Challan #', locked: true },
     { key: 'issueDate', label: 'Date', defaultVisible: true },
@@ -208,8 +228,6 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'sourceLocation', label: 'From' },
     { key: 'destinationLocation', label: 'To' },
     { key: 'isRework', label: 'Rework' },
-    { key: 'vehicleNo', label: 'Vehicle No' },
-    { key: 'ewayBillNo', label: 'E-way Bill' },
     { key: 'createdAt', label: 'Created At' },
   ],
   /** Receipts. The disposition columns are the reason anyone opens this list. */
@@ -233,7 +251,6 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'code', label: 'Code', defaultVisible: true },
     { key: 'defaultResponsibility', label: 'Usually', defaultVisible: true },
     { key: 'description', label: 'Description' },
-    { key: 'isActive', label: 'Status', defaultVisible: true },
     { key: 'createdAt', label: 'Created At' },
   ],
   /**
