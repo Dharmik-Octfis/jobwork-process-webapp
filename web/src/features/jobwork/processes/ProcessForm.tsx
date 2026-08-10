@@ -42,14 +42,6 @@ const errorStyle: React.CSSProperties = {
   marginTop: 4,
 };
 
-const hintStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: '#64748b',
-  margin: '4px 0 0 0',
-  lineHeight: 1.5,
-  maxWidth: 440,
-};
-
 /**
  * One form, used by both Create and Edit.
  *
@@ -59,11 +51,6 @@ const hintStyle: React.CSSProperties = {
  * keyboard, and neither `tsc -b` nor a screenshot says a word about it
  * (CLAUDE.md). DOM order is also tab order here — the fields are one column, so
  * the two cannot silently diverge the way they do in a multi-column grid.
- *
- * The three checkboxes carry a line of explanation each, deliberately. "Preserves
- * packaging" is meaningless as a bare label, and getting it wrong does not
- * misprint anything today — it makes the Receive dialog offer a mode that is
- * physically impossible, months later, to someone who never saw this screen.
  */
 export function ProcessForm({
   initialData,
@@ -161,7 +148,6 @@ export function ProcessForm({
             style={inputStyle}
             placeholder="DYE"
           />
-          <p style={hintStyle}>Optional short code for paperwork. Nothing is derived from it.</p>
         </div>
 
         <div style={{ marginBottom: 20 }}>
@@ -183,17 +169,13 @@ export function ProcessForm({
             fontSize: 13,
             fontWeight: 600,
             color: '#111',
-            margin: '0 0 4px 0',
+            margin: '0 0 16px 0',
             textTransform: 'uppercase',
             letterSpacing: 0.4,
           }}
         >
           Behaviour
         </h2>
-        <p style={{ ...hintStyle, maxWidth: 560, marginBottom: 16 }}>
-          These decide what the Issue and Receive screens are allowed to offer. They are facts about
-          the operation, not preferences.
-        </p>
 
         <label
           style={{
@@ -207,10 +189,6 @@ export function ProcessForm({
           <input type="checkbox" {...register('itemChanges')} style={{ marginTop: 3 }} />
           <span>
             <strong style={{ fontSize: 13, color: '#111' }}>The item changes</strong>
-            <p style={{ ...hintStyle, marginTop: 2 }}>
-              What comes back is a different item from what went out — cloth in, shirt out. Leave
-              this off for dyeing or printing, where the same item returns.
-            </p>
           </span>
         </label>
 
@@ -260,10 +238,6 @@ export function ProcessForm({
               />
             )}
           />
-          <p style={hintStyle}>
-            Which quantity the processor's rate multiplies. 4,850 m received against 5,000 m issued
-            is a different bill depending on this.
-          </p>
         </div>
 
         <div style={{ marginBottom: 20 }}>
@@ -288,10 +262,6 @@ export function ProcessForm({
           {errors.defaultTolerancePct && (
             <span style={errorStyle}>{errors.defaultTolerancePct.message}</span>
           )}
-          <p style={hintStyle}>
-            Blank means no default. Zero means no tolerance at all — a receipt a gram over plan is
-            blocked.
-          </p>
         </div>
 
         <div style={{ marginBottom: 20 }}>
@@ -328,10 +298,6 @@ export function ProcessForm({
               />
             )}
           />
-          <p style={hintStyle}>
-            Two units, not one: what goes out and what comes back can be measured differently. This
-            is a default a route step copies, never a conversion factor.
-          </p>
         </div>
 
         <label style={{ display: 'flex', gap: 10, alignItems: 'center', cursor: 'pointer' }}>
@@ -369,7 +335,9 @@ export function ProcessForm({
           boxSizing: 'border-box',
           position: 'fixed',
           bottom: 0,
-          left: 220,
+          // 250, not 220: this form renders inside SettingsLayout, whose sidebar is
+          // wider than the main one.
+          left: 250,
           right: 0,
           background: '#fff',
           padding: '0 24px',

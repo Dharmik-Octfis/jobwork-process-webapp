@@ -176,7 +176,7 @@ export function ProcessesList() {
               )}
               <button
                 type="button"
-                onClick={() => navigate(`/organizations/${orgId}/jobwork/processes/new`)}
+                onClick={() => navigate(`/organizations/${orgId}/settings/jobwork/processes/new`)}
                 style={{
                   background: '#186337',
                   color: 'white',
@@ -243,7 +243,7 @@ export function ProcessesList() {
                 </p>
                 <button
                   type="button"
-                  onClick={() => navigate(`/organizations/${orgId}/jobwork/processes/new`)}
+                  onClick={() => navigate(`/organizations/${orgId}/settings/jobwork/processes/new`)}
                   style={{
                     background: '#28a745',
                     color: 'white',

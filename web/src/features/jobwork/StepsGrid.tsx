@@ -216,9 +216,6 @@ function ItemList({
         <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', letterSpacing: 0.3 }}>
           {isInput ? 'CONSUMES' : 'PRODUCES'}
         </span>
-        <span style={{ fontSize: 11, color: '#94a3b8' }}>
-          {isInput ? 'items issued to the processor' : 'items that come back'}
-        </span>
       </div>
 
       <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>

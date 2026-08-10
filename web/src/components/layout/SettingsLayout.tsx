@@ -13,6 +13,10 @@ import {
   IdCard,
   MapPin,
   User,
+  Workflow,
+  // react-router exports a `Route` component and this file imports from it, so the
+  // icon is aliased even though only the icon is used here.
+  Route as RouteIcon,
 } from 'lucide-react';
 import { CUSTOM_FIELD_MODULES } from '../../features/custom-fields/customFields.schemas';
 
@@ -35,13 +39,15 @@ export function SettingsLayout() {
 
   const onInventoryRoute = location.pathname.includes('/settings/inventory');
   const onConfigRoute = location.pathname.includes('/settings/configuration');
+  const onJobworkRoute = location.pathname.includes('/settings/jobwork');
 
   const [openSection, setOpenSection] = useState<
-    'org' | 'inventory' | 'config' | 'customization' | null
+    'org' | 'inventory' | 'config' | 'jobwork' | 'customization' | null
   >(() => {
     if (onOrgRoute) return 'org';
     if (onInventoryRoute) return 'inventory';
     if (onConfigRoute) return 'config';
+    if (onJobworkRoute) return 'jobwork';
     if (onModulesRoute) return 'customization';
     return null;
   });
@@ -49,6 +55,7 @@ export function SettingsLayout() {
   const orgOpen = openSection === 'org';
   const inventoryOpen = openSection === 'inventory';
   const configOpen = openSection === 'config';
+  const jobworkOpen = openSection === 'jobwork';
   const customizationOpen = openSection === 'customization';
 
   return (
@@ -424,6 +431,101 @@ export function SettingsLayout() {
               >
                 <Coins size={18} />
                 <span style={{ fontSize: 14 }}>Currencies</span>
+              </NavLink>
+            </div>
+          </div>
+
+          {/* Jobwork masters. Processes and Process Routes are shop setup — you
+              define them once and then every job order copies from them — so they
+              belong here rather than beside the documents in the main sidebar. */}
+          <button
+            onClick={() => setOpenSection(jobworkOpen ? null : 'jobwork')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'none',
+              border: 'none',
+              width: '100%',
+              padding: '0 12px',
+              marginTop: 16,
+              marginBottom: 4,
+              cursor: 'pointer',
+              color: 'var(--color-text-muted)',
+            }}
+          >
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}
+            >
+              Jobwork
+            </span>
+            <span
+              style={{
+                display: 'flex',
+                transform: jobworkOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s ease',
+              }}
+            >
+              <ChevronRight size={14} />
+            </span>
+          </button>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateRows: jobworkOpen ? '1fr' : '0fr',
+              transition: 'grid-template-rows 0.2s ease',
+            }}
+          >
+            <div
+              style={{
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--space-1)',
+              }}
+            >
+              <NavLink
+                to={`/organizations/${orgId}/settings/jobwork/processes`}
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-3)',
+                  padding: '8px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  textDecoration: 'none',
+                  color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
+                  background: isActive ? 'var(--primary-50)' : 'transparent',
+                  fontWeight: isActive ? 600 : 500,
+                  transition: 'all 0.2s ease',
+                })}
+              >
+                <Workflow size={18} />
+                <span style={{ fontSize: 14 }}>Processes</span>
+              </NavLink>
+
+              <NavLink
+                to={`/organizations/${orgId}/settings/jobwork/routes`}
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-3)',
+                  padding: '8px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  textDecoration: 'none',
+                  color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
+                  background: isActive ? 'var(--primary-50)' : 'transparent',
+                  fontWeight: isActive ? 600 : 500,
+                  transition: 'all 0.2s ease',
+                })}
+              >
+                <RouteIcon size={18} />
+                <span style={{ fontSize: 14 }}>Process Routes</span>
               </NavLink>
             </div>
           </div>

@@ -54,18 +54,11 @@ const readOnlyStyle: React.CSSProperties = {
   color: '#64748b',
 };
 
-const hintStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: '#64748b',
-  margin: '4px 0 0 0',
-  lineHeight: 1.5,
-};
-
 const sectionHeading: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 600,
   color: '#111',
-  margin: '0 0 4px 0',
+  margin: '0 0 16px 0',
   textTransform: 'uppercase',
   letterSpacing: 0.4,
 };
@@ -323,9 +316,6 @@ export function JobOrderForm({ initialData, onSubmit, isPending, onCancel, field
 
       <section style={{ marginBottom: 32 }}>
         <h2 style={sectionHeading}>Order</h2>
-        <p style={{ ...hintStyle, marginBottom: 16, maxWidth: 620 }}>
-          The number is allocated when you save, so an abandoned form never burns one.
-        </p>
 
         <div
           style={{
@@ -380,12 +370,6 @@ export function JobOrderForm({ initialData, onSubmit, isPending, onCancel, field
                 </button>
               </div>
             )}
-            {!isEdit && (
-              <p style={hintStyle}>
-                Taken from the series when you save. Type over it to number just this one
-                differently.
-              </p>
-            )}
           </div>
 
           <div>
@@ -426,10 +410,6 @@ export function JobOrderForm({ initialData, onSubmit, isPending, onCancel, field
               ariaLabel="Route"
               fullWidth
             />
-            <p style={hintStyle}>
-              Choosing one fills the grid below. The steps become this order&rsquo;s own copy — the
-              route is never read again.
-            </p>
           </div>
 
           <div>
@@ -444,10 +424,6 @@ export function JobOrderForm({ initialData, onSubmit, isPending, onCancel, field
               ariaLabel="Ownership"
               fullWidth
             />
-            <p style={hintStyle}>
-              Decides valuation and which stock may be issued — a customer&rsquo;s goods can only be
-              issued into their own order.
-            </p>
           </div>
 
           {ownership === 'customer' && (
@@ -485,23 +461,12 @@ export function JobOrderForm({ initialData, onSubmit, isPending, onCancel, field
 
       <section style={{ marginBottom: 32 }}>
         <h2 style={sectionHeading}>Steps</h2>
-        <p style={{ ...hintStyle, marginBottom: 16, maxWidth: 700 }}>
-          Step 1 issues the order&rsquo;s input item. Where the item changes, the next step must
-          issue exactly what the previous one produces — otherwise that step has nothing to draw on,
-          and you only find out when its picker comes up empty.
-        </p>
 
         <StepsGrid steps={steps} onChange={setSteps} errors={fieldErrors} showPlannedQty />
-
-        <p style={{ ...hintStyle, marginTop: 10 }}>
-          Every item this order consumes and produces is listed on its step. Leave a quantity blank
-          and it is planned from the step above; items drawn from stock — thread, buttons, dyes —
-          stay blank, because nothing here knows how much of them a run needs.
-        </p>
       </section>
 
       <section style={{ maxWidth: 640, marginBottom: 32 }}>
-        <h2 style={{ ...sectionHeading, marginBottom: 16 }}>Custom Fields</h2>
+        <h2 style={sectionHeading}>Custom Fields</h2>
         <CustomFieldsSection
           orgId={orgId!}
           entityType="job_order"

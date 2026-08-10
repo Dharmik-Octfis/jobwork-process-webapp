@@ -97,11 +97,6 @@ export function JobOrderNumberConfigModal({
         </>
       }
     >
-      <p style={{ margin: '0 0 20px 0', color: '#334155', fontSize: 13, lineHeight: 1.6 }}>
-        Job order numbers will be auto-generated based on the preferences below. For each new job
-        order that is created, the number after the prefix will be incremented by 1.
-      </p>
-
       <div style={{ display: 'flex', gap: 20, marginBottom: 20 }}>
         <div style={{ flex: 1 }}>
           <label style={labelStyle} htmlFor="jo-number-prefix">
@@ -134,20 +129,6 @@ export function JobOrderNumberConfigModal({
             </span>
           )}
         </div>
-      </div>
-
-      <div
-        style={{
-          background: '#fff9e6',
-          padding: 14,
-          borderRadius: 6,
-          color: '#5c4813',
-          fontSize: 12,
-          lineHeight: 1.6,
-        }}
-      >
-        Note: If you want to change only this job order&rsquo;s number without affecting the current
-        series, you can edit it directly from the Job Order Number field after closing this popup.
       </div>
     </Modal>
   );

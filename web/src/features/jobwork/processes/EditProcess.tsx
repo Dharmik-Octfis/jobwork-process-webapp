@@ -14,7 +14,7 @@ export function EditProcess() {
   const { orgId, id } = useParams<{ orgId: string; id: string }>();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  const listPath = `/organizations/${orgId}/jobwork/processes`;
+  const listPath = `/organizations/${orgId}/settings/jobwork/processes`;
   /** Back to the list with this row still open — the split view is where Edit was
    * pressed from, and a bare list reads as having navigated somewhere else. */
   const backPath = `${listPath}?id=${id}`;

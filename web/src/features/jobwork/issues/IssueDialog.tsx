@@ -335,9 +335,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
           {jobOrder.jobOrderNumber} ·{' '}
           {inputItems.length === 1
             ? `${inputItems[0]!.name}${inputItems[0]!.uomLabel ? ` (${inputItems[0]!.uomLabel})` : ''}`
-            : `${inputItems.length} items`}{' '}
-          · the challan number is allocated when you save
-          {singleLotOnly && ' · this process runs on one lot per item'}
+            : `${inputItems.length} items`}
         </>
       }
       width={1000}
@@ -494,9 +492,6 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                 ariaLabel="Processor"
                 fullWidth
               />
-              <p style={{ fontSize: 11, color: '#64748b', margin: '4px 0 0 0' }}>
-                Their location is created automatically the first time you send them anything.
-              </p>
             </div>
           )}
 
@@ -511,10 +506,6 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
               readOnly
               style={readOnlyStyle}
             />
-            <p style={{ fontSize: 11, color: '#64748b', margin: '4px 0 0 0' }}>
-              Fixed by the step — one section below for each. Send them all on this challan or only
-              some; the rest can go on another.
-            </p>
           </div>
         </div>
       </section>
@@ -613,9 +604,6 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                       placeholder={`Quantity${input.uomLabel ? ` (${input.uomLabel})` : ''}`}
                       style={{ ...inputStyle, width: 200 }}
                     />
-                    <span style={{ fontSize: 11, color: '#94a3b8' }}>
-                      A lot is created for it at zero value. Purchase Received will replace this.
-                    </span>
                   </div>
                 ) : (
                   <LotPicker
@@ -667,10 +655,6 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
               style={inputStyle}
               placeholder="Why is this being allowed?"
             />
-            <p style={{ fontSize: 11, color: '#64748b', margin: '4px 0 0 0' }}>
-              Recorded on the challan. A breach that leaves no trace is a tolerance that does not
-              exist.
-            </p>
           </div>
         )}
       </section>

@@ -507,7 +507,6 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
       isOpen={isOpen}
       onClose={onClose}
       title={`Receive goods — step ${step.seq}, ${step.processNameSnapshot}`}
-      subtitle={prefill?.modeReason ?? 'Loading…'}
       width={1100}
       footer={
         <>
@@ -699,10 +698,6 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                     readOnly
                     style={readOnlyStyle}
                   />
-                  <p style={{ fontSize: 11, color: '#64748b', margin: '4px 0 0 0' }}>
-                    Taken from the challans — receiving from someone you did not issue to is a
-                    transfer, not a receipt.
-                  </p>
                 </div>
               </div>
             </section>
@@ -889,12 +884,6 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                 + Add another item that came back
               </button>
 
-              {effectiveReturned.length > 1 && (
-                <p style={{ fontSize: 11, color: '#64748b', margin: '8px 0 0 0' }}>
-                  The first item listed carries the cost of this operation. The rest are recorded at
-                  zero value — a by-product costs nothing until somebody sells it.
-                </p>
-              )}
               {brokenRows.length > 0 && (
                 <p style={{ fontSize: 12, color: '#b91c1c', margin: '8px 0 0 0' }}>
                   Good + rework + scrap must equal received on every row.
@@ -906,12 +895,6 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
               {brokenRows.length === 0 && totals.received <= 0 && (
                 <p style={{ fontSize: 12, color: '#b45309', margin: '8px 0 0 0' }}>
                   Enter how much came back to continue.
-                </p>
-              )}
-              {mode === 'unit_wise' && (
-                <p style={{ fontSize: 11, color: '#64748b', margin: '8px 0 0 0' }}>
-                  The main row is filled in from the taka grid below — that per-taka split is what
-                  builds the returned lot&rsquo;s packages, so the two cannot disagree.
                 </p>
               )}
             </section>
@@ -1154,9 +1137,6 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                     </strong>
                   </span>
                 )}
-                <span style={{ color: '#94a3b8' }}>
-                  An observation — never used to convert one unit into another.
-                </span>
               </div>
             </section>
 
