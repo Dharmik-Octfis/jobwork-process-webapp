@@ -147,7 +147,7 @@ the item's is a real requirement, but it needs `ItemUomConversion`, which does n
 
 ### 2.6 Custom fields (`CF`)
 
-Every screen ends with a custom-fields block. Source is always:
+Every **document** screen ends with a custom-fields block. Source is always:
 
 ```
 custom_field_definitions
@@ -161,6 +161,14 @@ cutper, meter"_ lands. Those must **not** become hardcoded columns.
 
 New `entityType` values: `job_order` · `job_issue` · `job_receipt` · `purchase_receipt` · `lot` ·
 `delivery_challan`.
+
+🔴 **The two jobwork MASTERS have no custom-fields block** — `process` and `process_route` both left
+`ENTITY_TYPES` on 2026-08-10. They are set up once and rarely revisited, so the section was one
+nobody filled in; the per-run detail an org actually wants to record belongs on the documents above,
+which is where the mind map's "lot-wise pcs, cutper, meter" already lands. Both tables keep their
+`custom_fields` columns and whatever those already hold — nothing reads or writes them now, and
+neither module is offered in Settings → Modules. Their lists still get Customize Columns through
+`LIST_ONLY_ENTITY_TYPES` (`listViews.catalog.ts`).
 
 ---
 
@@ -225,10 +233,10 @@ and the user adds rows by hand — the parent doc's "fully flexible" requirement
 | ------------ | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Item         | `MASTER`  | `items` where `isActive AND NOT isDeleted`. Every row is freely chosen — there is no locked row any more, because the header no longer names an item (§4.1)                                                                                                    |
 | UoM          | `INHERIT` | 🔴 `Item.stockingUomId`, **forced, never chosen**. One item, one stocking unit (§5.1) — and the ledger records the LOT's unit whatever a document says, so a unit that disagrees with the item makes the challan and the ledger describe one movement two ways |
-| Planned qty  | `INPUT`   | Per input item, in that item's unit. Blank is planned from the step above; an item drawn from stock stays blank, because no bill of materials exists to guess how much thread a run needs                                                                      |
+| Planned qty  | `INPUT`   | Per input item, in that item's unit. **Pre-filled from the route step's own quantity when a route is picked** (§4.2.3), then blank is planned from the step above; an item drawn from stock with no route default stays blank                                  |
 | Tolerance %  | `INPUT`   | Inputs only. Blank falls through to the step's. Fabric at 3% beside thread at 25% — one percentage across three items is either too tight for one or meaningless for another                                                                                   |
 | Expected qty | `INPUT`   | Per output item. Blank is fine — the receipt is what says what actually came back                                                                                                                                                                              |
-| Primary      | `INPUT`   | Outputs only, radio. Exactly one per step                                                                                                                                                                                                                      |
+| Primary      | `CALC`    | Outputs only. 🔴 **No longer asked** (2026-08-10) — the radio decided nothing in the common case, one item back. It is the FIRST output row, which is the server's own fallback (`flagPrimaryOutput`); a row already flagged in saved data keeps its flag      |
 | From stock   | `CALC+`   | Inputs only. `true` when no earlier step produces this item, so it is drawn from stock. Computed at save and stored, so the Overview can label it without re-walking the chain                                                                                 |
 
 🔴 **Validation across rows is now a CLASSIFICATION, not a rejection** (domain §6.4). An input no
@@ -240,6 +248,19 @@ What the old hard rule protected against — an empty lot picker days later — 
 time, per item, on the screen where someone can act on it. There is one hard rule left at issue time
 and it is new: **a step cannot issue until the step before it has returned something** (domain
 §6.4.1).
+
+#### 4.2.3 The route's default quantities (2026-08-10)
+
+`route_step_inputs.planned_qty` was in the data model from Sprint 2 (plan §4, row 2) and never built;
+it exists now, and it is the **consumed side only**.
+
+|                         |                                                                                                                                                                                                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| What the number means   | The amount this org usually puts through the step — "5,000 M grey, 12 CONE thread". A **default**, nothing more                                                                                                                                         |
+| What it is **not**      | 🔴 Consumption per unit of output. Scaling it by an order quantity needs a ratio between 2,910 PCS and 80 KG, and no conversion exists anywhere in this system (§5.1). Nothing multiplies it, ever                                                      |
+| How it reaches an order | Copied once into `job_order_step_inputs.planned_qty` when the route is picked, then owned by the order (§2.4). Editing the route afterwards cannot reach an order already created — pinned by a test in `jobwork.flow.test.ts`                          |
+| Why PRODUCES has none   | What comes back is a per-run answer. A template that guessed it would put a number on the receipt screen nobody had reason to believe. The job order still derives the primary output's expected qty from the principal input × yield, as it always did |
+| Why no tolerance on it  | Same reason. How far over a step may run is a decision about a real run                                                                                                                                                                                 |
 
 #### 4.2.2 🔴 What is typed is what is saved
 
@@ -296,22 +317,37 @@ The screen the user asked about. Every field, in order.
 
 ### 5.1 Header
 
-| Field                        | Tag       | Source and filter                                                                                                                                                                                                              |
-| ---------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Challan Number               | `AUTO`    | `NumberSequence('job_issue')`, allocated in the save transaction (§2.2)                                                                                                                                                        |
-| Date                         | `CTX`     | Server date. **Must be ≥ the job order date** and ≥ the last movement on the lots being issued — you cannot back-date a movement behind stock that did not yet exist                                                           |
-| Job Order                    | `INHERIT` | **Locked.** From the page context                                                                                                                                                                                              |
-| Step                         | `INHERIT` | **Locked.** The step whose `[+ Issue]` was clicked                                                                                                                                                                             |
-| Process name                 | `SNAP`    | `step.processNameSnapshot`. Display only                                                                                                                                                                                       |
-| `isRework` / `attemptNo`     | `INHERIT` | `false` / `1` for a normal issue. Set to `true` / `n+1` when launched from a receipt's rework line                                                                                                                             |
-| Processor                    | `MASTER`  | Default `step.processorId`. Filter: `vendorTypes @> ['job_worker'] AND status='active' AND NOT isDeleted`. Hidden when `processorType = 'internal'`                                                                            |
-| **Source location**          | `LEDGER`  | The locations that actually hold the step's issue item, with their balances. Auto-selected when only one qualifies. This is a **ledger query, not a location list** — offering a location with no stock is how users get stuck |
-| **Destination location**     | `CALC`    | Derived from the processor: `locations` where `vendorId = :processor AND type = 'processor'`. **Auto-created on first use** if absent. Read-only. When `internal`, this is the step's work centre instead                      |
-| ~~Issue Item / UoM~~         | —         | **Gone from the header.** A challan carries several items now (domain §5.7), so the item moved down to the line. The dialog renders one collapsible section per `job_order_step_inputs` row, each holding its own lot picker   |
-| Transporter                  | `MASTER`  | `vendorTypes @> ['transporter']`, or free text if the org does not maintain them                                                                                                                                               |
-| Vehicle no · LR no · LR date | `INPUT`   |                                                                                                                                                                                                                                |
-| E-way bill no                | `INPUT`   | Manual in release 1; an API response in phase 6                                                                                                                                                                                |
-| Custom fields                | `CF`      | `entityType = 'job_issue'` — where "lot-wise pcs / cutper" lives                                                                                                                                                               |
+| Field                            | Tag       | Source and filter                                                                                                                                                                                                              |
+| -------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Challan Number                   | `AUTO`    | `NumberSequence('job_issue')`, allocated in the save transaction (§2.2)                                                                                                                                                        |
+| Date                             | `CTX`     | Server date. **Must be ≥ the job order date** and ≥ the last movement on the lots being issued — you cannot back-date a movement behind stock that did not yet exist                                                           |
+| Job Order                        | `INHERIT` | **Locked.** From the page context                                                                                                                                                                                              |
+| Step                             | `INHERIT` | **Locked.** The step whose `[+ Issue]` was clicked                                                                                                                                                                             |
+| Process name                     | `SNAP`    | `step.processNameSnapshot`. Display only                                                                                                                                                                                       |
+| `isRework` / `attemptNo`         | `INHERIT` | `false` / `1` for a normal issue. Set to `true` / `n+1` when launched from a receipt's rework line                                                                                                                             |
+| Processor                        | `MASTER`  | Default `step.processorId`. Filter: `vendorTypes @> ['job_worker'] AND status='active' AND NOT isDeleted`. Hidden when `processorType = 'internal'`                                                                            |
+| **Source location**              | `LEDGER`  | The locations that actually hold the step's issue item, with their balances. Auto-selected when only one qualifies. This is a **ledger query, not a location list** — offering a location with no stock is how users get stuck |
+| **Destination location**         | `CALC`    | Derived from the processor: `locations` where `vendorId = :processor AND type = 'processor'`. **Auto-created on first use** if absent. Read-only. When `internal`, this is the step's work centre instead                      |
+| ~~Issue Item / UoM~~             | —         | **Gone from the header.** A challan carries several items now (domain §5.7), so the item moved down to the line. The dialog renders one collapsible section per `job_order_step_inputs` row, each holding its own lot picker   |
+| Remarks                          | `INPUT`   | One free-text note, in the header grid. Printed on the challan and shown on the issue detail                                                                                                                                   |
+| ~~Transporter~~                  | —         | **Gone 2026-08-10.** `transporter_id` survives as an unused column; no screen ever offered a picker for it                                                                                                                     |
+| ~~Vehicle no · LR no · LR date~~ | —         | **Gone 2026-08-10** — see below                                                                                                                                                                                                |
+| ~~E-way bill no~~                | —         | **Gone 2026-08-10** — see below                                                                                                                                                                                                |
+| ~~Custom fields~~                | —         | **Gone 2026-08-10.** `job_issue` is no longer a custom-field module                                                                                                                                                            |
+
+⚠️ **The Transport section and the Additional fields section were both removed on 2026-08-10, end to
+end.** `vehicle_no`, `lr_no`, `lr_date` and `eway_bill_no` were **dropped from `job_issues`**
+(`migrations/20260810115248_remove_job_issue_transport_columns`), so the printed challan no longer
+carries a transport strip and existing challans reprint without those details. The two list columns
+(Vehicle No, E-way Bill) and the two search columns went with them. Restoring any of it means
+restoring the columns first — the markup alone is not enough.
+
+`job_issue` moved out of `ENTITY_TYPES` and into `LIST_ONLY_ENTITY_TYPES`, the same treatment
+`process` and `process_route` got on the same day: the `custom_fields` column stays with whatever it
+already holds, the Issues list keeps Customize Columns, but the module is no longer offered in
+Settings → Modules and no `cf:` columns merge into its list. It was the one place "lot-wise pcs /
+cutper / meter" was meant to land (§2.6) — that need now has no home, which is worth remembering if
+it comes back.
 
 ### 5.2 The lot picker — the core query
 
@@ -339,15 +375,22 @@ HAVING  SUM(sl.qty_in - sl.qty_out) > 0
 ORDER BY l.created_at;                              -- FIFO suggestion
 ```
 
-| Column shown              | Tag       | Source                                                                          |
-| ------------------------- | --------- | ------------------------------------------------------------------------------- |
-| Lot number                | `MASTER`  | `lots.lot_number`                                                               |
-| Supplier / heat / tag ref | `MASTER`  | `lots.supplier_lot_ref` — the vendor's own number                               |
-| **Available qty**         | `LEDGER`  | The `SUM` above. 🔴 **Never a stored balance column**                           |
-| UoM                       | `INHERIT` | `Item.stockingUomId` — identical on every row                                   |
-| Age (days)                | `CALC`    | Server date − first inward movement date. Drives FIFO and the 180-day GST clock |
-| Cost / unit               | `CALC`    | `accumulated_value ÷ available_qty`                                             |
-| Qty to issue              | `INPUT`   | Validated `≤ available_qty`                                                     |
+| Column shown                  | Tag       | Source                                                |
+| ----------------------------- | --------- | ----------------------------------------------------- |
+| Lot number                    | `MASTER`  | `lots.lot_number`                                     |
+| **Available qty**             | `LEDGER`  | The `SUM` above. 🔴 **Never a stored balance column** |
+| UoM                           | `INHERIT` | `Item.stockingUomId` — identical on every row         |
+| Cost / unit                   | `CALC`    | `accumulated_value ÷ available_qty`                   |
+| Qty to issue                  | `INPUT`   | Validated `≤ available_qty`                           |
+| ~~Supplier / heat / tag ref~~ | —         | **Removed 2026-08-10** — see below                    |
+| ~~Age (days)~~                | —         | **Removed 2026-08-10** — see below                    |
+
+⚠️ **Supplier ref and age are no longer in this payload (2026-08-10).** Both were columns the picker
+printed and nothing read — no rule, no sort, no validation depended on either. `getAvailableStock`
+therefore stops returning `supplierLotRef` and `ageDays` altogether. `lots.supplier_lot_ref` is
+untouched and still shown on the Lots list, the job order overview and the printed challan; age had
+no other reader. The day a FIFO suggestion or the 180-day GST clock needs age, compute it in
+`lots.service.ts` — one implementation, server side — never on the client.
 
 🔴 **The `ownership` filter is not optional.** Without it, a customer's goods held under one inward
 jobwork order can be issued into another customer's job order — you would be processing A's material

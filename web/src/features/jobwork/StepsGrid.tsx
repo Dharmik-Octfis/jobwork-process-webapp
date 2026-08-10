@@ -14,6 +14,7 @@ import {
   emptyStep,
   emptyStepItem,
   feedsSteps,
+  primaryOutputIndex,
   producedByStep,
   type StepGridRow,
   type StepItemRow,
@@ -39,14 +40,23 @@ interface Props<T extends StepGridRow> {
   errors?: Record<string, string>;
   disabled?: boolean;
   /**
-   * Show the per-item quantity and tolerance boxes. Job orders yes, route
-   * templates no — a template has no idea how much anyone will run through it,
-   * and which item needs a looser tolerance is a per-run answer.
+   * Job orders: a quantity on BOTH lists plus the per-item tolerance box. The
+   * order is real, so how much of each item goes out, how much is expected back,
+   * and which item may run over are all answerable.
    *
    * There is no unit label prop any more: every row shows its OWN item's unit
    * beside it, because one header unit cannot caption metres, cones and pieces.
    */
   showPlannedQty?: boolean;
+  /**
+   * Routes: a quantity on CONSUMES ALONE — the amount this org usually runs,
+   * which the job order copies once and then owns (§2.4).
+   *
+   * Not on PRODUCES, and not the tolerance box. What comes back and how far over
+   * a step may run are per-run answers a template cannot know, and pre-filling
+   * either would put a number on the receipt screen nobody had reason to believe.
+   */
+  showInputQty?: boolean;
   /**
    * How many steps already exist above these. The grid captions positions, and on
    * the append dialog position 1 of the array is step 4 of the order — a block
@@ -139,19 +149,33 @@ interface ItemListProps {
   rows: StepItemRow[];
   onChange: (rows: StepItemRow[]) => void;
   items: { id: string; name: string; stockingUomId?: string | null }[];
-  stockingUomLabel: (itemId: string | null | undefined) => string | null;
+  /** The unit the item is configured to move in — id to carry, label to print.
+   * `null` when the item has no stocking unit and the row must ask. */
+  itemUnit: (itemId: string | null | undefined) => { uomId: string; label: string } | null;
   uomOptions: { value: string; label: string }[];
   showQty?: boolean;
+  /** The per-item over-issue box. Job orders only — separate from `showQty`
+   * because a route carries a default quantity but no tolerance. */
+  showTolerance?: boolean;
   disabled?: boolean;
   /** Array position — error keys and control ids. */
   stepIndex: number;
   /** Position in the ORDER — what a human is told. The two differ when appending. */
   stepNumber: number;
   errors?: Record<string, string>;
-  badgeFor: (row: StepItemRow) => { text: string; tone: 'chain' | 'stock' } | null;
+  badgeFor: (
+    row: StepItemRow,
+    rowIndex: number,
+  ) => { text: string; tone: 'chain' | 'stock' } | null;
   /** Shown when the list is empty. Says what an empty list MEANS, never what the
    * server might invent — it invents nothing now. */
   emptyHint: string;
+  /**
+   * Outputs only — the CONSUMES rows this list can be copied from. A process
+   * that does not change the item returns exactly what it took, which is one
+   * tick instead of retyping every row.
+   */
+  mirrorSource?: StepItemRow[];
 }
 
 /**
@@ -180,42 +204,101 @@ function ItemList({
   rows,
   onChange,
   items,
-  stockingUomLabel,
+  itemUnit,
   uomOptions,
   showQty,
+  showTolerance,
   disabled,
   stepIndex,
   stepNumber,
   errors,
   badgeFor,
   emptyHint,
+  mirrorSource,
 }: ItemListProps) {
   const isInput = side === 'inputs';
   const update = (rowIndex: number, patch: Partial<StepItemRow>) =>
     onChange(rows.map((row, i) => (i === rowIndex ? { ...row, ...patch } : row)));
 
   /**
-   * Exactly one primary output (§9.2.1) — it absorbs the step's whole cost, so
-   * two would pay for the operation twice and none would leave the cost nowhere.
-   * Radio semantics, enforced here rather than left to the server to reject.
+   * 🔴 SAME AS CONSUMED — a copy, not a live mirror.
+   *
+   * Ticking writes the CONSUMES rows into PRODUCES as ordinary rows: every one
+   * of them stays editable, deletable, and free to carry a different expected
+   * quantity, because "returns what it took" is where a step STARTS, not what it
+   * is bound to. A live mirror would have to fight every one of those edits.
+   *
+   * The box is therefore not state of its own — it is checked when PRODUCES
+   * already lists exactly the items CONSUMES does, in the same order. Change an
+   * item and it unticks itself, which is the truth; change a quantity and it
+   * stays ticked, because the same items still come back.
    */
-  const setPrimary = (rowIndex: number) =>
-    onChange(rows.map((row, i) => ({ ...row, isPrimary: i === rowIndex })));
+  const mirrorRows = (mirrorSource ?? []).filter((row) => row.itemId);
+  const mirrored =
+    mirrorRows.length > 0 &&
+    rows.length === mirrorRows.length &&
+    rows.every((row, i) => row.itemId === mirrorRows[i]!.itemId);
+
+  const toggleMirror = () =>
+    onChange(
+      mirrored
+        ? []
+        : mirrorRows.map((row) => ({
+            ...emptyStepItem(),
+            itemId: row.itemId,
+            uomId: row.uomId ?? null,
+            // What went in is what is expected back — the starting number, not a
+            // rule. Only on a job order: a route has no quantities at all.
+            expectedQty: showQty ? (row.plannedQty ?? null) : null,
+          })),
+    );
 
   return (
     <div style={{ border: '1px solid #eef0f3', borderRadius: 6, background: '#fcfcfd' }}>
       <div
         style={{
           display: 'flex',
-          alignItems: 'baseline',
+          alignItems: 'center',
           gap: 8,
           padding: '8px 12px',
           borderBottom: '1px solid #eef0f3',
+          minHeight: 33,
         }}
       >
         <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', letterSpacing: 0.3 }}>
           {isInput ? 'CONSUMES' : 'PRODUCES'}
         </span>
+
+        {/* A native checkbox inside its label: focusable, toggled with Space,
+            and disabled-aware for free — none of which a styled div would be. */}
+        {!isInput && mirrorSource && (
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              marginLeft: 'auto',
+              fontSize: 11,
+              color: mirrorRows.length === 0 ? '#94a3b8' : '#475569',
+              cursor: disabled || mirrorRows.length === 0 ? 'default' : 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+            title={
+              mirrorRows.length === 0
+                ? 'List what the step consumes first, then this copies it here.'
+                : 'Copy every item from CONSUMES into PRODUCES. Each row stays editable; unticking clears them.'
+            }
+          >
+            <input
+              type="checkbox"
+              checked={mirrored}
+              onChange={toggleMirror}
+              disabled={disabled || mirrorRows.length === 0}
+              aria-label={`Step ${stepNumber} produces the same items it consumes`}
+            />
+            Same as consumed
+          </label>
+        )}
       </div>
 
       <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -227,8 +310,8 @@ function ItemList({
 
         {rows.map((row, rowIndex) => {
           const rowError = errors?.[`steps.${stepIndex}.${side}.${rowIndex}.itemId`];
-          const unitLabel = stockingUomLabel(row.itemId);
-          const badge = badgeFor(row);
+          const unit = itemUnit(row.itemId);
+          const badge = badgeFor(row, rowIndex);
           const qtyId = `step-${stepIndex}-${side}-${rowIndex}-qty`;
           return (
             <div key={rowIndex} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -236,9 +319,16 @@ function ItemList({
                 <div style={{ flex: '2 1 150px', minWidth: 0 }}>
                   <Select
                     value={row.itemId || ''}
-                    onChange={(value) => update(rowIndex, { itemId: value })}
+                    /* 🔴 The unit comes WITH the item (§5.1). Picking one carries
+                       its stocking unit onto the row, so what is saved is what the
+                       box shows instead of a null the server fills in later; an
+                       item with no stocking unit clears it back to the dropdown,
+                       because the previous item's unit is not this item's. */
+                    onChange={(value) =>
+                      update(rowIndex, { itemId: value, uomId: itemUnit(value)?.uomId ?? null })
+                    }
                     options={[
-                      { value: '', label: 'Pick an item…' },
+                      { value: '', label: 'Select an item…' },
                       ...items.map((i) => ({ value: i.id, label: i.name })),
                     ]}
                     disabled={disabled}
@@ -250,12 +340,12 @@ function ItemList({
                 {/* One item, one stocking unit (§5.1) — so this is a fact, not a
                     choice, wherever the item can answer. */}
                 <div style={{ flex: '0 0 62px' }}>
-                  {unitLabel ? (
+                  {unit ? (
                     <div
                       style={{ ...cellReadOnly, justifyContent: 'center' }}
                       title="The item’s stocking unit"
                     >
-                      {unitLabel}
+                      {unit.label}
                     </div>
                   ) : (
                     <Select
@@ -302,7 +392,7 @@ function ItemList({
 
                 {/* Blank means "use the step's" — fabric at 3% beside thread at
                     25%, because small quantities vary more. */}
-                {showQty && isInput && (
+                {showTolerance && isInput && (
                   <div style={{ flex: '0 0 66px' }}>
                     <label htmlFor={`${qtyId}-tol`} style={srOnly}>
                       {`Step ${stepNumber} tolerance percent for row ${rowIndex + 1}`}
@@ -328,28 +418,13 @@ function ItemList({
                   </div>
                 )}
 
-                {!isInput && (
-                  <label
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      fontSize: 11,
-                      color: '#475569',
-                      whiteSpace: 'nowrap',
-                    }}
-                    title="The output that carries the cost of this step. Every other output is a by-product."
-                  >
-                    <input
-                      type="radio"
-                      name={`step-${stepIndex}-primary`}
-                      checked={Boolean(row.isPrimary)}
-                      onChange={() => setPrimary(rowIndex)}
-                      disabled={disabled}
-                    />
-                    Main
-                  </label>
-                )}
+                {/* 🔴 No "Main" radio. One output absorbs the step's cost
+                    (§9.2.1) and it is the FIRST row — the server's own fallback
+                    (`flagPrimaryOutput`), mirrored client-side by
+                    `primaryOutputIndex` so the chain badge says the same thing.
+                    Asking decided nothing in the common case, one item back, and
+                    was one more control to get wrong in the uncommon one. Same
+                    call `ReceiveDialog` already made for its returned rows. */}
 
                 <button
                   type="button"
@@ -437,6 +512,7 @@ export function StepsGrid<T extends StepGridRow>({
   errors,
   disabled,
   showPlannedQty,
+  showInputQty,
   seqOffset = 0,
   priorProducers,
 }: Props<T>) {
@@ -497,16 +573,17 @@ export function StepsGrid<T extends StepGridRow>({
   const uomById = new Map(uoms.map((u) => [u.id, u]));
 
   /**
-   * An item's stocking unit, as it prints. `null` means the item cannot answer —
-   * it has no stocking uom yet — and the caller then leaves the dropdown alone,
-   * which is exactly what the server does (`applyStepUnits`).
+   * An item's stocking unit — the id a row carries and the label it prints.
+   * `null` means the item cannot answer (no stocking uom yet), and the caller
+   * then shows the dropdown, which is exactly what the server does
+   * (`applyRowUnits` leaves such a row's unit null too).
    */
-  const stockingUomLabel = (itemId: string | null | undefined): string | null => {
+  const itemUnit = (itemId: string | null | undefined): { uomId: string; label: string } | null => {
     if (!itemId) return null;
     const stockingUomId = itemById.get(itemId)?.stockingUomId;
     if (!stockingUomId) return null;
     const uom = uomById.get(stockingUomId);
-    return uom ? uom.symbol || uom.unitName : null;
+    return uom ? { uomId: uom.id, label: uom.symbol || uom.unitName } : null;
   };
 
   return (
@@ -533,7 +610,7 @@ export function StepsGrid<T extends StepGridRow>({
            */
           const previousOutputs = index > 0 ? (steps[index - 1]?.outputs ?? []) : [];
           const previousPrimaryItemId =
-            (previousOutputs.find((row) => row.isPrimary) ?? previousOutputs[0])?.itemId ?? null;
+            previousOutputs[primaryOutputIndex(previousOutputs)]?.itemId ?? null;
           const previousPrimaryLabel = previousPrimaryItemId
             ? (itemById.get(previousPrimaryItemId)?.name ?? null)
             : null;
@@ -627,7 +704,7 @@ export function StepsGrid<T extends StepGridRow>({
                                 {
                                   ...emptyStepItem(),
                                   itemId: step.inputs[0]!.itemId,
-                                  isPrimary: true,
+                                  uomId: step.inputs[0]!.uomId ?? null,
                                 },
                               ]
                             : step.outputs,
@@ -797,9 +874,10 @@ export function StepsGrid<T extends StepGridRow>({
                   rows={step.inputs ?? []}
                   onChange={(rows) => update(index, { inputs: rows })}
                   items={items}
-                  stockingUomLabel={stockingUomLabel}
+                  itemUnit={itemUnit}
                   uomOptions={uomOptions}
-                  showQty={showPlannedQty}
+                  showQty={showPlannedQty || showInputQty}
+                  showTolerance={showPlannedQty}
                   disabled={disabled}
                   stepIndex={index}
                   stepNumber={stepNo}
@@ -834,19 +912,27 @@ export function StepsGrid<T extends StepGridRow>({
                   rows={step.outputs ?? []}
                   onChange={(rows) => update(index, { outputs: rows })}
                   items={items}
-                  stockingUomLabel={stockingUomLabel}
+                  itemUnit={itemUnit}
                   uomOptions={uomOptions}
+                  mirrorSource={step.inputs ?? []}
                   showQty={showPlannedQty}
                   disabled={disabled}
                   stepIndex={index}
                   stepNumber={stepNo}
                   errors={errors}
                   emptyHint="Nothing listed — this step will produce nothing, and nothing can be received against it. Add what comes back, even if it is the same item that went in."
-                  badgeFor={(row) => {
+                  badgeFor={(row, rowIndex) => {
                     if (!row.itemId) return null;
-                    const fed = feedsSteps(steps, index, row.itemId, Boolean(row.isPrimary)).map(
-                      (at) => at + seqOffset,
-                    );
+                    // Which row is the main output is derived now, not ticked —
+                    // read it the way the server will, or the badge tells the
+                    // next step's inputs a different story than the save does.
+                    const outputs = step.outputs ?? [];
+                    const fed = feedsSteps(
+                      steps,
+                      index,
+                      row.itemId,
+                      rowIndex === primaryOutputIndex(outputs),
+                    ).map((at) => at + seqOffset);
                     return fed.length
                       ? { text: `Feeds step ${fed.join(', ')}`, tone: 'chain' as const }
                       : { text: 'Ends here', tone: 'stock' as const };
@@ -868,12 +954,23 @@ export function StepsGrid<T extends StepGridRow>({
         type="button"
         onClick={() => {
           const previousOutputs = steps[steps.length - 1]?.outputs ?? [];
-          const carriedOn =
-            (previousOutputs.find((row) => row.isPrimary) ?? previousOutputs[0])?.itemId ?? null;
+          const carriedOn = previousOutputs[primaryOutputIndex(previousOutputs)] ?? null;
           const next = emptyStep() as T;
           onChange([
             ...steps,
-            carriedOn ? { ...next, inputs: [{ ...emptyStepItem(), itemId: carriedOn }] } : next,
+            carriedOn?.itemId
+              ? {
+                  ...next,
+                  inputs: [
+                    {
+                      ...emptyStepItem(),
+                      itemId: carriedOn.itemId,
+                      // The unit rides with the item, seeded rows included.
+                      uomId: itemUnit(carriedOn.itemId)?.uomId ?? carriedOn.uomId ?? null,
+                    },
+                  ],
+                }
+              : next,
           ]);
         }}
         disabled={disabled}

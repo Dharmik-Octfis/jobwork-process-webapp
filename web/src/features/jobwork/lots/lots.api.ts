@@ -27,7 +27,6 @@ export type AvailablePackage = z.infer<typeof availablePackageSchema>;
 export const availableLotSchema = z.object({
   lotId: z.string(),
   lotNumber: z.string(),
-  supplierLotRef: z.string().nullable(),
   itemId: z.string(),
   uomId: z.string().nullable(),
   ownership: z.string(),
@@ -35,9 +34,6 @@ export const availableLotSchema = z.object({
   availableQty: z.string(),
   accumulatedValue: z.string(),
   costPerUnit: z.string().nullable(),
-  /** Server date − first inward movement. Drives the FIFO suggestion and the
-   * 180-day GST clock, so it is computed in one place, not two. */
-  ageDays: z.number().nullable(),
   lotTracking: z.string(),
   packages: z.array(availablePackageSchema).default([]),
 });

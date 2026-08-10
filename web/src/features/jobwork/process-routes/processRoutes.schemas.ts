@@ -67,7 +67,6 @@ export const routeSchema = z.object({
   steps: z.array(routeStepSchema).default([]),
   createdAt: z.string(),
   updatedAt: z.string(),
-  customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type Route = z.infer<typeof routeSchema>;
@@ -83,7 +82,11 @@ export interface RouteStepData {
   rateBasis?: string | null;
   /** 🔴 The two lists (§5.7). Sent, they are what the step consumes and
    * produces; left empty, the server derives one row per side from the template's
-   * own defaults. A route holds no quantities — those are per-run answers. */
+   * own defaults.
+   *
+   * An input row may carry `plannedQty` — the amount this org usually runs,
+   * copied into a job order once and edited there. An output row may not: what
+   * comes back is a per-run answer. */
   inputs?: StepItemRow[];
   outputs?: StepItemRow[];
   expectedYield?: number | null;
@@ -96,7 +99,6 @@ export interface CreateRouteData {
   code?: string | null;
   description?: string | null;
   steps: RouteStepData[];
-  customFields?: Record<string, unknown>;
 }
 
 export type UpdateRouteData = CreateRouteData;

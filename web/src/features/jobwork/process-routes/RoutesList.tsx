@@ -9,18 +9,19 @@ import { Pagination } from '../../../components/ui/Pagination';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { useListCount } from '../../../hooks/useListCount';
 import { useListSearch } from '../../../hooks/useListSearch';
-import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 import { deleteRoute, fetchRouteCount, fetchRoutes } from './processRoutes.api';
 import { RouteDetail } from './RouteDetail';
 import { stepSummary, type Route } from './processRoutes.schemas';
 
+/**
+ * How each selectable column renders. Keys match the backend catalog
+ * (listViews.catalog.ts).
+ *
+ * No `cf:` branch here — `process_route` is list-only now
+ * (LIST_ONLY_ENTITY_TYPES), so the server never merges a custom-field column
+ * into this catalog.
+ */
 function renderRouteCell(route: Route, key: string): string {
-  if (key.startsWith(CUSTOM_FIELD_PREFIX)) {
-    const value = route.customFields?.[key.slice(CUSTOM_FIELD_PREFIX.length)];
-    if (value === null || value === undefined || value === '') return '-';
-    return Array.isArray(value) ? value.join(', ') : String(value);
-  }
-
   switch (key) {
     case 'stepCount':
       return String(route.steps.length);

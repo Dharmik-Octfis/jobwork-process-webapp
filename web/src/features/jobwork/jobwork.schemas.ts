@@ -111,7 +111,8 @@ export interface StepItemRow {
   tolerancePct?: number | null;
   /** Outputs, job orders only. */
   expectedQty?: number | null;
-  /** Outputs only — the one that absorbs the step's cost (§9.2.1). */
+  /** Outputs only — the one that absorbs the step's cost (§9.2.1). No longer
+   * asked for on the grid; see `primaryOutputIndex`. */
   isPrimary?: boolean;
 }
 
@@ -175,6 +176,23 @@ export function producedByStep(steps: readonly StepGridRow[], index: number, ite
     if ((steps[i]?.outputs ?? []).some((row) => row.itemId === itemId)) return i + 1;
   }
   return null;
+}
+
+/**
+ * 🔴 WHICH OUTPUT CARRIES THE STEP'S COST — the client's copy of the server's
+ * `flagPrimaryOutput` (§9.2.1).
+ *
+ * The grid stopped asking: a radio decided nothing in the common case (one item
+ * back) and was one more thing to get wrong in the uncommon one — the same call
+ * `ReceiveDialog` already made for its returned rows. So the rule is the
+ * server's own fallback: whatever a saved row is already flagged with, and
+ * otherwise the FIRST row. Read it here rather than reading `row.isPrimary`
+ * directly, or the chain badge labels a step's main output "Ends here" while the
+ * server feeds it onward.
+ */
+export function primaryOutputIndex(rows: readonly StepItemRow[]): number {
+  const flagged = rows.findIndex((row) => row.isPrimary);
+  return flagged >= 0 ? flagged : 0;
 }
 
 /**

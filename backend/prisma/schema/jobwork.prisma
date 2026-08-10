@@ -234,6 +234,23 @@ model RouteStepInput {
   /// this is forced from the item and never chosen.
   uomId  String? @map("uom_id") @db.Uuid
 
+  /// 🔴 A DEFAULT quantity, not a ratio (added 2026-08-10).
+  ///
+  /// The template side deliberately had no quantity at all: a route does not know
+  /// how much anyone will run through it. What it CAN know is the amount this org
+  /// usually runs, and retyping "5000 M grey, 12 CONE thread" on every job order
+  /// built from the same route is the data entry this replaces. The job order
+  /// copies it into `job_order_step_inputs.planned_qty` once, where it is edited
+  /// like any other row (§2.4) — nothing here is read again after that copy.
+  ///
+  /// It is NOT consumption per unit of output. Scaling it by an order quantity
+  /// would need a ratio between 2,910 PCS and 80 KG, which does not exist, and no
+  /// conversion exists anywhere in this system (§5.1).
+  ///
+  /// NULL means the template says nothing, which is the normal case and is why
+  /// this is nullable rather than defaulted to 0.
+  plannedQty Decimal? @map("planned_qty") @db.Decimal(18, 4)
+
   customFields Json     @default("{}") @map("custom_fields")
   isDeleted    Boolean  @default(false) @map("is_deleted")
   createdBy    String?  @map("created_by") @db.Uuid
@@ -595,14 +612,12 @@ model JobIssue {
   isRework  Boolean @default(false) @map("is_rework")
   attemptNo Int     @default(1) @map("attempt_no")
 
-  /// Transport, for the challan and for the e-way bill generated from it later.
-  /// Recorded from Sprint 3 even though nothing calls that API yet — these cannot
-  /// be back-filled onto a challan whose goods have already moved (plan §11).
-  transporterId String?   @map("transporter_id") @db.Uuid
-  vehicleNo     String?   @map("vehicle_no") @db.VarChar(30)
-  lrNo          String?   @map("lr_no") @db.VarChar(50)
-  lrDate        DateTime? @map("lr_date") @db.Timestamptz(6)
-  ewayBillNo    String?   @map("eway_bill_no") @db.VarChar(30)
+  /// ⚠️ `vehicleNo`, `lrNo`, `lrDate` and `ewayBillNo` were DROPPED on 2026-08-10
+  /// along with the dialog's Transport section — nothing captured them and the
+  /// challan no longer prints them. `transporterId` survives the cut only because
+  /// nothing wrote it either way; it is unused and free to go with the next
+  /// migration that touches this table.
+  transporterId String? @map("transporter_id") @db.Uuid
 
   /// The sum of the lines, denormalised. Cheap to keep correct — the lines are
   /// written once, in this document's own transaction, and never edited — and it

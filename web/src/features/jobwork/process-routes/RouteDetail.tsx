@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Pencil, X } from 'lucide-react';
 import { Spinner } from '../../../components/ui/Spinner';
-import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { rateBasisLabel } from '../processes/processes.schemas';
 import { formatQty, processorTypeLabel, type StepItemRowRead } from '../jobwork.schemas';
 import { fetchRouteById } from './processRoutes.api';
@@ -14,19 +13,31 @@ interface Props {
 
 /** One label → value line, the shape the Item detail reads in. */
 /** One list of a step's items, one per line. `Main` marks the output that will
- * carry the step's cost when a job order runs this template (§9.2.1). */
+ * carry the step's cost when a job order runs this template (§9.2.1).
+ *
+ * A consumed row prints its default quantity when the template carries one —
+ * "5000 M" rather than a bare unit — because a number saved and never shown back
+ * is a number nobody trusts. Blank stays blank: the template saying nothing is
+ * the normal case, not a zero. */
 function ItemLines({ rows }: { rows: StepItemRowRead[] }) {
   return (
     <span>
-      {rows.map((row) => (
-        <span key={row.id} style={{ display: 'block' }}>
-          {row.item?.name ?? 'Item'}
-          {row.uom ? ` (${row.uom.symbol ?? row.uom.unitName})` : ''}
-          {row.isPrimary && (
-            <span style={{ marginLeft: 6, fontSize: 11, color: '#047857' }}>Main</span>
-          )}
-        </span>
-      ))}
+      {rows.map((row) => {
+        const unit = row.uom ? (row.uom.symbol ?? row.uom.unitName) : '';
+        const qty =
+          row.plannedQty === null || row.plannedQty === undefined
+            ? null
+            : formatQty(row.plannedQty);
+        return (
+          <span key={row.id} style={{ display: 'block' }}>
+            {row.item?.name ?? 'Item'}
+            {qty ? ` — ${qty}${unit ? ` ${unit}` : ''}` : unit ? ` (${unit})` : ''}
+            {row.isPrimary && (
+              <span style={{ marginLeft: 6, fontSize: 11, color: '#047857' }}>Main</span>
+            )}
+          </span>
+        );
+      })}
     </span>
   );
 }
@@ -51,8 +62,6 @@ export function RouteDetail({ routeId, onClose }: Props) {
     queryFn: () => fetchRouteById(orgId!, routeId),
     enabled: Boolean(orgId && routeId),
   });
-
-  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId!, 'process_route');
 
   if (isLoading) {
     return (
@@ -203,30 +212,6 @@ export function RouteDetail({ routeId, onClose }: Props) {
             </div>
           ))}
         </div>
-
-        {customFieldDefs.length > 0 && (
-          <table style={{ borderCollapse: 'collapse', marginTop: 20 }}>
-            <tbody>
-              {customFieldDefs.map((def) => {
-                const value = route.customFields?.[def.key];
-                return (
-                  <tr key={def.id}>
-                    <td style={{ fontSize: 12, color: '#64748b', paddingRight: 16 }}>
-                      {def.label}
-                    </td>
-                    <td style={{ padding: '6px 0', fontSize: 13, color: '#111' }}>
-                      {value === null || value === undefined || value === ''
-                        ? '-'
-                        : Array.isArray(value)
-                          ? value.join(', ')
-                          : String(value)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
       </div>
     </div>
   );
