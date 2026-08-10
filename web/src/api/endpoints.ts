@@ -140,6 +140,7 @@ export const endpoints = {
   },
   seedData: {
     items: (orgId: string) => `/organizations/${orgId}/items`,
+    compositeItems: (orgId: string) => `/organizations/${orgId}/composite-items`,
   },
   /** Per-user list column layout ("Customize Columns") for one module. */
   listViews: (orgId: string, entityType: string) =>

@@ -22,9 +22,9 @@
 ///   rateBasis           how the processor charges (§9.2). Decides which quantity the
 ///                       cost is multiplied by, so it cannot be inferred later.
 model Process {
-  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String @map("organization_id") @db.Uuid
-  name           String @db.VarChar(150)
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  name           String  @db.VarChar(150)
   /// Optional short code the shop floor uses on paperwork. Free text — nothing
   /// derives meaning from it, exactly like `Lot.supplierLotRef`.
   code           String? @db.VarChar(50)
@@ -198,6 +198,9 @@ model RouteStep {
   createdByUser User?              @relation("RouteStepCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User?              @relation("RouteStepUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
+  inputs  RouteStepInput[]
+  outputs RouteStepOutput[]
+
   /// A FULL index — a soft-deleted step would still occupy its seq. That is why
   /// the service hard-replaces a route's steps on edit rather than soft-deleting
   /// them; see processRoutes.service.ts for why that is safe here and nowhere
@@ -205,9 +208,6 @@ model RouteStep {
   @@unique([routeId, seq])
   @@index([organizationId, routeId])
   @@map("route_steps")
-
-  inputs  RouteStepInput[]
-  outputs RouteStepOutput[]
 }
 
 /// 🔴 THE BILL OF MATERIALS, on the template side (domain doc §5.7).
@@ -342,7 +342,7 @@ model JobOrder {
   inputUomId  String?  @map("input_uom_id") @db.Uuid
   inputQty    Decimal? @map("input_qty") @db.Decimal(18, 4)
 
-  routeId String? @map("route_id") @db.Uuid
+  routeId           String? @map("route_id") @db.Uuid
   /// 🔴 The frozen name, which is what prints. The FK above is for joins and
   /// reporting; this is what an old job order keeps showing after the route is
   /// renamed or deleted (§2.4). Store BOTH — that is the rule, not a choice.
@@ -403,8 +403,8 @@ model JobOrderStep {
   organizationId String @map("organization_id") @db.Uuid
   jobOrderId     String @map("job_order_id") @db.Uuid
 
-  seq       Int
-  processId String @map("process_id") @db.Uuid
+  seq                 Int
+  processId           String @map("process_id") @db.Uuid
   /// Frozen at creation. A process renamed from "Dyeing" to "Reactive Dyeing"
   /// must not retitle the challans already printed against this step.
   processNameSnapshot String @map("process_name_snapshot") @db.VarChar(150)
@@ -587,9 +587,9 @@ model JobIssue {
   challanNumber String   @map("challan_number") @db.VarChar(50)
   issueDate     DateTime @default(now()) @map("issue_date") @db.Timestamptz(6)
 
-  processorType         String  @default("vendor") @map("processor_type") @db.VarChar(20)
-  processorId           String? @map("processor_id") @db.Uuid
-  processorNameSnapshot String? @map("processor_name_snapshot") @db.VarChar(255)
+  processorType            String  @default("vendor") @map("processor_type") @db.VarChar(20)
+  processorId              String? @map("processor_id") @db.Uuid
+  processorNameSnapshot    String? @map("processor_name_snapshot") @db.VarChar(255)
   /// One text blob, not five columns. It is never queried, only printed, and the
   /// shape of an Indian address varies enough that parsing it back out would be a
   /// project of its own.
@@ -681,7 +681,7 @@ model JobIssueLine {
   itemId String? @map("item_id") @db.Uuid
   uomId  String? @map("uom_id") @db.Uuid
 
-  lotId String @map("lot_id") @db.Uuid
+  lotId        String  @map("lot_id") @db.Uuid
   /// Null for a lot-level issue — i.e. any item below `lot_and_package` tracking.
   lotPackageId String? @map("lot_package_id") @db.Uuid
 
@@ -775,7 +775,7 @@ model JobReceipt {
   outputItemId String  @map("output_item_id") @db.Uuid
   outputUomId  String? @map("output_uom_id") @db.Uuid
   /// Where the goods landed — ours again, so a godown.
-  locationId String @map("location_id") @db.Uuid
+  locationId   String  @map("location_id") @db.Uuid
 
   /// The lots this receipt created. 🔴 `Lot.parentLotIds` is what carries
   /// genealogy; these two are the shortcut back the other way, so the receipt
@@ -883,7 +883,7 @@ model JobReceiptOutput {
   /// no package that went out to map back to.
   parentPackageId String? @map("parent_package_id") @db.Uuid
 
-  reasonId String? @map("reason_id") @db.Uuid
+  reasonId       String? @map("reason_id") @db.Uuid
   /// ours | theirs.
   responsibility String? @db.VarChar(20)
 
@@ -940,7 +940,7 @@ model JobReceiptLine {
   scrapQty    Decimal @default(0) @map("scrap_qty") @db.Decimal(18, 4)
   returnedQty Decimal @default(0) @map("returned_qty") @db.Decimal(18, 4)
 
-  reasonId String? @map("reason_id") @db.Uuid
+  reasonId       String? @map("reason_id") @db.Uuid
   /// ours | theirs. Drives whether rework is re-charged or done free, and the
   /// vendor scorecard that comes later.
   responsibility String? @db.VarChar(20)

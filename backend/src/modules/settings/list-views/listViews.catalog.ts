@@ -272,6 +272,15 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'packageCount', label: 'Takas' },
     { key: 'createdAt', label: 'Created At', defaultVisible: true },
   ],
+  composite_item_component: [
+    { key: 'id', label: 'ID', locked: true },
+  ],
+  item_assembly: [
+    { key: 'id', label: 'ID', locked: true },
+  ],
+  item_assembly_line: [
+    { key: 'id', label: 'ID', locked: true },
+  ],
   purchase_order: [
     { key: 'purchaseorder_number', label: 'PO Number', locked: true },
     { key: 'vendor', label: 'Vendor', defaultVisible: true },

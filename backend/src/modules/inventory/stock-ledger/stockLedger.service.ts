@@ -58,6 +58,9 @@ export const MOVEMENT_TYPES = [
 ] as const;
 export type MovementType = (typeof MOVEMENT_TYPES)[number];
 
+export const STOCK_EFFECTS = ['both', 'physical', 'accounting'] as const;
+export type StockEffect = (typeof STOCK_EFFECTS)[number];
+
 /** own | customer — §5.3. Customer-owned stock is always ZERO value. */
 export const OWNERSHIPS = ['own', 'customer'] as const;
 export type Ownership = (typeof OWNERSHIPS)[number];
@@ -69,6 +72,7 @@ export interface PostMovementInput {
   /** Set only for package-granular movements (`lotTracking = 'lot_and_package'`). */
   lotPackageId?: string | null;
   movementType: MovementType;
+  stockEffect?: StockEffect;
   /** Exactly one of these is positive; the other stays 0. */
   qtyIn?: Prisma.Decimal | number | string;
   qtyOut?: Prisma.Decimal | number | string;
@@ -105,9 +109,14 @@ export async function postMovement(tx: TenantClient, input: PostMovementInput) {
   const qtyOut = toDecimal(input.qtyOut);
   let valueIn = toDecimal(input.valueIn);
   let valueOut = toDecimal(input.valueOut);
+  const stockEffect = input.stockEffect ?? 'both';
 
   if (qtyIn.isNegative() || qtyOut.isNegative() || valueIn.isNegative() || valueOut.isNegative()) {
     throw ApiError.badRequest('A ledger movement cannot carry a negative quantity or value.');
+  }
+
+  if (stockEffect === 'physical' && (!valueIn.isZero() || !valueOut.isZero())) {
+    throw ApiError.badRequest('A purely physical movement must have zero value.');
   }
 
   // One direction per row, never a signed quantity. Two columns are what make
@@ -165,6 +174,7 @@ export async function postMovement(tx: TenantClient, input: PostMovementInput) {
       valueIn,
       valueOut,
       movementType: input.movementType,
+      stockEffect,
       sourceDocType: input.sourceDocType,
       sourceDocId: input.sourceDocId ?? null,
       sourceDocLineId: input.sourceDocLineId ?? null,
@@ -197,9 +207,17 @@ export interface BalanceFilter {
   ownership?: Ownership;
   /** Balance as it stood at a moment in time, by `postedAt`. */
   asOf?: Date;
+  /**
+   * The axis to query. Defaults to 'accounting'.
+   * 'accounting': Includes 'both' + 'accounting' rows.
+   * 'physical': Includes 'both' + 'physical' rows.
+   * 'both': Only includes 'both' rows (rarely queried alone).
+   */
+  axis?: StockEffect;
 }
 
 function balanceWhere(filter: BalanceFilter): Prisma.StockLedgerEntryWhereInput {
+  const axis = filter.axis ?? 'accounting';
   return {
     // The `where` is what the query means; RLS is the net under it. Both stay.
     organizationId: filter.organizationId,
@@ -209,6 +227,7 @@ function balanceWhere(filter: BalanceFilter): Prisma.StockLedgerEntryWhereInput 
     ...(filter.locationId ? { locationId: filter.locationId } : {}),
     ...(filter.ownership ? { ownership: filter.ownership } : {}),
     ...(filter.asOf ? { postedAt: { lte: filter.asOf } } : {}),
+    stockEffect: { in: [axis, 'both'] },
   };
 }
 
@@ -237,6 +256,42 @@ export async function getBalance(
   return {
     qty: (sums._sum.qtyIn ?? zero).minus(sums._sum.qtyOut ?? zero),
     value: (sums._sum.valueIn ?? zero).minus(sums._sum.valueOut ?? zero),
+  };
+}
+
+export interface MultiAxisBalance {
+  physicalQty: Prisma.Decimal;
+  accountingQty: Prisma.Decimal;
+  value: Prisma.Decimal;
+}
+
+/**
+ * Executes a single raw SQL query to compute both physical and accounting
+ * balances (and the value) in one pass, without two aggregate calls.
+ */
+export async function getBalances(tx: TenantClient, filter: BalanceFilter): Promise<MultiAxisBalance> {
+  const orgId = filter.organizationId;
+  let q = Prisma.sql`SELECT
+    COALESCE(SUM(qty_in - qty_out) FILTER (WHERE stock_effect IN ('both', 'physical')), 0) AS "physicalQty",
+    COALESCE(SUM(qty_in - qty_out) FILTER (WHERE stock_effect IN ('both', 'accounting')), 0) AS "accountingQty",
+    COALESCE(SUM(value_in - value_out) FILTER (WHERE stock_effect IN ('both', 'accounting')), 0) AS value
+    FROM stock_ledger
+    WHERE organization_id = ${orgId}::uuid`;
+
+  if (filter.itemId) q = Prisma.sql`${q} AND item_id = ${filter.itemId}::uuid`;
+  if (filter.lotId) q = Prisma.sql`${q} AND lot_id = ${filter.lotId}::uuid`;
+  if (filter.lotPackageId) q = Prisma.sql`${q} AND lot_package_id = ${filter.lotPackageId}::uuid`;
+  if (filter.locationId) q = Prisma.sql`${q} AND location_id = ${filter.locationId}::uuid`;
+  if (filter.ownership) q = Prisma.sql`${q} AND ownership = ${filter.ownership}`;
+  if (filter.asOf) q = Prisma.sql`${q} AND posted_at <= ${filter.asOf}::timestamptz`;
+
+  const rows = await tx.$queryRaw<{ physicalQty: Prisma.Decimal; accountingQty: Prisma.Decimal; value: Prisma.Decimal }[]>`${q}`;
+
+  const row = rows[0];
+  return {
+    physicalQty: toDecimal(row?.physicalQty),
+    accountingQty: toDecimal(row?.accountingQty),
+    value: toDecimal(row?.value),
   };
 }
 

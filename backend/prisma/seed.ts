@@ -139,6 +139,18 @@ async function main() {
     },
   });
 
+  await prisma.appModule.upsert({
+    where: { code: 'COMPOSITE_ITEMS' },
+    update: { parentId: inventory.id },
+    create: {
+      code: 'COMPOSITE_ITEMS',
+      name: 'Composite Items',
+      parentId: inventory.id,
+      sortIndex: 2,
+      icon: 'PackageCheck',
+    },
+  });
+
   // Jobwork.
   //
   // sortIndex 5 puts it after Purchases — the sidebar order is Home, Item, Sales,

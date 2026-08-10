@@ -6,6 +6,7 @@ import { useState, useRef, useEffect, Fragment } from 'react';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { ItemActivityHistory } from './ItemActivityHistory';
 import { ItemImageGallery } from './components/ItemImageGallery';
+import { CompositeItemsList } from '../inventory/composite-items/CompositeItemsList';
 
 interface ItemDetailProps {
   itemId: string;
@@ -250,7 +251,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
 
       {/* Tabs */}
       <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #eef0f3', padding: '0 24px', gap: '16px' }}>
-        {['Overview', 'Locations', 'Transactions', 'Related Lists', 'History'].map((tab, idx) => (
+        {['Overview', 'Locations', 'Transactions', 'Related Lists', 'History', ...((item.itemType === 'Composite Item' || item.item_type === 'Composite Item') ? ['Components'] : [])].map((tab, idx) => (
           <Fragment key={tab}>
             {idx > 0 && <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />}
             <div
@@ -275,6 +276,10 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
         {activeTab === 'History' ? (
           <div style={{ margin: '-24px' }}>
             <ItemActivityHistory activities={activities} isLoading={isLoadingActivities} />
+          </div>
+        ) : activeTab === 'Components' && (item.itemType === 'Composite Item' || item.item_type === 'Composite Item') ? (
+          <div style={{ margin: '-24px' }}>
+            <CompositeItemsList itemId={itemId} />
           </div>
         ) : activeTab === 'Overview' ? (
           <div style={{ display: 'grid', gridTemplateColumns: '400px 380px', gap: '32px', justifyContent: 'start' }}>

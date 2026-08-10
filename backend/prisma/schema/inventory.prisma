@@ -90,10 +90,10 @@ model Lot {
   /// open | consumed | closed
   state String @default("open") @db.VarChar(20)
 
-  customFields Json    @default("{}") @map("custom_fields")
-  isDeleted    Boolean @default(false) @map("is_deleted")
-  createdBy    String? @map("created_by") @db.Uuid
-  updatedBy    String? @map("updated_by") @db.Uuid
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -103,17 +103,20 @@ model Lot {
   createdByUser User?              @relation("LotCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User?              @relation("LotUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
-  packages     LotPackage[]
+  packages      LotPackage[]
   ledgerEntries StockLedgerEntry[]
 
-  issueLines        JobIssueLine[] @relation("JobIssueLineLot")
-  receiptsAsOutput  JobReceipt[]   @relation("JobReceiptOutputLot")
-  receiptsAsRework  JobReceipt[]   @relation("JobReceiptReworkLot")
+  issueLines       JobIssueLine[] @relation("JobIssueLineLot")
+  receiptsAsOutput JobReceipt[]   @relation("JobReceiptOutputLot")
+  receiptsAsRework JobReceipt[]   @relation("JobReceiptReworkLot")
 
   /// Multi-item receipts (domain §5.7): one output ROW per returned item, each
   /// creating its own lot. The two above are the single-output header columns.
   receiptOutputRows       JobReceiptOutput[] @relation("JobReceiptOutputRowLot")
   receiptOutputReworkRows JobReceiptOutput[] @relation("JobReceiptOutputRowReworkLot")
+
+  assembliesAsComposite ItemAssembly[]     @relation("ItemAssemblyCompositeLot")
+  assemblyLines         ItemAssemblyLine[] @relation("ItemAssemblyLineLot")
 
   @@unique([organizationId, lotNumber])
   @@index([organizationId, itemId])
@@ -156,10 +159,10 @@ model LotPackage {
   /// available | issued | consumed | scrapped
   state String @default("available") @db.VarChar(20)
 
-  customFields Json    @default("{}") @map("custom_fields")
-  isDeleted    Boolean @default(false) @map("is_deleted")
-  createdBy    String? @map("created_by") @db.Uuid
-  updatedBy    String? @map("updated_by") @db.Uuid
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -172,9 +175,11 @@ model LotPackage {
 
   ledgerEntries StockLedgerEntry[]
 
-  issueLines        JobIssueLine[]   @relation("JobIssueLinePackage")
-  receiptLinesAsParent JobReceiptLine[] @relation("JobReceiptLineParentPackage")
+  issueLines             JobIssueLine[]     @relation("JobIssueLinePackage")
+  receiptLinesAsParent   JobReceiptLine[]   @relation("JobReceiptLineParentPackage")
   receiptOutputsAsParent JobReceiptOutput[] @relation("JobReceiptOutputParentPackage")
+
+  assemblyLines ItemAssemblyLine[] @relation("ItemAssemblyLinePackage")
 
   @@unique([lotId, packageNumber])
   @@index([organizationId, lotId])
@@ -231,6 +236,9 @@ model StockLedgerEntry {
   /// opening | receipt | issue | transfer_in | transfer_out | consume | produce |
   /// scrap | adjustment | reversal
   movementType String @map("movement_type") @db.VarChar(30)
+
+  /// both | physical | accounting
+  stockEffect String @default("both") @map("stock_effect") @db.VarChar(20)
 
   /// The document that caused it. Not an FK — the referenced table differs per
   /// `sourceDocType` (job_issue, job_receipt, job_order, …) and several of those

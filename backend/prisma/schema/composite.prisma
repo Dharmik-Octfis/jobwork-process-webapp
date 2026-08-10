@@ -1,0 +1,205 @@
+/// 🔴 The recipe, not the stock. One row per component of one composite item.
+///
+/// A composite item is an `items` row with `item_type = 'Composite Item'` — there is no
+/// second item table, because a composite has to be sellable, lot-tracked, priced, searchable
+/// and pickable exactly like every other item, and `stock_ledger.item_id` is a NOT NULL FK to
+/// `items` (spec §2, decision 1).
+///
+/// Both columns below are foreign keys to the SAME table: this is a self-referencing edge on
+/// `items`, read forward to render a recipe and backward to answer "where is this used".
+model CompositeItemComponent {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  /// The item being MADE. Repeats across every row of one recipe.
+  compositeItemId String @map("composite_item_id") @db.Uuid
+  /// The item CONSUMED. Unique within a recipe (see the partial index note below).
+  componentItemId String @map("component_item_id") @db.Uuid
+
+  /// How much of the component goes into ONE unit of the composite, in the component's own
+  /// stocking unit.
+  ///
+  /// 18,6 and not 18,4 because the ratio needs more places than the quantity it yields —
+  /// 12 CONE of thread across 2,880 shirts is 0.004167 per shirt, which rounds to nothing at
+  /// four places. Nothing converts between units (§5.1): this counts the COMPONENT's unit,
+  /// never the composite's.
+  qtyPerUnit Decimal @map("qty_per_unit") @db.Decimal(18, 6)
+
+  /// Display snapshot of the component's stocking unit when the row was written. The ledger
+  /// still takes its uom off the LOT (`postMovement`), so this never decides anything.
+  uomId String? @map("uom_id") @db.Uuid
+
+  /// Order in the components grid. Means nothing to stock.
+  seq Int @default(0)
+
+  notes String?
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  composite     Item               @relation("CompositeRecipe", fields: [compositeItemId], references: [id])
+  component     Item               @relation("CompositeUsage", fields: [componentItemId], references: [id])
+  uom           UnitOfMeasurement? @relation("CompositeComponentUom", fields: [uomId], references: [id])
+  createdByUser User?              @relation("CompositeComponentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?              @relation("CompositeComponentUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  /// 🔴 NO @@unique HERE. The uniqueness of (composite, component) is a PARTIAL index written
+  /// by hand in the migration:
+  ///
+  ///     CREATE UNIQUE INDEX composite_item_components_composite_component_key
+  ///       ON composite_item_components (composite_item_id, component_item_id)
+  ///       WHERE is_deleted = false;
+  ///
+  /// Removing a component from a recipe and adding it back is a routine edit, and a plain
+  /// @@unique would let the soft-deleted row keep the key and 409 the re-add forever
+  /// (CLAUDE.md, "Unique constraints + soft delete"). Prisma cannot express a partial index,
+  /// so every future `db:draft` will ask to "fix" this by dropping it — strip that from the
+  /// draft, exactly as `20260806112805_multi_item_steps` documents for `roles` and
+  /// `permission_templates`.
+  @@index([organizationId, compositeItemId])
+  /// "Where used" — the reverse bill of materials. Without this the question
+  /// "which composites contain this item" is a sequential scan, and it is asked on every
+  /// item delete and by every purchase planner.
+  @@index([organizationId, componentItemId])
+  @@map("composite_item_components")
+}
+
+/// One assembly run: consume the component lots, produce ONE composite lot. `direction`
+/// flips which side is which.
+///
+/// 🔴 A posted assembly is NEVER edited. There is no PUT. A mistake is cancelled — which
+/// posts reversing entries and flips `status` — and re-entered. Same rule as `job_receipts`.
+model ItemAssembly {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  /// ASM-00001. Allocated from `number_sequences` on SAVE, never when the form opens
+  /// (field-sources §2.2) — an abandoned form must not burn a number.
+  assemblyNumber String @map("assembly_number") @db.VarChar(50)
+
+  /// assemble | disassemble
+  ///
+  /// One table and not two, because the posting logic is exactly mirrored: two tables would
+  /// double the routes, controller, service, permission resources, list-view catalog, filter
+  /// catalog, custom-field entity type and number sequence for no gain.
+  direction String @default("assemble") @db.VarChar(20)
+
+  /// When it HAPPENED — passed to every ledger row's `postedAt`, which is what the ageing
+  /// reports read.
+  assemblyDate DateTime @map("assembly_date") @db.Timestamptz(6)
+
+  compositeItemId String  @map("composite_item_id") @db.Uuid
+  /// Snapshot of the composite's stocking uom.
+  compositeUomId  String? @map("composite_uom_id") @db.Uuid
+  /// How many composites were made (assemble) or taken apart (disassemble).
+  qty             Decimal @db.Decimal(18, 4)
+
+  /// CREATED by an assemble, CONSUMED by a disassemble. Written on post either way; on a
+  /// disassemble the user picks it before posting.
+  compositeLotId String? @map("composite_lot_id") @db.Uuid
+
+  /// 🔴 ONE DOCUMENT, ONE LOCATION. `postMovement` takes a location per row, and a composite
+  /// cannot be built out of stock that is in two places — transfer it first. Both the consume
+  /// and the produce side post here.
+  locationId String @map("location_id") @db.Uuid
+
+  /// Labour, packaging and overhead added to the produced lot's value on top of the consumed
+  /// component value. Must be zero when `ownership = 'customer'`: that labour is a service to
+  /// bill, not stock value, and `postMovement` would zero it anyway.
+  additionalCost Decimal @default(0) @map("additional_cost") @db.Decimal(18, 4)
+
+  /// Snapshot totals so the list page never re-derives from the ledger. Derived at post time
+  /// and then frozen — they describe what this document did, not what is true now.
+  componentValue Decimal @default(0) @map("component_value") @db.Decimal(18, 4)
+  totalValue     Decimal @default(0) @map("total_value") @db.Decimal(18, 4)
+
+  /// own | customer — copied from the component lots, which must ALL agree (§9, rule V10).
+  ownership    String  @default("own") @db.VarChar(20)
+  ownerPartyId String? @map("owner_party_id") @db.Uuid
+
+  /// posted | cancelled
+  status  String  @default("posted") @db.VarChar(20)
+  remarks String?
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  compositeItem Item               @relation("ItemAssemblyComposite", fields: [compositeItemId], references: [id])
+  compositeUom  UnitOfMeasurement? @relation("ItemAssemblyCompositeUom", fields: [compositeUomId], references: [id])
+  compositeLot  Lot?               @relation("ItemAssemblyCompositeLot", fields: [compositeLotId], references: [id])
+  location      Location           @relation("ItemAssemblyLocation", fields: [locationId], references: [id])
+  createdByUser User?              @relation("ItemAssemblyCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?              @relation("ItemAssemblyUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  lines ItemAssemblyLine[]
+
+  @@unique([organizationId, assemblyNumber])
+  @@index([organizationId, compositeItemId, assemblyDate])
+  @@index([organizationId, locationId, assemblyDate])
+  @@map("item_assemblies")
+}
+
+/// One (component × lot) ALLOCATION — not one row per component.
+///
+/// 🔴 A component often needs several rows. Quantities are locked to the recipe (spec §2,
+/// decision 3), so a required 500 M against lots of 300 M and 250 M has no single-lot answer;
+/// the user picks lots, not amounts. The invariant that replaces an editable quantity is:
+///
+///     for each component:  Σ(line.qty) === requiredQty(qtyPerUnit, header.qty, precision)
+///
+/// enforced exactly, with no tolerance, in the service.
+model ItemAssemblyLine {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  assemblyId     String @map("assembly_id") @db.Uuid
+  seq            Int    @default(0)
+
+  itemId String  @map("item_id") @db.Uuid
+  uomId  String? @map("uom_id") @db.Uuid
+
+  /// CONSUMED by an assemble (the user picks it), CREATED by a disassemble (written on post).
+  lotId        String  @map("lot_id") @db.Uuid
+  lotPackageId String? @map("lot_package_id") @db.Uuid
+
+  /// SNAPSHOT of the recipe at post time. Recipes change; a posted document must still be
+  /// able to explain itself without re-reading a recipe that has moved on. Repeats across the
+  /// several lines of one component.
+  qtyPerUnit Decimal @map("qty_per_unit") @db.Decimal(18, 6)
+  /// What actually moved on this line. Server-computed, never client-supplied.
+  qty        Decimal @db.Decimal(18, 4)
+
+  /// The lot's cost per unit at post time — `balance.value ÷ balance.qty`. Stored because it
+  /// is what this document used; the lot's cost per unit today may be different.
+  unitValue Decimal @default(0) @map("unit_value") @db.Decimal(18, 4)
+  value     Decimal @default(0) @db.Decimal(18, 4)
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assembly      ItemAssembly       @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  item          Item               @relation("ItemAssemblyLineItem", fields: [itemId], references: [id])
+  uom           UnitOfMeasurement? @relation("ItemAssemblyLineUom", fields: [uomId], references: [id])
+  lot           Lot                @relation("ItemAssemblyLineLot", fields: [lotId], references: [id])
+  lotPackage    LotPackage?        @relation("ItemAssemblyLinePackage", fields: [lotPackageId], references: [id])
+  createdByUser User?              @relation("ItemAssemblyLineCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?              @relation("ItemAssemblyLineUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([assemblyId])
+  @@index([organizationId, itemId, lotId])
+  @@map("item_assembly_lines")
+}

@@ -11,6 +11,7 @@ interface ItemComboBoxProps {
   initialItem?: Item | null;
   onChange: (item: Item | null) => void;
   placeholder?: string;
+  excludeItemId?: string;
   hasError?: boolean;
   style?: React.CSSProperties;
   onBlur?: () => void;
@@ -21,6 +22,7 @@ interface ItemComboBoxProps {
     text: string;
     onClick: () => void;
   };
+  filter?: string;
 }
 
 export function ItemComboBox({
@@ -29,6 +31,7 @@ export function ItemComboBox({
   initialItem,
   onChange,
   placeholder,
+  excludeItemId,
   hasError,
   style,
   onBlur,
@@ -36,6 +39,7 @@ export function ItemComboBox({
   selectedImage,
   onOpenMultiSelect,
   footerAction,
+  filter,
 }: ItemComboBoxProps) {
   const [inputValue, setInputValue] = useState(() => {
     if (initialItem && initialItem.id === value) return initialItem.name;
@@ -65,8 +69,8 @@ export function ItemComboBox({
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['items-search', orgId, debouncedValue],
-    queryFn: ({ pageParam }) => itemsApi.getItems(orgId, { search: debouncedValue || undefined, perPage: 10, page: pageParam }),
+    queryKey: ['items-search', orgId, debouncedValue, filter],
+    queryFn: ({ pageParam }) => itemsApi.getItems(orgId, { search: debouncedValue || undefined, perPage: 10, page: pageParam, filter }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => lastPage.pageContext.hasMore ? lastPage.pageContext.page + 1 : undefined,
     enabled: Boolean(orgId) && isInteracted,
@@ -74,8 +78,12 @@ export function ItemComboBox({
   });
 
   const fetchedOptions = useMemo(() => {
-    return itemsData?.pages.flatMap(page => page.results) || [];
-  }, [itemsData]);
+    let options = itemsData?.pages.flatMap(page => page.results) || [];
+    if (excludeItemId) {
+      options = options.filter(opt => opt.id !== excludeItemId);
+    }
+    return options;
+  }, [itemsData, excludeItemId]);
 
   const selectedItem = useMemo(() => {
     if (!value) return null;

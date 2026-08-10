@@ -1,20 +1,22 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
-import { itemsApi } from './items.api.ts';
-import type { ItemFormData, ItemImageAttachment } from './items.schemas.ts';
-import { itemFormSchema } from './items.schemas.ts';
+import { compositeItemsApi } from './compositeItems.api';
+import type { UpdateCompositeItemDto } from './compositeItems.api';
+import type { ItemFormData } from '../../items/items.schemas';
+import { itemFormSchema } from '../../items/items.schemas';
 import { z } from 'zod';
-import { Select } from '../../components/ui/Select.tsx';
-import { CategorySelectDropdown } from './components/CategorySelectDropdown.tsx';
-import { CustomFieldsSection } from '../custom-fields/CustomFieldsSection.tsx';
-import { useUoms } from '../inventory/uom/uom.api.ts';
-import { useActiveCustomFields } from '../custom-fields/customFields.api.ts';
-import { UomFormModal } from '../inventory/uom/UomFormModal.tsx';
+import { Select } from '../../../components/ui/Select';
+import { CategorySelectDropdown } from '../../items/components/CategorySelectDropdown';
+import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
+import { useUoms } from '../uom/uom.api';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { UomFormModal } from '../uom/UomFormModal';
 import { Plus } from 'lucide-react';
+import { CompositeItemsList } from './CompositeItemsList.tsx';
 
-export function EditItemPage() {
+export function EditCompositeItemPage() {
   const { id, orgId } = useParams<{ id: string; orgId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -24,11 +26,10 @@ export function EditItemPage() {
 
   const [formData, setFormData] = useState<ItemFormData>({
     name: '',
-
     type: 'Goods',
     category: '',
     hsnCode: '',
-    itemType: 'Single Item',
+    itemType: 'Composite Item',
     unit: '',
     stockingUomId: null,
     sku: '',
@@ -53,17 +54,9 @@ export function EditItemPage() {
   const [customFieldErrors, setCustomFieldErrors] = useState<Record<string, string>>({});
   const [initializedId, setInitializedId] = useState<string | null>(null);
 
-  const frontImageRef = useRef<HTMLInputElement>(null);
-  const rearImageRef = useRef<HTMLInputElement>(null);
-  const otherImagesRef = useRef<HTMLInputElement>(null);
-
-  const [frontImageFile, setFrontImageFile] = useState<File | null>(null);
-  const [rearImageFile, setRearImageFile] = useState<File | null>(null);
-  const [otherImageFiles, setOtherImageFiles] = useState<File[]>([]);
-
   const { data: item, isLoading } = useQuery({
     queryKey: ['item', orgId, id],
-    queryFn: () => itemsApi.getItem(orgId!, id!),
+    queryFn: () => compositeItemsApi.getItem(orgId!, id!),
     enabled: !!id && !!orgId,
   });
 
@@ -77,7 +70,9 @@ export function EditItemPage() {
       type: (rawItem.type || rawItem.product_type || 'Goods') as 'Goods' | 'Service',
       category: (rawItem.category as string) || '',
       hsnCode: rawItem.hsnCode || rawItem.hsn_or_sac || '',
-      itemType: 'Single Item',
+      itemType: (rawItem.itemType || rawItem.item_type || 'Composite Item') as
+        | 'Single Item'
+        | 'Contains Variants',
       unit: rawItem.unit || '',
       stockingUomId: rawItem.stockingUomId ?? null,
       sku: rawItem.sku || '',
@@ -119,24 +114,17 @@ export function EditItemPage() {
   }
 
   const updateMutation = useMutation({
-    mutationFn: (data: ItemFormData) => itemsApi.updateItem({ orgId: orgId!, id: id!, data }),
+    mutationFn: (data: Partial<ItemFormData>) =>
+      compositeItemsApi.updateItem({
+        orgId: orgId!,
+        id: id!,
+        data: data as UpdateCompositeItemDto,
+      }),
     onSuccess: async () => {
-      // Upload images if there are any
-      if (frontImageFile || rearImageFile || otherImageFiles.length > 0) {
-        const formDataUpload = new FormData();
-        if (frontImageFile) formDataUpload.append('frontImage', frontImageFile);
-        if (rearImageFile) formDataUpload.append('rearImage', rearImageFile);
-        otherImageFiles.forEach((file) => formDataUpload.append('images', file));
-        try {
-          await itemsApi.uploadImages(orgId!, id!, formDataUpload);
-        } catch (error) {
-          console.error('Failed to upload images:', error);
-          alert('Item updated, but image upload failed.');
-        }
-      }
-      queryClient.invalidateQueries({ queryKey: ['items', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['compositeItems', orgId] });
       queryClient.invalidateQueries({ queryKey: ['item', orgId, id] });
-      navigate(`/organizations/${orgId}/items`);
+      queryClient.invalidateQueries({ queryKey: ['itemActivities', orgId, id] });
+      navigate(`/organizations/${orgId}/composite-items`);
     },
     onError: (error) => {
       const err = error as {
@@ -198,42 +186,6 @@ export function EditItemPage() {
     }
   };
 
-  const handleFrontImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      if (e.target.files[0].size > 2 * 1024 * 1024) {
-        alert('Front image exceeds 2 MB limit.');
-        return;
-      }
-      setFrontImageFile(e.target.files[0]);
-    }
-  };
-
-  const handleRearImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      if (e.target.files[0].size > 2 * 1024 * 1024) {
-        alert('Rear image exceeds 2 MB limit.');
-        return;
-      }
-      setRearImageFile(e.target.files[0]);
-    }
-  };
-
-  const handleOtherImagesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const files = Array.from(e.target.files);
-      const validFiles = files.filter((f) => f.size <= 2 * 1024 * 1024);
-      if (validFiles.length < files.length) {
-        alert('Some images were ignored because they exceed the 2 MB limit.');
-      }
-      if (validFiles.length > 3) {
-        alert('You can only select up to 3 additional images.');
-        setOtherImageFiles(validFiles.slice(0, 3));
-      } else {
-        setOtherImageFiles(validFiles);
-      }
-    }
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -265,6 +217,7 @@ export function EditItemPage() {
         margin: 0,
         background: '#fff',
         width: '100%',
+        height: '34px',
         minHeight: '100vh',
         display: 'block',
         paddingBottom: '80px',
@@ -273,7 +226,7 @@ export function EditItemPage() {
       <div style={{ padding: '16px 24px' }}>
         <button
           type="button"
-          onClick={() => navigate(`/organizations/${orgId}/items`)}
+          onClick={() => navigate(`/organizations/${orgId}/composite-items`)}
           style={{
             background: 'none',
             border: 'none',
@@ -288,10 +241,12 @@ export function EditItemPage() {
             fontWeight: 500,
           }}
         >
-          <ArrowLeft size={14} /> Back to Items
+          <ArrowLeft size={14} /> Back to Composite Items
         </button>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h1 style={{ fontSize: '22px', fontWeight: 400, margin: 0, color: '#000' }}>Edit Item</h1>
+          <h1 style={{ fontSize: '22px', fontWeight: 400, margin: 0, color: '#000' }}>
+            Edit Composite Item
+          </h1>
         </div>
       </div>
 
@@ -306,20 +261,20 @@ export function EditItemPage() {
               style={{
                 flex: 1,
                 minWidth: '480px',
-                maxWidth: '640px',
                 background: '#f8fafc',
                 padding: '24px',
                 borderRadius: '8px',
                 border: '1px solid #e2e8f0',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '14px',
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                columnGap: '40px',
+                rowGap: '14px',
               }}
             >
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
+                  gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
                   gap: '12px',
                 }}
@@ -332,6 +287,7 @@ export function EditItemPage() {
                     onChange={handleChange}
                     style={{
                       width: '100%',
+                      height: '34px',
                       padding: '6px 10px',
                       borderRadius: '4px',
                       border: errors.name ? '1px solid #ef4444' : '1px solid #d1d5db',
@@ -351,62 +307,97 @@ export function EditItemPage() {
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
-                  alignItems: 'center',
+                  gridTemplateColumns: '140px 524px',
+                  alignItems: 'flex-start',
                   gap: '12px',
                 }}
               >
-                <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Type</label>
-                <div style={{ display: 'flex', gap: 16 }}>
+                <label
+                  style={{ fontSize: 13, color: '#ef4444', fontWeight: 500, paddingTop: '2px' }}
+                >
+                  Item Type*
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   <label
                     style={{
                       display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      fontSize: 12,
+                      alignItems: 'flex-start',
+                      gap: 8,
                       cursor: 'pointer',
                     }}
                   >
                     <input
                       type="radio"
-                      name="type"
-                      value="Goods"
-                      checked={formData.type === 'Goods'}
-                      onChange={() => handleRadioChange('type', 'Goods')}
-                    />{' '}
-                    Goods
+                      name="customFields.compositeItemType"
+                      value="Assembly Item"
+                      checked={
+                        formData.customFields?.compositeItemType === 'Assembly Item' ||
+                        !formData.customFields?.compositeItemType
+                      }
+                      onChange={(e) => {
+                        setFormData((prev) => ({
+                          ...prev,
+                          customFields: {
+                            ...prev.customFields,
+                            compositeItemType: e.target.value,
+                          },
+                        }));
+                      }}
+                      style={{ marginTop: '2px' }}
+                    />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#000' }}>
+                        Assembly Item
+                      </div>
+                      <div style={{ fontSize: 12, color: '#64748b', marginTop: '2px' }}>
+                        A group of items combined together to be tracked and managed as a single
+                        item.
+                      </div>
+                    </div>
                   </label>
                   <label
                     style={{
                       display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      fontSize: 12,
+                      alignItems: 'flex-start',
+                      gap: 8,
                       cursor: 'pointer',
                     }}
                   >
                     <input
                       type="radio"
-                      name="type"
-                      value="Service"
-                      checked={formData.type === 'Service'}
-                      onChange={() => handleRadioChange('type', 'Service')}
-                    />{' '}
-                    Service
+                      name="customFields.compositeItemType"
+                      value="Kit Item"
+                      checked={formData.customFields?.compositeItemType === 'Kit Item'}
+                      onChange={(e) => {
+                        setFormData((prev) => ({
+                          ...prev,
+                          customFields: {
+                            ...prev.customFields,
+                            compositeItemType: e.target.value,
+                          },
+                        }));
+                      }}
+                      style={{ marginTop: '2px' }}
+                    />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#000' }}>Kit Item</div>
+                      <div style={{ fontSize: 12, color: '#64748b', marginTop: '2px' }}>
+                        Individual items sold together as one kit.
+                      </div>
+                    </div>
                   </label>
                 </div>
               </div>
 
-
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
+                  gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
                   gap: '12px',
                 }}
               >
-                <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>SKU</label>
+                <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>SKU*</label>
                 <div>
                   <input
                     name="sku"
@@ -414,6 +405,7 @@ export function EditItemPage() {
                     onChange={handleChange}
                     style={{
                       width: '100%',
+                      height: '34px',
                       padding: '6px 10px',
                       borderRadius: '4px',
                       border: errors.sku ? '1px solid #ef4444' : '1px solid #d1d5db',
@@ -429,7 +421,7 @@ export function EditItemPage() {
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
+                  gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
                   gap: '12px',
                 }}
@@ -445,12 +437,12 @@ export function EditItemPage() {
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
+                  gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
                   gap: '12px',
                 }}
               >
-                <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Unit</label>
+                <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Unit*</label>
                 <div>
                   <div
                     style={{
@@ -458,6 +450,7 @@ export function EditItemPage() {
                       border: errors.unit ? '1px solid #ef4444' : '1px solid #d1d5db',
                       borderRadius: '4px',
                       width: '100%',
+                      height: '34px',
                     }}
                   >
                     <div
@@ -480,16 +473,6 @@ export function EditItemPage() {
                     <div style={{ flex: 1 }}>
                       <Select
                         value={formData.stockingUomId ?? ''}
-                        /**
-                         * 🔴 SETS BOTH. `stockingUomId` is the FK the stock
-                         * ledger denominates every lot, challan line and balance
-                         * in — one item, one stocking unit (jobwork §5.1) —
-                         * while `unit` is the legacy free string this form has
-                         * always shown and the lists still render. One dropdown
-                         * writes them together so they cannot drift; a second
-                         * "unit" control beside the first would be the confusion,
-                         * not the fix.
-                         */
                         onChange={(val) => {
                           const picked = uoms.find((u) => u.id === val);
                           setFormData((prev) => ({
@@ -500,10 +483,6 @@ export function EditItemPage() {
                         }}
                         options={[
                           ...uoms.map((u) => ({ value: u.id, label: u.unitName })),
-                          // An item saved before this field existed carries only
-                          // the legacy name, and no id to select by. Show it so
-                          // the box is not mysteriously blank; picking anything
-                          // replaces it with a real unit.
                           ...(formData.unit && !uoms.some((u) => u.id === formData.stockingUomId)
                             ? [{ value: '', label: `${formData.unit} — no stocking unit set` }]
                             : []),
@@ -522,6 +501,7 @@ export function EditItemPage() {
                               alignItems: 'center',
                               gap: '8px',
                               width: '100%',
+                              height: '34px',
                               padding: '8px 12px',
                               color: '#0062ff',
                               background: 'transparent',
@@ -548,7 +528,7 @@ export function EditItemPage() {
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
+                  gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
                   gap: '12px',
                 }}
@@ -560,218 +540,13 @@ export function EditItemPage() {
                   onChange={handleChange}
                   style={{
                     width: '100%',
+                    height: '34px',
                     padding: '6px 10px',
                     borderRadius: '4px',
                     border: '1px solid #d1d5db',
                     fontSize: 12,
                   }}
                 />
-              </div>
-            </div>
-
-            {/* Image Upload Area */}
-            <div
-              style={{
-                width: '360px',
-                border: '1px solid #e2e8f0',
-                borderRadius: '8px',
-                padding: '16px',
-                display: 'flex',
-                gap: '12px',
-                background: '#f8fafc',
-              }}
-            >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
-                <div>
-                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>
-                    Front View
-                  </div>
-                  <input
-                    type="file"
-                    ref={frontImageRef}
-                    onChange={handleFrontImageChange}
-                    style={{ display: 'none' }}
-                    accept="image/*"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => frontImageRef.current?.click()}
-                    style={{
-                      width: '100%',
-                      padding: '16px 8px',
-                      border: '1px dashed #cbd5e1',
-                      borderRadius: '6px',
-                      background: '#ffffff',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: '50%',
-                        background: '#0062ff',
-                        color: 'white',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 12,
-                      }}
-                    >
-                      ↑
-                    </div>
-                    <div
-                      style={{
-                        fontWeight: 500,
-                        fontSize: 12,
-                        color: '#1e293b',
-                        textAlign: 'center',
-                        wordBreak: 'break-all',
-                      }}
-                    >
-                      {frontImageFile
-                        ? frontImageFile.name
-                        : formData.frontImage
-                          ? (formData.frontImage as ItemImageAttachment).name ||
-                            'Existing Front Image'
-                          : 'Upload Front Image'}
-                    </div>
-                  </button>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>
-                    Rear View
-                  </div>
-                  <input
-                    type="file"
-                    ref={rearImageRef}
-                    onChange={handleRearImageChange}
-                    style={{ display: 'none' }}
-                    accept="image/*"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => rearImageRef.current?.click()}
-                    style={{
-                      width: '100%',
-                      padding: '16px 8px',
-                      border: '1px dashed #cbd5e1',
-                      borderRadius: '6px',
-                      background: '#ffffff',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: '50%',
-                        background: '#0062ff',
-                        color: 'white',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 12,
-                      }}
-                    >
-                      ↑
-                    </div>
-                    <div
-                      style={{
-                        fontWeight: 500,
-                        fontSize: 12,
-                        color: '#1e293b',
-                        textAlign: 'center',
-                        wordBreak: 'break-all',
-                      }}
-                    >
-                      {rearImageFile
-                        ? rearImageFile.name
-                        : formData.rearImage
-                          ? (formData.rearImage as ItemImageAttachment).name ||
-                            'Existing Rear Image'
-                          : 'Upload Rear Image'}
-                    </div>
-                  </button>
-                </div>
-              </div>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>
-                  Other Images
-                </div>
-                <input
-                  type="file"
-                  ref={otherImagesRef}
-                  onChange={handleOtherImagesChange}
-                  style={{ display: 'none' }}
-                  accept="image/*"
-                  multiple
-                />
-                <button
-                  type="button"
-                  onClick={() => otherImagesRef.current?.click()}
-                  style={{
-                    width: '100%',
-                    flex: 1,
-                    minHeight: '110px',
-                    padding: '12px 8px',
-                    border: '1px dashed #cbd5e1',
-                    borderRadius: '6px',
-                    background: '#ffffff',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                    cursor: 'pointer',
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: '50%',
-                      background: '#0062ff',
-                      color: 'white',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 12,
-                    }}
-                  >
-                    ↑
-                  </div>
-                  <div
-                    style={{
-                      fontWeight: 500,
-                      fontSize: 12,
-                      color: '#1e293b',
-                      textAlign: 'center',
-                      wordBreak: 'break-all',
-                    }}
-                  >
-                    {otherImageFiles.length > 0
-                      ? `${otherImageFiles.length} new files selected`
-                      : formData.images && formData.images.length > 0
-                        ? `${formData.images.length} existing image(s)`
-                        : 'Drag & Drop Images (Max 3)'}
-                  </div>
-                  <div
-                    style={{ fontSize: 10, color: '#64748b', textAlign: 'center', lineHeight: 1.3 }}
-                  >
-                    You can add up to 3 images, each not exceeding 2 MB.
-                  </div>
-                </button>
               </div>
             </div>
           </div>
@@ -791,154 +566,176 @@ export function EditItemPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
               {/* Sales Information */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    cursor: 'pointer',
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: '#1e293b',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    name="isSalesInfo"
-                    checked={formData.isSalesInfo}
-                    onChange={handleChange}
-                  />
-                  Sales Information
-                </label>
-                {formData.isSalesInfo && (
-                  <div
-                    style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}
-                  >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>
-                        Selling Price*
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        name="sellingPrice"
-                        value={formData.sellingPrice || ''}
-                        onChange={handleChange}
-                        style={{
-                          width: '100%',
-                          padding: '6px 10px',
-                          borderRadius: '4px',
-                          border: errors.sellingPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
-                          fontSize: 12,
-                        }}
-                      />
-                      {errors.sellingPrice && (
-                        <span
-                          style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}
-                        >
-                          {errors.sellingPrice}
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
-                        Sales Description
-                      </label>
-                      <textarea
-                        name="salesDescription"
-                        value={formData.salesDescription || ''}
-                        onChange={(e) =>
-                          handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
-                        }
-                        rows={3}
-                        style={{
-                          width: '100%',
-                          padding: '6px 10px',
-                          borderRadius: '4px',
-                          border: '1px solid #d1d5db',
-                          fontSize: 12,
-                          resize: 'vertical',
-                        }}
-                      />
-                    </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
+                    Sales Information
                   </div>
-                )}
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      cursor: 'pointer',
+                      fontSize: 13,
+                      fontWeight: 500,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      name="isSalesInfo"
+                      checked={formData.isSalesInfo}
+                      onChange={handleChange}
+                    />
+                    Sellable
+                  </label>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', alignItems: 'center', gap: 12 }}>
+                    <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>
+                      Selling Price*
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      name="sellingPrice"
+                      value={formData.sellingPrice || ''}
+                      onChange={handleChange}
+                      disabled={!formData.isSalesInfo}
+                      style={{
+                        width: '100%',
+                        height: '34px',
+                        padding: '6px 10px',
+                        borderRadius: '4px',
+                        border: errors.sellingPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
+                        fontSize: 12,
+                        backgroundColor: formData.isSalesInfo ? '#fff' : '#f1f5f9',
+                        color: formData.isSalesInfo ? '#000' : '#94a3b8',
+                        cursor: formData.isSalesInfo ? 'text' : 'not-allowed',
+                      }}
+                    />
+                    {errors.sellingPrice && (
+                      <span
+                        style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}
+                      >
+                        {errors.sellingPrice}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', alignItems: 'flex-start', gap: 12 }}>
+                    <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500, paddingTop: '8px' }}>
+                      Sales Description
+                    </label>
+                    <textarea
+                      name="salesDescription"
+                      value={formData.salesDescription || ''}
+                      onChange={(e) =>
+                        handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
+                      }
+                      rows={3}
+                      disabled={!formData.isSalesInfo}
+                      style={{
+                        width: '100%',
+                        height: '34px',
+                        padding: '6px 10px',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        fontSize: 12,
+                        resize: 'vertical',
+                        backgroundColor: formData.isSalesInfo ? '#fff' : '#f1f5f9',
+                        color: formData.isSalesInfo ? '#000' : '#94a3b8',
+                        cursor: formData.isSalesInfo ? 'text' : 'not-allowed',
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Purchase Information */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    cursor: 'pointer',
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: '#1e293b',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    name="isPurchaseInfo"
-                    checked={formData.isPurchaseInfo}
-                    onChange={handleChange}
-                  />
-                  Purchase Information
-                </label>
-                {formData.isPurchaseInfo && (
-                  <div
-                    style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}
-                  >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>
-                        Cost Price*
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        name="costPrice"
-                        value={formData.costPrice || ''}
-                        onChange={handleChange}
-                        style={{
-                          width: '100%',
-                          padding: '6px 10px',
-                          borderRadius: '4px',
-                          border: errors.costPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
-                          fontSize: 12,
-                        }}
-                      />
-                      {errors.costPrice && (
-                        <span
-                          style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}
-                        >
-                          {errors.costPrice}
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
-                        Purchase Description
-                      </label>
-                      <textarea
-                        name="purchaseDescription"
-                        value={formData.purchaseDescription || ''}
-                        onChange={(e) =>
-                          handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
-                        }
-                        rows={3}
-                        style={{
-                          width: '100%',
-                          padding: '6px 10px',
-                          borderRadius: '4px',
-                          border: '1px solid #d1d5db',
-                          fontSize: 12,
-                          resize: 'vertical',
-                        }}
-                      />
-                    </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
+                    Purchase Information
                   </div>
-                )}
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      cursor: 'pointer',
+                      fontSize: 13,
+                      fontWeight: 500,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      name="isPurchaseInfo"
+                      checked={formData.isPurchaseInfo}
+                      onChange={handleChange}
+                    />
+                    Purchasable
+                  </label>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', alignItems: 'center', gap: 12 }}>
+                    <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>
+                      Cost Price*
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      name="costPrice"
+                      value={formData.costPrice || ''}
+                      onChange={handleChange}
+                      disabled={!formData.isPurchaseInfo}
+                      style={{
+                        width: '100%',
+                        height: '34px',
+                        padding: '6px 10px',
+                        borderRadius: '4px',
+                        border: errors.costPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
+                        fontSize: 12,
+                        backgroundColor: formData.isPurchaseInfo ? '#fff' : '#f1f5f9',
+                        color: formData.isPurchaseInfo ? '#000' : '#94a3b8',
+                        cursor: formData.isPurchaseInfo ? 'text' : 'not-allowed',
+                      }}
+                    />
+                    {errors.costPrice && (
+                      <span
+                        style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}
+                      >
+                        {errors.costPrice}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', alignItems: 'flex-start', gap: 12 }}>
+                    <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500, paddingTop: '8px' }}>
+                      Purchase Description
+                    </label>
+                    <textarea
+                      name="purchaseDescription"
+                      value={formData.purchaseDescription || ''}
+                      onChange={(e) =>
+                        handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
+                      }
+                      rows={3}
+                      disabled={!formData.isPurchaseInfo}
+                      style={{
+                        width: '100%',
+                        height: '34px',
+                        padding: '6px 10px',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        fontSize: 12,
+                        resize: 'vertical',
+                        backgroundColor: formData.isPurchaseInfo ? '#fff' : '#f1f5f9',
+                        color: formData.isPurchaseInfo ? '#000' : '#94a3b8',
+                        cursor: formData.isPurchaseInfo ? 'text' : 'not-allowed',
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1060,6 +857,7 @@ export function EditItemPage() {
                         onChange={handleChange}
                         style={{
                           width: '100%',
+                          height: '34px',
                           minWidth: '160px',
                           padding: '6px 10px',
                           borderRadius: '4px',
@@ -1080,6 +878,7 @@ export function EditItemPage() {
                         onChange={handleChange}
                         style={{
                           width: '100%',
+                          height: '34px',
                           minWidth: '200px',
                           padding: '6px 10px',
                           borderRadius: '4px',
@@ -1166,7 +965,7 @@ export function EditItemPage() {
             <button
               type="button"
               disabled={updateMutation.isPending}
-              onClick={() => navigate(`/organizations/${orgId}/items`)}
+              onClick={() => navigate(`/organizations/${orgId}/composite-items`)}
               style={{
                 padding: '8px 24px',
                 background: 'white',
@@ -1182,7 +981,14 @@ export function EditItemPage() {
             </button>
           </div>
         </form>
+        <div style={{ marginTop: 40, borderTop: '1px solid #e5e7eb', paddingTop: 40 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 600, color: '#111827', marginBottom: 24 }}>
+            Recipe Components
+          </h2>
+          <CompositeItemsList itemId={id!} />
+        </div>
       </div>
+
       <UomFormModal
         orgId={orgId!}
         isOpen={isUomModalOpen}

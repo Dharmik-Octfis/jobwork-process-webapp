@@ -1,34 +1,34 @@
 model Item {
-  id                       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId           String              @map("organization_id") @db.Uuid
+  id                       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId           String   @map("organization_id") @db.Uuid
   name                     String
-  type                     String              @default("Goods") @db.VarChar(50)
+  type                     String   @default("Goods") @db.VarChar(50)
   category                 String?
-  hsnCode                  String?             @map("hsn_code")
-  itemType                 String              @default("Single Item") @map("item_type") @db.VarChar(50)
+  hsnCode                  String?  @map("hsn_code")
+  itemType                 String   @default("Single Item") @map("item_type") @db.VarChar(50)
   unit                     String
   sku                      String
-  isSalesInfo              Boolean             @default(false) @map("is_sales_info")
-  isActive                 Boolean             @default(true) @map("is_active")
-  sellingPrice             Decimal?            @map("selling_price") @db.Decimal(10, 2)
-  salesDescription         String?             @map("sales_description")
-  isPurchaseInfo           Boolean             @default(false) @map("is_purchase_info")
-  costPrice                Decimal?            @map("cost_price") @db.Decimal(10, 2)
-  purchaseDescription      String?             @map("purchase_description")
+  isSalesInfo              Boolean  @default(false) @map("is_sales_info")
+  isActive                 Boolean  @default(true) @map("is_active")
+  sellingPrice             Decimal? @map("selling_price") @db.Decimal(10, 2)
+  salesDescription         String?  @map("sales_description")
+  isPurchaseInfo           Boolean  @default(false) @map("is_purchase_info")
+  costPrice                Decimal? @map("cost_price") @db.Decimal(10, 2)
+  purchaseDescription      String?  @map("purchase_description")
   packaging                String?
-  createdAt                DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  createdBy                String?             @map("created_by") @db.Uuid
-  isDeleted                Boolean             @default(false) @map("is_deleted")
-  updatedBy                String?             @map("updated_by") @db.Uuid
-  customFields             Json                @default("{}") @map("custom_fields")
-  inventoryTracking        String?             @map("inventory_tracking")
-  trackInventory           Boolean             @default(false) @map("track_inventory")
-  openingStock             Decimal?            @map("opening_stock") @db.Decimal(10, 2)
-  openingStockValuePerUnit Decimal?            @map("opening_stock_value_per_unit") @db.Decimal(10, 2)
-  frontImage               Json?               @map("front_image")
-  images                   Json?               @default("[]")
-  rearImage                Json?               @map("rear_image")
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy                String?  @map("created_by") @db.Uuid
+  isDeleted                Boolean  @default(false) @map("is_deleted")
+  updatedBy                String?  @map("updated_by") @db.Uuid
+  customFields             Json     @default("{}") @map("custom_fields")
+  inventoryTracking        String?  @map("inventory_tracking")
+  trackInventory           Boolean  @default(false) @map("track_inventory")
+  openingStock             Decimal? @map("opening_stock") @db.Decimal(10, 2)
+  openingStockValuePerUnit Decimal? @map("opening_stock_value_per_unit") @db.Decimal(10, 2)
+  frontImage               Json?    @map("front_image")
+  images                   Json?    @default("[]")
+  rearImage                Json?    @map("rear_image")
 
   /// 🔴 THE stocking unit, as a real FK. `unit` above is the legacy free-text
   /// string it was backfilled from and is still what the item form shows; this is
@@ -60,31 +60,38 @@ model Item {
   /// line. Nothing reads it yet.
   defaultRouteId String? @map("default_route_id") @db.Uuid
 
-  activities               ItemActivity[]
-  createdByUser            User?               @relation("ItemCreatedBy", fields: [createdBy], references: [id])
-  organization             Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  updatedByUser            User?               @relation("ItemUpdatedBy", fields: [updatedBy], references: [id])
-  stockingUom              UnitOfMeasurement?  @relation("ItemStockingUom", fields: [stockingUomId], references: [id])
-  purchaseOrderItems       PurchaseOrderItem[]
-  lots                     Lot[]
-  ledgerEntries            StockLedgerEntry[]
+  /// Rows where THIS item is the composite — its own recipe.
+  recipeComponents CompositeItemComponent[] @relation("CompositeRecipe")
+  /// Rows where THIS item is a component — every composite that uses it.
+  usedInComposites CompositeItemComponent[] @relation("CompositeUsage")
+  assembliesAsComposite ItemAssembly[]      @relation("ItemAssemblyComposite")
+  assemblyLines         ItemAssemblyLine[]  @relation("ItemAssemblyLineItem")
 
-  routeStepIssues       RouteStep[]    @relation("RouteStepIssueItem")
-  routeStepReceipts     RouteStep[]    @relation("RouteStepReceiveItem")
-  jobOrderInputs        JobOrder[]     @relation("JobOrderInputItem")
-  jobOrderStepIssues    JobOrderStep[] @relation("JobOrderStepIssueItem")
-  jobOrderStepReceipts  JobOrderStep[] @relation("JobOrderStepReceiveItem")
-  jobIssues             JobIssue[]     @relation("JobIssueItem")
-  jobReceiptOutputs     JobReceipt[]   @relation("JobReceiptOutputItem")
+  activities         ItemActivity[]
+  createdByUser      User?               @relation("ItemCreatedBy", fields: [createdBy], references: [id])
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedByUser      User?               @relation("ItemUpdatedBy", fields: [updatedBy], references: [id])
+  stockingUom        UnitOfMeasurement?  @relation("ItemStockingUom", fields: [stockingUomId], references: [id])
+  purchaseOrderItems PurchaseOrderItem[]
+  lots               Lot[]
+  ledgerEntries      StockLedgerEntry[]
+
+  routeStepIssues      RouteStep[]    @relation("RouteStepIssueItem")
+  routeStepReceipts    RouteStep[]    @relation("RouteStepReceiveItem")
+  jobOrderInputs       JobOrder[]     @relation("JobOrderInputItem")
+  jobOrderStepIssues   JobOrderStep[] @relation("JobOrderStepIssueItem")
+  jobOrderStepReceipts JobOrderStep[] @relation("JobOrderStepReceiveItem")
+  jobIssues            JobIssue[]     @relation("JobIssueItem")
+  jobReceiptOutputs    JobReceipt[]   @relation("JobReceiptOutputItem")
 
   /// Multi-item steps (domain §5.7). The seven above are the single-item columns
   /// they replace; those go in Migration B.
-  routeStepInputRows      RouteStepInput[]     @relation("RouteStepInputItem")
-  routeStepOutputRows     RouteStepOutput[]    @relation("RouteStepOutputItem")
-  jobOrderStepInputRows   JobOrderStepInput[]  @relation("JobOrderStepInputItem")
-  jobOrderStepOutputRows  JobOrderStepOutput[] @relation("JobOrderStepOutputItem")
-  jobIssueLineItems       JobIssueLine[]       @relation("JobIssueLineItem")
-  jobReceiptOutputRows    JobReceiptOutput[]   @relation("JobReceiptOutputRowItem")
+  routeStepInputRows     RouteStepInput[]     @relation("RouteStepInputItem")
+  routeStepOutputRows    RouteStepOutput[]    @relation("RouteStepOutputItem")
+  jobOrderStepInputRows  JobOrderStepInput[]  @relation("JobOrderStepInputItem")
+  jobOrderStepOutputRows JobOrderStepOutput[] @relation("JobOrderStepOutputItem")
+  jobIssueLineItems      JobIssueLine[]       @relation("JobIssueLineItem")
+  jobReceiptOutputRows   JobReceiptOutput[]   @relation("JobReceiptOutputRowItem")
 
   @@map("items")
 }
@@ -117,12 +124,16 @@ model UnitOfMeasurement {
   jobIssueUoms            JobIssue[]     @relation("JobIssueUom")
   jobReceiptOutputUoms    JobReceipt[]   @relation("JobReceiptOutputUom")
 
-  routeStepInputUoms     RouteStepInput[]     @relation("RouteStepInputUom")
-  routeStepOutputUoms    RouteStepOutput[]    @relation("RouteStepOutputUom")
-  jobOrderStepInputUoms  JobOrderStepInput[]  @relation("JobOrderStepInputUom")
-  jobOrderStepOutputUoms JobOrderStepOutput[] @relation("JobOrderStepOutputUom")
-  jobIssueLineUoms       JobIssueLine[]       @relation("JobIssueLineUom")
-  jobReceiptOutputRowUoms JobReceiptOutput[]  @relation("JobReceiptOutputRowUom")
+  routeStepInputUoms      RouteStepInput[]     @relation("RouteStepInputUom")
+  routeStepOutputUoms     RouteStepOutput[]    @relation("RouteStepOutputUom")
+  jobOrderStepInputUoms   JobOrderStepInput[]  @relation("JobOrderStepInputUom")
+  jobOrderStepOutputUoms  JobOrderStepOutput[] @relation("JobOrderStepOutputUom")
+  jobIssueLineUoms        JobIssueLine[]       @relation("JobIssueLineUom")
+  jobReceiptOutputRowUoms JobReceiptOutput[]   @relation("JobReceiptOutputRowUom")
+
+  compositeComponentRows CompositeItemComponent[] @relation("CompositeComponentUom")
+  itemAssemblies         ItemAssembly[]           @relation("ItemAssemblyCompositeUom")
+  itemAssemblyLines      ItemAssemblyLine[]       @relation("ItemAssemblyLineUom")
 
   @@unique([organizationId, unitName])
   @@map("units_of_measurement")

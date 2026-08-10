@@ -43,6 +43,9 @@ export const ENTITY_TYPES = [
   'job_receipt',
   'rejection_reason',
   'lot',
+  'composite_item_component',
+  'item_assembly',
+  'item_assembly_line',
 ] as const;
 export type EntityType = (typeof ENTITY_TYPES)[number];
 

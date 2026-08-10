@@ -160,6 +160,7 @@ import { authenticate } from '../../middlewares/authenticate.ts';
 import { tenantContext } from '../../middlewares/tenantContext.ts';
 import { requirePermission } from '../../middlewares/authorize.ts';
 import { validateBody } from '../../middlewares/validate.ts';
+import { compositeItemsRouter } from '../inventory/composite-items/compositeItems.routes.ts';
 
 const router = Router({ mergeParams: true });
 router.use(authenticate, tenantContext);
@@ -193,5 +194,7 @@ router.post(
   ]),
   itemsController.uploadImages,
 );
+
+router.use('/:itemId/components', compositeItemsRouter);
 
 export const itemsRouter = router;

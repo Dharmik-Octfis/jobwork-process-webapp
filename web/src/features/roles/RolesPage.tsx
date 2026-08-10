@@ -23,6 +23,7 @@ export function RolesPage() {
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<Role | 'new' | null>(null);
+  
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   /** '' = a root of the org chart. Structure only — a parent grants its children

@@ -87,6 +87,7 @@ const MODULE_GROUPS: readonly {
     resources: [
       { resource: 'item', label: 'Items' },
       { resource: 'item_category', label: 'Item Categories' },
+      { resource: 'composite_item', label: 'Composite Items' },
     ],
   },
   {
