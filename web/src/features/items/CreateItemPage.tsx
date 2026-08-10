@@ -39,8 +39,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
         type: (itemToClone.type || itemToClone.product_type || 'Goods') as 'Goods' | 'Service',
         category: itemToClone.category || '',
         hsnCode: itemToClone.hsnCode || itemToClone.hsn_or_sac || '',
-        itemType: (itemToClone.itemType || itemToClone.item_type || 'Single Item') as
-          'Single Item' | 'Contains Variants',
+        itemType: 'Single Item',
         unit: itemToClone.unit || '',
         stockingUomId: itemToClone.stockingUomId ?? null,
         sku: itemToClone.sku || '',

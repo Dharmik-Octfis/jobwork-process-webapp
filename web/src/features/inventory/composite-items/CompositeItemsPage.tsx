@@ -1,18 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { itemsApi } from './items.api.ts';
-import { Plus, Package, SlidersHorizontal, ShoppingBag } from 'lucide-react';
+import { compositeItemsApi } from './compositeItems.api.ts';
+import { Plus, Package, SlidersHorizontal } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
-import { ItemDetail } from './ItemDetail';
-import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
-import { Pagination } from '../../components/ui/Pagination';
-import { useListSearch } from '../../hooks/useListSearch';
-import { useListCount } from '../../hooks/useListCount';
-import { useListColumns } from '../../hooks/useListColumns';
-import { CustomizeColumnsModal } from '../../components/ui/CustomizeColumnsModal';
-import { ListFilterDropdown } from '../../components/ui/ListFilterDropdown';
-import { CUSTOM_FIELD_PREFIX } from '../list-views/listViews.api';
-import type { Item } from './items.schemas.ts';
+import { ItemDetail } from '../../items/ItemDetail';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
+import { Pagination } from '../../../components/ui/Pagination';
+import { useListSearch } from '../../../hooks/useListSearch';
+import { useListCount } from '../../../hooks/useListCount';
+import { useListColumns } from '../../../hooks/useListColumns';
+import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
+import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
+import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
+import type { Item } from '../../items/items.schemas';
 
 /**
  * How each selectable column renders. Keys match the backend catalog
@@ -42,14 +42,6 @@ function renderItemCell(item: Item, key: string): React.ReactNode {
       </span>
     );
   }
-  if (key === 'name') {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-        {item.item_type === 'Composite Item' && <ShoppingBag size={14} color="#64748b" />}
-        {item.name}
-      </div>
-    );
-  }
   const value = (item as unknown as Record<string, unknown>)[key];
   if (value === null || value === undefined || value === '') return '-';
   if (key === 'createdAt' || key === 'updatedAt')
@@ -57,7 +49,7 @@ function renderItemCell(item: Item, key: string): React.ReactNode {
   return String(value);
 }
 
-export function ItemsList() {
+export function CompositeItemsPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -67,9 +59,9 @@ export function ItemsList() {
   const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['items', orgId, search, filter, page, perPage],
+    queryKey: ['compositeItems', orgId, search, filter, page, perPage],
     queryFn: () =>
-      itemsApi.getItems(orgId!, { search: search || undefined, filter, page, perPage }),
+      compositeItemsApi.getItems(orgId!, { search: search || undefined, filter, page, perPage }),
     enabled: Boolean(orgId),
     placeholderData: (prev) => prev,
   });
@@ -83,7 +75,7 @@ export function ItemsList() {
     isCounting,
     request: requestCount,
   } = useListCount(['items-count', orgId, search, filter], () =>
-    itemsApi.getItemCount(orgId!, { search: search || undefined, filter }),
+    compositeItemsApi.getItemCount(orgId!, { search: search || undefined, filter }),
   );
 
   // Column layout ("Customize Columns") — per user, per org, per module.
@@ -94,9 +86,9 @@ export function ItemsList() {
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => itemsApi.deleteItem(orgId!, id),
+    mutationFn: (id: string) => compositeItemsApi.deleteItem(orgId!, id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['items', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['compositeItems', orgId] });
       setItemToDelete(null);
     },
   });
@@ -171,7 +163,7 @@ export function ItemsList() {
                 </button>
               )}
               <button
-                onClick={() => navigate(`/organizations/${orgId}/items/new`)}
+                onClick={() => navigate(`/organizations/${orgId}/composite-items/new`)}
                 style={{
                   background: '#186337',
                   color: 'white',
@@ -228,16 +220,16 @@ export function ItemsList() {
                 <h2
                   style={{ fontSize: 20, fontWeight: 600, color: '#1e293b', margin: '0 0 8px 0' }}
                 >
-                  No Items Yet
+                  No composite items found
                 </h2>
                 <p
                   style={{ color: '#64748b', maxWidth: 400, margin: '0 0 24px 0', lineHeight: 1.5 }}
                 >
-                  You haven't added any items yet. Create your first item to start creating
-                  transactions.
+                  Get started by creating a new composite item.
                 </p>
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/items/new`)}
+                  type="button"
+                  onClick={() => navigate(`/organizations/${orgId}/composite-items/new`)}
                   style={{
                     background: '#28a745',
                     color: 'white',
@@ -294,13 +286,9 @@ export function ItemsList() {
                             fontWeight: 500,
                             color: '#1e293b',
                             marginBottom: '4px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
                           }}
                         >
-                          {item.item_type === 'Composite Item' && <ShoppingBag size={14} color="#64748b" />}
-                          <span>{item.name}</span>
+                          {item.name}
                         </div>
                         <div style={{ fontSize: '12px', color: '#64748b' }}>SKU: {item.sku}</div>
                       </div>
@@ -393,7 +381,7 @@ export function ItemsList() {
 
       <ConfirmDialog
         isOpen={!!itemToDelete}
-        title="Delete Item"
+        title="Delete Composite Item"
         message="Are you sure you want to delete this item? This action cannot be undone."
         confirmText={deleteMutation.isPending ? 'Deleting...' : 'Delete'}
         onConfirm={() => {

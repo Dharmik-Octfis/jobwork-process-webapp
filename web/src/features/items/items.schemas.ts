@@ -21,7 +21,7 @@ export const itemSchema = z.object({
   hsn_or_sac: z.string().max(50).nullable().optional(),
   taxability_type: z.string().optional(),
   is_taxable: z.boolean().optional(),
-  itemType: z.enum(['Single Item', 'Contains Variants']).default('Single Item'),
+  itemType: z.enum(['Single Item', 'Contains Variants', 'Composite Item']).default('Single Item'),
   item_type: z.string().optional(),
   unit: z.string().default(''),
   sku: z.string().default(''),
@@ -95,7 +95,7 @@ export const itemFormSchema = z.object({
   type: z.enum(['Goods', 'Service']).default('Goods'),
   category: z.string().optional().nullable(),
   hsnCode: z.string().optional().nullable(),
-  itemType: z.enum(['Single Item', 'Contains Variants']).default('Single Item'),
+  itemType: z.enum(['Single Item', 'Contains Variants', 'Composite Item']).default('Single Item'),
   unit: z.string().optional().default(''),
   /**
    * 🔴 The unit the STOCK LEDGER moves this item in. One item, one stocking unit

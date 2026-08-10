@@ -51,6 +51,7 @@ export interface MultiSelectItemModalProps {
   orgId: string;
   onAssign: (selectedItems: MultiSelectItem[]) => void;
   onAddNewItem?: () => void;
+  filter?: string;
 }
 
 export function MultiSelectItemModal({
@@ -59,6 +60,7 @@ export function MultiSelectItemModal({
   orgId,
   onAssign,
   onAddNewItem,
+  filter,
 }: MultiSelectItemModalProps) {
   const [query, setQuery] = useState('');
   const [selectedItemsMap, setSelectedItemsMap] = useState<Map<string, Item>>(new Map());
@@ -89,8 +91,8 @@ export function MultiSelectItemModal({
   }, [query]);
 
   const { data: itemsPage} = useQuery({
-    queryKey: ['items-modal', orgId, debouncedQuery, page],
-    queryFn: () => itemsApi.getItems(orgId, { ...(debouncedQuery ? { search: debouncedQuery } : {}), page, perPage: 50 }),
+    queryKey: ['items-modal', orgId, debouncedQuery, page, filter],
+    queryFn: () => itemsApi.getItems(orgId, { ...(debouncedQuery ? { search: debouncedQuery } : {}), page, perPage: 50, filter }),
     enabled: Boolean(orgId) && isOpen,
     refetchOnWindowFocus: false,
   });

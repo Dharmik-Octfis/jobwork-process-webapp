@@ -283,6 +283,20 @@ export class ItemsService {
         }
       }
 
+      if (item.itemType === 'Composite Item' && rest.itemType) {
+        // Because of the zod schema, rest.itemType can never be 'Composite Item'
+        // So this means the user is trying to change the itemType away from Composite Item
+        const recipeCount = await tx.compositeItemComponent.count({
+          where: { compositeItemId: id, organizationId, isDeleted: false },
+        });
+        const assemblyCount = await tx.itemAssembly.count({
+          where: { compositeItemId: id, organizationId, isDeleted: false },
+        });
+        if (recipeCount > 0 || assemblyCount > 0) {
+          throw ApiError.conflict('Cannot change item type away from Composite Item because it has a recipe or assemblies.');
+        }
+      }
+
       const updatedItem = await tx.item.update({
         where: { id },
         data: {
@@ -335,6 +349,13 @@ export class ItemsService {
         if (user) {
           performedBy = user.fullName;
         }
+      }
+
+      const usageCount = await tx.compositeItemComponent.count({
+        where: { componentItemId: id, organizationId, isDeleted: false },
+      });
+      if (usageCount > 0) {
+        throw ApiError.conflict('Cannot delete item because it is used as a component in a composite item recipe.');
       }
 
       const deletedItem = await tx.item.update({

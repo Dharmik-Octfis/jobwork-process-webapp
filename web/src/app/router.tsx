@@ -163,6 +163,9 @@ const RejectionReasonsList = lazyPage(
 const ItemsList = lazyPage(() => import('../features/items/ItemsList'), 'ItemsList');
 const CreateItemPage = lazyPage(() => import('../features/items/CreateItemPage'), 'CreateItemPage');
 const EditItemPage = lazyPage(() => import('../features/items/EditItemPage'), 'EditItemPage');
+const CompositeItemsPage = lazyPage(() => import('../features/inventory/composite-items/CompositeItemsPage'), 'CompositeItemsPage');
+const CreateCompositeItemPage = lazyPage(() => import('../features/inventory/composite-items/CreateCompositeItemPage'), 'CreateCompositeItemPage');
+const EditCompositeItemPage = lazyPage(() => import('../features/inventory/composite-items/EditCompositeItemPage'), 'EditCompositeItemPage');
 const UnitOfMeasurementPage = lazyPage(
   () => import('../features/inventory/uom/UnitOfMeasurementPage'),
   'UnitOfMeasurementPage',
@@ -290,6 +293,9 @@ export const router = createBrowserRouter([
               { path: '/organizations/:orgId/items', element: <ItemsList /> },
               { path: '/organizations/:orgId/items/new', element: <CreateItemPage /> },
               { path: '/organizations/:orgId/items/:id/edit', element: <EditItemPage /> },
+              { path: '/organizations/:orgId/composite-items', element: <CompositeItemsPage /> },
+              { path: '/organizations/:orgId/composite-items/new', element: <CreateCompositeItemPage /> },
+              { path: '/organizations/:orgId/composite-items/:id/edit', element: <EditCompositeItemPage /> },
             ],
           },
           { path: '/organizations', element: <OrganizationsList /> },

@@ -69,6 +69,10 @@ const TENANT_TABLES = [
   'job_order_step_inputs',
   'job_order_step_outputs',
   'job_receipt_outputs',
+  // Composite Items / Assemblies (Phase 1)
+  'composite_item_components',
+  'item_assemblies',
+  'item_assembly_lines',
 ] as const;
 
 /**
