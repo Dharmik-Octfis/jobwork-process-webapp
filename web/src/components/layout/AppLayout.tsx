@@ -628,6 +628,7 @@ function ModuleNavGroup({
   const isParent = module.children && module.children.length > 0;
   const [localExpanded, setLocalExpanded] = useState(false);
   const [expandedChildId, setExpandedChildId] = useState<string | null>(null);
+  const [isHovered, setIsHovered] = useState(false);
 
   const isExpanded = onToggle ? expandedId === module.id : localExpanded;
 
@@ -647,13 +648,15 @@ function ModuleNavGroup({
       >
         <button
           onClick={handleToggle}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
           style={{
             display: 'flex',
             alignItems: 'center',
             padding: '8px 14px',
             paddingLeft: 14 + depth * 12,
             borderRadius: 'var(--radius-md)',
-            background: 'none',
+            background: isHovered ? 'rgba(255,255,255,0.08)' : 'transparent',
             border: 'none',
             color: 'rgba(255,255,255,0.7)',
             fontWeight: 500,
@@ -677,7 +680,7 @@ function ModuleNavGroup({
             >
               <ChevronRight size={14} />
             </div>
-            <Icon size={16} />
+            {depth === 0 && <Icon size={16} />}
             <span style={{ fontSize: 13, marginLeft: 4 }}>{module.name}</span>
           </div>
         </button>
@@ -716,6 +719,8 @@ function ModuleNavGroup({
     <NavLink
       to={to}
       end={module.code === 'DASHBOARD'}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       style={({ isActive }) => ({
         display: 'flex',
         alignItems: 'center',
@@ -724,14 +729,14 @@ function ModuleNavGroup({
         borderRadius: 'var(--radius-md)',
         textDecoration: 'none',
         color: isActive ? 'white' : 'rgba(255,255,255,0.7)',
-        background: isActive ? '#186337' : 'transparent',
+        background: isActive ? '#186337' : isHovered ? 'rgba(255,255,255,0.08)' : 'transparent',
         fontWeight: isActive ? 600 : 500,
         transition: 'all 0.2s ease',
       })}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', width: '100%' }}>
         <div style={{ width: 16 }}></div>
-        <Icon size={16} />
+        {depth === 0 && <Icon size={16} />}
         <span style={{ fontSize: 13, marginLeft: 4 }}>{module.name}</span>
       </div>
     </NavLink>
