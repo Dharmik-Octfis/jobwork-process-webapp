@@ -92,7 +92,6 @@ export const createRouteSchema = openApiRegistry.register(
     name: z.string().trim().min(1, 'Route name is required.').max(150),
     code: z.string().trim().max(50).nullable().optional(),
     description: z.string().trim().max(2000).nullable().optional(),
-    isActive: z.boolean().optional(),
 
     /**
      * At least one. A route with no steps is not a template of anything — it

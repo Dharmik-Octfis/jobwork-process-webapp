@@ -98,11 +98,6 @@ export const CUSTOM_FIELD_MODULES: Array<{
   },
   { entityType: 'item', label: 'Item', description: 'Add fields to the item create & edit form.' },
   {
-    entityType: 'process',
-    label: 'Process',
-    description: 'Add fields to the jobwork process create & edit form.',
-  },
-  {
     entityType: 'process_route',
     label: 'Process Route',
     description: 'Add fields to the route create & edit form.',

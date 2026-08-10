@@ -26,8 +26,6 @@ function renderRouteCell(route: Route, key: string): string {
       return String(route.steps.length);
     case 'stepSummary':
       return stepSummary(route);
-    case 'isActive':
-      return route.isActive ? 'Active' : 'Inactive';
     case 'createdAt':
     case 'updatedAt':
       return new Date(route[key]).toLocaleDateString();
@@ -131,7 +129,7 @@ export function RoutesList() {
               filters={filters}
               value={filter}
               onChange={setFilter}
-              fallbackLabel="Active Routes"
+              fallbackLabel="All Routes"
             />
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>

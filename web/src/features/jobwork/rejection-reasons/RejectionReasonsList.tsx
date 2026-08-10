@@ -47,7 +47,6 @@ const empty: CreateRejectionReasonData = {
   code: null,
   description: null,
   defaultResponsibility: null,
-  isActive: true,
 };
 
 /**
@@ -70,7 +69,7 @@ export function RejectionReasonsList() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['rejection-reasons', orgId, 'all'],
-    queryFn: () => fetchRejectionReasons(orgId!, { filter: 'all_reasons', perPage: 200 }),
+    queryFn: () => fetchRejectionReasons(orgId!, { filter: 'all', perPage: 200 }),
     enabled: Boolean(orgId),
   });
   const reasons = data?.results ?? [];
@@ -118,7 +117,6 @@ export function RejectionReasonsList() {
       code: reason.code,
       description: reason.description,
       defaultResponsibility: reason.defaultResponsibility,
-      isActive: reason.isActive,
     });
     setError(null);
     setIsFormOpen(true);
@@ -184,9 +182,6 @@ export function RejectionReasonsList() {
                 <th style={th} scope="col">
                   Usually
                 </th>
-                <th style={th} scope="col">
-                  Status
-                </th>
                 <th style={{ ...th, width: 90 }} scope="col" aria-label="Actions" />
               </tr>
             </thead>
@@ -209,7 +204,6 @@ export function RejectionReasonsList() {
                         ? 'Their fault'
                         : '—'}
                   </td>
-                  <td style={td}>{reason.isActive ? 'Active' : 'Inactive'}</td>
                   <td style={td}>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button
@@ -368,15 +362,6 @@ export function RejectionReasonsList() {
             fullWidth
           />
         </div>
-
-        <label style={{ display: 'flex', gap: 10, alignItems: 'center', cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={form.isActive ?? true}
-            onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
-          />
-          <span style={{ fontSize: 13, color: '#111' }}>Active</span>
-        </label>
       </Modal>
 
       <ConfirmDialog

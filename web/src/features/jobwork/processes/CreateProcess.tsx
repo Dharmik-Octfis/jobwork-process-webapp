@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
@@ -11,7 +10,6 @@ export function CreateProcess() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { orgId } = useParams<{ orgId: string }>();
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const listPath = `/organizations/${orgId}/settings/jobwork/processes`;
 
@@ -21,14 +19,10 @@ export function CreateProcess() {
       queryClient.invalidateQueries({ queryKey: ['processes', orgId] });
       navigate(listPath);
     },
-    onError: (error: AxiosError<{ message?: string; details?: Record<string, string> }>) => {
-      const details = error.response?.data?.details;
-      // Custom-field errors arrive keyed `customFields.<key>` and belong beside
-      // the field, not in an alert.
-      if (details && typeof details === 'object' && !Array.isArray(details)) {
-        setFieldErrors(details);
-        return;
-      }
+    // The `details` branch that routed `customFields.<key>` errors back to the
+    // form went with the custom-fields section. Everything this endpoint can
+    // still reject — a blank name, a duplicate — is one message.
+    onError: (error: AxiosError<{ message?: string }>) => {
       alert(error.response?.data?.message || 'Failed to create process');
     },
   });
@@ -51,13 +45,9 @@ export function CreateProcess() {
       </header>
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <ProcessForm
-          onSubmit={(data) => {
-            setFieldErrors({});
-            mutation.mutate(data);
-          }}
+          onSubmit={(data) => mutation.mutate(data)}
           isPending={mutation.isPending}
           onCancel={() => navigate(listPath)}
-          fieldErrors={fieldErrors}
         />
       </div>
     </div>

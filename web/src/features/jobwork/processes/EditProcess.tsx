@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
@@ -12,7 +11,6 @@ export function EditProcess() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { orgId, id } = useParams<{ orgId: string; id: string }>();
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const listPath = `/organizations/${orgId}/settings/jobwork/processes`;
   /** Back to the list with this row still open — the split view is where Edit was
@@ -34,12 +32,7 @@ export function EditProcess() {
       queryClient.invalidateQueries({ queryKey: ['process', orgId, id] });
       navigate(backPath);
     },
-    onError: (error: AxiosError<{ message?: string; details?: Record<string, string> }>) => {
-      const details = error.response?.data?.details;
-      if (details && typeof details === 'object' && !Array.isArray(details)) {
-        setFieldErrors(details);
-        return;
-      }
+    onError: (error: AxiosError<{ message?: string }>) => {
       alert(error.response?.data?.message || 'Failed to update process');
     },
   });
@@ -75,13 +68,9 @@ export function EditProcess() {
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <ProcessForm
           initialData={process}
-          onSubmit={(data) => {
-            setFieldErrors({});
-            mutation.mutate(data);
-          }}
+          onSubmit={(data) => mutation.mutate(data)}
           isPending={mutation.isPending}
           onCancel={() => navigate(backPath)}
-          fieldErrors={fieldErrors}
         />
       </div>
     </div>

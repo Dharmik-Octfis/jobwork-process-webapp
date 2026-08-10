@@ -199,9 +199,12 @@ export function JobOrderStepDetail({
   const wastagePct = settled && comparable && issued > 0 ? (lost / issued) * 100 : null;
   const overTolerance = wastagePct !== null && tolerance !== null ? wastagePct > tolerance : false;
 
+  // Mirrors `processCharge` in jobReceipts.service.ts — keep the two in step, or
+  // this preview disagrees with what the receipt actually bills. The `lump_sum`
+  // case went with that basis on 2026-08-10.
   const rate = step.rate === null ? null : toNumber(step.rate);
   const chargeQty = step.rateBasis === 'per_received_unit' ? received : issued;
-  const amount = rate === null ? null : rate * (step.rateBasis === 'lump_sum' ? 1 : chargeQty);
+  const amount = rate === null ? null : rate * chargeQty;
 
   const reworkPending = toNumber(step.totals.reworkQty) > 0;
 

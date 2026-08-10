@@ -33,8 +33,15 @@ import {
  * So the two sets are separate and this one is the superset. Add a module here
  * when it needs Customize Columns and nothing else; add it to `ENTITY_TYPES` only
  * when the table actually carries `custom_fields`.
+ *
+ * `process` is here rather than in `ENTITY_TYPES` for a different reason: the
+ * table DOES carry `custom_fields`, but the operation master is a short list of
+ * names an org types once and never revisits, so per-org fields on it were a form
+ * section nobody filled in (removed 2026-08-10). The column stays; the module is
+ * simply no longer offered in Settings → Modules. Its list still needs Customize
+ * Columns, which is exactly what this set is for.
  */
-export const LIST_ONLY_ENTITY_TYPES = ['permission_template'] as const;
+export const LIST_ONLY_ENTITY_TYPES = ['permission_template', 'process'] as const;
 
 export const LIST_ENTITY_TYPES = [...ENTITY_TYPES, ...LIST_ONLY_ENTITY_TYPES] as const;
 export type ListEntityType = (typeof LIST_ENTITY_TYPES)[number];
@@ -141,11 +148,13 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'type', label: 'Type' },
   ],
   /**
-   * Processes — the jobwork operation master. The four flag columns are all
-   * default-visible on purpose: they are not decoration, they decide what the
-   * Issue and Receive dialogs are allowed to offer later (taka-wise vs bulk
-   * receipt, single-lot enforcement), so someone scanning this list needs to see
-   * them without opening each row.
+   * Processes — the jobwork operation master. `rateBasis` and `itemChanges` are
+   * default-visible on purpose: they are not decoration, they decide what a later
+   * step is allowed to charge and whether a different item comes back, so someone
+   * scanning this list needs to see them without opening each row.
+   *
+   * No `cf:` columns are merged into this one — `process` is list-only now
+   * (LIST_ONLY_ENTITY_TYPES above).
    */
   process: [
     { key: 'name', label: 'Process Name', locked: true },
@@ -153,10 +162,7 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'rateBasis', label: 'Rate Basis', defaultVisible: true },
     { key: 'itemChanges', label: 'Changes Item', defaultVisible: true },
     { key: 'defaultTolerancePct', label: 'Tolerance %' },
-    { key: 'defaultIssueUom', label: 'Default Issue Unit' },
-    { key: 'defaultReceiveUom', label: 'Default Receive Unit' },
     { key: 'description', label: 'Description' },
-    { key: 'isActive', label: 'Status', defaultVisible: true },
     { key: 'createdAt', label: 'Created At' },
     { key: 'updatedAt', label: 'Last Modified' },
   ],
@@ -171,7 +177,6 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'stepCount', label: 'Steps', defaultVisible: true },
     { key: 'stepSummary', label: 'Sequence', defaultVisible: true },
     { key: 'description', label: 'Description' },
-    { key: 'isActive', label: 'Status', defaultVisible: true },
     { key: 'createdAt', label: 'Created At' },
     { key: 'updatedAt', label: 'Last Modified' },
   ],
@@ -233,7 +238,6 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'code', label: 'Code', defaultVisible: true },
     { key: 'defaultResponsibility', label: 'Usually', defaultVisible: true },
     { key: 'description', label: 'Description' },
-    { key: 'isActive', label: 'Status', defaultVisible: true },
     { key: 'createdAt', label: 'Created At' },
   ],
   /**

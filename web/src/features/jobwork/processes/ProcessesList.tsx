@@ -9,39 +9,28 @@ import { Pagination } from '../../../components/ui/Pagination';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { useListCount } from '../../../hooks/useListCount';
 import { useListSearch } from '../../../hooks/useListSearch';
-import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 import { deleteProcess, fetchProcessCount, fetchProcesses } from './processes.api';
 import { ProcessDetail } from './ProcessDetail';
 import { rateBasisLabel, type Process } from './processes.schemas';
 
 /**
  * How each selectable column renders. Keys match the backend catalog
- * (listViews.catalog.ts); anything prefixed `cf:` is a per-org custom field read
- * out of the row's `customFields` blob, so a new custom field needs no code here.
+ * (listViews.catalog.ts).
+ *
+ * No `cf:` branch here — `process` is list-only now (LIST_ONLY_ENTITY_TYPES), so
+ * the server never merges a custom-field column into this catalog.
  *
  * The booleans render as the CONSEQUENCE, not as "Yes"/"No" — a column headed
- * "Preserves Packaging" full of Yes tells a reader nothing they can act on.
+ * "Changes Item" full of Yes tells a reader nothing they can act on.
  */
 function renderProcessCell(process: Process, key: string): string {
-  if (key.startsWith(CUSTOM_FIELD_PREFIX)) {
-    const value = process.customFields?.[key.slice(CUSTOM_FIELD_PREFIX.length)];
-    if (value === null || value === undefined || value === '') return '-';
-    return Array.isArray(value) ? value.join(', ') : String(value);
-  }
-
   switch (key) {
     case 'rateBasis':
       return rateBasisLabel(process.rateBasis);
     case 'itemChanges':
       return process.itemChanges ? 'New item' : 'Same item';
-    case 'isActive':
-      return process.isActive ? 'Active' : 'Inactive';
     case 'defaultTolerancePct':
       return process.defaultTolerancePct === null ? '-' : `${process.defaultTolerancePct}%`;
-    case 'defaultIssueUom':
-      return process.defaultIssueUom?.unitName ?? '-';
-    case 'defaultReceiveUom':
-      return process.defaultReceiveUom?.unitName ?? '-';
     case 'createdAt':
     case 'updatedAt':
       return new Date(process[key]).toLocaleDateString();
@@ -148,7 +137,7 @@ export function ProcessesList() {
               filters={filters}
               value={filter}
               onChange={setFilter}
-              fallbackLabel="Active Processes"
+              fallbackLabel="All Processes"
             />
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>

@@ -33,7 +33,11 @@ model Process {
   /// true when the output is a different item from the input (§5.1).
   itemChanges Boolean @default(false) @map("item_changes")
 
-  /// per_issued_unit | per_received_unit | per_kg | lump_sum
+  /// per_issued_unit | per_received_unit
+  /// `per_kg` and `lump_sum` were dropped 2026-08-10 and their stored values
+  /// rewritten to per_issued_unit: neither had a number this system holds — there
+  /// is no weight to multiply, and a lump sum billed in full against a step that
+  /// received nothing.
   rateBasis String @default("per_issued_unit") @map("rate_basis") @db.VarChar(30)
 
   /// Does the taka/roll/bundle survive the operation? Decides unit-wise vs bulk
@@ -47,13 +51,15 @@ model Process {
   /// answer and is not the same as 0 (which means "no tolerance at all").
   defaultTolerancePct Decimal? @map("default_tolerance_pct") @db.Decimal(6, 3)
 
-  /// Defaults a route step copies when this process is picked. Two fields, not
-  /// one, because in and out can differ (§5.1).
-  defaultIssueUomId   String? @map("default_issue_uom_id") @db.Uuid
-  defaultReceiveUomId String? @map("default_receive_uom_id") @db.Uuid
+  /// `defaultIssueUomId` / `defaultReceiveUomId` were dropped 2026-08-10. A step
+  /// transacts in its ITEMS' stocking units (§5.1) — an org-wide default on the
+  /// operation master was a guess about one item, and `jobOrders.service.ts`
+  /// applying it is what let a challan and the ledger describe one movement in two
+  /// different units.
 
-  isActive Boolean @default(true) @map("is_active")
-
+  /// Retained per CLAUDE.md's default block, but nothing writes it: `process` left
+  /// `ENTITY_TYPES` on 2026-08-10, so the operation master has no custom fields.
+  /// Values saved before then are still here rather than destroyed.
   customFields Json    @default("{}") @map("custom_fields")
   isDeleted    Boolean @default(false) @map("is_deleted")
   createdBy    String? @map("created_by") @db.Uuid
@@ -62,11 +68,9 @@ model Process {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  defaultIssueUom   UnitOfMeasurement? @relation("ProcessDefaultIssueUom", fields: [defaultIssueUomId], references: [id])
-  defaultReceiveUom UnitOfMeasurement? @relation("ProcessDefaultReceiveUom", fields: [defaultReceiveUomId], references: [id])
-  createdByUser     User?              @relation("ProcessCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser     User?              @relation("ProcessUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser User?        @relation("ProcessCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?        @relation("ProcessUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   /// A soft-deleted row still occupies this key (CLAUDE.md). The service therefore
   /// REVIVES a soft-deleted process on a name collision rather than 409-ing —
@@ -98,8 +102,6 @@ model Route {
   name           String  @db.VarChar(150)
   code           String? @db.VarChar(50)
   description    String?
-
-  isActive Boolean @default(true) @map("is_active")
 
   customFields Json     @default("{}") @map("custom_fields")
   isDeleted    Boolean  @default(false) @map("is_deleted")
@@ -710,8 +712,6 @@ model RejectionReason {
   /// DEFAULT the receive dialog pre-fills, never a rule: the same defect can be
   /// either, and what gets billed is decided per receipt line.
   defaultResponsibility String? @map("default_responsibility") @db.VarChar(20)
-
-  isActive Boolean @default(true) @map("is_active")
 
   customFields Json     @default("{}") @map("custom_fields")
   isDeleted    Boolean  @default(false) @map("is_deleted")

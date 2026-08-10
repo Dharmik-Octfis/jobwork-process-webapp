@@ -11,7 +11,12 @@
  * 4,850 m received against 5,000 m issued is two different bills depending on the
  * answer.
  */
-export const RATE_BASES = ['per_issued_unit', 'per_received_unit', 'per_kg', 'lump_sum'] as const;
+/// `per_kg` and `lump_sum` went on 2026-08-10. Both needed a number this system
+/// does not hold: per_kg has no weight to multiply (it silently billed against
+/// the received quantity whatever unit that was), and lump_sum ignored quantity
+/// entirely, so a step that received nothing still billed in full. The two that
+/// remain are the two the ledger can actually answer.
+export const RATE_BASES = ['per_issued_unit', 'per_received_unit'] as const;
 export type RateBasis = (typeof RATE_BASES)[number];
 
 export function isRateBasis(value: string): value is RateBasis {
@@ -23,6 +28,4 @@ export function isRateBasis(value: string): value is RateBasis {
 export const RATE_BASIS_LABELS: Record<RateBasis, string> = {
   per_issued_unit: 'Per unit issued',
   per_received_unit: 'Per unit received',
-  per_kg: 'Per kilogram',
-  lump_sum: 'Lump sum',
 };

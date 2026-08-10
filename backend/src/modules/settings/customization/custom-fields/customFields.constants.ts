@@ -23,9 +23,6 @@ export const ENTITY_TYPES = [
   'item',
   'purchase_order',
   'member',
-  /** Jobwork's operation master. `processes` carries a `custom_fields` column, so
-   * it belongs here as well as in the list catalogs. */
-  'process',
   /**
    * Sprints 2–4. Every one of these tables carries `custom_fields`, which is
    * where the mind map's "extra fields at time of issue — lot-wise pcs, cutper,

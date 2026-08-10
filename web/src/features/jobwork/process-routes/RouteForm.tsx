@@ -81,21 +81,15 @@ export function RouteForm({ initialData, onSubmit, isPending, onCancel, fieldErr
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<{ name: string; code: string; description: string; isActive: boolean }>({
+  } = useForm<{ name: string; code: string; description: string }>({
     defaultValues: {
       name: initialData?.name ?? '',
       code: initialData?.code ?? '',
       description: initialData?.description ?? '',
-      isActive: initialData?.isActive ?? true,
     },
   });
 
-  const submit = (values: {
-    name: string;
-    code: string;
-    description: string;
-    isActive: boolean;
-  }) => {
+  const submit = (values: { name: string; code: string; description: string }) => {
     // Checked here as well as on the server: the server's message names the row,
     // but making someone round-trip to learn that step 3 has no process is worse
     // than saying so immediately.
@@ -110,7 +104,6 @@ export function RouteForm({ initialData, onSubmit, isPending, onCancel, fieldErr
       name: values.name.trim(),
       code: values.code?.trim() || null,
       description: values.description?.trim() || null,
-      isActive: values.isActive,
       steps,
       customFields,
     });
@@ -166,11 +159,6 @@ export function RouteForm({ initialData, onSubmit, isPending, onCancel, fieldErr
             placeholder="When this sequence is used"
           />
         </div>
-
-        <label style={{ display: 'flex', gap: 10, alignItems: 'center', cursor: 'pointer' }}>
-          <input type="checkbox" {...register('isActive')} />
-          <span style={{ fontSize: 13, color: '#111' }}>Active</span>
-        </label>
       </section>
 
       <section style={{ marginBottom: 32 }}>

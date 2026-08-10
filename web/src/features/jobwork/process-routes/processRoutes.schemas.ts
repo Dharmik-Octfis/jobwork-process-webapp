@@ -64,7 +64,6 @@ export const routeSchema = z.object({
   name: z.string(),
   code: z.string().nullable(),
   description: z.string().nullable(),
-  isActive: z.boolean(),
   steps: z.array(routeStepSchema).default([]),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -96,7 +95,6 @@ export interface CreateRouteData {
   name: string;
   code?: string | null;
   description?: string | null;
-  isActive?: boolean;
   steps: RouteStepData[];
   customFields?: Record<string, unknown>;
 }

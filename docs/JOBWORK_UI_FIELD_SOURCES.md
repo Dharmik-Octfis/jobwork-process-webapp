@@ -135,6 +135,16 @@ Each level is **copied down**, not referenced up, so a later edit to the Process
 alter a job order already released. `Item.defaultTolerancePct` sits below the Process master as a
 final fallback when the process itself declares none.
 
+🔴 **The two unit fields do not start at the Process master.** `Process.defaultIssueUomId` /
+`defaultReceiveUomId` were removed on 2026-08-10. A step transacts in its **items' stocking units**
+(domain §5.1) — one item has exactly one stocking unit, and `postMovement` writes the _lot's_ unit
+into the ledger whatever the document says — so an org-wide default on the operation master was a
+guess about one item, and applying it is precisely what let a challan and the ledger describe a
+single movement in two different units with nothing erroring. `issueUomId` / `receiveUomId` now
+resolve as **item stocking uom → the step's own value → null**; a null is refused where it matters
+(the Issue dialog), which is louder than a plausible wrong unit. Transacting in a unit other than
+the item's is a real requirement, but it needs `ItemUomConversion`, which does not exist yet.
+
 ### 2.6 Custom fields (`CF`)
 
 Every screen ends with a custom-fields block. Source is always:

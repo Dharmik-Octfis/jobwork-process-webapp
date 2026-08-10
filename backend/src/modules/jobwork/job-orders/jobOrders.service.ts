@@ -356,8 +356,7 @@ function applyStepDefaults(
  *
  * One item has exactly one stocking unit (§5.1), and `postMovement` writes the
  * LOT's unit into the ledger whatever the document says. So a step carrying a
- * different unit — an org-wide `Process.defaultIssueUomId` of KG under an item
- * stocked in MTR — makes the challan and the ledger describe one movement in two
+ * different unit makes the challan and the ledger describe one movement in two
  * units: `jobIssues.service.ts` copies `step.issueUomId` onto the challan while
  * the ledger records metres. Nothing errors. The stock that left is simply not
  * the stock the paperwork says left.
@@ -366,24 +365,21 @@ function applyStepDefaults(
  * needs `ItemUomConversion`, which does not exist yet. Until it does, the item's
  * own unit is the only correct answer.
  *
- * The process default survives only where the item cannot answer: an item with no
- * stocking uom (the Sprint 1 backfill left some null) or an output item nobody
- * has named yet. It is applied to the PRINCIPAL row alone — an org-wide "issue in
- * KG" is a statement about the thing being processed, not about the thread and
- * buttons that go out beside it.
+ * The step's own uom is the only fallback left. `Process.defaultIssueUomId` /
+ * `defaultReceiveUomId` used to answer for an item with no stocking uom, and they
+ * went on 2026-08-10 — an org-wide "issue in KG" was a guess about one item made
+ * on the operation master, and it was exactly the guess that produced the
+ * two-units-one-movement bug above. An item with no stocking uom now resolves to
+ * null, which the Issue dialog already refuses, instead of to a plausible wrong
+ * unit nothing warns about.
  */
 function applyRowUnits<T extends { itemId: string; uomId: string | null }>(
   rows: readonly T[],
-  isPrincipal: (row: T, index: number) => boolean,
   stockingUomByItem: ReadonlyMap<string, string | null>,
-  processDefaultUomId: string | null,
 ): T[] {
-  return rows.map((row, index) => ({
+  return rows.map((row) => ({
     ...row,
-    uomId:
-      stockingUomByItem.get(row.itemId) ??
-      row.uomId ??
-      (isPrincipal(row, index) ? processDefaultUomId : null),
+    uomId: stockingUomByItem.get(row.itemId) ?? row.uomId ?? null,
   }));
 }
 
@@ -516,8 +512,6 @@ async function buildSteps(
       rateBasis: true,
       itemChanges: true,
       defaultTolerancePct: true,
-      defaultIssueUomId: true,
-      defaultReceiveUomId: true,
     },
   });
   const byId = new Map(processes.map((p) => [p.id, p]));
@@ -571,24 +565,11 @@ async function buildSteps(
   const stockingUomByItem = new Map(chainItems.map((item) => [item.id, item.stockingUomId]));
   const itemNames = new Map(chainItems.map((item) => [item.id, item.name]));
 
-  const withUnits = resolved.map((step) => {
-    const process = byId.get(step.processId)!;
-    return {
-      ...step,
-      resolvedInputs: applyRowUnits(
-        step.resolvedInputs,
-        (_row, index) => index === 0,
-        stockingUomByItem,
-        process.defaultIssueUomId,
-      ),
-      resolvedOutputs: applyRowUnits(
-        step.resolvedOutputs,
-        (row) => row.isPrimary,
-        stockingUomByItem,
-        process.defaultReceiveUomId,
-      ),
-    };
-  });
+  const withUnits = resolved.map((step) => ({
+    ...step,
+    resolvedInputs: applyRowUnits(step.resolvedInputs, stockingUomByItem),
+    resolvedOutputs: applyRowUnits(step.resolvedOutputs, stockingUomByItem),
+  }));
 
   classifyStepInputs(withUnits, itemNames, prior.producedItemIds);
 

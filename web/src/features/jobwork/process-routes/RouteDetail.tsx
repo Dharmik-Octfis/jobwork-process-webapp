@@ -81,8 +81,7 @@ export function RouteDetail({ routeId, onClose }: Props) {
           <h2 style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}>{route.name}</h2>
           <span style={{ fontSize: 12, color: '#64748b' }}>
             {route.code ? `${route.code} · ` : ''}
-            {route.steps.length} step{route.steps.length === 1 ? '' : 's'} ·{' '}
-            {route.isActive ? 'Active' : 'Inactive'}
+            {route.steps.length} step{route.steps.length === 1 ? '' : 's'}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>

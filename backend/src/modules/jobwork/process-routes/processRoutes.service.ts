@@ -107,7 +107,6 @@ function writableFields(data: CreateRouteInput) {
     name: data.name.trim(),
     code: data.code?.trim() || null,
     description: data.description?.trim() || null,
-    isActive: data.isActive ?? true,
   };
 }
 

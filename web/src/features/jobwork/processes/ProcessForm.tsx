@@ -1,11 +1,6 @@
 import { blurOnWheel } from '../../../components/ui/blurOnWheel';
-import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { useParams } from 'react-router-dom';
 import { Select } from '../../../components/ui/Select';
-import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
-import type { CustomFieldValues } from '../../custom-fields/customFields.schemas';
-import { useUoms } from '../../inventory/uom/uom.api';
 import { RATE_BASIS_OPTIONS, type CreateProcessData, type Process } from './processes.schemas';
 
 export interface ProcessFormProps {
@@ -13,8 +8,6 @@ export interface ProcessFormProps {
   onSubmit: (data: CreateProcessData) => void;
   isPending: boolean;
   onCancel: () => void;
-  /** Server-returned per-field errors, keyed `customFields.<key>`. */
-  fieldErrors?: Record<string, string>;
 }
 
 const labelStyle: React.CSSProperties = {
@@ -52,22 +45,7 @@ const errorStyle: React.CSSProperties = {
  * (CLAUDE.md). DOM order is also tab order here — the fields are one column, so
  * the two cannot silently diverge the way they do in a multi-column grid.
  */
-export function ProcessForm({
-  initialData,
-  onSubmit,
-  isPending,
-  onCancel,
-  fieldErrors,
-}: ProcessFormProps) {
-  const { orgId } = useParams<{ orgId: string }>();
-  const { data: uoms = [] } = useUoms(orgId!);
-
-  const isEdit = Boolean(initialData?.id);
-
-  const [customFields, setCustomFields] = useState<CustomFieldValues>(
-    (initialData?.customFields as CustomFieldValues) ?? {},
-  );
-
+export function ProcessForm({ initialData, onSubmit, isPending, onCancel }: ProcessFormProps) {
   const {
     register,
     control,
@@ -84,16 +62,8 @@ export function ProcessForm({
         initialData?.defaultTolerancePct === null || initialData?.defaultTolerancePct === undefined
           ? null
           : Number(initialData.defaultTolerancePct),
-      defaultIssueUomId: initialData?.defaultIssueUomId ?? null,
-      defaultReceiveUomId: initialData?.defaultReceiveUomId ?? null,
-      isActive: initialData?.isActive ?? true,
     },
   });
-
-  const uomOptions = [
-    { value: '', label: 'None' },
-    ...uoms.map((u) => ({ value: u.id, label: `${u.unitName} (${u.symbol})` })),
-  ];
 
   const submit = (data: CreateProcessData) => {
     onSubmit({
@@ -109,9 +79,6 @@ export function ProcessForm({
         Number.isNaN(data.defaultTolerancePct)
           ? null
           : Number(data.defaultTolerancePct),
-      defaultIssueUomId: data.defaultIssueUomId || null,
-      defaultReceiveUomId: data.defaultReceiveUomId || null,
-      customFields,
     });
   };
 
@@ -264,69 +231,17 @@ export function ProcessForm({
           )}
         </div>
 
-        <div style={{ marginBottom: 20 }}>
-          <label style={labelStyle}>Default Issue Unit</label>
-          <Controller
-            name="defaultIssueUomId"
-            control={control}
-            render={({ field }) => (
-              <Select
-                value={field.value ?? ''}
-                onChange={(v) => field.onChange(v || null)}
-                options={uomOptions}
-                ariaLabel="Default issue unit"
-                fullWidth={false}
-                minWidth={440}
-              />
-            )}
-          />
-        </div>
+        {/*
+          ⚠️ "Default Issue Unit" and "Default Receive Unit" are not asked any
+          more. A step transacts in its ITEMS' stocking units (§5.1), so an
+          org-wide default set here was a guess about one item — and applying it
+          is what let a challan and the stock ledger describe one movement in two
+          different units. The columns are gone too; see the drop migration.
 
-        <div style={{ marginBottom: 20 }}>
-          <label style={labelStyle}>Default Receive Unit</label>
-          <Controller
-            name="defaultReceiveUomId"
-            control={control}
-            render={({ field }) => (
-              <Select
-                value={field.value ?? ''}
-                onChange={(v) => field.onChange(v || null)}
-                options={uomOptions}
-                ariaLabel="Default receive unit"
-                fullWidth={false}
-                minWidth={440}
-              />
-            )}
-          />
-        </div>
-
-        <label style={{ display: 'flex', gap: 10, alignItems: 'center', cursor: 'pointer' }}>
-          <input type="checkbox" {...register('isActive')} />
-          <span style={{ fontSize: 13, color: '#111' }}>Active</span>
-        </label>
-      </section>
-
-      <section style={{ maxWidth: 640, marginBottom: 32 }}>
-        <h2
-          style={{
-            fontSize: 13,
-            fontWeight: 600,
-            color: '#111',
-            margin: '0 0 16px 0',
-            textTransform: 'uppercase',
-            letterSpacing: 0.4,
-          }}
-        >
-          Custom Fields
-        </h2>
-        <CustomFieldsSection
-          orgId={orgId!}
-          entityType="process"
-          values={customFields}
-          onChange={setCustomFields}
-          errors={fieldErrors}
-          applyDefaults={!isEdit}
-        />
+          The Custom Fields section went with them: `process` left ENTITY_TYPES,
+          because the operation master is a short list of names an org types once
+          and per-org fields on it were a section nobody filled in.
+        */}
       </section>
 
       <div
