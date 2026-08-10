@@ -814,7 +814,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                               value={row.itemId}
                               onChange={(value) => updateReturned(row.key, { itemId: value })}
                               options={[
-                                { value: '', label: 'Pick an item…' },
+                                { value: '', label: 'Select an item…' },
                                 ...items.map((i) => ({ value: i.id, label: i.name })),
                               ]}
                               ariaLabel="Returned item"

@@ -59,7 +59,6 @@ function writableFields(data: CreateRejectionReasonInput) {
     code: data.code?.trim() || null,
     description: data.description?.trim() || null,
     defaultResponsibility: data.defaultResponsibility ?? null,
-    isActive: data.isActive ?? true,
   };
 }
 

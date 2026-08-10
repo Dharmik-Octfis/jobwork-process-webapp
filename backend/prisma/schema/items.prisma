@@ -115,8 +115,6 @@ model UnitOfMeasurement {
   stockedItems           Item[]             @relation("ItemStockingUom")
   lots                   Lot[]              @relation("LotUom")
   ledgerEntries          StockLedgerEntry[] @relation("StockLedgerUom")
-  processDefaultIssues   Process[]          @relation("ProcessDefaultIssueUom")
-  processDefaultReceipts Process[]          @relation("ProcessDefaultReceiveUom")
 
   routeStepIssueUoms      RouteStep[]    @relation("RouteStepIssueUom")
   routeStepReceiveUoms    RouteStep[]    @relation("RouteStepReceiveUom")

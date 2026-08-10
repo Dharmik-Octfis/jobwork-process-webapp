@@ -20,7 +20,6 @@ export const rejectionReasonSchema = z.object({
   code: z.string().nullable(),
   description: z.string().nullable(),
   defaultResponsibility: z.string().nullable(),
-  isActive: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string(),
   customFields: z.record(z.string(), z.unknown()).optional(),
@@ -33,7 +32,6 @@ export interface CreateRejectionReasonData {
   code?: string | null;
   description?: string | null;
   defaultResponsibility?: string | null;
-  isActive?: boolean;
   customFields?: Record<string, unknown>;
 }
 

@@ -143,13 +143,7 @@ export function LotPicker({
               Lot
             </th>
             <th style={th} scope="col">
-              Party ref
-            </th>
-            <th style={th} scope="col">
               Available
-            </th>
-            <th style={th} scope="col">
-              Age
             </th>
             <th style={th} scope="col">
               Cost / unit
@@ -215,11 +209,9 @@ export function LotPicker({
                       </span>
                     )}
                   </td>
-                  <td style={td}>{lot.supplierLotRef ?? '-'}</td>
                   <td style={td}>
                     {formatQty(lot.availableQty)} {uomLabel}
                   </td>
-                  <td style={td}>{lot.ageDays === null ? '-' : `${lot.ageDays}d`}</td>
                   <td style={td}>{lot.costPerUnit === null ? '-' : formatQty(lot.costPerUnit)}</td>
                   <td style={td}>
                     {hasPackages ? (
@@ -266,7 +258,7 @@ export function LotPicker({
                     return (
                       <tr key={pkg.lotPackageId} style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td style={td} />
-                        <td style={td} colSpan={2}>
+                        <td style={td}>
                           <label
                             style={{
                               display: 'flex',
@@ -296,7 +288,7 @@ export function LotPicker({
                             {pkg.label ?? `${lot.lotNumber}/${pkg.packageNumber}`}
                           </label>
                         </td>
-                        <td style={td} colSpan={3}>
+                        <td style={td} colSpan={2}>
                           {/* The measured figure — the whole reason takas exist. */}
                           {formatQty(pkg.qty)} {uomLabel}
                         </td>

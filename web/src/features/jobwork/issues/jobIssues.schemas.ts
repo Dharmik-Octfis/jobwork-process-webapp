@@ -49,11 +49,6 @@ export const jobIssueSchema = z.object({
   uomId: z.string().nullable(),
   isRework: z.boolean(),
   attemptNo: z.number(),
-  transporterId: z.string().nullable(),
-  vehicleNo: z.string().nullable(),
-  lrNo: z.string().nullable(),
-  lrDate: z.string().nullable(),
-  ewayBillNo: z.string().nullable(),
   totalQty: z.union([z.string(), z.number()]),
   toleranceOverrideReason: z.string().nullable(),
   status: z.string(),
@@ -77,7 +72,6 @@ export const jobIssueSchema = z.object({
   destination: namedRefSchema.nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
-  customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type JobIssue = z.infer<typeof jobIssueSchema>;
@@ -103,17 +97,11 @@ export interface CreateJobIssueData {
   sourceLocationId: string;
   destinationLocationId?: string | null;
   isRework?: boolean;
-  transporterId?: string | null;
-  vehicleNo?: string | null;
-  lrNo?: string | null;
-  lrDate?: string | null;
-  ewayBillNo?: string | null;
   /** Only needed when the issue goes past the step's tolerance ceiling — the
    * server decides that and says so in its 400. */
   toleranceOverrideReason?: string | null;
   lines: JobIssueLineData[];
   remarks?: string | null;
-  customFields?: Record<string, unknown>;
 }
 
 export const jobIssuesPageSchema = paginatedSchema(jobIssueSchema);

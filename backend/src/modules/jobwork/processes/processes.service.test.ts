@@ -14,11 +14,15 @@ import {
  * The Processes CRUD path — the plan's "done means" for Sprint 1.
  *
  * Processes is the simplest module in the domain and was built first on purpose:
- * it exercises routes → controller → service → schemas → list catalog → custom
- * fields end to end before anything complicated depends on that path. This file
- * covers the service half of that, plus the two behaviours that are specific to
- * this module rather than inherited from the vendors template — the soft-delete
- * revive, and refusing a unit of measurement belonging to another organization.
+ * it exercises routes → controller → service → schemas → list catalog end to end
+ * before anything complicated depends on that path. This file covers the service
+ * half of that, plus the behaviour specific to this module rather than inherited
+ * from the vendors template — the soft-delete revive.
+ *
+ * The foreign-uom test went with `defaultIssueUomId` / `defaultReceiveUomId` on
+ * 2026-08-10: the process master no longer holds a uom, so it has no FK for a
+ * hand-crafted payload to point across tenants. The same guard still matters
+ * where units are actually chosen, and is covered by `jobwork.flow.test.ts`.
  *
  * 🔴 Own fixtures, hard-deleted. Suites run against the dev database IN PARALLEL,
  * so nothing here reads or mutates a row it did not create.
@@ -29,8 +33,6 @@ const listOpts = { page: 1, perPage: 25 };
 
 let orgId: string;
 let otherOrgId: string;
-let uomId: string;
-let foreignUomId: string;
 
 async function makeOrg() {
   const org = await prisma.organization.create({
@@ -45,32 +47,14 @@ async function makeOrg() {
 
 beforeAll(async () => {
   orgId = await makeOrg();
-  // A second organization exists solely to prove a foreign uom id is refused.
+  // A second organization exists solely to prove one tenant's list never reaches
+  // into another's.
   otherOrgId = await makeOrg();
-
-  uomId = await runAsTenant(orgId, async (tx) => {
-    const uom = await tx.unitOfMeasurement.create({
-      data: { organizationId: orgId, unitName: 'Metre', symbol: 'MTR' },
-      select: { id: true },
-    });
-    return uom.id;
-  });
-
-  foreignUomId = await runAsTenant(otherOrgId, async (tx) => {
-    const uom = await tx.unitOfMeasurement.create({
-      data: { organizationId: otherOrgId, unitName: 'Metre', symbol: 'MTR' },
-      select: { id: true },
-    });
-    return uom.id;
-  });
 });
 
 afterAll(async () => {
   for (const id of [orgId, otherOrgId]) {
-    await runAsTenant(id, async (tx) => {
-      await tx.process.deleteMany({ where: { organizationId: id } });
-      await tx.unitOfMeasurement.deleteMany({ where: { organizationId: id } });
-    });
+    await runAsTenant(id, (tx) => tx.process.deleteMany({ where: { organizationId: id } }));
   }
   await prisma.organization.deleteMany({ where: { id: { in: [orgId, otherOrgId] } } });
 });
@@ -87,14 +71,11 @@ describe('processes — the full CRUD path', () => {
       requiresSingleLot: true,
       rateBasis: 'per_received_unit',
       defaultTolerancePct: 2.5,
-      defaultIssueUomId: uomId,
     });
 
     expect(created.name).toBe(name);
     expect(created.preservesPackaging).toBe(true);
     expect(created.defaultTolerancePct?.toString()).toBe('2.5');
-    // The include is what the list and detail pane render — unit NAMES, not ids.
-    expect(created.defaultIssueUom?.unitName).toBe('Metre');
 
     const listed = await getProcessesList(orgId, listOpts);
     expect(listed.results.map((p) => p.id)).toContain(created.id);
@@ -169,23 +150,6 @@ describe('processes — the full CRUD path', () => {
     expect(listed.results.map((p) => p.id)).toContain(revived.id);
   });
 
-  it('refuses a unit of measurement belonging to another organization', async () => {
-    // RLS stops another tenant's uom being READ, but a foreign key is checked by
-    // Postgres OUTSIDE row-level security — so without the service's own check a
-    // hand-crafted payload would link the two organizations' rows successfully.
-    await expect(
-      createNewProcess(orgId, { name: `Cross ${unique()}`, defaultIssueUomId: foreignUomId }),
-    ).rejects.toBeInstanceOf(ApiError);
-
-    const existing = await createNewProcess(orgId, { name: `Cross2 ${unique()}` });
-    await expect(
-      updateProcessById(orgId, existing.id, {
-        name: existing.name,
-        defaultReceiveUomId: foreignUomId,
-      }),
-    ).rejects.toBeInstanceOf(ApiError);
-  });
-
   it('never returns another organization’s processes', async () => {
     const mine = await createNewProcess(orgId, { name: `Mine ${unique()}` });
     const theirs = await createNewProcess(otherOrgId, { name: `Theirs ${unique()}` });
@@ -209,23 +173,21 @@ describe('processes — the full CRUD path', () => {
   });
 
   it('filters the list by the preset views', async () => {
-    const active = await createNewProcess(orgId, { name: `Active ${unique()}` });
-    const inactive = await createNewProcess(orgId, {
-      name: `Inactive ${unique()}`,
-      isActive: false,
+    const sameItem = await createNewProcess(orgId, { name: `Dyeing ${unique()}` });
+    const newItem = await createNewProcess(orgId, {
+      name: `Stitching ${unique()}`,
+      itemChanges: true,
     });
 
-    // The default view is "Active Processes", so an inactive one is absent until
-    // asked for by name.
+    // The default view narrows nothing — the active/inactive split went with the
+    // `is_active` column, so a process you have stopped running is deleted.
     const byDefault = await getProcessesList(orgId, listOpts);
-    expect(byDefault.results.map((p) => p.id)).toContain(active.id);
-    expect(byDefault.results.map((p) => p.id)).not.toContain(inactive.id);
+    expect(byDefault.results.map((p) => p.id)).toContain(sameItem.id);
+    expect(byDefault.results.map((p) => p.id)).toContain(newItem.id);
 
-    const all = await getProcessesList(orgId, { ...listOpts, filter: 'all_processes' });
-    expect(all.results.map((p) => p.id)).toContain(inactive.id);
-
-    const onlyInactive = await getProcessesList(orgId, { ...listOpts, filter: 'inactive' });
-    expect(onlyInactive.results.map((p) => p.id)).toEqual([inactive.id]);
+    const changesItem = await getProcessesList(orgId, { ...listOpts, filter: 'changes_item' });
+    expect(changesItem.results.map((p) => p.id)).toContain(newItem.id);
+    expect(changesItem.results.map((p) => p.id)).not.toContain(sameItem.id);
   });
 
   it('searches across name, code and description', async () => {

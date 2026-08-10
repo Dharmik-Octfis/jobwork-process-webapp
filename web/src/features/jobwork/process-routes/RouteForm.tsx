@@ -1,8 +1,5 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { useParams } from 'react-router-dom';
-import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
-import type { CustomFieldValues } from '../../custom-fields/customFields.schemas';
 import { StepsGrid } from '../StepsGrid';
 import { emptyStep } from '../jobwork.schemas';
 import type { CreateRouteData, Route, RouteStepData } from './processRoutes.schemas';
@@ -42,6 +39,10 @@ const sectionHeading: React.CSSProperties = {
   letterSpacing: 0.4,
 };
 
+/** Decimal string → number, keeping "not set" distinct from zero. */
+const num = (value: string | number | null | undefined) =>
+  value === null || value === undefined || value === '' ? null : Number(value);
+
 /** Turn a saved route's steps back into form rows. */
 function toFormSteps(route?: Partial<Route>): RouteStepData[] {
   if (!route?.steps?.length) return [emptyStep() as RouteStepData];
@@ -52,9 +53,14 @@ function toFormSteps(route?: Partial<Route>): RouteStepData[] {
     workCentreLocationId: step.workCentreLocationId,
     rate: step.rate === null ? null : Number(step.rate),
     rateBasis: step.rateBasis,
-    // 🔴 The template's bill of materials (§5.7). No quantities on either side —
-    // a route has no idea how much anyone will run through it.
-    inputs: step.inputs.map((row) => ({ itemId: row.itemId, uomId: row.uomId })),
+    // 🔴 The template's bill of materials (§5.7). The consumed side carries a
+    // default quantity a job order copies once; the produced side carries none,
+    // because what comes back is a per-run answer.
+    inputs: step.inputs.map((row) => ({
+      itemId: row.itemId,
+      uomId: row.uomId,
+      plannedQty: num(row.plannedQty),
+    })),
     outputs: step.outputs.map((row) => ({
       itemId: row.itemId,
       uomId: row.uomId,
@@ -68,34 +74,22 @@ function toFormSteps(route?: Partial<Route>): RouteStepData[] {
 
 /** One form for both Create and Edit. */
 export function RouteForm({ initialData, onSubmit, isPending, onCancel, fieldErrors }: Props) {
-  const { orgId } = useParams<{ orgId: string }>();
-  const isEdit = Boolean(initialData?.id);
-
   const [steps, setSteps] = useState<RouteStepData[]>(toFormSteps(initialData));
-  const [customFields, setCustomFields] = useState<CustomFieldValues>(
-    (initialData?.customFields as CustomFieldValues) ?? {},
-  );
   const [stepError, setStepError] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<{ name: string; code: string; description: string; isActive: boolean }>({
+  } = useForm<{ name: string; code: string; description: string }>({
     defaultValues: {
       name: initialData?.name ?? '',
       code: initialData?.code ?? '',
       description: initialData?.description ?? '',
-      isActive: initialData?.isActive ?? true,
     },
   });
 
-  const submit = (values: {
-    name: string;
-    code: string;
-    description: string;
-    isActive: boolean;
-  }) => {
+  const submit = (values: { name: string; code: string; description: string }) => {
     // Checked here as well as on the server: the server's message names the row,
     // but making someone round-trip to learn that step 3 has no process is worse
     // than saying so immediately.
@@ -110,9 +104,7 @@ export function RouteForm({ initialData, onSubmit, isPending, onCancel, fieldErr
       name: values.name.trim(),
       code: values.code?.trim() || null,
       description: values.description?.trim() || null,
-      isActive: values.isActive,
       steps,
-      customFields,
     });
   };
 
@@ -120,7 +112,15 @@ export function RouteForm({ initialData, onSubmit, isPending, onCancel, fieldErr
     <form
       onSubmit={handleSubmit(submit)}
       noValidate
-      style={{ padding: '24px 32px', paddingBottom: 120 }}
+      // 64 = the 44px fixed action bar + a 20px gutter, the same figure
+      // `ProcessForm` settled on. The bar is `position: fixed`, so it adds
+      // nothing to content height and only overlays the last 44px of the
+      // viewport; padding beyond that is empty space nobody can scroll to for a
+      // reason, which makes a form that FITS report that it does not. This was
+      // 120 while the Custom Fields section sat at the bottom — with that gone
+      // the last thing on the page is the steps grid, whose dropdowns open
+      // upwards when there is no room below.
+      style={{ padding: '24px 32px', paddingBottom: 64 }}
     >
       <section style={{ maxWidth: 640, marginBottom: 32 }}>
         <div style={{ marginBottom: 20 }}>
@@ -166,11 +166,6 @@ export function RouteForm({ initialData, onSubmit, isPending, onCancel, fieldErr
             placeholder="When this sequence is used"
           />
         </div>
-
-        <label style={{ display: 'flex', gap: 10, alignItems: 'center', cursor: 'pointer' }}>
-          <input type="checkbox" {...register('isActive')} />
-          <span style={{ fontSize: 13, color: '#111' }}>Active</span>
-        </label>
       </section>
 
       <section style={{ marginBottom: 32 }}>
@@ -192,19 +187,11 @@ export function RouteForm({ initialData, onSubmit, isPending, onCancel, fieldErr
           </p>
         )}
 
-        <StepsGrid steps={steps} onChange={setSteps} errors={fieldErrors} />
-      </section>
-
-      <section style={{ maxWidth: 640, marginBottom: 32 }}>
-        <h2 style={sectionHeading}>Custom Fields</h2>
-        <CustomFieldsSection
-          orgId={orgId!}
-          entityType="process_route"
-          values={customFields}
-          onChange={setCustomFields}
-          errors={fieldErrors}
-          applyDefaults={!isEdit}
-        />
+        {/* 🔴 `showInputQty`, not `showPlannedQty`: the quantity is on CONSUMES
+            alone. A route can say how much this org usually puts in — the job
+            order copies it and owns it from there — but what comes back and how
+            far over a step may run are answers only a real run has. */}
+        <StepsGrid steps={steps} onChange={setSteps} errors={fieldErrors} showInputQty />
       </section>
 
       <div

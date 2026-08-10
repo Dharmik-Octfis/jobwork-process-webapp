@@ -14,6 +14,12 @@ import { PROCESSOR_TYPES } from '../jobwork.types.ts';
  * not overwrite it with a zero — so "not set" has to be expressible, and `0` has
  * to mean zero. That is why `rate`, `tolerancePct` and the four item/uom fields
  * are `.nullable().optional()` rather than defaulted here.
+ *
+ * There is no `customFields` here, on the route or on its steps. Routes left
+ * `ENTITY_TYPES` on 2026-08-10 for the reason processes did a few hours earlier:
+ * the section was on a form nobody filled it in on. The `custom_fields` COLUMNS
+ * stay on the tables (CLAUDE.md's default block) with whatever they already
+ * hold — they are simply never read or written again.
  */
 
 const nullableUuid = z.string().uuid().nullable().optional();
@@ -21,19 +27,29 @@ const nullableUuid = z.string().uuid().nullable().optional();
 /**
  * 🔴 ONE ITEM A STEP CONSUMES OR PRODUCES (domain §5.7).
  *
- * 🔴 NO QUANTITY, on either side. A route is a template and has no idea how much
- * anyone will run through it — `JobOrderStepInput.plannedQty` is where a number
- * first means something. This is a near-copy of the job order's row schema for
- * the same reason the step schemas are near-copies: a job order step is a
- * SNAPSHOT, not a reference (§2.4), and the two are free to diverge.
+ * 🔴 `plannedQty` IS A DEFAULT, AND IT IS ON THE CONSUMED SIDE ONLY (2026-08-10).
  *
- * `isPrimary` is meaningful on outputs alone — it names the output that will
- * absorb the step's cost (§9.2.1) — so it lives on this shared shape and the
- * service ignores it on the input side.
+ * A route still does not know how much anyone will run through it. What it knows
+ * is the amount this org usually runs, and the job order copies that number into
+ * its own `plannedQty` once, where it is edited like anything else on the
+ * snapshot (§2.4). It is NOT consumption per unit of output: scaling it would
+ * need a ratio between 2,910 PCS and 80 KG, and no conversion exists anywhere in
+ * this system (§5.1).
+ *
+ * The produced side has no quantity. What comes back is a per-run answer that
+ * depends on what actually went out, and a template that guessed it would put a
+ * number on the receipt screen nobody had reason to believe.
+ *
+ * `isPrimary` is likewise meaningful on outputs alone — it names the output that
+ * will absorb the step's cost (§9.2.1). Both live on this one shared shape and
+ * the service ignores each on the side it means nothing.
  */
 export const routeStepRowSchema = z.object({
   itemId: z.string().uuid({ message: 'Every row needs an item.' }),
   uomId: nullableUuid,
+  /** Inputs only. Nullable because "the template says nothing" is normal, and 0
+   * is a real answer that must stay distinguishable from it (§2.5). */
+  plannedQty: z.coerce.number().min(0).nullable().optional(),
   isPrimary: z.boolean().optional(),
 });
 
@@ -81,7 +97,6 @@ export const routeStepSchema = z.object({
   tolerancePct: z.coerce.number().min(0).max(100).nullable().optional(),
 
   remarks: z.string().trim().max(2000).nullable().optional(),
-  customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type RouteStepInput = z.infer<typeof routeStepSchema>;
@@ -92,7 +107,6 @@ export const createRouteSchema = openApiRegistry.register(
     name: z.string().trim().min(1, 'Route name is required.').max(150),
     code: z.string().trim().max(50).nullable().optional(),
     description: z.string().trim().max(2000).nullable().optional(),
-    isActive: z.boolean().optional(),
 
     /**
      * At least one. A route with no steps is not a template of anything — it
@@ -100,8 +114,6 @@ export const createRouteSchema = openApiRegistry.register(
      * would surface days later on an empty Overview page rather than here.
      */
     steps: z.array(routeStepSchema).min(1, 'A route needs at least one step.'),
-
-    customFields: z.record(z.string(), z.unknown()).optional(),
   }),
 );
 

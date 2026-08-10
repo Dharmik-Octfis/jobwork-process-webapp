@@ -4,7 +4,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Printer, X } from 'lucide-react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
-import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { ISSUE_STATUS_META, formatQty, statusMeta, toNumber } from '../jobwork.schemas';
 import { cancelJobIssue, fetchJobIssueById } from './jobIssues.api';
@@ -42,8 +41,6 @@ export function IssueDetail({ issueId, onClose }: Props) {
     queryFn: () => fetchJobIssueById(orgId!, issueId),
     enabled: Boolean(orgId && issueId),
   });
-
-  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId!, 'job_issue');
 
   // The letterhead on the printed challan. Cached across the app, so this is a
   // cache read almost always rather than a request per challan.
@@ -272,20 +269,6 @@ export function IssueDetail({ issueId, onClose }: Props) {
                 {issue.sourceLocation?.name ?? '-'} → {issue.destination?.name ?? '-'}
               </td>
             </tr>
-            {(issue.vehicleNo || issue.lrNo || issue.ewayBillNo) && (
-              <tr>
-                <td style={rowLabel}>Transport</td>
-                <td style={rowValue}>
-                  {[
-                    issue.vehicleNo,
-                    issue.lrNo && `LR ${issue.lrNo}`,
-                    issue.ewayBillNo && `E-way ${issue.ewayBillNo}`,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </td>
-              </tr>
-            )}
             {issue.toleranceOverrideReason && (
               <tr>
                 <td style={rowLabel}>Tolerance override</td>
@@ -298,21 +281,6 @@ export function IssueDetail({ issueId, onClose }: Props) {
                 <td style={{ ...rowValue, whiteSpace: 'pre-wrap' }}>{issue.remarks}</td>
               </tr>
             )}
-            {customFieldDefs.map((def) => {
-              const value = issue.customFields?.[def.key];
-              return (
-                <tr key={def.id}>
-                  <td style={rowLabel}>{def.label}</td>
-                  <td style={rowValue}>
-                    {value === null || value === undefined || value === ''
-                      ? '-'
-                      : Array.isArray(value)
-                        ? value.join(', ')
-                        : String(value)}
-                  </td>
-                </tr>
-              );
-            })}
           </tbody>
         </table>
 

@@ -23,22 +23,23 @@ export const ENTITY_TYPES = [
   'item',
   'purchase_order',
   'member',
-  /** Jobwork's operation master. `processes` carries a `custom_fields` column, so
-   * it belongs here as well as in the list catalogs. */
-  'process',
   /**
    * Sprints 2–4. Every one of these tables carries `custom_fields`, which is
-   * where the mind map's "extra fields at time of issue — lot-wise pcs, cutper,
-   * meter" lands (field-sources §2.6). Those must never become hardcoded
-   * columns: one org's cutper is another org's nothing.
+   * where the mind map's "extra fields at time of receipt" lands
+   * (field-sources §2.6). Those must never become hardcoded columns: one org's
+   * cutper is another org's nothing.
+   *
+   * `job_issue` is NOT here (removed 2026-08-10). Its table still carries the
+   * column, but the Issue dialog no longer has a section to fill it in, so
+   * offering the module in Settings → Modules would let an admin define a field
+   * that can never be entered. It is list-only now — see
+   * `LIST_ONLY_ENTITY_TYPES` in `listViews.catalog.ts`.
    *
    * `lot` has no list page of its own — lots are picked from an availability
    * query, not browsed — but it earns an entry because Material In writes a lot
    * and an org needs somewhere to record the tag details it cares about.
    */
-  'process_route',
   'job_order',
-  'job_issue',
   'job_receipt',
   'rejection_reason',
   'lot',

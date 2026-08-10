@@ -5,10 +5,6 @@ import { allocateNumber } from '../../../lib/numberSequence.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import {
-  loadActiveDefinitions,
-  validateCustomFields,
-} from '../../settings/customization/custom-fields/customFields.engine.ts';
-import {
   createLot,
   getAvailableLots,
   getAvailablePackages,
@@ -45,7 +41,7 @@ import type { CreateJobIssueInput } from './jobIssues.schemas.ts';
 
 const DUPLICATE_NUMBER = 'A challan with this number already exists in this organization.';
 
-const SEARCH_COLUMNS = ['challanNumber', 'processorNameSnapshot', 'vehicleNo', 'lrNo'] as const;
+const SEARCH_COLUMNS = ['challanNumber', 'processorNameSnapshot'] as const;
 
 function issueListWhere(organizationId: string, opts: ListQuery): Prisma.JobIssueWhereInput {
   return {
@@ -502,7 +498,7 @@ export async function createNewJobIssue(
   data: CreateJobIssueInput,
   userId?: string,
 ) {
-  const { customFields: rawCustomFields, lines, ...header } = data;
+  const { lines, ...header } = data;
 
   // Two ledger rows per line, and a fifty-taka challan is normal — past
   // Prisma's 5-second default (jobwork.types.ts).
@@ -702,13 +698,6 @@ export async function createNewJobIssue(
       processorId,
     );
 
-    const defs = await loadActiveDefinitions(tx, organizationId, 'job_issue');
-    const customFields = validateCustomFields({
-      defs,
-      input: rawCustomFields,
-      mode: 'create',
-    }) as Prisma.InputJsonValue;
-
     const challanNumber = await allocateNumber(tx, organizationId, 'job_issue');
     const issueDate = header.issueDate ?? new Date();
 
@@ -734,15 +723,9 @@ export async function createNewJobIssue(
           uomId: principal.uomId,
           isRework,
           attemptNo,
-          transporterId: header.transporterId ?? null,
-          vehicleNo: header.vehicleNo?.trim() || null,
-          lrNo: header.lrNo?.trim() || null,
-          lrDate: header.lrDate ?? null,
-          ewayBillNo: header.ewayBillNo?.trim() || null,
           totalQty,
           toleranceOverrideReason: header.toleranceOverrideReason?.trim() || null,
           remarks: header.remarks?.trim() || null,
-          customFields,
           createdBy: userId ?? null,
           updatedBy: userId ?? null,
         },
