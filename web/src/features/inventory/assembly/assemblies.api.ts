@@ -8,6 +8,9 @@ export interface ItemAssembly {
   assemblyDate: string;
   compositeItemId: string;
   qty: number;
+  totalValue: number;
+  componentValue: number;
+  additionalCost: number;
   status: string;
   direction: string;
   createdAt: string;

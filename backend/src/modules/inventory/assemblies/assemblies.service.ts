@@ -5,7 +5,81 @@ import type { CreateAssemblyDto } from './assemblies.schemas.js';
 import type { ListQuery } from '../../../lib/pagination.js';
 import { takeForPage, pageSlice, searchWhere } from '../../../lib/pagination.js';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.js';
+import { getBalance } from '../stock-ledger/stockLedger.service.js';
 import { Prisma } from '../../../../generated/prisma/client.ts';
+
+function decimal(value: Prisma.Decimal | number | string | null | undefined | unknown): Prisma.Decimal {
+  return new Prisma.Decimal(value as Prisma.Decimal | number | string | null | undefined ?? 0);
+}
+
+type AssemblyLineValueInput = {
+  lotId: string;
+  qty: unknown;
+  unitValue?: unknown;
+  value?: unknown;
+};
+
+type AssemblyLineValueResult = {
+  unitValue: Prisma.Decimal;
+  value: Prisma.Decimal;
+};
+
+async function resolveAssemblyLineValue(
+  tx: Parameters<Parameters<typeof runAsTenant>[1]>[0],
+  orgId: string,
+  locationId: string,
+  assemblyDate: Date,
+  line: AssemblyLineValueInput,
+): Promise<AssemblyLineValueResult> {
+  const storedUnitValue = decimal(line.unitValue);
+  const storedValue = decimal(line.value);
+  if (!storedUnitValue.isZero() || !storedValue.isZero()) {
+    return {
+      unitValue: storedUnitValue,
+      value: storedValue,
+    };
+  }
+
+  const balance = await getBalance(tx, {
+    organizationId: orgId,
+    lotId: line.lotId,
+    locationId,
+    asOf: assemblyDate,
+  });
+  const unitValue = balance.qty.greaterThan(0) ? balance.value.dividedBy(balance.qty) : decimal(0);
+  const qty = decimal(line.qty);
+
+  return {
+    unitValue,
+    value: unitValue.times(qty).toDecimalPlaces(4),
+  };
+}
+
+async function resolveAssemblySnapshot<T extends AssemblyLineValueInput>(
+  tx: Parameters<Parameters<typeof runAsTenant>[1]>[0],
+  orgId: string,
+  locationId: string,
+  assemblyDate: Date,
+  lines: readonly T[],
+): Promise<{
+  resolvedLines: Array<T & AssemblyLineValueResult>;
+  componentValue: Prisma.Decimal;
+  totalValue: Prisma.Decimal;
+}> {
+  const resolvedLines = await Promise.all(
+    lines.map(async (line) => ({
+      ...line,
+      ...(await resolveAssemblyLineValue(tx, orgId, locationId, assemblyDate, line)),
+    })),
+  );
+
+  const componentValue = resolvedLines.reduce((sum, line) => sum.plus(line.value), decimal(0));
+  return {
+    resolvedLines,
+    componentValue,
+    totalValue: componentValue,
+  };
+}
 
 export const assembliesService = {
   listWhere: (organizationId: string, opts: ListQuery): Prisma.ItemAssemblyWhereInput => {
@@ -27,13 +101,47 @@ export const assembliesService = {
           compositeItem: {
             select: { name: true, sku: true },
           },
+          lines: {
+            select: {
+              lotId: true,
+              qty: true,
+              unitValue: true,
+              value: true,
+            },
+          },
         },
       });
 
-      const results = records.map((r) => ({
-        ...r,
-        qty: Number(r.qty),
-      }));
+      const results = await Promise.all(
+        records.map(async (record) => {
+          const hasStoredValue = !decimal(record.totalValue).isZero();
+          if (hasStoredValue) {
+            return {
+              ...record,
+              qty: Number(record.qty),
+              totalValue: Number(record.totalValue),
+              componentValue: Number(record.componentValue),
+              additionalCost: Number(record.additionalCost),
+            };
+          }
+
+          const snapshot = await resolveAssemblySnapshot(
+            tx,
+            orgId,
+            record.locationId,
+            record.assemblyDate,
+            record.lines,
+          );
+
+          return {
+            ...record,
+            qty: Number(record.qty),
+            totalValue: Number(snapshot.totalValue.plus(decimal(record.additionalCost))),
+            componentValue: Number(snapshot.componentValue),
+            additionalCost: Number(record.additionalCost),
+          };
+        }),
+      );
 
       return pageSlice(results, opts.page, opts.perPage);
     });
@@ -76,7 +184,14 @@ export const assembliesService = {
       await reserveSuppliedNumber(tx, orgId, 'assembly', assemblyNumber);
 
       // 4. Create the ItemAssembly and ItemAssemblyLines
-      const processedLines: Prisma.ItemAssemblyLineUncheckedCreateWithoutAssemblyInput[] = [];
+      const processedLines: Array<{
+        itemId: string;
+        lotId: string;
+        qtyPerUnit: Prisma.Decimal;
+        qty: Prisma.Decimal;
+        createdBy: string | null;
+        updatedBy: string | null;
+      }> = [];
       const lotCache = new Map<string, string>();
 
       for (const line of data.lines) {
@@ -104,23 +219,25 @@ export const assembliesService = {
           lotCache.set(line.itemId, lotId);
         }
 
-        processedLines.push({
-          organizationId: orgId,
-          itemId: line.itemId,
-          lotId: lotId,
-          qtyPerUnit: line.qtyRequired / data.qty,
-          qty: line.qtyRequired,
-          createdBy: userId,
-          updatedBy: userId,
-        });
+      processedLines.push({
+        itemId: line.itemId,
+        lotId: lotId,
+        qtyPerUnit: decimal(line.qtyRequired).dividedBy(decimal(data.qty)),
+        qty: decimal(line.qtyRequired),
+        createdBy: userId,
+        updatedBy: userId,
+      });
       }
+
+      const assemblyDate = new Date(data.assemblyDate);
+      const snapshot = await resolveAssemblySnapshot(tx, orgId, data.locationId, assemblyDate, processedLines);
 
       const assembly = await withUniqueViolation('Assembly number already exists in this organization.', () =>
         tx.itemAssembly.create({
           data: {
             organizationId: orgId,
             assemblyNumber,
-            assemblyDate: new Date(data.assemblyDate),
+            assemblyDate,
             compositeItemId: data.compositeItemId,
             qty: data.qty,
             locationId: data.locationId,
@@ -129,8 +246,20 @@ export const assembliesService = {
             updatedBy: userId,
             direction: 'assemble',
             status: 'assembled',
+            componentValue: snapshot.componentValue,
+            totalValue: snapshot.totalValue,
             lines: {
-              create: processedLines,
+              create: snapshot.resolvedLines.map((line) => ({
+                organizationId: orgId,
+                itemId: line.itemId,
+                lotId: line.lotId,
+                qtyPerUnit: line.qtyPerUnit,
+                qty: line.qty,
+                unitValue: line.unitValue,
+                value: line.value,
+                createdBy: userId,
+                updatedBy: userId,
+              })),
             },
           },
           include: {
@@ -174,12 +303,21 @@ export const assembliesService = {
         totalValue: Number(assembly.totalValue),
         componentValue: Number(assembly.componentValue),
         additionalCost: Number(assembly.additionalCost),
-        lines: assembly.lines.map((line) => ({
+        lines: await Promise.all(assembly.lines.map(async (line) => {
+          const resolved = await resolveAssemblyLineValue(
+            tx,
+            orgId,
+            assembly.locationId,
+            new Date(assembly.assemblyDate),
+            line,
+          );
+          return {
           ...line,
           qty: Number(line.qty),
           qtyPerUnit: Number(line.qtyPerUnit),
-          unitValue: Number(line.unitValue || 0),
-          value: Number(line.value || 0),
+            unitValue: Number(resolved.unitValue),
+            value: Number(resolved.value),
+          };
         })),
       };
     });

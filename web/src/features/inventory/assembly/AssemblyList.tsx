@@ -25,6 +25,12 @@ function renderAssemblyCell(assembly: ItemAssembly, colKey: string) {
       return assembly.compositeItem?.name || assembly.compositeItemId;
     case 'qty':
       return assembly.qty;
+    case 'totalValue':
+      return new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: 'INR',
+        minimumFractionDigits: 2,
+      }).format(assembly.totalValue);
     case 'status':
       return (
         <span

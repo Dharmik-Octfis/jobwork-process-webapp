@@ -1,6 +1,14 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, FileText, ChevronDown,AlertCircle, Info, Image as ImageIcon } from 'lucide-react';
+import {
+  X,
+  FileText,
+  ChevronDown,
+  AlertCircle,
+  Info,
+  Image as ImageIcon,
+  Trash2,
+} from 'lucide-react';
 import { assembliesApi } from './assemblies.api';
 import { formatDate } from '../../../lib/formatDate';
 
@@ -37,9 +45,19 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
   const goodsItems = assembly.lines.filter((line) => line.item.type !== 'Service');
   const serviceItems = assembly.lines.filter((line) => line.item.type === 'Service');
 
+  const formatMoney = (value: number) =>
+    new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 2,
+    }).format(value);
+  const getLineAmount = (line: (typeof assembly.lines)[number]) =>
+    line.value > 0 ? line.value : Number((line.qty * line.unitValue).toFixed(4));
+  const getSectionTotal = (lines: typeof assembly.lines) =>
+    lines.reduce((sum, line) => sum + getLineAmount(line), 0);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#fff' }}>
-      {/* Header */}
       <div
         style={{
           display: 'flex',
@@ -74,7 +92,6 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
         </div>
       </div>
 
-      {/* Toolbar */}
       <div
         style={{
           display: 'flex',
@@ -140,6 +157,7 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
             cursor: 'pointer',
           }}
         >
+          <Trash2 size={14} />
           Delete
         </button>
         <div style={{ width: 1, height: 16, background: '#cbd5e1' }} />
@@ -182,7 +200,6 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
         </button>
       </div>
 
-      {/* Main Content */}
       <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
         <div
           style={{
@@ -270,12 +287,21 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
           </div>
           <div style={{ width: 320 }}>
             <div style={{ background: '#f8fafc', padding: 24, borderRadius: 8, marginBottom: 24 }}>
-              <div style={{ color: '#1e293b', fontSize: 16, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div
+                style={{
+                  color: '#1e293b',
+                  fontSize: 16,
+                  marginBottom: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
                 Total
                 <Info size={14} color="#64748b" />
               </div>
               <div style={{ color: '#0f172a', fontSize: 28, fontWeight: 600 }}>
-                ₹{assembly.totalValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                {formatMoney(assembly.totalValue)}
               </div>
             </div>
             <div>
@@ -290,7 +316,14 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
             <h4 style={{ fontSize: 16, fontWeight: 500, color: '#1e293b', margin: '0 0 16px' }}>Items</h4>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
-                <tr style={{ borderBottom: '2px solid #eef0f3', color: '#64748b', fontSize: 12, textTransform: 'uppercase' }}>
+                <tr
+                  style={{
+                    borderBottom: '2px solid #eef0f3',
+                    color: '#64748b',
+                    fontSize: 12,
+                    textTransform: 'uppercase',
+                  }}
+                >
                   <th style={{ padding: '12px 16px', fontWeight: 600 }}>Item Details</th>
                   <th style={{ padding: '12px 16px', fontWeight: 600 }}>Quantity Consumed</th>
                   <th style={{ padding: '12px 16px', fontWeight: 600 }}>Total Qty Consumed</th>
@@ -329,13 +362,30 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
                       {line.qty} {line.item.stockingUom?.unitName || ''}
                     </td>
                     <td style={{ padding: '16px', color: '#334155', fontSize: 14 }}>
-                      ₹{line.unitValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      {formatMoney(line.unitValue)}
                     </td>
                     <td style={{ padding: '16px', color: '#334155', fontSize: 14, textAlign: 'right' }}>
-                      ₹{line.value.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      {formatMoney(getLineAmount(line))}
                     </td>
                   </tr>
                 ))}
+                <tr style={{ borderTop: '2px solid #eef0f3', background: '#f8fafc' }}>
+                  <td style={{ padding: '16px', fontWeight: 600, color: '#1e293b' }}>Total</td>
+                  <td style={{ padding: '16px' }} />
+                  <td style={{ padding: '16px' }} />
+                  <td style={{ padding: '16px' }} />
+                  <td
+                    style={{
+                      padding: '16px',
+                      color: '#1e293b',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      textAlign: 'right',
+                    }}
+                  >
+                    {formatMoney(getSectionTotal(goodsItems))}
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -346,7 +396,14 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
             <h4 style={{ fontSize: 16, fontWeight: 500, color: '#1e293b', margin: '0 0 16px' }}>Services</h4>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
-                <tr style={{ borderBottom: '2px solid #eef0f3', color: '#64748b', fontSize: 12, textTransform: 'uppercase' }}>
+                <tr
+                  style={{
+                    borderBottom: '2px solid #eef0f3',
+                    color: '#64748b',
+                    fontSize: 12,
+                    textTransform: 'uppercase',
+                  }}
+                >
                   <th style={{ padding: '12px 16px', fontWeight: 600 }}>Service Details</th>
                   <th style={{ padding: '12px 16px', fontWeight: 600 }}>Quantity Consumed</th>
                   <th style={{ padding: '12px 16px', fontWeight: 600 }}>Total Qty Consumed</th>
@@ -385,13 +442,30 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
                       {line.qty} {line.item.stockingUom?.unitName || ''}
                     </td>
                     <td style={{ padding: '16px', color: '#334155', fontSize: 14 }}>
-                      ₹{line.unitValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      {formatMoney(line.unitValue)}
                     </td>
                     <td style={{ padding: '16px', color: '#334155', fontSize: 14, textAlign: 'right' }}>
-                      ₹{line.value.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      {formatMoney(getLineAmount(line))}
                     </td>
                   </tr>
                 ))}
+                <tr style={{ borderTop: '2px solid #eef0f3', background: '#f8fafc' }}>
+                  <td style={{ padding: '16px', fontWeight: 600, color: '#1e293b' }}>Total</td>
+                  <td style={{ padding: '16px' }} />
+                  <td style={{ padding: '16px' }} />
+                  <td style={{ padding: '16px' }} />
+                  <td
+                    style={{
+                      padding: '16px',
+                      color: '#1e293b',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      textAlign: 'right',
+                    }}
+                  >
+                    {formatMoney(getSectionTotal(serviceItems))}
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
