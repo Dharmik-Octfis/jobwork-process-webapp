@@ -122,8 +122,8 @@ model ItemAssembly {
   ownership    String  @default("own") @db.VarChar(20)
   ownerPartyId String? @map("owner_party_id") @db.Uuid
 
-  /// posted | cancelled
-  status  String  @default("posted") @db.VarChar(20)
+  /// assembled | cancelled
+  status  String  @default("assembled") @db.VarChar(20)
   remarks String?
 
   customFields Json     @default("{}") @map("custom_fields")

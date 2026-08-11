@@ -276,7 +276,13 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'id', label: 'ID', locked: true },
   ],
   item_assembly: [
-    { key: 'id', label: 'ID', locked: true },
+    { key: 'assemblyNumber', label: 'Assembly #', locked: true },
+    { key: 'assemblyDate', label: 'Date', defaultVisible: true },
+    { key: 'compositeItem', label: 'Composite Item', defaultVisible: true },
+    { key: 'qty', label: 'Quantity', defaultVisible: true },
+    { key: 'status', label: 'Status', defaultVisible: true },
+    { key: 'direction', label: 'Direction' },
+    { key: 'createdAt', label: 'Created At' },
   ],
   item_assembly_line: [
     { key: 'id', label: 'ID', locked: true },

@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { itemsApi } from './items.api';
 import { useParams, useNavigate } from 'react-router-dom';
-import { X, Edit, ChevronDown} from 'lucide-react';
+import { X, Edit, ChevronDown } from 'lucide-react';
 import { useState, useRef, useEffect, Fragment } from 'react';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { ItemActivityHistory } from './ItemActivityHistory';
@@ -53,7 +53,8 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
   });
 
   const toggleActiveMutation = useMutation({
-    mutationFn: (newIsActive: boolean) => itemsApi.updateItem({ orgId: orgId!, id: itemId, data: { isActive: newIsActive } }),
+    mutationFn: (newIsActive: boolean) =>
+      itemsApi.updateItem({ orgId: orgId!, id: itemId, data: { isActive: newIsActive } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['item', orgId, itemId] });
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
@@ -65,12 +66,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     setIsMoreOpen(false);
     if (!item) return;
 
-    const {
-      id: _id,
-      createdAt: _createdAt,
-      updatedAt: _updatedAt,
-      ...restToClone
-    } = item;
+    const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...restToClone } = item;
     const itemToClone = {
       ...restToClone,
       sku: '',
@@ -95,8 +91,6 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
       </div>
     );
   }
-
-
 
   return (
     <div
@@ -137,8 +131,34 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {(item.itemType === 'Composite Item' || item.item_type === 'Composite Item') && (
+            <button
+              onClick={() => navigate(`/organizations/${orgId}/inventory/assembly/new?itemId=${item.id}`)}
+              style={{
+                padding: '6px 12px',
+                border: 'none',
+                background: '#0062ff',
+                color: 'white',
+                borderRadius: '4px',
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontWeight: 500,
+              }}
+            >
+              Create Assembly
+            </button>
+          )}
           <button
-            onClick={() => navigate(`/organizations/${orgId}/items/${itemId}/edit`)}
+            onClick={() => {
+              if (item.itemType === 'Composite Item' || item.item_type === 'Composite Item') {
+                navigate(`/organizations/${orgId}/composite-items/${itemId}/edit`);
+              } else {
+                navigate(`/organizations/${orgId}/items/${itemId}/edit`);
+              }
+            }}
             style={{
               padding: '6px 12px',
               border: '1px solid #d1d5db',
@@ -199,7 +219,9 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                   Clone Item
                 </div>
                 <div
-                  onClick={() => toggleActiveMutation.mutate(item.isActive === false ? true : false)}
+                  onClick={() =>
+                    toggleActiveMutation.mutate(item.isActive === false ? true : false)
+                  }
                   style={{
                     padding: '8px 16px',
                     fontSize: '13px',
@@ -250,8 +272,25 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #eef0f3', padding: '0 24px', gap: '16px' }}>
-        {['Overview', 'Locations', 'Transactions', 'Related Lists', 'History', ...((item.itemType === 'Composite Item' || item.item_type === 'Composite Item') ? ['Components'] : [])].map((tab, idx) => (
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          borderBottom: '1px solid #eef0f3',
+          padding: '0 24px',
+          gap: '16px',
+        }}
+      >
+        {[
+          'Overview',
+          'Locations',
+          'Transactions',
+          'Related Lists',
+          'History',
+          ...(item.itemType === 'Composite Item' || item.item_type === 'Composite Item'
+            ? ['Components']
+            : []),
+        ].map((tab, idx) => (
           <Fragment key={tab}>
             {idx > 0 && <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />}
             <div
@@ -277,146 +316,263 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
           <div style={{ margin: '-24px' }}>
             <ItemActivityHistory activities={activities} isLoading={isLoadingActivities} />
           </div>
-        ) : activeTab === 'Components' && (item.itemType === 'Composite Item' || item.item_type === 'Composite Item') ? (
+        ) : activeTab === 'Components' &&
+          (item.itemType === 'Composite Item' || item.item_type === 'Composite Item') ? (
           <div style={{ margin: '-24px' }}>
             <CompositeItemsList itemId={itemId} />
           </div>
         ) : activeTab === 'Overview' ? (
-          <div style={{ display: 'grid', gridTemplateColumns: '400px 380px', gap: '32px', justifyContent: 'start' }}>
-          {/* Primary Info (Left) */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-            <div>
-            <div style={{ fontSize: '15px', fontWeight: 500, color: '#1e293b', marginBottom: '16px' }}>Primary Details</div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '400px 380px',
+              gap: '32px',
+              justifyContent: 'start',
+            }}
+          >
+            {/* Primary Info (Left) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+              <div>
+                <div
+                  style={{
+                    fontSize: '15px',
+                    fontWeight: 500,
+                    color: '#1e293b',
+                    marginBottom: '16px',
+                  }}
+                >
+                  Primary Details
+                </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                <div style={{ fontSize: '12px', color: '#64748b' }}>Item Name</div>
-                <div style={{ fontSize: '12px', color: '#0062ff', fontWeight: 500 }}>{item.name}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
+                    <div style={{ fontSize: '12px', color: '#64748b' }}>Item Name</div>
+                    <div style={{ fontSize: '12px', color: '#0062ff', fontWeight: 500 }}>
+                      {item.name}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
+                    <div style={{ fontSize: '12px', color: '#64748b' }}>SKU</div>
+                    <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>
+                      {item.sku}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
+                    <div style={{ fontSize: '12px', color: '#64748b' }}>Unit</div>
+                    <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>
+                      {item.unit}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
+                    <div style={{ fontSize: '12px', color: '#64748b' }}>Category</div>
+                    <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>
+                      {item.category || '-'}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
+                    <div style={{ fontSize: '12px', color: '#64748b' }}>Type</div>
+                    <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>
+                      {item.type}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
+                    <div style={{ fontSize: '12px', color: '#64748b' }}>Item Type</div>
+                    <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>
+                      {item.itemType}
+                    </div>
+                  </div>
+
+                  {item.hsnCode && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
+                      <div style={{ fontSize: '12px', color: '#64748b' }}>HSN Code</div>
+                      <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>
+                        {item.hsnCode}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                <div style={{ fontSize: '12px', color: '#64748b' }}>SKU</div>
-                <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>{item.sku}</div>
-              </div>
+              {item.isPurchaseInfo && (
+                <div>
+                  <div
+                    style={{
+                      fontSize: '15px',
+                      fontWeight: 500,
+                      color: '#1e293b',
+                      marginBottom: '16px',
+                    }}
+                  >
+                    Purchase Information
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
+                      <div style={{ fontSize: '12px', color: '#64748b' }}>Cost Price</div>
+                      <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>
+                        ₹{item.costPrice ? Number(item.costPrice).toFixed(2) : '0.00'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                <div style={{ fontSize: '12px', color: '#64748b' }}>Unit</div>
-                <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>{item.unit}</div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                <div style={{ fontSize: '12px', color: '#64748b' }}>Category</div>
-                <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>{item.category || '-'}</div>
-              </div>
-
-
-
-              <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                <div style={{ fontSize: '12px', color: '#64748b' }}>Type</div>
-                <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>{item.type}</div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                <div style={{ fontSize: '12px', color: '#64748b' }}>Item Type</div>
-                <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>{item.itemType}</div>
-              </div>
-
-
-
-              {item.hsnCode && (
-                <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                  <div style={{ fontSize: '12px', color: '#64748b' }}>HSN Code</div>
-                  <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>{item.hsnCode}</div>
+              {item.isSalesInfo && (
+                <div>
+                  <div
+                    style={{
+                      fontSize: '15px',
+                      fontWeight: 500,
+                      color: '#1e293b',
+                      marginBottom: '16px',
+                    }}
+                  >
+                    Sales Information
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
+                      <div style={{ fontSize: '12px', color: '#64748b' }}>Selling Price</div>
+                      <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>
+                        ₹{item.sellingPrice ? Number(item.sellingPrice).toFixed(2) : '0.00'}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
+
+            {/* Right Column: Images & Stock */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+              {/* Image Gallery & Upload */}
+              <ItemImageGallery orgId={orgId!} itemId={itemId} item={item} />
+
+              {/* Opening Stock */}
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    marginBottom: '16px',
+                  }}
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#0062ff"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35A2 2 0 0 1 3.26 6.5l8-3.2a2 2 0 0 1 1.48 0l8 3.2A2 2 0 0 1 22 8.35Z"></path>
+                    <path d="M6 18h12"></path>
+                    <path d="M6 14h12"></path>
+                    <rect width="12" height="12" x="6" y="10"></rect>
+                  </svg>
+                  <h3 style={{ fontSize: '13px', fontWeight: 500, color: '#0062ff', margin: 0 }}>
+                    Opening Stock
+                  </h3>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div
+                    style={{
+                      background: '#fff',
+                      padding: '12px',
+                      borderRadius: '6px',
+                      border: '1px solid #eef0f3',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '2px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                      <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
+                        {item.openingStock || item.opening_stock || 0}
+                      </span>
+                      <span style={{ fontSize: '10px', color: '#64748b' }}>
+                        {item.unit || 'Qty'}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#1e293b' }}>Opening Stock</div>
+                  </div>
+
+                  <div
+                    style={{
+                      background: '#fff',
+                      padding: '12px',
+                      borderRadius: '6px',
+                      border: '1px solid #eef0f3',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '2px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                      <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>0</span>
+                      <span style={{ fontSize: '10px', color: '#64748b' }}>Qty</span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#1e293b' }}>Stock In</div>
+                  </div>
+
+                  <div
+                    style={{
+                      background: '#fff',
+                      padding: '12px',
+                      borderRadius: '6px',
+                      border: '1px solid #eef0f3',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '2px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                      <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>0</span>
+                      <span style={{ fontSize: '10px', color: '#64748b' }}>Qty</span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#1e293b' }}>Stock Out</div>
+                  </div>
+
+                  <div
+                    style={{
+                      background: '#fff',
+                      padding: '12px',
+                      borderRadius: '6px',
+                      border: '1px solid #eef0f3',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '2px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                      <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
+                        {item.openingStock || item.opening_stock || 0}
+                      </span>
+                      <span style={{ fontSize: '10px', color: '#64748b' }}>
+                        {item.unit || 'Qty'}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#1e293b' }}>Stock on Hand</div>
+                  </div>
+                </div>
+              </div>
             </div>
-
-            {item.isPurchaseInfo && (
-              <div>
-                <div style={{ fontSize: '15px', fontWeight: 500, color: '#1e293b', marginBottom: '16px' }}>Purchase Information</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                    <div style={{ fontSize: '12px', color: '#64748b' }}>Cost Price</div>
-                    <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>₹{item.costPrice ? Number(item.costPrice).toFixed(2) : '0.00'}</div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {item.isSalesInfo && (
-              <div>
-                <div style={{ fontSize: '15px', fontWeight: 500, color: '#1e293b', marginBottom: '16px' }}>Sales Information</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                    <div style={{ fontSize: '12px', color: '#64748b' }}>Selling Price</div>
-                    <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>₹{item.sellingPrice ? Number(item.sellingPrice).toFixed(2) : '0.00'}</div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Right Column: Images & Stock */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-
-            {/* Image Gallery & Upload */}
-            <ItemImageGallery orgId={orgId!} itemId={itemId} item={item} />
-
-            {/* Opening Stock */}
-            <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0062ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35A2 2 0 0 1 3.26 6.5l8-3.2a2 2 0 0 1 1.48 0l8 3.2A2 2 0 0 1 22 8.35Z"></path><path d="M6 18h12"></path><path d="M6 14h12"></path><rect width="12" height="12" x="6" y="10"></rect></svg>
-                <h3 style={{ fontSize: '13px', fontWeight: 500, color: '#0062ff', margin: 0 }}>Opening Stock</h3>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <div style={{ background: '#fff', padding: '12px', borderRadius: '6px', border: '1px solid #eef0f3', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                    <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
-                      {item.openingStock || item.opening_stock || 0}
-                    </span>
-                    <span style={{ fontSize: '10px', color: '#64748b' }}>
-                      {item.unit || 'Qty'}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#1e293b' }}>Opening Stock</div>
-                </div>
-
-                <div style={{ background: '#fff', padding: '12px', borderRadius: '6px', border: '1px solid #eef0f3', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                    <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>0</span>
-                    <span style={{ fontSize: '10px', color: '#64748b' }}>Qty</span>
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#1e293b' }}>Stock In</div>
-                </div>
-
-                <div style={{ background: '#fff', padding: '12px', borderRadius: '6px', border: '1px solid #eef0f3', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                    <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>0</span>
-                    <span style={{ fontSize: '10px', color: '#64748b' }}>Qty</span>
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#1e293b' }}>Stock Out</div>
-                </div>
-
-                <div style={{ background: '#fff', padding: '12px', borderRadius: '6px', border: '1px solid #eef0f3', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                    <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
-                      {item.openingStock || item.opening_stock || 0}
-                    </span>
-                    <span style={{ fontSize: '10px', color: '#64748b' }}>
-                      {item.unit || 'Qty'}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#1e293b' }}>Stock on Hand</div>
-                </div>
-              </div>
-            </div>
-
-          </div>
           </div>
         ) : (
-          <div style={{ color: '#64748b', display: 'flex', justifyContent: 'center', marginTop: '40px' }}>
+          <div
+            style={{
+              color: '#64748b',
+              display: 'flex',
+              justifyContent: 'center',
+              marginTop: '40px',
+            }}
+          >
             This section is under development.
           </div>
         )}

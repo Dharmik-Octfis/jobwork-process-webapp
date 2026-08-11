@@ -24,6 +24,7 @@ import { permissionTemplatesRouter } from '../modules/settings/organization/perm
 import { membersRouter } from '../modules/settings/organization/members/members.routes.ts';
 import { itemsRouter } from '../modules/items/items.routes.ts';
 import { compositeItemsHeaderRouter } from '../modules/inventory/composite-items/compositeItemsHeader.routes.ts';
+import { assembliesRouter } from '../modules/inventory/assemblies/assemblies.routes.ts';
 import { processesRouter } from '../modules/jobwork/processes/processes.routes.ts';
 import { processRoutesRouter } from '../modules/jobwork/process-routes/processRoutes.routes.ts';
 import { jobOrdersRouter } from '../modules/jobwork/job-orders/jobOrders.routes.ts';
@@ -93,6 +94,7 @@ apiRouter.use('/organizations/:orgId/permission-templates', permissionTemplatesR
 apiRouter.use('/organizations/:orgId/members', membersRouter);
 apiRouter.use('/organizations/:orgId/items', itemsRouter);
 apiRouter.use('/organizations/:orgId/composite-items', compositeItemsHeaderRouter);
+apiRouter.use('/organizations/:orgId/assemblies', assembliesRouter);
 apiRouter.use('/organizations/:orgId/list-views', listViewsRouter);
 apiRouter.use('/organizations/:orgId/seed-data', tenantSeedDataRouter);
 apiRouter.use('/seed-data', globalSeedDataRouter);

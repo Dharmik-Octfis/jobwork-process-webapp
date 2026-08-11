@@ -32,9 +32,14 @@ function requireEntityRead(req: Request, res: Response, next: NextFunction): voi
     next(ApiError.badRequest('Unknown module.'));
     return;
   }
-  // vendor -> 'vendor:read', item -> 'item:read',
-  // permission_template -> 'permission_template:read'
-  requirePermission(`${entityType}:read`)(req, res, next);
+  // Map list entity types to permission resources if they differ.
+  const permissionMap: Record<string, string> = {
+    item_assembly: 'assembly',
+  };
+  const permResource = permissionMap[entityType] || entityType;
+
+  // vendor -> 'vendor:read', item -> 'item:read', item_assembly -> 'assembly:read'
+  requirePermission(`${permResource}:read`)(req, res, next);
 }
 
 router.get('/:entityType', requireEntityRead, getListViewRoute);

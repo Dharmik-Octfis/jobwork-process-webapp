@@ -91,6 +91,11 @@ const MODULE_GROUPS: readonly {
     ],
   },
   {
+    key: 'inventory_management',
+    label: 'Inventory',
+    resources: [{ resource: 'assembly', label: 'Assembly' }],
+  },
+  {
     key: 'purchases',
     label: 'Purchases',
     resources: [{ resource: 'vendor', label: 'Vendors' }],

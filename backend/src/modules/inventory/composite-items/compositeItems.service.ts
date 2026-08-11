@@ -118,8 +118,14 @@ export class CompositeItemsService {
       });
 
       if (components && Array.isArray(components) && components.length > 0) {
+        const seenComponents = new Set<string>();
         // Create components
         for (const comp of components) {
+          if (seenComponents.has(comp.component_item_id)) {
+            throw ApiError.badRequest('Duplicate component selected. A composite item cannot contain the same component multiple times.');
+          }
+          seenComponents.add(comp.component_item_id);
+
           // Spec V3
           if (comp.component_item_id === item.id) {
             throw ApiError.badRequest('Composite item cannot contain itself as a component.');
@@ -130,8 +136,6 @@ export class CompositeItemsService {
             where: { id: comp.component_item_id, organizationId, isDeleted: false }
           });
           if (!cItem) throw ApiError.badRequest(`Component ${comp.component_item_id} not found.`);
-          if (cItem.type !== 'Goods') throw ApiError.badRequest(`Component ${cItem.name} must be Goods.`);
-          if (!cItem.stockingUomId) throw ApiError.badRequest(`Component ${cItem.name} must have a stocking unit.`);
           if (cItem.itemType === 'Composite Item') throw ApiError.badRequest(`Component ${cItem.name} cannot be a Composite Item.`);
 
           await tx.compositeItemComponent.create({
@@ -232,7 +236,7 @@ export class CompositeItemsService {
       const parent = await tx.item.findFirst({
         where: { id: compositeItemId, organizationId, isDeleted: false },
       });
-      if (!parent || parent.type !== 'Composite Item') {
+      if (!parent || parent.itemType !== 'Composite Item') {
         throw ApiError.notFound('Composite Item not found');
       }
 
@@ -240,7 +244,7 @@ export class CompositeItemsService {
         where: { compositeItemId, organizationId, isDeleted: false },
         orderBy: [{ seq: 'asc' }, { createdAt: 'asc' }],
         include: {
-          component: { select: { name: true, sku: true, unit: true, stockingUomId: true } },
+          component: { select: { id: true, name: true, sku: true, unit: true, stockingUomId: true, type: true, sellingPrice: true, costPrice: true } },
         }
       });
       return rows.map(toComponentResponse);
@@ -262,7 +266,7 @@ export class CompositeItemsService {
       const parent = await tx.item.findFirst({
         where: { id: compositeItemId, organizationId, isDeleted: false },
       });
-      if (!parent || parent.type !== 'Composite Item') {
+      if (!parent || parent.itemType !== 'Composite Item') {
         throw ApiError.notFound('Composite Item not found');
       }
 
@@ -273,6 +277,13 @@ export class CompositeItemsService {
       
       if (compositeItemId === rawData.component_item_id) {
         throw ApiError.badRequest('An item cannot be a component of itself.');
+      }
+
+      const existingComponent = await tx.compositeItemComponent.findFirst({
+        where: { compositeItemId, componentItemId: rawData.component_item_id, organizationId, isDeleted: false }
+      });
+      if (existingComponent) {
+        throw ApiError.badRequest('This component is already part of the composite item.');
       }
 
       const defs = await loadActiveDefinitions(tx, organizationId, 'composite_item_component');

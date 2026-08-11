@@ -24,10 +24,14 @@ export interface CompositeComponent {
   updated_at: string;
   is_deleted: boolean;
   component?: {
+    id: string;
     name: string;
     sku: string;
     unit: string;
     stockingUomId: string | null;
+    type: string;
+    sellingPrice?: number | null;
+    costPrice?: number | null;
   };
 }
 

@@ -18,11 +18,13 @@ interface SearchableSelectProps {
   renderOption?: (option: Option, isSelected: boolean) => React.ReactNode;
   renderValue?: (option: Option) => React.ReactNode;
   footerAction?: { text: string; icon?: React.ReactNode; onClick: () => void };
+  hasError?: boolean;
 }
 
 export function SearchableSelect({
   options,
   value,
+  hasError,
   onChange,
   placeholder = 'Select...',
   disabled = false,
@@ -157,8 +159,8 @@ export function SearchableSelect({
           justifyContent: 'space-between',
           alignItems: 'center',
           minHeight: '38px',
-          boxShadow: isOpen ? '0 0 0 1px var(--color-primary)' : 'none',
-          borderColor: isOpen ? 'var(--color-primary)' : 'var(--color-border)',
+          boxShadow: isOpen ? '0 0 0 1px var(--color-primary)' : hasError ? '0 0 0 1px #dc2626' : 'none',
+          borderColor: isOpen ? 'var(--color-primary)' : hasError ? '#dc2626' : 'var(--color-border)',
           outline: 'none',
         }}
         onFocus={(e) => {

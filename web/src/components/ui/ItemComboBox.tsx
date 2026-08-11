@@ -152,12 +152,6 @@ export function ItemComboBox({
             name,
             placeholder,
             onBlur: () => {
-              // Reset input value to selected item name on blur if not matched
-              if (selectedItem) {
-                setInputValue(selectedItem.name);
-              } else {
-                setInputValue('');
-              }
               if (onBlur) onBlur();
             },
             onFocus: (e: React.FocusEvent<HTMLInputElement>) => {
