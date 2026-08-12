@@ -595,10 +595,11 @@ model JobIssue {
   sourceLocationId      String @map("source_location_id") @db.Uuid
   destinationLocationId String @map("destination_location_id") @db.Uuid
 
-  /// What is being issued. Copied from the step, which is why the dialog locks
-  /// it: changing it would break the chain the job order validated at save.
-  itemId String  @map("item_id") @db.Uuid
-  uomId  String? @map("uom_id") @db.Uuid
+  /// ⚠️ `itemId` / `uomId` were dropped on 2026-08-12. They held the PRINCIPAL
+  /// item — one of the three a challan carries — and every screen that showed
+  /// them named one item and silently hid the rest. The items live on
+  /// `JobIssueLine`, one row per lot, which is where every per-item total is
+  /// already summed from.
 
   /// Rework goes back to the SAME step, with the attempt counted so a second pass
   /// is not mistaken for over-issue (Sprint 4).
@@ -637,8 +638,6 @@ model JobIssue {
   organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   jobOrder       JobOrder           @relation(fields: [jobOrderId], references: [id], onDelete: Cascade)
   step           JobOrderStep       @relation(fields: [jobOrderStepId], references: [id], onDelete: Cascade)
-  item           Item               @relation("JobIssueItem", fields: [itemId], references: [id])
-  uom            UnitOfMeasurement? @relation("JobIssueUom", fields: [uomId], references: [id])
   sourceLocation Location           @relation("JobIssueSource", fields: [sourceLocationId], references: [id])
   destination    Location           @relation("JobIssueDestination", fields: [destinationLocationId], references: [id])
   createdByUser  User?              @relation("JobIssueCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
@@ -663,15 +662,16 @@ model JobIssueLine {
   organizationId String @map("organization_id") @db.Uuid
   jobIssueId     String @map("job_issue_id") @db.Uuid
 
-  /// 🔴 THE ITEM LIVES HERE, not on the header (domain doc §5.7).
+  /// 🔴 THE ITEM LIVES HERE, and only here (domain doc §5.7).
   ///
   /// One challan carries fabric, thread and buttons together — it is one physical
-  /// movement to one processor, so it is one document. `JobIssue.itemId` survives
-  /// until Migration B only so the old build keeps running during the rollout.
+  /// movement to one processor, so it is one document. The `JobIssue.itemId`
+  /// header copy went on 2026-08-12; every per-item total downstream — tolerance,
+  /// step completion, the Overview — already summed from this column.
   ///
-  /// Nullable for exactly that window: rows written before this column existed
-  /// are backfilled from the header, and the service refuses to write a null.
-  itemId String? @map("item_id") @db.Uuid
+  /// NOT NULL since that change: the service always wrote it, so the constraint
+  /// is the guarantee catching up with the code.
+  itemId String  @map("item_id") @db.Uuid
   uomId  String? @map("uom_id") @db.Uuid
 
   lotId        String  @map("lot_id") @db.Uuid
@@ -689,7 +689,7 @@ model JobIssueLine {
 
   organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   jobIssue      JobIssue           @relation(fields: [jobIssueId], references: [id], onDelete: Cascade)
-  item          Item?              @relation("JobIssueLineItem", fields: [itemId], references: [id])
+  item          Item               @relation("JobIssueLineItem", fields: [itemId], references: [id])
   uom           UnitOfMeasurement? @relation("JobIssueLineUom", fields: [uomId], references: [id])
   lot           Lot                @relation("JobIssueLineLot", fields: [lotId], references: [id])
   lotPackage    LotPackage?        @relation("JobIssueLinePackage", fields: [lotPackageId], references: [id])
@@ -763,12 +763,17 @@ model JobReceipt {
   /// the process cannot retell what this receipt did.
   mode String @default("bulk") @db.VarChar(20)
 
-  /// What came back. A DIFFERENT item from what went out whenever the process
-  /// says so (§5.1), and the unit changes with it.
-  outputItemId String  @map("output_item_id") @db.Uuid
-  outputUomId  String? @map("output_uom_id") @db.Uuid
+  /// ⚠️ `outputItemId` / `outputUomId` were dropped on 2026-08-12. They named
+  /// which row the six totals below describe — always the PRIMARY output, which
+  /// `JobReceiptOutput.isPrimary` already says. A receipt returns shirts AND
+  /// rejects AND offcuts; one item on the header could only ever name one.
+  ///
+  /// The REQUEST still accepts `outputItemId`: it is how a client naming no
+  /// `outputs` list says what came back, and it feeds `resolveOutputs`. That is
+  /// an input, not storage.
+
   /// Where the goods landed — ours again, so a godown.
-  locationId   String  @map("location_id") @db.Uuid
+  locationId String @map("location_id") @db.Uuid
 
   /// The lots this receipt created. 🔴 `Lot.parentLotIds` is what carries
   /// genealogy; these two are the shortcut back the other way, so the receipt
@@ -807,8 +812,6 @@ model JobReceipt {
   organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   jobOrder      JobOrder           @relation(fields: [jobOrderId], references: [id], onDelete: Cascade)
   step          JobOrderStep       @relation(fields: [jobOrderStepId], references: [id], onDelete: Cascade)
-  outputItem    Item               @relation("JobReceiptOutputItem", fields: [outputItemId], references: [id])
-  outputUom     UnitOfMeasurement? @relation("JobReceiptOutputUom", fields: [outputUomId], references: [id])
   location      Location           @relation("JobReceiptLocation", fields: [locationId], references: [id])
   outputLot     Lot?               @relation("JobReceiptOutputLot", fields: [outputLotId], references: [id])
   reworkLot     Lot?               @relation("JobReceiptReworkLot", fields: [reworkLotId], references: [id])

@@ -108,7 +108,10 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
     return <div style={{ padding: 32, color: '#64748b', fontSize: 13 }}>Receipt not found.</div>;
   }
 
-  const unit = receipt.outputUom ? (receipt.outputUom.symbol ?? receipt.outputUom.unitName) : '';
+  /* The six header totals are the PRIMARY output's, so the unit is that row's —
+     read off `isPrimary` rather than a header column (dropped 2026-08-12). */
+  const primaryOutput = receipt.outputs.find((row) => row.isPrimary) ?? receipt.outputs[0];
+  const unit = primaryOutput?.uom ? (primaryOutput.uom.symbol ?? primaryOutput.uom.unitName) : '';
 
   /** The challans this receipt closes, deduplicated — several consumed lines
    * usually point at the same one. */

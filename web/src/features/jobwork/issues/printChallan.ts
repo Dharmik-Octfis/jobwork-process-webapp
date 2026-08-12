@@ -39,19 +39,18 @@ function escapeHtml(value: string | null | undefined): string {
 }
 
 export function buildChallanHtml(issue: JobIssue, orgName: string): string {
-  const unit = issue.uom ? (issue.uom.symbol ?? issue.uom.unitName) : '';
-
   /**
    * 🔴 THE ITEM IS A COLUMN, and the unit comes off the LINE (§5.7).
    *
-   * One challan carries fabric, thread and buttons. Printing the header's single
-   * unit against every row would put "CONE" beside 100 metres of fabric on the
+   * One challan carries fabric, thread and buttons. Printing one header unit
+   * against every row would put "CONE" beside 100 metres of fabric on the
    * document the goods physically travel with — and that is what a checkpoint and
-   * the receiving processor read. The header's unit survives only as the fallback
-   * for challans raised before the item moved onto the line.
+   * the receiving processor read. There is no header unit left to fall back to
+   * (dropped 2026-08-12), which is the correct end state: a row with no unit
+   * prints none rather than borrowing another item's.
    */
   const unitOf = (line: JobIssue['lines'][number]) =>
-    line.uom ? (line.uom.symbol ?? line.uom.unitName) : unit;
+    line.uom ? (line.uom.symbol ?? line.uom.unitName) : '';
 
   const rows = issue.lines
     .map((line, index) => {
@@ -62,7 +61,7 @@ export function buildChallanHtml(issue: JobIssue, orgName: string): string {
         : '—';
       return `<tr>
         <td>${index + 1}</td>
-        <td>${escapeHtml(line.item?.name ?? issue.item?.name ?? '')}</td>
+        <td>${escapeHtml(line.item?.name ?? '')}</td>
         <td>${escapeHtml(line.lot?.lotNumber ?? '')}</td>
         <td>${escapeHtml(line.lot?.supplierLotRef ?? '')}</td>
         <td>${taka}</td>
@@ -74,7 +73,7 @@ export function buildChallanHtml(issue: JobIssue, orgName: string): string {
   /** Totalled per item, in each item's own unit — never one sum. */
   const totals = new Map<string, { name: string; unit: string; qty: number }>();
   for (const line of issue.lines) {
-    const name = line.item?.name ?? issue.item?.name ?? '';
+    const name = line.item?.name ?? '';
     const existing = totals.get(name) ?? { name, unit: unitOf(line), qty: 0 };
     existing.qty += Number(line.qty);
     totals.set(name, existing);

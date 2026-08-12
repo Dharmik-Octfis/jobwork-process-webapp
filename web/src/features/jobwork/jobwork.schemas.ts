@@ -337,6 +337,40 @@ export function feedsSteps(
   return fed;
 }
 
+/**
+ * 🔴 NAMING A DOCUMENT THAT CARRIES SEVERAL ITEMS.
+ *
+ * One challan moves fabric, thread and buttons; one receipt returns shirts and
+ * rejects. A list column that shows the first item alone names one of them and
+ * silently hides the rest — which is exactly what the `job_issues.item_id` and
+ * `job_receipts.output_item_id` header columns did before they were dropped on
+ * 2026-08-12. This says how many are not being shown.
+ *
+ * The COUNT is the honest part. "Grey Fabric" on a three-item challan is a
+ * wrong answer; "Grey Fabric +2" is a true one that still fits a column.
+ */
+export function itemSummary(rows: readonly { item?: { name: string } | null }[]): string {
+  const names = [...new Set(rows.map((row) => row.item?.name).filter(Boolean))] as string[];
+  if (names.length === 0) return '-';
+  return names.length === 1 ? names[0]! : `${names[0]} +${names.length - 1}`;
+}
+
+/**
+ * …and its unit, which only exists when every row shares one.
+ *
+ * A total across metres, cones and pieces is not a quantity (§6.5), so a
+ * multi-unit document prints its number with no unit rather than borrowing the
+ * first row's and implying the sum means something.
+ */
+export function sharedUnit(
+  rows: readonly { uom?: { symbol?: string | null; unitName: string } | null }[],
+): string {
+  const units = [
+    ...new Set(rows.map((row) => (row.uom ? (row.uom.symbol ?? row.uom.unitName) : null))),
+  ].filter(Boolean) as string[];
+  return units.length === 1 ? units[0]! : '';
+}
+
 /** Small coloured pill. One component so a status never renders two ways. */
 export function statusMeta(
   map: Record<string, { label: string; color: string; bg: string }>,

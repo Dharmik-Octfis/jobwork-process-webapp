@@ -1069,9 +1069,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     });
     expect(first.lines).toHaveLength(2);
     expect(first.lines.map((line) => line.itemId).sort()).toEqual([shirtId, threadId].sort());
-    // The header keeps the principal item alone — the challan's items are on its
-    // lines now, and this pair dies in Migration B.
-    expect(first.itemId).toBe(shirtId);
+    // 🔴 The header names NO item since 2026-08-12. It used to carry the
+    // principal one, which on this two-item challan named the panels and hid the
+    // thread entirely.
 
     const second = await createNewJobIssue(orgId, {
       jobOrderStepId: step.id,
@@ -1309,8 +1309,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     expect(Number(shirtBalance.value)).toBeCloseTo(pot - 40, 4);
     expect(Number(shirtBalance.value) + Number(rejectBalance.value)).toBeCloseTo(pot, 4);
 
-    // The header still describes the primary alone, in one unit.
-    expect(receipt.outputItemId).toBe(shirtsId);
+    // The header's six totals are the PRIMARY output's, in its own unit — which
+    // row that is comes off `isPrimary`, not from a header column any more.
+    expect(receipt.outputs.find((row) => row.isPrimary)!.itemId).toBe(shirtsId);
     expect(Number(receipt.totalReceivedQty)).toBe(92);
     expect(Number(receipt.totalIssuedQty)).toBe(100);
 

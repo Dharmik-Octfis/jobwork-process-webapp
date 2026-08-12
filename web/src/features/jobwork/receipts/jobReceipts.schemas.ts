@@ -63,8 +63,6 @@ export const jobReceiptSchema = z.object({
   processorId: z.string().nullable(),
   processorNameSnapshot: z.string().nullable(),
   mode: z.string(),
-  outputItemId: z.string(),
-  outputUomId: z.string().nullable(),
   locationId: z.string(),
   outputLotId: z.string().nullable(),
   reworkLotId: z.string().nullable(),
@@ -121,8 +119,6 @@ export const jobReceiptSchema = z.object({
       rateBasis: z.string().nullable(),
     })
     .optional(),
-  outputItem: itemRefSchema.nullable().optional(),
-  outputUom: uomRefSchema.nullable().optional(),
   location: namedRefSchema.nullable().optional(),
   outputLot: z.object({ id: z.string(), lotNumber: z.string() }).nullable().optional(),
   reworkLot: z.object({ id: z.string(), lotNumber: z.string() }).nullable().optional(),

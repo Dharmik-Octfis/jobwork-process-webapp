@@ -6,9 +6,9 @@ import { decimalString, itemRefSchema, namedRefSchema, uomRefSchema } from '../j
 
 export const jobIssueLineSchema = z.object({
   id: z.string(),
-  /** 🔴 The item is a per-line fact (§5.7) — one challan carries several. Null
-   * only on rows written before Sprint 5, which the header still describes. */
-  itemId: z.string().nullable().optional(),
+  /** 🔴 The item is a per-line fact (§5.7) — one challan carries several, and
+   * since 2026-08-12 the line is the ONLY place it lives. */
+  itemId: z.string(),
   uomId: z.string().nullable().optional(),
   item: itemRefSchema.nullable().optional(),
   uom: uomRefSchema.nullable().optional(),
@@ -45,8 +45,6 @@ export const jobIssueSchema = z.object({
   processorGstinSnapshot: z.string().nullable(),
   sourceLocationId: z.string(),
   destinationLocationId: z.string(),
-  itemId: z.string(),
-  uomId: z.string().nullable(),
   isRework: z.boolean(),
   attemptNo: z.number(),
   totalQty: z.union([z.string(), z.number()]),
@@ -66,8 +64,6 @@ export const jobIssueSchema = z.object({
       plannedInputQty: decimalString,
     })
     .optional(),
-  item: itemRefSchema.nullable().optional(),
-  uom: uomRefSchema.nullable().optional(),
   sourceLocation: namedRefSchema.nullable().optional(),
   destination: namedRefSchema.nullable().optional(),
   createdAt: z.string(),

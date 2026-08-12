@@ -76,13 +76,13 @@ model Item {
   lots               Lot[]
   ledgerEntries      StockLedgerEntry[]
 
-  jobOrderInputs    JobOrder[]   @relation("JobOrderInputItem")
-  jobIssues         JobIssue[]   @relation("JobIssueItem")
-  jobReceiptOutputs JobReceipt[] @relation("JobReceiptOutputItem")
+  /// The one single-item header relation left, and it is deliberate: CALC+,
+  /// nullable, derived from step 1 for the list page, never consulted to decide
+  /// anything. The issue and receipt equivalents went on 2026-08-12.
+  jobOrderInputs JobOrder[] @relation("JobOrderInputItem")
 
-  /// Multi-item steps (domain §5.7). The step-level single-item relations these
-  /// replaced went with Migration B on 2026-08-12; the three above survive
-  /// because their own tables still carry a single item on the header.
+  /// Multi-item documents (domain §5.7) — one row per item, which is where every
+  /// per-item total is summed from.
   routeStepInputRows     RouteStepInput[]     @relation("RouteStepInputItem")
   routeStepOutputRows    RouteStepOutput[]    @relation("RouteStepOutputItem")
   jobOrderStepInputRows  JobOrderStepInput[]  @relation("JobOrderStepInputItem")
@@ -113,9 +113,7 @@ model UnitOfMeasurement {
   lots                   Lot[]              @relation("LotUom")
   ledgerEntries          StockLedgerEntry[] @relation("StockLedgerUom")
 
-  jobOrderInputUoms    JobOrder[]   @relation("JobOrderInputUom")
-  jobIssueUoms         JobIssue[]   @relation("JobIssueUom")
-  jobReceiptOutputUoms JobReceipt[] @relation("JobReceiptOutputUom")
+  jobOrderInputUoms JobOrder[] @relation("JobOrderInputUom")
 
   routeStepInputUoms      RouteStepInput[]     @relation("RouteStepInputUom")
   routeStepOutputUoms     RouteStepOutput[]    @relation("RouteStepOutputUom")

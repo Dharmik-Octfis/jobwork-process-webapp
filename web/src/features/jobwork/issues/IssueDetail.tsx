@@ -5,7 +5,7 @@ import { Printer, X } from 'lucide-react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
 import { organizationsApi } from '../../organizations/organizations.api';
-import { ISSUE_STATUS_META, formatQty, statusMeta, toNumber } from '../jobwork.schemas';
+import { ISSUE_STATUS_META, formatQty, sharedUnit, statusMeta, toNumber } from '../jobwork.schemas';
 import { cancelJobIssue, fetchJobIssueById } from './jobIssues.api';
 import { printChallan } from './printChallan';
 
@@ -77,7 +77,9 @@ export function IssueDetail({ issueId, onClose }: Props) {
     return <div style={{ padding: 32, color: '#64748b', fontSize: 13 }}>Challan not found.</div>;
   }
 
-  const unit = issue.uom ? (issue.uom.symbol ?? issue.uom.unitName) : '';
+  // Blank when the lines carry different units — the header total is then a
+  // count of nothing in particular and must not borrow one of them.
+  const unit = sharedUnit(issue.lines);
   const status = statusMeta(ISSUE_STATUS_META, issue.status);
 
   /** What actually went, per item — summed from the lines, because the header's
@@ -250,12 +252,12 @@ export function IssueDetail({ issueId, onClose }: Props) {
             </tr>
             <tr>
               {/* One line per ITEM on the challan (§5.7), each in its own unit —
-                  they are never added together. The header's own item and total
-                  describe the principal one and go with Migration B. */}
+                  they are never added together. There is no header item to fall
+                  back to any more, and a challan with no lines carries nothing. */}
               <td style={rowLabel}>Items</td>
               <td style={rowValue}>
                 {issuedByItem.length === 0
-                  ? `${issue.item?.name ?? '-'} · ${formatQty(issue.totalQty)} ${unit}`
+                  ? '-'
                   : issuedByItem.map((row) => (
                       <span key={row.name} style={{ display: 'block' }}>
                         {row.name} · {formatQty(row.qty)} {row.unit}
@@ -313,7 +315,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
               {issue.lines.map((line) => (
                 <tr key={line.id} style={{ borderBottom: '1px solid #eef0f3' }}>
                   <td style={{ ...td, fontWeight: 500, color: '#111' }}>
-                    {line.item?.name ?? issue.item?.name ?? '-'}
+                    {line.item?.name ?? '-'}
                   </td>
                   <td style={td}>{line.lot?.lotNumber ?? '-'}</td>
                   <td style={td}>

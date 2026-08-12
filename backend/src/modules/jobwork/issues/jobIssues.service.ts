@@ -55,8 +55,6 @@ function issueListWhere(organizationId: string, opts: ListQuery): Prisma.JobIssu
 const ISSUE_INCLUDE = {
   jobOrder: { select: { id: true, jobOrderNumber: true, ownership: true } },
   step: { select: { id: true, seq: true, processNameSnapshot: true, plannedInputQty: true } },
-  item: { select: { id: true, name: true, sku: true, lotTracking: true } },
-  uom: { select: { id: true, unitName: true, symbol: true } },
   sourceLocation: { select: { id: true, name: true } },
   destination: { select: { id: true, name: true } },
   lines: {
@@ -707,11 +705,6 @@ export async function createNewJobIssue(
           processorGstinSnapshot: processorSnapshot.gstin,
           sourceLocationId: header.sourceLocationId,
           destinationLocationId,
-          // The PRINCIPAL item, and only that. The challan's items live on its
-          // lines now (§5.7); these two are what a pre-Sprint-5 reader still
-          // expects to find, and they go in Migration B.
-          itemId: principal.itemId,
-          uomId: principal.uomId,
           isRework,
           attemptNo,
           totalQty,

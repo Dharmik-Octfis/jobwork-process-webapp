@@ -80,8 +80,6 @@ const RECEIPT_INCLUDE = {
       rateBasis: true,
     },
   },
-  outputItem: { select: { id: true, name: true, sku: true } },
-  outputUom: { select: { id: true, unitName: true, symbol: true } },
   location: { select: { id: true, name: true } },
   outputLot: { select: { id: true, lotNumber: true } },
   reworkLot: { select: { id: true, lotNumber: true } },
@@ -95,8 +93,8 @@ const RECEIPT_INCLUDE = {
       jobIssueLine: { select: { id: true, item: { select: { id: true, name: true } } } },
     },
   },
-  /** 🔴 What came back, one row per item (§5.7). The header's `outputItem` and
-   * six totals describe the primary alone. */
+  /** 🔴 What came back, one row per item (§5.7). The row flagged `isPrimary` is
+   * the one the header's six totals describe. */
   outputs: {
     where: { isDeleted: false },
     orderBy: { seq: 'asc' },
@@ -240,7 +238,7 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
           // 🔴 The item is on the LINE now (§5.7) — the consumed grid groups by
           // it, because one challan carries fabric, thread and buttons and their
           // quantities can never be added together.
-          itemId: line.itemId ?? issue.itemId,
+          itemId: line.itemId,
           itemName: line.item?.name ?? null,
           uomSymbol: line.uom?.symbol ?? line.uom?.unitName ?? null,
           lotId: line.lotId,
@@ -477,9 +475,6 @@ async function allocateConsumption(
       lotPackageId: true,
       qty: true,
       itemId: true,
-      // Null `itemId` only on rows written before Sprint 5, which the header
-      // still describes. The fallback goes with Migration B.
-      jobIssue: { select: { itemId: true } },
     },
   });
 
@@ -519,7 +514,7 @@ async function allocateConsumption(
         jobIssueLineId: issueLine.id,
         lotId: issueLine.lotId,
         lotPackageId: issueLine.lotPackageId,
-        itemId: issueLine.itemId ?? issueLine.jobIssue.itemId,
+        itemId: issueLine.itemId,
         qty: toConsume,
       });
       continue;
@@ -533,9 +528,7 @@ async function allocateConsumption(
      * challans carry more than one; with a single item there is nothing to
      * disambiguate and the old shape keeps working.
      */
-    const itemsOnChallans = new Set(
-      issueLines.map((issueLine) => issueLine.itemId ?? issueLine.jobIssue.itemId),
-    );
+    const itemsOnChallans = new Set(issueLines.map((issueLine) => issueLine.itemId));
     if (!line.itemId && itemsOnChallans.size > 1) {
       throw new ApiError(
         400,
@@ -545,9 +538,7 @@ async function allocateConsumption(
       );
     }
     const eligible = line.itemId
-      ? issueLines.filter(
-          (issueLine) => (issueLine.itemId ?? issueLine.jobIssue.itemId) === line.itemId,
-        )
+      ? issueLines.filter((issueLine) => issueLine.itemId === line.itemId)
       : issueLines;
     if (line.itemId && eligible.length === 0) {
       throw ApiError.badRequest(
@@ -568,7 +559,7 @@ async function allocateConsumption(
         jobIssueLineId: issueLine.id,
         lotId: issueLine.lotId,
         lotPackageId: issueLine.lotPackageId,
-        itemId: issueLine.itemId ?? issueLine.jobIssue.itemId,
+        itemId: issueLine.itemId,
         qty: take,
       });
     }
@@ -828,17 +819,18 @@ export async function createNewJobReceipt(
           processorId: issues[0]!.processorId,
           processorNameSnapshot: issues[0]!.processorNameSnapshot,
           mode,
-          /**
-           * 🔴 The header describes the PRINCIPAL input and the PRIMARY output,
-           * and nothing else. Every other item is on `job_receipt_outputs`.
-           *
-           * Six totals in one row cannot describe three items in three units —
-           * so rather than sum them into a meaningless figure, each of these is
-           * one item's, in one unit. They go with Migration B.
-           */
-          outputItemId: primaryOutput.itemId,
-          outputUomId: primaryOutput.uomId,
           locationId: header.locationId,
+          /**
+           * 🔴 THE SIX TOTALS ARE THE PRIMARY OUTPUT'S, IN ITS OWN UNIT — not a
+           * sum across items. Three items in three units cannot be added, so
+           * rather than store a meaningless figure the header describes one row
+           * and `job_receipt_outputs` holds the rest.
+           *
+           * The `outputItemId` / `outputUomId` columns that used to say WHICH row
+           * these belong to went on 2026-08-12; it is the primary output, and
+           * that is derivable from the child list. `chainNotReady` still sums
+           * `totalReceivedQty`, which is why these six stay.
+           */
           totalIssuedQty: principalConsumedQty,
           totalReceivedQty: primaryOutput.receivedQty,
           totalAcceptedQty: primaryOutput.acceptedQty,

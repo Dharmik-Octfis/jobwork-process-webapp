@@ -9,7 +9,7 @@ import { useListColumns } from '../../../hooks/useListColumns';
 import { useListCount } from '../../../hooks/useListCount';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
-import { formatQty } from '../jobwork.schemas';
+import { formatQty, itemSummary } from '../jobwork.schemas';
 import { fetchJobReceiptCount, fetchJobReceipts, fetchReceiptsForStep } from './jobReceipts.api';
 import { ReceiptDetail } from './ReceiptDetail';
 import type { JobReceipt } from './jobReceipts.schemas';
@@ -29,7 +29,10 @@ function renderCell(receipt: JobReceipt, key: string): React.ReactNode {
     return Array.isArray(value) ? value.join(', ') : String(value);
   }
 
-  const unit = receipt.outputUom ? (receipt.outputUom.symbol ?? receipt.outputUom.unitName) : '';
+  /* 🔴 The six totals are the PRIMARY output's, in its own unit — so the unit
+     comes off that row, not off a header column (dropped 2026-08-12). */
+  const primary = receipt.outputs?.find((row) => row.isPrimary) ?? receipt.outputs?.[0];
+  const unit = primary?.uom ? (primary.uom.symbol ?? primary.uom.unitName) : '';
 
   switch (key) {
     case 'jobOrderNumber':
@@ -37,7 +40,8 @@ function renderCell(receipt: JobReceipt, key: string): React.ReactNode {
     case 'processorName':
       return receipt.processorNameSnapshot ?? 'In-house';
     case 'outputItem':
-      return receipt.outputItem?.name ?? '-';
+      // Every item that came back, counted. A receipt returns shirts AND rejects.
+      return itemSummary(receipt.outputs ?? []);
     case 'mode':
       return receipt.mode === 'unit_wise' ? 'Taka-wise' : 'Bulk';
     case 'status':

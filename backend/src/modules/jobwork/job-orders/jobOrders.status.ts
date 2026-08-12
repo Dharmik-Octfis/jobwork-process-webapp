@@ -242,11 +242,10 @@ async function getItemFlows(
   if (issueIds.length > 0) {
     const lines = await tx.jobIssueLine.findMany({
       where: { organizationId, jobIssueId: { in: [...issueIds] }, isDeleted: false },
-      select: { qty: true, itemId: true, jobIssue: { select: { itemId: true } } },
+      select: { qty: true, itemId: true },
     });
     for (const line of lines) {
-      const itemId = line.itemId ?? line.jobIssue.itemId;
-      const flow = of(itemId);
+      const flow = of(line.itemId);
       flow.issuedQty = flow.issuedQty.plus(line.qty);
     }
   }
