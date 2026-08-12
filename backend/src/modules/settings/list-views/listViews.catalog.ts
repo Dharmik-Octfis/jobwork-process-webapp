@@ -280,7 +280,7 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'assemblyDate', label: 'Date', defaultVisible: true },
     { key: 'compositeItem', label: 'Composite Item', defaultVisible: true },
     { key: 'qty', label: 'Quantity', defaultVisible: true },
-    { key: 'totalValue', label: 'Amount', defaultVisible: true },
+    { key: 'totalValue', label: 'Total', defaultVisible: true },
     { key: 'status', label: 'Status', defaultVisible: true },
     { key: 'direction', label: 'Direction' },
     { key: 'createdAt', label: 'Created At' },

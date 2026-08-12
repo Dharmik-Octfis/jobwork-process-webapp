@@ -1,16 +1,33 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   X,
   FileText,
   ChevronDown,
-  AlertCircle,
   Info,
   Image as ImageIcon,
   Trash2,
 } from 'lucide-react';
 import { assembliesApi } from './assemblies.api';
 import { formatDate } from '../../../lib/formatDate';
+import { AssemblyComments } from './AssemblyComments';
+import { AssemblyActivityTimeline } from './AssemblyActivityTimeline';
+
+interface Html2PdfOptions {
+  margin?: number | [number, number] | [number, number, number, number];
+  filename?: string;
+  image?: {
+    type?: 'jpeg' | 'png' | 'webp';
+    quality?: number;
+  };
+  enableLinks?: boolean;
+  html2canvas?: object;
+  jsPDF?: {
+    unit?: string;
+    format?: string | [number, number];
+    orientation?: 'portrait' | 'landscape';
+  };
+}
 
 interface AssemblyDetailProps {
   orgId: string;
@@ -19,7 +36,72 @@ interface AssemblyDetailProps {
 }
 
 export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailProps) {
-  const [activeTab, setActiveTab] = useState('Overview');
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<'Overview' | 'Comment' | 'History'>('Overview');
+  const [isPdfView, setIsPdfView] = useState(false);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const [isPdfMenuOpen, setIsPdfMenuOpen] = useState(false);
+  const moreMenuRef = React.useRef<HTMLDivElement>(null);
+  const pdfMenuRef = React.useRef<HTMLDivElement>(null);
+  const pdfTemplateRef = React.useRef<HTMLDivElement>(null);
+
+  const handleDownloadPdf = async () => {
+    setIsPdfMenuOpen(false);
+    setIsPdfView(true);
+    setTimeout(async () => {
+      if (pdfTemplateRef.current) {
+        try {
+          const html2pdfModule = (await import('html2pdf.js')).default || (window as unknown as { html2pdf?: unknown }).html2pdf;
+          const opt: Html2PdfOptions = {
+            margin: [8, 8, 8, 8],
+            filename: `${assembly?.assemblyNumber || 'Assembly'}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+          };
+          if (typeof html2pdfModule === 'function') {
+            html2pdfModule().set(opt).from(pdfTemplateRef.current).save();
+          } else {
+            window.print();
+          }
+        } catch (err) {
+          console.error('PDF generation error:', err);
+          window.print();
+        }
+      }
+    }, 150);
+  };
+
+  const handlePrint = () => {
+    setIsPdfMenuOpen(false);
+    setIsPdfView(true);
+    setTimeout(() => {
+      window.print();
+    }, 150);
+  };
+
+  React.useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setIsMoreOpen(false);
+      }
+      if (pdfMenuRef.current && !pdfMenuRef.current.contains(event.target as Node)) {
+        setIsPdfMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleDelete = async () => {
+    if (window.confirm('Are you sure you want to delete this assembly?')) {
+      await assembliesApi.deleteAssembly(orgId, assemblyId);
+      queryClient.invalidateQueries({ queryKey: ['assemblies', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['assemblies-count', orgId] });
+      onClose();
+    }
+  };
+
   const { data: assembly, isLoading } = useQuery({
     queryKey: ['assembly', orgId, assemblyId],
     queryFn: () => assembliesApi.getById(orgId, assemblyId),
@@ -55,6 +137,7 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
     line.value > 0 ? line.value : Number((line.qty * line.unitValue).toFixed(4));
   const getSectionTotal = (lines: typeof assembly.lines) =>
     lines.reduce((sum, line) => sum + getLineAmount(line), 0);
+  const grandTotal = getSectionTotal(goodsItems) + getSectionTotal(serviceItems);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#fff' }}>
@@ -71,6 +154,65 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
           {assembly.assemblyNumber}
         </h2>
         <div style={{ display: 'flex', gap: 12 }}>
+          <div style={{ position: 'relative' }} ref={moreMenuRef}>
+            <button
+              onClick={() => setIsMoreOpen(!isMoreOpen)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '6px 12px',
+                border: '1px solid #eef0f3',
+                borderRadius: 6,
+                background: '#fff',
+                cursor: 'pointer',
+                color: '#334155',
+                fontSize: 13,
+                fontWeight: 500,
+              }}
+            >
+              More
+              <ChevronDown size={14} />
+            </button>
+            {isMoreOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: 4,
+                  background: '#fff',
+                  border: '1px solid #eef0f3',
+                  borderRadius: 6,
+                  boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+                  zIndex: 10,
+                  minWidth: 160,
+                  padding: 4,
+                }}
+              >
+                <button
+                  onClick={handleDelete}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: 'none',
+                    background: 'transparent',
+                    color: '#ef4444',
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    borderRadius: 4,
+                  }}
+                >
+                  <Trash2 size={14} />
+                  Delete
+                </button>
+              </div>
+            )}
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -102,25 +244,86 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
           background: '#f8fafc',
         }}
       >
-        <button
-          type="button"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '12px 0',
-            border: 'none',
-            background: 'transparent',
-            color: '#334155',
-            fontSize: 13,
-            fontWeight: 500,
-            cursor: 'pointer',
-          }}
-        >
-          <FileText size={14} />
-          PDF/Print
-          <ChevronDown size={14} />
-        </button>
+        <div style={{ position: 'relative' }} ref={pdfMenuRef}>
+          <button
+            type="button"
+            onClick={() => setIsPdfMenuOpen(!isPdfMenuOpen)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '12px 0',
+              border: 'none',
+              background: 'transparent',
+              color: '#334155',
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: 'pointer',
+            }}
+          >
+            <FileText size={14} />
+            PDF/Print
+            <ChevronDown size={14} />
+          </button>
+          {isPdfMenuOpen && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                marginTop: 4,
+                background: '#fff',
+                border: '1px solid #eef0f3',
+                borderRadius: 6,
+                boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                zIndex: 10,
+                minWidth: 160,
+                padding: 4,
+              }}
+            >
+              <button
+                onClick={handleDownloadPdf}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#334155',
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  borderRadius: 4,
+                }}
+              >
+                <FileText size={14} />
+                PDF
+              </button>
+              <button
+                onClick={handlePrint}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#334155',
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  borderRadius: 4,
+                }}
+              >
+                <FileText size={14} />
+                Print
+              </button>
+            </div>
+          )}
+        </div>
         <div style={{ width: 1, height: 16, background: '#cbd5e1' }} />
         <button
           type="button"
@@ -139,26 +342,6 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
           }}
         >
           Overview
-        </button>
-        <div style={{ width: 1, height: 16, background: '#cbd5e1' }} />
-        <button
-          type="button"
-          onClick={() => setActiveTab('Delete')}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            padding: '12px 0',
-            border: 'none',
-            borderBottom: activeTab === 'Delete' ? '2px solid #0062ff' : '2px solid transparent',
-            background: 'transparent',
-            color: activeTab === 'Delete' ? '#0062ff' : '#64748b',
-            fontSize: 13,
-            fontWeight: activeTab === 'Delete' ? 600 : 500,
-            cursor: 'pointer',
-          }}
-        >
-          <Trash2 size={14} />
-          Delete
         </button>
         <div style={{ width: 1, height: 16, background: '#cbd5e1' }} />
         <button
@@ -200,53 +383,56 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
         </button>
       </div>
 
-      <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
-        <div
-          style={{
-            background: '#fff9f0',
-            border: '1px solid #ffedd5',
-            borderRadius: 8,
-            padding: 16,
-            marginBottom: 32,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <div style={{ color: '#ea580c' }}>
-              <AlertCircle size={20} />
+      <div style={{ flex: 1, overflow: 'auto', padding: 24, display: isPdfView ? 'none' : 'block' }}>
+        {activeTab === 'History' && (
+          <AssemblyActivityTimeline orgId={orgId} assemblyId={assemblyId} />
+        )}
+        {activeTab === 'Comment' && (
+          <AssemblyComments orgId={orgId} assemblyId={assemblyId} />
+        )}
+        {activeTab === 'Overview' && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 500, color: '#1e293b', margin: 0 }}>
+                ASSEMBLY DETAILS
+              </h3>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#334155', fontWeight: 500, fontStyle: 'italic' }}>
+                Show PDF View
+                <div
+                  style={{
+                    width: 36,
+                    height: 20,
+                    borderRadius: 10,
+                    background: isPdfView ? '#e2e8f0' : '#e2e8f0', // In screenshot it's gray when off.
+                    position: 'relative',
+                    transition: 'background 0.2s',
+                  }}
+                >
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 2,
+                      left: isPdfView ? 18 : 2,
+                      width: 16,
+                      height: 16,
+                      borderRadius: '50%',
+                      background: '#fff',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                      transition: 'left 0.2s',
+                    }}
+                  />
+                </div>
+                <input
+                  type="checkbox"
+                  checked={isPdfView}
+                  onChange={(e) => setIsPdfView(e.target.checked)}
+                  style={{ display: 'none' }}
+                />
+              </label>
             </div>
-            <div>
-              <div style={{ fontWeight: 600, color: '#1e293b', fontSize: 14 }}>
-                Advanced Tracking Details Missing
-              </div>
-              <div style={{ color: '#334155', fontSize: 13, marginTop: 4 }}>
-                One or more items in this transaction don't have their serial number or batch tracking details.
-              </div>
-            </div>
-          </div>
-          <button
-            type="button"
-            style={{
-              border: 'none',
-              background: 'transparent',
-              color: '#0062ff',
-              fontSize: 14,
-              fontWeight: 500,
-              cursor: 'pointer',
-            }}
-          >
-            Update Details
-          </button>
-        </div>
-
-        <h3 style={{ fontSize: 18, fontWeight: 500, color: '#1e293b', margin: '0 0 16px' }}>
-          ASSEMBLY DETAILS
-        </h3>
-        <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 32px' }}>
-          Assembly# {assembly.assemblyNumber}
-        </p>
+            <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 32px' }}>
+              Assembly# <span style={{ fontWeight: 600, color: '#1e293b' }}>{assembly.assemblyNumber}</span>
+            </p>
 
         <div style={{ display: 'flex', gap: 64, marginBottom: 48 }}>
           <div style={{ flex: 1 }}>
@@ -301,7 +487,7 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
                 <Info size={14} color="#64748b" />
               </div>
               <div style={{ color: '#0f172a', fontSize: 28, fontWeight: 600 }}>
-                {formatMoney(assembly.totalValue)}
+                {formatMoney(grandTotal)}
               </div>
             </div>
             <div>
@@ -328,7 +514,7 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
                   <th style={{ padding: '12px 16px', fontWeight: 600 }}>Quantity Consumed</th>
                   <th style={{ padding: '12px 16px', fontWeight: 600 }}>Total Qty Consumed</th>
                   <th style={{ padding: '12px 16px', fontWeight: 600 }}>Cost Per Unit</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600, textAlign: 'right' }}>Amount</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 600, textAlign: 'right' }}>Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -408,7 +594,7 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
                   <th style={{ padding: '12px 16px', fontWeight: 600 }}>Quantity Consumed</th>
                   <th style={{ padding: '12px 16px', fontWeight: 600 }}>Total Qty Consumed</th>
                   <th style={{ padding: '12px 16px', fontWeight: 600 }}>Cost Per Unit</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600, textAlign: 'right' }}>Amount</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 600, textAlign: 'right' }}>Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -470,7 +656,164 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
             </table>
           </div>
         )}
+          </>
+        )}
       </div>
+
+      {isPdfView && (
+        <div
+          style={{
+            flex: 1,
+            overflow: 'auto',
+            background: '#f1f5f9',
+            padding: '24px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+          }}
+        >
+          <div style={{ marginBottom: '16px', display: 'flex', gap: '16px', width: '210mm', justifyContent: 'flex-end', alignItems: 'center' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#334155', fontWeight: 500, fontStyle: 'italic', marginRight: 'auto' }}>
+              Show PDF View
+              <div
+                style={{
+                  width: 36,
+                  height: 20,
+                  borderRadius: 10,
+                  background: isPdfView ? '#0062ff' : '#e2e8f0',
+                  position: 'relative',
+                  transition: 'background 0.2s',
+                }}
+              >
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 2,
+                    left: isPdfView ? 18 : 2,
+                    width: 16,
+                    height: 16,
+                    borderRadius: '50%',
+                    background: '#fff',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                    transition: 'left 0.2s',
+                  }}
+                />
+              </div>
+              <input
+                type="checkbox"
+                checked={isPdfView}
+                onChange={(e) => setIsPdfView(e.target.checked)}
+                style={{ display: 'none' }}
+              />
+            </label>
+            <button
+              onClick={handleDownloadPdf}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid transparent',
+                background: '#0062ff',
+                color: 'white',
+                borderRadius: '4px',
+                fontSize: '13px',
+                cursor: 'pointer',
+              }}
+            >
+              Download PDF
+            </button>
+            <button
+              onClick={handlePrint}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid transparent',
+                background: '#0062ff',
+                color: 'white',
+                borderRadius: '4px',
+                fontSize: '13px',
+                cursor: 'pointer',
+              }}
+            >
+              Print
+            </button>
+          </div>
+          <div
+            ref={pdfTemplateRef}
+            className="print-section"
+            style={{
+              width: '210mm',
+              minHeight: '297mm',
+              background: '#fff',
+              padding: '20mm',
+              boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '40px' }}>
+              <div>
+                <h1 style={{ fontSize: '28px', color: '#1e293b', margin: '0 0 8px 0' }}>ASSEMBLY</h1>
+                <div style={{ color: '#64748b', fontSize: '14px' }}>#{assembly.assemblyNumber}</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ color: '#1e293b', fontWeight: 600 }}>Assembled Date</div>
+                <div style={{ color: '#64748b' }}>{formatDate(assembly.assemblyDate)}</div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '40px', marginBottom: '40px' }}>
+              <div>
+                <div style={{ color: '#64748b', fontSize: '12px', marginBottom: '4px' }}>Composite Item</div>
+                <div style={{ color: '#1e293b', fontWeight: 600 }}>{assembly.compositeItem?.name}</div>
+                <div style={{ color: '#64748b', fontSize: '14px' }}>{assembly.compositeItem?.sku}</div>
+              </div>
+              <div>
+                <div style={{ color: '#64748b', fontSize: '12px', marginBottom: '4px' }}>Quantity</div>
+                <div style={{ color: '#1e293b', fontWeight: 600 }}>{assembly.qty}</div>
+              </div>
+              <div>
+                <div style={{ color: '#64748b', fontSize: '12px', marginBottom: '4px' }}>Location</div>
+                <div style={{ color: '#1e293b', fontWeight: 600 }}>{assembly.location?.name || '-'}</div>
+              </div>
+            </div>
+
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '40px' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+                  <th style={{ textAlign: 'left', padding: '12px', color: '#475569', fontSize: '12px' }}>ITEM</th>
+                  <th style={{ textAlign: 'right', padding: '12px', color: '#475569', fontSize: '12px' }}>QTY CONSUMED</th>
+                  <th style={{ textAlign: 'right', padding: '12px', color: '#475569', fontSize: '12px' }}>COST PER UNIT</th>
+                  <th style={{ textAlign: 'right', padding: '12px', color: '#475569', fontSize: '12px' }}>TOTAL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {assembly.lines.map((line) => (
+                  <tr key={line.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                    <td style={{ padding: '12px' }}>
+                      <div style={{ color: '#1e293b', fontWeight: 500 }}>{line.item.name}</div>
+                      <div style={{ color: '#64748b', fontSize: '12px' }}>{line.item.sku}</div>
+                    </td>
+                    <td style={{ padding: '12px', textAlign: 'right', color: '#1e293b' }}>
+                      {line.qty} {line.item.stockingUom?.unitName}
+                    </td>
+                    <td style={{ padding: '12px', textAlign: 'right', color: '#1e293b' }}>
+                      {formatMoney(line.unitValue)}
+                    </td>
+                    <td style={{ padding: '12px', textAlign: 'right', color: '#1e293b' }}>
+                      {formatMoney(getLineAmount(line))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div style={{ marginTop: '40px', display: 'flex', justifyContent: 'flex-end' }}>
+              <div style={{ width: '300px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderTop: '2px solid #e2e8f0' }}>
+                  <span style={{ fontWeight: 600, color: '#1e293b' }}>Total Value</span>
+                  <span style={{ fontWeight: 600, color: '#1e293b' }}>{formatMoney(grandTotal)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

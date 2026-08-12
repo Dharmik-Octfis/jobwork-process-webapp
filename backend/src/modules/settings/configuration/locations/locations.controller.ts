@@ -38,3 +38,9 @@ export async function deleteLocation(req: Request, res: Response) {
   await locationService.deleteLocation(orgId, req.params.id as string);
   sendSuccess(res, null, 'Location deleted');
 }
+
+export async function markAsPrimary(req: Request, res: Response) {
+  const orgId = req.tenantId!;
+  await locationService.markLocationAsPrimary(orgId, req.params.id as string, req.user!.id);
+  sendSuccess(res, null, 'Location marked as primary');
+}

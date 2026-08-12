@@ -48,6 +48,21 @@ export interface DetailedItemAssembly extends ItemAssembly {
 
 export type ItemAssemblyPage = Paginated<ItemAssembly>;
 
+export interface ItemAssemblyComment {
+  id: string;
+  content: string;
+  performedBy: string | null;
+  createdAt: string;
+}
+
+export interface ItemAssemblyActivity {
+  id: string;
+  title: string;
+  description: string | null;
+  performedBy: string | null;
+  createdAt: string;
+}
+
 export const itemAssemblyLineSchema = z.object({
   id: z.string().optional(),
   itemId: z.string(),
@@ -96,6 +111,29 @@ export const assembliesApi = {
 
   updateNumberPreference: async (orgId: string, data: { prefix: string; nextNumber: number }): Promise<{ prefix: string; nextNumber: number }> => {
     const response = await apiClient.put(`/organizations/${orgId}/assemblies/number-preference`, data);
+    return response.data;
+  },
+
+  deleteAssembly: async (orgId: string, id: string): Promise<void> => {
+    await apiClient.delete(`/organizations/${orgId}/assemblies/${id}`);
+  },
+
+  getComments: async (orgId: string, id: string): Promise<ItemAssemblyComment[]> => {
+    const response = await apiClient.get(`/organizations/${orgId}/assemblies/${id}/comments`);
+    return response.data;
+  },
+
+  addComment: async (orgId: string, id: string, content: string): Promise<ItemAssemblyComment> => {
+    const response = await apiClient.post(`/organizations/${orgId}/assemblies/${id}/comments`, { content });
+    return response.data;
+  },
+
+  deleteComment: async (orgId: string, id: string, commentId: string): Promise<void> => {
+    await apiClient.delete(`/organizations/${orgId}/assemblies/${id}/comments/${commentId}`);
+  },
+
+  getActivities: async (orgId: string, id: string): Promise<ItemAssemblyActivity[]> => {
+    const response = await apiClient.get(`/organizations/${orgId}/assemblies/${id}/activities`);
     return response.data;
   },
 };

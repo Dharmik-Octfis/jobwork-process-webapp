@@ -34,3 +34,16 @@ export async function deleteLocation(orgId: string, id: string) {
     data: { isDeleted: true },
   });
 }
+
+export async function markLocationAsPrimary(orgId: string, id: string, userId: string) {
+  return db.$transaction([
+    db.location.updateMany({
+      where: { organizationId: orgId, isDeleted: false },
+      data: { isPrimary: false, updatedBy: userId },
+    }),
+    db.location.update({
+      where: { id },
+      data: { isPrimary: true, updatedBy: userId },
+    }),
+  ]);
+}

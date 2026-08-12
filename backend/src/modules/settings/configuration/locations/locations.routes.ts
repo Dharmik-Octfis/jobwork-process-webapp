@@ -13,3 +13,4 @@ locationsRouter.post('/', requirePermission('location:create'), ctrl.createLocat
 locationsRouter.get('/:id', requirePermission('location:read'), ctrl.getLocation);
 locationsRouter.patch('/:id', requirePermission('location:update'), ctrl.updateLocation);
 locationsRouter.delete('/:id', requirePermission('location:delete'), ctrl.deleteLocation);
+locationsRouter.post('/:id/primary', requirePermission('location:update'), ctrl.markAsPrimary);

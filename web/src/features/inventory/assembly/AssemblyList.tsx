@@ -186,60 +186,25 @@ export function AssemblyList() {
           </header>
 
           <div style={{ flex: 1, overflow: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
-                <tr>
-                  {columns.map((col) => (
-                    <th
-                      key={col.key}
-                      style={{
-                        ...headerStyle,
-                        borderBottom: '1px solid #eef0f3',
-                        display: selectedId && !col.locked ? 'none' : 'table-cell',
-                      }}
-                    >
-                      {col.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
+            {selectedId ? (
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <div style={{ padding: '8px 16px', fontSize: '12px', fontWeight: 600, color: '#64748b', background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
+                  Assemblies
+                </div>
                 {isLoading ? (
-                  <tr>
-                    <td
-                      colSpan={columns.length}
-                      style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}
-                    >
-                      Loading...
-                    </td>
-                  </tr>
+                  <div style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>Loading...</div>
                 ) : assemblies.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={columns.length}
-                      style={{ padding: '48px 24px', textAlign: 'center', color: '#64748b' }}
-                    >
-                      <Settings
-                        size={48}
-                        style={{ margin: '0 auto 16px', opacity: 0.2 }}
-                      />
-                      <div style={{ fontSize: 14, fontWeight: 500, color: '#1e293b' }}>
-                        No assemblies found
-                      </div>
-                      <div style={{ fontSize: 13, marginTop: 4 }}>
-                        Create a new assembly to get started.
-                      </div>
-                    </td>
-                  </tr>
+                  <div style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>No assemblies found</div>
                 ) : (
                   assemblies.map((item) => (
-                    <tr
+                    <div
                       key={item.id}
                       onClick={() => setSearchParams({ id: item.id })}
                       style={{
+                        padding: '12px 16px',
                         borderBottom: '1px solid #eef0f3',
                         cursor: 'pointer',
-                        background: selectedId === item.id ? '#f8fafc' : 'transparent',
+                        background: selectedId === item.id ? '#f1f5f9' : 'transparent',
                         transition: 'background 0.1s',
                       }}
                       onMouseEnter={(e) => {
@@ -249,37 +214,140 @@ export function AssemblyList() {
                         if (selectedId !== item.id) e.currentTarget.style.background = 'transparent';
                       }}
                     >
-                      {columns.map((col) => (
-                        <td
-                          key={col.key}
+                      <div style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b', marginBottom: '4px' }}>
+                        {item.assemblyNumber}
+                      </div>
+                      <div style={{ fontSize: '13px', color: '#334155', marginBottom: '8px' }}>
+                        {item.compositeItem?.name || '-'}
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span
                           style={{
-                            padding: '12px 16px',
-                            fontSize: 13,
-                            color: col.locked ? '#0062ff' : '#333',
-                            fontWeight: col.locked ? 500 : 400,
-                            display: selectedId && !col.locked ? 'none' : 'table-cell',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '11px',
+                            fontWeight: 500,
+                            background:
+                              item.status === 'assembled' ? '#dcfce7' :
+                              item.status === 'cancelled' ? '#fee2e2' :
+                              '#f1f5f9',
+                            color:
+                              item.status === 'assembled' ? '#166534' :
+                              item.status === 'cancelled' ? '#991b1b' :
+                              '#475569',
+                            textTransform: 'uppercase',
                           }}
                         >
-                          {renderAssemblyCell(item, col.key)}
-                        </td>
-                      ))}
-                    </tr>
+                          {item.status}
+                        </span>
+                        <span style={{ fontSize: '12px', color: '#64748b' }}>
+                          {formatDate(item.assemblyDate)}
+                        </span>
+                      </div>
+                    </div>
                   ))
                 )}
-              </tbody>
-            </table>
+              </div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
+                  <tr>
+                    {columns.map((col) => (
+                      <th
+                        key={col.key}
+                        style={{
+                          ...headerStyle,
+                          borderBottom: '1px solid #eef0f3',
+                          display: selectedId && !col.locked ? 'none' : 'table-cell',
+                        }}
+                      >
+                        {col.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {isLoading ? (
+                    <tr>
+                      <td
+                        colSpan={columns.length}
+                        style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}
+                      >
+                        Loading...
+                      </td>
+                    </tr>
+                  ) : assemblies.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={columns.length}
+                        style={{ padding: '48px 24px', textAlign: 'center', color: '#64748b' }}
+                      >
+                        <Settings
+                          size={48}
+                          style={{ margin: '0 auto 16px', opacity: 0.2 }}
+                        />
+                        <div style={{ fontSize: 14, fontWeight: 500, color: '#1e293b' }}>
+                          No assemblies found
+                        </div>
+                        <div style={{ fontSize: 13, marginTop: 4 }}>
+                          Create a new assembly to get started.
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    assemblies.map((item) => (
+                      <tr
+                        key={item.id}
+                        onClick={() => setSearchParams({ id: item.id })}
+                        style={{
+                          borderBottom: '1px solid #eef0f3',
+                          cursor: 'pointer',
+                          background: selectedId === item.id ? '#f8fafc' : 'transparent',
+                          transition: 'background 0.1s',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (selectedId !== item.id) e.currentTarget.style.background = '#f8fafc';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (selectedId !== item.id) e.currentTarget.style.background = 'transparent';
+                        }}
+                      >
+                        {columns.map((col) => (
+                          <td
+                            key={col.key}
+                            style={{
+                              padding: '12px 16px',
+                              fontSize: 13,
+                              color: col.locked ? '#0062ff' : '#333',
+                              fontWeight: col.locked ? 500 : 400,
+                              display: selectedId && !col.locked ? 'none' : 'table-cell',
+                            }}
+                          >
+                            {renderAssemblyCell(item, col.key)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            )}
           </div>
 
-          <Pagination
-            pageContext={pageContext}
-            perPage={perPage}
-            page={page}
-            onPageChange={setPage}
-            onPerPageChange={setPerPage}
-            total={total}
-            isCounting={isCounting}
-            onRequestCount={requestCount}
-          />
+          {!selectedId && (
+            <Pagination
+              pageContext={pageContext}
+              perPage={perPage}
+              page={page}
+              onPageChange={setPage}
+              onPerPageChange={setPerPage}
+              total={total}
+              isCounting={isCounting}
+              onRequestCount={requestCount}
+            />
+          )}
         </div>
 
         {selectedId && (

@@ -132,7 +132,6 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
   ],
   item_assembly: [
     { key: 'all', label: 'All Assemblies', where: {} },
-    { key: 'posted', label: 'Posted', where: { status: 'posted' } },
     { key: 'draft', label: 'Draft', where: { status: 'draft' } },
     { key: 'cancelled', label: 'Cancelled', where: { status: 'cancelled' } },
   ],

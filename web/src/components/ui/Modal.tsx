@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 interface ModalProps {
@@ -13,6 +14,7 @@ interface ModalProps {
    * scrolls off a long grid. */
   footer?: ReactNode;
   width?: number | string;
+  position?: 'center' | 'right';
 }
 
 /**
@@ -47,6 +49,7 @@ export function Modal({
   children,
   footer,
   width = 900,
+  position = 'center',
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   // Captured on open, restored on close — see requirement 4.
@@ -84,11 +87,11 @@ export function Modal({
       // would trap focus on elements that no longer exist.
       const node = dialogRef.current;
       if (!node) return;
-      const focusable = [
-        ...node.querySelectorAll<HTMLElement>(
+      const focusable = Array.from(
+        node.querySelectorAll<HTMLElement>(
           'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
         ),
-      ].filter((el) => el.offsetParent !== null || el === document.activeElement);
+      ).filter((el) => el.offsetParent !== null || el === document.activeElement);
       if (focusable.length === 0) return;
 
       const first = focusable[0]!;
@@ -117,18 +120,17 @@ export function Modal({
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div
       style={{
         position: 'fixed',
         inset: 0,
         background: 'rgba(15, 23, 42, 0.45)',
         display: 'flex',
-        alignItems: 'flex-start',
-        justifyContent: 'center',
-        padding: '40px 16px',
-        zIndex: 1000,
-        overflowY: 'auto',
+        alignItems: position === 'right' ? 'center' : 'flex-start',
+        justifyContent: position === 'right' ? 'flex-end' : 'center',
+        padding: position === 'right' ? '16px' : '40px 16px',
+        zIndex: 1100,
       }}
       // Clicking the backdrop closes; clicking inside must not bubble up to it.
       onMouseDown={(event) => {
@@ -143,14 +145,16 @@ export function Modal({
         tabIndex={-1}
         style={{
           background: '#fff',
-          borderRadius: 6,
+          borderRadius: position === 'right' ? 8 : 6,
           width: '100%',
           maxWidth: width,
           boxShadow: '0 12px 40px rgba(15, 23, 42, 0.25)',
           display: 'flex',
           flexDirection: 'column',
-          maxHeight: 'calc(100vh - 80px)',
+          maxHeight: position === 'right' ? 'calc(100vh - 32px)' : 'calc(100vh - 80px)',
+          height: position === 'right' ? 'calc(100vh - 32px)' : undefined,
           outline: 'none',
+          overflow: 'hidden',
         }}
       >
         <header
@@ -193,7 +197,7 @@ export function Modal({
           </button>
         </header>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>{children}</div>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 20px' }}>{children}</div>
 
         {footer && (
           <footer
@@ -210,6 +214,7 @@ export function Modal({
           </footer>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

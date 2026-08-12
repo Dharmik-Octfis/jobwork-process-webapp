@@ -7,8 +7,11 @@ import {
   validateCustomFields,
 } from '../settings/customization/custom-fields/customFields.engine.ts';
 import { Prisma } from '../../../generated/prisma/client.ts';
+import { randomUUID } from 'node:crypto';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../lib/pagination.ts';
 import { filterWhere } from '../settings/list-views/listFilters.catalog.ts';
+import { createLot, postMovement } from '../inventory/stock-ledger/stockLedger.service.ts';
+import type { ItemOpeningStockDto } from './items.schemas.ts';
 
 export function toItemResponse(item: Record<string, unknown> | null | undefined) {
   if (!item) return item;
@@ -123,6 +126,189 @@ export function normalizeItemDto<T extends Record<string, unknown>>(rawData: T):
 }
 
 export class ItemsService {
+  private normalizeOpeningStockRow(row: {
+    id: string;
+    locationId: string;
+    openingStock: Prisma.Decimal | null;
+    openingStockValuePerUnit: Prisma.Decimal | null;
+    stockOnHand?: Prisma.Decimal | null;
+    committedStock?: Prisma.Decimal | null;
+    availableForSale?: Prisma.Decimal | null;
+    batches: Prisma.JsonValue;
+  }) {
+    const batches = Array.isArray(row.batches)
+      ? row.batches.map((batch, index) => {
+          const value = batch as Record<string, unknown>;
+          return {
+            id: typeof value.id === 'string' ? value.id : `${row.id}:${index}`,
+            batchReference: value.batchReference ?? null,
+            manufacturerBatch: value.manufacturerBatch ?? null,
+            manufacturedDate: value.manufacturedDate ?? null,
+            expiryDate: value.expiryDate ?? null,
+            sellingPrice: value.sellingPrice ?? null,
+            mrp: value.mrp ?? null,
+            quantityIn: value.quantityIn ?? null,
+          };
+        })
+      : [];
+
+    return {
+      id: row.id,
+      locationId: row.locationId,
+      openingStock: row.openingStock !== null ? Number(row.openingStock) : null,
+      openingStockValue: row.openingStockValuePerUnit !== null ? Number(row.openingStockValuePerUnit) : null,
+      stockOnHand: row.stockOnHand !== null && row.stockOnHand !== undefined ? Number(row.stockOnHand) : null,
+      committedStock:
+        row.committedStock !== null && row.committedStock !== undefined ? Number(row.committedStock) : null,
+      availableForSale:
+        row.availableForSale !== null && row.availableForSale !== undefined
+          ? Number(row.availableForSale)
+          : null,
+      batches,
+    };
+  }
+
+  private async readLocationStockRowsFromTable(tx: TenantClient, itemId: string, organizationId: string) {
+    const rows = await tx.$queryRaw<
+      Array<{
+        id: string;
+        locationId: string;
+        stockOnHand: Prisma.Decimal | null;
+        committedStock: Prisma.Decimal | null;
+        availableForSale: Prisma.Decimal | null;
+      }>
+    >(Prisma.sql`
+      SELECT
+        id,
+        location_id AS "locationId",
+        stock_on_hand AS "stockOnHand",
+        committed_stock AS "committedStock",
+        available_for_sale AS "availableForSale"
+      FROM item_location_stocks
+      WHERE organization_id = ${organizationId}::uuid
+        AND item_id = ${itemId}::uuid
+        AND is_deleted = false
+      ORDER BY created_at ASC
+    `);
+
+    return rows;
+  }
+
+  private async readOpeningStockRowsFromTable(tx: TenantClient, itemId: string, organizationId: string) {
+    const summaryRows = await this.readLocationStockRowsFromTable(tx, itemId, organizationId);
+    const rows = await tx.$queryRaw<
+      Array<{
+        id: string;
+        locationId: string;
+        openingStock: Prisma.Decimal | null;
+        openingStockValuePerUnit: Prisma.Decimal | null;
+        batches: Prisma.JsonValue;
+      }>
+    >(Prisma.sql`
+      SELECT
+        id,
+        location_id AS "locationId",
+        opening_stock AS "openingStock",
+        opening_stock_value_per_unit AS "openingStockValuePerUnit",
+        batches
+      FROM item_opening_stock_rows
+      WHERE organization_id = ${organizationId}::uuid
+        AND item_id = ${itemId}::uuid
+        AND is_deleted = false
+      ORDER BY created_at ASC
+      `);
+    type NormalizedOpeningStockRow = ReturnType<ItemsService['normalizeOpeningStockRow']>;
+    const byLocation = new Map<string, NormalizedOpeningStockRow>();
+    for (const summary of summaryRows) {
+      byLocation.set(summary.locationId, {
+        id: summary.id,
+        locationId: summary.locationId,
+        openingStock: null,
+        openingStockValue: null,
+        stockOnHand: summary.stockOnHand !== null ? Number(summary.stockOnHand) : null,
+        committedStock: summary.committedStock !== null ? Number(summary.committedStock) : null,
+        availableForSale: summary.availableForSale !== null ? Number(summary.availableForSale) : null,
+        batches: [],
+      });
+    }
+
+    for (const row of rows) {
+      const normalized = this.normalizeOpeningStockRow(row);
+      const existing = byLocation.get(normalized.locationId);
+      if (existing) {
+        existing.id = normalized.id;
+        existing.openingStock = normalized.openingStock;
+        existing.openingStockValue = normalized.openingStockValue;
+        existing.batches = normalized.batches;
+        if (existing.stockOnHand === null) {
+          existing.stockOnHand = normalized.openingStock ?? 0;
+        }
+        if (existing.availableForSale === null) {
+          existing.availableForSale = existing.stockOnHand;
+        }
+        if (existing.committedStock === null) {
+          existing.committedStock = 0;
+        }
+      } else {
+        byLocation.set(normalized.locationId, {
+          ...normalized,
+          stockOnHand: normalized.openingStock ?? 0,
+          committedStock: 0,
+          availableForSale: normalized.openingStock ?? 0,
+        });
+      }
+    }
+
+    return Array.from(byLocation.values());
+  }
+
+  private async readOpeningStockRowsFromLedger(tx: TenantClient, itemId: string, organizationId: string) {
+    const entries = await tx.stockLedgerEntry.findMany({
+      where: {
+        organizationId,
+        itemId,
+        sourceDocType: 'item_opening_stock',
+        movementType: 'opening',
+      },
+      include: { lot: true },
+    });
+
+    const locationMap = new Map<
+      string,
+      {
+        id: string;
+        locationId: string;
+        openingStock: null;
+        openingStockValue: null;
+        batches: Array<Record<string, unknown>>;
+      }
+    >();
+    for (const entry of entries) {
+      if (!locationMap.has(entry.locationId)) {
+        locationMap.set(entry.locationId, {
+          id: entry.locationId,
+          locationId: entry.locationId,
+          openingStock: null,
+          openingStockValue: null,
+          batches: [],
+        });
+      }
+      const row = locationMap.get(entry.locationId)!;
+      const cf = entry.lot.customFields as Record<string, unknown> | undefined;
+      row.batches.push({
+        id: entry.lot.id,
+        batchReference: entry.lot.supplierLotRef,
+        manufacturerBatch: cf?.manufacturerBatch,
+        manufacturedDate: cf?.manufacturedDate,
+        expiryDate: cf?.expiryDate,
+        quantityIn: entry.qtyIn,
+        sellingPrice: cf?.sellingPrice,
+        mrp: cf?.mrp,
+      });
+    }
+
+    return Array.from(locationMap.values());
+  }
   /**
    * One paginated list endpoint that also does search — same shape as vendors /
    * customers, via the shared `searchWhere`/`pageContext` helpers. See
@@ -471,6 +657,196 @@ export class ItemsService {
       { timeout: 60000 },
     );
   }
+
+  async getOpeningStock(itemId: string, organizationId: string) {
+    return runAsTenant(organizationId, async (tx) => {
+      const item = await tx.item.findFirst({
+        where: { id: itemId, organizationId },
+        select: { id: true, lotTracking: true },
+      });
+      if (!item) throw ApiError.notFound('Item not found.');
+
+      const rows = await this.readOpeningStockRowsFromTable(tx, itemId, organizationId);
+      if (rows.length > 0) return rows;
+
+      return this.readOpeningStockRowsFromLedger(tx, itemId, organizationId);
+    });
+  }
+
+  async saveOpeningStock(itemId: string, organizationId: string, data: ItemOpeningStockDto, userId?: string) {
+    return runAsTenant(organizationId, async (tx) => {
+      const item = await tx.item.findFirst({
+        where: { id: itemId, organizationId },
+        select: { id: true, stockingUomId: true, lotTracking: true },
+      });
+      if (!item) throw ApiError.notFound('Item not found.');
+      if (!item.stockingUomId) throw ApiError.badRequest('Cannot add stock without a stocking unit of measurement.');
+
+      const oldEntries = await tx.stockLedgerEntry.findMany({
+        where: { organizationId, itemId, sourceDocType: 'item_opening_stock' },
+      });
+      for (const oldEntry of oldEntries) {
+        await postMovement(tx, {
+          organizationId,
+          lotId: oldEntry.lotId,
+          locationId: oldEntry.locationId,
+          movementType: 'reversal',
+          qtyOut: oldEntry.qtyIn, 
+          qtyIn: oldEntry.qtyOut, 
+          valueOut: oldEntry.valueIn,
+          valueIn: oldEntry.valueOut,
+          sourceDocType: 'item_opening_stock',
+          sourceDocId: itemId,
+          userId,
+        });
+      }
+
+      await tx.$executeRaw(Prisma.sql`
+        DELETE FROM item_opening_stock_rows
+        WHERE organization_id = ${organizationId}::uuid
+          AND item_id = ${itemId}::uuid
+      `);
+
+      await tx.$executeRaw(Prisma.sql`
+        DELETE FROM item_location_stocks
+        WHERE organization_id = ${organizationId}::uuid
+          AND item_id = ${itemId}::uuid
+      `);
+
+      for (const locRow of data.locationRows) {
+        const batches = Array.isArray(locRow.batches)
+          ? locRow.batches.map((batch, index) => ({
+              id:
+                typeof batch.id === 'string' && batch.id.length > 0
+                  ? batch.id
+                  : `${locRow.locationId}:${index}:${randomUUID()}`,
+              batchReference: batch.batchReference ?? null,
+              manufacturerBatch: batch.manufacturerBatch ?? null,
+              manufacturedDate: batch.manufacturedDate ?? null,
+              expiryDate: batch.expiryDate ?? null,
+              sellingPrice: batch.sellingPrice ?? null,
+              mrp: batch.mrp ?? null,
+              quantityIn: batch.quantityIn ?? null,
+            }))
+          : [];
+
+        const batchTotal = batches.reduce((sum, batch) => sum + (Number(batch.quantityIn) || 0), 0);
+        const openingStock =
+          locRow.openingStock !== null &&
+          locRow.openingStock !== undefined &&
+          locRow.openingStock !== ''
+            ? new Prisma.Decimal(locRow.openingStock)
+            : new Prisma.Decimal(batchTotal);
+        const openingStockValuePerUnit =
+          locRow.openingStockValue !== null &&
+          locRow.openingStockValue !== undefined &&
+          locRow.openingStockValue !== ''
+            ? new Prisma.Decimal(locRow.openingStockValue)
+            : null;
+
+        await tx.$executeRaw(Prisma.sql`
+          INSERT INTO item_location_stocks (
+            id,
+            organization_id,
+            item_id,
+            location_id,
+            stock_on_hand,
+            committed_stock,
+            available_for_sale,
+            custom_fields,
+            is_deleted,
+            created_by,
+            updated_by,
+            created_at,
+            updated_at
+          ) VALUES (
+            gen_random_uuid(),
+            ${organizationId}::uuid,
+            ${itemId}::uuid,
+            ${locRow.locationId}::uuid,
+            ${openingStock},
+            0,
+            ${openingStock},
+            '{}'::jsonb,
+            false,
+            ${userId ?? null}::uuid,
+            ${userId ?? null}::uuid,
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP
+          )
+        `);
+
+        await tx.$executeRaw(Prisma.sql`
+          INSERT INTO item_opening_stock_rows (
+            id,
+            organization_id,
+            item_id,
+            location_id,
+            opening_stock,
+            opening_stock_value_per_unit,
+            batches,
+            custom_fields,
+            is_deleted,
+            created_by,
+            updated_by,
+            created_at,
+            updated_at
+          ) VALUES (
+            gen_random_uuid(),
+            ${organizationId}::uuid,
+            ${itemId}::uuid,
+            ${locRow.locationId}::uuid,
+            ${openingStock},
+            ${openingStockValuePerUnit},
+            ${JSON.stringify(batches)}::jsonb,
+            '{}'::jsonb,
+            false,
+            ${userId ?? null}::uuid,
+            ${userId ?? null}::uuid,
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP
+          )
+        `);
+
+        for (const batch of batches) {
+          const qty = Number(batch.quantityIn);
+          if (!qty || qty <= 0) continue;
+
+          const lot = await createLot(tx, {
+            organizationId,
+            itemId,
+            uomId: item.stockingUomId,
+            lotNumber: undefined,
+            supplierLotRef: batch.batchReference || null,
+            sourceDocType: 'item_opening_stock',
+            sourceDocId: itemId,
+            userId,
+            customFields: {
+              manufacturerBatch: batch.manufacturerBatch,
+              manufacturedDate: batch.manufacturedDate,
+              expiryDate: batch.expiryDate,
+              sellingPrice: batch.sellingPrice,
+              mrp: batch.mrp,
+            },
+          });
+
+          await postMovement(tx, {
+            organizationId,
+            lotId: lot.id,
+            locationId: locRow.locationId,
+            movementType: 'opening',
+            qtyIn: qty,
+            sourceDocType: 'item_opening_stock',
+            sourceDocId: itemId,
+            userId,
+          });
+        }
+      }
+
+      return this.readOpeningStockRowsFromTable(tx, itemId, organizationId);
+    });
+  }
 }
 
 export const itemsService = new ItemsService();
+

@@ -483,7 +483,8 @@ export function CurrencyFormModal({
                 )}
               </div>
               
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+              {currencyToEdit && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
                 <Controller
                   name="isActive"
                   control={control}
@@ -508,6 +509,7 @@ export function CurrencyFormModal({
                   )}
                 />
               </div>
+              )}
             </div>
           </form>
         </div>

@@ -37,3 +37,33 @@ export const setNumberingPreference = async (req: Request, res: Response) => {
     await assembliesService.updateNumberPreference(req.tenantId!, prefix, nextNumber),
   );
 };
+
+export const deleteAssemblyRoute = async (req: Request, res: Response) => {
+  await assembliesService.deleteAssembly(req.tenantId!, req.params.id as string);
+  sendSuccess(res, null, 'Assembly deleted successfully');
+};
+
+export const getAssemblyActivitiesRoute = async (req: Request, res: Response) => {
+  const activities = await assembliesService.getAssemblyActivities(req.tenantId!, req.params.id as string);
+  sendSuccess(res, activities);
+};
+
+export const getAssemblyCommentsRoute = async (req: Request, res: Response) => {
+  const comments = await assembliesService.getAssemblyComments(req.tenantId!, req.params.id as string);
+  sendSuccess(res, comments);
+};
+
+export const createAssemblyCommentRoute = async (req: Request, res: Response) => {
+  const comment = await assembliesService.createAssemblyComment(
+    req.tenantId!,
+    req.params.id as string,
+    req.user!.id,
+    req.body.content as string
+  );
+  sendSuccess(res, comment, 'Comment added successfully', 201);
+};
+
+export const deleteAssemblyCommentRoute = async (req: Request, res: Response) => {
+  await assembliesService.deleteAssemblyComment(req.tenantId!, req.params.id as string, req.params.commentId as string);
+  sendSuccess(res, null, 'Comment deleted successfully');
+};

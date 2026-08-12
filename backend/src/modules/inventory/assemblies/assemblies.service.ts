@@ -85,6 +85,7 @@ export const assembliesService = {
   listWhere: (organizationId: string, opts: ListQuery): Prisma.ItemAssemblyWhereInput => {
     return {
       organizationId,
+      isDeleted: false,
       ...filterWhere<Prisma.ItemAssemblyWhereInput>('item_assembly', opts.filter),
       ...searchWhere<Prisma.ItemAssemblyWhereInput>(opts.search, ['assemblyNumber', 'remarks']),
     };
@@ -103,45 +104,30 @@ export const assembliesService = {
           },
           lines: {
             select: {
-              lotId: true,
               qty: true,
               unitValue: true,
               value: true,
+              item: { select: { costPrice: true } },
             },
           },
         },
       });
 
-      const results = await Promise.all(
-        records.map(async (record) => {
-          const hasStoredValue = !decimal(record.totalValue).isZero();
-          if (hasStoredValue) {
-            return {
-              ...record,
-              qty: Number(record.qty),
-              totalValue: Number(record.totalValue),
-              componentValue: Number(record.componentValue),
-              additionalCost: Number(record.additionalCost),
-            };
-          }
+      const results = records.map((record) => {
+        const computedComponentValue = record.lines.reduce((sum, line) => {
+          const val = Number(line.value);
+          const computed = val > 0 ? val : Number(line.qty) * Number(line.item.costPrice || 0);
+          return sum + computed;
+        }, 0);
 
-          const snapshot = await resolveAssemblySnapshot(
-            tx,
-            orgId,
-            record.locationId,
-            record.assemblyDate,
-            record.lines,
-          );
-
-          return {
-            ...record,
-            qty: Number(record.qty),
-            totalValue: Number(snapshot.totalValue.plus(decimal(record.additionalCost))),
-            componentValue: Number(snapshot.componentValue),
-            additionalCost: Number(record.additionalCost),
-          };
-        }),
-      );
+        return {
+          ...record,
+          qty: Number(record.qty),
+          totalValue: computedComponentValue + Number(record.additionalCost),
+          componentValue: computedComponentValue,
+          additionalCost: Number(record.additionalCost),
+        };
+      });
 
       return pageSlice(results, opts.page, opts.perPage);
     });
@@ -268,6 +254,25 @@ export const assembliesService = {
         })
       );
 
+      // 6. Log activity
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { firstName: true, lastName: true },
+      });
+      const performedBy = user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : 'System';
+
+      await tx.itemAssemblyActivity.create({
+        data: {
+          organizationId: orgId,
+          assemblyId: assembly.id,
+          title: 'Assembly Created',
+          description: `Assembly ${assembly.assemblyNumber} was created.`,
+          performedBy,
+          createdBy: userId,
+          updatedBy: userId,
+        },
+      });
+
       return assembly;
     });
   },
@@ -286,7 +291,7 @@ export const assembliesService = {
           lines: {
             include: {
               item: {
-                select: { name: true, sku: true, type: true, stockingUomId: true, stockingUom: { select: { unitName: true } } },
+                select: { name: true, sku: true, type: true, stockingUomId: true, costPrice: true, stockingUom: { select: { unitName: true } } },
               },
             },
           },
@@ -315,11 +320,104 @@ export const assembliesService = {
           ...line,
           qty: Number(line.qty),
           qtyPerUnit: Number(line.qtyPerUnit),
-            unitValue: Number(resolved.unitValue),
-            value: Number(resolved.value),
+            unitValue: Number(resolved.unitValue) > 0 ? Number(resolved.unitValue) : Number(line.item.costPrice || 0),
+            value: Number(resolved.value) > 0 ? Number(resolved.value) : Number(line.qty) * Number(line.item.costPrice || 0),
           };
         })),
       };
+    });
+  },
+
+  deleteAssembly: async (orgId: string, id: string) => {
+    return runAsTenant(orgId, async (tx) => {
+      // 1. Check if it exists
+      const existing = await tx.itemAssembly.findFirst({
+        where: { id, organizationId: orgId, isDeleted: false },
+      });
+      if (!existing) {
+        throw ApiError.notFound('Assembly not found');
+      }
+
+      // 2. Soft delete the assembly (we don't post reversing ledger entries here yet as per plan, 
+      // but in real world we'd need to if it was posted to ledger)
+      const updated = await tx.itemAssembly.update({
+        where: { id },
+        data: {
+          isDeleted: true,
+          status: 'cancelled',
+        },
+      });
+
+      // 3. Log activity
+      await tx.itemAssemblyActivity.create({
+        data: {
+          organizationId: orgId,
+          assemblyId: id,
+          title: 'Assembly Deleted',
+          description: `Assembly ${existing.assemblyNumber} was marked as deleted.`,
+          performedBy: 'System',
+        },
+      });
+
+      return updated;
+    });
+  },
+
+  getAssemblyActivities: async (organizationId: string, assemblyId: string) => {
+    return runAsTenant(organizationId, async (tx) => {
+      return tx.itemAssemblyActivity.findMany({
+        where: { assemblyId, organizationId, isDeleted: false },
+        orderBy: { createdAt: 'desc' },
+      });
+    });
+  },
+
+  getAssemblyComments: async (organizationId: string, assemblyId: string) => {
+    return runAsTenant(organizationId, async (tx) => {
+      return tx.itemAssemblyComment.findMany({
+        where: { assemblyId, organizationId, isDeleted: false },
+        orderBy: { createdAt: 'desc' },
+      });
+    });
+  },
+
+  createAssemblyComment: async (organizationId: string, assemblyId: string, userId: string, content: string) => {
+    return runAsTenant(organizationId, async (tx) => {
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { firstName: true, lastName: true },
+      });
+      const performedBy = user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : null;
+
+      return tx.itemAssemblyComment.create({
+        data: {
+          organizationId,
+          assemblyId,
+          content,
+          performedBy,
+          createdBy: userId,
+          updatedBy: userId,
+        },
+      });
+    });
+  },
+
+  deleteAssemblyComment: async (organizationId: string, assemblyId: string, commentId: string) => {
+    return runAsTenant(organizationId, async (tx) => {
+      const existingComment = await tx.itemAssemblyComment.findFirst({
+        where: { id: commentId, assemblyId, organizationId, isDeleted: false },
+      });
+
+      if (!existingComment) {
+        throw ApiError.notFound('Comment not found');
+      }
+
+      return tx.itemAssemblyComment.update({
+        where: { id: commentId },
+        data: {
+          isDeleted: true,
+        },
+      });
     });
   },
 

@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { X, Edit, ChevronDown } from 'lucide-react';
 import { useState, useRef, useEffect, Fragment } from 'react';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { ItemLocations } from './components/ItemLocations';
 import { ItemActivityHistory } from './ItemActivityHistory';
 import { ItemImageGallery } from './components/ItemImageGallery';
 import { CompositeItemsList } from '../inventory/composite-items/CompositeItemsList';
@@ -563,6 +564,10 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                 </div>
               </div>
             </div>
+          </div>
+        ) : activeTab === 'Locations' ? (
+          <div style={{ margin: '0 -24px' }}>
+            <ItemLocations orgId={orgId!} itemId={itemId} />
           </div>
         ) : (
           <div

@@ -16,6 +16,7 @@ export interface Location {
   country: string | null;
   phone: string | null;
   addressString: string | null;
+  isPrimary: boolean;
 }
 
 export type CreateLocationData = Omit<Location, 'id' | 'organizationId' | 'addressString'>;
@@ -43,4 +44,8 @@ export async function updateLocation({ orgId, id, data }: { orgId: string; id: s
 
 export async function deleteLocation(orgId: string, id: string): Promise<void> {
   await apiClient.delete(`${endpoints.configuration.locations(orgId)}/${id}`);
+}
+
+export async function markLocationAsPrimary(orgId: string, id: string): Promise<void> {
+  await apiClient.post(`${endpoints.configuration.locations(orgId)}/${id}/primary`);
 }

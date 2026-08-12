@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { itemsController } from './items.controller.ts';
 import { openApiRegistry } from '../../config/openapi.ts';
-import { itemSchema, createItemSchema, updateItemSchema } from './items.schemas.ts';
+import { itemSchema, createItemSchema, updateItemSchema, itemOpeningStockSchema } from './items.schemas.ts';
 import { z } from 'zod';
 import multer from 'multer';
 
@@ -183,6 +183,14 @@ router.put(
   itemsController.updateItem,
 );
 router.delete('/:id', requirePermission('item:delete'), itemsController.deleteItem);
+
+router.get('/:id/opening-stock', requirePermission('item:read'), itemsController.getOpeningStock);
+router.post(
+  '/:id/opening-stock',
+  requirePermission('item:update'),
+  validateBody(itemOpeningStockSchema),
+  itemsController.saveOpeningStock,
+);
 
 router.post(
   '/:id/images',

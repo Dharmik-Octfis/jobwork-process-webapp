@@ -94,6 +94,7 @@ export function CreateAssemblyPage() {
   });
 
   const [services, setServices] = useState<{ itemId: string; qtyRequired: number; costPrice?: number }[]>([]);
+  const [extraItems, setExtraItems] = useState<{ itemId: string; qtyRequired: number; costPrice?: number }[]>([]);
 
   const goodsComponents = useMemo(() => {
     return components?.filter((c) => c.component?.type !== 'Service') || [];
@@ -102,6 +103,26 @@ export function CreateAssemblyPage() {
   const serviceComponents = useMemo(() => {
     return components?.filter((c) => c.component?.type === 'Service') || [];
   }, [components]);
+
+  const handleAddExtraItem = () => {
+    setExtraItems((prev) => [...prev, { itemId: '', qtyRequired: 1 }]);
+  };
+
+  const handleRemoveExtraItem = (index: number) => {
+    setExtraItems((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleExtraItemChange = <K extends keyof { itemId: string; qtyRequired: number; costPrice?: number }>(
+    index: number,
+    field: K,
+    value: { itemId: string; qtyRequired: number; costPrice?: number }[K]
+  ) => {
+    setExtraItems((prev) => {
+      const newItems = [...prev];
+      newItems[index] = { ...newItems[index], [field]: value };
+      return newItems;
+    });
+  };
 
   const handleAddService = () => {
     setServices((prev) => [...prev, { itemId: '', qtyRequired: 1 }]);
@@ -144,10 +165,11 @@ export function CreateAssemblyPage() {
     }));
 
     const validServices = services.filter((s) => s.itemId);
-    const combinedLines = [...lines, ...validServices];
+    const validExtraItems = extraItems.filter((i) => i.itemId);
+    const combinedLines = [...lines, ...validExtraItems, ...validServices];
 
     if (combinedLines.length === 0) {
-      toast.error('Composite item has no components and no services selected.');
+      toast.error('Composite item has no components and no additional items/services selected.');
       return;
     }
 
@@ -197,6 +219,18 @@ export function CreateAssemblyPage() {
                 </div>
               )}
             </div>
+          </div>
+
+          <div
+            style={{
+              transition: 'all 0.3s ease',
+              opacity: compositeItemId ? 1 : 0.4,
+              filter: compositeItemId ? 'none' : 'blur(2px)',
+              pointerEvents: compositeItemId ? 'auto' : 'none',
+              userSelect: compositeItemId ? 'auto' : 'none',
+            }}
+          >
+            <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: '24px', alignItems: 'start', marginBottom: '40px' }}>
 
             <div style={{ fontSize: '13px', color: '#dc2626', fontWeight: 500, paddingTop: '8px' }}>Assembly#*</div>
             <div style={{ maxWidth: '400px' }}>
@@ -326,13 +360,16 @@ export function CreateAssemblyPage() {
                           <td style={{ padding: '16px', textAlign: 'right', borderRight: '1px solid #eef0f3', verticalAlign: 'top', fontWeight: 500, color: '#1e293b' }}>
                             {totalRequired}
                           </td>
-                          <td style={{ padding: '16px', textAlign: 'right', verticalAlign: 'top', color: '#64748b' }}>
+                          <td style={{ padding: '16px', textAlign: 'right', borderRight: '1px solid #eef0f3', verticalAlign: 'top', color: '#64748b' }}>
                             * not applicable
+                          </td>
+                          <td style={{ padding: '16px', textAlign: 'center', verticalAlign: 'top', color: '#64748b' }}>
+                            <span style={{ fontSize: 11 }}>(From Recipe)</span>
                           </td>
                         </tr>
                         {/* Cost Price row */}
                         <tr style={{ background: '#f8fafc', borderBottom: '1px solid #d1d5db' }}>
-                          <td colSpan={4} style={{ padding: '4px 16px', fontSize: '11px', color: '#64748b' }}>
+                          <td colSpan={5} style={{ padding: '4px 16px', fontSize: '11px', color: '#64748b' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                               <span>Tag</span> Cost Price : -
                             </div>
@@ -342,8 +379,85 @@ export function CreateAssemblyPage() {
                     );
                   })
                 )}
+                  {extraItems.map((item, idx) => {
+                    const costPrice = item.costPrice || 0;
+                    const totalCost = costPrice * (item.qtyRequired || 0);
+                    return (
+                      <tr key={`extra-${idx}`} style={{ borderBottom: '1px solid #eef0f3' }}>
+                        <td style={{ padding: '16px', borderRight: '1px solid #eef0f3' }}>
+                          <ItemComboBox
+                            orgId={orgId!}
+                            filter="goods"
+                            value={item.itemId}
+                            onChange={(opt) => {
+                              handleExtraItemChange(idx, 'itemId', opt?.id || '');
+                              handleExtraItemChange(idx, 'costPrice', opt?.costPrice || 0);
+                            }}
+                            placeholder="Select an item"
+                          />
+                        </td>
+                        <td colSpan={2} style={{ padding: '16px', borderRight: '1px solid #eef0f3' }}>
+                          <input
+                            type="number"
+                            step="any"
+                            min="0"
+                            value={item.qtyRequired}
+                            onChange={(e) => handleExtraItemChange(idx, 'qtyRequired', parseFloat(e.target.value) || 0)}
+                            style={{
+                              width: '100%',
+                              padding: '6px',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: '4px',
+                              outline: 'none',
+                            }}
+                          />
+                        </td>
+                        <td style={{ padding: '16px', textAlign: 'right', borderRight: '1px solid #eef0f3', verticalAlign: 'top' }}>
+                          <div style={{ fontWeight: 500, color: '#1e293b' }}>{costPrice}</div>
+                          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Total Cost:<br/>₹ {totalCost.toLocaleString('en-IN')}</div>
+                        </td>
+                        <td style={{ padding: '16px', textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveExtraItem(idx)}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#ef4444',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              padding: '4px',
+                              borderRadius: '4px',
+                            }}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
+            <button
+              type="button"
+              onClick={handleAddExtraItem}
+              style={{
+                marginTop: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: 'transparent',
+                border: 'none',
+                color: '#3b82f6',
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >
+              <Plus size={16} /> Add Items
+            </button>
           </div>
 
           {/* Associate Services */}
@@ -509,6 +623,7 @@ export function CreateAssemblyPage() {
             >
               <Plus size={16} /> Add Services
             </button>
+          </div>
           </div>
         </form>
       </div>

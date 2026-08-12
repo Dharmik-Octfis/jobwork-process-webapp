@@ -137,3 +137,33 @@ export const itemFormSchema = z.object({
 
 export type Item = z.infer<typeof itemSchema>;
 export type ItemFormData = z.infer<typeof itemFormSchema>;
+
+export const itemOpeningStockBatchSchema = z.object({
+  id: z.string().optional(),
+  batchReference: z.string().optional().nullable(),
+  manufacturerBatch: z.string().optional().nullable(),
+  manufacturedDate: z.string().optional().nullable(),
+  expiryDate: z.string().optional().nullable(),
+  sellingPrice: z.union([z.string(), z.number()]).optional().nullable(),
+  mrp: z.union([z.string(), z.number()]).optional().nullable(),
+  quantityIn: z.union([z.string(), z.number()]).optional().nullable(),
+});
+
+export const itemOpeningStockLocationRowSchema = z.object({
+  id: z.string().optional(),
+  locationId: z.string(),
+  openingStock: z.union([z.string(), z.number()]).optional().nullable(),
+  openingStockValue: z.union([z.string(), z.number()]).optional().nullable(),
+  stockOnHand: z.union([z.string(), z.number()]).optional().nullable(),
+  committedStock: z.union([z.string(), z.number()]).optional().nullable(),
+  availableForSale: z.union([z.string(), z.number()]).optional().nullable(),
+  batches: z.array(itemOpeningStockBatchSchema),
+});
+
+export const itemOpeningStockSchema = z.object({
+  locationRows: z.array(itemOpeningStockLocationRowSchema),
+});
+
+export type ItemOpeningStockBatchDto = z.infer<typeof itemOpeningStockBatchSchema>;
+export type ItemOpeningStockLocationRowDto = z.infer<typeof itemOpeningStockLocationRowSchema>;
+export type ItemOpeningStockDto = z.infer<typeof itemOpeningStockSchema>;
