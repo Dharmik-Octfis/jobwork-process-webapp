@@ -690,12 +690,54 @@ The rule is therefore a **classification**, run once at save:
 > For each of a step's inputs — is it produced by an **earlier** step in this order? Then it is fed
 > by the chain. Otherwise it comes **from stock**, and is labelled so on the form.
 
-Neither outcome blocks the save. One thing still does: an input produced only by a **later** step.
-That is an ordering mistake with no valid reading, and it is cheap to catch.
+**No outcome blocks the save, and step ORDER is not checked at all** _(2026-08-11)_. An input
+produced only by a **later** step used to be refused — _"Material cannot come from a step that has
+not run yet — reorder the steps"_ — and that threw away a whole document over an arrangement the
+grid itself invites: steps are typed top-down, the same item is picked again a row later, and the
+save carrying both was the one rejected. It is now labelled `fromStock` like any other input nothing
+above it supplies, which is the honest answer: at the moment that step runs, a later step's output
+does not exist.
 
-The cost of this change is honest and worth stating: a mistyped chain is no longer caught when the
-job order is saved. It surfaces at issue time instead, per item, as _"no stock of Dyed Fabric at Main
-Godown"_ — later, but on the screen where the person can actually act on it.
+#### 6.4.0 What replaced it: a quantity WARNING, and why it is not a rule
+
+> A step may consume what an earlier step produces as often as it likes. Consuming **more of it than
+> those steps expect to hand over** is worth saying out loud — and is **not refused**.
+
+The refusal was built first, on 2026-08-11, and removed the same day. It has a false positive that is
+an ordinary plan:
+
+> Cutting returns 90 panels. Stitching plans 120, because 30 panels are already in the godown from a
+> short-closed order.
+
+A row's supply is a **mix** — partly chain-fed, partly off the shelf — and `fromStock` is a single
+flag, so any ceiling read off it assumes an exclusivity the domain does not have. That is the same
+assumption the old chain rule made when it refused thread and buttons, and it fails the same way.
+This is also not what manufacturing systems generally do: downstream quantities are **derived** from
+yield, availability is checked at **issue** time against real stock, and plan inconsistencies warn.
+
+So the balance survives as what it is genuinely good for — **deriving the blank rows** — and it is a
+**running** balance, not "what the nearest step produced": two steps can both draw on step 1's panels,
+and the second is planned at what the first left. It lives in `jobOrders.service.ts` →
+`planQuantities`; the note itself is `web/src/features/jobwork/jobwork.schemas.ts` → `overPlanWarning`,
+rendered live on the row as it is typed. **A warning that arrives in a save response is a warning
+about a decision already made**, which is why it is computed client-side rather than returned.
+
+Two limits on the derivation, each of which would otherwise put a number on a row nobody supplied:
+
+- **From-stock rows have no upstream figure.** Thread comes from the godown; no earlier step says how
+  much of it exists.
+- **A producer that left its expected quantity blank sets no ceiling**, so there is nothing to warn
+  against and nothing to derive from.
+
+The hard gates are unchanged and are the only ones: **position** at issue time (§6.4.1) and **real
+stock availability** in the ledger.
+
+The **Process Route** side has no equivalent and must not grow one: a template carries quantities on
+the consumed side alone, so there is nothing to compare against (§4.2.3).
+
+The cost of the 2026-08-07 change is unchanged and still worth stating: a mistyped chain is not
+caught when the job order is saved. It surfaces at issue time instead, per item, as _"no stock of
+Dyed Fabric at Main Godown"_ — later, but on the screen where the person can actually act on it.
 
 #### 6.4.1 …but a step still cannot issue before the step above it has delivered
 
@@ -745,6 +787,44 @@ back at the gate. The question a status answers is _"is anything still sitting a
 and a scrapped metre is not sitting anywhere; it has been accounted for. Counting only accepted
 quantity would leave every step with any wastage permanently `partially_received`, which is most of
 them.
+
+### 6.6 A running order is editable past its work front
+
+_(2026-08-11. Replaces "editable only while `draft`".)_
+
+The steps grid used to freeze entirely the moment anything was issued, and the only way to correct
+step 4 was to short-close the order and raise another. That is far stricter than the hazard warrants:
+a step nobody has sent anything to is a plan, and a plan stays a plan however far along the rest of
+the order is.
+
+> The **work front** is the last step carrying a live challan or receipt. That step and everything
+> before it are frozen. Everything after it is rewritten exactly as a draft would be.
+
+🔴 **It is a PREFIX, not "any step with no documents."** An untouched step sitting between two started
+ones is frozen too, because removing it would renumber the started steps after it — and `seq` is
+printed on paperwork a processor is holding. That is the same hazard `appendJobOrderSteps` is
+append-only to avoid. Trailing steps renumber freely because nothing has ever pointed at them.
+
+🔴 **The payload carries step ids, and below the front they are the only thing read.** The stored
+rows win; the ids are how the server proves the client is still editing the grid it was shown. Two
+steps can run the same process, so position and content could match while the order silently differs.
+A stale form is refused with a 409 naming the step, never partly applied.
+
+🔴 **Why this is not one relaxed guard.** `updateJobOrderById` hard-deletes steps before rewriting
+them, and `JobIssue.step` / `JobReceipt.step` are `onDelete: Cascade`. A delete not scoped past the
+front takes **every challan and receipt on the order** with it and orphans their ledger rows, silently.
+The `draft` check was the only thing standing between that `deleteMany` and live documents, so it was
+replaced by a scope (`seq > frontSeq`), not removed.
+
+Two things stay frozen with the front:
+
+- **The header** (`inputItemId` / `inputUomId` / `inputQty`) derives from step 1. Once step 1 is
+  locked the header is locked with it, or the list page would start showing step 4's item.
+- **A closed order refuses outright.** `short_closed` and `cancelled` are sticky, so the document
+  would keep reading as finished while its plan moved underneath it.
+
+Cancelled documents do not count toward the front — a withdrawn challan must not freeze a step
+forever.
 
 ---
 

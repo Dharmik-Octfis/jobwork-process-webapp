@@ -68,7 +68,10 @@ export function JobOrderFlow({ steps, selectedId, onSelect, onAppend }: Props) {
         const rework = toNumber(step.totals.reworkQty);
         const pct = issued > 0 ? Math.min(100, Math.round((consumed / issued) * 100)) : 0;
 
-        const issueUnit = step.issueUom ? (step.issueUom.symbol ?? step.issueUom.unitName) : '';
+        // The principal input's unit — row 1 of CONSUMES, which is what the
+        // step's own totals are counted in.
+        const issueUom = step.inputs[0]?.uom;
+        const issueUnit = issueUom ? (issueUom.symbol ?? issueUom.unitName) : '';
         const primaryOut =
           step.itemTotals.outputs.find((row) => row.isPrimary) ?? step.itemTotals.outputs[0];
 

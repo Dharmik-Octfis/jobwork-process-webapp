@@ -84,10 +84,6 @@ const STEP_INCLUDE = {
   process: {
     select: { id: true, name: true, code: true, preservesPackaging: true, requiresSingleLot: true },
   },
-  issueItem: { select: { id: true, name: true, sku: true, lotTracking: true } },
-  receiveItem: { select: { id: true, name: true, sku: true, lotTracking: true } },
-  issueUom: { select: { id: true, unitName: true, symbol: true } },
-  receiveUom: { select: { id: true, unitName: true, symbol: true } },
   workCentre: { select: { id: true, name: true } },
 } satisfies Prisma.JobOrderStepInclude;
 
@@ -159,45 +155,30 @@ interface ResolvedStep extends JobOrderStepInput {
  * The two lists a step carries (§5.7), taken from the request or derived from
  * the scalar columns they replaced.
  *
- * A client that sends neither list gets exactly what Sprints 1–4 gave it: one
- * input, one output, both from the scalars. That is what lets this ship before
- * the step grid grows its nested lists, and it is why the scalars survive until
- * Migration B.
+ * 🔴 WHAT IS SENT IS WHAT IS SAVED, and there is nothing left to infer it from
+ * (2026-08-12). Nothing comes from the step above, nothing from the process's
+ * `itemChanges` flag, and — since Migration B dropped them — nothing from the
+ * `issueItemId` / `receiveItemId` scalars that used to stand in for a client
+ * without the nested grids.
  *
- * 🔴 WHAT IS SENT IS WHAT IS SAVED. Nothing is inferred from the step above, and
- * nothing from the process's `itemChanges` flag. Both inferences read well on
- * paper and were unusable on screen: the grid had to render a row nobody had
- * typed, labelled "automatic", and the honest question that produced was "so
- * what actually goes into the database?" — which is not a question a form should
- * leave anyone asking. The client seeds those rows visibly instead, where they
- * can be seen, changed, or deleted before saving.
+ * Both inferences read well on paper and were unusable on screen: the grid had
+ * to render a row nobody had typed, labelled "automatic", and the honest
+ * question that produced was "so what actually goes into the database?" — which
+ * is not a question a form should leave anyone asking. The client seeds those
+ * rows visibly instead, where they can be seen, changed, or deleted before
+ * saving.
  *
- * The one derivation left is the scalar `issueItemId` / `receiveItemId`, for a
- * client that has not grown the nested grids. That is the rollout bridge; it
- * goes with Migration B.
- *
- * 🔴 The header no longer contributes an item either (2026-08-07). It used to
- * prepend `inputItemId` to step 1, back when a job order named one item and one
- * quantity — which a step consuming a SET cannot be described by. What the order
- * runs on is simply what step 1 lists.
+ * 🔴 The header contributes no item either (2026-08-07). It used to prepend
+ * `inputItemId` to step 1, back when a job order named one item and one quantity
+ * — which a step consuming a SET cannot be described by. What the order runs on
+ * is simply what step 1 lists.
  */
 function resolveStepRows(
   step: JobOrderStepInput,
   index: number,
 ): { inputs: StepInputRow[]; outputs: StepOutputRow[] } {
-  const sent = step.inputs ?? [];
-  const inputs: StepInputRow[] = sent.length
-    ? [...sent]
-    : step.issueItemId
-      ? [{ itemId: step.issueItemId, uomId: step.issueUomId ?? null }]
-      : [];
-
-  const sentOutputs = step.outputs ?? [];
-  const outputs: StepOutputRow[] = sentOutputs.length
-    ? [...sentOutputs]
-    : step.receiveItemId
-      ? [{ itemId: step.receiveItemId, uomId: step.receiveUomId ?? null, isPrimary: true }]
-      : [];
+  const inputs: StepInputRow[] = [...(step.inputs ?? [])];
+  const outputs: StepOutputRow[] = [...(step.outputs ?? [])];
 
   assertNoRepeatedItem(inputs, index, 'inputs');
   assertNoRepeatedItem(outputs, index, 'outputs');
@@ -256,7 +237,7 @@ function flagPrimaryOutput(rows: readonly StepOutputRow[], stepIndex: number): R
 }
 
 /**
- * 🔴 THE CHAIN IS A CLASSIFICATION NOW, NOT A RULE (§6.4).
+ * 🔴 THE CHAIN IS A CLASSIFICATION, NOT A RULE (§6.4). IT REJECTS NOTHING.
  *
  * It used to reject a step whose input was not the previous step's output. Since
  * §5.7 that is false by design: thread and buttons come from the godown, not
@@ -264,59 +245,48 @@ function flagPrimaryOutput(rows: readonly StepOutputRow[], stepIndex: number): R
  * steps. So each input is instead LABELLED — fed by an earlier step, or drawn
  * from stock — and saved either way.
  *
- * One thing still fails: an input produced ONLY by a LATER step. That is an
- * ordering mistake with no valid reading, and it is cheap to catch here rather
- * than as an empty lot picker at issue time.
+ * 🔴 An input produced only by a LATER step is labelled `fromStock: true` too,
+ * and that is the honest answer rather than a concession (2026-08-11). The flag
+ * means one thing — "nothing above this step supplies it" — and at the moment
+ * this step runs, a later step's output does not exist, so the material can only
+ * come off the shelf. It used to raise a 400 telling somebody to reorder the
+ * steps, and that refused whole documents over an arrangement the grid itself
+ * invites: steps are typed top-down, the same item is picked again a row later,
+ * and the save carrying both was the one rejected. `fromStock` only ever drives
+ * a badge, so nothing downstream needed the refusal.
  *
- * The honest cost of the change: a mistyped chain now surfaces at issue time as
- * "no stock of Dyed Fabric at Main Godown" — later than before, but on the
- * screen where somebody can act on it.
+ * 🔴 WHAT REPLACED IT IS A WARNING, NOT A RULE — `overPlanWarning` on the client,
+ * off the balance `planQuantities` walks. Picking the same item in the next step
+ * is allowed; planning more of it than the steps above hand over is worth saying
+ * out loud, but not worth refusing: the difference can legitimately come from
+ * stock, which is exactly the mixed supply a single `fromStock` flag cannot
+ * express.
+ *
+ * The rest is unchanged from when the chain stopped being a rule: the real gate
+ * is positional and lives at issue time (`chainNotReady`), where a step cannot
+ * send anything until the step above it has returned something, and a mistyped
+ * chain surfaces there as "no stock of Dyed Fabric at Main Godown" — later than
+ * a save-time error, but on the screen where somebody can act on it.
  */
 function classifyStepInputs(
   steps: readonly { resolvedInputs: ResolvedInput[]; resolvedOutputs: ResolvedOutput[] }[],
-  itemNames: ReadonlyMap<string, string>,
   /**
    * Items produced by steps that already exist on the order and are NOT in
    * `steps` — the append path (§append). Everything here ran before everything
-   * being built, so an input matching one is chain-fed and cannot possibly be
-   * "produced only by a later step".
+   * being built, so an input matching one is chain-fed, not drawn from stock.
    */
   producedEarlier: ReadonlySet<string> = new Set(),
 ) {
-  const producedAt = new Map<string, number[]>();
-  for (const [index, step] of steps.entries()) {
-    for (const output of step.resolvedOutputs) {
-      const seen = producedAt.get(output.itemId) ?? [];
-      seen.push(index);
-      producedAt.set(output.itemId, seen);
+  // Grows as the walk advances, so a step is only ever compared against what ran
+  // BEFORE it. One pass and one set — no producer index to build and re-scan per
+  // row, and no second lookup for the later-producer case that no longer exists.
+  const producedAbove = new Set(producedEarlier);
+  for (const step of steps) {
+    for (const input of step.resolvedInputs) {
+      input.fromStock = !producedAbove.has(input.itemId);
     }
-  }
-
-  for (const [index, step] of steps.entries()) {
-    for (const [rowIndex, input] of step.resolvedInputs.entries()) {
-      if (producedEarlier.has(input.itemId)) {
-        input.fromStock = false;
-        continue;
-      }
-      const producers = producedAt.get(input.itemId) ?? [];
-      if (producers.some((at) => at < index)) {
-        input.fromStock = false;
-        continue;
-      }
-      const later = producers.find((at) => at > index);
-      if (later !== undefined) {
-        const name = itemNames.get(input.itemId) ?? 'That item';
-        throw new ApiError(
-          400,
-          `Step ${index + 1} consumes ${name}, which is only produced by step ${later + 1}. ` +
-            'Material cannot come from a step that has not run yet — reorder the steps.',
-          {
-            [`steps.${index}.inputs.${rowIndex}.itemId`]: `Produced by step ${later + 1}, which runs after this one.`,
-          },
-        );
-      }
-      input.fromStock = true;
-    }
+    // After its own inputs, never before: a step does not feed itself.
+    for (const output of step.resolvedOutputs) producedAbove.add(output.itemId);
   }
 }
 
@@ -384,34 +354,112 @@ function applyRowUnits<T extends { itemId: string; uomId: string | null }>(
 }
 
 /**
+ * Quantities are stored at four decimal places (`Decimal(18, 4)`), so the running
+ * balance below is kept there too. Plain float subtraction drifts — 100 − 33.3 −
+ * 33.3 is 33.400000000000006, not 33.4 — and that drift would be written onto a
+ * row as a planned quantity nobody typed.
+ */
+const roundQty = (qty: number) => Math.round(qty * 10_000) / 10_000;
+
+/**
+ * 🔴 WHAT THE PRIMARY OUTPUT IS EXPECTED TO RETURN WHEN NOBODY SAID — and, just
+ * as importantly, when this refuses to answer (2026-08-12).
+ *
+ * It used to answer always: `principal.plannedQty × (expectedYield ?? 1)`. With
+ * `expectedYield` off the steps grid since 2026-08-10, that reduced to 1:1 — so
+ * cutting 4,800 M of fabric silently planned **4,800 PCS** of panels. Metres and
+ * pieces have no ratio (§5.1); the number was not an estimate, it was a category
+ * error. And it did not stay put: it became the next step's planned input, which
+ * is the base its tolerance ceiling is computed from, so an invented figure
+ * quietly set the over-issue limit on a real challan.
+ *
+ * Two things count as a basis, and nothing else does:
+ *
+ *   - **A stated yield.** Somebody typed the ratio, so it answers across units —
+ *     0.6 turns 4,800 M into 2,880 PCS because a human said it does.
+ *   - **The same unit on both sides.** Dyeing takes metres and returns metres,
+ *     washing takes pieces and returns pieces. 1:1 is the honest default, and a
+ *     shortfall is what the receipt and the tolerance are for.
+ *
+ * Otherwise: `null`. The client shows the derivable case as a grey placeholder in
+ * the Expected box and leaves the cross-unit case empty, so the one number the
+ * system genuinely cannot know is the one it asks for.
+ *
+ * Both units null — an item with no stocking uom, which the Sprint 1 backfill
+ * left some of — counts as "same". They are equally unknown, so this is no worse
+ * than the behaviour it replaces, and `applyRowUnits` has already resolved every
+ * row it could by this point.
+ */
+function derivedExpectedQty(
+  row: { isPrimary: boolean; uomId: string | null },
+  principal: { plannedQty: number | null; uomId: string | null } | null,
+  expectedYield: number | null,
+): number | null {
+  if (!row.isPrimary || principal?.plannedQty == null) return null;
+  if (expectedYield !== null) return roundQty(principal.plannedQty * expectedYield);
+  return row.uomId === principal.uomId ? roundQty(principal.plannedQty) : null;
+}
+
+/**
  * Plan the quantities — 🔴 PER ITEM, because there is no single number that
  * covers metres, cones and pieces at once (§5.7).
  *
  * Every quantity is typed on its own row. An input fed by an earlier step falls
- * back to what that step is expected to produce; an input drawn FROM STOCK gets
- * nothing, because how much thread a run needs is a bill of materials this system
- * does not hold and a guessed number would read as an estimate somebody made.
+ * back to what is still unclaimed of that step's expected output; an input drawn
+ * FROM STOCK gets nothing, because how much thread a run needs is a bill of
+ * materials this system does not hold and a guessed number would read as an
+ * estimate somebody made.
  *
  * The primary output is expected to yield planned × expected yield, or the same
  * quantity when no yield is declared — "no expectation recorded" is not "expect
  * nothing". A by-product gets nothing for the same reason thread does.
+ *
+ * 🔴 THE BALANCE IS A RUNNING ONE, not "what the nearest step produced": two
+ * steps can both draw on step 1's output, and the second may only take what the
+ * first left. One map over one pass, so a fifty-step order costs one walk.
+ *
+ * 🔴 AND IT REFUSES NOTHING — deliberately, and this is the second time that
+ * decision has been made here (2026-08-11).
+ *
+ * Planning more of an item than the steps above produce was briefly a 400. It is
+ * a warning on the client instead (`overPlanWarning`), because the refusal has a
+ * false positive that is an ordinary plan: cutting returns 90 panels and
+ * stitching plans 120, because 30 panels are already in the godown from a
+ * short-closed order. A row's supply is a MIX — partly chain-fed, partly off the
+ * shelf — and `fromStock` is a single flag, so a ceiling read off it assumes an
+ * exclusivity the domain does not have. That is the same assumption the old
+ * chain rule made when it refused thread and buttons (§6.4).
+ *
+ * So the balance survives as what it is genuinely good for — deriving the blank
+ * rows — and the hard gates stay where the domain already put them: position, at
+ * issue time (`chainNotReady`), and real stock availability in the ledger.
  *
  * 🔴 This is a PLAN, computed once and stored, and it is never used as a
  * conversion factor at receipt time (§6.3). What actually comes back is measured,
  * not derived.
  */
 function planQuantities(steps: ResolvedStep[], seeded: ReadonlyMap<string, number> = new Map()) {
-  // What the nearest earlier step expects to produce of each item. Seeded on the
-  // append path with what the steps ALREADY on the order expect to produce.
-  const producedQty = new Map<string, number>(seeded);
+  // How much of each item the steps above still have to give. Seeded on the
+  // append path with what the steps ALREADY on the order have left over.
+  const available = new Map<string, number>(seeded);
 
   return steps.map((step) => {
     const resolvedInputs = step.resolvedInputs.map((row, rowIndex) => {
       // `plannedInputQty` seeds the principal row only, and only for a client
       // that has not grown the per-item boxes. It goes with Migration B.
-      const seeded = rowIndex === 0 ? (step.plannedInputQty ?? null) : null;
-      const plannedQty =
-        row.plannedQty ?? seeded ?? (row.fromStock ? null : (producedQty.get(row.itemId) ?? null));
+      const sent = row.plannedQty ?? (rowIndex === 0 ? (step.plannedInputQty ?? null) : null);
+      // A from-stock row has no upstream figure, and neither does one whose
+      // producer left its expected quantity blank — deriving from either would
+      // put a number on the row that nobody supplied.
+      const upstream = row.fromStock ? null : (available.get(row.itemId) ?? null);
+
+      const plannedQty = sent ?? (upstream !== null && upstream > 0 ? roundQty(upstream) : null);
+
+      // Claimed, so a second step drawing on the same output is offered what is
+      // left rather than the whole of it a second time.
+      if (!row.fromStock && plannedQty !== null) {
+        available.set(row.itemId, roundQty((available.get(row.itemId) ?? 0) - plannedQty));
+      }
       return { ...row, plannedQty };
     });
 
@@ -419,14 +467,15 @@ function planQuantities(steps: ResolvedStep[], seeded: ReadonlyMap<string, numbe
     const resolvedOutputs = step.resolvedOutputs.map((row) => ({
       ...row,
       expectedQty:
-        row.expectedQty ??
-        (row.isPrimary && principal?.plannedQty != null
-          ? principal.plannedQty * (step.expectedYield ?? 1)
-          : null),
+        row.expectedQty ?? derivedExpectedQty(row, principal, step.expectedYield ?? null),
     }));
 
+    // Added AFTER this step's own inputs are settled: a step does not feed itself,
+    // and a process that returns what it took would otherwise double its output.
     for (const row of resolvedOutputs) {
-      if (row.expectedQty !== null) producedQty.set(row.itemId, row.expectedQty);
+      if (row.expectedQty !== null) {
+        available.set(row.itemId, roundQty((available.get(row.itemId) ?? 0) + row.expectedQty));
+      }
     }
 
     return {
@@ -451,16 +500,16 @@ async function assertStepRefs(
     organizationId,
     steps.map((s) => s.processId),
   );
-  await assertItemsBelongToOrg(tx, organizationId, [
-    ...steps.map((s) => s.issueItemId),
-    ...steps.map((s) => s.receiveItemId),
-    ...rows.map((row) => row.itemId),
-  ]);
-  await assertUomsBelongToOrg(tx, organizationId, [
-    ...steps.map((s) => s.issueUomId),
-    ...steps.map((s) => s.receiveUomId),
-    ...rows.map((row) => row.uomId),
-  ]);
+  await assertItemsBelongToOrg(
+    tx,
+    organizationId,
+    rows.map((row) => row.itemId),
+  );
+  await assertUomsBelongToOrg(
+    tx,
+    organizationId,
+    rows.map((row) => row.uomId),
+  );
   await assertLocationsBelongToOrg(
     tx,
     organizationId,
@@ -482,7 +531,9 @@ async function assertStepRefs(
 interface PriorSteps {
   /** Items an existing step produces — chain-fed, not from stock. */
   producedItemIds: ReadonlySet<string>;
-  /** …and how much of each is expected, so a new step can plan from it. */
+  /** …and how much of each is still SPARE — expected out of those steps, less
+   * what they already plan to consume — so an appended step plans from the
+   * remainder rather than from an output another step is already taking. */
   producedQty: ReadonlyMap<string, number>;
   /** `seq` of the first new step. `1` everywhere except append. */
   startSeq: number;
@@ -493,6 +544,89 @@ const NO_PRIOR_STEPS: PriorSteps = {
   producedQty: new Map(),
   startSeq: 1,
 };
+
+/**
+ * The steps already on an order, with the one fact that decides whether each may
+ * be rewritten: whether anything has moved against it.
+ *
+ * 🔴 Soft-deleted steps are included on purpose — `@@unique([jobOrderId, seq])` is
+ * a FULL index, so a deleted step still occupies its number and `seq` must be
+ * allocated past it.
+ *
+ * Cancelled documents do not count. A cancelled challan is a challan that was
+ * withdrawn, and it must not freeze a step forever.
+ */
+async function loadExistingSteps(tx: TenantClient, organizationId: string, jobOrderId: string) {
+  return tx.jobOrderStep.findMany({
+    where: { organizationId, jobOrderId },
+    orderBy: { seq: 'asc' },
+    select: {
+      id: true,
+      seq: true,
+      isDeleted: true,
+      processNameSnapshot: true,
+      inputs: {
+        where: { isDeleted: false },
+        select: { itemId: true, plannedQty: true, fromStock: true },
+      },
+      outputs: { where: { isDeleted: false }, select: { itemId: true, expectedQty: true } },
+      _count: {
+        select: {
+          issues: { where: { isDeleted: false, status: { not: 'cancelled' } } },
+          receipts: { where: { isDeleted: false, status: { not: 'cancelled' } } },
+        },
+      },
+    },
+  });
+}
+
+type ExistingStep = Awaited<ReturnType<typeof loadExistingSteps>>[number];
+
+const hasDocuments = (step: ExistingStep) => step._count.issues > 0 || step._count.receipts > 0;
+
+/**
+ * What a set of already-saved steps hands on to the steps built after them.
+ *
+ * 🔴 NET, not gross — the outputs those steps expect, LESS what they already plan
+ * to consume of the same item. Seeding the gross figure would offer a new step
+ * panels that an existing step is already eating.
+ *
+ * Expected, not received. What actually came back is measured at receipt time and
+ * never derived (§6.3); this is a plan, and it stays typed-over-able.
+ */
+function priorFrom(steps: readonly ExistingStep[], startSeq: number): PriorSteps {
+  const producedItemIds = new Set<string>();
+  const producedQty = new Map<string, number>();
+
+  for (const step of steps) {
+    if (step.isDeleted) continue;
+    for (const output of step.outputs) {
+      producedItemIds.add(output.itemId);
+      if (output.expectedQty !== null) {
+        producedQty.set(
+          output.itemId,
+          (producedQty.get(output.itemId) ?? 0) + Number(output.expectedQty),
+        );
+      }
+    }
+    for (const input of step.inputs) {
+      if (input.fromStock || input.plannedQty === null) continue;
+      producedQty.set(
+        input.itemId,
+        (producedQty.get(input.itemId) ?? 0) - Number(input.plannedQty),
+      );
+    }
+  }
+
+  // Orders written before the balance existed can already over-claim. A negative
+  // remainder would plan the next step at less than nothing; nothing spare is
+  // simply nothing spare.
+  for (const [itemId, spare] of producedQty) {
+    if (spare < 0) producedQty.set(itemId, 0);
+  }
+
+  return { producedItemIds, producedQty, startSeq };
+}
 
 async function buildSteps(
   tx: TenantClient,
@@ -545,9 +679,9 @@ async function buildSteps(
     });
   }
 
-  // One query for every item any step touches. The units below are then the
-  // items' own rather than an org-wide guess off the process master, and the
-  // names make the ordering error below name the item somebody typed.
+  // One query for every item any step touches, so the units below are the items'
+  // own rather than an org-wide guess off the process master. Names are not
+  // selected: nothing on this path renders one any more.
   const itemIds = [
     ...new Set(
       resolved.flatMap((step) => [
@@ -559,11 +693,10 @@ async function buildSteps(
   const chainItems = itemIds.length
     ? await tx.item.findMany({
         where: { id: { in: itemIds }, organizationId, isDeleted: false },
-        select: { id: true, name: true, stockingUomId: true },
+        select: { id: true, stockingUomId: true },
       })
     : [];
   const stockingUomByItem = new Map(chainItems.map((item) => [item.id, item.stockingUomId]));
-  const itemNames = new Map(chainItems.map((item) => [item.id, item.name]));
 
   const withUnits = resolved.map((step) => ({
     ...step,
@@ -571,15 +704,13 @@ async function buildSteps(
     resolvedOutputs: applyRowUnits(step.resolvedOutputs, stockingUomByItem),
   }));
 
-  classifyStepInputs(withUnits, itemNames, prior.producedItemIds);
+  classifyStepInputs(withUnits, prior.producedItemIds);
 
   const planned = planQuantities(withUnits, prior.producedQty);
 
   const rows = [];
   for (const [index, step] of planned.entries()) {
     const processorType = (step.processorType ?? 'vendor') as ProcessorType;
-    const principalInput = step.resolvedInputs[0] ?? null;
-    const primaryOutput = step.resolvedOutputs.find((row) => row.isPrimary) ?? null;
     rows.push({
       seq: prior.startSeq + index,
       processId: step.processId,
@@ -595,14 +726,6 @@ async function buildSteps(
       workCentreLocationId: step.workCentreLocationId ?? null,
       rate: step.rate ?? null,
       rateBasis: step.rateBasis ?? null,
-      // 🔴 The four scalars are now a PROJECTION of the lists — the principal
-      // input and the primary output. They are still written because the Issue
-      // dialog, the receipt prefill and the Overview page read them, and they
-      // stop being written when Migration B drops them (plan §12.1).
-      issueItemId: principalInput?.itemId ?? null,
-      issueUomId: principalInput?.uomId ?? null,
-      receiveItemId: primaryOutput?.itemId ?? null,
-      receiveUomId: primaryOutput?.uomId ?? null,
       expectedYield: step.expectedYield ?? null,
       tolerancePct: step.tolerancePct ?? null,
       plannedInputQty: step.plannedInputQty,
@@ -801,12 +924,37 @@ function readBack(tx: TenantClient, organizationId: string, id: string) {
 /**
  * Edit a job order — header and steps.
  *
- * 🔴 Only while it is still `draft`. Once a step has issued anything, the rate,
- * the processor and the planned quantity are on a challan somebody is holding,
- * and the issue documents already reference the step by id. Rewriting the grid
- * underneath them would leave a challan describing work its own step no longer
- * describes. Sending the order back to draft is not offered either: the way to
- * change a released order is to short-close it and raise another.
+ * 🔴 THE LOCK IS PER STEP AND IT IS THE WORK FRONT (§6.6, 2026-08-11).
+ *
+ * It used to be per ORDER: the whole grid froze the moment anything was issued,
+ * and the only way to correct step 5 was to short-close the order and raise
+ * another. That is far stricter than the hazard warrants — a step nobody has sent
+ * anything to is a plan, and a plan is editable however far along the rest of the
+ * order is.
+ *
+ * So the line is drawn at the LAST step carrying a live challan or receipt. That
+ * step and everything behind it are untouchable; everything after it is rewritten
+ * exactly as a draft would be.
+ *
+ * 🔴 WHY THE LINE IS DRAWN THERE AND NOT AT "ANY STEP WITH NO DOCUMENTS".
+ *
+ * `seq` is printed on challans. Letting an untouched step BETWEEN two live ones be
+ * removed or moved would renumber the live steps after it, and a challan would
+ * then name a step that no longer describes it — the precise hazard `append` was
+ * built append-only to avoid. Trailing steps can be renumbered freely because
+ * nothing has ever pointed at them.
+ *
+ * 🔴 AND WHY THE PAYLOAD MUST CARRY IDS. Below the front, the request is not
+ * applied at all — the stored rows are kept verbatim. The ids are how the server
+ * proves the client is still looking at the same grid: two steps can run the same
+ * process, so position and content could match while the order silently differs.
+ *
+ * The delete below is a HARD delete and stays one, for the same reason route steps
+ * are: `@@unique([jobOrderId, seq])` is a full index, so a soft-deleted step holds
+ * its number forever. It is safe here ONLY because it is scoped past the front,
+ * where by construction no issue and no receipt exists — `JobIssue.step` and
+ * `JobReceipt.step` are `onDelete: Cascade`, and running it over the whole order
+ * would silently take every challan and receipt with it.
  */
 export async function updateJobOrderById(
   organizationId: string,
@@ -821,14 +969,24 @@ export async function updateJobOrderById(
       where: { id, organizationId, isDeleted: false },
     });
     if (!existing) throw ApiError.notFound('Job order not found');
-    if (existing.status !== 'draft') {
+
+    // Same refusal as `append`, and for the same reason: these two are sticky, so
+    // the order would keep reading as finished while its plan moved underneath.
+    if (existing.status === 'short_closed' || existing.status === 'cancelled') {
       throw ApiError.conflict(
-        'This job order has already started, so its steps cannot be changed. ' +
-          'Close it short and raise a new one instead.',
+        'This job order is closed, so its steps cannot be changed. Raise a new order instead.',
       );
     }
 
-    await assertStepRefs(tx, organizationId, steps);
+    const existingSteps = await loadExistingSteps(tx, organizationId, id);
+    const locked = lockedPrefix(existingSteps);
+    // A soft-deleted step holds its `seq` inside the prefix but is invisible to
+    // the client, so it is never one of the rows the payload has to account for.
+    const lockedLive = locked.filter((step) => !step.isDeleted);
+
+    assertLockedStepsUnchanged(lockedLive, steps);
+
+    await assertStepRefs(tx, organizationId, steps.slice(lockedLive.length));
 
     let customFields: Prisma.InputJsonValue | undefined;
     if (rawCustomFields !== undefined) {
@@ -841,32 +999,111 @@ export async function updateJobOrderById(
       }) as Prisma.InputJsonValue;
     }
 
-    const stepRows = await buildSteps(tx, organizationId, steps);
-    const headerItem = headerItemFrom(stepRows);
+    // Everything past the front is rebuilt, chained onto what the locked steps
+    // hand over so a new step 4 plans from step 3's expected output.
+    const frontSeq = locked.at(-1)?.seq ?? 0;
+    const tail = steps.slice(lockedLive.length);
+    const stepRows = tail.length
+      ? await buildSteps(tx, organizationId, tail, priorFrom(locked, frontSeq + 1))
+      : [];
+
+    /**
+     * 🔴 The header follows step 1 and step 1 alone (`headerItemFrom`). Once it is
+     * locked the header is locked with it — recomputing from the tail would put
+     * step 4's item on a document whose list page has always shown step 1's.
+     */
+    const headerItem = locked.length === 0 ? headerItemFrom(stepRows) : null;
 
     await tx.jobOrder.update({
       where: { id },
       data: {
         orderDate: header.orderDate ?? existing.orderDate,
         targetDate: header.targetDate ?? null,
-        inputItemId: headerItem.itemId,
-        inputUomId: headerItem.uomId,
-        inputQty: headerItem.qty,
+        ...(headerItem
+          ? {
+              inputItemId: headerItem.itemId,
+              inputUomId: headerItem.uomId,
+              inputQty: headerItem.qty,
+            }
+          : {}),
         remarks: header.remarks?.trim() || null,
         ...(customFields !== undefined ? { customFields } : {}),
         updatedBy: userId ?? null,
       },
     });
 
-    // Hard-replaced, like route steps and for the same reason: `@@unique([jobOrderId,
-    // seq])` is a full index, so a soft-deleted step would hold its seq forever.
-    // Safe ONLY because the guard above proved nothing references these yet — no
-    // issue and no receipt can exist against a draft order.
-    await tx.jobOrderStep.deleteMany({ where: { jobOrderId: id } });
-    await writeSteps(tx, organizationId, id, stepRows, userId);
+    await tx.jobOrderStep.deleteMany({ where: { jobOrderId: id, seq: { gt: frontSeq } } });
+    if (stepRows.length) await writeSteps(tx, organizationId, id, stepRows, userId);
+
+    // The step set changed, so the roll-up can have: dropping the only unfinished
+    // step completes the order, and adding one reopens it.
+    await recomputeJobOrder(tx, organizationId, id);
 
     return readBack(tx, organizationId, id);
   });
+}
+
+/**
+ * The steps at and behind the work front — every step up to and including the last
+ * one carrying a live challan or receipt.
+ *
+ * 🔴 It is a PREFIX, so an untouched step sitting between two live ones is locked
+ * too. That is not an oversight: removing it would renumber the live steps after
+ * it, and their numbers are printed on paperwork somebody is holding.
+ *
+ * Soft-deleted steps count toward the prefix so their `seq` is never reissued, but
+ * they can never be the front themselves — nothing can have been issued against a
+ * step that was removed while the order was still editable.
+ */
+function lockedPrefix(steps: readonly ExistingStep[]): ExistingStep[] {
+  let front = -1;
+  for (const [index, step] of steps.entries()) {
+    if (!step.isDeleted && hasDocuments(step)) front = index;
+  }
+  return front < 0 ? [] : steps.slice(0, front + 1);
+}
+
+/**
+ * The payload must still begin with the locked steps, in order, by id.
+ *
+ * Their content is never read — the stored rows are authoritative — so this is
+ * purely a proof that the client is editing the grid it was shown. A stale form
+ * that would drop or reorder a step with a challan against it is refused here
+ * rather than allowed to cascade.
+ */
+function assertLockedStepsUnchanged(
+  locked: readonly ExistingStep[],
+  sent: readonly JobOrderStepInput[],
+) {
+  if (locked.length === 0) return;
+
+  const conflict = (message: string) =>
+    ApiError.conflict(
+      `${message} Reopen the job order to see what has already been sent out, then try again.`,
+    );
+
+  if (sent.length < locked.length) {
+    throw conflict(
+      `The first ${locked.length} step${locked.length === 1 ? ' has' : 's have'} already been ` +
+        'sent out and cannot be removed.',
+    );
+  }
+
+  for (const [index, step] of locked.entries()) {
+    if (sent[index]?.id === step.id) continue;
+    throw conflict(
+      `Step ${step.seq} (${step.processNameSnapshot}) has already been sent out, so it cannot ` +
+        'be changed, moved or removed.',
+    );
+  }
+
+  // A locked step repeated further down would be written a second time as a new
+  // row, duplicating work that already has challans against it.
+  const lockedIds = new Set(locked.map((step) => step.id));
+  for (const [index, step] of sent.entries()) {
+    if (index < locked.length || !step.id || !lockedIds.has(step.id)) continue;
+    throw conflict('A step that has already been sent out appears twice in this order.');
+  }
 }
 
 /**
@@ -876,10 +1113,13 @@ export async function updateJobOrderById(
  * 🔴 APPEND ONLY, and that is what makes it safe. `seq = max + 1` touches no
  * existing row, so nothing is renumbered and nothing is rewritten: the issues and
  * receipts already hanging off the existing steps keep pointing at steps that
- * still say what their challans say. Contrast `updateJobOrderById`, which
- * hard-deletes the whole grid and can only ever run on a draft — `JobIssue.step`
- * and `JobReceipt.step` are `onDelete: Cascade`, so doing that to a running order
- * would silently delete every challan and receipt and orphan their ledger rows.
+ * still say what their challans say.
+ *
+ * It survives `updateJobOrderById` growing a partial edit (§6.6) because the two
+ * answer different questions. This one adds work past the END of the grid without
+ * reading what is there; that one rewrites the tail past the WORK FRONT, and has
+ * to prove the client still agrees about everything before it. Appending needs no
+ * such proof — there is nothing below `max + 1` to disagree about.
  *
  * 🔴 NO STEP'S STATUS IS CHECKED, deliberately. Appending after a step that is
  * pending, at a processor, or complete is the same operation each time — the new
@@ -922,43 +1162,13 @@ export async function appendJobOrderSteps(
 
     // Deleted steps included, on purpose: `@@unique([jobOrderId, seq])` is a full
     // index, so a soft-deleted step still occupies its number.
-    const existing = await tx.jobOrderStep.findMany({
-      where: { organizationId, jobOrderId: id },
-      select: {
-        seq: true,
-        isDeleted: true,
-        outputs: { where: { isDeleted: false }, select: { itemId: true, expectedQty: true } },
-      },
-    });
+    const existing = await loadExistingSteps(tx, organizationId, id);
     const startSeq = existing.reduce((max, step) => Math.max(max, step.seq), 0) + 1;
 
-    /**
-     * What the order ALREADY produces, so the new steps classify and plan against
-     * it. Without this the new step's input reads as drawn from stock when it is
-     * fed by the step above, and — worse — `classifyStepInputs` would be free to
-     * throw "produced only by a later step" at an item an existing step really
-     * does produce.
-     *
-     * Expected, not received. What actually came back is measured at receipt time
-     * and never derived (§6.3); this is a plan, and it stays typed-over-able.
-     */
-    const producedItemIds = new Set<string>();
-    const producedQty = new Map<string, number>();
-    for (const step of existing) {
-      if (step.isDeleted) continue;
-      for (const output of step.outputs) {
-        producedItemIds.add(output.itemId);
-        if (output.expectedQty !== null) {
-          producedQty.set(output.itemId, Number(output.expectedQty));
-        }
-      }
-    }
-
-    const stepRows = await buildSteps(tx, organizationId, steps, {
-      producedItemIds,
-      producedQty,
-      startSeq,
-    });
+    // What the order already produces, so the new steps classify and plan against
+    // it — see `priorFrom`. Without it a new step's input reads as drawn from
+    // stock when it is fed by the step above.
+    const stepRows = await buildSteps(tx, organizationId, steps, priorFrom(existing, startSeq));
 
     // Two people appending at the same moment read the same `startSeq`. The
     // unique index catches the loser; this is what it says instead of a
@@ -1103,12 +1313,14 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
       const totals = await getStepTotals(tx, organizationId, step.id);
 
       // The issue button is enabled by AVAILABILITY, not by status: a step can be
-      // ready on paper and have nothing to send.
+      // ready on paper and have nothing to send. Measured on the PRINCIPAL input
+      // — the first consumed row, which is what the step is fundamentally about.
+      const principalInput = step.inputs[0] ?? null;
       let availableQty = new Prisma.Decimal(0);
-      if (step.issueItemId) {
+      if (principalInput) {
         const balance = await getBalance(tx, {
           organizationId,
-          itemId: step.issueItemId,
+          itemId: principalInput.itemId,
           ownership: order.ownership as Ownership,
         });
         availableQty = balance.qty;
@@ -1163,7 +1375,7 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
          * The ONE thing the scaffold does not relax is the chain — see
          * `blockedReason` below.
          */
-        canIssue: (step.inputs.length > 0 || Boolean(step.issueItemId)) && !blockedReason,
+        canIssue: step.inputs.length > 0 && !blockedReason,
         /**
          * 🔴 A STEP FED BY AN EARLIER ONE CANNOT ISSUE UNTIL THAT STEP DELIVERS.
          *
@@ -1204,7 +1416,12 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
     let wastageLost = new Prisma.Decimal(0);
     for (const step of steps) {
       if (step.status !== 'completed' && step.status !== 'short_closed') continue;
-      if (step.receiveUomId && step.receiveUomId !== step.issueUomId) continue;
+      // 🔴 Read off the LISTS since the scalars went (2026-08-12): the principal
+      // input's unit against the primary output's. Comparing nulls would make
+      // every unit-changing step pass this test and report nonsense wastage.
+      const inputUomId = step.inputs[0]?.uomId ?? null;
+      const outputUomId = (step.outputs.find((row) => row.isPrimary) ?? step.outputs[0])?.uomId;
+      if (outputUomId && outputUomId !== inputUomId) continue;
       const issued = new Prisma.Decimal(step.totals.issuedQty);
       const received = new Prisma.Decimal(step.totals.receivedQty);
       const returned = new Prisma.Decimal(step.totals.returnedQty);

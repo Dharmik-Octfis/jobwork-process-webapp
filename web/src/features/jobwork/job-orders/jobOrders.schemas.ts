@@ -29,19 +29,15 @@ export const jobOrderStepSchema = z.object({
   workCentreLocationId: z.string().nullable(),
   rate: decimalString,
   rateBasis: z.string().nullable(),
-  issueItemId: z.string().nullable(),
-  issueUomId: z.string().nullable(),
-  receiveItemId: z.string().nullable(),
-  receiveUomId: z.string().nullable(),
   expectedYield: decimalString,
   tolerancePct: decimalString,
   plannedInputQty: decimalString,
   status: z.string(),
   remarks: z.string().nullable(),
 
-  /** 🔴 What this step consumes and produces (§5.7) — several of each, in
-   * several units. The four scalars above are the principal input and primary
-   * output, kept until Migration B. */
+  /** 🔴 What this step consumes and produces (§5.7) — several of each, in several
+   * units. These are the only place the items live: the four scalars that used to
+   * mirror the principal input and primary output went with Migration B. */
   inputs: z.array(stepItemRowSchema).default([]),
   outputs: z.array(stepItemRowSchema).default([]),
 
@@ -54,10 +50,6 @@ export const jobOrderStepSchema = z.object({
       requiresSingleLot: z.boolean(),
     })
     .optional(),
-  issueItem: itemRefSchema.nullable().optional(),
-  receiveItem: itemRefSchema.nullable().optional(),
-  issueUom: uomRefSchema.nullable().optional(),
-  receiveUom: uomRefSchema.nullable().optional(),
   workCentre: namedRefSchema.nullable().optional(),
 });
 
@@ -178,6 +170,13 @@ export const jobOrderOverviewSchema = z.object({
 export type JobOrderOverviewData = z.infer<typeof jobOrderOverviewSchema>;
 
 export interface JobOrderStepData {
+  /**
+   * Set on a step that is already saved. It is how the server proves an edit of a
+   * running order still begins with the steps that have challans against them
+   * (§6.6) — a grid whose locked rows lost their ids is refused rather than
+   * applied. Absent on a row somebody just added.
+   */
+  id?: string;
   processId: string;
   processorType?: string;
   processorId?: string | null;

@@ -60,10 +60,6 @@ const ROUTE_INCLUDE = {
       inputs: { where: { isDeleted: false }, orderBy: { seq: 'asc' }, include: ROW_INCLUDE },
       outputs: { where: { isDeleted: false }, orderBy: { seq: 'asc' }, include: ROW_INCLUDE },
       process: { select: { id: true, name: true, code: true, itemChanges: true } },
-      issueItem: { select: { id: true, name: true, sku: true } },
-      receiveItem: { select: { id: true, name: true, sku: true } },
-      issueUom: { select: { id: true, unitName: true, symbol: true } },
-      receiveUom: { select: { id: true, unitName: true, symbol: true } },
       workCentre: { select: { id: true, name: true } },
     },
   },
@@ -123,16 +119,16 @@ async function assertStepRefs(
     organizationId,
     steps.map((s) => s.processId),
   );
-  await assertItemsBelongToOrg(tx, organizationId, [
-    ...steps.map((s) => s.issueItemId),
-    ...steps.map((s) => s.receiveItemId),
-    ...rows.map((row) => row.itemId),
-  ]);
-  await assertUomsBelongToOrg(tx, organizationId, [
-    ...steps.map((s) => s.issueUomId),
-    ...steps.map((s) => s.receiveUomId),
-    ...rows.map((row) => row.uomId),
-  ]);
+  await assertItemsBelongToOrg(
+    tx,
+    organizationId,
+    rows.map((row) => row.itemId),
+  );
+  await assertUomsBelongToOrg(
+    tx,
+    organizationId,
+    rows.map((row) => row.uomId),
+  );
   await assertLocationsBelongToOrg(
     tx,
     organizationId,
@@ -167,41 +163,25 @@ interface ResolvedRouteStep {
 }
 
 /**
- * The two lists a step carries, taken from the request or derived from the
- * scalars they replaced (§5.7).
+ * The two lists a step carries (§5.7).
  *
- * A template names items; it holds no quantities and no `fromStock` label. Both
- * of those are per-run answers, and the job order works them out when it takes
- * its snapshot — a route has no idea how much anyone will put through it, nor
- * what stock will exist on the day.
+ * A template names items; it holds no quantities on the produced side and no
+ * `fromStock` label. Both are per-run answers, and the job order works them out
+ * when it takes its snapshot — a route has no idea how much anyone will put
+ * through it, nor what stock will exist on the day.
  *
- * The derivation honours `issueItemId` before the previous step's output, the
- * opposite way round from `jobOrders.service.ts`. There, a later step's input is
- * FORCED from the step above because the run is real. Here it is a template
- * somebody is typing, and what they typed is the answer.
+ * 🔴 The last derivation went with Migration B (2026-08-12). A step that listed
+ * nothing used to fall back to the `issueItemId` scalar and then to the previous
+ * step's primary output; the scalars are gone, and inferring from the step above
+ * was already rejected on the job order side for putting rows on screen that
+ * nobody typed. An empty list is an empty list.
  */
-function resolveStepRows(
-  step: RouteStepInput,
-  previousPrimaryOutputItemId: string | null,
-  index: number,
-): ResolvedRouteStep {
-  const sentInputs = step.inputs ?? [];
-  const derivedInput = step.issueItemId ?? previousPrimaryOutputItemId;
-  const inputs: RouteStepRow[] = sentInputs.length
-    ? [...sentInputs]
-    : derivedInput
-      ? [{ itemId: derivedInput, uomId: step.issueUomId ?? null }]
-      : [];
-
-  const sentOutputs = step.outputs ?? [];
+function resolveStepRows(step: RouteStepInput, index: number): ResolvedRouteStep {
+  const inputs: RouteStepRow[] = [...(step.inputs ?? [])];
   // No mirroring of the input when the process leaves the item alone — that is
   // the job order's job. A template that says nothing about its output should
   // keep saying nothing, so the snapshot can apply the process's own rule.
-  const outputs: RouteStepRow[] = sentOutputs.length
-    ? [...sentOutputs]
-    : step.receiveItemId
-      ? [{ itemId: step.receiveItemId, uomId: step.receiveUomId ?? null, isPrimary: true }]
-      : [];
+  const outputs: RouteStepRow[] = [...(step.outputs ?? [])];
 
   assertNoRepeatedItem(inputs, index, 'inputs');
   assertNoRepeatedItem(outputs, index, 'outputs');
@@ -257,51 +237,19 @@ function flagPrimaryOutput(rows: readonly RouteStepRow[], stepIndex: number): Re
 }
 
 /**
- * 🔴 THE CHAIN IS ADVISORY NOW (§6.4). It used to be a rule here: step *n*'s
- * receive item had to be step *n+1*'s issue item. Since §5.7 a step consumes a
- * SET, and thread and buttons come from the godown rather than from the
- * operation above — a rule that rejects them rejects most real routes.
+ * Resolve every step's two lists and force each row onto its item's stocking
+ * unit.
  *
- * What remains is the one case with no valid reading: an input produced ONLY by
- * a LATER step. A template that says "stitch the panels, then cut them" is
- * wrong in an order-of-operations way that no run could fix.
+ * 🔴 NOTHING HERE VALIDATES THE CHAIN, and nothing should (§6.4). The step order
+ * used to be checked — an input produced only by a LATER step was refused as
+ * "reorder the steps" — and that went on 2026-08-11 along with the job order's
+ * copy of it. Picking the same item again in the next step is the ordinary way a
+ * route is typed, not a mistake.
  *
- * The job order re-does this per run and stores the answer as `fromStock`; here
- * there is nothing to store, so it is validation and nothing more.
- */
-function assertInputOrdering(
-  steps: readonly ResolvedRouteStep[],
-  itemNames: ReadonlyMap<string, string>,
-) {
-  const producedAt = new Map<string, number[]>();
-  for (const [index, step] of steps.entries()) {
-    for (const output of step.outputs) {
-      producedAt.set(output.itemId, [...(producedAt.get(output.itemId) ?? []), index]);
-    }
-  }
-
-  for (const [index, step] of steps.entries()) {
-    for (const [rowIndex, input] of step.inputs.entries()) {
-      const producers = producedAt.get(input.itemId) ?? [];
-      if (producers.some((at) => at < index)) continue;
-      const later = producers.find((at) => at > index);
-      if (later === undefined) continue;
-      const name = itemNames.get(input.itemId) ?? 'That item';
-      throw new ApiError(
-        400,
-        `Step ${index + 1} consumes ${name}, which is only produced by step ${later + 1}. ` +
-          'Material cannot come from a step that has not run yet — reorder the steps.',
-        {
-          [`steps.${index}.inputs.${rowIndex}.itemId`]: `Produced by step ${later + 1}, which runs after this one.`,
-        },
-      );
-    }
-  }
-}
-
-/**
- * Resolve every step's two lists, check the ordering, and force each row onto its
- * item's stocking unit.
+ * The job order's replacement rule cannot live here either: it compares a planned
+ * quantity against what the steps above expect to produce, and a template holds
+ * quantities on the consumed side ALONE (`resolveStepRows`). With nothing to
+ * compare against, a check here could only guess.
  *
  * 🔴 The unit comes from the ITEM, not from the request. One item has exactly one
  * stocking unit (§5.1), and a template offering a different one teaches the job
@@ -313,12 +261,7 @@ async function resolveSteps(
   organizationId: string,
   steps: readonly RouteStepInput[],
 ): Promise<ResolvedRouteStep[]> {
-  const resolved: ResolvedRouteStep[] = [];
-  for (const [index, step] of steps.entries()) {
-    const previousPrimary =
-      resolved[index - 1]?.outputs.find((row) => row.isPrimary)?.itemId ?? null;
-    resolved.push(resolveStepRows(step, previousPrimary, index));
-  }
+  const resolved = steps.map((step, index) => resolveStepRows(step, index));
 
   const itemIds = [
     ...new Set(
@@ -328,13 +271,10 @@ async function resolveSteps(
   const items = itemIds.length
     ? await tx.item.findMany({
         where: { id: { in: itemIds }, organizationId, isDeleted: false },
-        select: { id: true, name: true, stockingUomId: true },
+        select: { id: true, stockingUomId: true },
       })
     : [];
   const stockingUomByItem = new Map(items.map((item) => [item.id, item.stockingUomId]));
-  const itemNames = new Map(items.map((item) => [item.id, item.name]));
-
-  assertInputOrdering(resolved, itemNames);
 
   return resolved.map((step) => ({
     inputs: step.inputs.map((row) => ({
@@ -349,9 +289,7 @@ async function resolveSteps(
 }
 
 /** One step's scalar columns, renumbered from array position. */
-function stepData(step: RouteStepInput, index: number, resolved: ResolvedRouteStep) {
-  const principalInput = resolved.inputs[0] ?? null;
-  const primaryOutput = resolved.outputs.find((row) => row.isPrimary) ?? null;
+function stepData(step: RouteStepInput, index: number) {
   return {
     seq: index + 1,
     processId: step.processId,
@@ -360,12 +298,6 @@ function stepData(step: RouteStepInput, index: number, resolved: ResolvedRouteSt
     workCentreLocationId: step.workCentreLocationId ?? null,
     rate: step.rate ?? null,
     rateBasis: step.rateBasis ?? null,
-    // A projection of the lists — principal input, primary output — kept only
-    // until Migration B drops these four columns (plan §12.1).
-    issueItemId: principalInput?.itemId ?? null,
-    issueUomId: principalInput?.uomId ?? null,
-    receiveItemId: primaryOutput?.itemId ?? null,
-    receiveUomId: primaryOutput?.uomId ?? null,
     expectedYield: step.expectedYield ?? null,
     tolerancePct: step.tolerancePct ?? null,
     remarks: step.remarks?.trim() || null,
@@ -432,7 +364,7 @@ async function createSteps(
     const resolved = resolvedSteps[index]!;
     await tx.routeStep.create({
       data: {
-        ...stepData(step, index, resolved),
+        ...stepData(step, index),
         organizationId,
         routeId,
         createdBy: userId ?? null,

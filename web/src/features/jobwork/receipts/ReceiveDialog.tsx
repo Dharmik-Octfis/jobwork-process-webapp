@@ -205,8 +205,13 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
   const reasons = reasonsPage?.results ?? [];
 
   const mode = prefill?.mode ?? 'bulk';
-  const outUnit = prefill?.step.receiveUom?.symbol ?? prefill?.step.receiveUom?.unitName ?? '';
-  const inUnit = step.issueUom?.symbol ?? step.issueUom?.unitName ?? '';
+  /* Both units come off the step's two LISTS — primary output and principal
+     input. The scalars that mirrored them went with Migration B (2026-08-12). */
+  const plannedPrimaryOut =
+    prefill?.step.outputs.find((row) => row.isPrimary) ?? prefill?.step.outputs[0];
+  const outUnit = plannedPrimaryOut?.uom?.symbol ?? plannedPrimaryOut?.uom?.unitName ?? '';
+  const inUom = step.inputs[0]?.uom;
+  const inUnit = inUom?.symbol ?? inUom?.unitName ?? '';
 
   // Every open challan is ticked until the user says otherwise.
   const selectedIssueIds = pickedIssueIds ?? (prefill?.issues ?? []).map((i) => i.id);
@@ -300,9 +305,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
         // order, a step whose main output happened to be typed second would put
         // the cost on a by-product.
         [...prefill.outputs].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary))
-      : prefill.step.receiveItemId
-        ? [{ itemId: prefill.step.receiveItemId }]
-        : [];
+      : [];
     return planned.map((output) => ({
       key: output.itemId,
       itemId: output.itemId,
@@ -385,7 +388,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
       }
       byItem.set(key, {
         itemId: key,
-        name: row.itemName || step.issueItem?.name || 'the input item',
+        name: row.itemName || step.inputs[0]?.item?.name || 'the input item',
         unit: row.unit || inUnit,
         qty: row.issuedQty,
       });

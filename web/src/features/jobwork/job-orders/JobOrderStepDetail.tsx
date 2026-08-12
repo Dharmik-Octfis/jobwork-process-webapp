@@ -174,7 +174,11 @@ export function JobOrderStepDetail({
   const returned = toNumber(step.totals.returnedQty);
   const tolerance = step.tolerancePct === null ? null : toNumber(step.tolerancePct);
 
-  const receiveUnit = step.receiveUom ? (step.receiveUom.symbol ?? step.receiveUom.unitName) : '';
+  // The primary output's unit, read off the PRODUCES list — the four scalars
+  // that used to mirror it went with Migration B (2026-08-12).
+  const primaryOutput = step.outputs.find((row) => row.isPrimary) ?? step.outputs[0];
+  const receiveUom = primaryOutput?.uom;
+  const receiveUnit = receiveUom ? (receiveUom.symbol ?? receiveUom.unitName) : '';
 
   /**
    * Wastage is shown only when it means something. Two conditions:
@@ -194,7 +198,7 @@ export function JobOrderStepDetail({
   const comparable =
     step.itemTotals.inputs.length <= 1 &&
     step.itemTotals.outputs.length <= 1 &&
-    (!step.receiveUomId || step.receiveUomId === step.issueUomId);
+    (!primaryOutput?.uomId || primaryOutput.uomId === step.inputs[0]?.uomId);
   const lost = issued - received - returned;
   const wastagePct = settled && comparable && issued > 0 ? (lost / issued) * 100 : null;
   const overTolerance = wastagePct !== null && tolerance !== null ? wastagePct > tolerance : false;

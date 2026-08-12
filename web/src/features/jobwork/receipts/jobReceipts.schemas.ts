@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { paginatedSchema, type Paginated } from '../../../lib/pagination';
-import { decimalString, itemRefSchema, namedRefSchema, uomRefSchema } from '../jobwork.schemas';
+import {
+  decimalString,
+  itemRefSchema,
+  namedRefSchema,
+  stepItemRowSchema,
+  uomRefSchema,
+} from '../jobwork.schemas';
 
 /**
  * Receipts — goods back.
@@ -135,17 +141,15 @@ export const receivePrefillSchema = z.object({
     seq: z.number(),
     processNameSnapshot: z.string(),
     jobOrderId: z.string(),
-    receiveItemId: z.string().nullable(),
-    receiveUomId: z.string().nullable(),
-    issueItemId: z.string().nullable(),
-    issueUomId: z.string().nullable(),
     expectedYield: decimalString,
     rate: decimalString,
     rateBasis: z.string().nullable(),
     process: z.object({ id: z.string(), name: z.string(), preservesPackaging: z.boolean() }),
     jobOrder: z.object({ id: z.string(), jobOrderNumber: z.string(), ownership: z.string() }),
-    receiveItem: itemRefSchema.nullable().optional(),
-    receiveUom: uomRefSchema.nullable().optional(),
+    /** 🔴 What the step plans to consume and produce — the only source for the
+     * dialog's item and unit labels since Migration B dropped the scalars. */
+    inputs: z.array(stepItemRowSchema).default([]),
+    outputs: z.array(stepItemRowSchema).default([]),
   }),
   mode: z.string(),
   /** Why the mode is what it is, in words. Shown instead of a disabled control. */

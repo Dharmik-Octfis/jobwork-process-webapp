@@ -318,33 +318,24 @@ interface ResolvedIssueLine extends Omit<ResolvedLineItem, 'qty' | 'lotId'> {
 async function allowedItems(
   tx: TenantClient,
   organizationId: string,
-  step: {
-    id: string;
-    issueItemId: string | null;
-    issueUomId: string | null;
-    receiveItemId: string | null;
-    receiveUomId: string | null;
-  },
+  step: { id: string },
   isRework: boolean,
 ): Promise<{ itemId: string; uomId: string | null }[]> {
   if (isRework) {
-    const outputs = await tx.jobOrderStepOutput.findMany({
+    // Primary first: rework re-issues what this step returned, and the caller
+    // treats row 0 as the principal one.
+    return tx.jobOrderStepOutput.findMany({
       where: { organizationId, jobOrderStepId: step.id, isDeleted: false },
       orderBy: [{ isPrimary: 'desc' }, { seq: 'asc' }],
       select: { itemId: true, uomId: true },
     });
-    if (outputs.length > 0) return outputs;
-    const itemId = step.receiveItemId ?? step.issueItemId;
-    return itemId ? [{ itemId, uomId: step.receiveUomId ?? step.issueUomId }] : [];
   }
 
-  const inputs = await tx.jobOrderStepInput.findMany({
+  return tx.jobOrderStepInput.findMany({
     where: { organizationId, jobOrderStepId: step.id, isDeleted: false },
     orderBy: { seq: 'asc' },
     select: { itemId: true, uomId: true },
   });
-  if (inputs.length > 0) return inputs;
-  return step.issueItemId ? [{ itemId: step.issueItemId, uomId: step.issueUomId }] : [];
 }
 
 /**
