@@ -224,7 +224,7 @@ The `custom_fields` column stays on the table and is simply never written.
       **warns on the row and saves** — the difference can come from stock, so refusing it is wrong
 - [ ] 🔴 **Editable past the work front** (domain §6.6): the grid freezes only up to the last step with
       a live challan or receipt. The delete in `updateJobOrderById` MUST stay scoped to `seq >
-    frontSeq` — `JobIssue.step` and `JobReceipt.step` are `onDelete: Cascade`, so an unscoped one
+frontSeq` — `JobIssue.step` and `JobReceipt.step` are `onDelete: Cascade`, so an unscoped one
       silently destroys every document on the order
 - [ ] **Material In section** (§1.3) — creates lot + packages + ledger rows on save
 - [ ] Job Orders list page
@@ -422,20 +422,27 @@ Each step leaves the app running. Nothing here is a big-bang cutover.
 
 | #   | Step                                                                                                | Notes                                                                                                                                           |
 | --- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| #   | Step                                                                                                | Notes                                                                                                                                           | State                                |
-| --- | ---                                                                                                 | ---                                                                                                                                             | ---                                  |
-| 1   | Extend `jobwork.flow.test.ts` with a multi-item order                                               | It is the regression net for every step below                                                                                                   | ✅ done — 23 tests                   |
-| 2   | **Migration A** — create the six tables, backfill from the scalar columns, **keep the old columns** | Reversible. Nothing reads the new tables yet, so this can ship on its own                                                                       | ✅ `20260806112805_multi_item_steps` |
-| 3   | Steps: inputs/outputs, `classifyStepInputs`, planned quantities                                     | `jobOrders.service.ts`                                                                                                                          | ✅                                   |
-| 4   | Issue: item on the line, per-item totals, `totalQty` dropped                                        | `jobIssues.service.ts` + `jobOrders.status.ts`                                                                                                  | ✅                                   |
-| 5   | Receipt: consumptions + outputs + the value split                                                   | `jobReceipts.service.ts`                                                                                                                        | ✅                                   |
-| 6   | UI: route + job order step grids                                                                    | `StepsGrid.tsx` grows two nested lists                                                                                                          | ✅                                   |
-| 7   | UI: Issue dialog — one lot picker section per input                                                 |                                                                                                                                                 | ✅                                   |
-| 8   | UI: Receive dialog — consumed grid + returned grid                                                  |                                                                                                                                                 | ✅                                   |
-| 9   | **Migration B** — drop the old scalar columns                                                       | 🔴 **Only after 3–8 have shipped.** Dropping them in the same migration means any instance still running the old build 500s on every list query | ⬜ remaining                         |
+| #   | Step                                                                                                | Notes                                                                                                                                           | State                                             |
+| --- | ---                                                                                                 | ---                                                                                                                                             | ---                                               |
+| 1   | Extend `jobwork.flow.test.ts` with a multi-item order                                               | It is the regression net for every step below                                                                                                   | ✅ done — 23 tests                                |
+| 2   | **Migration A** — create the six tables, backfill from the scalar columns, **keep the old columns** | Reversible. Nothing reads the new tables yet, so this can ship on its own                                                                       | ✅ `20260806112805_multi_item_steps`              |
+| 3   | Steps: inputs/outputs, `classifyStepInputs`, planned quantities                                     | `jobOrders.service.ts`                                                                                                                          | ✅                                                |
+| 4   | Issue: item on the line, per-item totals, `totalQty` dropped                                        | `jobIssues.service.ts` + `jobOrders.status.ts`                                                                                                  | ✅                                                |
+| 5   | Receipt: consumptions + outputs + the value split                                                   | `jobReceipts.service.ts`                                                                                                                        | ✅                                                |
+| 6   | UI: route + job order step grids                                                                    | `StepsGrid.tsx` grows two nested lists                                                                                                          | ✅                                                |
+| 7   | UI: Issue dialog — one lot picker section per input                                                 |                                                                                                                                                 | ✅                                                |
+| 8   | UI: Receive dialog — consumed grid + returned grid                                                  |                                                                                                                                                 | ✅                                                |
+| 9   | **Migration B** — drop the old scalar columns                                                       | 🔴 **Only after 3–8 have shipped.** Dropping them in the same migration means any instance still running the old build 500s on every list query | ✅ `20260812094140_drop_step_scalar_item_columns` |
 
-Migration B needs `-- @destructive-ok: <reason>` before `db:promote` will take it. Migration A did
+Migration B needed `-- @destructive-ok: <reason>` before `db:promote` would take it. Migration A did
 not: it only added.
+
+> 🔴 **Read the whole draft before promoting anything against this database.** `migrate diff` emitted
+> 14 statements alongside Migration B's ten that belonged to the **composite-items** feature — live in
+> the database, absent from the schema files — including `DROP TABLE` on `item_assembly_activities`,
+> `item_assembly_comments`, `item_location_stocks` and `item_opening_stock_rows`. They were removed by
+> hand. Every future draft will regenerate them until the composite-items models are written into
+> `prisma/schema`.
 
 Two further migrations landed with this sprint and are **not** in the list above, because they came
 out of building it rather than from the plan:

@@ -60,10 +60,6 @@ const ROUTE_INCLUDE = {
       inputs: { where: { isDeleted: false }, orderBy: { seq: 'asc' }, include: ROW_INCLUDE },
       outputs: { where: { isDeleted: false }, orderBy: { seq: 'asc' }, include: ROW_INCLUDE },
       process: { select: { id: true, name: true, code: true, itemChanges: true } },
-      issueItem: { select: { id: true, name: true, sku: true } },
-      receiveItem: { select: { id: true, name: true, sku: true } },
-      issueUom: { select: { id: true, unitName: true, symbol: true } },
-      receiveUom: { select: { id: true, unitName: true, symbol: true } },
       workCentre: { select: { id: true, name: true } },
     },
   },
@@ -123,16 +119,16 @@ async function assertStepRefs(
     organizationId,
     steps.map((s) => s.processId),
   );
-  await assertItemsBelongToOrg(tx, organizationId, [
-    ...steps.map((s) => s.issueItemId),
-    ...steps.map((s) => s.receiveItemId),
-    ...rows.map((row) => row.itemId),
-  ]);
-  await assertUomsBelongToOrg(tx, organizationId, [
-    ...steps.map((s) => s.issueUomId),
-    ...steps.map((s) => s.receiveUomId),
-    ...rows.map((row) => row.uomId),
-  ]);
+  await assertItemsBelongToOrg(
+    tx,
+    organizationId,
+    rows.map((row) => row.itemId),
+  );
+  await assertUomsBelongToOrg(
+    tx,
+    organizationId,
+    rows.map((row) => row.uomId),
+  );
   await assertLocationsBelongToOrg(
     tx,
     organizationId,
@@ -167,41 +163,25 @@ interface ResolvedRouteStep {
 }
 
 /**
- * The two lists a step carries, taken from the request or derived from the
- * scalars they replaced (§5.7).
+ * The two lists a step carries (§5.7).
  *
- * A template names items; it holds no quantities and no `fromStock` label. Both
- * of those are per-run answers, and the job order works them out when it takes
- * its snapshot — a route has no idea how much anyone will put through it, nor
- * what stock will exist on the day.
+ * A template names items; it holds no quantities on the produced side and no
+ * `fromStock` label. Both are per-run answers, and the job order works them out
+ * when it takes its snapshot — a route has no idea how much anyone will put
+ * through it, nor what stock will exist on the day.
  *
- * The derivation honours `issueItemId` before the previous step's output, the
- * opposite way round from `jobOrders.service.ts`. There, a later step's input is
- * FORCED from the step above because the run is real. Here it is a template
- * somebody is typing, and what they typed is the answer.
+ * 🔴 The last derivation went with Migration B (2026-08-12). A step that listed
+ * nothing used to fall back to the `issueItemId` scalar and then to the previous
+ * step's primary output; the scalars are gone, and inferring from the step above
+ * was already rejected on the job order side for putting rows on screen that
+ * nobody typed. An empty list is an empty list.
  */
-function resolveStepRows(
-  step: RouteStepInput,
-  previousPrimaryOutputItemId: string | null,
-  index: number,
-): ResolvedRouteStep {
-  const sentInputs = step.inputs ?? [];
-  const derivedInput = step.issueItemId ?? previousPrimaryOutputItemId;
-  const inputs: RouteStepRow[] = sentInputs.length
-    ? [...sentInputs]
-    : derivedInput
-      ? [{ itemId: derivedInput, uomId: step.issueUomId ?? null }]
-      : [];
-
-  const sentOutputs = step.outputs ?? [];
+function resolveStepRows(step: RouteStepInput, index: number): ResolvedRouteStep {
+  const inputs: RouteStepRow[] = [...(step.inputs ?? [])];
   // No mirroring of the input when the process leaves the item alone — that is
   // the job order's job. A template that says nothing about its output should
   // keep saying nothing, so the snapshot can apply the process's own rule.
-  const outputs: RouteStepRow[] = sentOutputs.length
-    ? [...sentOutputs]
-    : step.receiveItemId
-      ? [{ itemId: step.receiveItemId, uomId: step.receiveUomId ?? null, isPrimary: true }]
-      : [];
+  const outputs: RouteStepRow[] = [...(step.outputs ?? [])];
 
   assertNoRepeatedItem(inputs, index, 'inputs');
   assertNoRepeatedItem(outputs, index, 'outputs');
@@ -281,12 +261,7 @@ async function resolveSteps(
   organizationId: string,
   steps: readonly RouteStepInput[],
 ): Promise<ResolvedRouteStep[]> {
-  const resolved: ResolvedRouteStep[] = [];
-  for (const [index, step] of steps.entries()) {
-    const previousPrimary =
-      resolved[index - 1]?.outputs.find((row) => row.isPrimary)?.itemId ?? null;
-    resolved.push(resolveStepRows(step, previousPrimary, index));
-  }
+  const resolved = steps.map((step, index) => resolveStepRows(step, index));
 
   const itemIds = [
     ...new Set(
@@ -314,9 +289,7 @@ async function resolveSteps(
 }
 
 /** One step's scalar columns, renumbered from array position. */
-function stepData(step: RouteStepInput, index: number, resolved: ResolvedRouteStep) {
-  const principalInput = resolved.inputs[0] ?? null;
-  const primaryOutput = resolved.outputs.find((row) => row.isPrimary) ?? null;
+function stepData(step: RouteStepInput, index: number) {
   return {
     seq: index + 1,
     processId: step.processId,
@@ -325,12 +298,6 @@ function stepData(step: RouteStepInput, index: number, resolved: ResolvedRouteSt
     workCentreLocationId: step.workCentreLocationId ?? null,
     rate: step.rate ?? null,
     rateBasis: step.rateBasis ?? null,
-    // A projection of the lists — principal input, primary output — kept only
-    // until Migration B drops these four columns (plan §12.1).
-    issueItemId: principalInput?.itemId ?? null,
-    issueUomId: principalInput?.uomId ?? null,
-    receiveItemId: primaryOutput?.itemId ?? null,
-    receiveUomId: primaryOutput?.uomId ?? null,
     expectedYield: step.expectedYield ?? null,
     tolerancePct: step.tolerancePct ?? null,
     remarks: step.remarks?.trim() || null,
@@ -397,7 +364,7 @@ async function createSteps(
     const resolved = resolvedSteps[index]!;
     await tx.routeStep.create({
       data: {
-        ...stepData(step, index, resolved),
+        ...stepData(step, index),
         organizationId,
         routeId,
         createdBy: userId ?? null,

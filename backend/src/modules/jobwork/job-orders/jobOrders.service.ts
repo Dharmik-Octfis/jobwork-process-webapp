@@ -84,10 +84,6 @@ const STEP_INCLUDE = {
   process: {
     select: { id: true, name: true, code: true, preservesPackaging: true, requiresSingleLot: true },
   },
-  issueItem: { select: { id: true, name: true, sku: true, lotTracking: true } },
-  receiveItem: { select: { id: true, name: true, sku: true, lotTracking: true } },
-  issueUom: { select: { id: true, unitName: true, symbol: true } },
-  receiveUom: { select: { id: true, unitName: true, symbol: true } },
   workCentre: { select: { id: true, name: true } },
 } satisfies Prisma.JobOrderStepInclude;
 
@@ -159,45 +155,30 @@ interface ResolvedStep extends JobOrderStepInput {
  * The two lists a step carries (§5.7), taken from the request or derived from
  * the scalar columns they replaced.
  *
- * A client that sends neither list gets exactly what Sprints 1–4 gave it: one
- * input, one output, both from the scalars. That is what lets this ship before
- * the step grid grows its nested lists, and it is why the scalars survive until
- * Migration B.
+ * 🔴 WHAT IS SENT IS WHAT IS SAVED, and there is nothing left to infer it from
+ * (2026-08-12). Nothing comes from the step above, nothing from the process's
+ * `itemChanges` flag, and — since Migration B dropped them — nothing from the
+ * `issueItemId` / `receiveItemId` scalars that used to stand in for a client
+ * without the nested grids.
  *
- * 🔴 WHAT IS SENT IS WHAT IS SAVED. Nothing is inferred from the step above, and
- * nothing from the process's `itemChanges` flag. Both inferences read well on
- * paper and were unusable on screen: the grid had to render a row nobody had
- * typed, labelled "automatic", and the honest question that produced was "so
- * what actually goes into the database?" — which is not a question a form should
- * leave anyone asking. The client seeds those rows visibly instead, where they
- * can be seen, changed, or deleted before saving.
+ * Both inferences read well on paper and were unusable on screen: the grid had
+ * to render a row nobody had typed, labelled "automatic", and the honest
+ * question that produced was "so what actually goes into the database?" — which
+ * is not a question a form should leave anyone asking. The client seeds those
+ * rows visibly instead, where they can be seen, changed, or deleted before
+ * saving.
  *
- * The one derivation left is the scalar `issueItemId` / `receiveItemId`, for a
- * client that has not grown the nested grids. That is the rollout bridge; it
- * goes with Migration B.
- *
- * 🔴 The header no longer contributes an item either (2026-08-07). It used to
- * prepend `inputItemId` to step 1, back when a job order named one item and one
- * quantity — which a step consuming a SET cannot be described by. What the order
- * runs on is simply what step 1 lists.
+ * 🔴 The header contributes no item either (2026-08-07). It used to prepend
+ * `inputItemId` to step 1, back when a job order named one item and one quantity
+ * — which a step consuming a SET cannot be described by. What the order runs on
+ * is simply what step 1 lists.
  */
 function resolveStepRows(
   step: JobOrderStepInput,
   index: number,
 ): { inputs: StepInputRow[]; outputs: StepOutputRow[] } {
-  const sent = step.inputs ?? [];
-  const inputs: StepInputRow[] = sent.length
-    ? [...sent]
-    : step.issueItemId
-      ? [{ itemId: step.issueItemId, uomId: step.issueUomId ?? null }]
-      : [];
-
-  const sentOutputs = step.outputs ?? [];
-  const outputs: StepOutputRow[] = sentOutputs.length
-    ? [...sentOutputs]
-    : step.receiveItemId
-      ? [{ itemId: step.receiveItemId, uomId: step.receiveUomId ?? null, isPrimary: true }]
-      : [];
+  const inputs: StepInputRow[] = [...(step.inputs ?? [])];
+  const outputs: StepOutputRow[] = [...(step.outputs ?? [])];
 
   assertNoRepeatedItem(inputs, index, 'inputs');
   assertNoRepeatedItem(outputs, index, 'outputs');
@@ -519,16 +500,16 @@ async function assertStepRefs(
     organizationId,
     steps.map((s) => s.processId),
   );
-  await assertItemsBelongToOrg(tx, organizationId, [
-    ...steps.map((s) => s.issueItemId),
-    ...steps.map((s) => s.receiveItemId),
-    ...rows.map((row) => row.itemId),
-  ]);
-  await assertUomsBelongToOrg(tx, organizationId, [
-    ...steps.map((s) => s.issueUomId),
-    ...steps.map((s) => s.receiveUomId),
-    ...rows.map((row) => row.uomId),
-  ]);
+  await assertItemsBelongToOrg(
+    tx,
+    organizationId,
+    rows.map((row) => row.itemId),
+  );
+  await assertUomsBelongToOrg(
+    tx,
+    organizationId,
+    rows.map((row) => row.uomId),
+  );
   await assertLocationsBelongToOrg(
     tx,
     organizationId,
@@ -730,8 +711,6 @@ async function buildSteps(
   const rows = [];
   for (const [index, step] of planned.entries()) {
     const processorType = (step.processorType ?? 'vendor') as ProcessorType;
-    const principalInput = step.resolvedInputs[0] ?? null;
-    const primaryOutput = step.resolvedOutputs.find((row) => row.isPrimary) ?? null;
     rows.push({
       seq: prior.startSeq + index,
       processId: step.processId,
@@ -747,14 +726,6 @@ async function buildSteps(
       workCentreLocationId: step.workCentreLocationId ?? null,
       rate: step.rate ?? null,
       rateBasis: step.rateBasis ?? null,
-      // 🔴 The four scalars are now a PROJECTION of the lists — the principal
-      // input and the primary output. They are still written because the Issue
-      // dialog, the receipt prefill and the Overview page read them, and they
-      // stop being written when Migration B drops them (plan §12.1).
-      issueItemId: principalInput?.itemId ?? null,
-      issueUomId: principalInput?.uomId ?? null,
-      receiveItemId: primaryOutput?.itemId ?? null,
-      receiveUomId: primaryOutput?.uomId ?? null,
       expectedYield: step.expectedYield ?? null,
       tolerancePct: step.tolerancePct ?? null,
       plannedInputQty: step.plannedInputQty,
@@ -1342,12 +1313,14 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
       const totals = await getStepTotals(tx, organizationId, step.id);
 
       // The issue button is enabled by AVAILABILITY, not by status: a step can be
-      // ready on paper and have nothing to send.
+      // ready on paper and have nothing to send. Measured on the PRINCIPAL input
+      // — the first consumed row, which is what the step is fundamentally about.
+      const principalInput = step.inputs[0] ?? null;
       let availableQty = new Prisma.Decimal(0);
-      if (step.issueItemId) {
+      if (principalInput) {
         const balance = await getBalance(tx, {
           organizationId,
-          itemId: step.issueItemId,
+          itemId: principalInput.itemId,
           ownership: order.ownership as Ownership,
         });
         availableQty = balance.qty;
@@ -1402,7 +1375,7 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
          * The ONE thing the scaffold does not relax is the chain — see
          * `blockedReason` below.
          */
-        canIssue: (step.inputs.length > 0 || Boolean(step.issueItemId)) && !blockedReason,
+        canIssue: step.inputs.length > 0 && !blockedReason,
         /**
          * 🔴 A STEP FED BY AN EARLIER ONE CANNOT ISSUE UNTIL THAT STEP DELIVERS.
          *
@@ -1443,7 +1416,12 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
     let wastageLost = new Prisma.Decimal(0);
     for (const step of steps) {
       if (step.status !== 'completed' && step.status !== 'short_closed') continue;
-      if (step.receiveUomId && step.receiveUomId !== step.issueUomId) continue;
+      // 🔴 Read off the LISTS since the scalars went (2026-08-12): the principal
+      // input's unit against the primary output's. Comparing nulls would make
+      // every unit-changing step pass this test and report nonsense wastage.
+      const inputUomId = step.inputs[0]?.uomId ?? null;
+      const outputUomId = (step.outputs.find((row) => row.isPrimary) ?? step.outputs[0])?.uomId;
+      if (outputUomId && outputUomId !== inputUomId) continue;
       const issued = new Prisma.Decimal(step.totals.issuedQty);
       const received = new Prisma.Decimal(step.totals.receivedQty);
       const returned = new Prisma.Decimal(step.totals.returnedQty);

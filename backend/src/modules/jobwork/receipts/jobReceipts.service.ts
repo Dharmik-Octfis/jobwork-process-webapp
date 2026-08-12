@@ -165,8 +165,6 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
       include: {
         process: { select: { id: true, name: true, preservesPackaging: true } },
         jobOrder: { select: { id: true, jobOrderNumber: true, ownership: true } },
-        receiveItem: { select: { id: true, name: true, sku: true } },
-        receiveUom: { select: { id: true, unitName: true, symbol: true } },
         /** 🔴 What the step PLANNED to produce (§5.7) — the returned grid opens
          * with a row per output rather than a single item, so a step that makes
          * shirts and rejects does not need both typed from scratch. */
@@ -665,11 +663,23 @@ export async function createNewJobReceipt(
      */
     const mode = 'bulk' as ReceiptMode;
 
-    const outputItemId = header.outputItemId ?? step.receiveItemId ?? step.issueItemId;
+    /**
+     * The header's item, for a request that named none. It is the step's PRIMARY
+     * output — the row that carries the step's cost — read from the list rather
+     * than from the `receiveItemId` scalar that used to mirror it (dropped
+     * 2026-08-12, plan §12.1 Migration B).
+     */
+    const plannedPrimaryOutput = await tx.jobOrderStepOutput.findFirst({
+      where: { organizationId, jobOrderStepId: step.id, isDeleted: false },
+      orderBy: [{ isPrimary: 'desc' }, { seq: 'asc' }],
+      select: { itemId: true, uomId: true },
+    });
+
+    const outputItemId = header.outputItemId ?? plannedPrimaryOutput?.itemId;
     if (!outputItemId) {
       throw ApiError.badRequest('This step has no output item, so there is nothing to receive.');
     }
-    const outputUomId = header.outputUomId ?? step.receiveUomId ?? step.issueUomId;
+    const outputUomId = header.outputUomId ?? plannedPrimaryOutput?.uomId ?? null;
 
     const totals = lines.reduce(
       (acc, line) => ({
@@ -771,9 +781,9 @@ export async function createNewJobReceipt(
       orderBy: { seq: 'asc' },
       select: { itemId: true },
     });
-    const principalItemId = principalInput?.itemId ?? step.issueItemId;
-    // The fallback covers a step whose input rows the backfill has not reached:
-    // there is only one item on it, so the cross-item sum IS that item's.
+    // A step that lists nothing to consume has no principal item, so the
+    // cross-item sum IS the figure — there is only one number in play.
+    const principalItemId = principalInput?.itemId ?? null;
     const principalConsumedQty = principalItemId
       ? (consumedByItem.get(principalItemId) ?? ZERO)
       : totals.issued;

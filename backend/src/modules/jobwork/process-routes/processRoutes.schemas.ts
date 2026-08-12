@@ -75,18 +75,13 @@ export const routeStepSchema = z.object({
   rateBasis: z.enum(RATE_BASES).nullable().optional(),
 
   /**
-   * 🔴 The two lists that replaced the four scalars below (§5.7). Omitted, the
-   * service derives one row per side from those scalars, so a client that has not
-   * grown the nested grids yet keeps working until Migration B.
+   * 🔴 What the step consumes and what it produces (§5.7). These replaced four
+   * scalar columns — `issueItemId` / `issueUomId` / `receiveItemId` /
+   * `receiveUomId` — dropped in Migration B on 2026-08-12. Omitted now means the
+   * step lists nothing, which a template is allowed to do.
    */
   inputs: z.array(routeStepRowSchema).optional(),
   outputs: z.array(routeStepRowSchema).optional(),
-
-  /** @deprecated Superseded by `inputs`/`outputs`; dropped in Migration B. */
-  issueItemId: nullableUuid,
-  issueUomId: nullableUuid,
-  receiveItemId: nullableUuid,
-  receiveUomId: nullableUuid,
 
   /**
    * Planned out ÷ in — 0.604 pieces per metre. Positive, and deliberately

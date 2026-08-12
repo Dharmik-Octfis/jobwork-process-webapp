@@ -155,20 +155,25 @@ nothing to the ledger.
 
 ### 4.2 The steps — `job_order_steps`
 
-| Field                                                        | Source         | Role                                                                                                                               |
-| ------------------------------------------------------------ | -------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `seq`                                                        | **renumbered** | 1…n from array position. 🔴 **Printed on challans**, which is why reordering a started step is refused                             |
-| `processId`                                                  | typed          | Which operation                                                                                                                    |
-| `processNameSnapshot`                                        | **snapshot**   | Frozen at creation. Rename the process next year; this still prints what was agreed                                                |
-| `processorType`                                              | typed          | `vendor` \| `customer` \| `internal`. Internal means in-house, so a work centre replaces the vendor                                |
-| `processorId`, `processorNameSnapshot`                       | **snapshot**   | Who does the work. Name frozen — a vendor deleted next year must still print on this order                                         |
-| `workCentreLocationId`                                       | typed          | Only for `internal`. Mutually exclusive with `processorId`                                                                         |
-| `rate`, `rateBasis`                                          | typed          | What you pay. Blank `rateBasis` inherits the process's                                                                             |
-| `expectedYield`                                              | typed          | The conversion ratio when the unit changes — 0.6 turns 4,800 M into 2,880 PCS. Not on the grid today; arrives via route or API     |
-| `tolerancePct`                                               | typed          | The step's over-issue allowance. Each consumed item may override it on its own row                                                 |
-| `plannedInputQty`                                            | **derived**    | A copy of the principal input's quantity, kept in step with it                                                                     |
-| `issueItemId`, `issueUomId`, `receiveItemId`, `receiveUomId` | **legacy**     | A _projection_ of the two lists — first consumed row, primary produced row. Kept only until the screens finish moving to the lists |
-| `status`                                                     | **derived**    | `pending → issued → partially_received → completed`, or `short_closed`                                                             |
+| Field                                  | Source         | Role                                                                                                                           |
+| -------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `seq`                                  | **renumbered** | 1…n from array position. 🔴 **Printed on challans**, which is why reordering a started step is refused                         |
+| `processId`                            | typed          | Which operation                                                                                                                |
+| `processNameSnapshot`                  | **snapshot**   | Frozen at creation. Rename the process next year; this still prints what was agreed                                            |
+| `processorType`                        | typed          | `vendor` \| `customer` \| `internal`. Internal means in-house, so a work centre replaces the vendor                            |
+| `processorId`, `processorNameSnapshot` | **snapshot**   | Who does the work. Name frozen — a vendor deleted next year must still print on this order                                     |
+| `workCentreLocationId`                 | typed          | Only for `internal`. Mutually exclusive with `processorId`                                                                     |
+| `rate`, `rateBasis`                    | typed          | What you pay. Blank `rateBasis` inherits the process's                                                                         |
+| `expectedYield`                        | typed          | The conversion ratio when the unit changes — 0.6 turns 4,800 M into 2,880 PCS. Not on the grid today; arrives via route or API |
+| `tolerancePct`                         | typed          | The step's over-issue allowance. Each consumed item may override it on its own row                                             |
+| `plannedInputQty`                      | **derived**    | A copy of the principal input's quantity, kept in step with it                                                                 |
+| `status`                               | **derived**    | `pending → issued → partially_received → completed`, or `short_closed`                                                         |
+
+> ⚠️ **Dropped 2026-08-12** (Migration B): `issueItemId`, `issueUomId`, `receiveItemId` and
+> `receiveUomId`, on both `job_order_steps` and `route_steps`. They duplicated the principal input and
+> the primary output onto the step row while the screens moved onto the two lists. Everything reads
+> **row 1 of the relevant list** now — the Issue dialog, the receipt prefill, the Overview's
+> availability figure and its wastage unit check. If you find one referenced anywhere, it is stale.
 
 ### 4.3 What a step consumes — `job_order_step_inputs`
 

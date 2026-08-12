@@ -280,20 +280,16 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
           processId: dyeing.id,
           processorId: dyerId,
           rate: 12,
-          issueItemId: greyId,
-          issueUomId: metreId,
-          receiveItemId: dyedId,
-          receiveUomId: metreId,
+          inputs: [{ itemId: greyId }],
+          outputs: [{ itemId: dyedId, isPrimary: true }],
           tolerancePct: 5,
         },
         {
           processId: cutting.id,
           processorId: cutterId,
           rate: 4,
-          issueItemId: dyedId,
-          issueUomId: metreId,
-          receiveItemId: shirtId,
-          receiveUomId: pieceId,
+          inputs: [{ itemId: dyedId }],
+          outputs: [{ itemId: shirtId, isPrimary: true }],
           expectedYield: 0.6,
         },
       ],
@@ -327,10 +323,8 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
         processorId: step.processorId,
         rate: step.rate === null ? null : Number(step.rate),
         rateBasis: step.rateBasis as 'per_issued_unit' | 'per_received_unit' | null,
-        issueItemId: step.issueItemId,
-        issueUomId: step.issueUomId,
-        receiveItemId: step.receiveItemId,
-        receiveUomId: step.receiveUomId,
+        inputs: step.inputs.map((row) => ({ itemId: row.itemId })),
+        outputs: step.outputs.map((row) => ({ itemId: row.itemId, isPrimary: row.isPrimary })),
         expectedYield: step.expectedYield === null ? null : Number(step.expectedYield),
         tolerancePct: step.tolerancePct === null ? null : Number(step.tolerancePct),
         // The quantity is per item now; step 1's principal row carries the run.
@@ -576,8 +570,7 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
         {
           processId: shadeMatched.id,
           processorId: dyerId,
-          issueItemId: greyId,
-          plannedInputQty: 200,
+          inputs: [{ itemId: greyId, plannedQty: 200 }],
         },
       ],
     });
@@ -598,7 +591,11 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
     const lot = await seedStock(greyId, 100);
     const jobOrder = await createNewJobOrder(orgId, {
       steps: [
-        { processId: process.id, processorId: dyerId, issueItemId: greyId, plannedInputQty: 100 },
+        {
+          processId: process.id,
+          processorId: dyerId,
+          inputs: [{ itemId: greyId, plannedQty: 100 }],
+        },
       ],
     });
 
@@ -723,11 +720,11 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     // not something a plan can derive from a yield.
     expect(step.outputs[1]!.expectedQty).toBeNull();
 
-    // The old scalar columns are now a projection of the two lists — principal
-    // input, primary output — and stay written until Migration B.
-    expect(step.issueItemId).toBe(shirtId);
-    expect(step.issueUomId).toBe(pieceId);
-    expect(step.receiveItemId).toBe(shirtsId);
+    // The principal input and primary output are read off the LISTS now — the
+    // four scalar columns that mirrored them went with Migration B (2026-08-12).
+    expect(step.inputs[0]!.itemId).toBe(shirtId);
+    expect(step.inputs[0]!.uomId).toBe(pieceId);
+    expect(step.outputs.find((row) => row.isPrimary)!.itemId).toBe(shirtsId);
     expect(Number(step.plannedInputQty)).toBe(2910);
   });
 

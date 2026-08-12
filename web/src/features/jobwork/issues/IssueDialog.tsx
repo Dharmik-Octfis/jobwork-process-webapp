@@ -97,31 +97,21 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
    * and buttons — one physical movement to one processor, so one document — and
    * each of them has its own lots, its own unit and its own picker.
    *
-   * The fallback to the step's scalar item covers a step saved before Sprint 5,
-   * whose `inputs` the backfill has not reached.
+   * The CONSUMES list is the only source. The fallback to the step's scalar item
+   * went with Migration B (2026-08-12); a step that lists nothing has nothing to
+   * issue, and the dialog says so rather than inventing a row.
    */
-  const inputItems = useMemo(() => {
-    if (step.inputs.length > 0) {
-      return step.inputs.map((row) => ({
+  const inputItems = useMemo(
+    () =>
+      step.inputs.map((row) => ({
         itemId: row.itemId,
         name: row.item?.name ?? 'Item',
         uomLabel: row.uom ? (row.uom.symbol ?? row.uom.unitName) : '',
         plannedQty: row.plannedQty === null ? null : toNumber(row.plannedQty),
         fromStock: row.fromStock ?? true,
-      }));
-    }
-    return step.issueItemId
-      ? [
-          {
-            itemId: step.issueItemId,
-            name: step.issueItem?.name ?? 'Item',
-            uomLabel: step.issueUom ? (step.issueUom.symbol ?? step.issueUom.unitName) : '',
-            plannedQty: step.plannedInputQty === null ? null : toNumber(step.plannedInputQty),
-            fromStock: true,
-          },
-        ]
-      : [];
-  }, [step]);
+      })),
+    [step],
+  );
 
   /** The principal input — what the step is fundamentally about. The location
    * list and the tolerance strip are its, because the challan has ONE source

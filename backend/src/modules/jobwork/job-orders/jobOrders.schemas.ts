@@ -104,20 +104,16 @@ export const jobOrderStepSchema = z.object({
   rateBasis: z.enum(RATE_BASES).nullable().optional(),
 
   /**
-   * 🔴 The two lists that replaced the four scalar fields below (§5.7).
+   * 🔴 What the step consumes and what it produces (§5.7). These replaced four
+   * scalar columns — `issueItemId` / `issueUomId` / `receiveItemId` /
+   * `receiveUomId` — which were dropped in Migration B on 2026-08-12.
    *
-   * Optional, and empty means "derive one row from the scalars" — that is what
-   * keeps the pre-Sprint-5 client working until Migration B drops them. Send
-   * `inputs` and the scalars are ignored entirely.
+   * Still optional: a step that lists nothing is a draft the form is halfway
+   * through, and it saves. Empty now means empty — there is no scalar left for
+   * it to fall back to.
    */
   inputs: z.array(stepInputRowSchema).optional(),
   outputs: z.array(stepOutputRowSchema).optional(),
-
-  /** @deprecated Superseded by `inputs`/`outputs`; dropped in Migration B. */
-  issueItemId: nullableUuid,
-  issueUomId: nullableUuid,
-  receiveItemId: nullableUuid,
-  receiveUomId: nullableUuid,
 
   expectedYield: z.coerce.number().positive().nullable().optional(),
   tolerancePct: z.coerce.number().min(0).max(100).nullable().optional(),

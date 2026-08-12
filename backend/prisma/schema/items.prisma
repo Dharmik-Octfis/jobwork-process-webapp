@@ -76,16 +76,13 @@ model Item {
   lots               Lot[]
   ledgerEntries      StockLedgerEntry[]
 
-  routeStepIssues      RouteStep[]    @relation("RouteStepIssueItem")
-  routeStepReceipts    RouteStep[]    @relation("RouteStepReceiveItem")
-  jobOrderInputs       JobOrder[]     @relation("JobOrderInputItem")
-  jobOrderStepIssues   JobOrderStep[] @relation("JobOrderStepIssueItem")
-  jobOrderStepReceipts JobOrderStep[] @relation("JobOrderStepReceiveItem")
-  jobIssues            JobIssue[]     @relation("JobIssueItem")
-  jobReceiptOutputs    JobReceipt[]   @relation("JobReceiptOutputItem")
+  jobOrderInputs    JobOrder[]   @relation("JobOrderInputItem")
+  jobIssues         JobIssue[]   @relation("JobIssueItem")
+  jobReceiptOutputs JobReceipt[] @relation("JobReceiptOutputItem")
 
-  /// Multi-item steps (domain §5.7). The seven above are the single-item columns
-  /// they replace; those go in Migration B.
+  /// Multi-item steps (domain §5.7). The step-level single-item relations these
+  /// replaced went with Migration B on 2026-08-12; the three above survive
+  /// because their own tables still carry a single item on the header.
   routeStepInputRows     RouteStepInput[]     @relation("RouteStepInputItem")
   routeStepOutputRows    RouteStepOutput[]    @relation("RouteStepOutputItem")
   jobOrderStepInputRows  JobOrderStepInput[]  @relation("JobOrderStepInputItem")
@@ -116,13 +113,9 @@ model UnitOfMeasurement {
   lots                   Lot[]              @relation("LotUom")
   ledgerEntries          StockLedgerEntry[] @relation("StockLedgerUom")
 
-  routeStepIssueUoms      RouteStep[]    @relation("RouteStepIssueUom")
-  routeStepReceiveUoms    RouteStep[]    @relation("RouteStepReceiveUom")
-  jobOrderInputUoms       JobOrder[]     @relation("JobOrderInputUom")
-  jobOrderStepIssueUoms   JobOrderStep[] @relation("JobOrderStepIssueUom")
-  jobOrderStepReceiveUoms JobOrderStep[] @relation("JobOrderStepReceiveUom")
-  jobIssueUoms            JobIssue[]     @relation("JobIssueUom")
-  jobReceiptOutputUoms    JobReceipt[]   @relation("JobReceiptOutputUom")
+  jobOrderInputUoms    JobOrder[]   @relation("JobOrderInputUom")
+  jobIssueUoms         JobIssue[]   @relation("JobIssueUom")
+  jobReceiptOutputUoms JobReceipt[] @relation("JobReceiptOutputUom")
 
   routeStepInputUoms      RouteStepInput[]     @relation("RouteStepInputUom")
   routeStepOutputUoms     RouteStepOutput[]    @relation("RouteStepOutputUom")

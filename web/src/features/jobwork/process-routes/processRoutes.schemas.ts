@@ -2,10 +2,8 @@ import { z } from 'zod';
 import { paginatedSchema, type Paginated } from '../../../lib/pagination';
 import {
   decimalString,
-  itemRefSchema,
   namedRefSchema,
   stepItemRowSchema,
-  uomRefSchema,
   type StepItemRow,
 } from '../jobwork.schemas';
 
@@ -27,17 +25,12 @@ export const routeStepSchema = z.object({
   workCentreLocationId: z.string().nullable(),
   rate: decimalString,
   rateBasis: z.string().nullable(),
-  issueItemId: z.string().nullable(),
-  issueUomId: z.string().nullable(),
-  receiveItemId: z.string().nullable(),
-  receiveUomId: z.string().nullable(),
   expectedYield: decimalString,
   tolerancePct: decimalString,
   remarks: z.string().nullable(),
 
-  /** 🔴 What the step consumes and produces (§5.7). The four scalars above are a
-   * projection of these two — principal input, primary output — and go away with
-   * Migration B. */
+  /** 🔴 What the step consumes and produces (§5.7). The only place the items live
+   * — the four scalars that mirrored them went with Migration B. */
   inputs: z.array(stepItemRowSchema).default([]),
   outputs: z.array(stepItemRowSchema).default([]),
 
@@ -49,10 +42,6 @@ export const routeStepSchema = z.object({
       itemChanges: z.boolean(),
     })
     .optional(),
-  issueItem: itemRefSchema.nullable().optional(),
-  receiveItem: itemRefSchema.nullable().optional(),
-  issueUom: uomRefSchema.nullable().optional(),
-  receiveUom: uomRefSchema.nullable().optional(),
   workCentre: namedRefSchema.nullable().optional(),
 });
 

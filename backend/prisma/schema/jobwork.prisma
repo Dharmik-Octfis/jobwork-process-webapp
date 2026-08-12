@@ -155,12 +155,11 @@ model RouteStep {
   rate      Decimal? @db.Decimal(18, 4)
   rateBasis String?  @map("rate_basis") @db.VarChar(30)
 
-  /// In and out are separate items AND separate units (§5.1). Cloth in metres,
-  /// shirts out in pieces — two different things, never a conversion factor.
-  issueItemId   String? @map("issue_item_id") @db.Uuid
-  issueUomId    String? @map("issue_uom_id") @db.Uuid
-  receiveItemId String? @map("receive_item_id") @db.Uuid
-  receiveUomId  String? @map("receive_uom_id") @db.Uuid
+  /// ⚠️ `issueItemId` / `issueUomId` / `receiveItemId` / `receiveUomId` were
+  /// dropped on 2026-08-12 (plan §12.1, Migration B). They held the principal
+  /// input and primary output as a projection of `RouteStepInput` /
+  /// `RouteStepOutput`, which is where those items live now — one item per row,
+  /// because a step consumes a SET and produces a SET (§5.7).
 
   /// 🔴 PRIMARY OUTPUT ÷ PRINCIPAL INPUT, and nothing else.
   ///
@@ -190,10 +189,6 @@ model RouteStep {
   organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   route         Route              @relation(fields: [routeId], references: [id], onDelete: Cascade)
   process       Process            @relation("RouteStepProcess", fields: [processId], references: [id])
-  issueItem     Item?              @relation("RouteStepIssueItem", fields: [issueItemId], references: [id])
-  receiveItem   Item?              @relation("RouteStepReceiveItem", fields: [receiveItemId], references: [id])
-  issueUom      UnitOfMeasurement? @relation("RouteStepIssueUom", fields: [issueUomId], references: [id])
-  receiveUom    UnitOfMeasurement? @relation("RouteStepReceiveUom", fields: [receiveUomId], references: [id])
   workCentre    Location?          @relation("RouteStepWorkCentre", fields: [workCentreLocationId], references: [id])
   createdByUser User?              @relation("RouteStepCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User?              @relation("RouteStepUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
@@ -417,10 +412,12 @@ model JobOrderStep {
   rate      Decimal? @db.Decimal(18, 4)
   rateBasis String?  @map("rate_basis") @db.VarChar(30)
 
-  issueItemId   String? @map("issue_item_id") @db.Uuid
-  issueUomId    String? @map("issue_uom_id") @db.Uuid
-  receiveItemId String? @map("receive_item_id") @db.Uuid
-  receiveUomId  String? @map("receive_uom_id") @db.Uuid
+  /// ⚠️ `issueItemId` / `issueUomId` / `receiveItemId` / `receiveUomId` were
+  /// dropped on 2026-08-12 (plan §12.1, Migration B). They mirrored the principal
+  /// input and the primary output; those live in `JobOrderStepInput` /
+  /// `JobOrderStepOutput`, one row per item (§5.7). Everything that read them —
+  /// the Issue dialog, the receipt prefill, the Overview's availability and
+  /// wastage figures — reads row 1 of the relevant list instead.
 
   /// 🔴 Primary output ÷ principal input — see `RouteStep.expectedYield`. It
   /// fills in `JobOrderStepOutput.expectedQty` for the primary output alone;
@@ -453,10 +450,6 @@ model JobOrderStep {
   organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   jobOrder      JobOrder           @relation(fields: [jobOrderId], references: [id], onDelete: Cascade)
   process       Process            @relation("JobOrderStepProcess", fields: [processId], references: [id])
-  issueItem     Item?              @relation("JobOrderStepIssueItem", fields: [issueItemId], references: [id])
-  receiveItem   Item?              @relation("JobOrderStepReceiveItem", fields: [receiveItemId], references: [id])
-  issueUom      UnitOfMeasurement? @relation("JobOrderStepIssueUom", fields: [issueUomId], references: [id])
-  receiveUom    UnitOfMeasurement? @relation("JobOrderStepReceiveUom", fields: [receiveUomId], references: [id])
   workCentre    Location?          @relation("JobOrderStepWorkCentre", fields: [workCentreLocationId], references: [id])
   createdByUser User?              @relation("JobOrderStepCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User?              @relation("JobOrderStepUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
