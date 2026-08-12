@@ -15,6 +15,7 @@ import {
   getJobOrderById,
   getJobOrderOverview,
   shortCloseJobOrder,
+  updateJobOrderById,
 } from './job-orders/jobOrders.service.ts';
 import { createNewJobIssue } from './issues/jobIssues.service.ts';
 import { getStepTotals } from './job-orders/jobOrders.status.ts';
@@ -845,7 +846,15 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     expect(stitch!.inputs[1]!.plannedQty).toBeNull();
   });
 
-  it('refuses an input only a later step produces', async () => {
+  /**
+   * 🔴 The regression guard for 2026-08-11: step ORDER is no longer refused.
+   *
+   * This save used to 400 with "Material cannot come from a step that has not run
+   * yet — reorder the steps", which threw away a whole document over an
+   * arrangement the grid itself invites. Nothing above step 1 produces panels, so
+   * they are drawn from stock — the same answer the classifier gives thread.
+   */
+  it('saves an input only a later step produces, drawn from stock', async () => {
     const cutting = await createNewProcess(orgId, {
       name: `Cutting ${unique()}`,
       itemChanges: true,
@@ -855,25 +864,153 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       itemChanges: true,
     });
 
-    await expect(
-      createNewJobOrder(orgId, {
-        // Stitching the panels before anything has cut them. Unlike an input
-        // that comes from stock, this has no valid reading at all.
-        steps: [
-          {
-            processId: stitching.id,
-            processorId: cutterId,
-            inputs: [{ itemId: shirtId }],
-            outputs: [{ itemId: shirtsId, isPrimary: true }],
-          },
-          {
-            processId: cutting.id,
-            processorId: cutterId,
-            outputs: [{ itemId: shirtId, isPrimary: true }],
-          },
-        ],
-      }),
-    ).rejects.toMatchObject({ status: 400 });
+    const jobOrder = await createNewJobOrder(orgId, {
+      steps: [
+        {
+          processId: stitching.id,
+          processorId: cutterId,
+          inputs: [{ itemId: shirtId }],
+          outputs: [{ itemId: shirtsId, isPrimary: true }],
+        },
+        {
+          processId: cutting.id,
+          processorId: cutterId,
+          outputs: [{ itemId: shirtId, isPrimary: true }],
+        },
+      ],
+    });
+
+    expect(jobOrder.steps[0]!.inputs[0]!.itemId).toBe(shirtId);
+    expect(jobOrder.steps[0]!.inputs[0]!.fromStock).toBe(true);
+    // No ceiling to plan against either — a later step's output is not a supply.
+    expect(jobOrder.steps[0]!.inputs[0]!.plannedQty).toBeNull();
+  });
+
+  /**
+   * 🔴 THE EXPECTED QUANTITY IS DERIVED ONLY WHERE THERE IS A BASIS (§6.3).
+   *
+   * It used to be `plannedQty × (yield ?? 1)` unconditionally, and with yield off
+   * the grid that meant 1:1 — so cutting 4,800 M of fabric planned 4,800 PCS of
+   * panels. Metres and pieces have no ratio, and the invented figure did not stay
+   * put: it became the next step's planned input, which is what its tolerance
+   * ceiling is computed from.
+   */
+  it('derives an expected quantity only from a stated yield or a matching unit', async () => {
+    const cutting = await createNewProcess(orgId, {
+      name: `Cutting ${unique()}`,
+      itemChanges: true,
+    });
+    const washing = await createNewProcess(orgId, {
+      name: `Washing ${unique()}`,
+      itemChanges: false,
+    });
+
+    const jobOrder = await createNewJobOrder(orgId, {
+      steps: [
+        // MTR in, PCS out, nobody stated a ratio. There is no answer, so none is
+        // invented — and the step below has nothing to plan from, which is the
+        // truth rather than a wrong number.
+        {
+          processId: cutting.id,
+          processorId: cutterId,
+          inputs: [{ itemId: dyedId, plannedQty: 4800 }],
+          outputs: [{ itemId: shirtId, isPrimary: true }],
+        },
+        // PCS in, PCS out — 1:1 is the honest default.
+        {
+          processId: washing.id,
+          processorId: cutterId,
+          inputs: [{ itemId: shirtId, plannedQty: 2880 }],
+          outputs: [{ itemId: shirtsId, isPrimary: true }],
+        },
+      ],
+    });
+
+    expect(jobOrder.steps[0]!.outputs[0]!.expectedQty).toBeNull();
+    expect(Number(jobOrder.steps[1]!.outputs[0]!.expectedQty)).toBe(2880);
+
+    // A stated yield IS the conversion, so it answers across units.
+    const withYield = await createNewJobOrder(orgId, {
+      steps: [
+        {
+          processId: cutting.id,
+          processorId: cutterId,
+          expectedYield: 0.6,
+          inputs: [{ itemId: dyedId, plannedQty: 4800 }],
+          outputs: [{ itemId: shirtId, isPrimary: true }],
+        },
+      ],
+    });
+    expect(Number(withYield.steps[0]!.outputs[0]!.expectedQty)).toBe(2880);
+  });
+
+  /**
+   * 🔴 The balance is a RUNNING one, and it is a DERIVATION, not a gate (§6.4.0).
+   *
+   * Two steps can both draw on step 1's panels, and the second is planned at what
+   * the first left. Overwriting per producer — what this used to do — would hand
+   * the same 90 out twice and plan 180 panels off a step that cuts 90.
+   *
+   * And over-planning SAVES. Refusing it was wrong for an ordinary case: the
+   * difference legitimately comes from stock. The client says so on the row; the
+   * hard gates stay at issue time.
+   */
+  it('shares one step’s output between later steps, and saves an over-plan anyway', async () => {
+    const cutting = await createNewProcess(orgId, {
+      name: `Cutting ${unique()}`,
+      itemChanges: true,
+    });
+    const stitching = await createNewProcess(orgId, {
+      name: `Stitching ${unique()}`,
+      itemChanges: true,
+    });
+
+    const shared = await createNewJobOrder(orgId, {
+      steps: [
+        {
+          processId: cutting.id,
+          processorId: cutterId,
+          inputs: [{ itemId: dyedId, plannedQty: 100 }],
+          outputs: [{ itemId: shirtId, isPrimary: true, expectedQty: 90 }],
+        },
+        {
+          processId: stitching.id,
+          processorId: cutterId,
+          inputs: [{ itemId: shirtId, plannedQty: 60 }],
+          outputs: [{ itemId: shirtsId, isPrimary: true }],
+        },
+        // Blank, so it is planned at what step 2 LEFT — 30, not the 90 cutting
+        // returned. The whole point of a running balance.
+        {
+          processId: stitching.id,
+          processorId: cutterId,
+          inputs: [{ itemId: shirtId }],
+          outputs: [{ itemId: offcutsId, isPrimary: true }],
+        },
+      ],
+    });
+    expect(Number(shared.steps[2]!.inputs[0]!.plannedQty)).toBe(30);
+
+    // 120 panels off a step that cuts 90 — a plan somebody may well mean, because
+    // 30 are already in the godown. Saved, with the note left to the client.
+    const over = await createNewJobOrder(orgId, {
+      steps: [
+        {
+          processId: cutting.id,
+          processorId: cutterId,
+          inputs: [{ itemId: dyedId, plannedQty: 100 }],
+          outputs: [{ itemId: shirtId, isPrimary: true, expectedQty: 90 }],
+        },
+        {
+          processId: stitching.id,
+          processorId: cutterId,
+          inputs: [{ itemId: shirtId, plannedQty: 120 }],
+          outputs: [{ itemId: shirtsId, isPrimary: true }],
+        },
+      ],
+    });
+    expect(Number(over.steps[1]!.inputs[0]!.plannedQty)).toBe(120);
+    expect(over.steps[1]!.inputs[0]!.fromStock).toBe(false);
   });
 
   /**
@@ -1313,7 +1450,8 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
         {
           processId: stitching.id,
           processorId: cutterId,
-          // Fed by step 1 — `classifyStepInputs` marks it fromStock: false.
+          // Fed by step 1 — `classifyStepInputs` marks it fromStock: false, and
+          // 60 is within the 100 panels cutting expects to return.
           inputs: [{ itemId: shirtId, plannedQty: 60 }],
           outputs: [{ itemId: shirtsId, isPrimary: true }],
         },
@@ -1387,9 +1525,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
    * The whole safety argument is that nothing existing is touched: `seq = max +
    * 1` renumbers nobody, and no row is rewritten — so the challans hanging off
    * the steps already there keep describing steps that still say what they said.
-   * `updateJobOrderById` is the contrast; it hard-deletes the grid, and
-   * `JobIssue.step` is `onDelete: Cascade`, which is exactly why it refuses
-   * anything but a draft.
+   * `updateJobOrderById` is the contrast: it hard-deletes, and `JobIssue.step` is
+   * `onDelete: Cascade`, which is why its delete is scoped past the WORK FRONT
+   * and never over the whole grid (§6.6).
    *
    * The other half is what is NOT checked. No step's status gates this — a step
    * at a processor is no reason to withhold it, because the appended step arrives
@@ -1456,10 +1594,10 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       expect(survivingIssue?.jobOrderStepId).toBe(step1.id);
 
       /**
-       * 🔴 The new step is classified against the steps ALREADY on the order, not
-       * only against the ones in the request. Without that it reads as drawn from
-       * stock, and `classifyStepInputs` would be free to throw "produced only by
-       * a later step" at an item step 1 really does produce.
+       * 🔴 The new step is classified AND planned against the steps ALREADY on the
+       * order, not only against the ones in the request. Without that it reads as
+       * drawn from stock, and it would have no ceiling to plan against — the one
+       * door that skips the whole-grid rewrite would also skip the over-plan rule.
        */
       const appended = after.steps[1]!;
       expect(appended.inputs[0]!.itemId).toBe(shirtId);
@@ -1515,6 +1653,193 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
               outputs: [{ itemId: shirtsId, isPrimary: true }],
             },
           ],
+        }),
+      ).rejects.toMatchObject({ status: 409 });
+    });
+  });
+
+  /**
+   * 🔴 EDITING A RUNNING ORDER, UP TO THE WORK FRONT (§6.6).
+   *
+   * The lock used to be the whole order: one issue froze every step, and fixing
+   * step 3 meant short-closing and starting again. It is now the last step
+   * carrying a live document — behind it nothing may move, past it the grid is
+   * rewritten exactly as a draft would be.
+   *
+   * The hazard these tests exist for is specific and silent: `updateJobOrderById`
+   * hard-deletes, and `JobIssue.step` / `JobReceipt.step` are `onDelete: Cascade`.
+   * A delete that is not scoped past the front takes every challan and receipt
+   * with it and orphans their ledger rows, with nothing to show it happened.
+   */
+  describe('editing a running order', () => {
+    const twoStepOrder = async () => {
+      const cutting = await createNewProcess(orgId, {
+        name: `Cutting ${unique()}`,
+        itemChanges: true,
+      });
+      const stitching = await createNewProcess(orgId, {
+        name: `Stitching ${unique()}`,
+        itemChanges: true,
+      });
+      await stockUp(dyedId, 100);
+
+      const jobOrder = await createNewJobOrder(orgId, {
+        steps: [
+          {
+            processId: cutting.id,
+            processorId: cutterId,
+            inputs: [{ itemId: dyedId, plannedQty: 100 }],
+            outputs: [{ itemId: shirtId, isPrimary: true, expectedQty: 90 }],
+          },
+          {
+            processId: stitching.id,
+            processorId: cutterId,
+            inputs: [{ itemId: shirtId, plannedQty: 90 }],
+            outputs: [{ itemId: shirtsId, isPrimary: true }],
+          },
+        ],
+      });
+
+      // Step 1 goes out. From here it is the work front and must not move.
+      const issue = await createNewJobIssue(orgId, {
+        jobOrderStepId: jobOrder.steps[0]!.id,
+        sourceLocationId: godownId,
+        lines: [{ itemId: dyedId, qty: 100 }],
+      });
+
+      return { jobOrder, issue, cutting, stitching };
+    };
+
+    /** The payload as the form sends it: saved steps carry their ids. */
+    const asSent = (step: { id: string; processId: string; processorId: string | null }) => ({
+      id: step.id,
+      processId: step.processId,
+      processorId: step.processorId,
+    });
+
+    it('rewrites the steps past the work front and leaves the issued step and its challan alone', async () => {
+      const { jobOrder, issue, stitching } = await twoStepOrder();
+      const [cut, stitch] = jobOrder.steps;
+
+      const after = await updateJobOrderById(orgId, jobOrder.id, {
+        steps: [
+          asSent(cut!),
+          // Step 2 rewritten in place — different processor, different plan.
+          {
+            id: stitch!.id,
+            processId: stitching.id,
+            processorId: null,
+            inputs: [{ itemId: shirtId, plannedQty: 50 }],
+            outputs: [{ itemId: shirtsId, isPrimary: true }],
+          },
+          // …and a third step added in the same save.
+          {
+            processId: stitching.id,
+            processorId: cutterId,
+            inputs: [{ itemId: shirtsId }],
+            outputs: [{ itemId: offcutsId, isPrimary: true }],
+          },
+        ],
+      });
+
+      expect(after.steps).toHaveLength(3);
+      expect(after.steps.map((s) => s.seq)).toEqual([1, 2, 3]);
+
+      // 🔴 The issued step is the SAME ROW, untouched.
+      expect(after.steps[0]!.id).toBe(cut!.id);
+      expect(after.steps[0]!.status).toBe('issued');
+
+      // 🔴 …and its challan still exists and still points at it. A cascade would
+      // have taken this and orphaned its ledger rows.
+      const survivingIssue = await runAsTenant(orgId, (tx) =>
+        tx.jobIssue.findFirst({ where: { id: issue.id }, select: { jobOrderStepId: true } }),
+      );
+      expect(survivingIssue?.jobOrderStepId).toBe(cut!.id);
+
+      // Step 2 had no documents, so it was genuinely rewritten — new row, new plan.
+      expect(after.steps[1]!.id).not.toBe(stitch!.id);
+      expect(Number(after.steps[1]!.inputs[0]!.plannedQty)).toBe(50);
+      expect(after.steps[1]!.processorId).toBeNull();
+    });
+
+    it('refuses to drop or reorder a step that has already been sent out', async () => {
+      const { jobOrder, stitching } = await twoStepOrder();
+      const [cut, stitch] = jobOrder.steps;
+
+      // Step 1 left out entirely — the save that would have cascaded its challan.
+      await expect(
+        updateJobOrderById(orgId, jobOrder.id, { steps: [asSent(stitch!)] }),
+      ).rejects.toMatchObject({ status: 409 });
+
+      // Step 1 pushed below step 2 — same hazard, since seq is on the challan.
+      await expect(
+        updateJobOrderById(orgId, jobOrder.id, {
+          steps: [asSent(stitch!), asSent(cut!)],
+        }),
+      ).rejects.toMatchObject({ status: 409 });
+
+      // A stale form with no ids at all cannot prove it is the same grid.
+      await expect(
+        updateJobOrderById(orgId, jobOrder.id, {
+          steps: [
+            { processId: stitching.id, processorId: cutterId },
+            { processId: stitching.id, processorId: cutterId },
+          ],
+        }),
+      ).rejects.toMatchObject({ status: 409 });
+
+      // Nothing was written by any of the three.
+      const untouched = await getJobOrderById(orgId, jobOrder.id);
+      expect(untouched!.steps.map((s) => s.id)).toEqual([cut!.id, stitch!.id]);
+    });
+
+    /**
+     * A draft has no work front, so the whole grid is the tail and the behaviour
+     * is exactly what it always was — including the header, which follows step 1.
+     */
+    it('still rewrites a draft end to end, header included', async () => {
+      const cutting = await createNewProcess(orgId, {
+        name: `Cutting ${unique()}`,
+        itemChanges: true,
+      });
+
+      const jobOrder = await createNewJobOrder(orgId, {
+        steps: [
+          {
+            processId: cutting.id,
+            processorId: cutterId,
+            inputs: [{ itemId: dyedId, plannedQty: 10 }],
+            outputs: [{ itemId: shirtId, isPrimary: true }],
+          },
+        ],
+      });
+      expect(jobOrder.status).toBe('draft');
+
+      const after = await updateJobOrderById(orgId, jobOrder.id, {
+        steps: [
+          {
+            processId: cutting.id,
+            processorId: cutterId,
+            inputs: [{ itemId: threadId, plannedQty: 7 }],
+            outputs: [{ itemId: shirtId, isPrimary: true }],
+          },
+        ],
+      });
+
+      expect(after.steps).toHaveLength(1);
+      expect(after.steps[0]!.inputs[0]!.itemId).toBe(threadId);
+      // CALC+ — derived from step 1's first consumed row, which just changed.
+      expect(after.inputItemId).toBe(threadId);
+      expect(Number(after.inputQty)).toBe(7);
+    });
+
+    it('refuses an order that has been closed short', async () => {
+      const { jobOrder } = await twoStepOrder();
+      await shortCloseJobOrder(orgId, jobOrder.id, 'finished light');
+
+      await expect(
+        updateJobOrderById(orgId, jobOrder.id, {
+          steps: jobOrder.steps.map((step) => asSent(step)),
         }),
       ).rejects.toMatchObject({ status: 409 });
     });

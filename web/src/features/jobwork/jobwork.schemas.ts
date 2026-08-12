@@ -178,6 +178,83 @@ export function producedByStep(steps: readonly StepGridRow[], index: number, ite
   return null;
 }
 
+/** Quantities are stored at four decimal places, so the balance below is compared
+ * there too — float subtraction drifts (100 − 33.3 − 33.3 ≠ 33.4) and a warning
+ * raised over a rounding error nobody typed is a warning people learn to ignore. */
+const roundQty = (qty: number) => Math.round(qty * 10_000) / 10_000;
+
+/**
+ * 🔴 HOW MUCH OF AN ITEM THE STEPS ABOVE STILL HAVE TO GIVE — the client's copy
+ * of the balance `planQuantities` walks (§6.4.0).
+ *
+ * `null` means there is no ceiling to speak of, and it covers two different
+ * cases on purpose: nothing above produces the item (it comes from stock, and
+ * how much thread exists is not this document's business), or a step above does
+ * produce it but left its expected quantity blank — a limit read off a number
+ * nobody supplied is a limit this code invented.
+ *
+ * A step's own inputs are settled BEFORE its outputs are added, because a step
+ * does not feed itself: a process that returns what it took would otherwise
+ * double its own output.
+ */
+export function spareFromEarlierSteps(
+  steps: readonly StepGridRow[],
+  index: number,
+  itemId: string,
+  /** What the steps ALREADY on the order have left over. Append dialog only. */
+  priorSpare?: ReadonlyMap<string, number>,
+): number | null {
+  let spare = priorSpare?.get(itemId) ?? null;
+
+  for (let i = 0; i < index; i += 1) {
+    const step = steps[i];
+    if (!step) continue;
+
+    for (const row of step.inputs ?? []) {
+      // `spare === null` is a from-stock row: it takes nothing from the chain,
+      // so it deducts nothing — the same call the server makes on `fromStock`.
+      if (row.itemId !== itemId || spare === null) continue;
+      // A blank chain-fed box is not "nothing": the server plans it at whatever
+      // is left, so mirroring anything else would show a ceiling that is already
+      // spoken for.
+      const taken = row.plannedQty ?? (spare > 0 ? spare : null);
+      if (taken !== null) spare = roundQty(spare - taken);
+    }
+    for (const row of step.outputs ?? []) {
+      if (row.itemId !== itemId || row.expectedQty === null || row.expectedQty === undefined) {
+        continue;
+      }
+      spare = roundQty((spare ?? 0) + row.expectedQty);
+    }
+  }
+  return spare;
+}
+
+/**
+ * 🔴 A NOTE, NOT A REFUSAL (§6.4.0).
+ *
+ * Planning more of an item than the steps above return is usually a typo and
+ * occasionally the plan: cutting sends back 90 panels and stitching runs 120,
+ * because 30 are already in the godown from a short-closed order. The server
+ * refused this for one afternoon on 2026-08-11 and the refusal was wrong for
+ * exactly that case — a row's supply is a MIX, and `fromStock` is one flag.
+ *
+ * So it is said, not enforced, and it is said HERE rather than in a save
+ * response: a warning that only arrives after a successful save is a warning
+ * about a decision already made.
+ */
+export function overPlanWarning(
+  steps: readonly StepGridRow[],
+  index: number,
+  row: StepItemRow,
+  priorSpare?: ReadonlyMap<string, number>,
+): string | null {
+  if (!row.itemId || row.plannedQty === null || row.plannedQty === undefined) return null;
+  const spare = spareFromEarlierSteps(steps, index, row.itemId, priorSpare);
+  if (spare === null || roundQty(row.plannedQty) <= roundQty(spare)) return null;
+  return `Only ${formatQty(Math.max(spare, 0))} comes back from the steps above — the rest has to come from stock.`;
+}
+
 /**
  * 🔴 WHICH OUTPUT CARRIES THE STEP'S COST — the client's copy of the server's
  * `flagPrimaryOutput` (§9.2.1).
@@ -193,6 +270,41 @@ export function producedByStep(steps: readonly StepGridRow[], index: number, ite
 export function primaryOutputIndex(rows: readonly StepItemRow[]): number {
   const flagged = rows.findIndex((row) => row.isPrimary);
   return flagged >= 0 ? flagged : 0;
+}
+
+/**
+ * 🔴 WHAT THE EXPECTED BOX WILL BE FILLED WITH IF IT IS LEFT BLANK — the client's
+ * copy of the server's `derivedExpectedQty` (§6.3).
+ *
+ * Shown as a grey placeholder rather than written into the row, for the same
+ * reason as the tolerance one: a value copied in freezes, and nothing could then
+ * tell it apart from a number somebody typed on purpose.
+ *
+ * `null` means the server will store nothing either, and the box is genuinely
+ * asking. That happens on exactly the case worth asking about — the output's unit
+ * differs from the principal input's, with no yield stated, so 4,800 M of fabric
+ * has no derivable answer in PCS of panels. Every other row either says nothing
+ * (a by-product) or can be assumed 1:1.
+ */
+export function derivedExpectedQty(
+  step: StepGridRow,
+  rowIndex: number,
+  /** An item's stocking unit id, or null when it has none. */
+  unitOf: (itemId: string | null | undefined) => string | null,
+): number | null {
+  const outputs = step.outputs ?? [];
+  if (rowIndex !== primaryOutputIndex(outputs)) return null;
+
+  const row = outputs[rowIndex];
+  const principal = (step.inputs ?? [])[0] ?? null;
+  const planned = principal?.plannedQty;
+  if (!row?.itemId || !principal?.itemId || planned === null || planned === undefined) return null;
+
+  // A stated yield IS the conversion, so it answers across units too.
+  if (step.expectedYield !== null && step.expectedYield !== undefined) {
+    return roundQty(planned * step.expectedYield);
+  }
+  return unitOf(row.itemId) === unitOf(principal.itemId) ? roundQty(planned) : null;
 }
 
 /**

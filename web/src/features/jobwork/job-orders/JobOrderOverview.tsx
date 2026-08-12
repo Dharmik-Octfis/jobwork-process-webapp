@@ -237,7 +237,11 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
           </div>
 
           <div style={{ display: 'flex', gap: 8 }}>
-            {jobOrder.status === 'draft' && (
+            {/* Offered on a running order too (§6.6): the steps past the work
+                front are still a plan. Only a CLOSED order has nothing editable
+                left, which is the same line `isClosed` already draws for Add
+                work and Close short. */}
+            {!isClosed && (
               <button
                 type="button"
                 onClick={() => navigate(`${listPath}/${jobOrder.id}/edit`)}

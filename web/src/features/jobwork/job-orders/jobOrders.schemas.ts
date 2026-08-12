@@ -178,6 +178,13 @@ export const jobOrderOverviewSchema = z.object({
 export type JobOrderOverviewData = z.infer<typeof jobOrderOverviewSchema>;
 
 export interface JobOrderStepData {
+  /**
+   * Set on a step that is already saved. It is how the server proves an edit of a
+   * running order still begins with the steps that have challans against them
+   * (§6.6) — a grid whose locked rows lost their ids is refused rather than
+   * applied. Absent on a row somebody just added.
+   */
+  id?: string;
   processId: string;
   processorType?: string;
   processorId?: string | null;

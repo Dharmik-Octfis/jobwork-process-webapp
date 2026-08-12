@@ -217,8 +217,15 @@ The `custom_fields` column stays on the table and is simply never written.
 - [ ] A job order with **no route** must work — steps added by hand. This is what "fully flexible" means
 - [ ] **Classification, not validation** (domain §6.4): for each of a step's inputs, is it produced by
       an earlier step, or drawn from stock? Label it `fromStock` and save either way — thread and
-      buttons legitimately come from the godown. Only an input produced by a **later** step is
-      refused, because that is an ordering mistake with no valid reading
+      buttons legitimately come from the godown. **Step order is not refused** (2026-08-11); an input
+      produced only by a later step is labelled from stock like any other
+- [ ] **The quantity balance that replaced it** (domain §6.4.0): a blank chain-fed input is planned at
+      what the steps above have LEFT, netted as a running balance across every consumer. Exceeding it
+      **warns on the row and saves** — the difference can come from stock, so refusing it is wrong
+- [ ] 🔴 **Editable past the work front** (domain §6.6): the grid freezes only up to the last step with
+      a live challan or receipt. The delete in `updateJobOrderById` MUST stay scoped to `seq >
+    frontSeq` — `JobIssue.step` and `JobReceipt.step` are `onDelete: Cascade`, so an unscoped one
+      silently destroys every document on the order
 - [ ] **Material In section** (§1.3) — creates lot + packages + ledger rows on save
 - [ ] Job Orders list page
 - [ ] **Overview page** — the stepper (domain doc §8.2). `[+ Issue]` / `[+ Receive]` rendered but

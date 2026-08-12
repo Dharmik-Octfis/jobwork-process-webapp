@@ -88,6 +88,9 @@ function toOutputRows(rows: StepItemRowRead[] = []): StepItemRow[] {
 function toFormSteps(order?: Partial<JobOrder>): JobOrderStepData[] {
   if (!order?.steps?.length) return [emptyStep() as JobOrderStepData];
   return order.steps.map((step) => ({
+    // Carried so the server can match the locked rows on save (§6.6). A route
+    // copied into a new order deliberately has none — see `toGridSteps`.
+    id: step.id,
     processId: step.processId,
     processorType: step.processorType,
     processorId: step.processorId,
@@ -161,6 +164,23 @@ export function JobOrderForm({ initialData, onSubmit, isPending, onCancel, field
     (initialData?.customFields as CustomFieldValues) ?? {},
   );
   const [localError, setLocalError] = useState<string | null>(null);
+
+  /**
+   * 🔴 HOW MUCH OF THE GRID IS FROZEN — everything up to and including the last
+   * step that has started (§6.6). Behind that line challans point at the rows by
+   * id and their `seq` is printed on paperwork; past it the grid is the plan and
+   * is edited freely.
+   *
+   * Read off `status`, which is `pending` until a step issues something. That is a
+   * close mirror of the server's rule and not the rule itself — the server counts
+   * live documents, and a step short-closed with nothing issued would read as
+   * locked here and be editable there. Erring toward MORE locked is the safe
+   * direction: the save is refused with a message, never silently misapplied.
+   */
+  const lockedCount = (initialData?.steps ?? []).reduce(
+    (count, step, index) => (step.status !== 'pending' ? index + 1 : count),
+    0,
+  );
 
   const { data: routesPage } = useQuery({
     queryKey: ['routes', orgId, 'job-order-form'],
@@ -462,7 +482,13 @@ export function JobOrderForm({ initialData, onSubmit, isPending, onCancel, field
       <section style={{ marginBottom: 32 }}>
         <h2 style={sectionHeading}>Steps</h2>
 
-        <StepsGrid steps={steps} onChange={setSteps} errors={fieldErrors} showPlannedQty />
+        <StepsGrid
+          steps={steps}
+          onChange={setSteps}
+          errors={fieldErrors}
+          showPlannedQty
+          lockedCount={lockedCount}
+        />
       </section>
 
       <section style={{ maxWidth: 640, marginBottom: 32 }}>

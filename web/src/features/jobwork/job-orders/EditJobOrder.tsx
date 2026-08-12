@@ -9,11 +9,20 @@ import type { UpdateJobOrderData } from './jobOrders.schemas';
 import { JobOrderForm } from './JobOrderForm';
 
 /**
- * Editing is only possible while the order is still `draft` — the server refuses
- * it otherwise, and this page says so rather than letting someone fill in a form
- * that cannot save. Once a step has issued anything, its rate and processor are
- * on a challan a processor is holding, and the issue documents reference the step
- * by id.
+ * 🔴 A RUNNING ORDER IS EDITABLE PAST ITS WORK FRONT (§6.6, 2026-08-11).
+ *
+ * This page used to refuse anything but a `draft`, because the whole grid was
+ * frozen by the first issue. It is now frozen only up to the last step carrying a
+ * live challan or receipt — the steps after it are still a plan, and correcting
+ * step 4's processor should never have meant short-closing the order.
+ *
+ * A CLOSED order is still refused, and that refusal stays: `short_closed` and
+ * `cancelled` are sticky, so the document would keep reading as finished while
+ * its plan moved underneath it.
+ *
+ * The lock itself is drawn by `JobOrderForm` → `StepsGrid`, which greys the
+ * frozen steps and says why. The server re-derives it from live documents and
+ * refuses a stale form, so this page never has to be the thing that is right.
  */
 export function EditJobOrder() {
   const navigate = useNavigate();
@@ -64,17 +73,16 @@ export function EditJobOrder() {
     return <div style={{ padding: 32, color: '#64748b', fontSize: 13 }}>Job order not found.</div>;
   }
 
-  if (jobOrder.status !== 'draft') {
+  if (jobOrder.status === 'short_closed' || jobOrder.status === 'cancelled') {
     return (
       <div style={{ padding: '32px 40px', maxWidth: 620 }}>
         <h1 style={{ fontSize: 18, fontWeight: 600, color: '#000', margin: '0 0 8px 0' }}>
-          {jobOrder.jobOrderNumber} has already started
+          {jobOrder.jobOrderNumber} is closed
         </h1>
         <p style={{ fontSize: 13, color: '#334155', lineHeight: 1.6, margin: '0 0 20px 0' }}>
-          Material has been issued against this order, so its steps can no longer be changed — the
-          rate and processor on each step are on paperwork somebody is holding, and the challans
-          already raised point at those steps. If the plan has changed, close this order short and
-          raise a new one.
+          This order has been closed, so its steps can no longer be changed — it would read as
+          finished while its plan moved underneath it. If there is more work to do, raise a new
+          order.
         </p>
         <button
           type="button"

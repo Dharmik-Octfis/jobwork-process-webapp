@@ -4,7 +4,7 @@ import { useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { Modal } from '../../../components/ui/Modal';
 import { StepsGrid } from '../StepsGrid';
-import { emptyStep, emptyStepItem } from '../jobwork.schemas';
+import { emptyStep, emptyStepItem, toNumber } from '../jobwork.schemas';
 import { appendJobOrderSteps } from './jobOrders.api';
 import type { JobOrderStepData, OverviewStep } from './jobOrders.schemas';
 
@@ -73,6 +73,33 @@ export function AddStepsDialog({
   const priorProducers = new Map<string, number>();
   for (const step of steps) {
     for (const output of step.itemTotals.outputs) priorProducers.set(output.itemId, step.seq);
+  }
+
+  /**
+   * …and how much of each is still SPARE — what those steps expect to produce,
+   * less what they already plan to consume of it. NET, or the over-plan note
+   * would offer an appended step panels that step 3 is already eating.
+   *
+   * Read off the plan (`inputs`/`outputs`), not off `itemTotals`, which carries
+   * what has MOVED. A step that has issued nothing yet still has an expectation,
+   * and that is the number the new step is being measured against.
+   */
+  const priorSpare = new Map<string, number>();
+  for (const step of steps) {
+    for (const output of step.outputs) {
+      if (output.expectedQty === null || output.expectedQty === undefined) continue;
+      priorSpare.set(
+        output.itemId,
+        (priorSpare.get(output.itemId) ?? 0) + toNumber(output.expectedQty),
+      );
+    }
+    for (const input of step.inputs) {
+      if (input.fromStock || input.plannedQty === null || input.plannedQty === undefined) continue;
+      priorSpare.set(
+        input.itemId,
+        (priorSpare.get(input.itemId) ?? 0) - toNumber(input.plannedQty),
+      );
+    }
   }
 
   const startSeq = (steps[steps.length - 1]?.seq ?? 0) + 1;
@@ -183,6 +210,7 @@ export function AddStepsDialog({
         showPlannedQty
         seqOffset={startSeq - 1}
         priorProducers={priorProducers}
+        priorSpare={priorSpare}
       />
 
       <div style={{ marginTop: 16 }}>

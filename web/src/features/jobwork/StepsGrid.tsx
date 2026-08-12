@@ -11,9 +11,12 @@ import { ProcessSelect } from './processes/ProcessSelect';
 import { RATE_BASIS_OPTIONS } from './processes/processes.schemas';
 import {
   PROCESSOR_TYPE_OPTIONS,
+  derivedExpectedQty,
   emptyStep,
   emptyStepItem,
   feedsSteps,
+  formatQty,
+  overPlanWarning,
   primaryOutputIndex,
   producedByStep,
   type StepGridRow,
@@ -72,6 +75,23 @@ interface Props<T extends StepGridRow> {
    * mistake the badge exists to catch.
    */
   priorProducers?: ReadonlyMap<string, number>;
+  /**
+   * How much of each item those earlier steps have LEFT — outputs they expect,
+   * less what they already plan to consume. Append dialog only, and only for the
+   * over-plan note: without it a step fed by an existing step has no ceiling to
+   * be measured against and simply says nothing.
+   */
+  priorSpare?: ReadonlyMap<string, number>;
+  /**
+   * 🔴 How many steps from the top are FROZEN — the work front (§6.6). Challans
+   * point at those rows by id and print their `seq`, so they cannot be edited,
+   * moved, or removed, and nothing below may be moved up into them.
+   *
+   * A count rather than a per-row flag because it is a PREFIX: an untouched step
+   * between two started ones is frozen too, since removing it would renumber the
+   * started steps after it.
+   */
+  lockedCount?: number;
 }
 
 const cellInput: React.CSSProperties = {
@@ -157,6 +177,23 @@ interface ItemListProps {
   /** The per-item over-issue box. Job orders only — separate from `showQty`
    * because a route carries a default quantity but no tolerance. */
   showTolerance?: boolean;
+  /**
+   * 🔴 The STEP's tolerance, shown greyed inside each blank row's box.
+   *
+   * Blank on a row does not mean "no tolerance" — it means "use the step's"
+   * (`jobIssues.service.ts` resolves `row.tolerancePct ?? step.tolerancePct`), and
+   * an empty box reads as exactly the opposite. A placeholder rather than a value
+   * written into the row: a copy freezes at the moment it is made, so changing the
+   * step afterwards would strand stale numbers that nothing could distinguish from
+   * ones somebody typed deliberately.
+   */
+  stepTolerancePct?: number | null;
+  /**
+   * …and the same trick on the quantity box: what the server will store if this
+   * row is left blank, or `null` when it will store nothing and the box is really
+   * asking. Only the PRODUCES side passes it today (`derivedExpectedQty`).
+   */
+  qtyPlaceholderFor?: (row: StepItemRow, rowIndex: number) => number | null;
   disabled?: boolean;
   /** Array position — error keys and control ids. */
   stepIndex: number;
@@ -167,6 +204,9 @@ interface ItemListProps {
     row: StepItemRow,
     rowIndex: number,
   ) => { text: string; tone: 'chain' | 'stock' } | null;
+  /** An advisory note under the row — today, only the over-plan one (§6.4.0).
+   * Returns null when there is nothing to say, which is the usual answer. */
+  warningFor?: (row: StepItemRow) => string | null;
   /** Shown when the list is empty. Says what an empty list MEANS, never what the
    * server might invent — it invents nothing now. */
   emptyHint: string;
@@ -208,11 +248,14 @@ function ItemList({
   uomOptions,
   showQty,
   showTolerance,
+  stepTolerancePct,
+  qtyPlaceholderFor,
   disabled,
   stepIndex,
   stepNumber,
   errors,
   badgeFor,
+  warningFor,
   emptyHint,
   mirrorSource,
 }: ItemListProps) {
@@ -312,6 +355,12 @@ function ItemList({
           const rowError = errors?.[`steps.${stepIndex}.${side}.${rowIndex}.itemId`];
           const unit = itemUnit(row.itemId);
           const badge = badgeFor(row, rowIndex);
+          // Advisory, so it never blocks the button and never colours the box the
+          // way `rowError` does — this is a remark, not a rejection (§6.4.0).
+          const warning = warningFor?.(row) ?? null;
+          // What the server stores if the box is left blank. `null` means it
+          // stores nothing either, and the box is genuinely asking.
+          const derivedQty = qtyPlaceholderFor?.(row, rowIndex) ?? null;
           const qtyId = `step-${stepIndex}-${side}-${rowIndex}-qty`;
           return (
             <div key={rowIndex} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -379,11 +428,20 @@ function ItemList({
                         update(rowIndex, isInput ? { plannedQty: value } : { expectedQty: value });
                       }}
                       disabled={disabled}
-                      placeholder={isInput ? 'qty' : 'expected'}
+                      /* 🔴 Grey, never written into the row. It says what the
+                         server will store if this is left blank, so an empty box
+                         stops reading as "expect nothing". No placeholder means
+                         the server stores nothing either and the box is genuinely
+                         asking — see `derivedExpectedQty`. */
+                      placeholder={
+                        derivedQty !== null ? formatQty(derivedQty) : isInput ? 'qty' : 'expected'
+                      }
                       title={
                         isInput
                           ? 'How much of this item the step consumes'
-                          : 'How much of this item is expected back'
+                          : derivedQty !== null
+                            ? `How much of this item is expected back. Left blank it plans ${formatQty(derivedQty)} — the quantity that goes in.`
+                            : 'How much of this item is expected back. It returns in a different unit from what goes in, so nothing can be assumed — state it, or the next step has no quantity to plan from.'
                       }
                       style={cellInput}
                     />
@@ -411,8 +469,15 @@ function ItemList({
                         })
                       }
                       disabled={disabled}
-                      placeholder="tol %"
-                      title="Over-issue allowance for this item. Blank uses the step’s."
+                      /* The step's own figure, greyed. Blank here means "use the
+                         step's", and an empty box reads as "no tolerance" — the
+                         opposite of what it does. */
+                      placeholder={stepTolerancePct != null ? String(stepTolerancePct) : 'tol %'}
+                      title={
+                        stepTolerancePct != null
+                          ? `Over-issue allowance for this item. Left blank it uses the step’s ${stepTolerancePct}%.`
+                          : 'Over-issue allowance for this item. Blank uses the step’s, and the step has none set.'
+                      }
                       style={cellInput}
                     />
                   </div>
@@ -451,6 +516,11 @@ function ItemList({
                   </span>
                 )}
                 {rowError && <span style={{ fontSize: 11, color: '#e54d4d' }}>{rowError}</span>}
+                {/* Amber, not red, and it sits beside the badge rather than
+                    replacing it: the row is saveable exactly as it stands. */}
+                {!rowError && warning && (
+                  <span style={{ fontSize: 11, color: '#b45309' }}>{warning}</span>
+                )}
               </div>
             </div>
           );
@@ -515,6 +585,8 @@ export function StepsGrid<T extends StepGridRow>({
   showInputQty,
   seqOffset = 0,
   priorProducers,
+  priorSpare,
+  lockedCount = 0,
 }: Props<T>) {
   const { orgId } = useParams<{ orgId: string }>();
   const { data: uoms = [] } = useUoms(orgId!);
@@ -591,8 +663,10 @@ export function StepsGrid<T extends StepGridRow>({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {steps.map((step, index) => {
           /**
-           * The server's ordering error (§6.4) is keyed to the row it landed on;
-           * anything on this step turns the block red.
+           * A server error on either list is keyed to the row it landed on —
+           * over-planned quantity (§6.4), a repeated item, two primary outputs.
+           * Anything on this step turns the whole block red, so the step is
+           * findable before the row is.
            */
           const chainError = Object.entries(errors ?? {}).find(
             ([key]) =>
@@ -601,6 +675,9 @@ export function StepsGrid<T extends StepGridRow>({
           const field = (id: string) => `step-${index}-${id}`;
           // Position in the order, not in this array — they differ when appending.
           const stepNo = index + 1 + seqOffset;
+          // Frozen: work has already gone out at or after this position (§6.6).
+          const locked = index < lockedCount;
+          const readOnly = disabled || locked;
 
           /**
            * A step that lists no inputs of its own takes what the step above
@@ -636,37 +713,55 @@ export function StepsGrid<T extends StepGridRow>({
                   borderTopRightRadius: 6,
                 }}
               >
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>
-                  Step {stepNo}
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                  <span style={{ fontWeight: 600, color: '#334155' }}>Step {stepNo}</span>
+                  {/* Says WHY it cannot be edited. A row that is simply inert,
+                      with no explanation, reads as a bug in the form. */}
+                  {locked && (
+                    <span style={{ ...chipStyle, background: '#f1f5f9', color: '#475569' }}>
+                      Already sent out — locked
+                    </span>
+                  )}
                 </span>
                 <div style={{ display: 'flex', gap: 4 }}>
+                  {/* `index <= lockedCount` covers the first unlocked step too:
+                      moving it up would swap it into the frozen region and
+                      renumber a step whose seq is printed on a challan. */}
                   <button
                     type="button"
                     onClick={() => move(index, -1)}
-                    disabled={disabled || index === 0}
-                    title="Move up"
+                    disabled={disabled || index === 0 || index <= lockedCount}
+                    title={
+                      index <= lockedCount && index > 0 ? 'Locked — already sent out' : 'Move up'
+                    }
                     aria-label={`Move step ${stepNo} up`}
-                    style={{ ...iconButton, opacity: index === 0 ? 0.4 : 1 }}
+                    style={{
+                      ...iconButton,
+                      opacity: index === 0 || index <= lockedCount ? 0.4 : 1,
+                    }}
                   >
                     <ArrowUp size={13} />
                   </button>
                   <button
                     type="button"
                     onClick={() => move(index, 1)}
-                    disabled={disabled || index === steps.length - 1}
-                    title="Move down"
+                    disabled={readOnly || index === steps.length - 1}
+                    title={locked ? 'Locked — already sent out' : 'Move down'}
                     aria-label={`Move step ${stepNo} down`}
-                    style={{ ...iconButton, opacity: index === steps.length - 1 ? 0.4 : 1 }}
+                    style={{
+                      ...iconButton,
+                      opacity: locked || index === steps.length - 1 ? 0.4 : 1,
+                    }}
                   >
                     <ArrowDown size={13} />
                   </button>
                   <button
                     type="button"
                     onClick={() => onChange(steps.filter((_, i) => i !== index))}
-                    disabled={disabled || steps.length === 1}
-                    title="Remove step"
+                    disabled={readOnly || steps.length === 1}
+                    title={locked ? 'Locked — already sent out' : 'Remove step'}
                     aria-label={`Remove step ${stepNo}`}
-                    style={{ ...iconButton, opacity: steps.length === 1 ? 0.4 : 1 }}
+                    style={{ ...iconButton, opacity: locked || steps.length === 1 ? 0.4 : 1 }}
                   >
                     <Trash2 size={13} />
                   </button>
@@ -726,7 +821,7 @@ export function StepsGrid<T extends StepGridRow>({
                         // answer for itself.
                       })
                     }
-                    disabled={disabled}
+                    disabled={readOnly}
                     ariaLabel={`Step ${stepNo} process`}
                     minWidth="100%"
                   />
@@ -749,7 +844,7 @@ export function StepsGrid<T extends StepGridRow>({
                       })
                     }
                     options={[...PROCESSOR_TYPE_OPTIONS]}
-                    disabled={disabled}
+                    disabled={readOnly}
                     ariaLabel={`Step ${stepNo} performed by`}
                     minWidth={0}
                   />
@@ -767,7 +862,7 @@ export function StepsGrid<T extends StepGridRow>({
                         { value: '', label: 'Pick a work centre…' },
                         ...workCentres.map((l) => ({ value: l.id, label: l.name })),
                       ]}
-                      disabled={disabled}
+                      disabled={readOnly}
                       ariaLabel={`Step ${stepNo} work centre`}
                       minWidth={0}
                     />
@@ -782,7 +877,7 @@ export function StepsGrid<T extends StepGridRow>({
                           label: v.companyName || v.contactName,
                         })),
                       ]}
-                      disabled={disabled}
+                      disabled={readOnly}
                       ariaLabel={`Step ${stepNo} processor`}
                       minWidth={0}
                     />
@@ -811,7 +906,7 @@ export function StepsGrid<T extends StepGridRow>({
                     onChange={(e) =>
                       update(index, { rate: e.target.value === '' ? null : Number(e.target.value) })
                     }
-                    disabled={disabled}
+                    disabled={readOnly}
                     style={cellInput}
                   />
                 </div>
@@ -822,7 +917,7 @@ export function StepsGrid<T extends StepGridRow>({
                     value={step.rateBasis ?? ''}
                     onChange={(value) => update(index, { rateBasis: value || null })}
                     options={[{ value: '', label: 'From the process' }, ...RATE_BASIS_OPTIONS]}
-                    disabled={disabled}
+                    disabled={readOnly}
                     ariaLabel={`Step ${stepNo} rate basis`}
                     minWidth={0}
                   />
@@ -845,7 +940,7 @@ export function StepsGrid<T extends StepGridRow>({
                         tolerancePct: e.target.value === '' ? null : Number(e.target.value),
                       })
                     }
-                    disabled={disabled}
+                    disabled={readOnly}
                     style={cellInput}
                     title="How much over the plan may be issued. Any item can override it on its own row."
                   />
@@ -878,7 +973,8 @@ export function StepsGrid<T extends StepGridRow>({
                   uomOptions={uomOptions}
                   showQty={showPlannedQty || showInputQty}
                   showTolerance={showPlannedQty}
-                  disabled={disabled}
+                  stepTolerancePct={step.tolerancePct ?? null}
+                  disabled={readOnly}
                   stepIndex={index}
                   stepNumber={stepNo}
                   errors={errors}
@@ -892,6 +988,14 @@ export function StepsGrid<T extends StepGridRow>({
                     previousPrimaryLabel
                       ? `Nothing listed — this step will consume nothing. Add ${previousPrimaryLabel} if it carries on from step ${stepNo - 1}.`
                       : 'Nothing listed — this step will consume nothing.'
+                  }
+                  /* Job orders only. A route holds quantities on the consumed
+                     side alone, so there is no expected output above to measure
+                     against and a note here could only be guesswork. */
+                  warningFor={
+                    showPlannedQty
+                      ? (row) => overPlanWarning(steps, index, row, priorSpare)
+                      : undefined
                   }
                   badgeFor={(row) => {
                     if (!row.itemId) return null;
@@ -916,7 +1020,15 @@ export function StepsGrid<T extends StepGridRow>({
                   uomOptions={uomOptions}
                   mirrorSource={step.inputs ?? []}
                   showQty={showPlannedQty}
-                  disabled={disabled}
+                  /* Job orders only. A route holds no output quantities at all,
+                     so there is nothing for it to preview. */
+                  qtyPlaceholderFor={
+                    showPlannedQty
+                      ? (_row, rowIndex) =>
+                          derivedExpectedQty(step, rowIndex, (id) => itemUnit(id)?.uomId ?? null)
+                      : undefined
+                  }
+                  disabled={readOnly}
                   stepIndex={index}
                   stepNumber={stepNo}
                   errors={errors}
@@ -973,6 +1085,8 @@ export function StepsGrid<T extends StepGridRow>({
               : next,
           ]);
         }}
+        // Never locked: adding work to the end is always safe, which is the whole
+        // basis of `appendJobOrderSteps` too.
         disabled={disabled}
         style={{
           display: 'flex',

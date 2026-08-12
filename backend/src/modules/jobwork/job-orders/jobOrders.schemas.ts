@@ -77,6 +77,20 @@ export type StepOutputRow = z.infer<typeof stepOutputRowSchema>;
  * the master it was supposed to be independent of.
  */
 export const jobOrderStepSchema = z.object({
+  /**
+   * 🔴 WHICH EXISTING STEP THIS ROW IS — update only, and the only thing that
+   * makes a partial edit safe (§6.6).
+   *
+   * A started order keeps the steps at and behind the work front exactly as they
+   * are, because challans point at them by id. The client sends those rows back
+   * with their ids so the server can prove the payload still begins with them; a
+   * row with no id is a new step. Position alone could not prove it — two steps
+   * can run the same process, so a reordered grid would look identical.
+   *
+   * Ignored on create, where there is nothing to identify.
+   */
+  id: z.string().uuid().optional(),
+
   /** Sent for ordering, renumbered 1..n by the service from array position. */
   seq: z.number().int().positive().optional(),
 

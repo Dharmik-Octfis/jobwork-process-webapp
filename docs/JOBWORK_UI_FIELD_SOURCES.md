@@ -229,20 +229,28 @@ and the user adds rows by hand — the parent doc's "fully flexible" requirement
 
 #### 4.2.1 The input and output rows
 
-| Column       | Tag       | Source                                                                                                                                                                                                                                                         |
-| ------------ | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Item         | `MASTER`  | `items` where `isActive AND NOT isDeleted`. Every row is freely chosen — there is no locked row any more, because the header no longer names an item (§4.1)                                                                                                    |
-| UoM          | `INHERIT` | 🔴 `Item.stockingUomId`, **forced, never chosen**. One item, one stocking unit (§5.1) — and the ledger records the LOT's unit whatever a document says, so a unit that disagrees with the item makes the challan and the ledger describe one movement two ways |
-| Planned qty  | `INPUT`   | Per input item, in that item's unit. **Pre-filled from the route step's own quantity when a route is picked** (§4.2.3), then blank is planned from the step above; an item drawn from stock with no route default stays blank                                  |
-| Tolerance %  | `INPUT`   | Inputs only. Blank falls through to the step's. Fabric at 3% beside thread at 25% — one percentage across three items is either too tight for one or meaningless for another                                                                                   |
-| Expected qty | `INPUT`   | Per output item. Blank is fine — the receipt is what says what actually came back                                                                                                                                                                              |
-| Primary      | `CALC`    | Outputs only. 🔴 **No longer asked** (2026-08-10) — the radio decided nothing in the common case, one item back. It is the FIRST output row, which is the server's own fallback (`flagPrimaryOutput`); a row already flagged in saved data keeps its flag      |
-| From stock   | `CALC+`   | Inputs only. `true` when no earlier step produces this item, so it is drawn from stock. Computed at save and stored, so the Overview can label it without re-walking the chain                                                                                 |
+| Column       | Tag       | Source                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Item         | `MASTER`  | `items` where `isActive AND NOT isDeleted`. Every row is freely chosen — there is no locked row any more, because the header no longer names an item (§4.1)                                                                                                                                                                                                                        |
+| UoM          | `INHERIT` | 🔴 `Item.stockingUomId`, **forced, never chosen**. One item, one stocking unit (§5.1) — and the ledger records the LOT's unit whatever a document says, so a unit that disagrees with the item makes the challan and the ledger describe one movement two ways                                                                                                                     |
+| Planned qty  | `INPUT`   | Per input item, in that item's unit. **Pre-filled from the route step's own quantity when a route is picked** (§4.2.3), then blank takes whatever the steps above have LEFT of that item — netted, so two steps drawing on one output do not each get all of it; an item drawn from stock with no route default stays blank. Exceeding that remainder warns, never blocks (§6.4.0) |
+| Tolerance %  | `INPUT`   | Inputs only. Blank falls through to the step's, **shown greyed in the box** so an empty field stops reading as "no tolerance". Fabric at 3% beside thread at 25% — one percentage across three items is either too tight for one or meaningless for another                                                                                                                        |
+| Expected qty | `INPUT`   | Per output item. Blank is fine — the receipt is what says what actually came back. The **primary** output shows what will be stored if left blank, greyed (§4.2.4); a blank placeholder means nothing will be stored and the box is genuinely asking                                                                                                                               |
+| Primary      | `CALC`    | Outputs only. 🔴 **No longer asked** (2026-08-10) — the radio decided nothing in the common case, one item back. It is the FIRST output row, which is the server's own fallback (`flagPrimaryOutput`); a row already flagged in saved data keeps its flag                                                                                                                          |
+| From stock   | `CALC+`   | Inputs only. `true` when no earlier step produces this item, so it is drawn from stock. Computed at save and stored, so the Overview can label it without re-walking the chain                                                                                                                                                                                                     |
 
-🔴 **Validation across rows is now a CLASSIFICATION, not a rejection** (domain §6.4). An input no
+🔴 **Validation across rows is a CLASSIFICATION, not a rejection** (domain §6.4). An input no
 earlier step produces is labelled _"from stock"_ and saved — thread and buttons legitimately come
-from the godown, not from the operation above. The only thing still refused is an input produced
-**only by a later step**, which is an ordering mistake with no valid reading.
+from the godown, not from the operation above. **Step order is not checked at all** (2026-08-11): an
+input produced only by a later step is labelled _"from stock"_ too, where it used to be refused with
+_"reorder the steps"_.
+
+🔴 **Nothing replaced it as a refusal** (domain §6.4.0). Planning **more of an item than the steps
+above expect to produce** raises an amber note under the row, live as it is typed, and the save goes
+through — the difference can legitimately come from stock, which is exactly the mixed supply a single
+`fromStock` flag cannot express. A from-stock row says nothing, and neither does one whose producer
+left its expected quantity blank. The note is `overPlanWarning`; the balance it reads is the same one
+the server walks to fill in the blank rows.
 
 What the old hard rule protected against — an empty lot picker days later — now surfaces at issue
 time, per item, on the screen where someone can act on it. There is one hard rule left at issue time
@@ -254,13 +262,40 @@ and it is new: **a step cannot issue until the step before it has returned somet
 `route_step_inputs.planned_qty` was in the data model from Sprint 2 (plan §4, row 2) and never built;
 it exists now, and it is the **consumed side only**.
 
-|                         |                                                                                                                                                                                                                                                         |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| What the number means   | The amount this org usually puts through the step — "5,000 M grey, 12 CONE thread". A **default**, nothing more                                                                                                                                         |
-| What it is **not**      | 🔴 Consumption per unit of output. Scaling it by an order quantity needs a ratio between 2,910 PCS and 80 KG, and no conversion exists anywhere in this system (§5.1). Nothing multiplies it, ever                                                      |
-| How it reaches an order | Copied once into `job_order_step_inputs.planned_qty` when the route is picked, then owned by the order (§2.4). Editing the route afterwards cannot reach an order already created — pinned by a test in `jobwork.flow.test.ts`                          |
-| Why PRODUCES has none   | What comes back is a per-run answer. A template that guessed it would put a number on the receipt screen nobody had reason to believe. The job order still derives the primary output's expected qty from the principal input × yield, as it always did |
-| Why no tolerance on it  | Same reason. How far over a step may run is a decision about a real run                                                                                                                                                                                 |
+|                         |                                                                                                                                                                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| What the number means   | The amount this org usually puts through the step — "5,000 M grey, 12 CONE thread". A **default**, nothing more                                                                                                                |
+| What it is **not**      | 🔴 Consumption per unit of output. Scaling it by an order quantity needs a ratio between 2,910 PCS and 80 KG, and no conversion exists anywhere in this system (§5.1). Nothing multiplies it, ever                             |
+| How it reaches an order | Copied once into `job_order_step_inputs.planned_qty` when the route is picked, then owned by the order (§2.4). Editing the route afterwards cannot reach an order already created — pinned by a test in `jobwork.flow.test.ts` |
+| Why PRODUCES has none   | What comes back is a per-run answer. A template that guessed it would put a number on the receipt screen nobody had reason to believe. The job order derives the primary output's expected qty where it can — see §4.2.4       |
+| Why no tolerance on it  | Same reason. How far over a step may run is a decision about a real run                                                                                                                                                        |
+
+#### 4.2.4 Greyed placeholders, not pre-filled values (2026-08-12)
+
+Two boxes on the steps grid mean something when left blank, and an empty box said the opposite of
+what it did. Both now show the value that will actually be stored, **greyed inside the box**:
+
+| Box                               | What blank means                                                   |
+| --------------------------------- | ------------------------------------------------------------------ |
+| **Tolerance %** (per input)       | Falls through to the step's — so the step's figure is shown greyed |
+| **Expected qty** (primary output) | The server derives it — so the derived figure is shown greyed      |
+
+🔴 **A placeholder, never a value written into the row.** A copied value freezes at the moment it is
+made: change the step tolerance afterwards and the rows would hold stale numbers that nothing could
+tell apart from ones somebody typed deliberately. The placeholder stays live and typing overrides it.
+
+🔴 **The expected quantity is derived only where there is a basis** (`derivedExpectedQty`, mirrored
+client and server). Two things count, and nothing else does:
+
+- **A stated `expectedYield`** — somebody typed the ratio, so it answers across units: 0.6 turns
+  4,800 M into 2,880 PCS.
+- **The same unit on both sides** — dyeing takes metres and returns metres. 1:1 is honest.
+
+Otherwise **no placeholder and nothing stored**, which is the cutting case: metres in, pieces out,
+no ratio anywhere in the system (§5.1). It used to store `plannedQty × 1` — 4,800 PCS of panels from
+4,800 M of fabric — and that invented figure became the next step's planned input, which is the base
+its **tolerance ceiling** is computed from. An empty box on exactly that row is the point: it is the
+one number the system genuinely cannot know.
 
 #### 4.2.2 🔴 What is typed is what is saved
 
