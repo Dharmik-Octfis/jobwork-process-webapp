@@ -154,8 +154,16 @@ model User {
   updatedCompositeComponents CompositeItemComponent[] @relation("CompositeComponentUpdatedBy")
   createdItemAssemblies      ItemAssembly[]           @relation("ItemAssemblyCreatedBy")
   updatedItemAssemblies      ItemAssembly[]           @relation("ItemAssemblyUpdatedBy")
-  createdItemAssemblyLines   ItemAssemblyLine[]       @relation("ItemAssemblyLineCreatedBy")
-  updatedItemAssemblyLines   ItemAssemblyLine[]       @relation("ItemAssemblyLineUpdatedBy")
+  createdItemAssemblyLines     ItemAssemblyLine[]       @relation("ItemAssemblyLineCreatedBy")
+  updatedItemAssemblyLines     ItemAssemblyLine[]       @relation("ItemAssemblyLineUpdatedBy")
+  createdItemAssemblyComments  ItemAssemblyComment[]    @relation("ItemAssemblyCommentCreatedBy")
+  updatedItemAssemblyComments  ItemAssemblyComment[]    @relation("ItemAssemblyCommentUpdatedBy")
+  createdItemAssemblyActivities ItemAssemblyActivity[] @relation("ItemAssemblyActivityCreatedBy")
+  updatedItemAssemblyActivities ItemAssemblyActivity[] @relation("ItemAssemblyActivityUpdatedBy")
+  createdItemOpeningStockRows   ItemOpeningStockRow[]    @relation("ItemOpeningStockRowCreatedBy")
+  updatedItemOpeningStockRows   ItemOpeningStockRow[]    @relation("ItemOpeningStockRowUpdatedBy")
+  createdItemLocationStocks     ItemLocationStock[]      @relation("ItemLocationStockCreatedBy")
+  updatedItemLocationStocks     ItemLocationStock[]      @relation("ItemLocationStockUpdatedBy")
 
   @@map("users")
 }
@@ -298,8 +306,12 @@ model Organization {
   jobOrderStepOutputs JobOrderStepOutput[]
   jobReceiptOutputs   JobReceiptOutput[]
   compositeItemComponents CompositeItemComponent[]
-  itemAssemblies          ItemAssembly[]
-  itemAssemblyLines       ItemAssemblyLine[]
+  itemAssemblies            ItemAssembly[]
+  itemAssemblyLines         ItemAssemblyLine[]
+  itemAssemblyComments      ItemAssemblyComment[]
+  itemAssemblyActivities    ItemAssemblyActivity[]
+  itemOpeningStockRows      ItemOpeningStockRow[]
+  itemLocationStocks        ItemLocationStock[]
 
   @@map("organizations")
 }
@@ -584,6 +596,7 @@ model Location {
   organizationId          String             @map("organization_id") @db.Uuid
   name                    String
   addressString           String?            @map("address_string")
+  isPrimary               Boolean            @default(false) @map("is_primary")
   isDeleted               Boolean            @default(false) @map("is_deleted")
   createdBy               String?            @map("created_by") @db.Uuid
   updatedBy               String?            @map("updated_by") @db.Uuid
@@ -627,6 +640,8 @@ model Location {
   jobIssuesTo             JobIssue[]         @relation("JobIssueDestination")
   jobReceipts             JobReceipt[]       @relation("JobReceiptLocation")
   itemAssemblies          ItemAssembly[]     @relation("ItemAssemblyLocation")
+  itemOpeningStockRows    ItemOpeningStockRow[]
+  itemLocationStocks      ItemLocationStock[]
 
   @@unique([organizationId, name])
   @@map("locations")

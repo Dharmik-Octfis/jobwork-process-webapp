@@ -1,5 +1,10 @@
 import { apiClient } from '../../api/client';
-import type { Item, ItemFormData } from './items.schemas';
+import type {
+  Item,
+  ItemFormData,
+  ItemOpeningStockDto,
+  ItemOpeningStockLocationRowDto,
+} from './items.schemas';
 import type { Paginated, PageParams } from '../../lib/pagination';
 
 import { endpoints } from '../../api/endpoints';
@@ -77,5 +82,22 @@ export const itemsApi = {
       },
     );
     return response.data.url;
+  },
+
+  getOpeningStock: async (orgId: string, id: string): Promise<ItemOpeningStockLocationRowDto[]> => {
+    const response = await apiClient.get(`${endpoints.seedData.items(orgId)}/${id}/opening-stock`);
+    return response.data;
+  },
+
+  saveOpeningStock: async (
+    orgId: string,
+    id: string,
+    data: ItemOpeningStockDto,
+  ): Promise<ItemOpeningStockLocationRowDto[]> => {
+    const response = await apiClient.post(
+      `${endpoints.seedData.items(orgId)}/${id}/opening-stock`,
+      data,
+    );
+    return response.data;
   },
 };

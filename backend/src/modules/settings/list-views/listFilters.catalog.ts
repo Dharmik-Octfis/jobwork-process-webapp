@@ -127,15 +127,13 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
     { key: 'own', label: 'Our Stock', where: { ownership: 'own' } },
     { key: 'customer', label: 'Customer Stock', where: { ownership: 'customer' } },
   ],
-  composite_item_component: [
-    { key: 'all', label: 'All', where: {} },
-  ],
+  composite_item_component: [{ key: 'all', label: 'All', where: {} }],
   item_assembly: [
-    { key: 'all', label: 'All', where: {} },
+    { key: 'all', label: 'All Assemblies', where: {} },
+    { key: 'draft', label: 'Draft', where: { status: 'draft' } },
+    { key: 'cancelled', label: 'Cancelled', where: { status: 'cancelled' } },
   ],
-  item_assembly_line: [
-    { key: 'all', label: 'All', where: {} },
-  ],
+  item_assembly_line: [{ key: 'all', label: 'All', where: {} }],
   purchase_order: [
     { key: 'all', label: 'All Purchase Orders', where: {} },
     { key: 'draft', label: 'Draft', where: { status: 'Draft' } },

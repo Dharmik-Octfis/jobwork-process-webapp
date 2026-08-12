@@ -2,7 +2,11 @@ import { prisma as db } from '../../../../db/prisma.ts';
 import type { CreateLocationPayload, UpdateLocationPayload } from './locations.schemas.js';
 
 export async function getLocations(orgId: string, search?: string) {
-  const where = { organizationId: orgId, isDeleted: false, ...(search ? { name: { contains: search, mode: 'insensitive' as const } } : {}) };
+  const where = {
+    organizationId: orgId,
+    isDeleted: false,
+    ...(search ? { name: { contains: search, mode: 'insensitive' as const } } : {}),
+  };
   return db.location.findMany({ where, orderBy: { name: 'asc' } });
 }
 
@@ -21,7 +25,12 @@ export async function createLocation(orgId: string, userId: string, data: Create
   });
 }
 
-export async function updateLocation(orgId: string, id: string, userId: string, data: UpdateLocationPayload) {
+export async function updateLocation(
+  orgId: string,
+  id: string,
+  userId: string,
+  data: UpdateLocationPayload,
+) {
   return db.location.updateMany({
     where: { id, organizationId: orgId, isDeleted: false },
     data: { ...data, updatedBy: userId },
@@ -33,4 +42,17 @@ export async function deleteLocation(orgId: string, id: string) {
     where: { id, organizationId: orgId, isDeleted: false },
     data: { isDeleted: true },
   });
+}
+
+export async function markLocationAsPrimary(orgId: string, id: string, userId: string) {
+  return db.$transaction([
+    db.location.updateMany({
+      where: { organizationId: orgId, isDeleted: false },
+      data: { isPrimary: false, updatedBy: userId },
+    }),
+    db.location.update({
+      where: { id },
+      data: { isPrimary: true, updatedBy: userId },
+    }),
+  ]);
 }

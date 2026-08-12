@@ -135,7 +135,7 @@ export function EditItemPage() {
         }
       }
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
-      queryClient.invalidateQueries({ queryKey: ['item', orgId, id] });
+      queryClient.removeQueries({ queryKey: ['item', orgId, id] });
       navigate(`/organizations/${orgId}/items`);
     },
     onError: (error) => {
@@ -396,7 +396,6 @@ export function EditItemPage() {
                   </label>
                 </div>
               </div>
-
 
               <div
                 style={{

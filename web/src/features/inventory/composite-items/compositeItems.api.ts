@@ -5,7 +5,10 @@ import { endpoints } from '../../../api/endpoints.ts';
 
 export type CompositeItemsPage = Paginated<Item>;
 
-export interface CreateCompositeItemDto extends Omit<Item, 'id' | 'createdAt' | 'updatedAt' | 'isDeleted' | 'organizationId' | 'itemType'> {
+export interface CreateCompositeItemDto extends Omit<
+  Item,
+  'id' | 'createdAt' | 'updatedAt' | 'isDeleted' | 'organizationId' | 'itemType'
+> {
   components?: CreateCompositeComponentDto[];
 }
 export type UpdateCompositeItemDto = Partial<CreateCompositeItemDto>;
@@ -24,10 +27,14 @@ export interface CompositeComponent {
   updated_at: string;
   is_deleted: boolean;
   component?: {
+    id: string;
     name: string;
     sku: string;
     unit: string;
     stockingUomId: string | null;
+    type: string;
+    sellingPrice?: number | null;
+    costPrice?: number | null;
   };
 }
 
@@ -50,7 +57,9 @@ export const compositeItemsApi = {
   },
 
   getItemCount: async (orgId: string, params: PageParams = {}): Promise<number> => {
-    const response = await apiClient.get(`${endpoints.seedData.compositeItems(orgId)}/count`, { params });
+    const response = await apiClient.get(`${endpoints.seedData.compositeItems(orgId)}/count`, {
+      params,
+    });
     return (response.data as { total: number }).total;
   },
 
@@ -64,7 +73,15 @@ export const compositeItemsApi = {
     return response.data;
   },
 
-  updateItem: async ({ orgId, id, data }: { orgId: string; id: string; data: UpdateCompositeItemDto }): Promise<Item> => {
+  updateItem: async ({
+    orgId,
+    id,
+    data,
+  }: {
+    orgId: string;
+    id: string;
+    data: UpdateCompositeItemDto;
+  }): Promise<Item> => {
     const response = await apiClient.put(`${endpoints.seedData.compositeItems(orgId)}/${id}`, data);
     return response.data;
   },
@@ -78,13 +95,25 @@ export const compositeItemsApi = {
     return res.data;
   },
 
-  createComponent: async (orgId: string, itemId: string, data: CreateCompositeComponentDto): Promise<CompositeComponent> => {
+  createComponent: async (
+    orgId: string,
+    itemId: string,
+    data: CreateCompositeComponentDto,
+  ): Promise<CompositeComponent> => {
     const res = await apiClient.post(`/organizations/${orgId}/items/${itemId}/components`, data);
     return res.data;
   },
 
-  updateComponent: async (orgId: string, itemId: string, componentId: string, data: UpdateCompositeComponentDto): Promise<CompositeComponent> => {
-    const res = await apiClient.put(`/organizations/${orgId}/items/${itemId}/components/${componentId}`, data);
+  updateComponent: async (
+    orgId: string,
+    itemId: string,
+    componentId: string,
+    data: UpdateCompositeComponentDto,
+  ): Promise<CompositeComponent> => {
+    const res = await apiClient.put(
+      `/organizations/${orgId}/items/${itemId}/components/${componentId}`,
+      data,
+    );
     return res.data;
   },
 

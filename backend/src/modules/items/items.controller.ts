@@ -3,7 +3,7 @@ import { itemsService } from './items.service.ts';
 import { ApiError } from '../../lib/apiError.ts';
 import { sendSuccess } from '../../lib/apiResponse.ts';
 import { listQuerySchema } from '../../lib/pagination.ts';
-import type { CreateItemDto, UpdateItemDto } from './items.schemas.ts';
+import type { CreateItemDto, UpdateItemDto, ItemOpeningStockDto } from './items.schemas.ts';
 
 /**
  * Happy path only — no try/catch. The route validates the body, the service
@@ -81,6 +81,23 @@ export class ItemsController {
 
     const url = `/api/storage/stream?key=${encodeURIComponent(key)}`;
     sendSuccess(res, { url });
+  }
+
+  async getOpeningStock(req: Request, res: Response) {
+    sendSuccess(res, await itemsService.getOpeningStock(req.params.id as string, req.tenantId!));
+  }
+
+  async saveOpeningStock(req: Request, res: Response) {
+    sendSuccess(
+      res,
+      await itemsService.saveOpeningStock(
+        req.params.id as string,
+        req.tenantId!,
+        req.body as ItemOpeningStockDto,
+        req.user?.id,
+      ),
+      'Opening stock saved.',
+    );
   }
 }
 

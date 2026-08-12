@@ -197,12 +197,14 @@ export function CreateCompositeItemPage({
     mutationFn: (data: ItemFormData) =>
       compositeItemsApi.createItem(orgId!, {
         ...data,
-        components: [...components, ...services].map((c) => ({
-          // eslint-disable-next-line @typescript-eslint/naming-convention
-          component_item_id: c.componentItemId,
-          // eslint-disable-next-line @typescript-eslint/naming-convention
-          qty_per_unit: c.qtyPerUnit,
-        })),
+        components: [...components, ...services]
+          .filter((c) => c.componentItemId && c.componentItemId.trim() !== '')
+          .map((c) => ({
+            // eslint-disable-next-line @typescript-eslint/naming-convention
+            component_item_id: c.componentItemId,
+            // eslint-disable-next-line @typescript-eslint/naming-convention
+            qty_per_unit: c.qtyPerUnit,
+          })),
       } as CreateCompositeItemDto),
     onSuccess: async (createdItem) => {
       queryClient.invalidateQueries({ queryKey: ['compositeItems', orgId] });
@@ -729,333 +731,93 @@ export function CreateCompositeItemPage({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             {/* Associate Items */}
             <div
-            style={{
-              background: '#f8fafc',
-              padding: '24px 48px 24px 24px',
-              borderRadius: services.length > 0 ? '8px 8px 0 0' : '8px',
-              border: '1px solid #e2e8f0',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '16px',
-              maxWidth: '850px',
-            }}
-          >
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#ef4444' }}>Associate Items*</div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #cbd5e1', marginTop: '8px' }}>
-              <thead style={{ background: '#f8fafc' }}>
-                <tr>
-                  <th
-                    style={{
-                      textAlign: 'left',
-                      padding: '12px',
-                      fontSize: 12,
-                      fontWeight: 500,
-                      color: '#64748b',
-                      border: '1px solid #cbd5e1',
-                    }}
-                  >
-                    Item Details
-                  </th>
-                  <th
-                    style={{
-                      textAlign: 'left',
-                      padding: '12px',
-                      fontSize: 12,
-                      fontWeight: 500,
-                      color: '#64748b',
-                      border: '1px solid #cbd5e1',
-                      width: '100px',
-                    }}
-                  >
-                    Quantity
-                  </th>
-                  <th
-                    style={{
-                      textAlign: 'right',
-                      padding: '12px',
-                      fontSize: 12,
-                      fontWeight: 500,
-                      color: '#64748b',
-                      border: '1px solid #cbd5e1',
-                      width: '120px',
-                    }}
-                  >
-                    Selling Price
-                  </th>
-                  <th
-                    style={{
-                      textAlign: 'right',
-                      padding: '12px',
-                      fontSize: 12,
-                      fontWeight: 500,
-                      color: '#64748b',
-                      border: '1px solid #cbd5e1',
-                      width: '120px',
-                    }}
-                  >
-                    Cost Price
-                  </th>
-
-                </tr>
-              </thead>
-              <tbody>
-                {components.map((comp, idx) => (
-                  <tr key={idx} className="composite-item-row">
-                    <td style={{ padding: '12px', border: '1px solid #cbd5e1' }}>
-                      <ItemComboBox
-                        orgId={orgId!}
-                        value={comp.componentItemId || ''}
-                        initialItem={comp.itemDetails}
-                        onChange={(item) =>
-                          handleComponentChange(
-                            idx,
-                            'componentItemId',
-                            item?.id || '',
-                            item ?? null,
-                          )
-                        }
-                        onOpenMultiSelect={() => {
-                          setMultiSelectTargetIndex(idx);
-                          setIsMultiSelectItemModalOpen(true);
-                        }}
-                        hasError={!comp.componentItemId && Object.keys(errors).length > 0}
-                      />
-                      {comp.itemDetails?.sku && (
-                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
-                          SKU: {comp.itemDetails.sku}
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: '12px', border: '1px solid #cbd5e1' }}>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.0001"
-                        value={comp.qtyPerUnit || ''}
-                        onChange={(e) =>
-                          handleComponentChange(idx, 'qtyPerUnit', parseFloat(e.target.value) || 0)
-                        }
-                        className="qty-input"
-                        style={{
-                          width: '100%',
-                          height: '34px',
-                          padding: '6px',
-                          textAlign: 'right',
-                          fontSize: 14,
-                          fontWeight: 500,
-                          color: '#1e293b',
-                          outline: 'none',
-                        }}
-                      />
-                      <div style={{ fontSize: 11, color: '#64748b', marginTop: 4, textAlign: 'right' }}>
-                        ₹{Number(comp.itemDetails?.sellingPrice ?? comp.itemDetails?.rate ?? 0).toFixed(2)} per unit
-                      </div>
-                    </td>
-                    <td
-                      style={{
-                        padding: '12px',
-                        border: '1px solid #cbd5e1',
-                        textAlign: 'right',
-                        fontSize: 12,
-                      }}
-                    >
-                      {(
-                        Number(comp.itemDetails?.sellingPrice ?? comp.itemDetails?.rate ?? 0) *
-                        (comp.qtyPerUnit || 0)
-                      ).toFixed(2)}
-                    </td>
-                    <td
-                      style={{
-                        position: 'relative',
-                        padding: '12px',
-                        border: '1px solid #cbd5e1',
-                        textAlign: 'right',
-                        fontSize: 12,
-                      }}
-                    >
-                      {(
-                        Number(comp.itemDetails?.costPrice ?? comp.itemDetails?.purchase_rate ?? 0) *
-                        (comp.qtyPerUnit || 0)
-                      ).toFixed(2)}
-                      <button
-                        type="button"
-                        className="delete-btn"
-                        onClick={() => handleRemoveComponent(idx)}
-                        style={{
-                          position: 'absolute',
-                          left: '100%',
-                          marginLeft: '12px',
-                          top: '50%',
-                          transform: 'translateY(-50%)',
-                          color: '#ef4444',
-                          background: 'transparent',
-                          border: 'none',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot style={{ background: '#f8fafc', borderTop: '1px solid #cbd5e1', border: '1px solid #cbd5e1' }}>
-                <tr>
-                  <td colSpan={2} style={{ padding: '12px', textAlign: 'right', fontSize: 13, color: '#64748b', fontWeight: 500 }}>
-                    Total (₹)
-                  </td>
-                  <td style={{ padding: '12px', textAlign: 'right', fontSize: 13, fontWeight: 600 }}>
-                    {components
-                      .reduce(
-                        (sum, c) =>
-                          sum +
-                          Number(c.itemDetails?.sellingPrice ?? c.itemDetails?.rate ?? 0) *
-                            (c.qtyPerUnit || 0),
-                        0,
-                      )
-                      .toFixed(2)}
-                  </td>
-                  <td style={{ padding: '12px', textAlign: 'right', fontSize: 13, fontWeight: 600 }}>
-                    {components
-                      .reduce(
-                        (sum, c) =>
-                          sum +
-                          Number(c.itemDetails?.costPrice ?? c.itemDetails?.purchase_rate ?? 0) *
-                            (c.qtyPerUnit || 0),
-                        0,
-                      )
-                      .toFixed(2)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-            <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
-              <button
-                type="button"
-                onClick={handleAddComponent}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  color: '#0062ff',
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 13,
-                  fontWeight: 500,
-                }}
-              >
-                <Plus size={14} /> Add New Row
-              </button>
-              <button
-                type="button"
-                onClick={handleAddService}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  color: '#0062ff',
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 13,
-                  fontWeight: 500,
-                }}
-              >
-                <Plus size={14} /> Add Services
-              </button>
-            </div>
-          </div>
-
-          {/* Associate Services */}
-          {services.length > 0 && (
-            <div
               style={{
                 background: '#f8fafc',
-                padding: '16px 48px 16px 16px',
-                borderRadius: '0 0 8px 8px',
+                padding: '24px 48px 24px 24px',
+                borderRadius: services.length > 0 ? '8px 8px 0 0' : '8px',
                 border: '1px solid #e2e8f0',
-                borderTop: 'none',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '12px',
+                gap: '16px',
                 maxWidth: '850px',
               }}
             >
               <div style={{ fontSize: 14, fontWeight: 600, color: '#ef4444' }}>
-                Associate Services*
+                Associate Items*
               </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #cbd5e1', marginTop: '8px' }}>
-              <thead style={{ background: '#f8fafc' }}>
-                <tr>
-                  <th
-                    style={{
-                      textAlign: 'left',
-                      padding: '12px',
-                      fontSize: 12,
-                      fontWeight: 500,
-                      color: '#64748b',
-                      border: '1px solid #cbd5e1',
-                    }}
-                  >
-                    Service Details
-                  </th>
-                  <th
-                    style={{
-                      textAlign: 'left',
-                      padding: '12px',
-                      fontSize: 12,
-                      fontWeight: 500,
-                      color: '#64748b',
-                      border: '1px solid #cbd5e1',
-                      width: '100px',
-                    }}
-                  >
-                    Quantity
-                  </th>
-                  <th
-                    style={{
-                      textAlign: 'right',
-                      padding: '12px',
-                      fontSize: 12,
-                      fontWeight: 500,
-                      color: '#64748b',
-                      border: '1px solid #cbd5e1',
-                      width: '120px',
-                    }}
-                  >
-                    Selling Price
-                  </th>
-                  <th
-                    style={{
-                      textAlign: 'right',
-                      padding: '12px',
-                      fontSize: 12,
-                      fontWeight: 500,
-                      color: '#64748b',
-                      border: '1px solid #cbd5e1',
-                      width: '120px',
-                    }}
-                  >
-                    Cost Price
-                  </th>
-
-                </tr>
-              </thead>
+              <table
+                style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  border: '1px solid #cbd5e1',
+                  marginTop: '8px',
+                }}
+              >
+                <thead style={{ background: '#f8fafc' }}>
+                  <tr>
+                    <th
+                      style={{
+                        textAlign: 'left',
+                        padding: '12px',
+                        fontSize: 12,
+                        fontWeight: 500,
+                        color: '#64748b',
+                        border: '1px solid #cbd5e1',
+                      }}
+                    >
+                      Item Details
+                    </th>
+                    <th
+                      style={{
+                        textAlign: 'left',
+                        padding: '12px',
+                        fontSize: 12,
+                        fontWeight: 500,
+                        color: '#64748b',
+                        border: '1px solid #cbd5e1',
+                        width: '100px',
+                      }}
+                    >
+                      Quantity
+                    </th>
+                    <th
+                      style={{
+                        textAlign: 'right',
+                        padding: '12px',
+                        fontSize: 12,
+                        fontWeight: 500,
+                        color: '#64748b',
+                        border: '1px solid #cbd5e1',
+                        width: '120px',
+                      }}
+                    >
+                      Selling Price
+                    </th>
+                    <th
+                      style={{
+                        textAlign: 'right',
+                        padding: '12px',
+                        fontSize: 12,
+                        fontWeight: 500,
+                        color: '#64748b',
+                        border: '1px solid #cbd5e1',
+                        width: '120px',
+                      }}
+                    >
+                      Cost Price
+                    </th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {services.map((svc, idx) => (
+                  {components.map((comp, idx) => (
                     <tr key={idx} className="composite-item-row">
                       <td style={{ padding: '12px', border: '1px solid #cbd5e1' }}>
                         <ItemComboBox
                           orgId={orgId!}
-                          filter="services"
-                          value={svc.componentItemId || ''}
-                          initialItem={svc.itemDetails}
+                          value={comp.componentItemId || ''}
+                          initialItem={comp.itemDetails}
                           onChange={(item) =>
-                            handleServiceChange(
+                            handleComponentChange(
                               idx,
                               'componentItemId',
                               item?.id || '',
@@ -1063,14 +825,14 @@ export function CreateCompositeItemPage({
                             )
                           }
                           onOpenMultiSelect={() => {
-                            setMultiSelectServiceTargetIndex(idx);
-                            setIsMultiSelectServiceModalOpen(true);
+                            setMultiSelectTargetIndex(idx);
+                            setIsMultiSelectItemModalOpen(true);
                           }}
-                          hasError={!svc.componentItemId && Object.keys(errors).length > 0}
+                          hasError={!comp.componentItemId && Object.keys(errors).length > 0}
                         />
-                        {svc.itemDetails?.sku && (
+                        {comp.itemDetails?.sku && (
                           <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
-                            SKU: {svc.itemDetails.sku}
+                            SKU: {comp.itemDetails.sku}
                           </div>
                         )}
                       </td>
@@ -1079,9 +841,13 @@ export function CreateCompositeItemPage({
                           type="number"
                           min="0"
                           step="0.0001"
-                          value={svc.qtyPerUnit || ''}
+                          value={comp.qtyPerUnit || ''}
                           onChange={(e) =>
-                            handleServiceChange(idx, 'qtyPerUnit', parseFloat(e.target.value) || 0)
+                            handleComponentChange(
+                              idx,
+                              'qtyPerUnit',
+                              parseFloat(e.target.value) || 0,
+                            )
                           }
                           className="qty-input"
                           style={{
@@ -1095,8 +861,19 @@ export function CreateCompositeItemPage({
                             outline: 'none',
                           }}
                         />
-                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 4, textAlign: 'right' }}>
-                          ₹{Number(svc.itemDetails?.sellingPrice ?? svc.itemDetails?.rate ?? 0).toFixed(2)} per unit
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: '#64748b',
+                            marginTop: 4,
+                            textAlign: 'right',
+                          }}
+                        >
+                          ₹
+                          {Number(
+                            comp.itemDetails?.sellingPrice ?? comp.itemDetails?.rate ?? 0,
+                          ).toFixed(2)}{' '}
+                          per unit
                         </div>
                       </td>
                       <td
@@ -1108,8 +885,8 @@ export function CreateCompositeItemPage({
                         }}
                       >
                         {(
-                          Number(svc.itemDetails?.sellingPrice ?? svc.itemDetails?.rate ?? 0) *
-                          (svc.qtyPerUnit || 0)
+                          Number(comp.itemDetails?.sellingPrice ?? comp.itemDetails?.rate ?? 0) *
+                          (comp.qtyPerUnit || 0)
                         ).toFixed(2)}
                       </td>
                       <td
@@ -1122,13 +899,14 @@ export function CreateCompositeItemPage({
                         }}
                       >
                         {(
-                          Number(svc.itemDetails?.costPrice ?? svc.itemDetails?.purchase_rate ?? 0) *
-                          (svc.qtyPerUnit || 0)
+                          Number(
+                            comp.itemDetails?.costPrice ?? comp.itemDetails?.purchase_rate ?? 0,
+                          ) * (comp.qtyPerUnit || 0)
                         ).toFixed(2)}
                         <button
                           type="button"
                           className="delete-btn"
-                          onClick={() => handleRemoveService(idx)}
+                          onClick={() => handleRemoveComponent(idx)}
                           style={{
                             position: 'absolute',
                             left: '100%',
@@ -1150,29 +928,48 @@ export function CreateCompositeItemPage({
                     </tr>
                   ))}
                 </tbody>
-                <tfoot style={{ background: '#f8fafc', borderTop: '1px solid #cbd5e1', border: '1px solid #cbd5e1' }}>
+                <tfoot
+                  style={{
+                    background: '#f8fafc',
+                    borderTop: '1px solid #cbd5e1',
+                    border: '1px solid #cbd5e1',
+                  }}
+                >
                   <tr>
-                    <td colSpan={2} style={{ padding: '12px', textAlign: 'right', fontSize: 13, color: '#64748b', fontWeight: 500 }}>
+                    <td
+                      colSpan={2}
+                      style={{
+                        padding: '12px',
+                        textAlign: 'right',
+                        fontSize: 13,
+                        color: '#64748b',
+                        fontWeight: 500,
+                      }}
+                    >
                       Total (₹)
                     </td>
-                    <td style={{ padding: '12px', textAlign: 'right', fontSize: 13, fontWeight: 600 }}>
-                      {services
+                    <td
+                      style={{ padding: '12px', textAlign: 'right', fontSize: 13, fontWeight: 600 }}
+                    >
+                      {components
                         .reduce(
-                          (sum, svc) =>
+                          (sum, c) =>
                             sum +
-                            Number(svc.itemDetails?.sellingPrice ?? svc.itemDetails?.rate ?? 0) *
-                              (svc.qtyPerUnit || 0),
+                            Number(c.itemDetails?.sellingPrice ?? c.itemDetails?.rate ?? 0) *
+                              (c.qtyPerUnit || 0),
                           0,
                         )
                         .toFixed(2)}
                     </td>
-                    <td style={{ padding: '12px', textAlign: 'right', fontSize: 13, fontWeight: 600 }}>
-                      {services
+                    <td
+                      style={{ padding: '12px', textAlign: 'right', fontSize: 13, fontWeight: 600 }}
+                    >
+                      {components
                         .reduce(
-                          (sum, svc) =>
+                          (sum, c) =>
                             sum +
-                            Number(svc.itemDetails?.costPrice ?? svc.itemDetails?.purchase_rate ?? 0) *
-                              (svc.qtyPerUnit || 0),
+                            Number(c.itemDetails?.costPrice ?? c.itemDetails?.purchase_rate ?? 0) *
+                              (c.qtyPerUnit || 0),
                           0,
                         )
                         .toFixed(2)}
@@ -1180,8 +977,309 @@ export function CreateCompositeItemPage({
                   </tr>
                 </tfoot>
               </table>
+              <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
+                <button
+                  type="button"
+                  onClick={handleAddComponent}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    color: '#0062ff',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    fontWeight: 500,
+                  }}
+                >
+                  <Plus size={14} /> Add New Row
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddService}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    color: '#0062ff',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    fontWeight: 500,
+                  }}
+                >
+                  <Plus size={14} /> Add Services
+                </button>
+              </div>
             </div>
-          )}
+
+            {/* Associate Services */}
+            {services.length > 0 && (
+              <div
+                style={{
+                  background: '#f8fafc',
+                  padding: '16px 48px 16px 16px',
+                  borderRadius: '0 0 8px 8px',
+                  border: '1px solid #e2e8f0',
+                  borderTop: 'none',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                  maxWidth: '850px',
+                }}
+              >
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#ef4444' }}>
+                  Associate Services*
+                </div>
+                <table
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    border: '1px solid #cbd5e1',
+                    marginTop: '8px',
+                  }}
+                >
+                  <thead style={{ background: '#f8fafc' }}>
+                    <tr>
+                      <th
+                        style={{
+                          textAlign: 'left',
+                          padding: '12px',
+                          fontSize: 12,
+                          fontWeight: 500,
+                          color: '#64748b',
+                          border: '1px solid #cbd5e1',
+                        }}
+                      >
+                        Service Details
+                      </th>
+                      <th
+                        style={{
+                          textAlign: 'left',
+                          padding: '12px',
+                          fontSize: 12,
+                          fontWeight: 500,
+                          color: '#64748b',
+                          border: '1px solid #cbd5e1',
+                          width: '100px',
+                        }}
+                      >
+                        Quantity
+                      </th>
+                      <th
+                        style={{
+                          textAlign: 'right',
+                          padding: '12px',
+                          fontSize: 12,
+                          fontWeight: 500,
+                          color: '#64748b',
+                          border: '1px solid #cbd5e1',
+                          width: '120px',
+                        }}
+                      >
+                        Selling Price
+                      </th>
+                      <th
+                        style={{
+                          textAlign: 'right',
+                          padding: '12px',
+                          fontSize: 12,
+                          fontWeight: 500,
+                          color: '#64748b',
+                          border: '1px solid #cbd5e1',
+                          width: '120px',
+                        }}
+                      >
+                        Cost Price
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {services.map((svc, idx) => (
+                      <tr key={idx} className="composite-item-row">
+                        <td style={{ padding: '12px', border: '1px solid #cbd5e1' }}>
+                          <ItemComboBox
+                            orgId={orgId!}
+                            filter="services"
+                            value={svc.componentItemId || ''}
+                            initialItem={svc.itemDetails}
+                            onChange={(item) =>
+                              handleServiceChange(
+                                idx,
+                                'componentItemId',
+                                item?.id || '',
+                                item ?? null,
+                              )
+                            }
+                            onOpenMultiSelect={() => {
+                              setMultiSelectServiceTargetIndex(idx);
+                              setIsMultiSelectServiceModalOpen(true);
+                            }}
+                            hasError={!svc.componentItemId && Object.keys(errors).length > 0}
+                          />
+                          {svc.itemDetails?.sku && (
+                            <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                              SKU: {svc.itemDetails.sku}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #cbd5e1' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.0001"
+                            value={svc.qtyPerUnit || ''}
+                            onChange={(e) =>
+                              handleServiceChange(
+                                idx,
+                                'qtyPerUnit',
+                                parseFloat(e.target.value) || 0,
+                              )
+                            }
+                            className="qty-input"
+                            style={{
+                              width: '100%',
+                              height: '34px',
+                              padding: '6px',
+                              textAlign: 'right',
+                              fontSize: 14,
+                              fontWeight: 500,
+                              color: '#1e293b',
+                              outline: 'none',
+                            }}
+                          />
+                          <div
+                            style={{
+                              fontSize: 11,
+                              color: '#64748b',
+                              marginTop: 4,
+                              textAlign: 'right',
+                            }}
+                          >
+                            ₹
+                            {Number(
+                              svc.itemDetails?.sellingPrice ?? svc.itemDetails?.rate ?? 0,
+                            ).toFixed(2)}{' '}
+                            per unit
+                          </div>
+                        </td>
+                        <td
+                          style={{
+                            padding: '12px',
+                            border: '1px solid #cbd5e1',
+                            textAlign: 'right',
+                            fontSize: 12,
+                          }}
+                        >
+                          {(
+                            Number(svc.itemDetails?.sellingPrice ?? svc.itemDetails?.rate ?? 0) *
+                            (svc.qtyPerUnit || 0)
+                          ).toFixed(2)}
+                        </td>
+                        <td
+                          style={{
+                            position: 'relative',
+                            padding: '12px',
+                            border: '1px solid #cbd5e1',
+                            textAlign: 'right',
+                            fontSize: 12,
+                          }}
+                        >
+                          {(
+                            Number(
+                              svc.itemDetails?.costPrice ?? svc.itemDetails?.purchase_rate ?? 0,
+                            ) * (svc.qtyPerUnit || 0)
+                          ).toFixed(2)}
+                          <button
+                            type="button"
+                            className="delete-btn"
+                            onClick={() => handleRemoveService(idx)}
+                            style={{
+                              position: 'absolute',
+                              left: '100%',
+                              marginLeft: '12px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              color: '#ef4444',
+                              background: 'transparent',
+                              border: 'none',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot
+                    style={{
+                      background: '#f8fafc',
+                      borderTop: '1px solid #cbd5e1',
+                      border: '1px solid #cbd5e1',
+                    }}
+                  >
+                    <tr>
+                      <td
+                        colSpan={2}
+                        style={{
+                          padding: '12px',
+                          textAlign: 'right',
+                          fontSize: 13,
+                          color: '#64748b',
+                          fontWeight: 500,
+                        }}
+                      >
+                        Total (₹)
+                      </td>
+                      <td
+                        style={{
+                          padding: '12px',
+                          textAlign: 'right',
+                          fontSize: 13,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {services
+                          .reduce(
+                            (sum, svc) =>
+                              sum +
+                              Number(svc.itemDetails?.sellingPrice ?? svc.itemDetails?.rate ?? 0) *
+                                (svc.qtyPerUnit || 0),
+                            0,
+                          )
+                          .toFixed(2)}
+                      </td>
+                      <td
+                        style={{
+                          padding: '12px',
+                          textAlign: 'right',
+                          fontSize: 13,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {services
+                          .reduce(
+                            (sum, svc) =>
+                              sum +
+                              Number(
+                                svc.itemDetails?.costPrice ?? svc.itemDetails?.purchase_rate ?? 0,
+                              ) *
+                                (svc.qtyPerUnit || 0),
+                            0,
+                          )
+                          .toFixed(2)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
           </div>
           {/* Sales and Purchase Information */}
           <div
@@ -1198,7 +1296,9 @@ export function CreateCompositeItemPage({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
               {/* Sales Information */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
                   <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
                     Sales Information
                   </div>
@@ -1221,10 +1321,23 @@ export function CreateCompositeItemPage({
                     Sellable
                   </label>
                 </div>
-                
+
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', alignItems: 'center', gap: 12 }}>
-                    <label style={{ fontSize: 12, color: formData.isSalesInfo ? '#ef4444' : '#000', fontWeight: 500 }}>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '130px 1fr',
+                      alignItems: 'center',
+                      gap: 12,
+                    }}
+                  >
+                    <label
+                      style={{
+                        fontSize: 12,
+                        color: formData.isSalesInfo ? '#ef4444' : '#000',
+                        fontWeight: 500,
+                      }}
+                    >
                       Selling Price<span style={{ color: '#ef4444', marginLeft: '4px' }}>*</span>
                     </label>
                     <div style={{ position: 'relative', width: '100%' }}>
@@ -1275,7 +1388,14 @@ export function CreateCompositeItemPage({
                       </span>
                     )}
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', alignItems: 'center', gap: 12 }}>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '130px 1fr',
+                      alignItems: 'center',
+                      gap: 12,
+                    }}
+                  >
                     <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>MRP</label>
                     <input
                       type="number"
@@ -1305,8 +1425,17 @@ export function CreateCompositeItemPage({
                     />
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', alignItems: 'flex-start', gap: 12 }}>
-                    <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500, paddingTop: '8px' }}>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '130px 1fr',
+                      alignItems: 'flex-start',
+                      gap: 12,
+                    }}
+                  >
+                    <label
+                      style={{ fontSize: 12, color: '#4b5563', fontWeight: 500, paddingTop: '8px' }}
+                    >
                       Sales Description
                     </label>
                     <textarea
@@ -1336,7 +1465,9 @@ export function CreateCompositeItemPage({
 
               {/* Purchase Information */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
                   <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
                     Purchase Information
                   </div>
@@ -1359,10 +1490,23 @@ export function CreateCompositeItemPage({
                     Purchasable
                   </label>
                 </div>
-                
+
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', alignItems: 'center', gap: 12 }}>
-                    <label style={{ fontSize: 12, color: formData.isPurchaseInfo ? '#ef4444' : '#000', fontWeight: 500 }}>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '130px 1fr',
+                      alignItems: 'center',
+                      gap: 12,
+                    }}
+                  >
+                    <label
+                      style={{
+                        fontSize: 12,
+                        color: formData.isPurchaseInfo ? '#ef4444' : '#000',
+                        fontWeight: 500,
+                      }}
+                    >
                       Cost Price<span style={{ color: '#ef4444', marginLeft: '4px' }}>*</span>
                     </label>
                     <div style={{ position: 'relative', width: '100%' }}>
@@ -1414,8 +1558,17 @@ export function CreateCompositeItemPage({
                     )}
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', alignItems: 'flex-start', gap: 12 }}>
-                    <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500, paddingTop: '8px' }}>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '130px 1fr',
+                      alignItems: 'flex-start',
+                      gap: 12,
+                    }}
+                  >
+                    <label
+                      style={{ fontSize: 12, color: '#4b5563', fontWeight: 500, paddingTop: '8px' }}
+                    >
                       Purchase Description
                     </label>
                     <textarea

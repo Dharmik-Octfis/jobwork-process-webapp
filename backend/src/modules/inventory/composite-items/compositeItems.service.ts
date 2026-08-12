@@ -1,19 +1,28 @@
 import { runAsTenant } from '../../../db/prisma.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
-import type { CreateCompositeComponentDto, UpdateCompositeComponentDto, CreateCompositeItemDto, UpdateCompositeItemDto } from './compositeItems.schemas.ts';
+import type {
+  CreateCompositeComponentDto,
+  UpdateCompositeComponentDto,
+  CreateCompositeItemDto,
+  UpdateCompositeItemDto,
+} from './compositeItems.schemas.ts';
 import { normalizeItemDto } from '../../items/items.service.ts';
 import { toItemResponse } from '../../items/items.service.ts';
 import type { ListQuery } from '../../../lib/pagination.ts';
 import { takeForPage, pageSlice, searchWhere } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import { Prisma } from '../../../../generated/prisma/client.ts';
-import { loadActiveDefinitions, validateCustomFields } from '../../settings/customization/custom-fields/customFields.engine.ts';
+import {
+  loadActiveDefinitions,
+  validateCustomFields,
+} from '../../settings/customization/custom-fields/customFields.engine.ts';
 
 export function toComponentResponse(row: Record<string, unknown> | null | undefined) {
   if (!row) return row;
   return {
     ...row,
-    qty_per_unit: row.qtyPerUnit !== null && row.qtyPerUnit !== undefined ? Number(row.qtyPerUnit) : null,
+    qty_per_unit:
+      row.qtyPerUnit !== null && row.qtyPerUnit !== undefined ? Number(row.qtyPerUnit) : null,
     composite_item_id: row.compositeItemId,
     component_item_id: row.componentItemId,
     uom_id: row.uomId,
@@ -76,7 +85,14 @@ export class CompositeItemsService {
   async createItem(organizationId: string, rawData: CreateCompositeItemDto, userId?: string) {
     const data = normalizeItemDto(rawData);
     return runAsTenant(organizationId, async (tx) => {
-      const { customFields: rawCustomFields, frontImage, rearImage, images, components, ...rest } = data;
+      const {
+        customFields: rawCustomFields,
+        frontImage,
+        rearImage,
+        images,
+        components,
+        ...rest
+      } = data;
 
       if (rest.stockingUomId) {
         const uom = await tx.unitOfMeasurement.findFirst({
@@ -108,8 +124,18 @@ export class CompositeItemsService {
           ...rest,
           itemType: 'Composite Item',
           customFields,
-          frontImage: frontImage === null ? Prisma.DbNull : frontImage !== undefined ? (frontImage as Prisma.InputJsonValue) : undefined,
-          rearImage: rearImage === null ? Prisma.DbNull : rearImage !== undefined ? (rearImage as Prisma.InputJsonValue) : undefined,
+          frontImage:
+            frontImage === null
+              ? Prisma.DbNull
+              : frontImage !== undefined
+                ? (frontImage as Prisma.InputJsonValue)
+                : undefined,
+          rearImage:
+            rearImage === null
+              ? Prisma.DbNull
+              : rearImage !== undefined
+                ? (rearImage as Prisma.InputJsonValue)
+                : undefined,
           images: images ? (images as unknown as Prisma.InputJsonValue) : undefined,
           organizationId,
           createdBy: userId ?? null,
@@ -118,21 +144,28 @@ export class CompositeItemsService {
       });
 
       if (components && Array.isArray(components) && components.length > 0) {
+        const seenComponents = new Set<string>();
         // Create components
         for (const comp of components) {
+          if (seenComponents.has(comp.component_item_id)) {
+            throw ApiError.badRequest(
+              'Duplicate component selected. A composite item cannot contain the same component multiple times.',
+            );
+          }
+          seenComponents.add(comp.component_item_id);
+
           // Spec V3
           if (comp.component_item_id === item.id) {
             throw ApiError.badRequest('Composite item cannot contain itself as a component.');
           }
-          
+
           // Spec V4, V5, V6, V7
           const cItem = await tx.item.findFirst({
-            where: { id: comp.component_item_id, organizationId, isDeleted: false }
+            where: { id: comp.component_item_id, organizationId, isDeleted: false },
           });
           if (!cItem) throw ApiError.badRequest(`Component ${comp.component_item_id} not found.`);
-          if (cItem.type !== 'Goods') throw ApiError.badRequest(`Component ${cItem.name} must be Goods.`);
-          if (!cItem.stockingUomId) throw ApiError.badRequest(`Component ${cItem.name} must have a stocking unit.`);
-          if (cItem.itemType === 'Composite Item') throw ApiError.badRequest(`Component ${cItem.name} cannot be a Composite Item.`);
+          if (cItem.itemType === 'Composite Item')
+            throw ApiError.badRequest(`Component ${cItem.name} cannot be a Composite Item.`);
 
           await tx.compositeItemComponent.create({
             data: {
@@ -143,7 +176,9 @@ export class CompositeItemsService {
               uomId: comp.uom_id ?? cItem.stockingUomId,
               seq: comp.seq ?? 0,
               notes: comp.notes,
-              customFields: comp.custom_fields ? (comp.custom_fields as Prisma.InputJsonValue) : undefined,
+              customFields: comp.custom_fields
+                ? (comp.custom_fields as Prisma.InputJsonValue)
+                : undefined,
               createdBy: userId ?? null,
               updatedBy: userId ?? null,
             },
@@ -166,7 +201,12 @@ export class CompositeItemsService {
     });
   }
 
-  async updateItem(id: string, organizationId: string, rawData: UpdateCompositeItemDto, userId?: string) {
+  async updateItem(
+    id: string,
+    organizationId: string,
+    rawData: UpdateCompositeItemDto,
+    userId?: string,
+  ) {
     const data = normalizeItemDto(rawData);
     return runAsTenant(organizationId, async (tx) => {
       const existing = await tx.item.findFirst({
@@ -174,7 +214,14 @@ export class CompositeItemsService {
       });
       if (!existing) throw ApiError.notFound('Composite Item not found');
 
-      const { customFields: rawCustomFields, frontImage, rearImage, images, components: _components, ...rest } = data;
+      const {
+        customFields: rawCustomFields,
+        frontImage,
+        rearImage,
+        images,
+        components: _components,
+        ...rest
+      } = data;
 
       if (rest.stockingUomId && rest.stockingUomId !== existing.stockingUomId) {
         const uom = await tx.unitOfMeasurement.findFirst({
@@ -206,8 +253,18 @@ export class CompositeItemsService {
         data: {
           ...rest,
           customFields,
-          frontImage: frontImage === null ? Prisma.DbNull : frontImage !== undefined ? (frontImage as Prisma.InputJsonValue) : undefined,
-          rearImage: rearImage === null ? Prisma.DbNull : rearImage !== undefined ? (rearImage as Prisma.InputJsonValue) : undefined,
+          frontImage:
+            frontImage === null
+              ? Prisma.DbNull
+              : frontImage !== undefined
+                ? (frontImage as Prisma.InputJsonValue)
+                : undefined,
+          rearImage:
+            rearImage === null
+              ? Prisma.DbNull
+              : rearImage !== undefined
+                ? (rearImage as Prisma.InputJsonValue)
+                : undefined,
           images: images ? (images as unknown as Prisma.InputJsonValue) : undefined,
           updatedBy: userId ?? null,
         },
@@ -232,7 +289,7 @@ export class CompositeItemsService {
       const parent = await tx.item.findFirst({
         where: { id: compositeItemId, organizationId, isDeleted: false },
       });
-      if (!parent || parent.type !== 'Composite Item') {
+      if (!parent || parent.itemType !== 'Composite Item') {
         throw ApiError.notFound('Composite Item not found');
       }
 
@@ -240,8 +297,19 @@ export class CompositeItemsService {
         where: { compositeItemId, organizationId, isDeleted: false },
         orderBy: [{ seq: 'asc' }, { createdAt: 'asc' }],
         include: {
-          component: { select: { name: true, sku: true, unit: true, stockingUomId: true } },
-        }
+          component: {
+            select: {
+              id: true,
+              name: true,
+              sku: true,
+              unit: true,
+              stockingUomId: true,
+              type: true,
+              sellingPrice: true,
+              costPrice: true,
+            },
+          },
+        },
       });
       return rows.map(toComponentResponse);
     });
@@ -257,12 +325,17 @@ export class CompositeItemsService {
     });
   }
 
-  async create(compositeItemId: string, organizationId: string, rawData: CreateCompositeComponentDto, userId?: string) {
+  async create(
+    compositeItemId: string,
+    organizationId: string,
+    rawData: CreateCompositeComponentDto,
+    userId?: string,
+  ) {
     return runAsTenant(organizationId, async (tx) => {
       const parent = await tx.item.findFirst({
         where: { id: compositeItemId, organizationId, isDeleted: false },
       });
-      if (!parent || parent.type !== 'Composite Item') {
+      if (!parent || parent.itemType !== 'Composite Item') {
         throw ApiError.notFound('Composite Item not found');
       }
 
@@ -270,9 +343,21 @@ export class CompositeItemsService {
         where: { id: rawData.component_item_id, organizationId, isDeleted: false },
       });
       if (!component) throw ApiError.notFound('Component item not found');
-      
+
       if (compositeItemId === rawData.component_item_id) {
         throw ApiError.badRequest('An item cannot be a component of itself.');
+      }
+
+      const existingComponent = await tx.compositeItemComponent.findFirst({
+        where: {
+          compositeItemId,
+          componentItemId: rawData.component_item_id,
+          organizationId,
+          isDeleted: false,
+        },
+      });
+      if (existingComponent) {
+        throw ApiError.badRequest('This component is already part of the composite item.');
       }
 
       const defs = await loadActiveDefinitions(tx, organizationId, 'composite_item_component');
@@ -282,27 +367,41 @@ export class CompositeItemsService {
         mode: 'create',
       }) as Prisma.InputJsonValue;
 
-      const { custom_fields: _customFields, qty_per_unit: qtyPerUnit, component_item_id: componentItemId, uom_id: uomId, ...rest } = rawData;
+      const {
+        custom_fields: _customFields,
+        qty_per_unit: qtyPerUnit,
+        component_item_id: componentItemId,
+        uom_id: uomId,
+        ...rest
+      } = rawData;
 
       return withUniqueViolation('This item is already a component of this composite item.', () =>
-        tx.compositeItemComponent.create({
-          data: {
-            ...rest,
-            qtyPerUnit: new Prisma.Decimal(qtyPerUnit),
-            organizationId,
-            compositeItemId,
-            componentItemId,
-            uomId: uomId ?? component.stockingUomId,
-            customFields,
-            createdBy: userId ?? null,
-            updatedBy: userId ?? null,
-          }
-        }).then(toComponentResponse)
+        tx.compositeItemComponent
+          .create({
+            data: {
+              ...rest,
+              qtyPerUnit: new Prisma.Decimal(qtyPerUnit),
+              organizationId,
+              compositeItemId,
+              componentItemId,
+              uomId: uomId ?? component.stockingUomId,
+              customFields,
+              createdBy: userId ?? null,
+              updatedBy: userId ?? null,
+            },
+          })
+          .then(toComponentResponse),
       );
     });
   }
 
-  async update(id: string, compositeItemId: string, organizationId: string, rawData: UpdateCompositeComponentDto, userId?: string) {
+  async update(
+    id: string,
+    compositeItemId: string,
+    organizationId: string,
+    rawData: UpdateCompositeComponentDto,
+    userId?: string,
+  ) {
     return runAsTenant(organizationId, async (tx) => {
       const row = await tx.compositeItemComponent.findFirst({
         where: { id, compositeItemId, organizationId, isDeleted: false },
@@ -320,7 +419,13 @@ export class CompositeItemsService {
         }) as Prisma.InputJsonValue;
       }
 
-      const { custom_fields: _customFields, qty_per_unit: qtyPerUnit, component_item_id: componentItemId, uom_id: uomId, ...rest } = rawData;
+      const {
+        custom_fields: _customFields,
+        qty_per_unit: qtyPerUnit,
+        component_item_id: componentItemId,
+        uom_id: uomId,
+        ...rest
+      } = rawData;
 
       if (componentItemId) {
         if (componentItemId === compositeItemId) {
@@ -333,17 +438,19 @@ export class CompositeItemsService {
       }
 
       return withUniqueViolation('This item is already a component of this composite item.', () =>
-        tx.compositeItemComponent.update({
-          where: { id },
-          data: {
-            ...rest,
-            ...(qtyPerUnit !== undefined ? { qtyPerUnit: new Prisma.Decimal(qtyPerUnit) } : {}),
-            ...(componentItemId !== undefined ? { componentItemId } : {}),
-            ...(uomId !== undefined ? { uomId } : {}),
-            ...(customFields !== undefined ? { customFields } : {}),
-            updatedBy: userId ?? null,
-          }
-        }).then(toComponentResponse)
+        tx.compositeItemComponent
+          .update({
+            where: { id },
+            data: {
+              ...rest,
+              ...(qtyPerUnit !== undefined ? { qtyPerUnit: new Prisma.Decimal(qtyPerUnit) } : {}),
+              ...(componentItemId !== undefined ? { componentItemId } : {}),
+              ...(uomId !== undefined ? { uomId } : {}),
+              ...(customFields !== undefined ? { customFields } : {}),
+              updatedBy: userId ?? null,
+            },
+          })
+          .then(toComponentResponse),
       );
     });
   }

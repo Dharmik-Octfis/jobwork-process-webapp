@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { compositeItemsApi } from './compositeItems.api.ts';
-import { Plus, Package, SlidersHorizontal } from 'lucide-react';
+import { Plus, Package, SlidersHorizontal, Folder, FolderOpen } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
 import { ItemDetail } from '../../items/ItemDetail';
@@ -47,6 +47,141 @@ function renderItemCell(item: Item, key: string): React.ReactNode {
   if (key === 'createdAt' || key === 'updatedAt')
     return new Date(String(value)).toLocaleDateString();
   return String(value);
+}
+
+function ExpandableCompositeItemRow({
+  item,
+  columns,
+  setSearchParams,
+  orgId,
+}: {
+  item: Item;
+  columns: { key: string; label: string; locked?: boolean }[];
+  setSearchParams: (params: Record<string, string>) => void;
+  orgId: string;
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const { data: components, isLoading } = useQuery({
+    queryKey: ['compositeComponents', orgId, item.id],
+    queryFn: () => compositeItemsApi.getComponents(orgId, item.id),
+    enabled: isExpanded,
+  });
+
+  return (
+    <>
+      <tr
+        onClick={() => setSearchParams({ id: item.id })}
+        style={{
+          borderBottom: '1px solid #eef0f3',
+          transition: 'background 0.1s',
+          cursor: 'pointer',
+          background: isExpanded ? '#fafafa' : 'transparent',
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+        onMouseLeave={(e) =>
+          (e.currentTarget.style.background = isExpanded ? '#fafafa' : 'transparent')
+        }
+      >
+        {columns.map((col, idx) => (
+          <td
+            key={col.key}
+            style={{
+              padding: '12px 16px',
+              fontSize: 13,
+              color: col.locked ? '#0062ff' : '#333',
+              fontWeight: col.locked ? 500 : 400,
+            }}
+          >
+            {idx === 0 ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsExpanded(!isExpanded);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: 0,
+                    color: '#0062ff',
+                  }}
+                >
+                  {isExpanded ? <FolderOpen size={16} /> : <Folder size={16} />}
+                </button>
+                {renderItemCell(item, col.key)}
+              </div>
+            ) : (
+              renderItemCell(item, col.key)
+            )}
+          </td>
+        ))}
+      </tr>
+      {isExpanded && (
+        <tr style={{ background: '#fafafa', borderBottom: '1px solid #eef0f3' }}>
+          <td colSpan={columns.length} style={{ padding: 0 }}>
+            {isLoading ? (
+              <div style={{ padding: '16px', color: '#64748b', fontSize: 13, paddingLeft: 48 }}>
+                Loading components...
+              </div>
+            ) : components && components.length > 0 ? (
+              <div style={{ padding: '8px 0' }}>
+                {components.map((comp, compIdx) => {
+                  const isLast = compIdx === components.length - 1;
+                  return (
+                    <div
+                      key={comp.id}
+                      style={{
+                        position: 'relative',
+                        padding: '8px 16px 8px 48px',
+                        fontSize: 13,
+                        color: '#475569',
+                        display: 'flex',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: 23,
+                          top: 0,
+                          bottom: isLast ? '50%' : 0,
+                          borderLeft: '1px solid #cbd5e1',
+                        }}
+                      />
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: 23,
+                          top: '50%',
+                          width: 16,
+                          borderTop: '1px solid #cbd5e1',
+                        }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        {comp.component?.name || 'Unknown Item'} ( {comp.qty_per_unit}{' '}
+                        {comp.component?.unit || ''} ){' '}
+                        {comp.component?.sku ? `| SKU : ${comp.component.sku}` : ''}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ padding: '16px', color: '#64748b', fontSize: 13, paddingLeft: 48 }}>
+                No components found.
+              </div>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
+  );
 }
 
 export function CompositeItemsPage() {
@@ -313,32 +448,13 @@ export function CompositeItemsPage() {
                     </thead>
                     <tbody>
                       {items.map((item) => (
-                        <tr
+                        <ExpandableCompositeItemRow
                           key={item.id}
-                          onClick={() => setSearchParams({ id: item.id })}
-                          style={{
-                            borderBottom: '1px solid #eef0f3',
-                            transition: 'background 0.1s',
-                            cursor: 'pointer',
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                        >
-                          {columns.map((col) => (
-                            <td
-                              key={col.key}
-                              style={{
-                                padding: '12px 16px',
-                                fontSize: 13,
-                                // The locked column is the identity you click through on.
-                                color: col.locked ? '#0062ff' : '#333',
-                                fontWeight: col.locked ? 500 : 400,
-                              }}
-                            >
-                              {renderItemCell(item, col.key)}
-                            </td>
-                          ))}
-                        </tr>
+                          item={item}
+                          columns={columns}
+                          setSearchParams={setSearchParams}
+                          orgId={orgId!}
+                        />
                       ))}
                     </tbody>
                   </table>

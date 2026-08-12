@@ -68,6 +68,8 @@ model Item {
   assemblyLines         ItemAssemblyLine[]  @relation("ItemAssemblyLineItem")
 
   activities         ItemActivity[]
+  openingStockRows   ItemOpeningStockRow[]
+  locationStocks     ItemLocationStock[]
   createdByUser      User?               @relation("ItemCreatedBy", fields: [createdBy], references: [id])
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   updatedByUser      User?               @relation("ItemUpdatedBy", fields: [updatedBy], references: [id])
@@ -170,4 +172,58 @@ model ItemActivity {
   updatedByUser User?    @relation("ItemActivityUpdatedBy", fields: [updatedBy], references: [id])
 
   @@map("item_activities")
+}
+
+model ItemOpeningStockRow {
+  id                      String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId          String        @map("organization_id") @db.Uuid
+  itemId                  String        @map("item_id") @db.Uuid
+  locationId              String        @map("location_id") @db.Uuid
+  openingStock            Decimal?      @map("opening_stock") @db.Decimal(10, 2)
+  openingStockValuePerUnit Decimal?     @map("opening_stock_value_per_unit") @db.Decimal(10, 2)
+  batches                 Json          @default("[]")
+  customFields            Json          @default("{}") @map("custom_fields")
+  isDeleted               Boolean       @default(false) @map("is_deleted")
+  createdBy               String?       @map("created_by") @db.Uuid
+  updatedBy               String?       @map("updated_by") @db.Uuid
+  createdAt               DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization            Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  item                    Item          @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  location                Location      @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  createdByUser           User?         @relation("ItemOpeningStockRowCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser           User?         @relation("ItemOpeningStockRowUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, itemId, locationId])
+  @@index([organizationId, itemId])
+  @@index([organizationId, locationId])
+  @@map("item_opening_stock_rows")
+}
+
+model ItemLocationStock {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  itemId         String       @map("item_id") @db.Uuid
+  locationId     String       @map("location_id") @db.Uuid
+  stockOnHand    Decimal      @default(0) @map("stock_on_hand") @db.Decimal(10, 2)
+  committedStock Decimal      @default(0) @map("committed_stock") @db.Decimal(10, 2)
+  availableForSale Decimal    @default(0) @map("available_for_sale") @db.Decimal(10, 2)
+  customFields   Json         @default("{}") @map("custom_fields")
+  isDeleted      Boolean      @default(false) @map("is_deleted")
+  createdBy      String?      @map("created_by") @db.Uuid
+  updatedBy      String?      @map("updated_by") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  item           Item         @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  location       Location     @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  createdByUser  User?        @relation("ItemLocationStockCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser  User?        @relation("ItemLocationStockUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, itemId, locationId])
+  @@index([organizationId, itemId])
+  @@index([organizationId, locationId])
+  @@map("item_location_stocks")
 }

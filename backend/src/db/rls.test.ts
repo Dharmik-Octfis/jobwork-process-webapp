@@ -73,6 +73,10 @@ const TENANT_TABLES = [
   'composite_item_components',
   'item_assemblies',
   'item_assembly_lines',
+  'item_assembly_comments',
+  'item_assembly_activities',
+  'item_opening_stock_rows',
+  'item_location_stocks',
 ] as const;
 
 /**

@@ -13,6 +13,7 @@ export const createLocationSchema = z.object({
   zip: z.string().nullable().optional(),
   country: z.string().nullable().optional(),
   phone: z.string().nullable().optional(),
+  isPrimary: z.boolean().default(false).optional(),
 });
 
 export const updateLocationSchema = createLocationSchema.partial();

@@ -69,14 +69,14 @@ async function main() {
 
   const purchases = await prisma.appModule.upsert({
     where: { code: 'PURCHASES' },
-    update: { sortIndex: 4 },
-    create: { code: 'PURCHASES', name: 'Purchases', sortIndex: 4, icon: 'ShoppingCart' },
+    update: { sortIndex: 5 },
+    create: { code: 'PURCHASES', name: 'Purchases', sortIndex: 5, icon: 'ShoppingCart' },
   });
 
   const sales = await prisma.appModule.upsert({
     where: { code: 'SALES' },
-    update: { sortIndex: 3 },
-    create: { code: 'SALES', name: 'Sales', sortIndex: 3, icon: 'ShoppingBag' },
+    update: { sortIndex: 4 },
+    create: { code: 'SALES', name: 'Sales', sortIndex: 4, icon: 'ShoppingBag' },
   });
 
   await prisma.appModule.upsert({
@@ -151,14 +151,37 @@ async function main() {
     },
   });
 
+  const inventoryManagement = await prisma.appModule.upsert({
+    where: { code: 'INVENTORY_MANAGEMENT' },
+    update: { name: 'Inventory', sortIndex: 3 },
+    create: {
+      code: 'INVENTORY_MANAGEMENT',
+      name: 'Inventory',
+      sortIndex: 3,
+      icon: 'ClipboardList',
+    },
+  });
+
+  await prisma.appModule.upsert({
+    where: { code: 'ASSEMBLY' },
+    update: { parentId: inventoryManagement.id },
+    create: {
+      code: 'ASSEMBLY',
+      name: 'Assembly',
+      parentId: inventoryManagement.id,
+      sortIndex: 1,
+      icon: 'Factory',
+    },
+  });
+
   // Jobwork.
   //
   // sortIndex 5 puts it after Purchases — the sidebar order is Home, Item, Sales,
   // Purchases, Jobwork, which is roughly the order a jobworker's day runs in.
   const jobwork = await prisma.appModule.upsert({
     where: { code: 'JOBWORK' },
-    update: { name: 'Jobwork', sortIndex: 5 },
-    create: { code: 'JOBWORK', name: 'Jobwork', sortIndex: 5, icon: 'Factory' },
+    update: { name: 'Jobwork', sortIndex: 6 },
+    create: { code: 'JOBWORK', name: 'Jobwork', sortIndex: 6, icon: 'Factory' },
   });
 
   /**

@@ -4,7 +4,7 @@ import styles from './ConfirmDialog.module.css';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
-  title: string;
+  title: ReactNode;
   message: ReactNode;
   confirmText?: string;
   cancelText?: string;

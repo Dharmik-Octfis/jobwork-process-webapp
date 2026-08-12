@@ -127,3 +127,31 @@ export const updateItemSchema = openApiRegistry.register(
 export type Item = z.infer<typeof itemSchema>;
 export type CreateItemDto = z.infer<typeof createItemSchema>;
 export type UpdateItemDto = z.infer<typeof updateItemSchema>;
+
+export const batchInfoSchema = z.object({
+  id: z.string().optional(),
+  batchReference: z.string().optional().nullable(),
+  manufacturerBatch: z.string().optional().nullable(),
+  manufacturedDate: z.string().optional().nullable(),
+  expiryDate: z.string().optional().nullable(),
+  sellingPrice: z.union([z.string(), z.number()]).optional().nullable(),
+  mrp: z.union([z.string(), z.number()]).optional().nullable(),
+  quantityIn: z.union([z.string(), z.number()]).optional().nullable(),
+});
+
+export const locationRowSchema = z.object({
+  id: z.string().optional(),
+  locationId: z.string(),
+  openingStock: z.union([z.string(), z.number()]).optional().nullable(),
+  openingStockValue: z.union([z.string(), z.number()]).optional().nullable(),
+  batches: z.array(batchInfoSchema),
+});
+
+export const itemOpeningStockSchema = openApiRegistry.register(
+  'ItemOpeningStockRequest',
+  z.object({
+    locationRows: z.array(locationRowSchema),
+  }),
+);
+
+export type ItemOpeningStockDto = z.infer<typeof itemOpeningStockSchema>;

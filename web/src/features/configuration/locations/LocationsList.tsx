@@ -2,7 +2,12 @@ import { useState, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, Edit2, Trash2, Star } from 'lucide-react';
-import { fetchLocations, deleteLocation, type Location } from './locations.api';
+import {
+  fetchLocations,
+  deleteLocation,
+  markLocationAsPrimary,
+  type Location,
+} from './locations.api';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 
 export function LocationsList() {
@@ -11,6 +16,8 @@ export function LocationsList() {
   const queryClient = useQueryClient();
 
   const [locationToDelete, setLocationToDelete] = useState<string | null>(null);
+  const [locationToMarkPrimary, setLocationToMarkPrimary] = useState<string | null>(null);
+  const [hoveredLocationId, setHoveredLocationId] = useState<string | null>(null);
 
   const { data: locations = [], isLoading } = useQuery({
     queryKey: ['locations', orgId],
@@ -26,9 +33,18 @@ export function LocationsList() {
     },
   });
 
+  const markPrimaryMutation = useMutation({
+    mutationFn: (id: string) => markLocationAsPrimary(orgId!, id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['locations', orgId] });
+      setLocationToMarkPrimary(null);
+    },
+  });
+
   // Group locations into a tree structure
   const rootLocations = locations.filter((loc) => !loc.parentId);
-  const getChildLocations = (parentId: string) => locations.filter((loc) => loc.parentId === parentId);
+  const getChildLocations = (parentId: string) =>
+    locations.filter((loc) => loc.parentId === parentId);
 
   const renderLocationRow = (location: Location, depth = 0, isLastArray: boolean[] = []) => {
     const children = getChildLocations(location.id);
@@ -42,12 +58,26 @@ export function LocationsList() {
             background: 'transparent',
             transition: 'background 0.1s',
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = '#f8fafc';
+            setHoveredLocationId(location.id);
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            setHoveredLocationId(null);
+          }}
         >
           <td style={{ padding: 0 }}>
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', height: 48, paddingLeft: depth * 32 + 16, paddingRight: 16 }}>
-              
+            <div
+              style={{
+                position: 'relative',
+                display: 'flex',
+                alignItems: 'center',
+                height: 48,
+                paddingLeft: depth * 32 + 16,
+                paddingRight: 16,
+              }}
+            >
               {/* 1. Vertical lines for passing-through ancestors */}
               {Array.from({ length: Math.max(0, depth - 1) }).map((_, i) => {
                 if (isLastArray[i]) return null;
@@ -120,22 +150,51 @@ export function LocationsList() {
                 }}
               />
 
-              <span style={{ color: '#0062ff', fontSize: 13, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span
+                style={{
+                  color: '#0062ff',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
                 {location.name}
-                {depth === 0 && <Star size={14} fill="#eab308" color="#eab308" />}
+                <div style={{ display: 'flex', alignItems: 'center', width: 14 }}>
+                  {location.isPrimary ? (
+                    <Star size={14} fill="#eab308" color="#eab308" />
+                  ) : (
+                    <button
+                      onClick={() => setLocationToMarkPrimary(location.id)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        visibility: hoveredLocationId === location.id ? 'visible' : 'hidden',
+                      }}
+                      title="Mark as Primary"
+                    >
+                      <Star size={14} color="#94a3b8" />
+                    </button>
+                  )}
+                </div>
               </span>
             </div>
           </td>
-          <td style={{ padding: '12px 16px', color: '#333', fontSize: 13 }}>
-            {location.type}
-          </td>
+          <td style={{ padding: '12px 16px', color: '#333', fontSize: 13 }}>{location.type}</td>
           <td style={{ padding: '12px 16px', color: '#333', fontSize: 13 }}>
             {[location.city, location.state, location.country].filter(Boolean).join(' ') || '-'}
           </td>
           <td style={{ padding: '12px 16px', color: '#333', fontSize: 13, textAlign: 'right' }}>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button
-                onClick={() => navigate(`/organizations/${orgId}/settings/locations/${location.id}/edit`)}
+                onClick={() =>
+                  navigate(`/organizations/${orgId}/settings/locations/${location.id}/edit`)
+                }
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
                 title="Edit Location"
               >
@@ -151,7 +210,10 @@ export function LocationsList() {
             </div>
           </td>
         </tr>
-        {hasChildren && children.map((child, index) => renderLocationRow(child, depth + 1, [...isLastArray, index === children.length - 1]))}
+        {hasChildren &&
+          children.map((child, index) =>
+            renderLocationRow(child, depth + 1, [...isLastArray, index === children.length - 1]),
+          )}
       </Fragment>
     );
   };
@@ -184,9 +246,7 @@ export function LocationsList() {
           borderBottom: '1px solid #eef0f3',
         }}
       >
-        <h1 style={{ fontSize: '18px', fontWeight: 600, color: '#000', margin: 0 }}>
-          Locations
-        </h1>
+        <h1 style={{ fontSize: '18px', fontWeight: 600, color: '#000', margin: 0 }}>Locations</h1>
         <button
           onClick={() => navigate(`/organizations/${orgId}/settings/locations/new`)}
           style={{
@@ -246,9 +306,7 @@ export function LocationsList() {
                 <th style={{ ...headerStyle, textAlign: 'right' }}>ACTION</th>
               </tr>
             </thead>
-            <tbody>
-              {rootLocations.map((loc) => renderLocationRow(loc, 0))}
-            </tbody>
+            <tbody>{rootLocations.map((loc) => renderLocationRow(loc, 0))}</tbody>
           </table>
         )}
       </div>
@@ -257,11 +315,24 @@ export function LocationsList() {
         isOpen={!!locationToDelete}
         title="Delete Location"
         message="Are you sure you want to delete this location? This action cannot be undone."
-        confirmText={deleteMutation.isPending ? 'Deleting...' : 'Delete'}
-        onConfirm={() => {
-          if (locationToDelete) deleteMutation.mutate(locationToDelete);
-        }}
+        confirmText="Delete"
+        onConfirm={() => deleteMutation.mutate(locationToDelete!)}
         onCancel={() => setLocationToDelete(null)}
+        isConfirming={deleteMutation.isPending}
+      />
+
+      <ConfirmDialog
+        isOpen={!!locationToMarkPrimary}
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '24px' }}>⚠️</span> Mark As Primary Location
+          </div>
+        }
+        message="Are you sure to mark this location as primary?"
+        confirmText="Mark as Primary"
+        onConfirm={() => markPrimaryMutation.mutate(locationToMarkPrimary!)}
+        onCancel={() => setLocationToMarkPrimary(null)}
+        isConfirming={markPrimaryMutation.isPending}
       />
     </div>
   );

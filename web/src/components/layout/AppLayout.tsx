@@ -63,6 +63,8 @@ const ROUTE_MAP: Record<string, string> = {
   CUSTOMERS: '/sales/customers',
   ITEMS: '/items',
   COMPOSITE_ITEMS: '/composite-items',
+  INVENTORY_MANAGEMENT: '/inventory',
+  ASSEMBLY: '/inventory/assembly',
   JOBWORK: '/jobwork',
   // No PROCESSES/ROUTES — both masters live under Settings since 2026-08-10 and
   // are reached from SettingsLayout's nav, not this one.

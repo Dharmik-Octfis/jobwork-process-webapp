@@ -2,7 +2,11 @@ import type { Request, Response } from 'express';
 import { sendSuccess } from '../../../../lib/apiResponse.js';
 import { ApiError } from '../../../../lib/apiError.js';
 import * as locationService from './locations.service.js';
-import { createLocationSchema, updateLocationSchema, locationQuerySchema } from './locations.schemas.js';
+import {
+  createLocationSchema,
+  updateLocationSchema,
+  locationQuerySchema,
+} from './locations.schemas.js';
 
 export async function getLocations(req: Request, res: Response) {
   const orgId = req.tenantId!;
@@ -37,4 +41,10 @@ export async function deleteLocation(req: Request, res: Response) {
   const orgId = req.tenantId!;
   await locationService.deleteLocation(orgId, req.params.id as string);
   sendSuccess(res, null, 'Location deleted');
+}
+
+export async function markAsPrimary(req: Request, res: Response) {
+  const orgId = req.tenantId!;
+  await locationService.markLocationAsPrimary(orgId, req.params.id as string, req.user!.id);
+  sendSuccess(res, null, 'Location marked as primary');
 }
