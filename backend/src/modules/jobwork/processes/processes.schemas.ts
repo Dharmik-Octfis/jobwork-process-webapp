@@ -34,10 +34,9 @@ export const createProcessSchema = openApiRegistry.register(
 
     /** Does the taka survive? Decides whether unit-wise receipt is even possible
      * (§5.2.3). A property of the process, never a user preference. */
-    preservesPackaging: z.boolean().optional(),
 
-    /** Shade-lot matching — blocks mixing lots on one issue (§5.2.4). */
-    requiresSingleLot: z.boolean().optional(),
+    /** Shade-batch matching — blocks mixing batches on one issue (§5.2.4). */
+    requiresSingleBatch: z.boolean().optional(),
 
     /**
      * Percent. Nullable because "no default" is a real answer and is NOT the same

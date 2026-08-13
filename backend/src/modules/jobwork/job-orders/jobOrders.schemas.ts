@@ -135,7 +135,7 @@ export type JobOrderStepInput = z.infer<typeof jobOrderStepSchema>;
  * it had no number, no edit, no cancel, no reversal and no list page, so the same
  * consignment could be entered twice with nothing able to detect it.
  *
- * Existing Material In lots are untouched and keep issuing, tracing and valuing;
+ * Existing Material In batches are untouched and keep issuing, tracing and valuing;
  * `SOURCE_DOC_TYPES.jobOrderMaterialIn` stays in the constants permanently so
  * those rows remain interpretable (spec §7).
  *

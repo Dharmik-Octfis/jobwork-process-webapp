@@ -52,7 +52,7 @@ openApiRegistry.registerPath({
     201: { description: 'Issued' },
     400: {
       description:
-        'No stock, ownership mismatch, a second lot on a single-lot process, or past tolerance without a reason',
+        'No stock, ownership mismatch, a second batch on a single-batch process, or past tolerance without a reason',
     },
   },
 });

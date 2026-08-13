@@ -995,7 +995,7 @@ Rule of thumb: **add `@db.*` only when the default isn't what you want** — a l
 4. Code name ≠ column name? → `@map("snake_case")`. Table name differs? → `@@map`.
 5. Need a specific storage type? → `@db.*` (see the table in 15.2).
 6. Type points to another model? → it's a relation (15.4).
-7. Looked up/sorted by this column a lot (and it's not already `@id`/`@unique`)? → `@@index`.
+7. Looked up/sorted by this column a batch (and it's not already `@id`/`@unique`)? → `@@index`.
 
 Note: `@id`, `@unique`, `@default`, `@relation`, `@@index` change **behaviour/constraints**, while
 `@map` and `@db.*` only change **names and storage** — they never affect logic.

@@ -131,7 +131,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
     return <div style={{ padding: 32, color: '#64748b', fontSize: 13 }}>Job order not found.</div>;
   }
 
-  const { jobOrder, summary, lots } = data;
+  const { jobOrder, summary, batches } = data;
   const status = statusMeta(JOB_ORDER_STATUS_META, jobOrder.status);
   const unit = jobOrder.inputUom ? (jobOrder.inputUom.symbol ?? jobOrder.inputUom.unitName) : '';
   const listPath = `/organizations/${orgId}/jobwork/job-orders`;
@@ -365,13 +365,13 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
           </div>
         )}
 
-        {lots.length > 0 && (
+        {batches.length > 0 && (
           <div style={{ marginTop: 20 }}>
-            <h2 style={sectionLabel}>Lots on this order</h2>
+            <h2 style={sectionLabel}>Batches on this order</h2>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {lots.map((lot) => (
+              {batches.map((batch) => (
                 <span
-                  key={lot.id}
+                  key={batch.id}
                   style={{
                     padding: '4px 10px',
                     border: '1px solid #e2e8f0',
@@ -381,9 +381,9 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                     background: '#fff',
                   }}
                 >
-                  {lot.lotNumber}
-                  {lot.supplierLotRef && (
-                    <span style={{ color: '#94a3b8' }}> · {lot.supplierLotRef}</span>
+                  {batch.batchNumber}
+                  {batch.supplierBatchRef && (
+                    <span style={{ color: '#94a3b8' }}> · {batch.supplierBatchRef}</span>
                   )}
                 </span>
               ))}

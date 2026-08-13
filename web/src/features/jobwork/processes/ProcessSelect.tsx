@@ -38,7 +38,7 @@ interface Props {
  * decide what the Issue and Receive dialogs may offer, and guessing them from a
  * name typed in a hurry is worse than leaving them to be set on the process's own
  * screen. The defaults are the conservative answers: same item back, bulk receipt
- * only, lots may be mixed.
+ * only, batches may be mixed.
  *
  * Nothing in Sprint 1 uses this — routes and job orders, which consume it, ship
  * in Sprint 2.

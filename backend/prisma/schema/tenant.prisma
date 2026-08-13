@@ -113,10 +113,8 @@ model User {
   updatedItemCategories         ItemCategory[]          @relation("CategoryUpdatedBy")
   createdProcesses              Process[]               @relation("ProcessCreatedBy")
   updatedProcesses              Process[]               @relation("ProcessUpdatedBy")
-  createdLots                   Lot[]                   @relation("LotCreatedBy")
-  updatedLots                   Lot[]                   @relation("LotUpdatedBy")
-  createdLotPackages            LotPackage[]            @relation("LotPackageCreatedBy")
-  updatedLotPackages            LotPackage[]            @relation("LotPackageUpdatedBy")
+  createdBatches                Batch[]                 @relation("BatchCreatedBy")
+  updatedBatches                Batch[]                 @relation("BatchUpdatedBy")
   /// No `updatedStockLedgerEntries` — a ledger row is never edited. See
   /// inventory.prisma.
   createdStockLedgerEntries     StockLedgerEntry[]      @relation("StockLedgerCreatedBy")
@@ -283,8 +281,7 @@ model Organization {
   vendors                Vendor[]
   itemCategories         ItemCategory[]
   processes              Process[]
-  lots                   Lot[]
-  lotPackages            LotPackage[]
+  batches                Batch[]
   stockLedgerEntries     StockLedgerEntry[]
   routes                 Route[]
   routeSteps             RouteStep[]
@@ -298,8 +295,8 @@ model Organization {
 
   // Multi-item steps (domain §5.7). Every one of these carries its own
   // `organization_id` so it can hold its own RLS policy, exactly like
-  // `lot_packages` — a child table that has to join its parent to be filtered is
-  // a table whose policy is one forgotten join away from leaking.
+  // `job_issue_lines` — a child table that has to join its parent to be filtered
+  // is a table whose policy is one forgotten join away from leaking.
   routeStepInputs     RouteStepInput[]
   routeStepOutputs    RouteStepOutput[]
   jobOrderStepInputs  JobOrderStepInput[]

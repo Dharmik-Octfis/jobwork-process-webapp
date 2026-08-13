@@ -11,7 +11,7 @@ import { paginatedSchema, type Paginated } from '../../../lib/pagination';
  *   preservesPackaging  decides taka-wise vs bulk receipt — a physical fact, not
  *                       a preference, which is why the Receive dialog reads it
  *                       instead of asking the user
- *   requiresSingleLot   blocks mixing dye lots on one issue
+ *   requiresSingleBatch   blocks mixing dye batches on one issue
  *   rateBasis           which quantity the processor's rate multiplies
  */
 
@@ -43,7 +43,7 @@ export const processSchema = z.object({
   itemChanges: z.boolean(),
   rateBasis: z.string(),
   preservesPackaging: z.boolean(),
-  requiresSingleLot: z.boolean(),
+  requiresSingleBatch: z.boolean(),
   // Prisma serialises Decimal as a string over JSON; a plain `z.number()` here
   // would reject "2.500" and blank the whole row.
   defaultTolerancePct: z.union([z.string(), z.number()]).nullable(),
@@ -60,7 +60,7 @@ export const createProcessSchema = z.object({
   itemChanges: z.boolean().optional(),
   rateBasis: z.string().optional(),
   preservesPackaging: z.boolean().optional(),
-  requiresSingleLot: z.boolean().optional(),
+  requiresSingleBatch: z.boolean().optional(),
   defaultTolerancePct: z.number().min(0).max(100).nullable().optional(),
 });
 

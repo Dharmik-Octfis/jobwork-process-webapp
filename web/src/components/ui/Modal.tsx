@@ -83,7 +83,7 @@ export function Modal({
       if (event.key !== 'Tab') return;
 
       // Requirement 2. Re-queried on every Tab rather than cached: rows appear
-      // and disappear in these dialogs as lots are expanded, and a cached list
+      // and disappear in these dialogs as batches are expanded, and a cached list
       // would trap focus on elements that no longer exist.
       const node = dialogRef.current;
       if (!node) return;

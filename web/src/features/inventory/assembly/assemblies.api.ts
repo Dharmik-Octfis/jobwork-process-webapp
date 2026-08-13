@@ -67,7 +67,7 @@ export const itemAssemblyLineSchema = z.object({
   id: z.string().optional(),
   itemId: z.string(),
   qtyRequired: z.number().min(0),
-  lotId: z.string().optional(),
+  batchId: z.string().optional(),
 });
 
 export const createAssemblySchema = z.object({

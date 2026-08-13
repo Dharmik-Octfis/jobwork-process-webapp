@@ -10,7 +10,7 @@ import { Prisma } from '../../../generated/prisma/client.ts';
 import { randomUUID } from 'node:crypto';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../lib/pagination.ts';
 import { filterWhere } from '../settings/list-views/listFilters.catalog.ts';
-import { createLot, postMovement } from '../inventory/stock-ledger/stockLedger.service.ts';
+import { createBatch, postMovement } from '../inventory/stock-ledger/stockLedger.service.ts';
 import type { ItemOpeningStockDto } from './items.schemas.ts';
 
 export function toItemResponse(item: Record<string, unknown> | null | undefined) {
@@ -287,7 +287,7 @@ export class ItemsService {
         sourceDocType: 'item_opening_stock',
         movementType: 'opening',
       },
-      include: { lot: true },
+      include: { batch: true },
     });
 
     const locationMap = new Map<
@@ -311,10 +311,10 @@ export class ItemsService {
         });
       }
       const row = locationMap.get(entry.locationId)!;
-      const cf = entry.lot.customFields as Record<string, unknown> | undefined;
+      const cf = entry.batch.customFields as Record<string, unknown> | undefined;
       row.batches.push({
-        id: entry.lot.id,
-        batchReference: entry.lot.supplierLotRef,
+        id: entry.batch.id,
+        batchReference: entry.batch.supplierBatchRef,
         manufacturerBatch: cf?.manufacturerBatch,
         manufacturedDate: cf?.manufacturedDate,
         expiryDate: cf?.expiryDate,
@@ -683,7 +683,7 @@ export class ItemsService {
     return runAsTenant(organizationId, async (tx) => {
       const item = await tx.item.findFirst({
         where: { id: itemId, organizationId },
-        select: { id: true, lotTracking: true },
+        select: { id: true, inventoryTracking: true },
       });
       if (!item) throw ApiError.notFound('Item not found.');
 
@@ -703,7 +703,7 @@ export class ItemsService {
     return runAsTenant(organizationId, async (tx) => {
       const item = await tx.item.findFirst({
         where: { id: itemId, organizationId },
-        select: { id: true, stockingUomId: true, lotTracking: true },
+        select: { id: true, stockingUomId: true, inventoryTracking: true },
       });
       if (!item) throw ApiError.notFound('Item not found.');
       if (!item.stockingUomId)
@@ -715,7 +715,7 @@ export class ItemsService {
       for (const oldEntry of oldEntries) {
         await postMovement(tx, {
           organizationId,
-          lotId: oldEntry.lotId,
+          batchId: oldEntry.batchId,
           locationId: oldEntry.locationId,
           movementType: 'reversal',
           qtyOut: oldEntry.qtyIn,
@@ -835,31 +835,31 @@ export class ItemsService {
           )
         `);
 
-        for (const batch of batches) {
-          const qty = Number(batch.quantityIn);
+        for (const row of batches) {
+          const qty = Number(row.quantityIn);
           if (!qty || qty <= 0) continue;
 
-          const lot = await createLot(tx, {
+          const batch = await createBatch(tx, {
             organizationId,
             itemId,
             uomId: item.stockingUomId,
-            lotNumber: undefined,
-            supplierLotRef: batch.batchReference || null,
+            batchNumber: undefined,
+            supplierBatchRef: row.batchReference || null,
             sourceDocType: 'item_opening_stock',
             sourceDocId: itemId,
             userId,
             customFields: {
-              manufacturerBatch: batch.manufacturerBatch,
-              manufacturedDate: batch.manufacturedDate,
-              expiryDate: batch.expiryDate,
-              sellingPrice: batch.sellingPrice,
-              mrp: batch.mrp,
+              manufacturerBatch: row.manufacturerBatch,
+              manufacturedDate: row.manufacturedDate,
+              expiryDate: row.expiryDate,
+              sellingPrice: row.sellingPrice,
+              mrp: row.mrp,
             },
           });
 
           await postMovement(tx, {
             organizationId,
-            lotId: lot.id,
+            batchId: batch.id,
             locationId: locRow.locationId,
             movementType: 'opening',
             qtyIn: qty,

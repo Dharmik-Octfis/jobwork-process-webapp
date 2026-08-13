@@ -115,17 +115,17 @@ export const endpoints = {
     rejectionReasons: (orgId: string) => `/organizations/${orgId}/jobwork/rejection-reasons`,
   },
   /**
-   * Lots — READ ONLY. There is no create/update/delete path here because a lot is
+   * Batches — READ ONLY. There is no create/update/delete path here because a batch is
    * born from the document that physically brought material in, never a form.
    */
   inventory: {
-    lots: (orgId: string) => `/organizations/${orgId}/inventory/lots`,
-    /** 🔴 The picker's query. Reads the LEDGER, not the lots table — a lot row
+    batches: (orgId: string) => `/organizations/${orgId}/inventory/batches`,
+    /** 🔴 The picker's query. Reads the LEDGER, not the batches table — a batch row
      * outlives its last metre. */
-    availableLots: (orgId: string) => `/organizations/${orgId}/inventory/lots/available`,
+    availableBatches: (orgId: string) => `/organizations/${orgId}/inventory/batches/available`,
     /** Locations that actually hold an item, with balances. Also a ledger query:
      * offering a godown with no stock is how users get stuck. */
-    stockLocations: (orgId: string) => `/organizations/${orgId}/inventory/lots/locations`,
+    stockLocations: (orgId: string) => `/organizations/${orgId}/inventory/batches/locations`,
   },
   sales: {
     customers: (orgId: string) => `/organizations/${orgId}/sales/customers`,

@@ -296,7 +296,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
                   A challan carries several items now (§5.7), so which item each
                   line is was the one thing this table did not say. The two it
                   replaced said nothing: "Taka" is always blank because issuing is
-                  lot-level, and "Party ref" is the supplier's own batch number,
+                  batch-level, and "Party ref" is the supplier's own batch number,
                   which nothing can capture until Purchase Received records it
                   (spec §4.5). Both come back with the features that fill them.
                 */}
@@ -304,7 +304,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
                   Item
                 </th>
                 <th style={th} scope="col">
-                  Lot
+                  Batch
                 </th>
                 <th style={th} scope="col">
                   Quantity
@@ -317,7 +317,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
                   <td style={{ ...td, fontWeight: 500, color: '#111' }}>
                     {line.item?.name ?? '-'}
                   </td>
-                  <td style={td}>{line.lot?.lotNumber ?? '-'}</td>
+                  <td style={td}>{line.batch?.batchNumber ?? '-'}</td>
                   <td style={td}>
                     {formatQty(line.qty)} {line.uom?.symbol ?? line.uom?.unitName ?? unit}
                   </td>

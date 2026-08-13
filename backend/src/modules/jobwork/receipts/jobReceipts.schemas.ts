@@ -183,7 +183,7 @@ export type CreateJobReceiptInput = z.infer<typeof createJobReceiptSchema>;
 /**
  * Cancelling a receipt. Same rule as an issue: reversing entries, never a delete.
  * Harder to justify and therefore harder to do — a receipt has already created
- * lots, and those lots may have been issued onward.
+ * batches, and those batches may have been issued onward.
  */
 export const cancelJobReceiptSchema = openApiRegistry.register(
   'CancelJobReceiptRequest',

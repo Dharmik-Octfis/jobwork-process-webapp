@@ -67,14 +67,12 @@ describe('processes — the full CRUD path', () => {
       name,
       code: 'DYE',
       description: 'Wet processing',
-      preservesPackaging: true,
-      requiresSingleLot: true,
+      requiresSingleBatch: true,
       rateBasis: 'per_received_unit',
       defaultTolerancePct: 2.5,
     });
 
     expect(created.name).toBe(name);
-    expect(created.preservesPackaging).toBe(true);
     expect(created.defaultTolerancePct?.toString()).toBe('2.5');
 
     const listed = await getProcessesList(orgId, listOpts);
@@ -87,14 +85,12 @@ describe('processes — the full CRUD path', () => {
     const updated = await updateProcessById(orgId, created.id, {
       name,
       code: 'DYE2',
-      preservesPackaging: false,
       rateBasis: 'per_issued_unit',
     });
     expect(updated.code).toBe('DYE2');
-    expect(updated.preservesPackaging).toBe(false);
     // Not sent on the update, so it falls back to its default rather than
     // keeping the old value — the form posts the whole record.
-    expect(updated.requiresSingleLot).toBe(false);
+    expect(updated.requiresSingleBatch).toBe(false);
 
     await deleteProcessById(orgId, created.id);
 

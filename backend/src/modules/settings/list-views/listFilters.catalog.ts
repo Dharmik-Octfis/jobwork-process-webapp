@@ -119,11 +119,11 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
     { key: 'cancelled', label: 'Cancelled', where: { status: 'cancelled' } },
   ],
   rejection_reason: [{ key: 'all', label: 'All Reasons', where: {} }],
-  /** Lots have no list page (see the column catalog), but `filterWhere` resolves
+  /** Batches have no list page (see the column catalog), but `filterWhere` resolves
    * an absent `?filter=` to `all`, so the entry must exist or every read 400s. */
-  lot: [
-    { key: 'all', label: 'All Lots', where: {} },
-    { key: 'open', label: 'Open Lots', where: { state: 'open' } },
+  batch: [
+    { key: 'all', label: 'All Batches', where: {} },
+    { key: 'open', label: 'Open Batches', where: { state: 'open' } },
     { key: 'own', label: 'Our Stock', where: { ownership: 'own' } },
     { key: 'customer', label: 'Customer Stock', where: { ownership: 'customer' } },
   ],

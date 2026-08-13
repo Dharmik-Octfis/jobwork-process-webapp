@@ -27,7 +27,7 @@ interface Props {
  * 🔴 ONE CONSUMED ROW — what this receipt accounts for on the INPUT side.
  *
  * Unit-wise: one row per taka that went out, and its disposition columns are
- * what build the returned lot's packages — the 1:1 mapping that cannot be
+ * what build the returned batch's packages — the 1:1 mapping that cannot be
  * rebuilt afterwards (§6.2).
  *
  * Bulk: one row per ITEM, because the takas were destroyed and all that is left
@@ -39,7 +39,6 @@ interface Row {
   key: string;
   jobIssueId: string | null;
   jobIssueLineId: string | null;
-  parentPackageId: string | null;
   itemId: string | null;
   itemName: string;
   unit: string;
@@ -233,13 +232,12 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
         key: line.jobIssueLineId,
         jobIssueId: line.jobIssueId,
         jobIssueLineId: line.jobIssueLineId,
-        parentPackageId: line.lotPackageId,
         itemId: line.itemId,
         itemName: line.itemName ?? '',
         unit: line.uomSymbol ?? '',
         label:
           line.packageLabel ??
-          (line.packageNumber ? `${line.lotNumber}/${line.packageNumber}` : line.lotNumber),
+          (line.packageNumber ? `${line.batchNumber}/${line.packageNumber}` : line.batchNumber),
         issuedQty: toNumber(line.issuedQty),
         receivedQty: toNumber(line.issuedQty),
         acceptedQty: toNumber(line.issuedQty),
@@ -265,7 +263,6 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
           key: `bulk:${itemId}`,
           jobIssueId: null,
           jobIssueLineId: null,
-          parentPackageId: null,
           itemId: line.itemId,
           itemName: line.itemName ?? 'Item',
           unit: line.uomSymbol ?? '',
@@ -417,7 +414,6 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
         itemId: row.itemId,
         jobIssueId: row.jobIssueId,
         jobIssueLineId: row.jobIssueLineId,
-        parentPackageId: row.parentPackageId,
         issuedQty: row.issuedQty,
         receivedQty: mode === 'unit_wise' ? row.receivedQty : 0,
         acceptedQty: mode === 'unit_wise' ? row.acceptedQty : 0,
@@ -474,7 +470,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, jobOrder.id] });
       queryClient.invalidateQueries({ queryKey: ['job-receipts', orgId] });
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
-      queryClient.invalidateQueries({ queryKey: ['available-lots', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['available-batches', orgId] });
       onReceived();
       onClose();
     },
@@ -621,13 +617,13 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
               .filter(({ row }) => row.acceptedQty > 0 && row.itemId)
               .map(({ row, isMain }) => (
                 <li key={`acc-${row.key}`}>
-                  A new lot of{' '}
+                  A new batch of{' '}
                   <strong>
                     {formatQty(row.acceptedQty)} {itemName(row.itemId)}
                   </strong>{' '}
                   is created at{' '}
                   {godowns.find((l) => l.id === locationId)?.name ?? 'the selected location'},
-                  tracing back to every lot that was consumed
+                  tracing back to every batch that was consumed
                   {isMain ? ', carrying the cost of the operation' : ''}.
                 </li>
               ))}
@@ -635,15 +631,15 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
               .filter((row) => row.reworkQty > 0 && row.itemId)
               .map((row) => (
                 <li key={`rw-${row.key}`}>
-                  A <strong>separate</strong> rework lot of {formatQty(row.reworkQty)}{' '}
+                  A <strong>separate</strong> rework batch of {formatQty(row.reworkQty)}{' '}
                   {itemName(row.itemId)} is created — kept apart so the reworked pieces stay
                   countable, and re-issued against this same step.
                 </li>
               ))}
             {totals.scrap > 0 && (
               <li>
-                {formatQty(totals.scrap)} is scrapped. No lot is created: its cost stays absorbed in
-                the good pieces, which is what makes their cost honest.
+                {formatQty(totals.scrap)} is scrapped. No batch is created: its cost stays absorbed
+                in the good pieces, which is what makes their cost honest.
               </li>
             )}
             <li>

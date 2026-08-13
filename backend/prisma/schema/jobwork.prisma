@@ -4,29 +4,29 @@
 /// Sprints 2–4 and belong in THIS file (see docs/JOBWORK_IMPLEMENTATION_PLAN.md §8.1).
 ///
 /// A Process is what someone DOES to material: dyeing, printing, cutting,
-/// stitching. It is a small per-org master, but four of its flags are read by the
+/// stitching. It is a small per-org master, but three of its flags are read by the
 /// issue and receipt screens later and decide what those screens are even allowed
 /// to offer — so they exist from the first migration rather than being bolted on:
 ///
-///   itemChanges         the thing that comes back is a DIFFERENT item (cloth → shirt).
-///                       Domain doc §5.1: a changed unit means a changed item, never
-///                       a conversion factor.
-///   preservesPackaging  does the physical package survive? Dyeing returns the same
-///                       roll (taka-wise receipt is possible); cutting destroys it
-///                       (bulk only). §5.2.3 — this is a property of the process,
-///                       NOT a user preference, so the Receive dialog offers only
-///                       the mode that is physically possible.
-///   requiresSingleLot   shade-lot matching (§5.2.4). Mixing two dye lots in one
-///                       garment produces a reject no inspection catches until the
-///                       garment is assembled, so the Issue dialog blocks a second lot.
-///   rateBasis           how the processor charges (§9.2). Decides which quantity the
-///                       cost is multiplied by, so it cannot be inferred later.
+///   itemChanges          the thing that comes back is a DIFFERENT item (cloth → shirt).
+///                        Domain doc §5.1: a changed unit means a changed item, never
+///                        a conversion factor.
+///   requiresSingleBatch  shade-batch matching (§5.2.4). Mixing two dye batches in one
+///                        garment produces a reject no inspection catches until the
+///                        garment is assembled, so the Issue dialog blocks a second batch.
+///   rateBasis            how the processor charges (§9.2). Decides which quantity the
+///                        cost is multiplied by, so it cannot be inferred later.
+///
+/// ⚠️ `preservesPackaging` was the fourth, and went with package-level tracking on
+/// 2026-08-12. It existed only to decide unit-wise vs bulk receipt; with quantity
+/// granularity stopping at the batch, every receipt is bulk and the flag could only
+/// ever hold one meaningful value.
 model Process {
   id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String  @map("organization_id") @db.Uuid
   name           String  @db.VarChar(150)
   /// Optional short code the shop floor uses on paperwork. Free text — nothing
-  /// derives meaning from it, exactly like `Lot.supplierLotRef`.
+  /// derives meaning from it, exactly like `Batch.supplierBatchRef`.
   code           String? @db.VarChar(50)
   description    String?
 
@@ -40,12 +40,8 @@ model Process {
   /// received nothing.
   rateBasis String @default("per_issued_unit") @map("rate_basis") @db.VarChar(30)
 
-  /// Does the taka/roll/bundle survive the operation? Decides unit-wise vs bulk
-  /// receipt in Sprint 4 (§5.2.3).
-  preservesPackaging Boolean @default(false) @map("preserves_packaging")
-
-  /// Blocks mixing lots on one issue — shade matching (§5.2.4).
-  requiresSingleLot Boolean @default(false) @map("requires_single_lot")
+  /// Blocks mixing batches on one issue — shade matching (§5.2.4).
+  requiresSingleBatch Boolean @default(false) @map("requires_single_batch")
 
   /// Default over-receipt allowance, in percent. Nullable: "no default" is a real
   /// answer and is not the same as 0 (which means "no tolerance at all").
@@ -130,7 +126,7 @@ model Route {
 model RouteStep {
   id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// Denormalised from the route so this table carries its own RLS policy,
-  /// exactly like `lot_packages` (inventory.prisma).
+  /// exactly like `job_issue_lines` below.
   organizationId String @map("organization_id") @db.Uuid
   routeId        String @map("route_id") @db.Uuid
 
@@ -144,7 +140,7 @@ model RouteStep {
   processorType String @default("vendor") @map("processor_type") @db.VarChar(20)
 
   /// The default processor. A PLAIN uuid with no FK, for the same reason as
-  /// `lots.owner_party_id`: it points at `vendors` OR `customers` depending on
+  /// `batches.owner_party_id`: it points at `vendors` OR `customers` depending on
   /// `processorType`, so a constraint covering one of the two would enforce
   /// nothing on the other. The service checks it against the org instead.
   processorId String? @map("processor_id") @db.Uuid
@@ -343,7 +339,7 @@ model JobOrder {
   /// renamed or deleted (§2.4). Store BOTH — that is the rule, not a choice.
   routeNameSnapshot String? @map("route_name_snapshot") @db.VarChar(150)
 
-  /// own | customer. Decides valuation, invoice type, and 🔴 which lots the issue
+  /// own | customer. Decides valuation, invoice type, and 🔴 which batches the issue
   /// picker may even offer — one customer's goods must never be issued into
   /// another's order (§5.3).
   ownership    String  @default("own") @db.VarChar(20)
@@ -598,7 +594,7 @@ model JobIssue {
   /// ⚠️ `itemId` / `uomId` were dropped on 2026-08-12. They held the PRINCIPAL
   /// item — one of the three a challan carries — and every screen that showed
   /// them named one item and silently hid the rest. The items live on
-  /// `JobIssueLine`, one row per lot, which is where every per-item total is
+  /// `JobIssueLine`, one row per batch, which is where every per-item total is
   /// already summed from.
 
   /// Rework goes back to the SAME step, with the attempt counted so a second pass
@@ -651,12 +647,11 @@ model JobIssue {
   @@map("job_issues")
 }
 
-/// One lot — or one taka inside a lot — on a challan.
+/// One batch on a challan.
 ///
-/// A package-level line carries BOTH `lotId` and `lotPackageId`: the package says
-/// which physical roll went, the lot is what every balance groups by, and
-/// deriving one from the other on read puts a join in the middle of an
-/// availability query.
+/// Granularity stops here. Package-level (per-taka) lines went on 2026-08-12 — a
+/// line names a batch and a quantity, which is exactly what every balance groups
+/// by, so no read ever has to join its way back to a coarser row.
 model JobIssueLine {
   id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String @map("organization_id") @db.Uuid
@@ -674,9 +669,7 @@ model JobIssueLine {
   itemId String  @map("item_id") @db.Uuid
   uomId  String? @map("uom_id") @db.Uuid
 
-  lotId        String  @map("lot_id") @db.Uuid
-  /// Null for a lot-level issue — i.e. any item below `lot_and_package` tracking.
-  lotPackageId String? @map("lot_package_id") @db.Uuid
+  batchId String @map("batch_id") @db.Uuid
 
   qty Decimal @db.Decimal(18, 4)
 
@@ -691,8 +684,7 @@ model JobIssueLine {
   jobIssue      JobIssue           @relation(fields: [jobIssueId], references: [id], onDelete: Cascade)
   item          Item               @relation("JobIssueLineItem", fields: [itemId], references: [id])
   uom           UnitOfMeasurement? @relation("JobIssueLineUom", fields: [uomId], references: [id])
-  lot           Lot                @relation("JobIssueLineLot", fields: [lotId], references: [id])
-  lotPackage    LotPackage?        @relation("JobIssueLinePackage", fields: [lotPackageId], references: [id])
+  batch         Batch              @relation("JobIssueLineBatch", fields: [batchId], references: [id])
   createdByUser User?              @relation("JobIssueLineCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User?              @relation("JobIssueLineUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
@@ -741,10 +733,9 @@ model RejectionReason {
 
 /// Goods coming back from a processor.
 ///
-/// 🔴 `mode` is decided by `Process.preservesPackaging`, NOT by the user (§6.1).
-/// Dyeing returns the same roll, so taka-by-taka is possible; cutting destroys
-/// the roll, so only a bulk quantity exists. Offering it as a choice is how
-/// someone picks unit-wise for an operation where no 1:1 mapping can exist.
+/// ⚠️ `mode` (unit_wise | bulk) went with package-level tracking on 2026-08-12,
+/// along with `Process.preservesPackaging` that decided it. Every receipt is a
+/// quantity against a batch now, so the distinction had nothing left to express.
 model JobReceipt {
   id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String @map("organization_id") @db.Uuid
@@ -759,10 +750,6 @@ model JobReceipt {
   processorId           String? @map("processor_id") @db.Uuid
   processorNameSnapshot String? @map("processor_name_snapshot") @db.VarChar(255)
 
-  /// unit_wise | bulk — copied from the process at save time, so a later edit to
-  /// the process cannot retell what this receipt did.
-  mode String @default("bulk") @db.VarChar(20)
-
   /// ⚠️ `outputItemId` / `outputUomId` were dropped on 2026-08-12. They named
   /// which row the six totals below describe — always the PRIMARY output, which
   /// `JobReceiptOutput.isPrimary` already says. A receipt returns shirts AND
@@ -775,13 +762,13 @@ model JobReceipt {
   /// Where the goods landed — ours again, so a godown.
   locationId String @map("location_id") @db.Uuid
 
-  /// The lots this receipt created. 🔴 `Lot.parentLotIds` is what carries
+  /// The batches this receipt created. 🔴 `Batch.parentBatchIds` is what carries
   /// genealogy; these two are the shortcut back the other way, so the receipt
-  /// screen does not have to search lots by source document.
-  outputLotId String? @map("output_lot_id") @db.Uuid
-  /// A SEPARATE lot for the rework pieces, always. Merging them into the accepted
-  /// lot loses the piece count rework has to be measured by (plan §7).
-  reworkLotId String? @map("rework_lot_id") @db.Uuid
+  /// screen does not have to search batches by source document.
+  outputBatchId String? @map("output_batch_id") @db.Uuid
+  /// A SEPARATE batch for the rework pieces, always. Merging them into the accepted
+  /// batch loses the piece count rework has to be measured by (plan §7).
+  reworkBatchId String? @map("rework_batch_id") @db.Uuid
 
   /// The disposition split, summed. The four MUST add up to `totalReceivedQty` —
   /// the service refuses the save otherwise, and that one check is what makes a
@@ -813,8 +800,8 @@ model JobReceipt {
   jobOrder      JobOrder           @relation(fields: [jobOrderId], references: [id], onDelete: Cascade)
   step          JobOrderStep       @relation(fields: [jobOrderStepId], references: [id], onDelete: Cascade)
   location      Location           @relation("JobReceiptLocation", fields: [locationId], references: [id])
-  outputLot     Lot?               @relation("JobReceiptOutputLot", fields: [outputLotId], references: [id])
-  reworkLot     Lot?               @relation("JobReceiptReworkLot", fields: [reworkLotId], references: [id])
+  outputBatch   Batch?             @relation("JobReceiptOutputBatch", fields: [outputBatchId], references: [id])
+  reworkBatch   Batch?             @relation("JobReceiptReworkBatch", fields: [reworkBatchId], references: [id])
   createdByUser User?              @relation("JobReceiptCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User?              @relation("JobReceiptUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
@@ -837,8 +824,7 @@ model JobReceipt {
 ///
 /// The disposition split lives HERE rather than on the consumption row, because
 /// "2,880 accepted" is a statement about shirts, not about the panels that went
-/// out. Same for `parentPackageId`: it says which returned roll came from which
-/// issued roll, which is a fact about the roll that came back.
+/// out.
 model JobReceiptOutput {
   id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String @map("organization_id") @db.Uuid
@@ -870,14 +856,10 @@ model JobReceiptOutput {
   /// surviving primary should carry the cost of the whole operation.
   valueShare Decimal? @map("value_share") @db.Decimal(18, 4)
 
-  /// The lots this row created. `Lot.parentLotIds` carries genealogy; these are
-  /// the shortcut back the other way.
-  outputLotId String? @map("output_lot_id") @db.Uuid
-  reworkLotId String? @map("rework_lot_id") @db.Uuid
-
-  /// Set only in unit-wise mode, and only on the PRIMARY output — a by-product has
-  /// no package that went out to map back to.
-  parentPackageId String? @map("parent_package_id") @db.Uuid
+  /// The batches this row created. `Batch.parentBatchIds` carries genealogy; these
+  /// are the shortcut back the other way.
+  outputBatchId String? @map("output_batch_id") @db.Uuid
+  reworkBatchId String? @map("rework_batch_id") @db.Uuid
 
   reasonId       String? @map("reason_id") @db.Uuid
   /// ours | theirs.
@@ -896,9 +878,8 @@ model JobReceiptOutput {
   jobReceipt    JobReceipt         @relation(fields: [jobReceiptId], references: [id], onDelete: Cascade)
   item          Item               @relation("JobReceiptOutputRowItem", fields: [itemId], references: [id])
   uom           UnitOfMeasurement? @relation("JobReceiptOutputRowUom", fields: [uomId], references: [id])
-  outputLot     Lot?               @relation("JobReceiptOutputRowLot", fields: [outputLotId], references: [id])
-  reworkLot     Lot?               @relation("JobReceiptOutputRowReworkLot", fields: [reworkLotId], references: [id])
-  parentPackage LotPackage?        @relation("JobReceiptOutputParentPackage", fields: [parentPackageId], references: [id])
+  outputBatch   Batch?             @relation("JobReceiptOutputRowBatch", fields: [outputBatchId], references: [id])
+  reworkBatch   Batch?             @relation("JobReceiptOutputRowReworkBatch", fields: [reworkBatchId], references: [id])
   reason        RejectionReason?   @relation("JobReceiptOutputReason", fields: [reasonId], references: [id])
   createdByUser User?              @relation("JobReceiptOutputCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User?              @relation("JobReceiptOutputUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
@@ -907,12 +888,12 @@ model JobReceiptOutput {
   @@map("job_receipt_outputs")
 }
 
-/// One returned taka in unit-wise mode, or the single collapsed row in bulk mode.
+/// What this receipt consumed — one row per issue line it closes.
 ///
 /// The four disposition columns live on the LINE, not the header, because a
-/// forty-taka receipt where two takas are shade-off has to say WHICH two — and
-/// `parentPackageId` is the only place that mapping can ever be recorded (§6.2).
-/// It cannot be reconstructed from quantities afterwards.
+/// receipt that closes several challan lines has to say which line each rejected
+/// quantity belongs to (§6.2). It cannot be reconstructed from header totals
+/// afterwards.
 model JobReceiptLine {
   id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String @map("organization_id") @db.Uuid
@@ -922,11 +903,6 @@ model JobReceiptLine {
   /// receipt spanning several issues has no single line to point at.
   jobIssueId     String? @map("job_issue_id") @db.Uuid
   jobIssueLineId String? @map("job_issue_line_id") @db.Uuid
-
-  /// The package that went out and came back — 🔴 the 1:1 mapping that makes
-  /// taka-level traceability possible. Only ever set when the process preserves
-  /// packaging.
-  parentPackageId String? @map("parent_package_id") @db.Uuid
 
   issuedQty   Decimal @default(0) @map("issued_qty") @db.Decimal(18, 4)
   receivedQty Decimal @default(0) @map("received_qty") @db.Decimal(18, 4)
@@ -954,7 +930,6 @@ model JobReceiptLine {
   jobReceipt    JobReceipt       @relation(fields: [jobReceiptId], references: [id], onDelete: Cascade)
   jobIssue      JobIssue?        @relation(fields: [jobIssueId], references: [id])
   jobIssueLine  JobIssueLine?    @relation(fields: [jobIssueLineId], references: [id])
-  parentPackage LotPackage?      @relation("JobReceiptLineParentPackage", fields: [parentPackageId], references: [id])
   reason        RejectionReason? @relation(fields: [reasonId], references: [id])
   createdByUser User?            @relation("JobReceiptLineCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User?            @relation("JobReceiptLineUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)

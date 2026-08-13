@@ -112,9 +112,9 @@ const MODULE_GROUPS: readonly {
      * they granted something, and nothing happens. So each of these lands in the
      * same change as the routes that enforce it.
      *
-     * 🔴 `lot` is READ-ONLY, and deliberately. Lots are not created or edited by
+     * 🔴 `batch` is READ-ONLY, and deliberately. Batches are not created or edited by
      * anyone — `stockLedger.service.ts` is the only thing that makes one, from a
-     * Material In or a receipt. A `lot:create` checkbox would describe a screen
+     * Material In or a receipt. A `batch:create` checkbox would describe a screen
      * that does not and must not exist.
      */
     key: 'jobwork',
@@ -126,7 +126,7 @@ const MODULE_GROUPS: readonly {
       { resource: 'job_issue', label: 'Issues (Challans Out)' },
       { resource: 'job_receipt', label: 'Receipts' },
       { resource: 'rejection_reason', label: 'Rejection Reasons' },
-      { resource: 'lot', label: 'Lots & Stock', actions: ['read'] },
+      { resource: 'batch', label: 'Batches & Stock', actions: ['read'] },
     ],
   },
   {

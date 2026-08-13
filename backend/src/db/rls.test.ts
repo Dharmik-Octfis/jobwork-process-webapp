@@ -39,18 +39,18 @@ const TENANT_TABLES = [
   'permission_templates',
   'list_view_preferences',
   // Jobwork / inventory, added in 20260804120247_jobwork_sprint1_foundation.
-  // `lot_packages` carries its own organization_id (denormalised from its lot)
-  // rather than scoping through the parent, so its policy compares directly.
-  // `stock_ledger` has no UI at all — which is exactly why it needs to be listed
-  // here: nothing else would ever notice its policy going missing.
+  // `batches` kept its policy through the 2026-08-12 rename from `lots` — a
+  // policy is attached to the table, not to its name, and this one compares
+  // `organization_id` only. `stock_ledger` has no UI at all, which is exactly why
+  // it needs to be listed here: nothing else would ever notice its policy going
+  // missing.
   'processes',
-  'lots',
-  'lot_packages',
+  'batches',
   'stock_ledger',
   // Sprints 2–4, added in 20260805070926_jobwork_sprints_2_to_4. The LINE tables
-  // are here for the same reason as `lot_packages`: each carries its own
-  // `organization_id` and its own policy rather than being scoped through its
-  // header, so a query that reads one directly is still covered.
+  // each carry their own `organization_id` and their own policy rather than being
+  // scoped through their header, so a query that reads one directly is still
+  // covered.
   'routes',
   'route_steps',
   'job_orders',

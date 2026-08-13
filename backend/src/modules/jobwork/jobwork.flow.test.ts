@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma, runAsTenant } from '../../db/prisma.ts';
 import {
-  createLot,
-  createPackages,
+  createBatch,
   getBalance,
   postMovement,
 } from '../inventory/stock-ledger/stockLedger.service.ts';
@@ -27,12 +26,12 @@ import type { ProcessorType } from './jobwork.types.ts';
  *
  *   issue 5,000 m → receive 4,850 m of a DIFFERENT item in a DIFFERENT unit →
  *   reject some → re-issue as rework → receive it → the traceability chain from
- *   the output lot back to the input lot is intact.
+ *   the output batch back to the input batch is intact.
  *
  * It is one test rather than five because the failure this guards against is not
  * "does createJobIssue work" — each service already has its own guards — it is
  * the chain coming apart between them: a step status that stops advancing, a
- * lot whose parents were never written, a balance that survives one document and
+ * batch whose parents were never written, a balance that survives one document and
  * not two. Those only appear when the documents run in sequence against the same
  * data.
  *
@@ -47,7 +46,7 @@ const unique = () => process.hrtime.bigint().toString(36);
 /**
  * 🔴 STOCK, PUT ON THE BOOKS THE WAY PURCHASE RECEIVED WILL DO IT.
  *
- * `createLot` + `postMovement` through the ledger service and nothing else — the
+ * `createBatch` + `postMovement` through the ledger service and nothing else — the
  * exact path `PURCHASE_RECEIVED_AND_ITEMS_SPEC.md` §4.7 specifies. Material In on
  * the job order used to do this and was retired on 2026-08-07 (§D3), so a job
  * order is now a PLAN and the stock it draws on arrives from somewhere else.
@@ -55,58 +54,29 @@ const unique = () => process.hrtime.bigint().toString(36);
  * Writing it here rather than through a document is what lets these tests keep
  * covering the loop while Purchase Received is still unbuilt.
  */
-async function seedStock(
-  itemId: string,
-  qty: number,
-  opts: { value?: number; packages?: number[] } = {},
-) {
-  // 🔴 runAsDocument, not runAsTenant: fifty takas is fifty packages and fifty
-  // movements, which blows Prisma’s 5-second default (jobwork.types.ts) — the
-  // same budget Purchase Received will need for the same reason (spec §4.7).
+async function seedStock(itemId: string, qty: number, opts: { value?: number } = {}) {
+  // runAsDocument, not runAsTenant: a document posts several movements and the
+  // 5-second default is tight (jobwork.types.ts).
   return runAsDocument(orgId, async (tx) => {
-    const lot = await createLot(tx, {
+    const batch = await createBatch(tx, {
       organizationId: orgId,
       itemId,
       ownership: 'own',
       sourceDocType: SOURCE_DOC_TYPES.jobOrderMaterialIn,
     });
 
-    const value = opts.value ?? 0;
-    if (!opts.packages?.length) {
-      await postMovement(tx, {
-        organizationId: orgId,
-        lotId: lot.id,
-        locationId: godownId,
-        movementType: 'receipt',
-        qtyIn: qty,
-        valueIn: value,
-        sourceDocType: SOURCE_DOC_TYPES.jobOrderMaterialIn,
-        sourceDocId: lot.id,
-      });
-      return lot;
-    }
-
-    // Value travels with quantity, one row at a time — putting it all on the
-    // first taka would make one roll carry the cost of forty.
-    const created = await createPackages(tx, {
+    await postMovement(tx, {
       organizationId: orgId,
-      lotId: lot.id,
-      packages: opts.packages.map((packageQty) => ({ qty: packageQty })),
+      batchId: batch.id,
+      locationId: godownId,
+      movementType: 'receipt',
+      qtyIn: qty,
+      valueIn: opts.value ?? 0,
+      sourceDocType: SOURCE_DOC_TYPES.jobOrderMaterialIn,
+      sourceDocId: batch.id,
     });
-    for (const pkg of created) {
-      await postMovement(tx, {
-        organizationId: orgId,
-        lotId: lot.id,
-        lotPackageId: pkg.id,
-        locationId: godownId,
-        movementType: 'receipt',
-        qtyIn: pkg.qty,
-        valueIn: (value * Number(pkg.qty)) / qty,
-        sourceDocType: SOURCE_DOC_TYPES.jobOrderMaterialIn,
-        sourceDocId: lot.id,
-      });
-    }
-    return lot;
+
+    return batch;
   });
 }
 
@@ -150,7 +120,7 @@ beforeAll(async () => {
         sku: `FLOW-GREY-${unique()}`,
         unit: 'Metre',
         stockingUomId: metreId,
-        lotTracking: 'lot_and_package',
+        inventoryTracking: 'batch',
       },
       select: { id: true },
     });
@@ -163,7 +133,7 @@ beforeAll(async () => {
         sku: `FLOW-DYED-${unique()}`,
         unit: 'Metre',
         stockingUomId: metreId,
-        lotTracking: 'lot_and_package',
+        inventoryTracking: 'batch',
       },
       select: { id: true },
     });
@@ -176,7 +146,7 @@ beforeAll(async () => {
         sku: `FLOW-SHIRT-${unique()}`,
         unit: 'Piece',
         stockingUomId: pieceId,
-        lotTracking: 'none',
+        inventoryTracking: 'none',
       },
       select: { id: true },
     });
@@ -214,7 +184,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  // Bottom-up. `stock_ledger` holds RESTRICT foreign keys to items, lots and
+  // Bottom-up. `stock_ledger` holds RESTRICT foreign keys to items, batches and
   // locations, so letting the organization cascade would hit those constraints in
   // whatever order Postgres chose.
   await runAsTenant(orgId, async (tx) => {
@@ -231,8 +201,7 @@ afterAll(async () => {
     await tx.route.deleteMany({ where: { organizationId: orgId } });
     await tx.rejectionReason.deleteMany({ where: { organizationId: orgId } });
     await tx.stockLedgerEntry.deleteMany({ where: { organizationId: orgId } });
-    await tx.lotPackage.deleteMany({ where: { organizationId: orgId } });
-    await tx.lot.deleteMany({ where: { organizationId: orgId } });
+    await tx.batch.deleteMany({ where: { organizationId: orgId } });
     await tx.process.deleteMany({ where: { organizationId: orgId } });
     await tx.item.deleteMany({ where: { organizationId: orgId } });
     await tx.location.deleteMany({ where: { organizationId: orgId } });
@@ -259,7 +228,6 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
     const dyeing = await createNewProcess(orgId, {
       name: 'Dyeing',
       // The same roll comes back, so goods can be received taka by taka.
-      preservesPackaging: true,
       rateBasis: 'per_issued_unit',
       defaultTolerancePct: 5,
     });
@@ -269,7 +237,6 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
       // Cloth in, panels out — a different item in a different unit.
       itemChanges: true,
       // The roll is destroyed, so only a bulk quantity can be received.
-      preservesPackaging: false,
       rateBasis: 'per_received_unit',
     });
 
@@ -297,14 +264,10 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
     expect(route.steps).toHaveLength(2);
 
     // ---------------------------------------------------------------------
-    // The stock this run draws on. Fifty takas, each individually measured —
-    // the whole reason `lot_packages` exists. Purchase Received will write this;
-    // until it ships the test writes it through the same ledger calls (§4.7).
+    // The stock this run draws on. Purchase Received will write this; until it
+    // ships the test writes it through the same ledger calls (§4.7).
     // ---------------------------------------------------------------------
-    const inputLot = await seedStock(greyId, 5000, {
-      value: 250000,
-      packages: Array.from({ length: 50 }, () => 100),
-    });
+    const inputBatch = await seedStock(greyId, 5000, { value: 250000 });
 
     // ---------------------------------------------------------------------
     // The job order — a PLAN, with no item and no quantity on the header. A
@@ -347,15 +310,9 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
     expect(Number(jobOrder.steps[0]!.plannedInputQty)).toBe(5000);
     expect(Number(jobOrder.steps[1]!.plannedInputQty)).toBe(5000);
 
-    const inputPackages = await runAsTenant(orgId, (tx) =>
-      tx.lotPackage.findMany({ where: { lotId: inputLot.id }, orderBy: { packageNumber: 'asc' } }),
-    );
-    expect(inputPackages).toHaveLength(50);
-    expect(inputPackages[0]!.packageNumber).toBe(1);
-
     // On the books, valued.
     const opening = await runAsTenant(orgId, (tx) =>
-      getBalance(tx, { organizationId: orgId, lotId: inputLot.id }),
+      getBalance(tx, { organizationId: orgId, batchId: inputBatch.id }),
     );
     expect(opening.qty.toString()).toBe('5000');
     expect(opening.value.toString()).toBe('250000');
@@ -367,9 +324,9 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
     const issue = await createNewJobIssue(orgId, {
       jobOrderStepId: step1.id,
       sourceLocationId: godownId,
-      // ⚠️ Lot level. The whole lot goes as one line — the fifty takas are still
-      // recorded against the lot, but a challan does not name them one by one.
-      lines: [{ itemId: greyId, lotId: inputLot.id, qty: 5000 }],
+      // ⚠️ Batch level. The whole batch goes as one line — the fifty takas are still
+      // recorded against the batch, but a challan does not name them one by one.
+      lines: [{ itemId: greyId, batchId: inputBatch.id, qty: 5000 }],
     });
 
     expect(issue.challanNumber).toMatch(/^JI-\d{5}$/);
@@ -383,13 +340,13 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
     // Stock left the godown and is now at the dyer — one axis, not a separate
     // "with processor" state (§5.4).
     const atGodown = await runAsTenant(orgId, (tx) =>
-      getBalance(tx, { organizationId: orgId, lotId: inputLot.id, locationId: godownId }),
+      getBalance(tx, { organizationId: orgId, batchId: inputBatch.id, locationId: godownId }),
     );
     expect(atGodown.qty.toString()).toBe('0');
     const atDyer = await runAsTenant(orgId, (tx) =>
       getBalance(tx, {
         organizationId: orgId,
-        lotId: inputLot.id,
+        batchId: inputBatch.id,
         locationId: issue.destinationLocationId,
       }),
     );
@@ -399,12 +356,11 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
     expect(atDyer.value.toString()).toBe('250000');
 
     // ---------------------------------------------------------------------
-    // Step 1 — receive back, at LOT level. Goods come back as a quantity
+    // Step 1 — receive back, at BATCH level. Goods come back as a quantity
     // against the item; there is no taka-by-taka grid today.
     // ---------------------------------------------------------------------
     const prefill = await getReceivePrefill(orgId, step1.id);
-    expect(prefill.mode).toBe('bulk');
-    // One open challan line, because the challan itself is lot-level now.
+    // One open challan line, because the challan itself is batch-level now.
     expect(prefill.lines).toHaveLength(1);
 
     // 4,850 m back out of 5,000 — and 50 m of that is shade-off and needs
@@ -428,35 +384,26 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
     expect(Number(receipt.totalReceivedQty)).toBe(4850);
     expect(Number(receipt.totalAcceptedQty)).toBe(4800);
     expect(Number(receipt.totalReworkQty)).toBe(50);
-    // 🔴 The rework pieces are in a lot of their OWN, so they stay countable.
-    expect(receipt.outputLotId).not.toBeNull();
-    expect(receipt.reworkLotId).not.toBeNull();
-    expect(receipt.outputLotId).not.toBe(receipt.reworkLotId);
+    // 🔴 The rework pieces are in a batch of their OWN, so they stay countable.
+    expect(receipt.outputBatchId).not.toBeNull();
+    expect(receipt.reworkBatchId).not.toBeNull();
+    expect(receipt.outputBatchId).not.toBe(receipt.reworkBatchId);
 
-    const dyedLot = await runAsTenant(orgId, (tx) =>
-      tx.lot.findFirstOrThrow({ where: { id: receipt.outputLotId! } }),
+    const dyedBatch = await runAsTenant(orgId, (tx) =>
+      tx.batch.findFirstOrThrow({ where: { id: receipt.outputBatchId! } }),
     );
     // 🔴 GENEALOGY. Written here or never — it cannot be reconstructed from
     // history that was not recorded (§11.3).
-    expect(dyedLot.parentLotIds).toContain(inputLot.id);
-    expect(dyedLot.itemId).toBe(dyedId);
+    expect(dyedBatch.parentBatchIds).toContain(inputBatch.id);
+    expect(dyedBatch.itemId).toBe(dyedId);
 
     // The cost of the material plus the dyeing charge landed on the pieces that
     // survived — 250,000 + (5,000 × 12) = 310,000, split by quantity.
     const dyedBalance = await runAsTenant(orgId, (tx) =>
-      getBalance(tx, { organizationId: orgId, lotId: dyedLot.id }),
+      getBalance(tx, { organizationId: orgId, batchId: dyedBatch.id }),
     );
     expect(dyedBalance.qty.toString()).toBe('4800');
     expect(Number(dyedBalance.value)).toBeCloseTo((310000 * 4800) / 4850, 0);
-
-    // ⚠️ At lot level the output carries NO packages. The fifty takas that went
-    // out are still recorded on the challan and still traceable through
-    // `parentLotIds`; what is not recorded is which returned roll came from
-    // which issued roll, because nobody counted them back one by one.
-    const outputPackages = await runAsTenant(orgId, (tx) =>
-      tx.lotPackage.findMany({ where: { lotId: dyedLot.id } }),
-    );
-    expect(outputPackages).toHaveLength(0);
 
     // ---------------------------------------------------------------------
     // Rework — back to the SAME step, counted as a second attempt
@@ -465,7 +412,7 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
       jobOrderStepId: step1.id,
       sourceLocationId: godownId,
       isRework: true,
-      lines: [{ lotId: receipt.reworkLotId!, qty: 50 }],
+      lines: [{ batchId: receipt.reworkBatchId!, qty: 50 }],
     });
     expect(reworkIssue.isRework).toBe(true);
     expect(reworkIssue.attemptNo).toBeGreaterThan(1);
@@ -478,13 +425,13 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
     const cutIssue = await createNewJobIssue(orgId, {
       jobOrderStepId: step2.id,
       sourceLocationId: godownId,
-      lines: [{ lotId: dyedLot.id, qty: 4800 }],
+      lines: [{ batchId: dyedBatch.id, qty: 4800 }],
     });
     expect(Number(cutIssue.totalQty)).toBe(4800);
 
+    // Cutting destroys the roll; goods come back as a quantity against the batch.
     const cutPrefill = await getReceivePrefill(orgId, step2.id);
-    // 🔴 Cutting destroys the roll, so there is no taka to map back to.
-    expect(cutPrefill.mode).toBe('bulk');
+    expect(cutPrefill.issues).toHaveLength(1);
 
     const cutReceipt = await createNewJobReceipt(orgId, {
       jobOrderStepId: step2.id,
@@ -502,19 +449,19 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
       ],
     });
 
-    const panelLot = await runAsTenant(orgId, (tx) =>
-      tx.lot.findFirstOrThrow({ where: { id: cutReceipt.outputLotId! } }),
+    const panelBatch = await runAsTenant(orgId, (tx) =>
+      tx.batch.findFirstOrThrow({ where: { id: cutReceipt.outputBatchId! } }),
     );
-    expect(panelLot.itemId).toBe(shirtId);
-    expect(panelLot.uomId).toBe(pieceId);
+    expect(panelBatch.itemId).toBe(shirtId);
+    expect(panelBatch.uomId).toBe(pieceId);
     // The chain holds all the way back: panels → dyed → grey.
-    expect(panelLot.parentLotIds).toContain(dyedLot.id);
-    expect(dyedLot.parentLotIds).toContain(inputLot.id);
+    expect(panelBatch.parentBatchIds).toContain(dyedBatch.id);
+    expect(dyedBatch.parentBatchIds).toContain(inputBatch.id);
 
     // Scrap took no share of the value, so the surviving panels carry the full
     // cost of the run (§5.5) — which is the number anyone would quote from.
     const panelBalance = await runAsTenant(orgId, (tx) =>
-      getBalance(tx, { organizationId: orgId, lotId: panelLot.id }),
+      getBalance(tx, { organizationId: orgId, batchId: panelBatch.id }),
     );
     expect(panelBalance.qty.toString()).toBe('2820');
     expect(Number(panelBalance.value)).toBeGreaterThan(0);
@@ -554,16 +501,16 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
     expect(afterClose.jobOrder.status).toBe('short_closed');
   });
 
-  it('refuses to issue a second lot when the process demands one', async () => {
+  it('refuses to issue a second batch when the process demands one', async () => {
     const shadeMatched = await createNewProcess(orgId, {
       name: `Shade-matched dyeing ${unique()}`,
-      requiresSingleLot: true,
+      requiresSingleBatch: true,
     });
 
-    // Two separate lots of the same item at the same place.
-    const lotA = await seedStock(greyId, 100);
-    const lotB = await seedStock(greyId, 100);
-    const lots = [lotA, lotB];
+    // Two separate batches of the same item at the same place.
+    const batchA = await seedStock(greyId, 100);
+    const batchB = await seedStock(greyId, 100);
+    const batches = [batchA, batchB];
 
     const jobOrder = await createNewJobOrder(orgId, {
       steps: [
@@ -579,7 +526,7 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
       createNewJobIssue(orgId, {
         jobOrderStepId: jobOrder.steps[0]!.id,
         sourceLocationId: godownId,
-        lines: lots.map((lot) => ({ lotId: lot.id, qty: 50 })),
+        lines: batches.map((batch) => ({ batchId: batch.id, qty: 50 })),
       }),
       // Shade variation is invisible until the garment is assembled, which is
       // why this is a block and not a warning (§5.4).
@@ -588,7 +535,7 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
 
   it('refuses a disposition split that does not add up', async () => {
     const process = await createNewProcess(orgId, { name: `Split check ${unique()}` });
-    const lot = await seedStock(greyId, 100);
+    const batch = await seedStock(greyId, 100);
     const jobOrder = await createNewJobOrder(orgId, {
       steps: [
         {
@@ -602,7 +549,7 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
     const issue = await createNewJobIssue(orgId, {
       jobOrderStepId: jobOrder.steps[0]!.id,
       sourceLocationId: godownId,
-      lines: [{ lotId: lot.id, qty: 100 }],
+      lines: [{ batchId: batch.id, qty: 100 }],
     });
 
     await expect(
@@ -654,7 +601,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
             sku: `FLOW-${name.toUpperCase().replace(/\W+/g, '')}-${unique()}`,
             unit,
             stockingUomId: uomId,
-            lotTracking: 'none',
+            inventoryTracking: 'none',
           },
           select: { id: true },
         });
@@ -1044,17 +991,17 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     });
     const step = jobOrder.steps[0]!;
 
-    const lotOf = async (itemId: string) =>
+    const batchOf = async (itemId: string) =>
       runAsTenant(orgId, (tx) =>
-        tx.lot.findFirstOrThrow({
+        tx.batch.findFirstOrThrow({
           where: { organizationId: orgId, itemId, isDeleted: false },
           orderBy: { createdAt: 'desc' },
           select: { id: true },
         }),
       );
-    const panelLot = await lotOf(shirtId);
-    const threadLot = await lotOf(threadId);
-    const buttonLot = await lotOf(buttonId);
+    const panelBatch = await batchOf(shirtId);
+    const threadBatch = await batchOf(threadId);
+    const buttonBatch = await batchOf(buttonId);
 
     // 🔴 ONE physical movement to one processor is ONE document, whatever the
     // bill of materials says (§5.7). Splitting it per item would multiply the
@@ -1063,8 +1010,8 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       jobOrderStepId: step.id,
       sourceLocationId: godownId,
       lines: [
-        { itemId: shirtId, lotId: panelLot.id, qty: 100 },
-        { itemId: threadId, lotId: threadLot.id, qty: 5 },
+        { itemId: shirtId, batchId: panelBatch.id, qty: 100 },
+        { itemId: threadId, batchId: threadBatch.id, qty: 5 },
       ],
     });
     expect(first.lines).toHaveLength(2);
@@ -1076,7 +1023,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     const second = await createNewJobIssue(orgId, {
       jobOrderStepId: step.id,
       sourceLocationId: godownId,
-      lines: [{ itemId: buttonId, lotId: buttonLot.id, qty: 300 }],
+      lines: [{ itemId: buttonId, batchId: buttonBatch.id, qty: 300 }],
     });
     expect(second.lines[0]!.itemId).toBe(buttonId);
 
@@ -1120,8 +1067,8 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     });
     const step = jobOrder.steps[0]!;
 
-    const threadLot = await runAsTenant(orgId, (tx) =>
-      tx.lot.findFirstOrThrow({
+    const threadBatch = await runAsTenant(orgId, (tx) =>
+      tx.batch.findFirstOrThrow({
         where: { organizationId: orgId, itemId: threadId, isDeleted: false },
         orderBy: { createdAt: 'desc' },
         select: { id: true },
@@ -1135,7 +1082,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       createNewJobIssue(orgId, {
         jobOrderStepId: step.id,
         sourceLocationId: godownId,
-        lines: [{ itemId: threadId, lotId: threadLot.id, qty: 8 }],
+        lines: [{ itemId: threadId, batchId: threadBatch.id, qty: 8 }],
       }),
     ).rejects.toMatchObject({ status: 400 });
 
@@ -1144,7 +1091,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       jobOrderStepId: step.id,
       sourceLocationId: godownId,
       toleranceOverrideReason: 'Extra thread for a second colour',
-      lines: [{ itemId: threadId, lotId: threadLot.id, qty: 8 }],
+      lines: [{ itemId: threadId, batchId: threadBatch.id, qty: 8 }],
     });
     expect(forced.lines[0]!.itemId).toBe(threadId);
   });
@@ -1169,8 +1116,8 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       ],
     });
 
-    const threadLot = await runAsTenant(orgId, (tx) =>
-      tx.lot.findFirstOrThrow({
+    const threadBatch = await runAsTenant(orgId, (tx) =>
+      tx.batch.findFirstOrThrow({
         where: { organizationId: orgId, itemId: threadId, isDeleted: false },
         orderBy: { createdAt: 'desc' },
         select: { id: true },
@@ -1183,7 +1130,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       createNewJobIssue(orgId, {
         jobOrderStepId: jobOrder.steps[0]!.id,
         sourceLocationId: godownId,
-        lines: [{ itemId: threadId, lotId: threadLot.id, qty: 5 }],
+        lines: [{ itemId: threadId, batchId: threadBatch.id, qty: 5 }],
       }),
     ).rejects.toMatchObject({ status: 400 });
   });
@@ -1193,7 +1140,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       name: `Stitching ${unique()}`,
       itemChanges: true,
       // Stitching destroys the bundle, so goods come back as a bulk quantity.
-      preservesPackaging: false,
       rateBasis: 'per_issued_unit',
     });
 
@@ -1220,25 +1166,25 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     });
     const step = jobOrder.steps[0]!;
 
-    const lotOf = async (itemId: string) =>
+    const batchOf = async (itemId: string) =>
       runAsTenant(orgId, (tx) =>
-        tx.lot.findFirstOrThrow({
+        tx.batch.findFirstOrThrow({
           where: { organizationId: orgId, itemId, isDeleted: false },
           orderBy: { createdAt: 'desc' },
           select: { id: true },
         }),
       );
-    const panelLot = await lotOf(shirtId);
-    const threadLot = await lotOf(threadId);
-    const buttonLot = await lotOf(buttonId);
+    const panelBatch = await batchOf(shirtId);
+    const threadBatch = await batchOf(threadId);
+    const buttonBatch = await batchOf(buttonId);
 
     const issue = await createNewJobIssue(orgId, {
       jobOrderStepId: step.id,
       sourceLocationId: godownId,
       lines: [
-        { itemId: shirtId, lotId: panelLot.id, qty: 100 },
-        { itemId: threadId, lotId: threadLot.id, qty: 5 },
-        { itemId: buttonId, lotId: buttonLot.id, qty: 300 },
+        { itemId: shirtId, batchId: panelBatch.id, qty: 100 },
+        { itemId: threadId, batchId: threadBatch.id, qty: 5 },
+        { itemId: buttonId, batchId: buttonBatch.id, qty: 300 },
       ],
     });
 
@@ -1273,18 +1219,18 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     );
     expect(outputs).toHaveLength(2);
     expect(outputs.filter((row) => row.isPrimary)).toHaveLength(1);
-    // 🔴 A lot per returned item, each with genealogy back to EVERY lot consumed
+    // 🔴 A batch per returned item, each with genealogy back to EVERY batch consumed
     // — the rejects came from the same panels and thread the shirts did.
-    expect(outputs[0]!.outputLotId).not.toBeNull();
-    expect(outputs[1]!.outputLotId).not.toBeNull();
-    expect(outputs[0]!.outputLotId).not.toBe(outputs[1]!.outputLotId);
+    expect(outputs[0]!.outputBatchId).not.toBeNull();
+    expect(outputs[1]!.outputBatchId).not.toBeNull();
+    expect(outputs[0]!.outputBatchId).not.toBe(outputs[1]!.outputBatchId);
 
-    const shirtLot = await runAsTenant(orgId, (tx) =>
-      tx.lot.findFirstOrThrow({ where: { id: outputs[0]!.outputLotId! } }),
+    const shirtBatch = await runAsTenant(orgId, (tx) =>
+      tx.batch.findFirstOrThrow({ where: { id: outputs[0]!.outputBatchId! } }),
     );
-    expect(shirtLot.itemId).toBe(shirtsId);
-    for (const consumed of [panelLot.id, threadLot.id, buttonLot.id]) {
-      expect(shirtLot.parentLotIds).toContain(consumed);
+    expect(shirtBatch.itemId).toBe(shirtsId);
+    for (const consumed of [panelBatch.id, threadBatch.id, buttonBatch.id]) {
+      expect(shirtBatch.parentBatchIds).toContain(consumed);
     }
 
     /**
@@ -1298,10 +1244,10 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
      * the cross-item sum it would have been (100 + 5 + 300) × ₹3, which is 405
      * of nothing multiplied by a rate.
      */
-    const balanceOf = async (lotId: string) =>
-      runAsTenant(orgId, (tx) => getBalance(tx, { organizationId: orgId, lotId }));
-    const shirtBalance = await balanceOf(outputs[0]!.outputLotId!);
-    const rejectBalance = await balanceOf(outputs[1]!.outputLotId!);
+    const balanceOf = async (batchId: string) =>
+      runAsTenant(orgId, (tx) => getBalance(tx, { organizationId: orgId, batchId }));
+    const shirtBalance = await balanceOf(outputs[0]!.outputBatchId!);
+    const rejectBalance = await balanceOf(outputs[1]!.outputBatchId!);
 
     const consumedValue = 1000 + 0 + 0; // only the panels were valued
     const pot = consumedValue + 100 * 3;
@@ -1340,8 +1286,8 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     });
     const step = jobOrder.steps[0]!;
 
-    const panelLot = await runAsTenant(orgId, (tx) =>
-      tx.lot.findFirstOrThrow({
+    const panelBatch = await runAsTenant(orgId, (tx) =>
+      tx.batch.findFirstOrThrow({
         where: { organizationId: orgId, itemId: shirtId, isDeleted: false },
         orderBy: { createdAt: 'desc' },
         select: { id: true },
@@ -1350,7 +1296,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     const issue = await createNewJobIssue(orgId, {
       jobOrderStepId: step.id,
       sourceLocationId: godownId,
-      lines: [{ itemId: shirtId, lotId: panelLot.id, qty: 100 }],
+      lines: [{ itemId: shirtId, batchId: panelBatch.id, qty: 100 }],
     });
 
     // The operation is worth 500. Handing the by-product 900 would leave the
@@ -1394,9 +1340,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     });
     const step = jobOrder.steps[0]!;
 
-    const lotOf = async (itemId: string) =>
+    const batchOf = async (itemId: string) =>
       runAsTenant(orgId, (tx) =>
-        tx.lot.findFirstOrThrow({
+        tx.batch.findFirstOrThrow({
           where: { organizationId: orgId, itemId, isDeleted: false },
           orderBy: { createdAt: 'desc' },
           select: { id: true },
@@ -1407,8 +1353,8 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       jobOrderStepId: step.id,
       sourceLocationId: godownId,
       lines: [
-        { itemId: shirtId, lotId: (await lotOf(shirtId)).id, qty: 100 },
-        { itemId: threadId, lotId: (await lotOf(threadId)).id, qty: 5 },
+        { itemId: shirtId, batchId: (await batchOf(shirtId)).id, qty: 100 },
+        { itemId: threadId, batchId: (await batchOf(threadId)).id, qty: 5 },
       ],
     });
 

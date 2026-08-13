@@ -254,19 +254,19 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'createdAt', label: 'Created At' },
   ],
   /**
-   * Lots. There is no lot LIST PAGE — lots are picked from an availability query
+   * Batches. There is no batch LIST PAGE — batches are picked from an availability query
    * over the ledger, never browsed (§10) — but the catalog has to exist because
    * `LIST_COLUMNS` is keyed by every entity type that supports custom fields, and
-   * lots do. It also gives the read-only lots endpoint a column vocabulary.
+   * batches do. It also gives the read-only batches endpoint a column vocabulary.
    *
    * 🔴 There is no `availableQty` column here on purpose. Availability is a
-   * ledger SUM, never a column on the lot, and offering it as one would be the
+   * ledger SUM, never a column on the batch, and offering it as one would be the
    * first step towards someone storing it.
    */
-  lot: [
-    { key: 'lotNumber', label: 'Lot #', locked: true },
+  batch: [
+    { key: 'batchNumber', label: 'Batch #', locked: true },
     { key: 'item', label: 'Item', defaultVisible: true },
-    { key: 'supplierLotRef', label: 'Supplier Ref', defaultVisible: true },
+    { key: 'supplierBatchRef', label: 'Supplier Ref', defaultVisible: true },
     { key: 'ownership', label: 'Ownership', defaultVisible: true },
     { key: 'state', label: 'State', defaultVisible: true },
     { key: 'packageCount', label: 'Takas' },

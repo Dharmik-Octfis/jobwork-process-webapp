@@ -4,6 +4,16 @@ import { openApiRegistry } from '../../config/openapi.ts';
 
 extendZodWithOpenApi(z);
 
+/**
+ * How much batch detail the user sees. `none` still creates a batch internally —
+ * see `Item.inventoryTracking` in the schema. Accepts the form's capitalised
+ * labels so an older client cannot silently write an unrecognised value.
+ */
+export const INVENTORY_TRACKING = z
+  .string()
+  .transform((v) => v.trim().toLowerCase())
+  .pipe(z.enum(['none', 'batch']));
+
 export const itemImageAttachmentSchema = z.object({
   key: z.string(),
   name: z.string().optional(),
@@ -36,7 +46,7 @@ export const itemSchema = openApiRegistry.register(
     unit: z.string().max(50).optional().default('').openapi({ example: 'pcs' }),
     /**
      * 🔴 THE UNIT THE LEDGER MOVES THIS ITEM IN. One item, one stocking unit
-     * (jobwork domain §5.1) — every lot, every challan line and every balance is
+     * (jobwork domain §5.1) — every batch, every challan line and every balance is
      * denominated in it, and nothing converts between units anywhere.
      *
      * Distinct from `unit` above, which is a free string this form has always
@@ -71,8 +81,10 @@ export const itemSchema = openApiRegistry.register(
 
     trackInventory: z.boolean().optional(),
     track_inventory: z.boolean().optional(),
-    inventoryTracking: z.string().nullable().optional(),
-    inventory_tracking: z.string().nullable().optional(),
+    // none | batch. NOT nullable: the column is NOT NULL since the 2026-08-12
+    // rename, and an untracked item is the string 'none', never an absent value.
+    inventoryTracking: INVENTORY_TRACKING.optional(),
+    inventory_tracking: INVENTORY_TRACKING.optional(),
     openingStock: z.number().nullable().optional(),
     openingStockValuePerUnit: z.number().nullable().optional(),
     customFields: z.record(z.string(), z.unknown()).optional(),

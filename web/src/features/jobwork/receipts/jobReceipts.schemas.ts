@@ -64,8 +64,8 @@ export const jobReceiptSchema = z.object({
   processorNameSnapshot: z.string().nullable(),
   mode: z.string(),
   locationId: z.string(),
-  outputLotId: z.string().nullable(),
-  reworkLotId: z.string().nullable(),
+  outputBatchId: z.string().nullable(),
+  reworkBatchId: z.string().nullable(),
   totalIssuedQty: z.union([z.string(), z.number()]),
   totalReceivedQty: z.union([z.string(), z.number()]),
   totalAcceptedQty: z.union([z.string(), z.number()]),
@@ -81,7 +81,7 @@ export const jobReceiptSchema = z.object({
    * disposition now lives.
    *
    * `lines` above is the CONSUMED side: how much of each challan line this
-   * receipt accounts for. At lot level its disposition columns are all zero, so
+   * receipt accounts for. At batch level its disposition columns are all zero, so
    * a screen reading them shows a receipt where nothing was accepted. These are
    * the rows to render.
    */
@@ -100,8 +100,8 @@ export const jobReceiptSchema = z.object({
         uom: uomRefSchema.nullable().optional(),
         reason: z.object({ id: z.string(), name: z.string() }).nullable().optional(),
         responsibility: z.string().nullable().optional(),
-        outputLot: z.object({ id: z.string(), lotNumber: z.string() }).nullable().optional(),
-        reworkLot: z.object({ id: z.string(), lotNumber: z.string() }).nullable().optional(),
+        outputBatch: z.object({ id: z.string(), batchNumber: z.string() }).nullable().optional(),
+        reworkBatch: z.object({ id: z.string(), batchNumber: z.string() }).nullable().optional(),
       }),
     )
     .default([]),
@@ -120,8 +120,8 @@ export const jobReceiptSchema = z.object({
     })
     .optional(),
   location: namedRefSchema.nullable().optional(),
-  outputLot: z.object({ id: z.string(), lotNumber: z.string() }).nullable().optional(),
-  reworkLot: z.object({ id: z.string(), lotNumber: z.string() }).nullable().optional(),
+  outputBatch: z.object({ id: z.string(), batchNumber: z.string() }).nullable().optional(),
+  reworkBatch: z.object({ id: z.string(), batchNumber: z.string() }).nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   customFields: z.record(z.string(), z.unknown()).optional(),
@@ -170,9 +170,8 @@ export const receivePrefillSchema = z.object({
       itemId: z.string().nullable(),
       itemName: z.string().nullable(),
       uomSymbol: z.string().nullable(),
-      lotId: z.string(),
-      lotNumber: z.string(),
-      lotPackageId: z.string().nullable(),
+      batchId: z.string(),
+      batchNumber: z.string(),
       packageLabel: z.string().nullable(),
       packageNumber: z.number().nullable(),
       issuedQty: z.string(),

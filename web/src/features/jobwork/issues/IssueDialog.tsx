@@ -6,12 +6,12 @@ import { Modal } from '../../../components/ui/Modal';
 import { Select } from '../../../components/ui/Select';
 import { fetchVendors } from '../../purchases/vendors/vendors.api';
 import { fetchLocations } from '../../configuration/locations/locations.api';
-import { fetchAvailableLots, fetchStockLocations } from '../lots/lots.api';
+import { fetchAvailableBatches, fetchStockLocations } from '../batches/batches.api';
 import { formatQty, toNumber } from '../jobwork.schemas';
 import type { JobOrder, OverviewStep } from '../job-orders/jobOrders.schemas';
 import { createJobIssue } from './jobIssues.api';
 import type { JobIssueLineData } from './jobIssues.schemas';
-import { LotPicker, type LotSelection } from './LotPicker';
+import { BatchPicker, type BatchSelection } from './BatchPicker';
 
 interface Props {
   isOpen: boolean;
@@ -64,7 +64,7 @@ const sectionHeading: React.CSSProperties = {
  * the next step, long after anyone connects it to this dialog (§5.1).
  *
  * WHAT THE USER ACTUALLY DECIDES: where it goes out from, who it goes to, which
- * lots, and a free-text remark.
+ * batches, and a free-text remark.
  *
  * ⚠️ Transport (vehicle / LR / e-way bill) and per-org custom fields were both
  * removed on 2026-08-10 — the columns are gone from `job_issues` and `job_issue`
@@ -81,11 +81,10 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
   const [sourceLocationId, setSourceLocationId] = useState('');
   const [processorId, setProcessorId] = useState<string | null>(step.processorId);
   const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10));
-  const [selection, setSelection] = useState<Record<string, LotSelection>>({});
+  const [selection, setSelection] = useState<Record<string, BatchSelection>>({});
   /** ⚠️ Quantities typed for items that have no stock on record. Temporary —
    * see the note in `lines` below. */
   const [unstocked, setUnstocked] = useState<Record<string, number>>({});
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [remarks, setRemarks] = useState('');
   const [overrideReason, setOverrideReason] = useState('');
   const [needsOverride, setNeedsOverride] = useState(false);
@@ -95,7 +94,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
   /**
    * 🔴 ONE SECTION PER INPUT ITEM (domain §5.7). A challan carries fabric, thread
    * and buttons — one physical movement to one processor, so one document — and
-   * each of them has its own lots, its own unit and its own picker.
+   * each of them has its own batches, its own unit and its own picker.
    *
    * The CONSUMES list is the only source. The fallback to the step's scalar item
    * went with Migration B (2026-08-12); a step that lists nothing has nothing to
@@ -133,7 +132,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
    *
    * DERIVED, not synced into state by an effect. An effect that calls setState
    * renders twice and, worse, briefly shows the dialog with no location picked
-   * — long enough for the lot query underneath to fire with an empty location
+   * — long enough for the batch query underneath to fire with an empty location
    * and come back with nothing.
    */
   /**
@@ -175,7 +174,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
    * the item is the processor's own — the normal state once anything has been
    * sent there — the ledger list had one entry, the exclusion emptied it, and
    * the fallback never fired. The dropdown then offered nothing, the source
-   * stayed blank, and both the lot queries and the save button died with no
+   * stayed blank, and both the batch queries and the save button died with no
    * explanation anywhere on screen.
    */
   const ledgerOptions = locations
@@ -202,11 +201,11 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
    * is data — a step can have one or seven — and hooks cannot be called in a
    * loop whose length changes between renders.
    */
-  const lotQueries = useQueries({
+  const batchQueries = useQueries({
     queries: inputItems.map((input) => ({
-      queryKey: ['available-lots', orgId, input.itemId, effectiveSourceId, jobOrder.ownership],
+      queryKey: ['available-batches', orgId, input.itemId, effectiveSourceId, jobOrder.ownership],
       queryFn: () =>
-        fetchAvailableLots(orgId!, {
+        fetchAvailableBatches(orgId!, {
           itemId: input.itemId,
           locationId: effectiveSourceId,
           // 🔴 Not optional. Without it one customer's goods can be issued into
@@ -227,7 +226,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
     (v) => !v.vendorTypes?.length || v.vendorTypes.includes('job_worker'),
   );
 
-  const singleLotOnly = step.process?.requiresSingleLot ?? false;
+  const singleBatchOnly = step.process?.requiresSingleBatch ?? false;
 
   /**
    * 🔴 EVERY LINE CARRIES ITS OWN ITEM (§5.7). The server refuses a line naming
@@ -239,32 +238,30 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
     for (const [index, input] of inputItems.entries()) {
       /**
        * ⚠️ TEMPORARY — an item with no stock on record can still be issued, as a
-       * plain quantity with no lot behind it. Material In was retired before
+       * plain quantity with no batch behind it. Material In was retired before
        * Purchase Received and Opening Stock exist, so without this the loop
-       * cannot be walked at all. The server creates a zero-valued lot for the
+       * cannot be walked at all. The server creates a zero-valued batch for the
        * line and says so in the ledger remark.
        *
        * 🔴 Remove this the day Purchase Received lands.
        */
-      const noStock = (lotQueries[index]?.data ?? []).length === 0;
+      const noStock = (batchQueries[index]?.data ?? []).length === 0;
       if (noStock) {
         const typed = unstocked[input.itemId] ?? 0;
         if (typed > 0) out.push({ itemId: input.itemId, qty: typed });
         continue;
       }
-      for (const lot of lotQueries[index]?.data ?? []) {
-        const sel = selection[lot.lotId];
+      for (const batch of batchQueries[index]?.data ?? []) {
+        const sel = selection[batch.batchId];
         if (!sel) continue;
-        // ⚠️ Lot level only — no `lotPackageId`. Taka selection is off (see
-        // `PACKAGE_LEVEL` in LotPicker), so a lot contributes one line carrying
-        // the quantity typed against it.
+        // A batch contributes one line carrying the quantity typed against it.
         if (sel.qty > 0) {
-          out.push({ itemId: input.itemId, lotId: lot.lotId, qty: sel.qty });
+          out.push({ itemId: input.itemId, batchId: batch.batchId, qty: sel.qty });
         }
       }
     }
     return out;
-  }, [inputItems, lotQueries, selection, unstocked]);
+  }, [inputItems, batchQueries, selection, unstocked]);
 
   /** Quantities NEVER add up across items — 100 PCS + 5 CONE is 105 of nothing
    * (§6.5) — so the running figures are per item and the footer counts rows. */
@@ -275,8 +272,6 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
     }
     return totals;
   }, [lines]);
-
-  const selectedPackages = lines.filter((l) => l.lotPackageId).length;
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -293,7 +288,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, jobOrder.id] });
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
-      queryClient.invalidateQueries({ queryKey: ['available-lots', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['available-batches', orgId] });
       onIssued();
       onClose();
     },
@@ -360,8 +355,6 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
           </button>
           {/* Per item, never one total — 100 PCS + 5 CONE is 105 of nothing. */}
           <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>
-            {selectedPackages > 0 &&
-              `${selectedPackages} taka${selectedPackages === 1 ? '' : 's'} · `}
             {inputItems
               .filter((input) => (qtyByItem.get(input.itemId) ?? 0) > 0)
               .map(
@@ -433,7 +426,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
               value={effectiveSourceId}
               onChange={(value) => {
                 setSourceLocationId(value);
-                // The picker is per location; a stale selection would issue lots
+                // The picker is per location; a stale selection would issue batches
                 // from somewhere they no longer are.
                 setSelection({});
               }}
@@ -521,8 +514,8 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
           carries whatever was actually loaded onto the vehicle.
         */}
         {inputItems.map((input, index) => {
-          const query = lotQueries[index];
-          const itemLots = query?.data ?? [];
+          const query = batchQueries[index];
+          const itemBatches = query?.data ?? [];
           const picked = qtyByItem.get(input.itemId) ?? 0;
           return (
             <div
@@ -576,13 +569,13 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
 
               <div style={{ padding: 10 }}>
                 {/*
-                  ⚠️ TEMPORARY — no lots means no stock has ever been received
+                  ⚠️ TEMPORARY — no batches means no stock has ever been received
                   for this item, which is normal today: Material In was retired
                   before Purchase Received and Opening Stock exist. Type the
-                  quantity and a zero-valued lot is created for it on save, so
+                  quantity and a zero-valued batch is created for it on save, so
                   the loop can be walked end to end. 🔴 Remove when PR lands.
                 */}
-                {!query?.isLoading && itemLots.length === 0 ? (
+                {!query?.isLoading && itemBatches.length === 0 ? (
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                     <label
                       htmlFor={`unstocked-${input.itemId}`}
@@ -607,22 +600,18 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                     />
                   </div>
                 ) : (
-                  <LotPicker
-                    lots={itemLots}
+                  <BatchPicker
+                    batches={itemBatches}
                     selection={selection}
                     onChange={setSelection}
-                    expanded={expanded}
-                    onToggleExpand={(lotId) =>
-                      setExpanded((prev) => ({ ...prev, [lotId]: !prev[lotId] }))
-                    }
                     uomLabel={input.uomLabel}
-                    /* Single-lot is a per-ITEM rule: two items are necessarily two
-                     lots, so checking the challan as a whole would refuse every
+                    /* Single-batch is a per-ITEM rule: two items are necessarily two
+                     batches, so checking the challan as a whole would refuse every
                      multi-item issue on principle (§5.4). */
-                    singleLotOnly={singleLotOnly}
-                    onSingleLotBlocked={() =>
+                    singleBatchOnly={singleBatchOnly}
+                    onSingleBatchBlocked={() =>
                       setNotice(
-                        `${step.processNameSnapshot} must run on a single lot — fabric from two dye lots shows shade variation nobody catches until the goods are assembled.`,
+                        `${step.processNameSnapshot} must run on a single batch — fabric from two dye batches shows shade variation nobody catches until the goods are assembled.`,
                       )
                     }
                     isLoading={query?.isLoading ?? false}

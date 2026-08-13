@@ -53,7 +53,7 @@ export function EditCompositeItemPage() {
     rearImage: null,
     images: [],
     trackInventory: true,
-    inventoryTracking: 'None',
+    inventoryTracking: 'none',
     openingStock: null,
     openingStockValuePerUnit: null,
     customFields: {},
@@ -237,7 +237,7 @@ export function EditCompositeItemPage() {
       rearImage: rawItem.rearImage || rawItem.rear_image || null,
       images: rawItem.images || [],
       trackInventory: true,
-      inventoryTracking: rawItem.inventoryTracking || rawItem.inventory_tracking || 'None',
+      inventoryTracking: (rawItem.inventoryTracking ?? 'none').toLowerCase(),
       openingStock:
         rawItem.openingStock !== null && rawItem.openingStock !== undefined
           ? Number(rawItem.openingStock)
@@ -300,10 +300,13 @@ export function EditCompositeItemPage() {
             : Number(value)
           : value;
 
-    setFormData((prev) => ({
-      ...prev,
-      [name]: val,
-    }));
+    setFormData((prev) => {
+      const next = { ...prev, [name]: val };
+      // An item that is not stocked cannot be batch-tracked: the two controls are
+      // one setting, and inventory_tracking is what the backend actually reads.
+      if (name === 'trackInventory' && val === false) next.inventoryTracking = 'none';
+      return next;
+    });
 
     if (errors[name]) {
       setErrors((prev) => {
@@ -317,8 +320,8 @@ export function EditCompositeItemPage() {
   const handleRadioChange = (name: string, value: string) => {
     setFormData((prev) => {
       const newState = { ...prev, [name]: value };
-      if (name === 'type' && value === 'Service' && prev.inventoryTracking === 'Batch') {
-        newState.inventoryTracking = 'None';
+      if (name === 'type' && value === 'Service' && prev.inventoryTracking === 'batch') {
+        newState.inventoryTracking = 'none';
       }
       return newState;
     });
@@ -1617,9 +1620,9 @@ export function EditCompositeItemPage() {
                       <input
                         type="radio"
                         name="inventoryTracking"
-                        value="None"
-                        checked={formData.inventoryTracking === 'None'}
-                        onChange={() => handleRadioChange('inventoryTracking', 'None')}
+                        value="none"
+                        checked={formData.inventoryTracking === 'none'}
+                        onChange={() => handleRadioChange('inventoryTracking', 'none')}
                       />{' '}
                       None
                     </label>
@@ -1636,9 +1639,9 @@ export function EditCompositeItemPage() {
                         <input
                           type="radio"
                           name="inventoryTracking"
-                          value="Batch"
-                          checked={formData.inventoryTracking === 'Batch'}
-                          onChange={() => handleRadioChange('inventoryTracking', 'Batch')}
+                          value="batch"
+                          checked={formData.inventoryTracking === 'batch'}
+                          onChange={() => handleRadioChange('inventoryTracking', 'batch')}
                         />{' '}
                         Batch
                       </label>
@@ -1646,7 +1649,7 @@ export function EditCompositeItemPage() {
                   </div>
                 </div>
 
-                {formData.inventoryTracking === 'None' && (
+                {formData.inventoryTracking === 'none' && (
                   <div style={{ display: 'flex', gap: 24, marginTop: 12 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>

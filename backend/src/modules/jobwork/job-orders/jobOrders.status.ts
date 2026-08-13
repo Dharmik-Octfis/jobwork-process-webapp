@@ -46,7 +46,7 @@ const STICKY_ORDER_STATUSES: readonly string[] = ['short_closed', 'cancelled'];
  * receipt line names no challan line — one typed total closes whatever is still
  * outstanding, oldest first (`jobReceipts.service.ts`) — so the receipt document
  * cannot say which item it consumed. The `consume` movements it posted can: they
- * carry the lot, and a lot is one item.
+ * carry the batch, and a batch is one item.
  */
 export interface ItemFlow {
   itemId: string;

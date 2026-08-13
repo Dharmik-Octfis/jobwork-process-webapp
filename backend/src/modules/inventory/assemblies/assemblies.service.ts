@@ -15,7 +15,7 @@ function decimal(
 }
 
 type AssemblyLineValueInput = {
-  lotId: string;
+  batchId: string;
   qty: unknown;
   unitValue?: unknown;
   value?: unknown;
@@ -44,7 +44,7 @@ async function resolveAssemblyLineValue(
 
   const balance = await getBalance(tx, {
     organizationId: orgId,
-    lotId: line.lotId,
+    batchId: line.batchId,
     locationId,
     asOf: assemblyDate,
   });
@@ -174,13 +174,13 @@ export const assembliesService = {
       // 4. Create the ItemAssembly and ItemAssemblyLines
       const processedLines: Array<{
         itemId: string;
-        lotId: string;
+        batchId: string;
         qtyPerUnit: Prisma.Decimal;
         qty: Prisma.Decimal;
         createdBy: string | null;
         updatedBy: string | null;
       }> = [];
-      const lotCache = new Map<string, string>();
+      const batchCache = new Map<string, string>();
 
       for (const line of data.lines) {
         const lineItem = await tx.item.findFirst({
@@ -192,30 +192,30 @@ export const assembliesService = {
         if (lineItem.itemType === 'Composite Item')
           throw ApiError.badRequest(`Component ${lineItem.name} cannot be a Composite Item.`);
 
-        let lotId = lotCache.get(line.itemId);
+        let batchId = batchCache.get(line.itemId);
 
-        if (!lotId) {
-          let lot = await tx.lot.findFirst({
+        if (!batchId) {
+          let batch = await tx.batch.findFirst({
             where: { itemId: line.itemId, organizationId: orgId },
           });
-          if (!lot) {
-            lot = await tx.lot.create({
+          if (!batch) {
+            batch = await tx.batch.create({
               data: {
                 organizationId: orgId,
                 itemId: line.itemId,
-                lotNumber: `DEFAULT-${line.itemId}`,
+                batchNumber: `DEFAULT-${line.itemId}`,
                 createdBy: userId,
                 updatedBy: userId,
               },
             });
           }
-          lotId = lot.id;
-          lotCache.set(line.itemId, lotId);
+          batchId = batch.id;
+          batchCache.set(line.itemId, batchId);
         }
 
         processedLines.push({
           itemId: line.itemId,
-          lotId: lotId,
+          batchId: batchId,
           qtyPerUnit: decimal(line.qtyRequired).dividedBy(decimal(data.qty)),
           qty: decimal(line.qtyRequired),
           createdBy: userId,
@@ -254,7 +254,7 @@ export const assembliesService = {
                 create: snapshot.resolvedLines.map((line) => ({
                   organizationId: orgId,
                   itemId: line.itemId,
-                  lotId: line.lotId,
+                  batchId: line.batchId,
                   qtyPerUnit: line.qtyPerUnit,
                   qty: line.qty,
                   unitValue: line.unitValue,

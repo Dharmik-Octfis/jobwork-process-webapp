@@ -32,12 +32,12 @@ export const itemSchema = z.object({
    *
    *   stockingUomId  the input unit a job order shows read-only — one item, one
    *                  stocking unit (§5.1)
-   *   lotTracking    none | lot | lot_and_package — gates whether Material In may
-   *                  record takas at all, and whether the Issue picker expands
    *   defaultRouteId pre-selects the route on a new job order (§4.1)
+   *
+   * `inventoryTracking` is declared once further down, beside `trackInventory` —
+   * the two are one control on the form.
    */
   stockingUomId: z.string().nullable().optional(),
-  lotTracking: z.string().optional(),
   nature: z.string().optional(),
   defaultRouteId: z.string().nullable().optional(),
   isSalesInfo: z.boolean().default(true),
@@ -99,7 +99,7 @@ export const itemFormSchema = z.object({
   unit: z.string().optional().default(''),
   /**
    * 🔴 The unit the STOCK LEDGER moves this item in. One item, one stocking unit
-   * (jobwork domain §5.1): every lot, challan line and balance is denominated in
+   * (jobwork domain §5.1): every batch, challan line and balance is denominated in
    * it, and nothing converts between units anywhere in the system.
    *
    * Set from the same dropdown as `unit` above, which is the legacy free string

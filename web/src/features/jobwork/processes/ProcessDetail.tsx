@@ -124,8 +124,8 @@ export function ProcessDetail({ processId, onClose }: Props) {
                 />
               </td>
             </tr>
-            {/* Receipt mode and lot mixing are not shown: both described
-                taka-level behaviour, and issue and receive are lot level now. */}
+            {/* Receipt mode and batch mixing are not shown: both described
+                taka-level behaviour, and issue and receive are batch level now. */}
             <tr>
               <td style={rowLabel}>Default tolerance</td>
               <td style={{ padding: '6px 0', ...rowValue }}>

@@ -1,5 +1,23 @@
 # Jobwork — Core Walkthrough
 
+> ### 🔴 2026-08-12 — "lot" is now "batch", and package tracking is gone
+>
+> Two changes landed together and every document in `docs/` was renamed with them:
+>
+> 1. **`lots` → `batches`.** The table, `lot_number` → `batch_number`, `supplier_lot_ref` →
+>    `supplier_batch_ref`, `parent_lot_ids` → `parent_batch_ids`, and every `lot_id` → `batch_id`.
+>    A pure rename — no row, ledger entry or genealogy array changed. The number sequence now mints
+>    `BATCH-00001`; numbers already printed on tags keep their `LOT-` prefix on purpose.
+> 2. **Package-level (per-taka) tracking was REMOVED end to end.** `lot_packages`,
+>    `lot_package_id` on five tables, `parent_package_id`, `Process.preservesPackaging` and
+>    `JobReceipt.mode` are all dropped. Quantity granularity now stops at the batch.
+>    `Item.lot_tracking` went with it — `inventory_tracking` (`none | batch`) is the one tracking
+>    column, and it is the one the item form has always written.
+>
+> **Sections below that describe takas, packages, unit-wise receiving or `lot_packages` are
+> HISTORY, not current behaviour.** They are kept because the reasoning still explains why the
+> boundary sits where it does, and re-adding packages would start from them.
+
 **Status:** explainer, reflects shipped code as of 2026-08-12. This document assumes **no prior
 knowledge** of the module. It answers three questions in one pass: what each module is for, what role
 every field plays, and which database table gets written at which moment.
@@ -67,7 +85,7 @@ snapshot is what makes routes safe to edit at all.
 There is no `stock_balance` table and there will not be one. Stock on hand is always computed:
 
 ```
-SUM(qty_in − qty_out)  grouped by  item × lot × location × ownership
+SUM(qty_in − qty_out)  grouped by  item × batch × location × ownership
 ```
 
 `stock_ledger` is **append-only**. A mistake is never edited or deleted — it is corrected with a
@@ -94,7 +112,7 @@ job.
 | `itemChanges`         | typed  | **Does what comes back differ from what went in?** Cutting: yes (fabric → panels). Washing: no. Drives whether the form seeds the output as a copy of the input                |
 | `rateBasis`           | typed  | `per_issued_unit` \| `per_received_unit` — do you pay for what you sent or for what came back? Copied down to each step, overridable there                                     |
 | `preservesPackaging`  | typed  | **Does the physical roll survive?** Dyeing: the same taka returns, so roll-to-roll traceability is possible. Cutting: the roll is destroyed. Decides unit-wise vs bulk receipt |
-| `requiresSingleLot`   | typed  | Blocks mixing two lots of one item on one challan. Two dye lots in one garment show shade variation nobody catches until it is assembled                                       |
+| `requiresSingleBatch` | typed  | Blocks mixing two batches of one item on one challan. Two dye batches in one garment show shade variation nobody catches until it is assembled                                 |
 | `defaultTolerancePct` | typed  | The over-issue allowance a step inherits when it states none. 🔴 `null` ≠ `0` — null means "no default set", zero means "no tolerance whatsoever"                              |
 
 ---
@@ -223,17 +241,17 @@ buttons ride on the same document.
 
 ### 5.2 Lines — `job_issue_lines`
 
-One row per **lot** — or per physical roll, when the item is tracked that finely.
+One row per **batch** — or per physical roll, when the item is tracked that finely.
 
 | Field             | Role                                                                                          |
 | ----------------- | --------------------------------------------------------------------------------------------- |
 | `itemId`, `uomId` | 🔴 The item lives **here**, not on the header. One challan carries fabric, thread and buttons |
-| `lotId`           | Which batch physically went                                                                   |
-| `lotPackageId`    | Which roll, when the item is tracked to package level. Null otherwise                         |
-| `qty`             | How much of that lot went                                                                     |
+| `batchId`         | Which batch physically went                                                                   |
+| `batchPackageId`  | Which roll, when the item is tracked to package level. Null otherwise                         |
+| `qty`             | How much of that batch went                                                                   |
 
-You do not issue "100 metres" — you issue **100 metres from lot LOT-0042**. That distinction is why a
-storekeeper has to be at the rack: the planner, days earlier, could not know which lots would be on
+You do not issue "100 metres" — you issue **100 metres from batch BATCH-0042**. That distinction is why a
+storekeeper has to be at the rack: the planner, days earlier, could not know which batches would be on
 the shelf today.
 
 ### 5.3 Three guards before it saves
@@ -262,7 +280,7 @@ are still yours, at a different location.
 
 ## 6. Receipt — what actually came back
 
-**Writes:** `job_receipts` · `job_receipt_outputs` · `job_receipt_lines` · `lots` · `lot_packages` ·
+**Writes:** `job_receipts` · `job_receipt_outputs` · `job_receipt_lines` · `batches` · `lot_packages` ·
 `stock_ledger` · `number_sequences`
 
 The most information-dense document in the module, because it answers three questions at once: what
@@ -272,12 +290,12 @@ was **consumed**, what **came back**, and **in what condition**.
 
 Every returned quantity breaks into four buckets, and they must add up exactly to `receivedQty`:
 
-| Bucket        | Meaning                                                                     | Ledger row?                        |
-| ------------- | --------------------------------------------------------------------------- | ---------------------------------- |
-| `acceptedQty` | Good. Goes into stock as a new lot                                          | Yes — `produce`                    |
-| `reworkQty`   | Fixable. Gets its **own separate lot**, so the piece count stays measurable | Yes — into a separate lot          |
-| `scrapQty`    | Destroyed. Accounted for, but worthless                                     | Yes                                |
-| `returnedQty` | Handed straight back at the gate                                            | 🔴 **No — it never entered stock** |
+| Bucket        | Meaning                                                                       | Ledger row?                        |
+| ------------- | ----------------------------------------------------------------------------- | ---------------------------------- |
+| `acceptedQty` | Good. Goes into stock as a new batch                                          | Yes — `produce`                    |
+| `reworkQty`   | Fixable. Gets its **own separate batch**, so the piece count stays measurable | Yes — into a separate batch        |
+| `scrapQty`    | Destroyed. Accounted for, but worthless                                       | Yes                                |
+| `returnedQty` | Handed straight back at the gate                                              | 🔴 **No — it never entered stock** |
 
 🔴 **Why the four must sum.** That single check is what makes a separate "Rejection Note" document
 unnecessary. Two documents can disagree about how much came back. One row cannot disagree with
@@ -291,16 +309,16 @@ itself.
 | `mode`                                | `unit_wise` \| `bulk` — copied from the process at save, so a later edit cannot retell what this receipt did |
 | `outputItemId`, `outputUomId`         | What came back. A **different item** from what went out whenever the process says so                         |
 | `locationId`                          | Where the goods landed — ours again, so a godown                                                             |
-| `outputLotId`, `reworkLotId`          | The lots this receipt created. Shortcuts back; `Lot.parentLotIds` is what carries genealogy                  |
+| `outputBatchId`, `reworkBatchId`      | The batches this receipt created. Shortcuts back; `Batch.parentBatchIds` is what carries genealogy           |
 | `totalIssuedQty` … `totalReturnedQty` | The six summed totals. Refused unless the split adds up                                                      |
 | `status`                              | `posted` \| `cancelled`. A cancellation posts **reversing** rows; it never deletes anything                  |
 
 ### 6.3 Two child tables, different lengths
 
-| Table                 | Answers                                                        | Notable fields                                                                                                    |
-| --------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `job_receipt_lines`   | What was **consumed** — closes the challan lines that went out | `jobIssueId`, `jobIssueLineId`, `parentPackageId`, `issuedQty`, `receivedQty`, the four buckets                   |
-| `job_receipt_outputs` | What **returned** — one row per item that came back            | `itemId`, `receivedQty`, the four buckets, `isPrimary`, `valueShare`, `outputLotId`, `reasonId`, `responsibility` |
+| Table                 | Answers                                                        | Notable fields                                                                                                      |
+| --------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `job_receipt_lines`   | What was **consumed** — closes the challan lines that went out | `jobIssueId`, `jobIssueLineId`, `parentPackageId`, `issuedQty`, `receivedQty`, the four buckets                     |
+| `job_receipt_outputs` | What **returned** — one row per item that came back            | `itemId`, `receivedQty`, the four buckets, `isPrimary`, `valueShare`, `outputBatchId`, `reasonId`, `responsibility` |
 
 They are separate because they are genuinely different lengths. Cutting consumes one fabric and
 returns panels, offcuts and waste; stitching consumes three items and returns two. One table holding
@@ -316,35 +334,35 @@ rows.
 
 ---
 
-## 7. Lots, packages and the ledger
+## 7. Batches, packages and the ledger
 
 These three tables sit underneath the whole module and are shared with the rest of inventory. Jobwork
 writes to them; it does not own them.
 
-| Table          | One row is                                 | Key fields                                                                                                                                             |
-| -------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `lots`         | A batch of one item sharing an identity    | `lotNumber`, `itemId`, `uomId`, `ownership`, `ownerPartyId`, `parentLotIds[]`, `sourceDocType`, `sourceDocId`, `status`                                |
-| `lot_packages` | One physical taka / roll / bundle in a lot | `packageNumber` (🔴 restarts at 1 inside each lot), `label`, `qty`, `parentPackageId`, `status`                                                        |
-| `stock_ledger` | One movement of one quantity. Append-only  | `itemId`, `lotId`, `lotPackageId`, `locationId`, `ownership`, `qtyIn`, `qtyOut`, `valueIn`, `valueOut`, `movementType`, `sourceDocType`, `sourceDocId` |
+| Table          | One row is                                   | Key fields                                                                                                                                                 |
+| -------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `batches`      | A batch of one item sharing an identity      | `batchNumber`, `itemId`, `uomId`, `ownership`, `ownerPartyId`, `parentBatchIds[]`, `sourceDocType`, `sourceDocId`, `status`                                |
+| `lot_packages` | One physical taka / roll / bundle in a batch | `packageNumber` (🔴 restarts at 1 inside each batch), `label`, `qty`, `parentPackageId`, `status`                                                          |
+| `stock_ledger` | One movement of one quantity. Append-only    | `itemId`, `batchId`, `batchPackageId`, `locationId`, `ownership`, `qtyIn`, `qtyOut`, `valueIn`, `valueOut`, `movementType`, `sourceDocType`, `sourceDocId` |
 
-### 7.1 Genealogy — `parentLotIds`
+### 7.1 Genealogy — `parentBatchIds`
 
-When a receipt creates a lot of dyed fabric it records **every** lot consumed to make it. Written at
+When a receipt creates a batch of dyed fabric it records **every** batch consumed to make it. Written at
 that moment or never — it cannot be reconstructed from history that was not recorded. This is what
 answers _"which grey fabric ended up in this shirt?"_ two years later.
 
-🔴 A lot number carries **no meaning**. A child lot has a higher number than its parents only because
+🔴 A batch number carries **no meaning**. A child batch has a higher number than its parents only because
 it was created later. Parentage lives in the array and nowhere else.
 
 ### 7.2 Movement types
 
-| Type                           | Written by               | Means                                           |
-| ------------------------------ | ------------------------ | ----------------------------------------------- |
-| `transfer_out` / `transfer_in` | Issue                    | Same goods, new location. Net zero              |
-| `consume`                      | Receipt                  | The issued material is used up at the processor |
-| `produce`                      | Receipt                  | A new item exists, in a new lot, at your godown |
-| `receipt` / `opening`          | Purchase / opening stock | Stock enters the books from outside             |
-| `reversal`                     | Cancellation             | The opposite of a posted row. Never a delete    |
+| Type                           | Written by               | Means                                             |
+| ------------------------------ | ------------------------ | ------------------------------------------------- |
+| `transfer_out` / `transfer_in` | Issue                    | Same goods, new location. Net zero                |
+| `consume`                      | Receipt                  | The issued material is used up at the processor   |
+| `produce`                      | Receipt                  | A new item exists, in a new batch, at your godown |
+| `receipt` / `opening`          | Purchase / opening stock | Stock enters the books from outside               |
+| `reversal`                     | Cancellation             | The opposite of a posted row. Never a delete      |
 
 ---
 
@@ -398,12 +416,12 @@ pieces.
 | Table             | Rows | Contents                                                  |
 | ----------------- | ---- | --------------------------------------------------------- |
 | `job_issues`      | 1    | `JI-0031` · Main Godown → Sunrise Dyers · `totalQty` 5000 |
-| `job_issue_lines` | 1    | Grey Fabric, lot `LOT-0088`, 5,000 M                      |
+| `job_issue_lines` | 1    | Grey Fabric, batch `BATCH-0088`, 5,000 M                  |
 
-| Movement       | Lot        | Location      |    Qty |     Value |
-| -------------- | ---------- | ------------- | -----: | --------: |
-| `transfer_out` | `LOT-0088` | Main Godown   | −5,000 | −₹250,000 |
-| `transfer_in`  | `LOT-0088` | Sunrise Dyers | +5,000 | +₹250,000 |
+| Movement       | Batch        | Location      |    Qty |     Value |
+| -------------- | ------------ | ------------- | -----: | --------: |
+| `transfer_out` | `BATCH-0088` | Main Godown   | −5,000 | −₹250,000 |
+| `transfer_in`  | `BATCH-0088` | Sunrise Dyers | +5,000 | +₹250,000 |
 
 Step 1's status flips to `issued`. Step 2 is still blocked — nothing has come back from step 1, so
 there is physically nothing to cut.
@@ -412,18 +430,18 @@ there is physically nothing to cut.
 
 Of which 4,900 accepted, 30 rework, 20 scrap.
 
-| Table                 | Rows | Contents                                                                        |
-| --------------------- | ---- | ------------------------------------------------------------------------------- |
-| `job_receipts`        | 1    | `RC-0019` · received 4,950 · accepted 4,900 · rework 30 · scrap 20              |
-| `job_receipt_lines`   | 1    | Closes issue line from `JI-0031` · `issuedQty` 5,000                            |
-| `job_receipt_outputs` | 1    | Dyed Fabric · `isPrimary` · the four buckets                                    |
-| `lots`                | 2    | `LOT-0091` accepted · `LOT-0092` rework — both with `parentLotIds = [LOT-0088]` |
+| Table                 | Rows | Contents                                                                                |
+| --------------------- | ---- | --------------------------------------------------------------------------------------- |
+| `job_receipts`        | 1    | `RC-0019` · received 4,950 · accepted 4,900 · rework 30 · scrap 20                      |
+| `job_receipt_lines`   | 1    | Closes issue line from `JI-0031` · `issuedQty` 5,000                                    |
+| `job_receipt_outputs` | 1    | Dyed Fabric · `isPrimary` · the four buckets                                            |
+| `batches`             | 2    | `BATCH-0091` accepted · `BATCH-0092` rework — both with `parentBatchIds = [BATCH-0088]` |
 
-| Movement  | Lot        | Location      |    Qty | Note                  |
-| --------- | ---------- | ------------- | -----: | --------------------- |
-| `consume` | `LOT-0088` | Sunrise Dyers | −5,000 | The grey is used up   |
-| `produce` | `LOT-0091` | Main Godown   | +4,900 | Accepted dyed fabric  |
-| `produce` | `LOT-0092` | Main Godown   |    +30 | Rework, kept separate |
+| Movement  | Batch        | Location      |    Qty | Note                  |
+| --------- | ------------ | ------------- | -----: | --------------------- |
+| `consume` | `BATCH-0088` | Sunrise Dyers | −5,000 | The grey is used up   |
+| `produce` | `BATCH-0091` | Main Godown   | +4,900 | Accepted dyed fabric  |
+| `produce` | `BATCH-0092` | Main Godown   |    +30 | Rework, kept separate |
 
 The missing 50 metres never appear as a row — they are **issued minus received**, which is exactly
 how wastage is reported. Step 1 becomes `completed`; step 2 unblocks; the order moves to
@@ -478,7 +496,7 @@ removed step would otherwise hold its number forever.
 
 ### 10.5 Stock availability is currently not enforced
 
-⚠️ The issue screen will presently create a **zero-valued lot** for an item with no stock on record.
+⚠️ The issue screen will presently create a **zero-valued batch** for an item with no stock on record.
 This is temporary scaffolding from before Purchase Received existed — without it there would be no
 way to put stock on the books at all and the whole loop would be untestable. The chain guard (§5.3)
 is deliberately _not_ relaxed alongside it: raw material can be conjured while Purchase Received is

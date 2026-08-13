@@ -27,12 +27,12 @@ export const jobIssueLineSchema = z.object({
   /**
    * 🔴 WHICH ITEM THIS LINE IS (domain §5.7). One challan carries fabric, thread
    * and buttons — one physical movement to one processor, so one document — and
-   * the dialog renders a lot picker per input item, each section stamping its own
+   * the dialog renders a batch picker per input item, each section stamping its own
    * `itemId` onto the lines it produces.
    *
    * Optional only for the rollout: a client that sends nothing gets the step's
    * principal input, which is what every line meant before Sprint 5. The service
-   * still refuses an item the step does not consume — the lot picker can only
+   * still refuses an item the step does not consume — the batch picker can only
    * offer what the step declared, so a line naming anything else was hand-made.
    */
   itemId: z.string().uuid().nullable().optional(),
@@ -41,20 +41,19 @@ export const jobIssueLineSchema = z.object({
    * ⚠️ TEMPORARY — optional, and null means "there is no stock on record".
    *
    * Material In was retired before Purchase Received and Opening Stock exist, so
-   * an item can legitimately have no lots at all right now. Rather than make the
-   * whole loop untestable, a line with no lot has one created for it at ZERO
+   * an item can legitimately have no batches at all right now. Rather than make the
+   * whole loop untestable, a line with no batch has one created for it at ZERO
    * value (`resolveLines`), and the dialog says so on screen.
    *
    * 🔴 Make this required again the day Purchase Received lands. Issuing stock
    * that was never received is a defect, not a feature.
    */
-  lotId: z.string().uuid().nullable().optional(),
+  batchId: z.string().uuid().nullable().optional(),
   /**
    * Set only for a package-granular issue. When it is set the quantity is the
    * package's own measured quantity — ticking a taka takes ALL of it (§5.3), so
    * `qty` is checked against the package rather than typed freely.
    */
-  lotPackageId: z.string().uuid().nullable().optional(),
   qty: z.coerce.number().positive('Every line needs a quantity greater than zero.'),
 });
 
@@ -95,7 +94,7 @@ export const createJobIssueSchema = openApiRegistry.register(
      */
     toleranceOverrideReason: z.string().trim().max(2000).nullable().optional(),
 
-    lines: z.array(jobIssueLineSchema).min(1, 'Pick at least one lot to issue.'),
+    lines: z.array(jobIssueLineSchema).min(1, 'Pick at least one batch to issue.'),
 
     remarks: z.string().trim().max(2000).nullable().optional(),
   }),

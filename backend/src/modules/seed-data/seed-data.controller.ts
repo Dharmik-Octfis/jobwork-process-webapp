@@ -113,7 +113,7 @@ const MASTER_CURRENCIES = [
   { code: 'LBP', name: 'Lebanese Pound', symbol: 'L£' },
   { code: 'LKR', name: 'Sri Lankan Rupee', symbol: 'Rs' },
   { code: 'LRD', name: 'Liberian Dollar', symbol: 'L$' },
-  { code: 'LSL', name: 'Lesotho Loti', symbol: 'L' },
+  { code: 'LSL', name: 'Lesotho Batchi', symbol: 'L' },
   { code: 'LYD', name: 'Libyan Dinar', symbol: 'LD' },
   { code: 'MAD', name: 'Moroccan Dirham', symbol: 'MAD' },
   { code: 'MDL', name: 'Moldovan Leu', symbol: 'L' },
@@ -187,7 +187,7 @@ const MASTER_CURRENCIES = [
   { code: 'YER', name: 'Yemeni Rial', symbol: 'YR' },
   { code: 'ZAR', name: 'South African Rand', symbol: 'R' },
   { code: 'ZMW', name: 'Zambian Kwacha', symbol: 'ZK' },
-  { code: 'ZWL', name: 'Zimbabwean Dollar', symbol: 'Z$' }
+  { code: 'ZWL', name: 'Zimbabwean Dollar', symbol: 'Z$' },
 ];
 
 interface SeedData {
@@ -252,7 +252,7 @@ async function loadSeedData(): Promise<SeedData> {
     }),
   ]);
 
-  return { industries, states, countries , currencies: MASTER_CURRENCIES };
+  return { industries, states, countries, currencies: MASTER_CURRENCIES };
 }
 
 async function getCachedResponse(): Promise<CachedResponse> {

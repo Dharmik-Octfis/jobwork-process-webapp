@@ -29,17 +29,17 @@ const th: React.CSSProperties = {
 const td: React.CSSProperties = { padding: '8px 10px', fontSize: 13, color: '#333' };
 
 /**
- * A lot number, as a chip.
+ * A batch number, as a chip.
  *
  * 🔴 It is an IDENTIFIER, not a footnote — somebody reads it off a physical tag
  * and types it into a search box, so it needs to be findable at a glance and
  * copyable without selecting half a sentence. Monospaced for the same reason:
- * LOT-00011 and LOT-000ll are one glyph apart in a proportional face.
+ * BATCH-00011 and BATCH-000ll are one glyph apart in a proportional face.
  *
- * Green is stock you can issue onward; amber is rework, kept in its own lot so
+ * Green is stock you can issue onward; amber is rework, kept in its own batch so
  * the pieces stay countable.
  */
-function LotChip({ lot, tone }: { lot: string; tone: 'good' | 'rework' }) {
+function BatchChip({ batch, tone }: { batch: string; tone: 'good' | 'rework' }) {
   return (
     <span
       style={{
@@ -57,12 +57,12 @@ function LotChip({ lot, tone }: { lot: string; tone: 'good' | 'rework' }) {
       }}
       title={
         tone === 'good'
-          ? 'Lot created — ready to issue onward'
-          : 'Rework lot — re-issue to this same step'
+          ? 'Batch created — ready to issue onward'
+          : 'Rework batch — re-issue to this same step'
       }
     >
       {tone === 'rework' && <span style={{ fontFamily: 'inherit', opacity: 0.8 }}>↻</span>}
-      {lot}
+      {batch}
     </span>
   );
 }
@@ -262,7 +262,7 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
               {/*
                 🔴 WHICH CHALLANS THIS SETTLES — at the RECEIPT level, which is
                 the level it is known at. It was a per-line column before and sat
-                empty: one lot-level line closes several challan lines at once and
+                empty: one batch-level line closes several challan lines at once and
                 names none of them. The link itself is far from unnecessary — it
                 is how anybody gets from goods on the shelf back to the paperwork
                 they travelled on.
@@ -322,17 +322,17 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
                 )}
               </td>
             </tr>
-            {receipt.outputLot && (
+            {receipt.outputBatch && (
               <tr>
-                <td style={rowLabel}>Output lot</td>
-                <td style={rowValue}>{receipt.outputLot.lotNumber}</td>
+                <td style={rowLabel}>Output batch</td>
+                <td style={rowValue}>{receipt.outputBatch.batchNumber}</td>
               </tr>
             )}
-            {receipt.reworkLot && (
+            {receipt.reworkBatch && (
               <tr>
-                <td style={rowLabel}>Rework lot</td>
+                <td style={rowLabel}>Rework batch</td>
                 <td style={{ ...rowValue, color: '#b45309' }}>
-                  {receipt.reworkLot.lotNumber} — kept separate so the reworked pieces stay
+                  {receipt.reworkBatch.batchNumber} — kept separate so the reworked pieces stay
                   countable
                 </td>
               </tr>
@@ -367,10 +367,10 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
               🔴 WHAT CAME BACK, one row per item (§5.7).
 
               This used to render `receipt.lines` — the CONSUMED side — whose
-              disposition columns are all zero at lot level, so the page showed a
+              disposition columns are all zero at batch level, so the page showed a
               receipt where nothing had been accepted. Three of its columns said
               nothing either: "Taka / line" is always "Bulk" now that receiving is
-              lot-level, "Challan" is blank because a bulk line closes several at
+              batch-level, "Challan" is blank because a bulk line closes several at
               once and names none, and "Issued" is the consumed quantity, which
               the Consumed row above already states.
             */}
@@ -408,15 +408,19 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
                 <tr key={row.id} style={{ borderBottom: '1px solid #eef0f3' }}>
                   <td style={{ ...td, fontWeight: 500, color: '#111' }}>
                     {row.item?.name ?? '-'}
-                    {/* 🔴 The lots this row CREATED, as chips rather than grey
+                    {/* 🔴 The batches this row CREATED, as chips rather than grey
                         text — they are identifiers somebody reads off a tag and
                         types into a search box, not a footnote. Green is the
                         stock you can issue onward; amber is the rework, kept in
-                        its own lot so the pieces stay countable. */}
-                    {(row.outputLot || row.reworkLot) && (
+                        its own batch so the pieces stay countable. */}
+                    {(row.outputBatch || row.reworkBatch) && (
                       <span style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-                        {row.outputLot && <LotChip lot={row.outputLot.lotNumber} tone="good" />}
-                        {row.reworkLot && <LotChip lot={row.reworkLot.lotNumber} tone="rework" />}
+                        {row.outputBatch && (
+                          <BatchChip batch={row.outputBatch.batchNumber} tone="good" />
+                        )}
+                        {row.reworkBatch && (
+                          <BatchChip batch={row.reworkBatch.batchNumber} tone="rework" />
+                        )}
                       </span>
                     )}
                   </td>
@@ -451,8 +455,8 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
           <div>
             <p style={{ margin: '0 0 12px 0', lineHeight: 1.6 }}>
               Everything this receipt posted is reversed: the consumed input goes back to the
-              processor and the output lots are un-made. It is refused if those lots have already
-              been used — there is no way to un-post stock that has moved on.
+              processor and the output batches are un-made. It is refused if those batches have
+              already been used — there is no way to un-post stock that has moved on.
             </p>
             <label style={{ display: 'block', fontSize: 12, color: '#64748b', marginBottom: 4 }}>
               Reason

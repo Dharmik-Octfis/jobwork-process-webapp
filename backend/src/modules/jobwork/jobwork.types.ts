@@ -93,7 +93,7 @@ export const RESPONSIBILITIES = ['ours', 'theirs'] as const;
 export type Responsibility = (typeof RESPONSIBILITIES)[number];
 
 /**
- * `sourceDocType` values this domain writes onto lots and ledger rows. They are
+ * `sourceDocType` values this domain writes onto batches and ledger rows. They are
  * strings on purpose (`stock_ledger.source_doc_type` is not an FK — the table it
  * points at differs per value), which is exactly why they need one list: a
  * document type spelled two ways is a report that silently under-counts.
@@ -109,11 +109,11 @@ export const SOURCE_DOC_TYPES = {
  * transaction timeout is 5 SECONDS, and every one of these documents blows it.
  *
  * A fifty-taka consignment is the domain's own worked example, not a stress
- * case: Material In writes the lot, fifty packages and fifty ledger rows; the
+ * case: Material In writes the batch, fifty packages and fifty ledger rows; the
  * issue that follows writes fifty lines and a hundred ledger rows (out at the
  * godown, in at the processor); the receipt consumes fifty and produces fifty.
- * Each of those goes through `postMovement`, which re-reads the lot every time
- * — deliberately, because a ledger row that disagrees with its own lot is not a
+ * Each of those goes through `postMovement`, which re-reads the batch every time
+ * — deliberately, because a ledger row that disagrees with its own batch is not a
  * number anyone can correct later. Over a network that is comfortably past five
  * seconds, and the failure is the worst possible shape: the document half-writes
  * and the transaction dies, so the user sees an internal error on a save that
@@ -123,7 +123,7 @@ export const SOURCE_DOC_TYPES = {
  * alternative is a `createMany` that skips the per-row validation, which trades
  * a slow save for a ledger nobody can trust — and the ledger is the one thing in
  * this domain that cannot be repaired after the fact. If this ever becomes a
- * measured problem, cache the lot reads inside `postMovement` (as its own
+ * measured problem, cache the batch reads inside `postMovement` (as its own
  * comment says), do not bypass them.
  *
  * `maxWait` is how long to wait for a connection from the pool before starting;

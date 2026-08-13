@@ -167,19 +167,6 @@ export function ProcessForm({ initialData, onSubmit, isPending, onCancel }: Proc
             <strong style={{ fontSize: 13, color: '#111' }}>The item changes</strong>
           </span>
         </label>
-
-        {/*
-          ⚠️ "Packaging survives" and "One lot per issue" are not asked any more.
-          Both drove taka-level behaviour: the first chose taka-wise vs bulk
-          receiving, the second blocked mixing lots on one challan. Issue and
-          receive are both LOT level now, so neither changed anything a user
-          could see — and a checkbox that changes nothing is worse than a missing
-          one, because people set it and believe it did something.
-
-          The columns and the server-side single-lot guard are untouched, so
-          bringing the pair back is this block plus the two switches named in
-          `jobReceipts.service.ts` and the web `LotPicker`.
-        */}
       </section>
 
       <section style={{ maxWidth: 640, marginBottom: 32 }}>

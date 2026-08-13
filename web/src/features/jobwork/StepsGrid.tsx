@@ -232,7 +232,7 @@ interface ItemListProps {
  * take it. "Ends here" is a perfectly good answer: finished goods and offcuts
  * both stop at the godown. What it makes visible is the other case, an item
  * somebody MEANT to feed onward and mistyped, which is otherwise invisible until
- * the next step's lot picker turns up empty days later.
+ * the next step's batch picker turns up empty days later.
  *
  * Every control is a native `<input>`, a `<button>`, or `Select` (a button-based
  * combobox), so the whole list is reachable and operable from the keyboard —

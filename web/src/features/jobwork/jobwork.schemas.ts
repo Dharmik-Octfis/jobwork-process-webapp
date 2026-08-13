@@ -314,7 +314,7 @@ export function derivedExpectedQty(
  * An output nothing downstream takes is not an error: offcuts and finished goods
  * both end their journey here and go to the godown. The point of showing it is
  * that the OTHER case — an output somebody meant to feed onward and mistyped —
- * is invisible otherwise until the next step's lot picker turns up empty.
+ * is invisible otherwise until the next step's batch picker turns up empty.
  *
  * A step that lists no inputs of its own inherits the previous step's PRIMARY
  * output (the server's own fallback), so that implicit link is shown too.
@@ -384,7 +384,7 @@ export const itemRefSchema = z.object({
   id: z.string(),
   name: z.string(),
   sku: z.string().nullable().optional(),
-  lotTracking: z.string().optional(),
+  inventoryTracking: z.string().optional(),
 });
 
 export const uomRefSchema = z.object({

@@ -9,8 +9,7 @@ import {
   validateCustomFields,
 } from '../../settings/customization/custom-fields/customFields.engine.ts';
 import {
-  createLot,
-  createPackages,
+  createBatch,
   getBalance,
   postMovement,
   type Ownership,
@@ -20,7 +19,7 @@ import {
   assertLocationsBelongToOrg,
   assertUomsBelongToOrg,
 } from '../jobwork.refs.ts';
-import { SOURCE_DOC_TYPES, runAsDocument, type ReceiptMode } from '../jobwork.types.ts';
+import { SOURCE_DOC_TYPES, runAsDocument } from '../jobwork.types.ts';
 import { recomputeStep } from '../job-orders/jobOrders.status.ts';
 import type {
   CreateJobReceiptInput,
@@ -29,21 +28,21 @@ import type {
 } from './jobReceipts.schemas.ts';
 
 /**
- * Receipts — goods back from a processor, and the only place an output lot is
+ * Receipts — goods back from a processor, and the only place an output batch is
  * born.
  *
  * WHAT ONE SAVE DOES, IN ORDER
  *
  *   1. consumes the input at the PROCESSOR's location  (movementType `consume`)
- *   2. creates the output lot, with `parentLotIds` = the lots consumed
+ *   2. creates the output batch, with `parentBatchIds` = the batches consumed
  *   3. produces the output at OUR location             (movementType `produce`)
- *   4. creates a SEPARATE rework lot when anything needs redoing
+ *   4. creates a SEPARATE rework batch when anything needs redoing
  *   5. recomputes the step and the job order
  *
  * 🔴 SCRAP GETS NO OUTPUT ROW AND THAT IS THE COSTING MODEL (§5.5). The input it
- * consumed is gone, and its share of the cost stays inside the lot that
+ * consumed is gone, and its share of the cost stays inside the batch that
  * survived — so the good pieces carry the true cost of the failures. Creating a
- * zero-value scrap lot instead would make the accepted pieces look cheaper than
+ * zero-value scrap batch instead would make the accepted pieces look cheaper than
  * they were, which is exactly the number nobody should be quoting from.
  *
  * 🔴 RETURNED GOODS GET NO ROW AT ALL (§6.4). Handed back at the gate, never
@@ -81,14 +80,13 @@ const RECEIPT_INCLUDE = {
     },
   },
   location: { select: { id: true, name: true } },
-  outputLot: { select: { id: true, lotNumber: true } },
-  reworkLot: { select: { id: true, lotNumber: true } },
+  outputBatch: { select: { id: true, batchNumber: true } },
+  reworkBatch: { select: { id: true, batchNumber: true } },
   /** The CONSUMPTION record — one row per challan line this receipt closes. */
   lines: {
     where: { isDeleted: false },
     include: {
       reason: { select: { id: true, name: true } },
-      parentPackage: { select: { id: true, packageNumber: true, label: true, qty: true } },
       jobIssue: { select: { id: true, challanNumber: true } },
       jobIssueLine: { select: { id: true, item: { select: { id: true, name: true } } } },
     },
@@ -102,8 +100,8 @@ const RECEIPT_INCLUDE = {
       item: { select: { id: true, name: true, sku: true } },
       uom: { select: { id: true, unitName: true, symbol: true } },
       reason: { select: { id: true, name: true } },
-      outputLot: { select: { id: true, lotNumber: true } },
-      reworkLot: { select: { id: true, lotNumber: true } },
+      outputBatch: { select: { id: true, batchNumber: true } },
+      reworkBatch: { select: { id: true, batchNumber: true } },
     },
   },
 } satisfies Prisma.JobReceiptInclude;
@@ -148,20 +146,18 @@ export async function getReceiptsForStep(organizationId: string, jobOrderStepId:
 }
 
 /**
- * What the Receive dialog needs before anyone types anything: the mode (decided
- * for them), the open challans, and — in unit-wise mode — one pre-built row per
- * taka that went out and has not come back.
+ * What the Receive dialog needs before anyone types anything: the open challans
+ * and what is still outstanding on each.
  *
- * The rows are GENERATED, not entered (§6.2). Asking someone to re-key forty
- * taka numbers they already keyed on the challan is how the two lists stop
- * matching.
+ * The rows are GENERATED, not entered (§6.2). Asking someone to re-key quantities
+ * they already keyed on the challan is how the two lists stop matching.
  */
 export async function getReceivePrefill(organizationId: string, jobOrderStepId: string) {
   return runAsTenant(organizationId, async (tx) => {
     const step = await tx.jobOrderStep.findFirst({
       where: { id: jobOrderStepId, organizationId, isDeleted: false },
       include: {
-        process: { select: { id: true, name: true, preservesPackaging: true } },
+        process: { select: { id: true, name: true } },
         jobOrder: { select: { id: true, jobOrderNumber: true, ownership: true } },
         /** 🔴 What the step PLANNED to produce (§5.7) — the returned grid opens
          * with a row per output rather than a single item, so a step that makes
@@ -186,18 +182,6 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
     });
     if (!step) throw ApiError.notFound('Job order step not found');
 
-    /**
-     * ⚠️ LOT LEVEL ONLY, for now. Goods come back as a quantity against the lot;
-     * there is no taka-by-taka grid.
-     *
-     * `Process.preservesPackaging` still decides this in the domain (§6.1) and
-     * the unit-wise path below still works — it is simply not reached, because
-     * per-taka receiving is more than the shop floor needs today. Flip this back
-     * to `step.process.preservesPackaging ? 'unit_wise' : 'bulk'` to restore it;
-     * nothing else has to change.
-     */
-    const mode = 'bulk' as ReceiptMode;
-
     const issues = await tx.jobIssue.findMany({
       where: {
         organizationId,
@@ -212,8 +196,7 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
           include: {
             item: { select: { id: true, name: true, sku: true } },
             uom: { select: { id: true, unitName: true, symbol: true } },
-            lot: { select: { id: true, lotNumber: true } },
-            lotPackage: { select: { id: true, packageNumber: true, label: true, qty: true } },
+            batch: { select: { id: true, batchNumber: true } },
           },
         },
       },
@@ -241,11 +224,8 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
           itemId: line.itemId,
           itemName: line.item?.name ?? null,
           uomSymbol: line.uom?.symbol ?? line.uom?.unitName ?? null,
-          lotId: line.lotId,
-          lotNumber: line.lot.lotNumber,
-          lotPackageId: line.lotPackageId,
-          packageLabel: line.lotPackage?.label ?? null,
-          packageNumber: line.lotPackage?.packageNumber ?? null,
+          batchId: line.batchId,
+          batchNumber: line.batch.batchNumber,
           issuedQty: outstanding.toString(),
         });
       }
@@ -253,11 +233,6 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
 
     return {
       step,
-      mode,
-      /** 🔴 Why the mode is what it is, in the user's words. The dialog shows this
-       * instead of a disabled toggle, because a greyed-out control invites the
-       * question "why can't I?" and answers nothing. */
-      modeReason: 'Goods are received as a quantity against each item.',
       issues: issues.map((issue) => ({
         id: issue.id,
         challanNumber: issue.challanNumber,
@@ -442,8 +417,7 @@ function splitValue(outputs: readonly ResolvedOutput[], pot: Prisma.Decimal) {
 interface ConsumeAllocation {
   jobIssueId: string;
   jobIssueLineId: string;
-  lotId: string;
-  lotPackageId: string | null;
+  batchId: string;
   /** Which item was consumed — the challan line's own (§5.7). It is what the
    * process charge is measured against when the rate is per issued unit. */
   itemId: string;
@@ -455,7 +429,7 @@ interface ConsumeAllocation {
  *
  * Unit-wise lines name their own issue line, so the answer is given. Bulk lines
  * do not — one typed total closes whatever is still outstanding, oldest first.
- * FIFO rather than proportional because the lots went out in an order and came
+ * FIFO rather than proportional because the batches went out in an order and came
  * back in that order; splitting a bulk return across every open line by ratio
  * invents a mixing that did not happen.
  */
@@ -471,8 +445,7 @@ async function allocateConsumption(
     select: {
       id: true,
       jobIssueId: true,
-      lotId: true,
-      lotPackageId: true,
+      batchId: true,
       qty: true,
       itemId: true,
     },
@@ -504,7 +477,7 @@ async function allocateConsumption(
       const left = outstanding.get(issueLine.id) ?? ZERO;
       if (toConsume.greaterThan(left)) {
         throw ApiError.badRequest(
-          `Challan line for lot ${issueLine.lotId} has ${left.toString()} still out, ` +
+          `Challan line for batch ${issueLine.batchId} has ${left.toString()} still out, ` +
             `but ${toConsume.toString()} is being received against it.`,
         );
       }
@@ -512,8 +485,7 @@ async function allocateConsumption(
       allocations.push({
         jobIssueId: issueLine.jobIssueId,
         jobIssueLineId: issueLine.id,
-        lotId: issueLine.lotId,
-        lotPackageId: issueLine.lotPackageId,
+        batchId: issueLine.batchId,
         itemId: issueLine.itemId,
         qty: toConsume,
       });
@@ -557,8 +529,7 @@ async function allocateConsumption(
       allocations.push({
         jobIssueId: issueLine.jobIssueId,
         jobIssueLineId: issueLine.id,
-        lotId: issueLine.lotId,
-        lotPackageId: issueLine.lotPackageId,
+        batchId: issueLine.batchId,
         itemId: issueLine.itemId,
         qty: take,
       });
@@ -587,7 +558,7 @@ export async function createNewJobReceipt(
     const step = await tx.jobOrderStep.findFirst({
       where: { id: header.jobOrderStepId, organizationId, isDeleted: false },
       include: {
-        process: { select: { preservesPackaging: true, name: true } },
+        process: { select: { name: true } },
         jobOrder: {
           select: { id: true, ownership: true, ownerPartyId: true, status: true, isDeleted: true },
         },
@@ -642,17 +613,6 @@ export async function createNewJobReceipt(
     const processorLocationId = issues[0]!.destinationLocationId;
 
     // Copied from the process, never taken from the request.
-    /**
-     * ⚠️ LOT LEVEL ONLY, for now. Goods come back as a quantity against the lot;
-     * there is no taka-by-taka grid.
-     *
-     * `Process.preservesPackaging` still decides this in the domain (§6.1) and
-     * the unit-wise path below still works — it is simply not reached, because
-     * per-taka receiving is more than the shop floor needs today. Flip this back
-     * to `step.process.preservesPackaging ? 'unit_wise' : 'bulk'` to restore it;
-     * nothing else has to change.
-     */
-    const mode = 'bulk' as ReceiptMode;
 
     /**
      * The header's item, for a request that named none. It is the step's PRIMARY
@@ -723,7 +683,7 @@ export async function createNewJobReceipt(
 
     /**
      * 🔴 WHAT CAME BACK (§5.7) — resolved before anything is written, because
-     * the value split and the lots both hang off it.
+     * the value split and the batches both hang off it.
      */
     const outputRows = resolveOutputs(sentOutputs, totals, {
       itemId: outputItemId,
@@ -779,23 +739,6 @@ export async function createNewJobReceipt(
       ? (consumedByItem.get(principalItemId) ?? ZERO)
       : totals.issued;
 
-    /**
-     * 🔴 In unit-wise mode the per-taka dispositions on the lines are what build
-     * the primary output's packages, so they cannot disagree with the primary's
-     * own totals — one of the two numbers would then be fiction, and nothing
-     * downstream could tell which.
-     */
-    if (mode === 'unit_wise' && sentOutputs?.length && totals.accepted.greaterThan(0)) {
-      if (!totals.accepted.equals(primaryOutput.acceptedQty)) {
-        throw new ApiError(
-          400,
-          `The takas account for ${totals.accepted.toString()} accepted, but the main returned ` +
-            `item says ${primaryOutput.acceptedQty.toString()}.`,
-          { outputs: 'Must match the per-taka quantities on this receipt.' },
-        );
-      }
-    }
-
     const defs = await loadActiveDefinitions(tx, organizationId, 'job_receipt');
     const customFields = validateCustomFields({
       defs,
@@ -818,7 +761,6 @@ export async function createNewJobReceipt(
           processorType: issues[0]!.processorType,
           processorId: issues[0]!.processorId,
           processorNameSnapshot: issues[0]!.processorNameSnapshot,
-          mode,
           locationId: header.locationId,
           /**
            * 🔴 THE SIX TOTALS ARE THE PRIMARY OUTPUT'S, IN ITS OWN UNIT — not a
@@ -847,26 +789,25 @@ export async function createNewJobReceipt(
 
     /**
      * STEP 1 — consume the input where it physically is: the processor's
-     * location. The value that leaves here is what the output lot inherits, which
+     * location. The value that leaves here is what the output batch inherits, which
      * is how cost follows material through the chain without anyone storing it.
      */
     let consumedValue = ZERO;
-    const parentLotIds = new Set<string>();
+    const parentBatchIds = new Set<string>();
     for (const allocation of allocations) {
       const balance = await getBalance(tx, {
         organizationId,
-        lotId: allocation.lotId,
+        batchId: allocation.batchId,
         locationId: processorLocationId,
       });
       const unitValue = balance.qty.greaterThan(0) ? balance.value.dividedBy(balance.qty) : ZERO;
       const lineValue = unitValue.times(allocation.qty).toDecimalPlaces(4);
       consumedValue = consumedValue.plus(lineValue);
-      parentLotIds.add(allocation.lotId);
+      parentBatchIds.add(allocation.batchId);
 
       await postMovement(tx, {
         organizationId,
-        lotId: allocation.lotId,
-        lotPackageId: allocation.lotPackageId,
+        batchId: allocation.batchId,
         locationId: processorLocationId,
         movementType: 'consume',
         qtyOut: allocation.qty,
@@ -876,13 +817,6 @@ export async function createNewJobReceipt(
         postedAt: receiptDate,
         userId,
       });
-
-      if (allocation.lotPackageId) {
-        await tx.lotPackage.update({
-          where: { id: allocation.lotPackageId },
-          data: { state: 'consumed', updatedBy: userId ?? null },
-        });
-      }
     }
 
     /**
@@ -901,7 +835,7 @@ export async function createNewJobReceipt(
     const valueByItem = splitValue(outputRows, totalValue);
 
     /**
-     * STEPS 2–4 — a lot per returned ITEM, and the value split across them.
+     * STEPS 2–4 — a batch per returned ITEM, and the value split across them.
      *
      * 🔴 Scrap and returned quantities take NO share. The whole cost lands on the
      * pieces that survived, which is the point of §5.5: 4,850 good metres that
@@ -909,25 +843,25 @@ export async function createNewJobReceipt(
      * item's share by quantity — legitimate here, and ONLY here, because both
      * sides are the same item in the same unit.
      *
-     * 🔴 Rework goes into a lot of its OWN, always (plan §7). Merging it into the
-     * accepted lot would lose the piece count rework has to be measured by, and
+     * 🔴 Rework goes into a batch of its OWN, always (plan §7). Merging it into the
+     * accepted batch would lose the piece count rework has to be measured by, and
      * the re-issue would have no way to send back only the pieces that failed.
      */
-    let outputLotId: string | null = null;
-    let reworkLotId: string | null = null;
-    const lotsByOutput = new Map<
+    let outputBatchId: string | null = null;
+    let reworkBatchId: string | null = null;
+    const batchesByOutput = new Map<
       string,
-      { outputLotId: string | null; reworkLotId: string | null }
+      { outputBatchId: string | null; reworkBatchId: string | null }
     >();
 
     for (const output of outputRows) {
       const rowValue = valueByItem.get(output.itemId) ?? ZERO;
       const surviving = output.acceptedQty.plus(output.reworkQty);
-      let rowOutputLotId: string | null = null;
-      let rowReworkLotId: string | null = null;
+      let rowOutputBatchId: string | null = null;
+      let rowReworkBatchId: string | null = null;
 
       if (output.acceptedQty.greaterThan(0)) {
-        const lot = await createLot(tx, {
+        const batch = await createBatch(tx, {
           organizationId,
           itemId: output.itemId,
           uomId: output.uomId,
@@ -935,98 +869,50 @@ export async function createNewJobReceipt(
           ownerPartyId: step.jobOrder.ownerPartyId,
           // 🔴 Genealogy, written here or never. It cannot be reconstructed from
           // history that was not recorded (§11.3). EVERY output traces back to
-          // EVERY lot consumed — offcuts came from the same fabric the panels did.
-          parentLotIds: [...parentLotIds],
+          // EVERY batch consumed — offcuts came from the same fabric the panels did.
+          parentBatchIds: [...parentBatchIds],
           sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
           sourceDocId: receipt.id,
           userId,
         });
-        rowOutputLotId = lot.id;
+        rowOutputBatchId = batch.id;
 
         const acceptedValue = surviving.greaterThan(0)
           ? rowValue.times(output.acceptedQty).dividedBy(surviving).toDecimalPlaces(4)
           : rowValue;
 
-        /**
-         * 🔴 Unit-wise produces PACKAGE BY PACKAGE, and that is the only reason
-         * the mode exists. Each accepted line becomes one package carrying
-         * `parentPackageId` — the 1:1 mapping between the taka that went out and
-         * the one that came back (§6.2). Nothing can rebuild it afterwards from
-         * quantities, so it is recorded now or it is lost.
-         *
-         * PRIMARY OUTPUT ONLY. A by-product has no taka that went out to map back
-         * to: the offcuts from forty rolls are not "roll 17's offcuts", they are
-         * a heap. Giving them packages would invent a traceability that does not
-         * physically exist.
-         *
-         * The movements are posted per package too, not once for the lot: a
-         * package-level balance is what lets the NEXT step's picker offer
-         * individual takas, and a lot-level row would leave every package showing
-         * zero available.
-         */
-        const acceptedLines = lines.filter((line) => (line.acceptedQty ?? 0) > 0);
-        if (mode === 'unit_wise' && output.isPrimary && acceptedLines.length > 0) {
-          const created = await createPackages(tx, {
-            organizationId,
-            lotId: lot.id,
-            packages: acceptedLines.map((line) => ({
-              qty: line.acceptedQty ?? 0,
-              parentPackageId: line.parentPackageId ?? null,
-            })),
-            userId,
-          });
-
-          let valueLeft = acceptedValue;
-          for (const [index, pkg] of created.entries()) {
-            const isLast = index === created.length - 1;
-            const share = isLast
-              ? valueLeft
-              : acceptedValue.times(pkg.qty).dividedBy(output.acceptedQty).toDecimalPlaces(4);
-            valueLeft = valueLeft.minus(share);
-
-            await postMovement(tx, {
-              organizationId,
-              lotId: lot.id,
-              lotPackageId: pkg.id,
-              locationId: header.locationId,
-              movementType: 'produce',
-              qtyIn: pkg.qty,
-              valueIn: share,
-              sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
-              sourceDocId: receipt.id,
-              postedAt: receiptDate,
-              userId,
-            });
-          }
-        } else {
-          await postMovement(tx, {
-            organizationId,
-            lotId: lot.id,
-            locationId: header.locationId,
-            movementType: 'produce',
-            qtyIn: output.acceptedQty,
-            valueIn: acceptedValue,
-            sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
-            sourceDocId: receipt.id,
-            postedAt: receiptDate,
-            userId,
-          });
-        }
+        // One `produce` row for the whole accepted quantity. Until 2026-08-12 the
+        // primary output of a packaging-preserving process was produced taka by
+        // taka, to carry the 1:1 mapping back to the roll that went out; with
+        // package-level tracking gone there is one quantity against one batch, and
+        // genealogy rides on `parentBatchIds` instead.
+        await postMovement(tx, {
+          organizationId,
+          batchId: batch.id,
+          locationId: header.locationId,
+          movementType: 'produce',
+          qtyIn: output.acceptedQty,
+          valueIn: acceptedValue,
+          sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+          sourceDocId: receipt.id,
+          postedAt: receiptDate,
+          userId,
+        });
       }
 
       if (output.reworkQty.greaterThan(0)) {
-        const lot = await createLot(tx, {
+        const batch = await createBatch(tx, {
           organizationId,
           itemId: output.itemId,
           uomId: output.uomId,
           ownership,
           ownerPartyId: step.jobOrder.ownerPartyId,
-          parentLotIds: [...parentLotIds],
+          parentBatchIds: [...parentBatchIds],
           sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
           sourceDocId: receipt.id,
           userId,
         });
-        rowReworkLotId = lot.id;
+        rowReworkBatchId = batch.id;
 
         const share = surviving.greaterThan(0)
           ? rowValue.times(output.reworkQty).dividedBy(surviving).toDecimalPlaces(4)
@@ -1034,7 +920,7 @@ export async function createNewJobReceipt(
 
         await postMovement(tx, {
           organizationId,
-          lotId: lot.id,
+          batchId: batch.id,
           locationId: header.locationId,
           movementType: 'produce',
           qtyIn: output.reworkQty,
@@ -1047,16 +933,16 @@ export async function createNewJobReceipt(
         });
       }
 
-      lotsByOutput.set(output.itemId, {
-        outputLotId: rowOutputLotId,
-        reworkLotId: rowReworkLotId,
+      batchesByOutput.set(output.itemId, {
+        outputBatchId: rowOutputBatchId,
+        reworkBatchId: rowReworkBatchId,
       });
       // The header's two columns are the PRIMARY's — the shortcut the receipt
       // screen and the rework re-issue already read. Every row's own pair is on
       // `job_receipt_outputs`.
       if (output.isPrimary) {
-        outputLotId = rowOutputLotId;
-        reworkLotId = rowReworkLotId;
+        outputBatchId = rowOutputBatchId;
+        reworkBatchId = rowReworkBatchId;
       }
     }
 
@@ -1066,7 +952,7 @@ export async function createNewJobReceipt(
      * org could have defined to put in it.
      */
     for (const [index, output] of outputRows.entries()) {
-      const lots = lotsByOutput.get(output.itemId);
+      const batches = batchesByOutput.get(output.itemId);
       await tx.jobReceiptOutput.create({
         data: {
           organizationId,
@@ -1081,8 +967,8 @@ export async function createNewJobReceipt(
           returnedQty: output.returnedQty,
           isPrimary: output.isPrimary,
           valueShare: output.valueShare,
-          outputLotId: lots?.outputLotId ?? null,
-          reworkLotId: lots?.reworkLotId ?? null,
+          outputBatchId: batches?.outputBatchId ?? null,
+          reworkBatchId: batches?.reworkBatchId ?? null,
           reasonId: output.reasonId,
           responsibility: output.responsibility,
           remarks: output.remarks,
@@ -1128,7 +1014,6 @@ export async function createNewJobReceipt(
           jobReceiptId: receipt.id,
           jobIssueId: allocation.jobIssueId,
           jobIssueLineId: allocation.jobIssueLineId,
-          parentPackageId: allocation.lotPackageId,
           issuedQty: allocation.qty,
           customFields: lineCustomFields,
           createdBy: userId ?? null,
@@ -1139,7 +1024,7 @@ export async function createNewJobReceipt(
 
     await tx.jobReceipt.update({
       where: { id: receipt.id },
-      data: { outputLotId, reworkLotId },
+      data: { outputBatchId, reworkBatchId },
     });
 
     // Close the challans this receipt fully accounted for.
@@ -1174,7 +1059,7 @@ export async function createNewJobReceipt(
 /**
  * Cancel a receipt: reverse every row it posted.
  *
- * Refused once the lots it created have moved on. Un-posting a lot that has
+ * Refused once the batches it created have moved on. Un-posting a batch that has
  * already been issued to the next step would leave that step holding stock no
  * document explains — and the ledger has no way to express "this never happened"
  * retroactively, only "the opposite happened later".
@@ -1193,18 +1078,18 @@ export async function cancelJobReceipt(
     if (receipt.status === 'cancelled')
       throw ApiError.conflict('This receipt is already cancelled.');
 
-    for (const lotId of [receipt.outputLotId, receipt.reworkLotId]) {
-      if (!lotId) continue;
+    for (const batchId of [receipt.outputBatchId, receipt.reworkBatchId]) {
+      if (!batchId) continue;
       const movedOn = await tx.stockLedgerEntry.count({
         where: {
           organizationId,
-          lotId,
+          batchId,
           sourceDocType: { not: SOURCE_DOC_TYPES.jobReceipt },
         },
       });
       if (movedOn > 0) {
         throw ApiError.conflict(
-          'The lots this receipt created have already been used, so it cannot be cancelled.',
+          'The batches this receipt created have already been used, so it cannot be cancelled.',
         );
       }
     }
@@ -1217,8 +1102,7 @@ export async function cancelJobReceipt(
         movementType: { not: 'reversal' },
       },
       select: {
-        lotId: true,
-        lotPackageId: true,
+        batchId: true,
         locationId: true,
         qtyIn: true,
         qtyOut: true,
@@ -1231,8 +1115,7 @@ export async function cancelJobReceipt(
     for (const row of posted) {
       await postMovement(tx, {
         organizationId,
-        lotId: row.lotId,
-        lotPackageId: row.lotPackageId,
+        batchId: row.batchId,
         locationId: row.locationId,
         movementType: 'reversal',
         qtyIn: row.qtyOut,

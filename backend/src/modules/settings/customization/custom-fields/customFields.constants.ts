@@ -35,14 +35,14 @@ export const ENTITY_TYPES = [
    * that can never be entered. It is list-only now — see
    * `LIST_ONLY_ENTITY_TYPES` in `listViews.catalog.ts`.
    *
-   * `lot` has no list page of its own — lots are picked from an availability
-   * query, not browsed — but it earns an entry because Material In writes a lot
+   * `batch` has no list page of its own — batches are picked from an availability
+   * query, not browsed — but it earns an entry because Material In writes a batch
    * and an org needs somewhere to record the tag details it cares about.
    */
   'job_order',
   'job_receipt',
   'rejection_reason',
-  'lot',
+  'batch',
   'composite_item_component',
   'item_assembly',
   'item_assembly_line',

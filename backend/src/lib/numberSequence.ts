@@ -35,17 +35,17 @@ export const NUMBER_SEQUENCE_DEFAULTS = {
   customer: { prefix: 'CUS-', width: 5 },
   /**
    * Jobwork, registered in Sprint 1 so the sequences exist before the documents
-   * that use them do. `lot` is the only one Sprint 1 can actually allocate — the
+   * that use them do. `batch` is the only one Sprint 1 can actually allocate — the
    * other three are claimed here so a later sprint cannot pick a colliding
    * `entityType` string by accident.
    *
-   * One GLOBAL lot sequence per org, deliberately not bound to the PO
-   * (domain doc §5.2.2): ~5 of every 6 lots have no PO at all, merges have no
-   * valid answer, and a lot number gets printed on a tag stuck to a roll, so it
-   * must never be renumbered. `Lot.supplierLotRef` serves the "show me the
+   * One GLOBAL batch sequence per org, deliberately not bound to the PO
+   * (domain doc §5.2.2): ~5 of every 6 batches have no PO at all, merges have no
+   * valid answer, and a batch number gets printed on a tag stuck to a roll, so it
+   * must never be renumbered. `Batch.supplierBatchRef` serves the "show me the
    * vendor's own batch number" need instead.
    */
-  lot: { prefix: 'LOT-', width: 5 },
+  batch: { prefix: 'BATCH-', width: 5 },
   job_order: { prefix: 'JO-', width: 5 },
   job_issue: { prefix: 'JI-', width: 5 },
   job_receipt: { prefix: 'JR-', width: 5 },

@@ -6,12 +6,12 @@ import { sendSuccess } from '../../../lib/apiResponse.ts';
 import { listQuerySchema } from '../../../lib/pagination.ts';
 import { OWNERSHIPS } from '../stock-ledger/stockLedger.service.ts';
 import {
-  countLots,
+  countBatches,
   getAvailableStock,
-  getLotById,
-  getLotsList,
+  getBatchById,
+  getBatchesList,
   getSourceLocations,
-} from './lots.service.ts';
+} from './batches.service.ts';
 
 const orgParam = z.object({ orgId: z.string() });
 
@@ -29,9 +29,9 @@ const availabilityQuerySchema = z.object({
 
 openApiRegistry.registerPath({
   method: 'get',
-  path: '/organizations/{orgId}/inventory/lots/available',
-  tags: ['Lots'],
-  summary: 'Lots that can actually be issued — a LEDGER query, not the lots table',
+  path: '/organizations/{orgId}/inventory/batches/available',
+  tags: ['Batches'],
+  summary: 'Batches that can actually be issued — a LEDGER query, not the batches table',
   request: {
     params: orgParam,
     query: z.object({
@@ -41,13 +41,13 @@ openApiRegistry.registerPath({
       withPackages: z.string().optional(),
     }),
   },
-  responses: { 200: { description: 'Available lots, each with its takas when tracked' } },
+  responses: { 200: { description: 'Available batches, each with its takas when tracked' } },
 });
 
 openApiRegistry.registerPath({
   method: 'get',
-  path: '/organizations/{orgId}/inventory/lots/locations',
-  tags: ['Lots'],
+  path: '/organizations/{orgId}/inventory/batches/locations',
+  tags: ['Batches'],
   summary: 'Locations actually holding this item, with balances',
   request: {
     params: orgParam,
@@ -56,16 +56,16 @@ openApiRegistry.registerPath({
   responses: { 200: { description: 'Locations with a positive balance' } },
 });
 
-export const getLots = async (req: Request, res: Response) => {
+export const getBatches = async (req: Request, res: Response) => {
   const parsed = listQuerySchema.safeParse(req.query);
   if (!parsed.success) throw ApiError.badRequest('Invalid search parameters.');
-  sendSuccess(res, await getLotsList(req.tenantId!, parsed.data));
+  sendSuccess(res, await getBatchesList(req.tenantId!, parsed.data));
 };
 
-export const getLotCount = async (req: Request, res: Response) => {
+export const getBatchCount = async (req: Request, res: Response) => {
   const parsed = listQuerySchema.safeParse(req.query);
   if (!parsed.success) throw ApiError.badRequest('Invalid search parameters.');
-  sendSuccess(res, { total: await countLots(req.tenantId!, parsed.data) });
+  sendSuccess(res, { total: await countBatches(req.tenantId!, parsed.data) });
 };
 
 export const getAvailable = async (req: Request, res: Response) => {
@@ -82,8 +82,8 @@ export const getLocations = async (req: Request, res: Response) => {
   sendSuccess(res, await getSourceLocations(req.tenantId!, parsed.data));
 };
 
-export const getLot = async (req: Request, res: Response) => {
-  const found = await getLotById(req.tenantId!, req.params.id as string);
-  if (!found) throw ApiError.notFound('Lot not found');
+export const getBatch = async (req: Request, res: Response) => {
+  const found = await getBatchById(req.tenantId!, req.params.id as string);
+  if (!found) throw ApiError.notFound('Batch not found');
   sendSuccess(res, found);
 };

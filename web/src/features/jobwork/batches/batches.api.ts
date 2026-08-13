@@ -3,30 +3,19 @@ import { apiClient } from '../../../api/client';
 import { endpoints } from '../../../api/endpoints';
 
 /**
- * Lots — read only.
+ * Batches — read only.
  *
- * 🔴 `fetchAvailableLots` IS THE PICKER, AND IT IS A LEDGER QUERY. It is not "the
- * lots list filtered". A lot row exists from the moment it is created and goes on
+ * 🔴 `fetchAvailableBatches` IS THE PICKER, AND IT IS A LEDGER QUERY. It is not "the
+ * batches list filtered". A batch row exists from the moment it is created and goes on
  * existing after the last metre of it has been issued, so a picker built on the
- * `lots` table offers material that has been at the dyer's for a fortnight
- * (field-sources §10). There is no create/update/delete here because a lot is
+ * `batches` table offers material that has been at the dyer's for a fortnight
+ * (field-sources §10). There is no create/update/delete here because a batch is
  * born from the document that physically brought material in, never from a form.
  */
 
-export const availablePackageSchema = z.object({
-  lotPackageId: z.string(),
-  packageNumber: z.number(),
-  label: z.string().nullable(),
-  /** The MEASURED quantity on the tag — ticking the box takes all of it. */
-  qty: z.string(),
-  availableQty: z.string(),
-});
-
-export type AvailablePackage = z.infer<typeof availablePackageSchema>;
-
-export const availableLotSchema = z.object({
-  lotId: z.string(),
-  lotNumber: z.string(),
+export const availableBatchSchema = z.object({
+  batchId: z.string(),
+  batchNumber: z.string(),
   itemId: z.string(),
   uomId: z.string().nullable(),
   ownership: z.string(),
@@ -34,11 +23,10 @@ export const availableLotSchema = z.object({
   availableQty: z.string(),
   accumulatedValue: z.string(),
   costPerUnit: z.string().nullable(),
-  lotTracking: z.string(),
-  packages: z.array(availablePackageSchema).default([]),
+  inventoryTracking: z.string(),
 });
 
-export type AvailableLot = z.infer<typeof availableLotSchema>;
+export type AvailableBatch = z.infer<typeof availableBatchSchema>;
 
 export const stockLocationSchema = z.object({
   id: z.string(),
@@ -52,14 +40,14 @@ export const stockLocationSchema = z.object({
 
 export type StockLocation = z.infer<typeof stockLocationSchema>;
 
-export async function fetchAvailableLots(
+export async function fetchAvailableBatches(
   orgId: string,
   params: { itemId: string; locationId?: string; ownership?: string; withPackages?: boolean },
-): Promise<AvailableLot[]> {
-  const response = await apiClient.get(endpoints.inventory.availableLots(orgId), {
+): Promise<AvailableBatch[]> {
+  const response = await apiClient.get(endpoints.inventory.availableBatches(orgId), {
     params: { ...params, withPackages: params.withPackages ? 'true' : undefined },
   });
-  return z.array(availableLotSchema).parse(response.data);
+  return z.array(availableBatchSchema).parse(response.data);
 }
 
 /** 🔴 Also a ledger query, not a location list: offering a godown that holds none

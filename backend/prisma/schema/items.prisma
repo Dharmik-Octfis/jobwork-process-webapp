@@ -22,8 +22,26 @@ model Item {
   isDeleted                Boolean  @default(false) @map("is_deleted")
   updatedBy                String?  @map("updated_by") @db.Uuid
   customFields             Json     @default("{}") @map("custom_fields")
-  inventoryTracking        String?  @map("inventory_tracking")
+  /// 🔴 THE TWO TRACKING COLUMNS. Until 2026-08-12 both were dead — the item form
+  /// wrote them and no backend rule read them, while the rule that mattered read a
+  /// third column (`lot_tracking`) no UI could set. So a user who ticked "Batch"
+  /// got an item that tracked nothing. `lot_tracking` is gone; these two are now
+  /// the authority (spec I-4).
+  ///
+  /// `trackInventory` — is this item stocked AT ALL? False for services and for
+  /// anything bought straight to expense: no opening stock, no ledger, no balance.
   trackInventory           Boolean  @default(false) @map("track_inventory")
+  /// none | batch — how much batch detail the USER sees (§5.2.1). Only meaningful
+  /// when `trackInventory` is true.
+  ///
+  /// 🔴 A BATCH IS ALWAYS CREATED INTERNALLY whatever this says — the ledger needs
+  /// exactly one batch to hang every quantity on, and genealogy cannot be
+  /// reconstructed later. `none` means the user never SEES a batch field and
+  /// opening stock is a bulk quantity; the system still mints the number behind it.
+  /// Use it for thread, buttons, dye chemicals, packing tape — forcing a batch
+  /// number there is how a system gets abandoned. `batch` additionally makes at
+  /// least one batch row REQUIRED wherever stock comes in.
+  inventoryTracking        String   @default("none") @map("inventory_tracking") @db.VarChar(20)
   openingStock             Decimal? @map("opening_stock") @db.Decimal(10, 2)
   openingStockValuePerUnit Decimal? @map("opening_stock_value_per_unit") @db.Decimal(10, 2)
   frontImage               Json?    @map("front_image")
@@ -32,7 +50,7 @@ model Item {
 
   /// 🔴 THE stocking unit, as a real FK. `unit` above is the legacy free-text
   /// string it was backfilled from and is still what the item form shows; this is
-  /// what the stock ledger and every lot reference.
+  /// what the stock ledger and every batch reference.
   ///
   /// Nullable because the backfill matched `unit` against
   /// `units_of_measurement.unit_name` per organization and some rows had no match
@@ -44,12 +62,6 @@ model Item {
   /// because the thing changed, it is a DIFFERENT item — cloth (METER) and shirt
   /// (PCS) are two items, not one item with two units.
   stockingUomId String? @map("stocking_uom_id") @db.Uuid
-
-  /// none | lot | lot_and_package — how much lot detail the USER sees (§5.2.1).
-  /// A lot is always created internally whatever this says; `none` just means no
-  /// lot field ever appears on screen. Use it for thread, buttons, dye chemicals,
-  /// packing tape — forcing a lot number there is how a system gets abandoned.
-  lotTracking String @default("none") @map("lot_tracking") @db.VarChar(20)
 
   /// raw | semi_finished | finished | consumable | scrap | service — what role the
   /// item plays in production. Filters the lookups on the jobwork screens.
@@ -75,7 +87,7 @@ model Item {
   updatedByUser      User?               @relation("ItemUpdatedBy", fields: [updatedBy], references: [id])
   stockingUom        UnitOfMeasurement?  @relation("ItemStockingUom", fields: [stockingUomId], references: [id])
   purchaseOrderItems PurchaseOrderItem[]
-  lots               Lot[]
+  batches            Batch[]
   ledgerEntries      StockLedgerEntry[]
 
   /// The one single-item header relation left, and it is deliberate: CALC+,
@@ -112,7 +124,7 @@ model UnitOfMeasurement {
   updatedByUser  User?        @relation("UomUpdatedBy", fields: [updatedBy], references: [id])
 
   stockedItems           Item[]             @relation("ItemStockingUom")
-  lots                   Lot[]              @relation("LotUom")
+  batches                Batch[]            @relation("BatchUom")
   ledgerEntries          StockLedgerEntry[] @relation("StockLedgerUom")
 
   jobOrderInputUoms JobOrder[] @relation("JobOrderInputUom")

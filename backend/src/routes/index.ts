@@ -31,7 +31,7 @@ import { jobOrdersRouter } from '../modules/jobwork/job-orders/jobOrders.routes.
 import { jobIssuesRouter } from '../modules/jobwork/issues/jobIssues.routes.ts';
 import { jobReceiptsRouter } from '../modules/jobwork/receipts/jobReceipts.routes.ts';
 import { rejectionReasonsRouter } from '../modules/jobwork/rejection-reasons/rejectionReasons.routes.ts';
-import { lotsRouter } from '../modules/inventory/lots/lots.routes.ts';
+import { batchesRouter } from '../modules/inventory/batches/batches.routes.ts';
 import { itemCategoriesRouter } from '../modules/settings/inventory/item-categories/item-categories.routes.ts';
 import { listViewsRouter } from '../modules/settings/list-views/listViews.routes.ts';
 import { storageRouter } from '../modules/storage/storage.routes.ts';
@@ -70,7 +70,7 @@ apiRouter.use('/organizations/:orgId/sales/customers', customersRouter);
 //
 // 🔴 `stock_ledger` still has NO router and must never get one. It is plumbing
 // behind stockLedger.service.ts, and an HTTP surface on it would be a way to
-// write history from outside the documents that caused it. `lots` gets a
+// write history from outside the documents that caused it. `batches` gets a
 // READ-ONLY router — the Issue dialog's picker needs the availability query, and
 // nothing else.
 apiRouter.use('/organizations/:orgId/jobwork/processes', processesRouter);
@@ -79,7 +79,7 @@ apiRouter.use('/organizations/:orgId/jobwork/job-orders', jobOrdersRouter);
 apiRouter.use('/organizations/:orgId/jobwork/issues', jobIssuesRouter);
 apiRouter.use('/organizations/:orgId/jobwork/receipts', jobReceiptsRouter);
 apiRouter.use('/organizations/:orgId/jobwork/rejection-reasons', rejectionReasonsRouter);
-apiRouter.use('/organizations/:orgId/inventory/lots', lotsRouter);
+apiRouter.use('/organizations/:orgId/inventory/batches', batchesRouter);
 apiRouter.use('/organizations/:orgId/inventory/uom', uomRouter);
 apiRouter.use('/organizations/:orgId/inventory/item-categories', itemCategoriesRouter);
 apiRouter.use('/organizations/:orgId/configuration/currencies', currenciesRouter);

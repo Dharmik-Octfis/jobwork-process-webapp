@@ -312,7 +312,7 @@ export function JobOrderStepDetail({
             <AlertTriangle size={14} color="#b45309" style={{ marginTop: 1, flexShrink: 0 }} />
             <span style={{ fontSize: 12, color: '#92400e', lineHeight: 1.5 }}>
               {formatQty(step.totals.reworkQty)} {receiveUnit} came back needing rework. It sits in
-              its own lot — issue it back to this step to run it again.
+              its own batch — issue it back to this step to run it again.
             </span>
           </div>
         )}

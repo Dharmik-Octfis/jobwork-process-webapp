@@ -34,7 +34,7 @@ openApiRegistry.registerPath({
   method: 'post',
   path: '/organizations/{orgId}/jobwork/receipts',
   tags: ['Job Receipts'],
-  summary: 'Receive goods back, split them by disposition, and create the output lots',
+  summary: 'Receive goods back, split them by disposition, and create the output batches',
   request: {
     params: orgParam,
     body: { content: { 'application/json': { schema: createJobReceiptSchema } } },

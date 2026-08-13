@@ -3,86 +3,80 @@ import { runAsTenant } from '../../../db/prisma.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import {
-  getAvailableLots,
-  getAvailablePackages,
+  getAvailableBatches,
   getBalance,
   type Ownership,
 } from '../stock-ledger/stockLedger.service.ts';
 
 /**
- * Lots — READ ONLY, and that is the whole design.
+ * Batches — READ ONLY, and that is the whole design.
  *
- * 🔴 There is no create, no update, no delete here and there must not be. A lot
- * is born in exactly one place, `stockLedger.service.ts.createLot`, called by
+ * 🔴 There is no create, no update, no delete here and there must not be. A batch
+ * is born in exactly one place, `stockLedger.service.ts.createBatch`, called by
  * the documents that physically bring material in (Material In today; Purchase
- * Received later). A lot someone typed into a form is a quantity that exists in
+ * Received later). A batch someone typed into a form is a quantity that exists in
  * the system and nowhere on the floor.
  *
  * What this module exists for is the Issue dialog's picker, and one property of
  * that picker matters more than everything else in this file:
  *
- * 🔴 IT READS THE LEDGER, NOT THE `lots` TABLE. A lot row exists from the moment
+ * 🔴 IT READS THE LEDGER, NOT THE `batches` TABLE. A batch row exists from the moment
  * it is created and goes on existing after the last metre of it has been issued.
- * "Does this lot exist" and "is there any of it here" are different questions,
+ * "Does this batch exist" and "is there any of it here" are different questions,
  * and answering the second with the first is how a picker offers material that
  * has been at the dyer's for a fortnight (field-sources §10).
  */
 
-const SEARCH_COLUMNS = ['lotNumber', 'supplierLotRef'] as const;
+const SEARCH_COLUMNS = ['batchNumber', 'supplierBatchRef'] as const;
 
-function lotListWhere(organizationId: string, opts: ListQuery): Prisma.LotWhereInput {
+function batchListWhere(organizationId: string, opts: ListQuery): Prisma.BatchWhereInput {
   return {
     organizationId,
     isDeleted: false,
-    ...filterWhere<Prisma.LotWhereInput>('lot', opts.filter),
-    ...searchWhere<Prisma.LotWhereInput>(opts.search, [...SEARCH_COLUMNS]),
+    ...filterWhere<Prisma.BatchWhereInput>('batch', opts.filter),
+    ...searchWhere<Prisma.BatchWhereInput>(opts.search, [...SEARCH_COLUMNS]),
   };
 }
 
-const LOT_INCLUDE = {
-  item: { select: { id: true, name: true, sku: true, lotTracking: true } },
+const BATCH_INCLUDE = {
+  item: { select: { id: true, name: true, sku: true, inventoryTracking: true } },
   uom: { select: { id: true, unitName: true, symbol: true } },
-  packages: {
-    where: { isDeleted: false },
-    orderBy: { packageNumber: 'asc' },
-    select: { id: true, packageNumber: true, label: true, qty: true, state: true },
-  },
-} satisfies Prisma.LotInclude;
+} satisfies Prisma.BatchInclude;
 
-export async function getLotsList(organizationId: string, opts: ListQuery) {
+export async function getBatchesList(organizationId: string, opts: ListQuery) {
   const { page, perPage } = opts;
   return runAsTenant(organizationId, async (tx) => {
-    const rows = await tx.lot.findMany({
-      where: lotListWhere(organizationId, opts),
-      // Oldest first — the same FIFO order the picker suggests, so a lot looked
+    const rows = await tx.batch.findMany({
+      where: batchListWhere(organizationId, opts),
+      // Oldest first — the same FIFO order the picker suggests, so a batch looked
       // up here sits where the picker put it.
       orderBy: { createdAt: 'asc' },
       skip: (page - 1) * perPage,
       take: takeForPage(perPage),
-      include: LOT_INCLUDE,
+      include: BATCH_INCLUDE,
     });
     return pageSlice(rows, page, perPage);
   });
 }
 
-export async function countLots(organizationId: string, opts: ListQuery): Promise<number> {
+export async function countBatches(organizationId: string, opts: ListQuery): Promise<number> {
   return runAsTenant(organizationId, (tx) =>
-    tx.lot.count({ where: lotListWhere(organizationId, opts) }),
+    tx.batch.count({ where: batchListWhere(organizationId, opts) }),
   );
 }
 
-/** One lot, with its packages and its DERIVED balance. */
-export async function getLotById(organizationId: string, id: string) {
+/** One batch, with its packages and its DERIVED balance. */
+export async function getBatchById(organizationId: string, id: string) {
   return runAsTenant(organizationId, async (tx) => {
-    const lot = await tx.lot.findFirst({
+    const batch = await tx.batch.findFirst({
       where: { id, organizationId, isDeleted: false },
-      include: LOT_INCLUDE,
+      include: BATCH_INCLUDE,
     });
-    if (!lot) return null;
+    if (!batch) return null;
 
-    const balance = await getBalance(tx, { organizationId, lotId: id });
+    const balance = await getBalance(tx, { organizationId, batchId: id });
     return {
-      ...lot,
+      ...batch,
       availableQty: balance.qty.toString(),
       accumulatedValue: balance.value.toString(),
     };
@@ -100,74 +94,60 @@ export interface AvailabilityQuery {
    * missing tenant filter (§5.2).
    */
   ownership?: Ownership;
-  /** Include each lot's takas. Only worth asking for when the item is tracked
-   * that way; otherwise it is a query per lot returning nothing. */
+  /** Include each batch's takas. Only worth asking for when the item is tracked
+   * that way; otherwise it is a query per batch returning nothing. */
   withPackages?: boolean;
 }
 
 /**
  * What can actually be issued: the picker's grid.
  *
- * The picker shows the lot, what is left of it and what that is worth — nothing
- * else. Lot age and the supplier's own reference were dropped from this payload
+ * The picker shows the batch, what is left of it and what that is worth — nothing
+ * else. Batch age and the supplier's own reference were dropped from this payload
  * on 2026-08-10: both were display-only columns nobody read off the dialog. If a
  * FIFO suggestion or the 180-day GST clock ever needs age, compute it HERE and
  * not on the client — the two must agree.
  */
 export async function getAvailableStock(organizationId: string, query: AvailabilityQuery) {
   return runAsTenant(organizationId, async (tx) => {
-    const lots = await getAvailableLots(tx, {
+    const batches = await getAvailableBatches(tx, {
       organizationId,
       itemId: query.itemId,
       locationId: query.locationId,
       ownership: query.ownership,
     });
-    if (lots.length === 0) return [];
+    if (batches.length === 0) return [];
 
-    const rows = await tx.lot.findMany({
-      where: { id: { in: lots.map((l) => l.lotId) }, organizationId, isDeleted: false },
-      select: { id: true, state: true, item: { select: { lotTracking: true } } },
+    const rows = await tx.batch.findMany({
+      where: { id: { in: batches.map((l) => l.batchId) }, organizationId, isDeleted: false },
+      select: { id: true, state: true, item: { select: { inventoryTracking: true } } },
     });
     const metaById = new Map(rows.map((r) => [r.id, r]));
 
     const out = [];
-    for (const lot of lots) {
-      const meta = metaById.get(lot.lotId);
+    for (const batch of batches) {
+      const meta = metaById.get(batch.batchId);
       const balance = await getBalance(tx, {
         organizationId,
-        lotId: lot.lotId,
+        batchId: batch.batchId,
         locationId: query.locationId,
       });
 
       out.push({
-        lotId: lot.lotId,
-        lotNumber: lot.lotNumber,
-        itemId: lot.itemId,
-        uomId: lot.uomId,
-        ownership: lot.ownership,
-        ownerPartyId: lot.ownerPartyId,
-        availableQty: lot.availableQty.toString(),
+        batchId: batch.batchId,
+        batchNumber: batch.batchNumber,
+        itemId: batch.itemId,
+        uomId: batch.uomId,
+        ownership: batch.ownership,
+        ownerPartyId: batch.ownerPartyId,
+        availableQty: batch.availableQty.toString(),
         accumulatedValue: balance.value.toString(),
         // Cost per unit of what is LEFT, not of what was received. Derived every
         // time; there is no stored cost column (plan §3, decision 1).
-        costPerUnit: lot.availableQty.greaterThan(0)
-          ? balance.value.dividedBy(lot.availableQty).toDecimalPlaces(4).toString()
+        costPerUnit: batch.availableQty.greaterThan(0)
+          ? balance.value.dividedBy(batch.availableQty).toDecimalPlaces(4).toString()
           : null,
-        lotTracking: meta?.item.lotTracking ?? 'none',
-        packages:
-          query.withPackages && meta?.item.lotTracking === 'lot_and_package'
-            ? (
-                await getAvailablePackages(tx, {
-                  organizationId,
-                  lotId: lot.lotId,
-                  locationId: query.locationId,
-                })
-              ).map((pkg) => ({
-                ...pkg,
-                qty: pkg.qty.toString(),
-                availableQty: pkg.availableQty.toString(),
-              }))
-            : [],
+        inventoryTracking: meta?.item.inventoryTracking ?? 'none',
       });
     }
     return out;

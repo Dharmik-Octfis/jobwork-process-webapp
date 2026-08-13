@@ -1,5 +1,19 @@
 # Jobwork — Implementation Plan (Sprints 1–5)
 
+> ### 🔴 2026-08-12 — "lot" is now "batch", and package tracking is gone
+>
+> **`lots` → `batches`** (plus `lot_number`/`supplier_lot_ref`/`parent_lot_ids`/`lot_id` →
+> `batch_*`), a pure rename that changed no data. New numbers mint as `BATCH-00001`; numbers
+> already on physical tags keep `LOT-`.
+>
+> **Package-level (per-taka) tracking was REMOVED end to end** — `lot_packages`, every
+> `lot_package_id`, `parent_package_id`, `Process.preservesPackaging` and `JobReceipt.mode`.
+> Quantity granularity stops at the batch. `Item.lot_tracking` went too; `inventory_tracking`
+> (`none | batch`) is now the single tracking column and the item form writes it.
+>
+> **Text below about takas, packages, unit-wise receiving or `lot_packages` is HISTORY.** It is
+> kept for the reasoning, which is where re-adding packages would start.
+
 **Scope of this plan:** the **Jobwork** main module only. Purchases, Sales and Inventory as
 user-facing modules are out.
 
@@ -24,7 +38,7 @@ user-facing modules are out.
 | **Processes** — master                                            | 1           |
 | **Process Routes** — reusable templates                           | 2           |
 | **Job Orders** — incl. Material In and the Overview page          | 2           |
-| **Issues** — challan out, lot/taka picker                         | 3           |
+| **Issues** — challan out, batch/taka picker                       | 3           |
 | **Receipts** — incl. dispositions and rework                      | 4           |
 | **Multi-item steps** — a set of items in, a set out (domain §5.7) | 5 — see §12 |
 
@@ -45,17 +59,17 @@ to add the day Sales Orders ship.
 > it — and nothing replaced it as an inward document. A job order is now a PLAN, and the stock it
 > draws on arrives from somewhere else. Until Purchase Received and Opening Stock ship, that
 > "somewhere else" is the scaffold in §12.6. The section below is kept because it explains why
-> Material In existed at all and why its lots are still valid.
+> Material In existed at all and why its batches are still valid.
 
 Without Purchase Received or Opening Stock, **a job order has no material to issue** — the Issue
-dialog's lot picker
+dialog's batch picker
 would query an empty ledger forever.
 
 🔴 **Fix: the Job Order carries its own "Material In" section.** On the create screen you enter the
-incoming material — item, quantity, supplier lot reference, and the takas with their measured
-quantities. Saving creates the lot, its packages, and the first stock ledger rows.
+incoming material — item, quantity, supplier batch reference, and the takas with their measured
+quantities. Saving creates the batch, its packages, and the first stock ledger rows.
 
-This is not a workaround. It is the natural shape for a jobworker — _"party sent 5,000 m, lot ABC,
+This is not a workaround. It is the natural shape for a jobworker — _"party sent 5,000 m, batch ABC,
 50 takas, for this job"_ — and it serves inward jobwork (shape D) directly, which is the most common
 case for a jobworking business. When Purchase Received ships later, Material In becomes **optional**
 rather than
@@ -67,7 +81,7 @@ The question was _"what is mandatory in the database for stock data?"_ Three tab
 
 | Table          | Why it cannot be skipped                                                                                                                                           |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `lots`         | Carries ownership, genealogy and origin. Every issue and receipt line references one                                                                               |
+| `batches`      | Carries ownership, genealogy and origin. Every issue and receipt line references one                                                                               |
 | `lot_packages` | The takas. Individually measured, variable quantities — the core requirement                                                                                       |
 | `stock_ledger` | Movements. Without it, "what is available at step 2" gets computed from `job_issue_lines`, and **every one of those queries is rewritten** when the ledger arrives |
 
@@ -75,7 +89,7 @@ The question was _"what is mandatory in the database for stock data?"_ Three tab
 no permission resource of their own beyond a read for the picker. That is the whole footprint.
 
 🔴 **Two columns must exist from the first migration even though nothing reads them yet** —
-`lots.ownership` (+ `ownerPartyId`) and `lots.parentLotIds`. Retrofitting ownership means revisiting
+`batches.ownership` (+ `ownerPartyId`) and `batches.parentBatchIds`. Retrofitting ownership means revisiting
 every valuation query ever written; genealogy cannot be reconstructed from history that was never
 recorded. See the domain doc §11.3.
 
@@ -85,26 +99,26 @@ recorded. See the domain doc §11.3.
 
 Key columns only — **this is not the schema**, it is a planning inventory.
 
-| Sprint | Table                                                               | Purpose                                              | Notable columns                                                                                                                                                                                                                                                                                         |
-| ------ | ------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1      | `lots`                                                              | Traceable quantity                                   | `lotNumber`, `supplierLotRef`, `itemId`, `ownership`, `ownerPartyId`, `parentLotIds`, `sourceDocType/Id`, `state`                                                                                                                                                                                       |
-| 1      | `lot_packages`                                                      | Physical packages (takas)                            | `packageNumber` (restarts at 1 per lot), `qty`, `parentPackageId`, `state`                                                                                                                                                                                                                              |
-| 1      | `stock_ledger`                                                      | 🔴 Every movement                                    | `itemId`, `lotId`, `lotPackageId`, `locationId`, `ownership`, `qtyIn/qtyOut`, `valueIn/valueOut`, `sourceDocType/Id/LineId`, `movementType`, `postedAt`                                                                                                                                                 |
-| 1      | `processes`                                                         | Operation master                                     | `name`, `itemChanges`, `rateBasis`, `preservesPackaging`, `requiresSingleLot`, `defaultTolerancePct`                                                                                                                                                                                                    |
-| 2      | `routes` · `route_steps`                                            | Reusable template                                    | step: `seq`, `processId`, defaults for processor / rate / yield / tolerance                                                                                                                                                                                                                             |
-| 2      | `route_step_inputs` · `route_step_outputs`                          | The template's bill of materials                     | `seq`, `itemId`, `uomId`, `plannedQty` / `expectedQty`, `isPrimary` on outputs                                                                                                                                                                                                                          |
-| 2      | `job_orders`                                                        | One run                                              | `jobOrderNumber`, `inputItemId`, `inputQty`, `routeId` + `routeNameSnapshot`, `ownership`, `status`                                                                                                                                                                                                     |
-| 2      | `job_order_steps`                                                   | 🔴 Snapshot of route steps                           | `seq`, `processId`, `processorType`, `processorId`, `rate`, `rateBasis`, `expectedYield`, `tolerancePct`, `status`                                                                                                                                                                                      |
-| 2      | `job_order_step_inputs` · `job_order_step_outputs`                  | 🔴 What the step consumes and produces (domain §5.7) | input: `itemId`, `uomId`, `plannedQty`, `fromStock`. output: `itemId`, `uomId`, `expectedQty`, `isPrimary`                                                                                                                                                                                              |
-| 3      | `job_issues` · `job_issue_lines`                                    | Challan out                                          | header: `challanNumber`, `stepId`, `processorId`, source + destination location, `isRework`, `attemptNo`. line: **`itemId`**, `uomId`, `lotId`, `lotPackageId`, `qty`. 🔴 **No `itemId` or `totalQty` on the header** — a challan carries several items, and their quantities do not add up to anything |
-| 4      | `job_receipts` · `job_receipt_consumptions` · `job_receipt_outputs` | Goods back — 🔴 **two** child tables                 | consumption: `issueLineId`, `lotId`, `lotPackageId`, `consumedQty`. output: `itemId`, `uomId`, `receivedQty`, the four disposition quantities, `reasonId`, `responsibility`, `parentPackageId`, `isPrimary`, `valueShare`, `outputLotId`, `reworkLotId`                                                 |
-| 4      | `rejection_reasons`                                                 | Small per-org master                                 | Free text cannot be grouped, and wastage analysis needs grouping                                                                                                                                                                                                                                        |
+| Sprint | Table                                                               | Purpose                                              | Notable columns                                                                                                                                                                                                                                                                                             |
+| ------ | ------------------------------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1      | `batches`                                                           | Traceable quantity                                   | `batchNumber`, `supplierBatchRef`, `itemId`, `ownership`, `ownerPartyId`, `parentBatchIds`, `sourceDocType/Id`, `state`                                                                                                                                                                                     |
+| 1      | `lot_packages`                                                      | Physical packages (takas)                            | `packageNumber` (restarts at 1 per batch), `qty`, `parentPackageId`, `state`                                                                                                                                                                                                                                |
+| 1      | `stock_ledger`                                                      | 🔴 Every movement                                    | `itemId`, `batchId`, `batchPackageId`, `locationId`, `ownership`, `qtyIn/qtyOut`, `valueIn/valueOut`, `sourceDocType/Id/LineId`, `movementType`, `postedAt`                                                                                                                                                 |
+| 1      | `processes`                                                         | Operation master                                     | `name`, `itemChanges`, `rateBasis`, `preservesPackaging`, `requiresSingleBatch`, `defaultTolerancePct`                                                                                                                                                                                                      |
+| 2      | `routes` · `route_steps`                                            | Reusable template                                    | step: `seq`, `processId`, defaults for processor / rate / yield / tolerance                                                                                                                                                                                                                                 |
+| 2      | `route_step_inputs` · `route_step_outputs`                          | The template's bill of materials                     | `seq`, `itemId`, `uomId`, `plannedQty` / `expectedQty`, `isPrimary` on outputs                                                                                                                                                                                                                              |
+| 2      | `job_orders`                                                        | One run                                              | `jobOrderNumber`, `inputItemId`, `inputQty`, `routeId` + `routeNameSnapshot`, `ownership`, `status`                                                                                                                                                                                                         |
+| 2      | `job_order_steps`                                                   | 🔴 Snapshot of route steps                           | `seq`, `processId`, `processorType`, `processorId`, `rate`, `rateBasis`, `expectedYield`, `tolerancePct`, `status`                                                                                                                                                                                          |
+| 2      | `job_order_step_inputs` · `job_order_step_outputs`                  | 🔴 What the step consumes and produces (domain §5.7) | input: `itemId`, `uomId`, `plannedQty`, `fromStock`. output: `itemId`, `uomId`, `expectedQty`, `isPrimary`                                                                                                                                                                                                  |
+| 3      | `job_issues` · `job_issue_lines`                                    | Challan out                                          | header: `challanNumber`, `stepId`, `processorId`, source + destination location, `isRework`, `attemptNo`. line: **`itemId`**, `uomId`, `batchId`, `batchPackageId`, `qty`. 🔴 **No `itemId` or `totalQty` on the header** — a challan carries several items, and their quantities do not add up to anything |
+| 4      | `job_receipts` · `job_receipt_consumptions` · `job_receipt_outputs` | Goods back — 🔴 **two** child tables                 | consumption: `issueLineId`, `batchId`, `batchPackageId`, `consumedQty`. output: `itemId`, `uomId`, `receivedQty`, the four disposition quantities, `reasonId`, `responsibility`, `parentPackageId`, `isPrimary`, `valueShare`, `outputBatchId`, `reworkBatchId`                                             |
+| 4      | `rejection_reasons`                                                 | Small per-org master                                 | Free text cannot be grouped, and wastage analysis needs grouping                                                                                                                                                                                                                                            |
 
 **Extensions to existing tables (Sprint 1)**
 
 | Table       | Add                                                                   |
 | ----------- | --------------------------------------------------------------------- |
-| `items`     | `stockingUomId` (FK), `lotTracking`, `nature`, `defaultRouteId`       |
+| `items`     | `stockingUomId` (FK), `inventoryTracking`, `nature`, `defaultRouteId` |
 | `locations` | `type` values `processor` / `work_centre` / `godown`, plus `vendorId` |
 | `vendors`   | `vendorTypes`                                                         |
 
@@ -119,11 +133,11 @@ or `updatedBy` (a ledger row is never edited or soft-deleted; corrections are re
 
 The first migration cannot be written until these three are settled.
 
-| #   | Decision                                                                                                          | Recommendation                                                                                                                                                          | Cost of changing later            |
-| --- | ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
-| 1   | **Is lot value stored on the lot, or derived from the ledger?** The domain doc currently says both (§5.6 vs §7.2) | **Derived.** `stock_ledger` already carries `valueIn`/`valueOut`, so value is the same `SUM` shape as quantity, and `lots` holds only what never changes                | High — every costing query        |
-| 2   | **`lot_units` or `lot_packages`?**                                                                                | **`lot_packages`.** "Unit" already means unit-of-measurement in this codebase (`Item.unit`, `units_of_measurement`); `lot_units.uom_id` reads as "the unit of the unit" | High — table rename with live FKs |
-| 3   | **Valuation method**                                                                                              | **Specific-lot.** Implied by mandatory lot tracking, and what the domain doc §9 assumes throughout                                                                      | High — the whole cost model       |
+| #   | Decision                                                                                                              | Recommendation                                                                                                                                                            | Cost of changing later            |
+| --- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| 1   | **Is batch value stored on the batch, or derived from the ledger?** The domain doc currently says both (§5.6 vs §7.2) | **Derived.** `stock_ledger` already carries `valueIn`/`valueOut`, so value is the same `SUM` shape as quantity, and `batches` holds only what never changes               | High — every costing query        |
+| 2   | **`batch_units` or `lot_packages`?**                                                                                  | **`lot_packages`.** "Unit" already means unit-of-measurement in this codebase (`Item.unit`, `units_of_measurement`); `batch_units.uom_id` reads as "the unit of the unit" | High — table rename with live FKs |
+| 3   | **Valuation method**                                                                                                  | **Specific-batch.** Implied by mandatory batch tracking, and what the domain doc §9 assumes throughout                                                                    | High — the whole cost model       |
 
 ---
 
@@ -138,11 +152,11 @@ with the smallest possible module.
       ⚠️ **The fiddly one.** `items.prisma:9` is `unit String` today with no relation — needs a data
       backfill matching existing strings to `units_of_measurement.unitName`, and a plan for rows that
       do not match
-- [ ] `Item.lotTracking` (`none` / `lot` / `lot_and_package`), `Item.nature`, `Item.defaultRouteId`
+- [ ] `Item.inventoryTracking` (`none` / `batch` / `batch`), `Item.nature`, `Item.defaultRouteId`
 - [ ] `Location.type` — add `processor`, `work_centre`, `godown` to the existing column
 - [ ] `Location.vendorId` — nullable FK, for auto-provisioned processor locations
 - [ ] `Vendor.vendorTypes`
-- [ ] `lots`, `lot_packages`, `stock_ledger`
+- [ ] `batches`, `lot_packages`, `stock_ledger`
 - [ ] `processes`
 - [ ] **RLS policy on all four new tables** — copy the two statements from `migrations/*_enable_rls`
 - [ ] **Add all four to `TENANT_TABLES` in `src/db/rls.test.ts`** — a tenant table with no policy is
@@ -156,9 +170,9 @@ Never `db push`, never `migrate dev`.
 `backend/src/modules/inventory/stock-ledger/stockLedger.service.ts` — no controller, no routes.
 
 - [ ] `postMovement(tx, {...})` — the **only** function that inserts into `stock_ledger`
-- [ ] `getAvailableLots(tx, { itemId, locationId, ownership })` — the picker query
+- [ ] `getAvailableBatches(tx, { itemId, locationId, ownership })` — the picker query
 - [ ] `getBalance(tx, {...})` — derived, `SUM(qtyIn − qtyOut)`, never a stored column
-- [ ] `createLot(tx, {...})` + `createPackages(tx, {...})`
+- [ ] `createBatch(tx, {...})` + `createPackages(tx, {...})`
 - [ ] Unit tests: post → balance · reversal → zero · ownership isolation · derived value
 
 🔴 **Nothing else may write to `stock_ledger`.** Not a seed, not a script, not a "quick fix". A wrong
@@ -190,7 +204,7 @@ The `custom_fields` column stays on the table and is simply never written.
 - [ ] `ENTITY_TYPES` (`customFields.constants.ts`) + `CUSTOM_FIELD_MODULES` (frontend) — **not
       `process`**, which is list-only (§4.3); a module belongs here only if it will really be used
 - [ ] `listViews.catalog.ts` + `listFilters.catalog.ts` — TypeScript will not compile without both
-- [ ] `NumberSequence` entity types: `lot`, `job_order`, `job_issue`, `job_receipt`
+- [ ] `NumberSequence` entity types: `batch`, `job_order`, `job_issue`, `job_receipt`
 
 ### 4.5 Done means
 
@@ -226,14 +240,14 @@ The `custom_fields` column stays on the table and is simply never written.
       a live challan or receipt. The delete in `updateJobOrderById` MUST stay scoped to `seq >
 frontSeq` — `JobIssue.step` and `JobReceipt.step` are `onDelete: Cascade`, so an unscoped one
       silently destroys every document on the order
-- [ ] **Material In section** (§1.3) — creates lot + packages + ledger rows on save
+- [ ] **Material In section** (§1.3) — creates batch + packages + ledger rows on save
 - [ ] Job Orders list page
 - [ ] **Overview page** — the stepper (domain doc §8.2). `[+ Issue]` / `[+ Receive]` rendered but
       disabled until Sprints 3 and 4
 
 ### 5.3 Done means
 
-> A job order can be created from a route or by hand, its material entered as lots and takas, and the
+> A job order can be created from a route or by hand, its material entered as batches and takas, and the
 > Overview page shows the stepper with correct per-step planned quantities and a live stock balance.
 
 ---
@@ -241,14 +255,14 @@ frontSeq` — `JobIssue.step` and `JobReceipt.step` are `onDelete: Cascade`, so 
 ## 6. Sprint 3 — Issue · size L
 
 - [ ] `job_issues` + `job_issue_lines`
-- [ ] **Lot picker** — the availability query from field-sources §5.2.
-      🔴 Reads the **ledger**, not the `lots` table, and filters on `ownership`
-- [ ] **Taka expansion** — shown only when `lotTracking = 'lot_and_package'`. Ticking a package takes
+- [ ] **Batch picker** — the availability query from field-sources §5.2.
+      🔴 Reads the **ledger**, not the `batches` table, and filters on `ownership`
+- [ ] **Taka expansion** — shown only when `inventoryTracking = 'batch'`. Ticking a package takes
       its full measured quantity
 - [ ] Running totals: selected packages, selected qty, already issued, remaining
 - [ ] **Tolerance guard** — ceiling is `plannedQty × (1 + tolerancePct/100)`; over it, block or require
       an override reason
-- [ ] **Single-lot guard** — `Process.requiresSingleLot` blocks a second lot with the reason shown
+- [ ] **Single-batch guard** — `Process.requiresSingleBatch` blocks a second batch with the reason shown
 - [ ] Ledger posting — `−qty` at source, `+qty` at the processor's location, auto-creating that
       location on first use
 - [ ] **Printable challan (PDF)** — goods cannot legally move without it. Not deferrable
@@ -257,7 +271,7 @@ frontSeq` — `JobIssue.step` and `JobReceipt.step` are `onDelete: Cascade`, so 
 
 ### 6.1 Done means
 
-> Material can be issued to a processor by lot or by taka, stock moves out of the godown and appears
+> Material can be issued to a processor by batch or by taka, stock moves out of the godown and appears
 > at the processor's location, the challan prints, and the step status advances.
 
 ---
@@ -273,8 +287,8 @@ frontSeq` — `JobIssue.step` and `JobReceipt.step` are `onDelete: Cascade`, so 
 - [ ] **Disposition split** — accepted / rework / scrap / return-to-processor, with a sum check that
       blocks save. This is what makes a separate "Rejection Note" unnecessary
 - [ ] Reason (master) + responsibility (`ours` / `theirs`)
-- [ ] Output lot creation with `parentLotIds`
-- [ ] **Rework child lot** — separate lot so reworked pieces are counted separately
+- [ ] Output batch creation with `parentBatchIds`
+- [ ] **Rework child batch** — separate batch so reworked pieces are counted separately
 - [ ] Rework re-issue — same step, `isRework = true`, `attemptNo = n+1`
 - [ ] Preview-before-post
 - [ ] Step and job order status roll-up, incl. `short_closed`
@@ -285,7 +299,7 @@ frontSeq` — `JobIssue.step` and `JobReceipt.step` are `onDelete: Cascade`, so 
 
 > The full loop runs: issue 5,000 m → receive 4,850 m of a **different item in a different unit** →
 > reject 120 m → re-issue as rework → receive it → the job order completes, and the traceability chain
-> from output lot back to the input lot is intact.
+> from output batch back to the input batch is intact.
 
 ---
 
@@ -298,7 +312,7 @@ backend/prisma/schema/
   jobwork.prisma        processes · routes · route_steps · job_orders · job_order_steps
                         job_issues · job_issue_lines · job_receipts · job_receipt_lines
                         rejection_reasons
-  inventory.prisma      lots · lot_packages · stock_ledger
+  inventory.prisma      batches · lot_packages · stock_ledger
 
 backend/src/modules/jobwork/
   processes/            processes.{routes,controller,service,schemas,types}.ts
@@ -309,7 +323,7 @@ backend/src/modules/jobwork/
 
 backend/src/modules/inventory/
   stock-ledger/         stockLedger.service.ts  ← service only. No routes, no controller
-  lots/                 lots.{routes,controller,service}.ts  ← read-only, feeds the picker
+  batches/                 batches.{routes,controller,service}.ts  ← read-only, feeds the picker
 ```
 
 **Copy `src/modules/purchases/vendors/`** for module shape — `validateBody` middleware, `ApiError`,
@@ -323,7 +337,7 @@ apiRouter.use('/organizations/:orgId/jobwork/routes', processRoutesRouter);
 apiRouter.use('/organizations/:orgId/jobwork/job-orders', jobOrdersRouter);
 apiRouter.use('/organizations/:orgId/jobwork/issues', jobIssuesRouter);
 apiRouter.use('/organizations/:orgId/jobwork/receipts', jobReceiptsRouter);
-apiRouter.use('/organizations/:orgId/inventory/lots', lotsRouter);
+apiRouter.use('/organizations/:orgId/inventory/batches', batchesRouter);
 ```
 
 Each router: `Router({ mergeParams: true })`, then `authenticate, tenantContext`, then
@@ -339,7 +353,7 @@ web/src/features/jobwork/
   process-routes/                 RoutesList · CreateRoute · RouteStepsGrid
   job-orders/                     JobOrdersList · CreateJobOrder · JobOrderOverview
                                   JobOrderStepper · MaterialInSection
-  issues/                         IssuesList · IssueDialog · LotPicker · IssueDetail
+  issues/                         IssuesList · IssueDialog · BatchPicker · IssueDetail
   receipts/                       ReceiptsList · ReceiveDialog · DispositionSplit
 ```
 
@@ -367,7 +381,7 @@ looking like two apps.
 an existing pattern with different fields.
 
 ⚠️ Both new dialogs are modals containing grids. Per CLAUDE.md that means: focus taken on open,
-**trapped** while open, Esc closes, focus returns to the trigger. Lot picker rows are
+**trapped** while open, Esc closes, focus returns to the trigger. Batch picker rows are
 `<button type="button">`, never `<div onClick>` — Tab skips a div and neither `tsc -b` nor a
 screenshot will say a word. `Select.tsx` is the template. Never a positive `tabIndex`.
 
@@ -385,7 +399,7 @@ Four steps, every module, no exceptions:
 4. [ ] **`listViews.catalog.ts`** + **`listFilters.catalog.ts`** — the build fails without both
 
 Resources to register: `process` · `process_route` · `job_order` · `job_issue` · `job_receipt` ·
-`lot` (read only).
+`batch` (read only).
 
 ---
 
@@ -404,7 +418,7 @@ Resources to register: `process` · `process_route` · `job_order` · `job_issue
 | Costing & P&L reports      | Value accumulates correctly in the ledger from Sprint 1, so the reports are additive when they come |
 
 The three things that would be **expensive** to defer are already in Sprint 1 and must not slip:
-`lots.ownership`, `lots.parentLotIds`, and `custom_fields` on every new table.
+`batches.ownership`, `batches.parentBatchIds`, and `custom_fields` on every new table.
 
 ---
 
@@ -430,7 +444,7 @@ Each step leaves the app running. Nothing here is a big-bang cutover.
 | 4   | Issue: item on the line, per-item totals, `totalQty` dropped                                        | `jobIssues.service.ts` + `jobOrders.status.ts`                                                                                                  | ✅                                                |
 | 5   | Receipt: consumptions + outputs + the value split                                                   | `jobReceipts.service.ts`                                                                                                                        | ✅                                                |
 | 6   | UI: route + job order step grids                                                                    | `StepsGrid.tsx` grows two nested lists                                                                                                          | ✅                                                |
-| 7   | UI: Issue dialog — one lot picker section per input                                                 |                                                                                                                                                 | ✅                                                |
+| 7   | UI: Issue dialog — one batch picker section per input                                               |                                                                                                                                                 | ✅                                                |
 | 8   | UI: Receive dialog — consumed grid + returned grid                                                  |                                                                                                                                                 | ✅                                                |
 | 9   | **Migration B** — drop the old scalar columns                                                       | 🔴 **Only after 3–8 have shipped.** Dropping them in the same migration means any instance still running the old build 500s on every list query | ✅ `20260812094140_drop_step_scalar_item_columns` |
 
@@ -467,9 +481,9 @@ They are nullable because a step that lists nothing yet has nothing to derive fr
 supersedes, and `PURCHASE_RECEIVED_AND_ITEMS_SPEC.md` §7. What replaced it is a deliberate,
 clearly-marked scaffold rather than another inward document: see §12.6.
 
-**3. Taka-level movement is switched off on both sides.** Issue and receive are LOT level. The
+**3. Taka-level movement is switched off on both sides.** Issue and receive are BATCH level. The
 unit-wise code paths are intact and unreachable, behind two named switches — `mode = 'bulk'` in
-`jobReceipts.service.ts` and `PACKAGE_LEVEL` in the web `LotPicker`. Domain §5.2.3 and §6.1 still
+`jobReceipts.service.ts` and `PACKAGE_LEVEL` in the web `BatchPicker`. Domain §5.2.3 and §6.1 still
 describe the model; nothing about it was decided against, it is simply more than the shop floor
 needs today. The cost is real and worth restating: while it is off, **no 1:1 mapping from the roll
 that went out to the roll that came back is recorded, and it cannot be reconstructed afterwards.**
@@ -483,19 +497,19 @@ Two UI fields were dropped for the same reason and are worth naming so they are 
 someone reading the older sections: **`expectedYield`** (one ratio cannot relate three inputs to two
 outputs, and every output already carries its own expected quantity) and the **by-product value box**
 (every by-product is recorded at ₹0 and the primary absorbs the pot, which is §9.2.1's own default).
-`Process.preservesPackaging` and `requiresSingleLot` came off the Process form with them.
+`Process.preservesPackaging` and `requiresSingleBatch` came off the Process form with them.
 
 ### 12.6 ⚠️ The no-stock scaffold — temporary, and how to remove it
 
 Material In went before Purchase Received arrived, so for now **there is no way to put stock on the
 books**. Rather than leave the whole loop untestable, four places relax:
 
-| Where                                   | What it does                                                                       | Restore to                    |
-| --------------------------------------- | ---------------------------------------------------------------------------------- | ----------------------------- |
-| `jobOrders.service.ts` → `canIssue`     | Enabled by the step having inputs, not by a balance                                | `availableQty.greaterThan(0)` |
-| `jobIssues.schemas.ts` → `lotId`        | Optional                                                                           | required                      |
-| `jobIssues.service.ts` → `resolveLines` | A line with no lot creates one, posting an `opening` movement at **zero value**    | delete the branch             |
-| `IssueDialog.tsx`                       | A quantity box when an item has no lots, and a godown fallback for the source list | delete both                   |
+| Where                                   | What it does                                                                          | Restore to                    |
+| --------------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------- |
+| `jobOrders.service.ts` → `canIssue`     | Enabled by the step having inputs, not by a balance                                   | `availableQty.greaterThan(0)` |
+| `jobIssues.schemas.ts` → `batchId`      | Optional                                                                              | required                      |
+| `jobIssues.service.ts` → `resolveLines` | A line with no batch creates one, posting an `opening` movement at **zero value**     | delete the branch             |
+| `IssueDialog.tsx`                       | A quantity box when an item has no batches, and a godown fallback for the source list | delete both                   |
 
 All four carry ⚠️ comments pointing at each other; `grep -rn "TEMPORARY" src/modules/jobwork
 src/features/jobwork` finds them.
@@ -509,9 +523,9 @@ Received lands.
 
 Worth stating, because the instinct is to touch all of it:
 
-- **The stock ledger.** `postMovement` takes the item from the **lot**, so multi-item documents post
+- **The stock ledger.** `postMovement` takes the item from the **batch**, so multi-item documents post
   exactly the same rows. No migration, no reversal, no history rewritten
-- **Lots and packages.** `parentLotIds` is already a uuid array because a lot has _"zero, one, or
+- **Batches and packages.** `parentBatchIds` is already a uuid array because a batch has _"zero, one, or
   many"_ parents — many-to-many genealogy needs no schema change
 - **Material In**, which posts against the job order's own `inputItemId`
 - **The job order header** — `inputItemId` / `inputQty` stay, and still seed step 1's first input
@@ -540,10 +554,10 @@ FROM   job_issues i WHERE l.job_issue_id = i.id;
 -- one output row per receipt, from the header and its totals
 INSERT INTO job_receipt_outputs (
   id, organization_id, job_receipt_id, seq, item_id, uom_id, is_primary,
-  received_qty, accepted_qty, rework_qty, scrap_qty, returned_qty, output_lot_id, rework_lot_id)
+  received_qty, accepted_qty, rework_qty, scrap_qty, returned_qty, output_batch_id, rework_batch_id)
 SELECT gen_random_uuid(), organization_id, id, 1, output_item_id, output_uom_id, true,
        total_received_qty, total_accepted_qty, total_rework_qty, total_scrap_qty, total_returned_qty,
-       output_lot_id, rework_lot_id
+       output_batch_id, rework_batch_id
 FROM   job_receipts;
 ```
 
@@ -554,7 +568,7 @@ A tenant table with no policy is unprotected and nothing will tell you.
 
 > A step can be created with three inputs and two outputs; a challan can issue two of those three
 > items and save; a second challan issues the third; one receipt consumes all three and produces two
-> output lots with the value conserved to the paisa; the step reaches `completed` only when every
-> input's consumed quantity has caught up with its issued quantity; genealogy from each output lot
-> back to all three input lots is intact; `npm run db:check-drift` exits 0; `rls.test.ts` covers all
+> output batches with the value conserved to the paisa; the step reaches `completed` only when every
+> input's consumed quantity has caught up with its issued quantity; genealogy from each output batch
+> back to all three input batches is intact; `npm run db:check-drift` exits 0; `rls.test.ts` covers all
 > six new tables.

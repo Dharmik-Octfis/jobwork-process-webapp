@@ -1,7 +1,7 @@
 /// 🔴 The recipe, not the stock. One row per component of one composite item.
 ///
 /// A composite item is an `items` row with `item_type = 'Composite Item'` — there is no
-/// second item table, because a composite has to be sellable, lot-tracked, priced, searchable
+/// second item table, because a composite has to be sellable, batch-tracked, priced, searchable
 /// and pickable exactly like every other item, and `stock_ledger.item_id` is a NOT NULL FK to
 /// `items` (spec §2, decision 1).
 ///
@@ -26,7 +26,7 @@ model CompositeItemComponent {
   qtyPerUnit Decimal @map("qty_per_unit") @db.Decimal(18, 6)
 
   /// Display snapshot of the component's stocking unit when the row was written. The ledger
-  /// still takes its uom off the LOT (`postMovement`), so this never decides anything.
+  /// still takes its uom off the BATCH (`postMovement`), so this never decides anything.
   uomId String? @map("uom_id") @db.Uuid
 
   /// Order in the components grid. Means nothing to stock.
@@ -69,7 +69,7 @@ model CompositeItemComponent {
   @@map("composite_item_components")
 }
 
-/// One assembly run: consume the component lots, produce ONE composite lot. `direction`
+/// One assembly run: consume the component batches, produce ONE composite batch. `direction`
 /// flips which side is which.
 ///
 /// 🔴 A posted assembly is NEVER edited. There is no PUT. A mistake is cancelled — which
@@ -101,14 +101,14 @@ model ItemAssembly {
 
   /// CREATED by an assemble, CONSUMED by a disassemble. Written on post either way; on a
   /// disassemble the user picks it before posting.
-  compositeLotId String? @map("composite_lot_id") @db.Uuid
+  compositeBatchId String? @map("composite_batch_id") @db.Uuid
 
   /// 🔴 ONE DOCUMENT, ONE LOCATION. `postMovement` takes a location per row, and a composite
   /// cannot be built out of stock that is in two places — transfer it first. Both the consume
   /// and the produce side post here.
   locationId String @map("location_id") @db.Uuid
 
-  /// Labour, packaging and overhead added to the produced lot's value on top of the consumed
+  /// Labour, packaging and overhead added to the produced batch's value on top of the consumed
   /// component value. Must be zero when `ownership = 'customer'`: that labour is a service to
   /// bill, not stock value, and `postMovement` would zero it anyway.
   additionalCost Decimal @default(0) @map("additional_cost") @db.Decimal(18, 4)
@@ -118,7 +118,7 @@ model ItemAssembly {
   componentValue Decimal @default(0) @map("component_value") @db.Decimal(18, 4)
   totalValue     Decimal @default(0) @map("total_value") @db.Decimal(18, 4)
 
-  /// own | customer — copied from the component lots, which must ALL agree (§9, rule V10).
+  /// own | customer — copied from the component batches, which must ALL agree (§9, rule V10).
   ownership    String  @default("own") @db.VarChar(20)
   ownerPartyId String? @map("owner_party_id") @db.Uuid
 
@@ -136,7 +136,7 @@ model ItemAssembly {
   organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   compositeItem Item               @relation("ItemAssemblyComposite", fields: [compositeItemId], references: [id])
   compositeUom  UnitOfMeasurement? @relation("ItemAssemblyCompositeUom", fields: [compositeUomId], references: [id])
-  compositeLot  Lot?               @relation("ItemAssemblyCompositeLot", fields: [compositeLotId], references: [id])
+  compositeBatch Batch?            @relation("ItemAssemblyCompositeBatch", fields: [compositeBatchId], references: [id])
   location      Location           @relation("ItemAssemblyLocation", fields: [locationId], references: [id])
   createdByUser User?              @relation("ItemAssemblyCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User?              @relation("ItemAssemblyUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
@@ -151,11 +151,12 @@ model ItemAssembly {
   @@map("item_assemblies")
 }
 
-/// One (component × lot) ALLOCATION — not one row per component.
+/// One (component × batch) ALLOCATION — not one row per component.
 ///
 /// 🔴 A component often needs several rows. Quantities are locked to the recipe (spec §2,
-/// decision 3), so a required 500 M against lots of 300 M and 250 M has no single-lot answer;
-/// the user picks lots, not amounts. The invariant that replaces an editable quantity is:
+/// decision 3), so a required 500 M against batches of 300 M and 250 M has no single-batch
+/// answer; the user picks batches, not amounts. The invariant that replaces an editable
+/// quantity is:
 ///
 ///     for each component:  Σ(line.qty) === requiredQty(qtyPerUnit, header.qty, precision)
 ///
@@ -170,8 +171,7 @@ model ItemAssemblyLine {
   uomId  String? @map("uom_id") @db.Uuid
 
   /// CONSUMED by an assemble (the user picks it), CREATED by a disassemble (written on post).
-  lotId        String  @map("lot_id") @db.Uuid
-  lotPackageId String? @map("lot_package_id") @db.Uuid
+  batchId String @map("batch_id") @db.Uuid
 
   /// SNAPSHOT of the recipe at post time. Recipes change; a posted document must still be
   /// able to explain itself without re-reading a recipe that has moved on. Repeats across the
@@ -180,8 +180,8 @@ model ItemAssemblyLine {
   /// What actually moved on this line. Server-computed, never client-supplied.
   qty        Decimal @db.Decimal(18, 4)
 
-  /// The lot's cost per unit at post time — `balance.value ÷ balance.qty`. Stored because it
-  /// is what this document used; the lot's cost per unit today may be different.
+  /// The batch's cost per unit at post time — `balance.value ÷ balance.qty`. Stored because it
+  /// is what this document used; the batch's cost per unit today may be different.
   unitValue Decimal @default(0) @map("unit_value") @db.Decimal(18, 4)
   value     Decimal @default(0) @db.Decimal(18, 4)
 
@@ -196,13 +196,12 @@ model ItemAssemblyLine {
   assembly      ItemAssembly       @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
   item          Item               @relation("ItemAssemblyLineItem", fields: [itemId], references: [id])
   uom           UnitOfMeasurement? @relation("ItemAssemblyLineUom", fields: [uomId], references: [id])
-  lot           Lot                @relation("ItemAssemblyLineLot", fields: [lotId], references: [id])
-  lotPackage    LotPackage?        @relation("ItemAssemblyLinePackage", fields: [lotPackageId], references: [id])
+  batch         Batch              @relation("ItemAssemblyLineBatch", fields: [batchId], references: [id])
   createdByUser User?              @relation("ItemAssemblyLineCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User?              @relation("ItemAssemblyLineUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   @@index([assemblyId])
-  @@index([organizationId, itemId, lotId])
+  @@index([organizationId, itemId, batchId])
   @@map("item_assembly_lines")
 }
 

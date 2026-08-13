@@ -71,7 +71,7 @@ function jobOrderListWhere(organizationId: string, opts: ListQuery): Prisma.JobO
 
 /** Item and unit, as every grid renders them. Both lists select the same shape. */
 const ROW_INCLUDE = {
-  item: { select: { id: true, name: true, sku: true, lotTracking: true } },
+  item: { select: { id: true, name: true, sku: true, inventoryTracking: true } },
   uom: { select: { id: true, unitName: true, symbol: true } },
 };
 
@@ -82,13 +82,13 @@ const STEP_INCLUDE = {
   inputs: { where: { isDeleted: false }, orderBy: { seq: 'asc' }, include: ROW_INCLUDE },
   outputs: { where: { isDeleted: false }, orderBy: { seq: 'asc' }, include: ROW_INCLUDE },
   process: {
-    select: { id: true, name: true, code: true, preservesPackaging: true, requiresSingleLot: true },
+    select: { id: true, name: true, code: true, requiresSingleBatch: true },
   },
   workCentre: { select: { id: true, name: true } },
 } satisfies Prisma.JobOrderStepInclude;
 
 const JOB_ORDER_INCLUDE = {
-  inputItem: { select: { id: true, name: true, sku: true, lotTracking: true } },
+  inputItem: { select: { id: true, name: true, sku: true, inventoryTracking: true } },
   inputUom: { select: { id: true, unitName: true, symbol: true } },
   route: { select: { id: true, name: true } },
   steps: {
@@ -325,7 +325,7 @@ function applyStepDefaults(
  * 🔴 A STEP TRANSACTS IN ITS OWN ITEMS' STOCKING UNITS.
  *
  * One item has exactly one stocking unit (§5.1), and `postMovement` writes the
- * LOT's unit into the ledger whatever the document says. So a step carrying a
+ * BATCH's unit into the ledger whatever the document says. So a step carrying a
  * different unit makes the challan and the ledger describe one movement in two
  * units: `jobIssues.service.ts` copies `step.issueUomId` onto the challan while
  * the ledger records metres. Nothing errors. The stock that left is simply not
@@ -1282,7 +1282,7 @@ export async function shortCloseJobOrder(
  * believed.
  *
  * `canIssue` per step answers the question the button needs — "is there anything
- * to issue" — with the ledger, not the `lots` table. A lot goes on existing long
+ * to issue" — with the ledger, not the `batches` table. A batch goes on existing long
  * after the last metre of it has left (§10).
  */
 export async function getJobOrderOverview(organizationId: string, id: string) {
@@ -1293,17 +1293,17 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
     });
     if (!order) throw ApiError.notFound('Job order not found');
 
-    const lots = await tx.lot.findMany({
+    const batches = await tx.batch.findMany({
       where: { organizationId, isDeleted: false, sourceDocId: id },
-      select: { id: true, lotNumber: true, supplierLotRef: true, itemId: true },
+      select: { id: true, batchNumber: true, supplierBatchRef: true, itemId: true },
     });
 
-    // In hand = this order's own lots, wherever they physically are — including
+    // In hand = this order's own batches, wherever they physically are — including
     // at a processor, because goods at a processor are still our stock (§5.4).
     let inHandQty = new Prisma.Decimal(0);
     let inHandValue = new Prisma.Decimal(0);
-    for (const lot of lots) {
-      const balance = await getBalance(tx, { organizationId, lotId: lot.id });
+    for (const batch of batches) {
+      const balance = await getBalance(tx, { organizationId, batchId: batch.id });
       inHandQty = inHandQty.plus(balance.qty);
       inHandValue = inHandValue.plus(balance.value);
     }
@@ -1366,7 +1366,7 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
          * will be again. Material In was retired before Purchase Received and
          * Opening Stock exist, so today there is no way to put stock on the
          * books at all — and a button that can never light up makes the whole
-         * loop untestable. The Issue dialog creates a zero-valued lot for an
+         * loop untestable. The Issue dialog creates a zero-valued batch for an
          * item with no stock and says so on screen (`jobIssues.service.ts`).
          *
          * 🔴 Restore `availableQty.greaterThan(0)` the day Purchase Received
@@ -1381,7 +1381,7 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
          *
          * Step 2 consumes what step 1 produced. If step 1 has returned nothing,
          * there is physically nothing to send — and the no-stock scaffold would
-         * otherwise happily invent a lot of dyed fabric nobody ever dyed, which
+         * otherwise happily invent a batch of dyed fabric nobody ever dyed, which
          * is the one thing it must never do. Raw material can be conjured while
          * Purchase Received is missing; work in progress cannot.
          *
@@ -1431,7 +1431,7 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
 
     return {
       jobOrder: order,
-      lots,
+      batches,
       summary: {
         issuedQty: firstTotals ? firstTotals.issuedQty.toString() : '0',
         inHandQty: inHandQty.toString(),

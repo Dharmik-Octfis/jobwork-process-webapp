@@ -5,9 +5,8 @@ import { allocateNumber } from '../../../lib/numberSequence.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import {
-  createLot,
-  getAvailableLots,
-  getAvailablePackages,
+  createBatch,
+  getAvailableBatches,
   getBalance,
   postMovement,
   type Ownership,
@@ -22,14 +21,14 @@ import type { CreateJobIssueInput } from './jobIssues.schemas.ts';
  *
  * FOUR GUARDS, AND WHAT EACH ONE PREVENTS
  *
- * 1. 🔴 OWNERSHIP. A lot may only be issued into a job order of the same
+ * 1. 🔴 OWNERSHIP. A batch may only be issued into a job order of the same
  *    ownership. Without it one customer's goods can be issued into another
  *    customer's order — processing A's material on B's job, with both stock
  *    reports wrong afterwards. Same class of failure as a missing tenant filter
  *    (§5.2).
- * 2. 🔴 AVAILABILITY, from the LEDGER. Not from `lots`, and not from a stored
- *    balance. A lot row outlives its last metre.
- * 3. 🔴 SINGLE LOT, when the process demands it. Two dye lots in one garment is
+ * 2. 🔴 AVAILABILITY, from the LEDGER. Not from `batches`, and not from a stored
+ *    balance. A batch row outlives its last metre.
+ * 3. 🔴 SINGLE BATCH, when the process demands it. Two dye batches in one garment is
  *    a reject nobody catches until the garment is assembled (§5.4).
  * 4. 🔴 TOLERANCE. Over the ceiling, an override reason is required — never
  *    silently allowed. A breach that leaves no trace is a tolerance that does
@@ -62,10 +61,9 @@ const ISSUE_INCLUDE = {
     include: {
       // The item is a per-line fact now (§5.7) — the dialog groups the lines by
       // it, one section per input.
-      item: { select: { id: true, name: true, sku: true, lotTracking: true } },
+      item: { select: { id: true, name: true, sku: true, inventoryTracking: true } },
       uom: { select: { id: true, unitName: true, symbol: true } },
-      lot: { select: { id: true, lotNumber: true, supplierLotRef: true } },
-      lotPackage: { select: { id: true, packageNumber: true, label: true, qty: true } },
+      batch: { select: { id: true, batchNumber: true, supplierBatchRef: true } },
     },
   },
 } satisfies Prisma.JobIssueInclude;
@@ -280,20 +278,19 @@ async function assertWithinTolerance(
   }
 }
 
-/** A request line once its item is known. `lotId` is null when the item has no
+/** A request line once its item is known. `batchId` is null when the item has no
  * stock on record — see the scaffold note in `resolveLines`. */
 interface ResolvedLineItem {
   itemId: string;
   uomId: string | null;
-  lotId: string | null;
-  lotPackageId: string | null;
+  batchId: string | null;
   qty: number;
 }
 
-/** …and once the ledger has had its say. By this point every line HAS a lot:
+/** …and once the ledger has had its say. By this point every line HAS a batch:
  * one was created for it if there was none. */
-interface ResolvedIssueLine extends Omit<ResolvedLineItem, 'qty' | 'lotId'> {
-  lotId: string;
+interface ResolvedIssueLine extends Omit<ResolvedLineItem, 'qty' | 'batchId'> {
+  batchId: string;
   qty: Prisma.Decimal;
 }
 
@@ -311,7 +308,7 @@ interface ResolvedIssueLine extends Omit<ResolvedLineItem, 'qty' | 'lotId'> {
  * Getting the rework side wrong is not a visible error, it is a dead end: the
  * picker queries availability for the wrong item, finds nothing, and the rework
  * cannot be sent — with the screen insisting there is no stock while the rework
- * lot sits there holding it.
+ * batch sits there holding it.
  */
 async function allowedItems(
   tx: TenantClient,
@@ -340,13 +337,9 @@ async function allowedItems(
  * Check every line against what the ledger says is actually there.
  *
  * 🔴 THE AVAILABILITY QUERY RUNS ONCE PER ITEM (§5.7). A challan carries fabric,
- * thread and buttons, and each has its own lots; one query for "the step's item"
+ * thread and buttons, and each has its own batches; one query for "the step's item"
  * would find no thread and reject the line as unavailable.
  *
- * Package lines are checked against the package's OWN balance and their quantity
- * is forced to the measured quantity on the tag: ticking a taka takes all of it
- * (§5.3). Accepting a typed number for a package would let someone record 40 m
- * issued out of a 98.5 m roll that physically left the building whole.
  */
 async function resolveLines(
   tx: TenantClient,
@@ -354,40 +347,38 @@ async function resolveLines(
   lines: readonly ResolvedLineItem[],
   context: { locationId: string; ownership: Ownership; ownerPartyId: string | null },
 ) {
-  const availableById = new Map<string, Awaited<ReturnType<typeof getAvailableLots>>[number]>();
+  const availableById = new Map<string, Awaited<ReturnType<typeof getAvailableBatches>>[number]>();
   for (const itemId of new Set(lines.map((line) => line.itemId))) {
-    for (const lot of await getAvailableLots(tx, {
+    for (const batch of await getAvailableBatches(tx, {
       organizationId,
       itemId,
       locationId: context.locationId,
       ownership: context.ownership,
     })) {
-      availableById.set(lot.lotId, lot);
+      availableById.set(batch.batchId, batch);
     }
   }
 
   const resolved: ResolvedIssueLine[] = [];
-  const packageQtyById = new Map<string, Prisma.Decimal>();
-  const packagesLoadedFor = new Set<string>();
 
   for (const line of lines) {
     /**
-     * ⚠️ TEMPORARY SCAFFOLD — a line with no lot gets one created for it.
+     * ⚠️ TEMPORARY SCAFFOLD — a line with no batch gets one created for it.
      *
      * Material In was retired before Purchase Received and Opening Stock exist,
      * so today there is no way to put stock on the books and the whole loop —
      * issue, receive, rework, every status — would be untestable. A line with no
-     * lot therefore creates one and posts an `opening` movement for exactly the
+     * batch therefore creates one and posts an `opening` movement for exactly the
      * quantity being issued, at ZERO value: quantities behave normally all the
      * way through, and costing reports nothing rather than reporting a number
      * somebody invented.
      *
-     * 🔴 DELETE THIS BRANCH the day Purchase Received lands, and make `lotId`
+     * 🔴 DELETE THIS BRANCH the day Purchase Received lands, and make `batchId`
      * required again in `jobIssues.schemas.ts`. Stock that appears because
      * somebody issued it is stock nobody received.
      */
-    if (!line.lotId) {
-      const created = await createLot(tx, {
+    if (!line.batchId) {
+      const created = await createBatch(tx, {
         organizationId,
         itemId: line.itemId,
         ownership: context.ownership,
@@ -396,7 +387,7 @@ async function resolveLines(
       });
       await postMovement(tx, {
         organizationId,
-        lotId: created.id,
+        batchId: created.id,
         locationId: context.locationId,
         movementType: 'opening',
         qtyIn: new Prisma.Decimal(line.qty),
@@ -407,73 +398,47 @@ async function resolveLines(
       });
       resolved.push({
         ...line,
-        lotId: created.id,
-        lotPackageId: null,
+        batchId: created.id,
         qty: new Prisma.Decimal(line.qty),
       });
       continue;
     }
 
-    const lot = availableById.get(line.lotId);
-    if (!lot) {
+    const batch = availableById.get(line.batchId);
+    if (!batch) {
       // Covers all three failure modes at once — wrong tenant, wrong item, wrong
       // ownership, or simply nothing left. The picker only ever offers rows this
       // query returned, so a miss here means the payload was hand-made or the
       // stock moved while the dialog was open.
       throw ApiError.badRequest(
-        'One of the selected lots has no stock available here for this item and ownership.',
+        'One of the selected batches has no stock available here for this item and ownership.',
       );
-    }
-
-    if (line.lotPackageId) {
-      // Loaded once PER LOT. Keying the cache on "have we loaded anything yet"
-      // worked only while a challan could hold one lot's takas: the second lot's
-      // packages were never fetched, so every one of them read as unavailable.
-      if (!packagesLoadedFor.has(line.lotId)) {
-        packagesLoadedFor.add(line.lotId);
-        for (const pkg of await getAvailablePackages(tx, {
-          organizationId,
-          lotId: line.lotId,
-          locationId: context.locationId,
-        })) {
-          packageQtyById.set(pkg.lotPackageId, pkg.availableQty);
-        }
-      }
-      const packageQty = packageQtyById.get(line.lotPackageId);
-      if (!packageQty || packageQty.lessThanOrEqualTo(0)) {
-        throw ApiError.badRequest('One of the selected takas is no longer available.');
-      }
-      resolved.push({
-        ...line,
-        lotId: line.lotId,
-        lotPackageId: line.lotPackageId,
-        qty: packageQty,
-      });
-      continue;
     }
 
     resolved.push({
       ...line,
-      lotId: line.lotId,
-      lotPackageId: null,
+      batchId: line.batchId,
       qty: new Prisma.Decimal(line.qty),
     });
   }
 
-  // Lot-level totals, checked after the lines are gathered: two lines against the
-  // same lot must not each pass on their own and overdraw it together.
-  const perLot = new Map<string, Prisma.Decimal>();
+  // Batch-level totals, checked after the lines are gathered: two lines against the
+  // same batch must not each pass on their own and overdraw it together.
+  const perBatch = new Map<string, Prisma.Decimal>();
   for (const line of resolved) {
-    perLot.set(line.lotId, (perLot.get(line.lotId) ?? new Prisma.Decimal(0)).plus(line.qty));
+    perBatch.set(
+      line.batchId,
+      (perBatch.get(line.batchId) ?? new Prisma.Decimal(0)).plus(line.qty),
+    );
   }
-  for (const [lotId, wanted] of perLot) {
-    const lot = availableById.get(lotId);
-    // A lot created for this very issue is not in the availability map and needs
+  for (const [batchId, wanted] of perBatch) {
+    const batch = availableById.get(batchId);
+    // A batch created for this very issue is not in the availability map and needs
     // no check — it holds exactly what is about to leave it.
-    if (!lot) continue;
-    if (wanted.greaterThan(lot.availableQty)) {
+    if (!batch) continue;
+    if (wanted.greaterThan(batch.availableQty)) {
       throw ApiError.badRequest(
-        `Lot ${lot.lotNumber} has ${lot.availableQty.toString()} available, ` +
+        `Batch ${batch.batchNumber} has ${batch.availableQty.toString()} available, ` +
           `but ${wanted.toString()} is being issued.`,
       );
     }
@@ -505,7 +470,7 @@ export async function createNewJobIssue(
             isDeleted: true,
           },
         },
-        process: { select: { requiresSingleLot: true, name: true } },
+        process: { select: { requiresSingleBatch: true, name: true } },
       },
     });
     if (!step) throw ApiError.notFound('Job order step not found');
@@ -563,12 +528,9 @@ export async function createNewJobIssue(
       return {
         itemId: lineItemId,
         uomId: row.uomId,
-        lotId: line.lotId ?? null,
-        // ⚠️ LOT LEVEL ONLY. Anything a client sends here is dropped: material is
-        // issued as a quantity against the lot, so no line names a taka and no
-        // package-level movement is posted. Restore `line.lotPackageId ?? null`
-        // together with `PACKAGE_LEVEL` in the web LotPicker.
-        lotPackageId: null,
+        batchId: line.batchId ?? null,
+        // ⚠️ BATCH LEVEL ONLY. Anything a client sends here is dropped: material is
+        // issued as a quantity against the batch.
         qty: line.qty,
       };
     });
@@ -625,20 +587,20 @@ export async function createNewJobIssue(
       ownerPartyId: step.jobOrder.ownerPartyId,
     });
 
-    // 🔴 Guard 3 — shade-lot matching, PER ITEM. Blocked rather than warned
+    // 🔴 Guard 3 — shade-batch matching, PER ITEM. Blocked rather than warned
     // about, because the defect it prevents is invisible until the garment is
-    // sewn. Per item because two items are necessarily two lots: checking the
+    // sewn. Per item because two items are necessarily two batches: checking the
     // challan as a whole would refuse every multi-item issue on principle.
-    if (step.process.requiresSingleLot) {
-      const lotsByItem = new Map<string, Set<string>>();
+    if (step.process.requiresSingleBatch) {
+      const batchesByItem = new Map<string, Set<string>>();
       for (const line of resolvedLines) {
-        const seen = lotsByItem.get(line.itemId) ?? new Set<string>();
-        seen.add(line.lotId);
-        lotsByItem.set(line.itemId, seen);
+        const seen = batchesByItem.get(line.itemId) ?? new Set<string>();
+        seen.add(line.batchId);
+        batchesByItem.set(line.itemId, seen);
       }
-      if ([...lotsByItem.values()].some((lots) => lots.size > 1)) {
+      if ([...batchesByItem.values()].some((batches) => batches.size > 1)) {
         throw ApiError.badRequest(
-          `${step.process.name} must run on a single lot — mixing lots produces visible ` +
+          `${step.process.name} must run on a single batch — mixing batches produces visible ` +
             'shade variation that no inspection catches until the goods are assembled.',
         );
       }
@@ -725,8 +687,7 @@ export async function createNewJobIssue(
           // tolerance, step completion, the Overview — reads this column.
           itemId: line.itemId,
           uomId: line.uomId,
-          lotId: line.lotId,
-          lotPackageId: line.lotPackageId,
+          batchId: line.batchId,
           qty: line.qty,
           createdBy: userId ?? null,
           updatedBy: userId ?? null,
@@ -739,20 +700,19 @@ export async function createNewJobIssue(
        * cost to where they physically are — a per-location valuation that only
        * moved quantity would report our material at the dyer's as worthless.
        */
-      const lotValue = await getBalance(tx, {
+      const batchValue = await getBalance(tx, {
         organizationId,
-        lotId: line.lotId,
+        batchId: line.batchId,
         locationId: header.sourceLocationId,
       });
-      const unitValue = lotValue.qty.greaterThan(0)
-        ? lotValue.value.dividedBy(lotValue.qty)
+      const unitValue = batchValue.qty.greaterThan(0)
+        ? batchValue.value.dividedBy(batchValue.qty)
         : new Prisma.Decimal(0);
       const lineValue = unitValue.times(line.qty).toDecimalPlaces(4);
 
       await postMovement(tx, {
         organizationId,
-        lotId: line.lotId,
-        lotPackageId: line.lotPackageId,
+        batchId: line.batchId,
         locationId: header.sourceLocationId,
         movementType: 'transfer_out',
         qtyOut: line.qty,
@@ -765,8 +725,7 @@ export async function createNewJobIssue(
       });
       await postMovement(tx, {
         organizationId,
-        lotId: line.lotId,
-        lotPackageId: line.lotPackageId,
+        batchId: line.batchId,
         locationId: destinationLocationId,
         movementType: 'transfer_in',
         qtyIn: line.qty,
@@ -777,13 +736,6 @@ export async function createNewJobIssue(
         postedAt: issueDate,
         userId,
       });
-
-      if (line.lotPackageId) {
-        await tx.lotPackage.update({
-          where: { id: line.lotPackageId },
-          data: { state: 'issued', updatedBy: userId ?? null },
-        });
-      }
     }
 
     await recomputeStep(tx, organizationId, step.id);
@@ -904,8 +856,7 @@ export async function cancelJobIssue(
       for (const row of posted) {
         await postMovement(tx, {
           organizationId,
-          lotId: line.lotId,
-          lotPackageId: line.lotPackageId,
+          batchId: line.batchId,
           locationId: row.locationId,
           movementType: 'reversal',
           qtyIn: row.qtyOut,
@@ -918,13 +869,6 @@ export async function cancelJobIssue(
           remarks: `Cancelled: ${reason.trim()}`,
           postedAt: now,
           userId,
-        });
-      }
-
-      if (line.lotPackageId) {
-        await tx.lotPackage.update({
-          where: { id: line.lotPackageId },
-          data: { state: 'available', updatedBy: userId ?? null },
         });
       }
     }

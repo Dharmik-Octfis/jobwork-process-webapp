@@ -47,7 +47,7 @@ export const jobOrderStepSchema = z.object({
       name: z.string(),
       code: z.string().nullable(),
       preservesPackaging: z.boolean(),
-      requiresSingleLot: z.boolean(),
+      requiresSingleBatch: z.boolean(),
     })
     .optional(),
   workCentre: namedRefSchema.nullable().optional(),
@@ -149,11 +149,11 @@ export type OverviewStep = z.infer<typeof overviewStepSchema>;
 
 export const jobOrderOverviewSchema = z.object({
   jobOrder: jobOrderSchema,
-  lots: z.array(
+  batches: z.array(
     z.object({
       id: z.string(),
-      lotNumber: z.string(),
-      supplierLotRef: z.string().nullable(),
+      batchNumber: z.string(),
+      supplierBatchRef: z.string().nullable(),
       itemId: z.string(),
     }),
   ),

@@ -113,12 +113,12 @@ export const CUSTOM_FIELD_MODULES: Array<{
     description: 'Add fields to the rejection reason master.',
   },
   {
-    entityType: 'lot',
-    label: 'Lot',
-    // No list page — lots are picked from an availability query, never browsed —
+    entityType: 'batch',
+    label: 'Batch',
+    // No list page — batches are picked from an availability query, never browsed —
     // but Material In creates one, and an org may need to record what its own tags
     // carry.
-    description: 'Add fields recorded against a lot when material is taken in.',
+    description: 'Add fields recorded against a batch when material is taken in.',
   },
   {
     entityType: 'member',

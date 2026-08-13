@@ -16,7 +16,7 @@ import {
 /**
  * Mounted at `/organizations/:orgId/jobwork/receipts`.
  *
- * No PUT, for the same reason Issues has none: a posted receipt has created lots
+ * No PUT, for the same reason Issues has none: a posted receipt has created batches
  * and moved stock, and the only legal correction is a cancellation that posts the
  * opposite rows.
  */

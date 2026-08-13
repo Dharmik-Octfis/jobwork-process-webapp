@@ -12,20 +12,10 @@ export const jobIssueLineSchema = z.object({
   uomId: z.string().nullable().optional(),
   item: itemRefSchema.nullable().optional(),
   uom: uomRefSchema.nullable().optional(),
-  lotId: z.string(),
-  lotPackageId: z.string().nullable(),
+  batchId: z.string(),
   qty: z.union([z.string(), z.number()]),
-  lot: z
-    .object({ id: z.string(), lotNumber: z.string(), supplierLotRef: z.string().nullable() })
-    .optional(),
-  lotPackage: z
-    .object({
-      id: z.string(),
-      packageNumber: z.number(),
-      label: z.string().nullable(),
-      qty: z.union([z.string(), z.number()]),
-    })
-    .nullable()
+  batch: z
+    .object({ id: z.string(), batchNumber: z.string(), supplierBatchRef: z.string().nullable() })
     .optional(),
 });
 
@@ -74,14 +64,13 @@ export type JobIssue = z.infer<typeof jobIssueSchema>;
 
 export interface JobIssueLineData {
   /** 🔴 Which item this line is (§5.7). One challan carries several — the dialog
-   * renders a lot picker per input item and each stamps its own id here. Omitted,
+   * renders a batch picker per input item and each stamps its own id here. Omitted,
    * the server falls back to the step's principal input. */
   itemId?: string | null;
   /** ⚠️ TEMPORARY — omitted when the item has no stock on record, which is normal
-   * until Purchase Received ships. The server creates a zero-valued lot for the
+   * until Purchase Received ships. The server creates a zero-valued batch for the
    * line. 🔴 Make it required again then. */
-  lotId?: string | null;
-  lotPackageId?: string | null;
+  batchId?: string | null;
   qty: number;
 }
 

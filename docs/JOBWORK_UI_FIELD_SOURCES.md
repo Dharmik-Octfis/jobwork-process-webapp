@@ -1,5 +1,19 @@
 # Jobwork UI — Field-by-Field Data Sources
 
+> ### 🔴 2026-08-12 — "lot" is now "batch", and package tracking is gone
+>
+> **`lots` → `batches`** (plus `lot_number`/`supplier_lot_ref`/`parent_lot_ids`/`lot_id` →
+> `batch_*`), a pure rename that changed no data. New numbers mint as `BATCH-00001`; numbers
+> already on physical tags keep `LOT-`.
+>
+> **Package-level (per-taka) tracking was REMOVED end to end** — `lot_packages`, every
+> `lot_package_id`, `parent_package_id`, `Process.preservesPackaging` and `JobReceipt.mode`.
+> Quantity granularity stops at the batch. `Item.lot_tracking` went too; `inventory_tracking`
+> (`none | batch`) is now the single tracking column and the item form writes it.
+>
+> **Text below about takas, packages, unit-wise receiving or `lot_packages` is HISTORY.** It is
+> kept for the reasoning, which is where re-adding packages would start.
+
 **Companion to** `JOBWORK_DOMAIN_AND_MODULE_MAP.md` §8. That document says _what the screens are_.
 This one answers a single question for every field on every screen:
 
@@ -61,11 +75,11 @@ built, org-scoped).
 on open, every abandoned dialog burns a number and the sequence develops gaps — which for a GST tax
 invoice is a compliance problem, not an annoyance. Show `(auto)` in the field until save.
 
-New `entityType` values needed: `job_order` · `job_issue` · `job_receipt` · `purchase_receipt` · `lot` ·
+New `entityType` values needed: `job_order` · `job_issue` · `job_receipt` · `purchase_receipt` · `batch` ·
 `delivery_challan` · `sales_invoice` · `stock_transfer` · `stock_adjustment` · `jobwork_bill`.
 
-**Lot numbers** draw from this same mechanism, org-global. **Lot unit numbers do not** — they are a
-counter inside their parent lot, restarting at 1 (`LOT-00012/1 … /50`). See the parent doc §5.2.2.
+**Batch numbers** draw from this same mechanism, org-global. **Batch unit numbers do not** — they are a
+counter inside their parent batch, restarting at 1 (`BATCH-00012/1 … /50`). See the parent doc §5.2.2.
 
 ### 2.3 Every `MASTER` lookup carries a filter
 
@@ -156,16 +170,16 @@ ORDER BY sortIndex
 ```
 
 Validated through `customFields.engine.ts` inside the **same** `runAsTenant` transaction as the write.
-This is where the mind map's _"may be required some extra fields at time of issue — lot-wise pcs,
+This is where the mind map's _"may be required some extra fields at time of issue — batch-wise pcs,
 cutper, meter"_ lands. Those must **not** become hardcoded columns.
 
-New `entityType` values: `job_order` · `job_issue` · `job_receipt` · `purchase_receipt` · `lot` ·
+New `entityType` values: `job_order` · `job_issue` · `job_receipt` · `purchase_receipt` · `batch` ·
 `delivery_challan`.
 
 🔴 **The two jobwork MASTERS have no custom-fields block** — `process` and `process_route` both left
 `ENTITY_TYPES` on 2026-08-10. They are set up once and rarely revisited, so the section was one
 nobody filled in; the per-run detail an org actually wants to record belongs on the documents above,
-which is where the mind map's "lot-wise pcs, cutper, meter" already lands. Both tables keep their
+which is where the mind map's "batch-wise pcs, cutper, meter" already lands. Both tables keep their
 `custom_fields` columns and whatever those already hold — nothing reads or writes them now, and
 neither module is offered in Settings → Modules. Their lists still get Customize Columns through
 `LIST_ONLY_ENTITY_TYPES` (`listViews.catalog.ts`).
@@ -203,7 +217,7 @@ most of the Overview's data originates.
 | ~~Material In~~                                                | —                   | 🔴 **Gone from the form, 2026-08-07.** Stock comes from Purchase Received and Opening Stock (`PURCHASE_RECEIVED_AND_ITEMS_SPEC.md` §D3). Until those ship, a job order is a plan and there may be nothing to issue against it — see `JOBWORK_IMPLEMENTATION_PLAN.md` §12.6                                                                                                                                                                                                                         |
 | Route                                                          | `MASTER`            | `routes` where `isActive`. **Default:** `Item.defaultRouteId` if set (the mind map's "auto-selected based on item"), else blank for manual pick                                                                                                                                                                                                                                                                                                                                                    |
 | Route name snapshot                                            | `SNAP`              | Frozen at save (§2.4)                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| Ownership                                                      | `INHERIT` / `INPUT` | `own` by default. Set to `customer` + `ownerPartyId` for inward jobwork (shape D). **Determines everything downstream** — valuation, invoice type, which lots may be issued                                                                                                                                                                                                                                                                                                                        |
+| Ownership                                                      | `INHERIT` / `INPUT` | `own` by default. Set to `customer` + `ownerPartyId` for inward jobwork (shape D). **Determines everything downstream** — valuation, invoice type, which batches may be issued                                                                                                                                                                                                                                                                                                                     |
 | Source Sales Order                                             | `MASTER`            | `sales_orders` where `status IN ('open','partially_delivered')` and, if a customer is set, that customer's. **Optional** — never required                                                                                                                                                                                                                                                                                                                                                          |
 | Target date                                                    | `INPUT`             | Defaults to the SO's delivery date when one is linked                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | Custom fields                                                  | `CF`                | `entityType = 'job_order'`                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
@@ -232,7 +246,7 @@ and the user adds rows by hand — the parent doc's "fully flexible" requirement
 | Column       | Tag       | Source                                                                                                                                                                                                                                                                                                                                                                             |
 | ------------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Item         | `MASTER`  | `items` where `isActive AND NOT isDeleted`. Every row is freely chosen — there is no locked row any more, because the header no longer names an item (§4.1)                                                                                                                                                                                                                        |
-| UoM          | `INHERIT` | 🔴 `Item.stockingUomId`, **forced, never chosen**. One item, one stocking unit (§5.1) — and the ledger records the LOT's unit whatever a document says, so a unit that disagrees with the item makes the challan and the ledger describe one movement two ways                                                                                                                     |
+| UoM          | `INHERIT` | 🔴 `Item.stockingUomId`, **forced, never chosen**. One item, one stocking unit (§5.1) — and the ledger records the BATCH's unit whatever a document says, so a unit that disagrees with the item makes the challan and the ledger describe one movement two ways                                                                                                                   |
 | Planned qty  | `INPUT`   | Per input item, in that item's unit. **Pre-filled from the route step's own quantity when a route is picked** (§4.2.3), then blank takes whatever the steps above have LEFT of that item — netted, so two steps drawing on one output do not each get all of it; an item drawn from stock with no route default stays blank. Exceeding that remainder warns, never blocks (§6.4.0) |
 | Tolerance %  | `INPUT`   | Inputs only. Blank falls through to the step's, **shown greyed in the box** so an empty field stops reading as "no tolerance". Fabric at 3% beside thread at 25% — one percentage across three items is either too tight for one or meaningless for another                                                                                                                        |
 | Expected qty | `INPUT`   | Per output item. Blank is fine — the receipt is what says what actually came back. The **primary** output shows what will be stored if left blank, greyed (§4.2.4); a blank placeholder means nothing will be stored and the box is genuinely asking                                                                                                                               |
@@ -252,7 +266,7 @@ through — the difference can legitimately come from stock, which is exactly th
 left its expected quantity blank. The note is `overPlanWarning`; the balance it reads is the same one
 the server walks to fill in the blank rows.
 
-What the old hard rule protected against — an empty lot picker days later — now surfaces at issue
+What the old hard rule protected against — an empty batch picker days later — now surfaces at issue
 time, per item, on the screen where someone can act on it. There is one hard rule left at issue time
 and it is new: **a step cannot issue until the step before it has returned something** (domain
 §6.4.1).
@@ -326,9 +340,9 @@ An empty list now means an empty list, and the grid says so in words rather than
 | SO link                    | `MASTER` | Join to `sales_orders` for the number and customer name                                                          |
 | Status badge               | `CALC+`  | Stored, but only ever written by the service that recomputes it from step balances. Never set directly by a user |
 | **ISSUED** tile            | `CALC`   | `SUM(job_issue_lines.qty)` for step 1                                                                            |
-| **IN HAND** tile           | `LEDGER` | Current balance of this job order's lots, all locations                                                          |
+| **IN HAND** tile           | `LEDGER` | Current balance of this job order's batches, all locations                                                       |
 | **WASTAGE %** tile         | `CALC`   | `(totalIssued − totalReceived − returned) ÷ totalIssued` across closed steps                                     |
-| **COST / unit** tile       | `CALC`   | Accumulated lot value ÷ current qty in the current unit. Derived every time — never stored (parent doc §9.1)     |
+| **COST / unit** tile       | `CALC`   | Accumulated batch value ÷ current qty in the current unit. Derived every time — never stored (parent doc §9.1)   |
 
 ### 4.4 Overview page — the step stepper
 
@@ -355,7 +369,7 @@ The screen the user asked about. Every field, in order.
 | Field                            | Tag       | Source and filter                                                                                                                                                                                                              |
 | -------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Challan Number                   | `AUTO`    | `NumberSequence('job_issue')`, allocated in the save transaction (§2.2)                                                                                                                                                        |
-| Date                             | `CTX`     | Server date. **Must be ≥ the job order date** and ≥ the last movement on the lots being issued — you cannot back-date a movement behind stock that did not yet exist                                                           |
+| Date                             | `CTX`     | Server date. **Must be ≥ the job order date** and ≥ the last movement on the batches being issued — you cannot back-date a movement behind stock that did not yet exist                                                        |
 | Job Order                        | `INHERIT` | **Locked.** From the page context                                                                                                                                                                                              |
 | Step                             | `INHERIT` | **Locked.** The step whose `[+ Issue]` was clicked                                                                                                                                                                             |
 | Process name                     | `SNAP`    | `step.processNameSnapshot`. Display only                                                                                                                                                                                       |
@@ -363,7 +377,7 @@ The screen the user asked about. Every field, in order.
 | Processor                        | `MASTER`  | Default `step.processorId`. Filter: `vendorTypes @> ['job_worker'] AND status='active' AND NOT isDeleted`. Hidden when `processorType = 'internal'`                                                                            |
 | **Source location**              | `LEDGER`  | The locations that actually hold the step's issue item, with their balances. Auto-selected when only one qualifies. This is a **ledger query, not a location list** — offering a location with no stock is how users get stuck |
 | **Destination location**         | `CALC`    | Derived from the processor: `locations` where `vendorId = :processor AND type = 'processor'`. **Auto-created on first use** if absent. Read-only. When `internal`, this is the step's work centre instead                      |
-| ~~Issue Item / UoM~~             | —         | **Gone from the header.** A challan carries several items now (domain §5.7), so the item moved down to the line. The dialog renders one collapsible section per `job_order_step_inputs` row, each holding its own lot picker   |
+| ~~Issue Item / UoM~~             | —         | **Gone from the header.** A challan carries several items now (domain §5.7), so the item moved down to the line. The dialog renders one collapsible section per `job_order_step_inputs` row, each holding its own batch picker |
 | Remarks                          | `INPUT`   | One free-text note, in the header grid. Printed on the challan and shown on the issue detail                                                                                                                                   |
 | ~~Transporter~~                  | —         | **Gone 2026-08-10.** `transporter_id` survives as an unused column; no screen ever offered a picker for it                                                                                                                     |
 | ~~Vehicle no · LR no · LR date~~ | —         | **Gone 2026-08-10** — see below                                                                                                                                                                                                |
@@ -380,25 +394,25 @@ restoring the columns first — the markup alone is not enough.
 `job_issue` moved out of `ENTITY_TYPES` and into `LIST_ONLY_ENTITY_TYPES`, the same treatment
 `process` and `process_route` got on the same day: the `custom_fields` column stays with whatever it
 already holds, the Issues list keeps Customize Columns, but the module is no longer offered in
-Settings → Modules and no `cf:` columns merge into its list. It was the one place "lot-wise pcs /
+Settings → Modules and no `cf:` columns merge into its list. It was the one place "batch-wise pcs /
 cutper / meter" was meant to land (§2.6) — that need now has no home, which is worth remembering if
 it comes back.
 
-### 5.2 The lot picker — the core query
+### 5.2 The batch picker — the core query
 
-**This is the answer to "where do the Lot and Taka numbers come from".** They are not a master list.
+**This is the answer to "where do the Batch and Taka numbers come from".** They are not a master list.
 They are the result of an availability query over the Stock Ledger, and nothing else.
 
 **The query runs once per input item** — the dialog has one section per `job_order_step_inputs` row
 (domain §5.7), and each section runs this with its own `:itemId`.
 
 ```sql
--- Lots available to issue for ONE of the step's input items
-SELECT  l.id, l.lot_number, l.supplier_lot_ref, l.accumulated_value,
+-- Batches available to issue for ONE of the step's input items
+SELECT  l.id, l.batch_number, l.supplier_batch_ref, l.accumulated_value,
         l.created_at,
         SUM(sl.qty_in - sl.qty_out) AS available_qty
 FROM    stock_ledger sl
-JOIN    lots l ON l.id = sl.lot_id
+JOIN    batches l ON l.id = sl.batch_id
 WHERE   sl.organization_id = :tenantId
   AND   sl.item_id         = :stepInput.itemId      -- ← one section per input row
   AND   sl.location_id     = :selectedSourceLocation
@@ -412,7 +426,7 @@ ORDER BY l.created_at;                              -- FIFO suggestion
 
 | Column shown                  | Tag       | Source                                                |
 | ----------------------------- | --------- | ----------------------------------------------------- |
-| Lot number                    | `MASTER`  | `lots.lot_number`                                     |
+| Batch number                  | `MASTER`  | `batches.batch_number`                                |
 | **Available qty**             | `LEDGER`  | The `SUM` above. 🔴 **Never a stored balance column** |
 | UoM                           | `INHERIT` | `Item.stockingUomId` — identical on every row         |
 | Cost / unit                   | `CALC`    | `accumulated_value ÷ available_qty`                   |
@@ -422,45 +436,45 @@ ORDER BY l.created_at;                              -- FIFO suggestion
 
 ⚠️ **Supplier ref and age are no longer in this payload (2026-08-10).** Both were columns the picker
 printed and nothing read — no rule, no sort, no validation depended on either. `getAvailableStock`
-therefore stops returning `supplierLotRef` and `ageDays` altogether. `lots.supplier_lot_ref` is
-untouched and still shown on the Lots list, the job order overview and the printed challan; age had
+therefore stops returning `supplierBatchRef` and `ageDays` altogether. `batches.supplier_batch_ref` is
+untouched and still shown on the Batches list, the job order overview and the printed challan; age had
 no other reader. The day a FIFO suggestion or the 180-day GST clock needs age, compute it in
-`lots.service.ts` — one implementation, server side — never on the client.
+`batches.service.ts` — one implementation, server side — never on the client.
 
 🔴 **The `ownership` filter is not optional.** Without it, a customer's goods held under one inward
 jobwork order can be issued into another customer's job order — you would be processing A's material
 on B's order and both stock reports would be wrong. This is the same class of failure as a missing
 tenant filter.
 
-### 5.3 The taka (lot unit) expansion
+### 5.3 The taka (batch unit) expansion
 
-> ⚠️ **SWITCHED OFF, 2026-08-07 — not decided against.** Issue and receive are both LOT level:
-> material moves as a quantity against the lot and no screen names an individual taka. The code below
+> ⚠️ **SWITCHED OFF, 2026-08-07 — not decided against.** Issue and receive are both BATCH level:
+> material moves as a quantity against the batch and no screen names an individual taka. The code below
 > is intact and unreachable behind two named switches — `mode = 'bulk'` in `jobReceipts.service.ts`
-> and `PACKAGE_LEVEL` in the web `LotPicker` — plus `lotPackageId: null` in `jobIssues.service.ts`.
+> and `PACKAGE_LEVEL` in the web `BatchPicker` — plus `batchPackageId: null` in `jobIssues.service.ts`.
 >
 > 🔴 The cost, stated plainly: **while it is off, nothing records which returned roll came from which
-> issued roll, and that cannot be reconstructed afterwards.** Lot-level genealogy through
-> `parentLotIds` is unaffected. See `JOBWORK_IMPLEMENTATION_PLAN.md` §12.5.
+> issued roll, and that cannot be reconstructed afterwards.** Batch-level genealogy through
+> `parentBatchIds` is unaffected. See `JOBWORK_IMPLEMENTATION_PLAN.md` §12.5.
 
-Shown only when `Item.lotTracking = 'lot_and_unit'`. Expanding a lot row runs:
+Shown only when `Item.inventoryTracking = 'batch_and_unit'`. Expanding a batch row runs:
 
 ```sql
 SELECT id, unit_number, qty, uom_id
-FROM   lot_units
-WHERE  lot_id = :lotId
+FROM   batch_units
+WHERE  batch_id = :batchId
   AND  state  = 'available'      -- not already issued, consumed or dispatched
   AND  is_deleted = false
 ORDER BY unit_number;
 ```
 
-| Column       | Tag      | Source                                                                                             |
-| ------------ | -------- | -------------------------------------------------------------------------------------------------- |
-| Taka number  | `MASTER` | `lot_units.unit_number`, rendered `LOT-00012/7`                                                    |
-| Qty (metres) | `MASTER` | `lot_units.qty` — the **measured** figure captured at Purchase Received, which is why no two match |
-| Select       | `INPUT`  | A checkbox, not a qty box: **ticking takes the unit's full measured quantity**                     |
+| Column       | Tag      | Source                                                                                               |
+| ------------ | -------- | ---------------------------------------------------------------------------------------------------- |
+| Taka number  | `MASTER` | `batch_units.unit_number`, rendered `BATCH-00012/7`                                                  |
+| Qty (metres) | `MASTER` | `batch_units.qty` — the **measured** figure captured at Purchase Received, which is why no two match |
+| Select       | `INPUT`  | A checkbox, not a qty box: **ticking takes the unit's full measured quantity**                       |
 
-The label on the column ("Taka", "Roll", "Bale", "Coil") is `MASTER` from the org's configured lot-unit
+The label on the column ("Taka", "Roll", "Bale", "Coil") is `MASTER` from the org's configured batch-unit
 label — the word is per-org, the table is not.
 
 ### 5.4 Running totals and guards
@@ -469,26 +483,26 @@ label — the word is per-org, the table is not.
 challan: metres plus cones plus pieces is a number with no unit, and printing it would be worse than
 printing nothing (domain §8.3).
 
-| Element               | Tag      | Computation                                                                                                                                                                                                                                                                                                             |
-| --------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Selected units        | `CALC`   | Count of ticked lot units, for this item                                                                                                                                                                                                                                                                                |
-| Selected qty          | `CALC`   | Sum of ticked units, or typed lot quantities, for this item                                                                                                                                                                                                                                                             |
-| Already issued        | `CALC`   | `SUM(job_issue_lines.qty)` for this step **and this item**, excluding this draft                                                                                                                                                                                                                                        |
-| Remaining to issue    | `CALC`   | `stepInput.plannedQty − alreadyIssued − selectedQty`                                                                                                                                                                                                                                                                    |
-| **Tolerance ceiling** | `CALC`   | `stepInput.plannedQty × (1 + step.tolerancePct ÷ 100)`. Over it → block, or require an override reason + approver. Never silently allow                                                                                                                                                                                 |
-| **Single-lot guard**  | `MASTER` | `Process.requiresSingleLot`. When true, selecting a second lot **of the same item** is blocked with the reason shown — shade variation is invisible until the garment is assembled. It constrains one item, never the challan: two dye lots of one fabric is the defect, fabric plus thread is just a bill of materials |
-| **Partial challan**   | —        | 🔴 **Legal, and must stay legal.** Fabric goes today, buttons follow tomorrow. The step stays `partially_received` until every item is accounted for (domain §6.5), so nothing is lost by allowing it                                                                                                                   |
+| Element                | Tag      | Computation                                                                                                                                                                                                                                                                                                                    |
+| ---------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Selected units         | `CALC`   | Count of ticked batch units, for this item                                                                                                                                                                                                                                                                                     |
+| Selected qty           | `CALC`   | Sum of ticked units, or typed batch quantities, for this item                                                                                                                                                                                                                                                                  |
+| Already issued         | `CALC`   | `SUM(job_issue_lines.qty)` for this step **and this item**, excluding this draft                                                                                                                                                                                                                                               |
+| Remaining to issue     | `CALC`   | `stepInput.plannedQty − alreadyIssued − selectedQty`                                                                                                                                                                                                                                                                           |
+| **Tolerance ceiling**  | `CALC`   | `stepInput.plannedQty × (1 + step.tolerancePct ÷ 100)`. Over it → block, or require an override reason + approver. Never silently allow                                                                                                                                                                                        |
+| **Single-batch guard** | `MASTER` | `Process.requiresSingleBatch`. When true, selecting a second batch **of the same item** is blocked with the reason shown — shade variation is invisible until the garment is assembled. It constrains one item, never the challan: two dye batches of one fabric is the defect, fabric plus thread is just a bill of materials |
+| **Partial challan**    | —        | 🔴 **Legal, and must stay legal.** Fabric goes today, buttons follow tomorrow. The step stays `partially_received` until every item is accounted for (domain §6.5), so nothing is lost by allowing it                                                                                                                          |
 
 ### 5.5 What the save writes
 
-| Written                              | Source                                                                                                                                                                           |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `job_issues` header                  | The form + `CTX` + `AUTO` number. **No `itemId` and no `totalQty`** — see below                                                                                                  |
-| `job_issue_lines`                    | One row per selected lot / lot unit, with `itemId`, `uomId`, `lotId`, `lotUnitId`, `qty`                                                                                         |
-| **Stock Ledger — two rows per line** | `−qty` at source location, `+qty` at destination. Ownership and lot copied unchanged. `postMovement` takes the item from the LOT, so the ledger needed no change for any of this |
-| `lot_units.state`                    | → `with_processor`                                                                                                                                                               |
-| `job_order_steps.status`             | Recomputed → `issued` / `partially_received`, per input item (domain §6.5)                                                                                                       |
-| Challan PDF                          | Rendered from the header + lines + the `SNAP` party fields. **A block per item**, each with its own unit and its own total                                                       |
+| Written                              | Source                                                                                                                                                                               |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `job_issues` header                  | The form + `CTX` + `AUTO` number. **No `itemId` and no `totalQty`** — see below                                                                                                      |
+| `job_issue_lines`                    | One row per selected batch / batch unit, with `itemId`, `uomId`, `batchId`, `batchUnitId`, `qty`                                                                                     |
+| **Stock Ledger — two rows per line** | `−qty` at source location, `+qty` at destination. Ownership and batch copied unchanged. `postMovement` takes the item from the BATCH, so the ledger needed no change for any of this |
+| `batch_units.state`                  | → `with_processor`                                                                                                                                                                   |
+| `job_order_steps.status`             | Recomputed → `issued` / `partially_received`, per input item (domain §6.5)                                                                                                           |
+| Challan PDF                          | Rendered from the header + lines + the `SNAP` party fields. **A block per item**, each with its own unit and its own total                                                           |
 
 🔴 **`job_issues.totalQty` is gone, not repurposed.** Summed across three items it was 2,910 + 12 +
 8,700 = 11,622 of nothing — a number with no unit, read by the status computation, the list page and
@@ -519,16 +533,16 @@ rather than add them up.
 
 ### 6.2 Consumed grid — unit-wise mode
 
-> ⚠️ **SWITCHED OFF, 2026-08-07 — not decided against.** Issue and receive are both LOT level:
-> material moves as a quantity against the lot and no screen names an individual taka. The code below
+> ⚠️ **SWITCHED OFF, 2026-08-07 — not decided against.** Issue and receive are both BATCH level:
+> material moves as a quantity against the batch and no screen names an individual taka. The code below
 > is intact and unreachable behind two named switches — `mode = 'bulk'` in `jobReceipts.service.ts`
-> and `PACKAGE_LEVEL` in the web `LotPicker` — plus `lotPackageId: null` in `jobIssues.service.ts`.
+> and `PACKAGE_LEVEL` in the web `BatchPicker` — plus `batchPackageId: null` in `jobIssues.service.ts`.
 >
 > 🔴 The cost, stated plainly: **while it is off, nothing records which returned roll came from which
-> issued roll, and that cannot be reconstructed afterwards.** Lot-level genealogy through
-> `parentLotIds` is unaffected. See `JOBWORK_IMPLEMENTATION_PLAN.md` §12.5.
+> issued roll, and that cannot be reconstructed afterwards.** Batch-level genealogy through
+> `parentBatchIds` is unaffected. See `JOBWORK_IMPLEMENTATION_PLAN.md` §12.5.
 
-**What the lot-level grid does instead:** one row per ITEM, carrying how much of that item this
+**What the batch-level grid does instead:** one row per ITEM, carrying how much of that item this
 receipt accounts for. Grouped per item rather than one total, because a bulk line that does not say
 which item it settles makes the allocation walk every open challan line oldest-first — and settle a
 panel receipt by consuming thread.
@@ -536,30 +550,30 @@ panel receipt by consuming thread.
 🔴 **The consumption record is written per resolved ALLOCATION, not per request row** (2026-08-07).
 `allocateConsumption` works out which challan lines a receipt closes in order to post the ledger;
 persisting that decision is what keeps `job_receipt_lines.jobIssueLineId` populated. It was null on
-every lot-level row before, and every outstanding calculation in the module keys off that column — so
+every batch-level row before, and every outstanding calculation in the module keys off that column — so
 the prefill re-offered the full quantity forever, challans never reached `closed`, and the receipt
 could not say which challans it had settled.
 
 Rows are **not** entered by the user; they are generated from what was issued:
 
 ```sql
-SELECT jil.id, jil.lot_id, jil.lot_unit_id, lu.unit_number, jil.qty AS issued_qty
+SELECT jil.id, jil.batch_id, jil.batch_unit_id, lu.unit_number, jil.qty AS issued_qty
 FROM   job_issue_lines jil
-JOIN   lot_units lu ON lu.id = jil.lot_unit_id
+JOIN   batch_units lu ON lu.id = jil.batch_unit_id
 WHERE  jil.job_issue_id IN (:selectedIssueIds)
   AND  jil.is_deleted = false;
 ```
 
-| Column            | Tag       | Source                                                                                                                                                   |
-| ----------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Item              | `INHERIT` | `job_issue_lines.itemId`. Rows are **grouped by item**, with a subtotal per group                                                                        |
-| Taka number       | `MASTER`  | via `job_issue_lines.lotUnitId`                                                                                                                          |
-| Issued qty        | `INHERIT` | `job_issue_lines.qty`. **Read-only**                                                                                                                     |
-| Consumed qty      | `INPUT`   | The only typed column. How much of that line this receipt accounts for                                                                                   |
-| Difference        | `CALC`    | `issued − consumed`                                                                                                                                      |
-| Wastage %         | `CALC`    | `difference ÷ issued × 100`                                                                                                                              |
-| `parentLotUnitId` | `CALC+`   | Persisted on the **output** row it produced — the 1:1 mapping that makes taka-level traceability possible. Cannot be reconstructed later from quantities |
-| Group totals      | `CALC`    | Per item: total units · total issued · total consumed · total difference · total wastage %                                                               |
+| Column              | Tag       | Source                                                                                                                                                   |
+| ------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Item                | `INHERIT` | `job_issue_lines.itemId`. Rows are **grouped by item**, with a subtotal per group                                                                        |
+| Taka number         | `MASTER`  | via `job_issue_lines.batchUnitId`                                                                                                                        |
+| Issued qty          | `INHERIT` | `job_issue_lines.qty`. **Read-only**                                                                                                                     |
+| Consumed qty        | `INPUT`   | The only typed column. How much of that line this receipt accounts for                                                                                   |
+| Difference          | `CALC`    | `issued − consumed`                                                                                                                                      |
+| Wastage %           | `CALC`    | `difference ÷ issued × 100`                                                                                                                              |
+| `parentBatchUnitId` | `CALC+`   | Persisted on the **output** row it produced — the 1:1 mapping that makes taka-level traceability possible. Cannot be reconstructed later from quantities |
+| Group totals        | `CALC`    | Per item: total units · total issued · total consumed · total difference · total wastage %                                                               |
 
 **Bulk mode** collapses each item's group to one row: total issued (`INHERIT`), total consumed
 (`INPUT`), difference and wastage % (`CALC`).
@@ -625,7 +639,7 @@ items, 10 or more"_.
 
 | Element           | Tag      | Computation                                                                                                                                                                                                                           |
 | ----------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Consumed value    | `LEDGER` | `SUM(valueIn − valueOut)` over the lots this receipt consumes, at the processor's location                                                                                                                                            |
+| Consumed value    | `LEDGER` | `SUM(valueIn − valueOut)` over the batches this receipt consumes, at the processor's location                                                                                                                                         |
 | Process charge    | `CALC`   | `qty × step.rate` — 🔴 the PRINCIPAL input's quantity for `per_issued_unit`, the PRIMARY output's for `per_received_unit`. Against a cross-item sum it would multiply the rate by 100 PCS + 5 CONE + 300 PCS, which is 405 of nothing |
 | Pot               | `CALC`   | consumed + charge                                                                                                                                                                                                                     |
 | By-product values | `CALC+`  | ₹0 each, stored. Not typed today — see the note above                                                                                                                                                                                 |
@@ -634,20 +648,20 @@ items, 10 or more"_.
 
 ### 6.5 Preview before post
 
-Entirely `CALC` — nothing is written until confirmed. It states the lots that will be created, their
+Entirely `CALC` — nothing is written until confirmed. It states the batches that will be created, their
 quantities, the scrap, and the resulting step status. A ledger posting is not reversible by editing,
 so the user sees the consequence first.
 
 ### 6.6 What the save writes
 
-| Written                                                             | Source                                                                                                                                                                                                                           |
-| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `job_receipts` + `job_receipt_consumptions` + `job_receipt_outputs` | The form. Two child tables, per §6.2 / §6.4                                                                                                                                                                                      |
-| **One output lot per returned item** with accepted qty > 0          | `AUTO` number · `parentLotIds` = **every** lot consumed · value per §6.4.1. Genealogy is many-to-many now, which `parentLotIds` already supports — it is a uuid array precisely because a lot has _"zero, one, or many"_ parents |
-| **New rework child lot**                                            | Per output row with `rework qty > 0`. Separate lot = separate piece count                                                                                                                                                        |
-| **Stock Ledger**                                                    | `−consumed qty` of each input item at the processor location; `+accepted qty` of each output item at our location                                                                                                                |
-| `lot_units.state`                                                   | → `consumed`, and new units created for the **primary** output when the process preserves packaging. A by-product has no package that went out to map back to                                                                    |
-| Step / job order status                                             | Recomputed **per input item** (domain §6.5)                                                                                                                                                                                      |
+| Written                                                             | Source                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `job_receipts` + `job_receipt_consumptions` + `job_receipt_outputs` | The form. Two child tables, per §6.2 / §6.4                                                                                                                                                                                              |
+| **One output batch per returned item** with accepted qty > 0        | `AUTO` number · `parentBatchIds` = **every** batch consumed · value per §6.4.1. Genealogy is many-to-many now, which `parentBatchIds` already supports — it is a uuid array precisely because a batch has _"zero, one, or many"_ parents |
+| **New rework child batch**                                          | Per output row with `rework qty > 0`. Separate batch = separate piece count                                                                                                                                                              |
+| **Stock Ledger**                                                    | `−consumed qty` of each input item at the processor location; `+accepted qty` of each output item at our location                                                                                                                        |
+| `batch_units.state`                                                 | → `consumed`, and new units created for the **primary** output when the process preserves packaging. A by-product has no package that went out to map back to                                                                            |
+| Step / job order status                                             | Recomputed **per input item** (domain §6.5)                                                                                                                                                                                              |
 
 ---
 
@@ -655,19 +669,19 @@ so the user sees the consequence first.
 
 The whole screen is derived. Nothing on it is stored, and nothing is entered.
 
-| Element                    | Tag      | Source                                                                                                                                      |
-| -------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Entry point                | `INPUT`  | Any lot number, challan number, purchase receipt number, invoice number, or supplier lot ref                                                |
-| Resolution to a lot        | `MASTER` | A union search across the numbered documents, then to the lots they touched                                                                 |
-| **Backward tree**          | `CALC`   | Recursive walk **up** `lots.parentLotIds` until a lot with no parents — the origin (Purchase Received, opening stock, or customer-supplied) |
-| **Forward tree**           | `CALC`   | Recursive walk **down**: every lot listing this one as a parent, plus rework branches and scrap leaves                                      |
-| Per-node qty + unit        | `MASTER` | The lot row                                                                                                                                 |
-| Per-node value + cost/unit | `CALC`   | `accumulated_value`, and value ÷ qty                                                                                                        |
-| Per-node document link     | `MASTER` | `lots.sourceDocType` + `sourceDocId`                                                                                                        |
-| Terminal nodes             | `MASTER` | Delivery challans and invoices the lot was dispatched on                                                                                    |
+| Element                    | Tag      | Source                                                                                                                                             |
+| -------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Entry point                | `INPUT`  | Any batch number, challan number, purchase receipt number, invoice number, or supplier batch ref                                                   |
+| Resolution to a batch      | `MASTER` | A union search across the numbered documents, then to the batches they touched                                                                     |
+| **Backward tree**          | `CALC`   | Recursive walk **up** `batches.parentBatchIds` until a batch with no parents — the origin (Purchase Received, opening stock, or customer-supplied) |
+| **Forward tree**           | `CALC`   | Recursive walk **down**: every batch listing this one as a parent, plus rework branches and scrap leaves                                           |
+| Per-node qty + unit        | `MASTER` | The batch row                                                                                                                                      |
+| Per-node value + cost/unit | `CALC`   | `accumulated_value`, and value ÷ qty                                                                                                               |
+| Per-node document link     | `MASTER` | `batches.sourceDocType` + `sourceDocId`                                                                                                            |
+| Terminal nodes             | `MASTER` | Delivery challans and invoices the batch was dispatched on                                                                                         |
 
-Implemented as one recursive CTE over lot parentage in each direction. 🔴 **The number is never used
-to infer the tree** — `LOT-00088` is not the parent of `LOT-00089`; only `parentLotIds` knows.
+Implemented as one recursive CTE over batch parentage in each direction. 🔴 **The number is never used
+to infer the tree** — `BATCH-00088` is not the parent of `BATCH-00089`; only `parentBatchIds` knows.
 
 ---
 
@@ -678,7 +692,7 @@ Tracing every field back to its true origin, there are only six:
 | Origin                         | Feeds                                                                           |
 | ------------------------------ | ------------------------------------------------------------------------------- |
 | **Masters an admin maintains** | Items, UoM, Vendors, Customers, Locations, Processes, Routes, rejection reasons |
-| **`NumberSequence`**           | Every document number and every lot number                                      |
+| **`NumberSequence`**           | Every document number and every batch number                                    |
 | **Request context**            | Org, acting user, server date                                                   |
 | **The Stock Ledger**           | Every availability figure, every balance, every "can I issue this" decision     |
 | **A parent document**          | Everything inherited or snapshotted down the chain                              |
@@ -697,9 +711,9 @@ Useful for both the build sequence and for writing seed data.
 | Job Order create   | ≥1 Item · ≥1 UoM · ≥1 Location · ≥1 Process · (Route optional)                              |
 | Job Order Overview | A saved job order with ≥1 step                                                              |
 | **Issue dialog**   | A job order step · ≥1 job-worker Vendor · **stock in the ledger for the step's issue item** |
-| Taka expansion     | Item with `lotTracking = 'lot_and_unit'` · lot units created at Purchase Received           |
+| Taka expansion     | Item with `inventoryTracking = 'batch_and_unit'` · batch units created at Purchase Received |
 | Receive dialog     | ≥1 posted issue with an open balance                                                        |
-| Traceability       | ≥1 lot with genealogy                                                                       |
+| Traceability       | ≥1 batch with genealogy                                                                     |
 
 🔴 **The Issue dialog cannot be built or demoed before Purchase Received exists**, because its central
 grid is a ledger query and an empty ledger renders an empty screen. That dependency is why the parent
@@ -711,15 +725,15 @@ document puts Purchase Received in phase 2 and Issue in phase 3.
 
 Each has been seen in production systems of this shape:
 
-| Defect                               | Symptom                                                       | Correct source                                        |
-| ------------------------------------ | ------------------------------------------------------------- | ----------------------------------------------------- |
-| Lot picker reads `lots` directly     | Shows fully-consumed lots; users issue stock that is gone     | `LEDGER` query with `HAVING > 0`                      |
-| Availability stored as a column      | Drifts from history; nobody can say when                      | `LEDGER`, always computed                             |
-| Missing `ownership` filter           | One customer's goods issued into another's job order          | Filter on `jobOrder.ownership`                        |
-| Party name stored as FK only         | Reprinting an old challan shows today's address               | `SNAP` alongside the FK                               |
-| Route referenced live                | Editing a route silently rewrites running job orders          | `SNAP` at job order creation                          |
-| Number allocated on dialog open      | Sequence gaps; a GST compliance issue                         | Allocate inside the save transaction                  |
-| Receive mode offered as a choice     | Users pick taka-wise for cutting, where no 1:1 mapping exists | `Process.preservesPackaging`                          |
-| Yield reused as a conversion factor  | Stock silently invented or destroyed                          | Observation only; never a factor                      |
-| Unfiltered vendor dropdown           | Transporters offered as processors                            | Filter on `vendorTypes`                               |
-| `createdBy` accepted from the client | Audit trail forgeable                                         | `CTX` from `req.user.id`, omitted from the input type |
+| Defect                                | Symptom                                                       | Correct source                                        |
+| ------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------- |
+| Batch picker reads `batches` directly | Shows fully-consumed batches; users issue stock that is gone  | `LEDGER` query with `HAVING > 0`                      |
+| Availability stored as a column       | Drifts from history; nobody can say when                      | `LEDGER`, always computed                             |
+| Missing `ownership` filter            | One customer's goods issued into another's job order          | Filter on `jobOrder.ownership`                        |
+| Party name stored as FK only          | Reprinting an old challan shows today's address               | `SNAP` alongside the FK                               |
+| Route referenced live                 | Editing a route silently rewrites running job orders          | `SNAP` at job order creation                          |
+| Number allocated on dialog open       | Sequence gaps; a GST compliance issue                         | Allocate inside the save transaction                  |
+| Receive mode offered as a choice      | Users pick taka-wise for cutting, where no 1:1 mapping exists | `Process.preservesPackaging`                          |
+| Yield reused as a conversion factor   | Stock silently invented or destroyed                          | Observation only; never a factor                      |
+| Unfiltered vendor dropdown            | Transporters offered as processors                            | Filter on `vendorTypes`                               |
+| `createdBy` accepted from the client  | Audit trail forgeable                                         | `CTX` from `req.user.id`, omitted from the input type |

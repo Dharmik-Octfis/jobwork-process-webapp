@@ -54,17 +54,11 @@ export function buildChallanHtml(issue: JobIssue, orgName: string): string {
 
   const rows = issue.lines
     .map((line, index) => {
-      const taka = line.lotPackage
-        ? escapeHtml(
-            line.lotPackage.label ?? `${line.lot?.lotNumber}/${line.lotPackage.packageNumber}`,
-          )
-        : '—';
       return `<tr>
         <td>${index + 1}</td>
         <td>${escapeHtml(line.item?.name ?? '')}</td>
-        <td>${escapeHtml(line.lot?.lotNumber ?? '')}</td>
-        <td>${escapeHtml(line.lot?.supplierLotRef ?? '')}</td>
-        <td>${taka}</td>
+        <td>${escapeHtml(line.batch?.batchNumber ?? '')}</td>
+        <td>${escapeHtml(line.batch?.supplierBatchRef ?? '')}</td>
         <td class="num">${formatQty(line.qty)} ${escapeHtml(unitOf(line))}</td>
       </tr>`;
     })
@@ -137,9 +131,8 @@ export function buildChallanHtml(issue: JobIssue, orgName: string): string {
       <tr>
         <th style="width:36px">#</th>
         <th>Item</th>
-        <th>Lot</th>
+        <th>Batch</th>
         <th>Party ref</th>
-        <th>Taka</th>
         <th class="num">Quantity</th>
       </tr>
     </thead>
