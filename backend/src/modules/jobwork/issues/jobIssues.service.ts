@@ -347,8 +347,10 @@ async function resolveLines(
   lines: readonly ResolvedLineItem[],
   context: { locationId: string; ownership: Ownership; ownerPartyId: string | null },
 ) {
+  const itemIds = new Set(lines.map((line) => line.itemId));
+
   const availableById = new Map<string, Awaited<ReturnType<typeof getAvailableBatches>>[number]>();
-  for (const itemId of new Set(lines.map((line) => line.itemId))) {
+  for (const itemId of itemIds) {
     for (const batch of await getAvailableBatches(tx, {
       organizationId,
       itemId,
@@ -359,11 +361,43 @@ async function resolveLines(
     }
   }
 
+  /**
+   * 🔴 WHETHER A BATCH IS OPTIONAL IS THE ITEM'S DECISION, NOT THE DIALOG'S.
+   *
+   * `Item.inventoryTracking = 'batch'` is a promise that every metre of this item
+   * can be traced to the roll it came off — that is the entire reason a dyer's
+   * customer accepts a shade complaint, and the reason the same column already
+   * refuses batch-less opening stock (`items.service.saveOpeningStock`). An issue
+   * that skipped it would break the promise at the one moment traceability is
+   * created, and the gap is unrecoverable: the goods are at the processor, and
+   * nothing recorded which batch left.
+   */
+  const items = await tx.item.findMany({
+    where: { organizationId, id: { in: [...itemIds] }, isDeleted: false },
+    select: { id: true, name: true, inventoryTracking: true },
+  });
+  const itemById = new Map(items.map((item) => [item.id, item]));
+
   const resolved: ResolvedIssueLine[] = [];
 
-  for (const line of lines) {
+  for (const [index, line] of lines.entries()) {
+    const item = itemById.get(line.itemId);
+
+    if (!line.batchId && item?.inventoryTracking === 'batch') {
+      throw new ApiError(
+        400,
+        `${item.name} is batch-tracked, so the batch it goes out of has to be picked. ` +
+          'Pick one on the Issue screen, or add the stock first if none is on record.',
+        { [`lines.${index}.batchId`]: 'Pick a batch.' },
+      );
+    }
+
     /**
      * ⚠️ TEMPORARY SCAFFOLD — a line with no batch gets one created for it.
+     *
+     * Reachable only for `inventoryTracking = 'none'` now: the guard above turns
+     * a batch-tracked item away before it gets here, so the scaffold can no longer
+     * invent a batch for an item whose whole point is that its batches are real.
      *
      * Material In was retired before Purchase Received and Opening Stock exist,
      * so today there is no way to put stock on the books and the whole loop —

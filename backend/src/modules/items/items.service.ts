@@ -128,7 +128,142 @@ export function normalizeItemDto<T extends Record<string, unknown>>(rawData: T):
   return copy as T;
 }
 
+/** What this document currently declares for one batch at one location. */
+interface OpeningPosition {
+  batchId: string;
+  locationId: string;
+  batch: Awaited<ReturnType<TenantClient['batch']['findFirstOrThrow']>>;
+  qty: Prisma.Decimal;
+  value: Prisma.Decimal;
+  postedAt: Date;
+}
+
 export class ItemsService {
+  /**
+   * 🔴 WHAT OPENING STOCK CURRENTLY SAYS, netted per batch and location.
+   *
+   * Every row this document has ever written, summed — `opening` in, `reversal`
+   * out. Netting is the whole point: until 2026-08-13 both the reader and the
+   * writer treated "this batch has a reversal" as "this batch is gone", which is
+   * only true when the reversal was for the full quantity. A batch whose opening
+   * had been trimmed from 100 to 80 vanished from the Item page entirely while
+   * still holding 80 in the ledger.
+   */
+  private async openingPositions(
+    tx: TenantClient,
+    itemId: string,
+    organizationId: string,
+  ): Promise<Map<string, OpeningPosition>> {
+    const rows = await tx.stockLedgerEntry.findMany({
+      where: { organizationId, itemId, sourceDocType: 'item_opening_stock' },
+      include: { batch: true },
+      orderBy: { postedAt: 'asc' },
+    });
+
+    const positions = new Map<string, OpeningPosition>();
+    for (const row of rows) {
+      const key = `${row.batchId}_${row.locationId}`;
+      const current = positions.get(key) ?? {
+        batchId: row.batchId,
+        locationId: row.locationId,
+        batch: row.batch,
+        qty: new Prisma.Decimal(0),
+        value: new Prisma.Decimal(0),
+        postedAt: row.postedAt,
+      };
+      current.qty = current.qty.plus(row.qtyIn ?? 0).minus(row.qtyOut ?? 0);
+      current.value = current.value.plus(row.valueIn ?? 0).minus(row.valueOut ?? 0);
+      positions.set(key, current);
+    }
+    return positions;
+  }
+
+  /**
+   * 🔴 MOVE ONE POSITION TO A NEW QUANTITY — the fix for the defect that made a
+   * re-save destructive.
+   *
+   * The old writer reversed every opening in full and re-created the lot from the
+   * payload. That is only sound while nothing has left: batch A opens at 100, 40
+   * go out to a dyer, someone re-saves, and the 100 is reversed at the godown —
+   * A lands at MINUS 40 while a brand-new A′ takes the +100. The location total
+   * still looked right, which is why it went unnoticed; the batch history did not,
+   * and the 40 sitting at the dyer pointed at a batch with a negative source
+   * balance. `getAvailableBatches` filters on a positive balance, so A simply
+   * disappeared from every picker rather than raising anything.
+   *
+   * So a change is now a DELTA against what this document already said, and a
+   * reduction can never take out more than is still there. Goods that have left
+   * cannot be un-issued by reversing their receipt, so that case is refused by
+   * name instead of being written.
+   */
+  private async settleOpening(
+    tx: TenantClient,
+    position: OpeningPosition,
+    desiredQty: Prisma.Decimal,
+    context: {
+      organizationId: string;
+      itemId: string;
+      valuePerUnit: Prisma.Decimal | null;
+      userId?: string;
+    },
+  ) {
+    const delta = desiredQty.minus(position.qty);
+    if (delta.isZero()) return;
+
+    const { organizationId, itemId, valuePerUnit, userId } = context;
+    // The value already riding on this position, per unit — used when the form
+    // states no value of its own, so a top-up is worth what the rest of it is.
+    const existingUnitValue = position.qty.greaterThan(0)
+      ? position.value.dividedBy(position.qty)
+      : new Prisma.Decimal(0);
+
+    if (delta.greaterThan(0)) {
+      const unit = valuePerUnit ?? existingUnitValue;
+      await postMovement(tx, {
+        organizationId,
+        batchId: position.batchId,
+        locationId: position.locationId,
+        movementType: 'opening',
+        qtyIn: delta,
+        valueIn: delta.times(unit),
+        sourceDocType: 'item_opening_stock',
+        sourceDocId: itemId,
+        userId,
+      });
+      return;
+    }
+
+    const remove = delta.negated();
+    const balance = await getBalance(tx, {
+      organizationId,
+      batchId: position.batchId,
+      locationId: position.locationId,
+    });
+    if (remove.greaterThan(balance.qty)) {
+      const floor = position.qty.minus(balance.qty);
+      throw ApiError.badRequest(
+        `Batch ${position.batch.batchNumber} has already moved — only ${balance.qty.toString()} of it is ` +
+          `still here, so its opening stock cannot go below ${floor.toString()}. ` +
+          'Cancel the documents that moved it first, or leave this batch as it is.',
+        { batches: `${position.batch.batchNumber} cannot go below ${floor.toString()}.` },
+      );
+    }
+
+    await postMovement(tx, {
+      organizationId,
+      batchId: position.batchId,
+      locationId: position.locationId,
+      movementType: 'reversal',
+      qtyOut: remove,
+      // Proportional, not the whole value — a partial reduction that wrote off the
+      // full value would leave the remainder costing nothing.
+      valueOut: remove.times(existingUnitValue),
+      sourceDocType: 'item_opening_stock',
+      sourceDocId: itemId,
+      userId,
+    });
+  }
+
   /**
    * 🔴 ONE reader, and the LEDGER is the balance.
    *
@@ -147,32 +282,12 @@ export class ItemsService {
       orderBy: { createdAt: 'asc' },
     });
 
-    // The batches this document created, with the location each landed at. A
+    // The batches this document declares, with the location each landed at. A
     // batch has no location of its own — location lives on the movement (§5.4) —
-    // so the `opening` row is what ties the two together.
-    const entries = await tx.stockLedgerEntry.findMany({
-      where: {
-        organizationId,
-        itemId,
-        sourceDocType: 'item_opening_stock',
-        movementType: 'opening',
-      },
-      include: { batch: true },
-      orderBy: { postedAt: 'asc' },
-    });
-
-    const reversals = await tx.stockLedgerEntry.findMany({
-      where: {
-        organizationId,
-        itemId,
-        sourceDocType: 'item_opening_stock',
-        movementType: 'reversal',
-      },
-      select: { batchId: true },
-    });
-
-    const reversedBatchIds = new Set(reversals.map((r) => r.batchId));
-    const activeEntries = entries.filter((entry) => !reversedBatchIds.has(entry.batchId));
+    // so the `opening` row is what ties the two together. Netted, so a batch that
+    // was trimmed rather than removed still shows, at what is left of it.
+    const positions = [...(await this.openingPositions(tx, itemId, organizationId)).values()];
+    const activeEntries = positions.filter((position) => position.qty.greaterThan(0));
 
     const locationIds = new Set<string>([
       ...declared.map((row) => row.locationId),
@@ -202,8 +317,7 @@ export class ItemsService {
         if (primaryLoc) {
           const itemOpeningQty = Number(item.openingStock);
           const itemOpeningVal =
-            item.openingStockValuePerUnit !== null &&
-            item.openingStockValuePerUnit !== undefined
+            item.openingStockValuePerUnit !== null && item.openingStockValuePerUnit !== undefined
               ? Number(item.openingStockValuePerUnit)
               : null;
 
@@ -245,6 +359,9 @@ export class ItemsService {
         committedStock: 0,
         availableForSale: Number(balance.qty),
         batches: mine.map((entry) => ({
+          // 🔴 The batch's real id, and the client sends it back on save — that is
+          // what lets the writer tell "this batch, edited" from "a new batch", and
+          // therefore what lets it adjust instead of reverse-and-recreate.
           id: entry.batch.id,
           batchNumber: entry.batch.batchNumber,
           batchReference: entry.batch.supplierBatchRef,
@@ -253,7 +370,7 @@ export class ItemsService {
           expiryDate: entry.batch.expiryDate,
           sellingPrice: entry.batch.sellingPrice !== null ? Number(entry.batch.sellingPrice) : null,
           mrp: entry.batch.mrp !== null ? Number(entry.batch.mrp) : null,
-          quantityIn: Number(entry.qtyIn),
+          quantityIn: Number(entry.qty),
         })),
       });
     }
@@ -726,70 +843,19 @@ export class ItemsService {
       if (!item.stockingUomId)
         throw ApiError.badRequest('Cannot add stock without a stocking unit of measurement.');
 
-      // A correction is a REVERSING ENTRY, never an edit (inventory.prisma).
-      // Only active unreversed opening entries need to be backed out.
-      const oldOpenings = await tx.stockLedgerEntry.findMany({
-        where: {
-          organizationId,
-          itemId,
-          sourceDocType: 'item_opening_stock',
-          movementType: 'opening',
-        },
-      });
-      const oldReversals = await tx.stockLedgerEntry.findMany({
-        where: {
-          organizationId,
-          itemId,
-          sourceDocType: 'item_opening_stock',
-          movementType: 'reversal',
-        },
-      });
-
-      // Track net active unreversed opening stock per (batchId, locationId)
-      const netMap = new Map<
-        string,
-        { batchId: string; locationId: string; netQty: Prisma.Decimal; netVal: Prisma.Decimal }
-      >();
-
-      for (const old of oldOpenings) {
-        const key = `${old.batchId}_${old.locationId}`;
-        const existing = netMap.get(key) ?? {
-          batchId: old.batchId,
-          locationId: old.locationId,
-          netQty: new Prisma.Decimal(0),
-          netVal: new Prisma.Decimal(0),
-        };
-        existing.netQty = existing.netQty.plus(old.qtyIn ?? 0);
-        existing.netVal = existing.netVal.plus(old.valueIn ?? 0);
-        netMap.set(key, existing);
-      }
-
-      for (const rev of oldReversals) {
-        const key = `${rev.batchId}_${rev.locationId}`;
-        const existing = netMap.get(key);
-        if (existing) {
-          existing.netQty = existing.netQty.minus(rev.qtyOut ?? 0);
-          existing.netVal = existing.netVal.minus(rev.valueOut ?? 0);
-        }
-      }
-
-      for (const { batchId, locationId, netQty, netVal } of netMap.values()) {
-        if (netQty.greaterThan(0)) {
-          await postMovement(tx, {
-            organizationId,
-            batchId,
-            locationId,
-            movementType: 'reversal',
-            qtyOut: netQty,
-            qtyIn: new Prisma.Decimal(0),
-            valueOut: netVal,
-            valueIn: new Prisma.Decimal(0),
-            sourceDocType: 'item_opening_stock',
-            sourceDocId: itemId,
-            userId,
-          });
-        }
-      }
+      /**
+       * 🔴 WHAT THIS DOCUMENT ALREADY SAYS. Everything below is a DELTA against
+       * it — see `settleOpening` for the defect that made the old
+       * reverse-everything-and-recreate approach destructive.
+       *
+       * `claimed` is how a batch the user still has on screen is told apart from
+       * one they deleted: the form round-trips each batch's real id, so a row
+       * carrying a known id is that batch edited, and a position nobody claimed is
+       * a batch that was removed.
+       */
+      const positions = await this.openingPositions(tx, itemId, organizationId);
+      const claimed = new Set<string>();
+      const key = (batchId: string, locationId: string) => `${batchId}_${locationId}`;
 
       // Soft delete, not a wipe: the row carries who declared what and when.
       await tx.itemOpeningStockRow.updateMany({
@@ -810,7 +876,11 @@ export class ItemsService {
             ? new Prisma.Decimal(locRow.openingStock)
             : new Prisma.Decimal(batchTotal);
 
-        if (requiresBatchDetail && rows.length > 0 && new Prisma.Decimal(batchTotal).greaterThan(declaredQty)) {
+        if (
+          requiresBatchDetail &&
+          rows.length > 0 &&
+          new Prisma.Decimal(batchTotal).greaterThan(declaredQty)
+        ) {
           throw ApiError.badRequest(
             `Total batch quantity (${batchTotal}) cannot exceed location opening stock (${declaredQty.toString()}).`,
           );
@@ -858,15 +928,42 @@ export class ItemsService {
           },
         });
 
-        if (declaredQty.lessThanOrEqualTo(0) && rows.length === 0) continue;
+        const settleContext = { organizationId, itemId, valuePerUnit, userId };
 
-        // 🔴 Post user-entered batch rows ONLY
-        const toPost =
-          rows.length > 0
-            ? rows
-            : [{ quantityIn: declaredQty.toString() } as (typeof rows)[number]];
+        // ── 1. Rows naming a batch this document already holds: adjust it, and
+        //       keep its details in step. Never a new batch — a batch number is
+        //       printed on a tag stuck to a roll, and re-creating it would strand
+        //       whatever has already been issued out of the original.
+        for (const detail of rows) {
+          const position = detail.id ? positions.get(key(detail.id, locRow.locationId)) : undefined;
+          if (!position) continue;
+          claimed.add(key(position.batchId, position.locationId));
 
-        for (const detail of toPost) {
+          await this.settleOpening(
+            tx,
+            position,
+            new Prisma.Decimal(detail.quantityIn ?? 0),
+            settleContext,
+          );
+
+          await tx.batch.update({
+            where: { id: position.batchId },
+            data: {
+              supplierBatchRef: detail.batchReference || null,
+              manufacturerBatch: detail.manufacturerBatch || null,
+              manufacturedDate: detail.manufacturedDate ? new Date(detail.manufacturedDate) : null,
+              expiryDate: detail.expiryDate ? new Date(detail.expiryDate) : null,
+              mrp: detail.mrp ?? null,
+              sellingPrice: detail.sellingPrice ?? null,
+              updatedBy: userId ?? null,
+            },
+          });
+        }
+
+        // ── 2. Rows naming no batch of ours: genuinely new.
+        for (const detail of rows) {
+          if (detail.id && positions.has(key(detail.id, locRow.locationId))) continue;
+
           const qty = new Prisma.Decimal(detail.quantityIn ?? 0);
           if (qty.lessThanOrEqualTo(0)) continue;
 
@@ -880,6 +977,13 @@ export class ItemsService {
             expiryDate: detail.expiryDate || null,
             mrp: detail.mrp ?? null,
             sellingPrice: detail.sellingPrice ?? null,
+            /* 🔴 Customer-owned goods must go on the books as the customer's, or
+               the availability query — which filters on ownership (§5.2) — will
+               not offer them back to that customer's job orders. Only ever set by
+               a caller that knows whose goods these are; the Item screen omits it
+               and gets `own`. */
+            ownership: data.ownership ?? 'own',
+            ownerPartyId: data.ownership === 'customer' ? (data.ownerPartyId ?? null) : null,
             sourceDocType: 'item_opening_stock',
             sourceDocId: itemId,
             userId,
@@ -897,6 +1001,79 @@ export class ItemsService {
             userId,
           });
         }
+
+        // ── 3. No batch rows at all: an `inventoryTracking = 'none'` item, which
+        //       declares a bulk quantity and lets the system hold the batch. The
+        //       bulk figure is reconciled against whatever batches this document
+        //       already put here rather than replacing them, so the synthetic
+        //       batch survives a re-save with its history.
+        if (rows.length === 0) {
+          const here = [...positions.values()]
+            .filter(
+              (p) =>
+                p.locationId === locRow.locationId && !claimed.has(key(p.batchId, p.locationId)),
+            )
+            .sort((a, b) => b.postedAt.getTime() - a.postedAt.getTime());
+          for (const position of here) claimed.add(key(position.batchId, position.locationId));
+
+          const current = here.reduce((sum, p) => sum.plus(p.qty), new Prisma.Decimal(0));
+          let remaining = declaredQty.minus(current);
+
+          if (remaining.greaterThan(0)) {
+            const top = here[0];
+            if (top) {
+              await this.settleOpening(tx, top, top.qty.plus(remaining), settleContext);
+            } else if (declaredQty.greaterThan(0)) {
+              const batch = await createBatch(tx, {
+                organizationId,
+                itemId,
+                uomId: item.stockingUomId,
+                ownership: data.ownership ?? 'own',
+                ownerPartyId: data.ownership === 'customer' ? (data.ownerPartyId ?? null) : null,
+                sourceDocType: 'item_opening_stock',
+                sourceDocId: itemId,
+                userId,
+              });
+              await postMovement(tx, {
+                organizationId,
+                batchId: batch.id,
+                locationId: locRow.locationId,
+                movementType: 'opening',
+                qtyIn: declaredQty,
+                valueIn: valuePerUnit ? declaredQty.times(valuePerUnit) : 0,
+                sourceDocType: 'item_opening_stock',
+                sourceDocId: itemId,
+                userId,
+              });
+            }
+          } else if (remaining.lessThan(0)) {
+            // Take it off the newest first, so the oldest stock keeps its history.
+            for (const position of here) {
+              if (remaining.greaterThanOrEqualTo(0)) break;
+              const take = Prisma.Decimal.min(remaining.negated(), position.qty);
+              await this.settleOpening(tx, position, position.qty.minus(take), settleContext);
+              remaining = remaining.plus(take);
+            }
+          }
+        }
+      }
+
+      /**
+       * ── 4. Everything this document still holds that the payload never
+       *       mentioned: the user deleted the batch, or dropped the whole
+       *       location. Settling to zero goes through the same guard, so a batch
+       *       that has already been issued refuses by name rather than going
+       *       negative in silence.
+       */
+      for (const position of positions.values()) {
+        if (claimed.has(key(position.batchId, position.locationId))) continue;
+        if (position.qty.lessThanOrEqualTo(0)) continue;
+        await this.settleOpening(tx, position, new Prisma.Decimal(0), {
+          organizationId,
+          itemId,
+          valuePerUnit: null,
+          userId,
+        });
       }
 
       return this.readOpeningStock(tx, itemId, organizationId);

@@ -38,15 +38,23 @@ export const jobIssueLineSchema = z.object({
   itemId: z.string().uuid().nullable().optional(),
 
   /**
-   * ⚠️ TEMPORARY — optional, and null means "there is no stock on record".
+   * ⚠️ TEMPORARY — optional HERE, and only for an item at `inventoryTracking =
+   * 'none'`. Null means "there is no stock on record".
+   *
+   * 🔴 It is not optional in the SERVICE for a batch-tracked item: `resolveLines`
+   * refuses a batch-less line for one, because that column is a promise that every
+   * metre is traceable to its roll and an issue is where that trace is created.
+   * The rule cannot live in this file — zod would have to read the item to know
+   * which items it applies to — so it lives one layer down, where the item is
+   * already loaded.
    *
    * Material In was retired before Purchase Received and Opening Stock exist, so
-   * an item can legitimately have no batches at all right now. Rather than make the
-   * whole loop untestable, a line with no batch has one created for it at ZERO
-   * value (`resolveLines`), and the dialog says so on screen.
+   * an untracked item can legitimately have no batches at all right now. Rather
+   * than make the whole loop untestable, such a line has one created for it at
+   * ZERO value (`resolveLines`), and the dialog says so on screen.
    *
-   * 🔴 Make this required again the day Purchase Received lands. Issuing stock
-   * that was never received is a defect, not a feature.
+   * 🔴 Make this required for every item the day Purchase Received lands. Issuing
+   * stock that was never received is a defect, not a feature.
    */
   batchId: z.string().uuid().nullable().optional(),
   /**

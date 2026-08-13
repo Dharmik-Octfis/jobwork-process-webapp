@@ -97,16 +97,28 @@ export interface AvailabilityQuery {
   /** Include each batch's takas. Only worth asking for when the item is tracked
    * that way; otherwise it is a query per batch returning nothing. */
   withPackages?: boolean;
+  /** What the user typed into the picker's batch box — matched against the batch
+   * number and the supplier's own reference. */
+  search?: string;
+  /** A ceiling on rows, so an item with hundreds of live batches still answers. */
+  limit?: number;
 }
 
 /**
  * What can actually be issued: the picker's grid.
  *
- * The picker shows the batch, what is left of it and what that is worth — nothing
- * else. Batch age and the supplier's own reference were dropped from this payload
- * on 2026-08-10: both were display-only columns nobody read off the dialog. If a
- * FIFO suggestion or the 180-day GST clock ever needs age, compute it HERE and
- * not on the client — the two must agree.
+ * The picker shows the batch, what is left of it and what that is worth. Batch age
+ * was dropped from this payload on 2026-08-10 and stays gone — if a FIFO
+ * suggestion or the 180-day GST clock ever needs it, compute it HERE and not on
+ * the client, so the two agree. `supplierBatchRef` came BACK on 2026-08-13: the
+ * picker is searchable now, and a batch you can match on but cannot see is a row
+ * the user has no way to identify.
+ *
+ * 🔴 One query for the balances, not one per batch. `getAvailableBatches` sums
+ * value in the same pass as quantity precisely so this loop stays a loop over
+ * memory — the `getBalance` that used to sit inside it was a database round trip
+ * per row, which is nothing at three batches and is the entire response at three
+ * hundred.
  */
 export async function getAvailableStock(organizationId: string, query: AvailabilityQuery) {
   return runAsTenant(organizationId, async (tx) => {
@@ -115,42 +127,35 @@ export async function getAvailableStock(organizationId: string, query: Availabil
       itemId: query.itemId,
       locationId: query.locationId,
       ownership: query.ownership,
+      search: query.search,
+      limit: query.limit,
     });
     if (batches.length === 0) return [];
 
-    const rows = await tx.batch.findMany({
-      where: { id: { in: batches.map((l) => l.batchId) }, organizationId, isDeleted: false },
-      select: { id: true, state: true, item: { select: { inventoryTracking: true } } },
+    // Every row here is the same item, so its tracking mode is one read, not one
+    // per batch.
+    const item = await tx.item.findFirst({
+      where: { id: query.itemId, organizationId, isDeleted: false },
+      select: { inventoryTracking: true },
     });
-    const metaById = new Map(rows.map((r) => [r.id, r]));
 
-    const out = [];
-    for (const batch of batches) {
-      const meta = metaById.get(batch.batchId);
-      const balance = await getBalance(tx, {
-        organizationId,
-        batchId: batch.batchId,
-        locationId: query.locationId,
-      });
-
-      out.push({
-        batchId: batch.batchId,
-        batchNumber: batch.batchNumber,
-        itemId: batch.itemId,
-        uomId: batch.uomId,
-        ownership: batch.ownership,
-        ownerPartyId: batch.ownerPartyId,
-        availableQty: batch.availableQty.toString(),
-        accumulatedValue: balance.value.toString(),
-        // Cost per unit of what is LEFT, not of what was received. Derived every
-        // time; there is no stored cost column (plan §3, decision 1).
-        costPerUnit: batch.availableQty.greaterThan(0)
-          ? balance.value.dividedBy(batch.availableQty).toDecimalPlaces(4).toString()
-          : null,
-        inventoryTracking: meta?.item.inventoryTracking ?? 'none',
-      });
-    }
-    return out;
+    return batches.map((batch) => ({
+      batchId: batch.batchId,
+      batchNumber: batch.batchNumber,
+      supplierBatchRef: batch.supplierBatchRef,
+      itemId: batch.itemId,
+      uomId: batch.uomId,
+      ownership: batch.ownership,
+      ownerPartyId: batch.ownerPartyId,
+      availableQty: batch.availableQty.toString(),
+      accumulatedValue: batch.value.toString(),
+      // Cost per unit of what is LEFT, not of what was received. Derived every
+      // time; there is no stored cost column (plan §3, decision 1).
+      costPerUnit: batch.availableQty.greaterThan(0)
+        ? batch.value.dividedBy(batch.availableQty).toDecimalPlaces(4).toString()
+        : null,
+      inventoryTracking: item?.inventoryTracking ?? 'none',
+    }));
   });
 }
 

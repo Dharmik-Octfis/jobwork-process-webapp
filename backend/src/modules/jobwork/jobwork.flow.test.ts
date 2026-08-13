@@ -1135,6 +1135,68 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     ).rejects.toMatchObject({ status: 400 });
   });
 
+  /**
+   * 🔴 THE RULE THAT MAKES A BATCH-TRACKED ITEM MEAN ANYTHING.
+   *
+   * `inventoryTracking = 'batch'` is a promise that every metre can be traced back
+   * to the roll it came off, and an issue is where that trace is created. A
+   * batch-less line would have one invented for it by the scaffold in
+   * `resolveLines` — a batch that traces to nothing, at a moment nobody can
+   * reconstruct afterwards, because by then the goods are at the processor.
+   *
+   * The same test pins the other half: an item at `none` still goes out on a bare
+   * quantity, because that is the whole point of the setting.
+   */
+  it('refuses a batch-less line for a batch-tracked item, and allows one for an untracked item', async () => {
+    const stitching = await createNewProcess(orgId, {
+      name: `Stitching ${unique()}`,
+      itemChanges: true,
+    });
+
+    const dyedBatch = await stockUp(dyedId, 100);
+
+    const jobOrder = await createNewJobOrder(orgId, {
+      steps: [
+        {
+          processId: stitching.id,
+          processorId: cutterId,
+          // Dyed Fabric is `batch`; Cut Shirt Panels is `none`.
+          inputs: [
+            { itemId: dyedId, plannedQty: 100 },
+            { itemId: shirtId, plannedQty: 50 },
+          ],
+          outputs: [{ itemId: shirtsId, isPrimary: true }],
+        },
+      ],
+    });
+    const stepId = jobOrder.steps[0]!.id;
+
+    await expect(
+      createNewJobIssue(orgId, {
+        jobOrderStepId: stepId,
+        sourceLocationId: godownId,
+        lines: [{ itemId: dyedId, qty: 100 }],
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      details: { 'lines.0.batchId': 'Pick a batch.' },
+    });
+
+    // Named batch for the tracked item, bare quantity for the untracked one —
+    // one challan, and the untracked line still gets a batch minted for it.
+    const issue = await createNewJobIssue(orgId, {
+      jobOrderStepId: stepId,
+      sourceLocationId: godownId,
+      lines: [
+        { itemId: dyedId, batchId: dyedBatch.id, qty: 100 },
+        { itemId: shirtId, qty: 50 },
+      ],
+    });
+
+    expect(issue.lines).toHaveLength(2);
+    for (const line of issue.lines) expect(line.batchId).toBeTruthy();
+  });
+
   it('consumes three items and returns two, with the value conserved', async () => {
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
@@ -1489,7 +1551,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
         itemChanges: true,
       });
 
-      await stockUp(dyedId, 100);
+      // Dyed Fabric is batch-tracked, so the line has to name the batch it came
+      // out of — `resolveLines` refuses a batch-less line for such an item.
+      const dyedBatch = await stockUp(dyedId, 100);
 
       const jobOrder = await createNewJobOrder(orgId, {
         steps: [
@@ -1508,7 +1572,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       const issue = await createNewJobIssue(orgId, {
         jobOrderStepId: step1.id,
         sourceLocationId: godownId,
-        lines: [{ itemId: dyedId, qty: 100 }],
+        lines: [{ itemId: dyedId, batchId: dyedBatch.id, qty: 100 }],
       });
 
       const after = await appendJobOrderSteps(orgId, jobOrder.id, {
@@ -1625,7 +1689,8 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
         name: `Stitching ${unique()}`,
         itemChanges: true,
       });
-      await stockUp(dyedId, 100);
+      // Batch-tracked, so the line names its batch — see the note above.
+      const dyedBatch = await stockUp(dyedId, 100);
 
       const jobOrder = await createNewJobOrder(orgId, {
         steps: [
@@ -1648,7 +1713,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       const issue = await createNewJobIssue(orgId, {
         jobOrderStepId: jobOrder.steps[0]!.id,
         sourceLocationId: godownId,
-        lines: [{ itemId: dyedId, qty: 100 }],
+        lines: [{ itemId: dyedId, batchId: dyedBatch.id, qty: 100 }],
       });
 
       return { jobOrder, issue, cutting, stitching };

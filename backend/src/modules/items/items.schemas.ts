@@ -165,6 +165,15 @@ export const itemOpeningStockSchema = openApiRegistry.register(
   'ItemOpeningStockRequest',
   z.object({
     locationRows: z.array(locationRowSchema),
+    /**
+     * Whose goods these are — applied to batches this save CREATES, never to ones
+     * it merely adjusts. The Item screen omits it and gets `own`; the Issue dialog
+     * passes the job order's, because a customer-ownership order can only be fed
+     * by customer-owned stock (the availability query filters on it, §5.2) and
+     * stock added as our own would appear to have vanished.
+     */
+    ownership: z.enum(['own', 'customer']).optional(),
+    ownerPartyId: z.string().uuid().nullable().optional(),
   }),
 );
 

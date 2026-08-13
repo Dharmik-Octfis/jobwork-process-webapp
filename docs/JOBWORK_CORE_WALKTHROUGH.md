@@ -263,6 +263,14 @@ the shelf today.
 3. **The tolerance ceiling.** Per item, cumulative across every challan for that step:
    `planned × (1 + tolerancePct ÷ 100)`. Over it the save is refused until a reason is typed. Rework
    issues are excluded from the running total.
+4. **The batch, when the item is batch-tracked.** 🔴 An item at `inventoryTracking = 'batch'` cannot
+   be issued without naming the batch it goes out of — `resolveLines` returns 400 with
+   `details['lines.N.batchId']`. That column is a promise that every metre traces to the roll it
+   came off, and an issue is the moment the trace is created; a batch invented then traces to
+   nothing, and by the time anyone notices the goods are at the processor. The same column already
+   refuses batch-less opening stock, so the two screens now say the same thing. Items at
+   `inventoryTracking = 'none'` are unaffected — a bare quantity is exactly what that setting means
+   (§10.5).
 
 ### 5.4 The ledger writes — two rows per line
 
@@ -489,7 +497,7 @@ Deleting "Dyeing" does not free the name — which is why creating it again **re
 rather than failing. The same reasoning is why step `seq` values are hard-deleted rather than soft: a
 removed step would otherwise hold its number forever.
 
-### 10.5 Stock availability is currently not enforced
+### 10.5 Stock availability is currently not enforced — for untracked items only
 
 ⚠️ The issue screen will presently create a **zero-valued batch** for an item with no stock on record.
 This is temporary scaffolding from before Purchase Received existed — without it there would be no
@@ -497,5 +505,24 @@ way to put stock on the books at all and the whole loop would be untestable. The
 is deliberately _not_ relaxed alongside it: raw material can be conjured while Purchase Received is
 missing, work in progress cannot.
 
-🔴 Restore the `availableQty > 0` check the day Purchase Received lands. Until then the issue screen
-tells you what _should_ be there rather than what is.
+🔴 Since 2026-08-13 the scaffold is reachable **only for `inventoryTracking = 'none'`**. A
+batch-tracked item is turned away by guard 4 (§5.3) before it gets there, so the one case where an
+invented batch would destroy real information no longer happens. What the storekeeper does instead is
+**Add stock** on the Issue screen itself: one batch, at the godown the challan is going out of, owned
+by whoever owns the job order.
+
+That button opens the **same** editor the Item page's "Add Opening Stock" opens — every location, every
+existing batch — and posts to the same `POST /items/:id/opening-stock`. Two screens writing one document
+must not show two different pictures of it.
+
+🔴 It only became safe to open from there on 2026-08-13, when that endpoint stopped being destructive.
+It used to reverse **every** opening movement the item had and re-create them from the payload, which is
+only sound while nothing has left: batch A opens at 100, 40 go to a dyer, someone re-saves, and the full
+100 is reversed at the godown — A lands at **−40** while a new A′ takes the +100. The location total
+still added up, which is why it went unnoticed; `getAvailableBatches` filters on a positive balance, so A
+simply vanished from every picker. It now reconciles by **delta** against what the document already said
+(`items.service.settleOpening`), keyed on the batch id the form round-trips, and a reduction that would
+take out stock which has already moved is refused by name. Pinned by `items.openingStock.test.ts`.
+
+🔴 Restore the `availableQty > 0` check for every item the day Purchase Received lands. Until then the
+issue screen tells you what _should_ be there rather than what is — for untracked items.

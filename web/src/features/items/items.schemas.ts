@@ -164,6 +164,14 @@ export const itemOpeningStockLocationRowSchema = z.object({
 
 export const itemOpeningStockSchema = z.object({
   locationRows: z.array(itemOpeningStockLocationRowSchema),
+  /**
+   * Whose goods these are — applied to batches the save CREATES, never to ones it
+   * merely adjusts. The Item screen omits it and gets `own`; the Issue dialog
+   * passes the job order's, because a customer-ownership order can only be fed by
+   * customer-owned stock and anything added as our own would be invisible to it.
+   */
+  ownership: z.enum(['own', 'customer']).optional(),
+  ownerPartyId: z.string().nullable().optional(),
 });
 
 export type ItemOpeningStockBatchDto = z.infer<typeof itemOpeningStockBatchSchema>;

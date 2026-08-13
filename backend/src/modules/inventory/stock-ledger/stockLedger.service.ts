@@ -2,6 +2,7 @@ import { Prisma } from '../../../../generated/prisma/client.ts';
 import type { TenantClient } from '../../../db/prisma.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
 import { allocateNumber } from '../../../lib/numberSequence.ts';
+import { searchWhere } from '../../../lib/pagination.ts';
 
 /**
  * 🔴 THE ONLY WRITER OF `stock_ledger`, AND THE ONLY CREATOR OF BATCHES.
@@ -309,6 +310,11 @@ export interface AvailableBatch {
   ownership: string;
   ownerPartyId: string | null;
   availableQty: Prisma.Decimal;
+  /** What is LEFT is worth, summed in the same pass as the quantity. Present so a
+   * caller showing cost per unit does not issue a `getBalance` per batch — that
+   * was one query per row, which is invisible at three batches and is the whole
+   * response time at three hundred. */
+  value: Prisma.Decimal;
 }
 
 /**
@@ -328,6 +334,11 @@ export interface AvailableBatch {
  * `groupBy` cannot express `HAVING SUM(a) - SUM(b) > 0`. The grouped set is one
  * row per batch for one item at one location, which is small; if a real query ever
  * proves otherwise the fix is a raw `HAVING`, not a stored balance (§5.6).
+ *
+ * `search` and `limit` narrow what comes BACK, never what is counted: the balance
+ * groupBy runs over everything, and the two only bound the batch rows hydrated for
+ * a picker. So a limited result is a limited view of a complete answer, and no
+ * total anywhere shifts because someone typed in a search box.
  */
 export async function getAvailableBatches(
   tx: TenantClient,
@@ -337,12 +348,17 @@ export async function getAvailableBatches(
     locationId?: string;
     ownership?: Ownership;
     asOf?: Date;
+    /** Batch number or the supplier's own reference — the two things printed on
+     * the tag, and the only two a user can read off the goods. */
+    search?: string;
+    /** A ceiling on rows returned, for a picker that cannot render hundreds. */
+    limit?: number;
   },
 ): Promise<AvailableBatch[]> {
   const grouped = await tx.stockLedgerEntry.groupBy({
     by: ['batchId'],
     where: balanceWhere(filter),
-    _sum: { qtyIn: true, qtyOut: true },
+    _sum: { qtyIn: true, qtyOut: true, valueIn: true, valueOut: true },
   });
 
   const zero = new Prisma.Decimal(0);
@@ -350,6 +366,7 @@ export async function getAvailableBatches(
     .map((row) => ({
       batchId: row.batchId,
       availableQty: (row._sum.qtyIn ?? zero).minus(row._sum.qtyOut ?? zero),
+      value: (row._sum.valueIn ?? zero).minus(row._sum.valueOut ?? zero),
     }))
     .filter((row) => row.availableQty.greaterThan(0));
 
@@ -360,7 +377,12 @@ export async function getAvailableBatches(
       id: { in: positive.map((row) => row.batchId) },
       organizationId: filter.organizationId,
       isDeleted: false,
+      ...searchWhere<Prisma.BatchWhereInput>(filter.search, ['batchNumber', 'supplierBatchRef']),
     },
+    // Ordered and capped HERE rather than after hydration, so a limit actually
+    // bounds the rows the database builds.
+    orderBy: { batchNumber: 'asc' },
+    ...(filter.limit ? { take: filter.limit } : {}),
     select: {
       id: true,
       batchNumber: true,
@@ -377,13 +399,20 @@ export async function getAvailableBatches(
     },
   });
 
-  const byId = new Map(batches.map((batch) => [batch.id, batch]));
-  return positive
-    .flatMap((row) => {
-      const batch = byId.get(row.batchId);
-      return batch ? [{ ...batch, batchId: batch.id, availableQty: row.availableQty }] : [];
-    })
-    .sort((a, b) => a.batchNumber.localeCompare(b.batchNumber));
+  const balanceById = new Map(positive.map((row) => [row.batchId, row]));
+  return batches.flatMap((batch) => {
+    const balance = balanceById.get(batch.id);
+    return balance
+      ? [
+          {
+            ...batch,
+            batchId: batch.id,
+            availableQty: balance.availableQty,
+            value: balance.value,
+          },
+        ]
+      : [];
+  });
 }
 
 export interface CreateBatchInput {
