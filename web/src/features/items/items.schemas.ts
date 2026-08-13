@@ -140,6 +140,7 @@ export type ItemFormData = z.infer<typeof itemFormSchema>;
 
 export const itemOpeningStockBatchSchema = z.object({
   id: z.string().optional(),
+  batchNumber: z.string().optional().nullable(),
   batchReference: z.string().optional().nullable(),
   manufacturerBatch: z.string().optional().nullable(),
   manufacturedDate: z.string().optional().nullable(),

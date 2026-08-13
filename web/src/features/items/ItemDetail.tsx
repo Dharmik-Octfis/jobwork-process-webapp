@@ -5,6 +5,7 @@ import { X, Edit, ChevronDown } from 'lucide-react';
 import { useState, useRef, useEffect, Fragment } from 'react';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { ItemLocations } from './components/ItemLocations';
+import { ItemBatchDetails } from './components/ItemBatchDetails';
 import { ItemActivityHistory } from './ItemActivityHistory';
 import { ItemImageGallery } from './components/ItemImageGallery';
 import { CompositeItemsList } from '../inventory/composite-items/CompositeItemsList';
@@ -287,6 +288,9 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
         {[
           'Overview',
           'Locations',
+          ...(item.inventoryTracking === 'batch' || (item as any).inventory_tracking === 'batch'
+            ? ['Batch Details']
+            : []),
           'Transactions',
           'Related Lists',
           'History',
@@ -570,6 +574,15 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
         ) : activeTab === 'Locations' ? (
           <div style={{ margin: '0 -24px' }}>
             <ItemLocations orgId={orgId!} itemId={itemId} />
+          </div>
+        ) : activeTab === 'Batch Details' ? (
+          <div style={{ margin: '0 -24px' }}>
+            <ItemBatchDetails
+              orgId={orgId!}
+              itemId={itemId}
+              itemName={item.name}
+              inventoryTracking={item.inventoryTracking}
+            />
           </div>
         ) : (
           <div

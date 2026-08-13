@@ -20,6 +20,12 @@ export function ItemLocations({ orgId, itemId }: ItemLocationsProps) {
   const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
   const [isOpeningStockModalOpen, setIsOpeningStockModalOpen] = useState(false);
 
+  const { data: item } = useQuery({
+    queryKey: ['item', orgId, itemId],
+    queryFn: () => itemsApi.getItem(orgId, itemId),
+    enabled: !!orgId && !!itemId,
+  });
+
   const { data: locations = [], isLoading } = useQuery({
     queryKey: ['locations', orgId],
     queryFn: () => fetchLocations(orgId),
@@ -358,6 +364,8 @@ export function ItemLocations({ orgId, itemId }: ItemLocationsProps) {
           isOpen
           onClose={() => setIsOpeningStockModalOpen(false)}
           orgId={orgId}
+          inventoryTracking={item?.inventoryTracking}
+          itemName={item?.name}
           initialRows={openingStockRows}
           isSaving={saveOpeningStockMutation.isPending}
           onSave={async (rows) => {

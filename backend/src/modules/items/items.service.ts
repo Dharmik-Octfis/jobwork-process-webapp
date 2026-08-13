@@ -161,16 +161,73 @@ export class ItemsService {
       orderBy: { postedAt: 'asc' },
     });
 
+    const reversals = await tx.stockLedgerEntry.findMany({
+      where: {
+        organizationId,
+        itemId,
+        sourceDocType: 'item_opening_stock',
+        movementType: 'reversal',
+      },
+      select: { batchId: true },
+    });
+
+    const reversedBatchIds = new Set(reversals.map((r) => r.batchId));
+    const activeEntries = entries.filter((entry) => !reversedBatchIds.has(entry.batchId));
+
     const locationIds = new Set<string>([
       ...declared.map((row) => row.locationId),
-      ...entries.map((entry) => entry.locationId),
+      ...activeEntries.map((entry) => entry.locationId),
     ]);
+
+    if (locationIds.size === 0) {
+      const item = await tx.item.findFirst({
+        where: { id: itemId, organizationId, isDeleted: false },
+        select: { openingStock: true, openingStockValuePerUnit: true },
+      });
+
+      if (
+        item &&
+        item.openingStock !== null &&
+        item.openingStock !== undefined &&
+        Number(item.openingStock) > 0
+      ) {
+        const primaryLoc =
+          (await tx.location.findFirst({
+            where: { organizationId, isPrimary: true, isDeleted: false },
+          })) ??
+          (await tx.location.findFirst({
+            where: { organizationId, isDeleted: false },
+          }));
+
+        if (primaryLoc) {
+          const itemOpeningQty = Number(item.openingStock);
+          const itemOpeningVal =
+            item.openingStockValuePerUnit !== null &&
+            item.openingStockValuePerUnit !== undefined
+              ? Number(item.openingStockValuePerUnit)
+              : null;
+
+          return [
+            {
+              id: primaryLoc.id,
+              locationId: primaryLoc.id,
+              openingStock: itemOpeningQty,
+              openingStockValue: itemOpeningVal,
+              stockOnHand: itemOpeningQty,
+              committedStock: 0,
+              availableForSale: itemOpeningQty,
+              batches: [],
+            },
+          ];
+        }
+      }
+    }
 
     const out = [];
     for (const locationId of locationIds) {
       const row = declared.find((d) => d.locationId === locationId);
       const balance = await getBalance(tx, { organizationId, itemId, locationId });
-      const mine = entries.filter((entry) => entry.locationId === locationId);
+      const mine = activeEntries.filter((entry) => entry.locationId === locationId);
 
       out.push({
         id: row?.id ?? locationId,
@@ -312,6 +369,77 @@ export class ItemsService {
           updatedBy: userId ?? null,
         },
       });
+
+      if (
+        item.trackInventory &&
+        item.stockingUomId &&
+        rest.openingStock !== undefined &&
+        rest.openingStock !== null &&
+        Number(rest.openingStock) > 0
+      ) {
+        const primaryLoc =
+          (await tx.location.findFirst({
+            where: { organizationId, isPrimary: true, isDeleted: false },
+          })) ??
+          (await tx.location.findFirst({
+            where: { organizationId, isDeleted: false },
+          }));
+
+        if (primaryLoc) {
+          const declaredQty = new Prisma.Decimal(rest.openingStock);
+          const valuePerUnit =
+            rest.openingStockValuePerUnit !== undefined && rest.openingStockValuePerUnit !== null
+              ? new Prisma.Decimal(rest.openingStockValuePerUnit)
+              : null;
+
+          await tx.itemOpeningStockRow.upsert({
+            where: {
+              // eslint-disable-next-line @typescript-eslint/naming-convention
+              organizationId_itemId_locationId: {
+                organizationId,
+                itemId: item.id,
+                locationId: primaryLoc.id,
+              },
+            },
+            create: {
+              organizationId,
+              itemId: item.id,
+              locationId: primaryLoc.id,
+              openingStock: declaredQty,
+              openingStockValuePerUnit: valuePerUnit,
+              createdBy: userId ?? null,
+              updatedBy: userId ?? null,
+            },
+            update: {
+              openingStock: declaredQty,
+              openingStockValuePerUnit: valuePerUnit,
+              isDeleted: false,
+              updatedBy: userId ?? null,
+            },
+          });
+
+          const batch = await createBatch(tx, {
+            organizationId,
+            itemId: item.id,
+            uomId: item.stockingUomId,
+            sourceDocType: 'item_opening_stock',
+            sourceDocId: item.id,
+            userId,
+          });
+
+          await postMovement(tx, {
+            organizationId,
+            batchId: batch.id,
+            locationId: primaryLoc.id,
+            movementType: 'opening',
+            qtyIn: declaredQty,
+            valueIn: valuePerUnit ? declaredQty.times(valuePerUnit) : 0,
+            sourceDocType: 'item_opening_stock',
+            sourceDocId: item.id,
+            userId,
+          });
+        }
+      }
 
       await tx.itemActivity.create({
         data: {
@@ -598,12 +726,30 @@ export class ItemsService {
       if (!item.stockingUomId)
         throw ApiError.badRequest('Cannot add stock without a stocking unit of measurement.');
 
-      // A correction is a REVERSING ENTRY, never an edit (inventory.prisma). The
-      // old rows stay; their effect is cancelled.
-      const oldEntries = await tx.stockLedgerEntry.findMany({
-        where: { organizationId, itemId, sourceDocType: 'item_opening_stock' },
+      // A correction is a REVERSING ENTRY, never an edit (inventory.prisma).
+      // Only active unreversed opening entries need to be backed out.
+      const oldOpenings = await tx.stockLedgerEntry.findMany({
+        where: {
+          organizationId,
+          itemId,
+          sourceDocType: 'item_opening_stock',
+          movementType: 'opening',
+        },
       });
-      for (const old of oldEntries) {
+      const oldReversals = await tx.stockLedgerEntry.findMany({
+        where: {
+          organizationId,
+          itemId,
+          sourceDocType: 'item_opening_stock',
+          movementType: 'reversal',
+        },
+        select: { batchId: true },
+      });
+
+      const reversedBatchIds = new Set(oldReversals.map((r) => r.batchId));
+      const activeOldEntries = oldOpenings.filter((old) => !reversedBatchIds.has(old.batchId));
+
+      for (const old of activeOldEntries) {
         await postMovement(tx, {
           organizationId,
           batchId: old.batchId,
@@ -632,9 +778,11 @@ export class ItemsService {
         const batchTotal = rows.reduce((sum, b) => sum + Number(b.quantityIn), 0);
 
         const declaredQty =
-          locRow.openingStock !== null &&
-          locRow.openingStock !== undefined &&
-          locRow.openingStock !== ''
+          requiresBatchDetail && rows.length > 0
+            ? new Prisma.Decimal(batchTotal)
+            : locRow.openingStock !== null &&
+              locRow.openingStock !== undefined &&
+              locRow.openingStock !== ''
             ? new Prisma.Decimal(locRow.openingStock)
             : new Prisma.Decimal(batchTotal);
 
@@ -682,8 +830,7 @@ export class ItemsService {
 
         if (declaredQty.lessThanOrEqualTo(0) && rows.length === 0) continue;
 
-        // 🔴 No batch rows still means ONE batch. The ledger has to hang the
-        // quantity on something, and `none` is about what the user sees.
+        // 🔴 Post user-entered batch rows ONLY
         const toPost =
           rows.length > 0
             ? rows
@@ -714,8 +861,6 @@ export class ItemsService {
             locationId: locRow.locationId,
             movementType: 'opening',
             qtyIn: qty,
-            // Value follows quantity, so opening stock enters the books at the
-            // rate that was declared for it.
             valueIn: valuePerUnit ? qty.times(valuePerUnit) : 0,
             sourceDocType: 'item_opening_stock',
             sourceDocId: itemId,
