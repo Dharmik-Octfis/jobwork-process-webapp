@@ -40,10 +40,25 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     enabled: Boolean(orgId && itemId),
   });
 
+  const isInventoryTracked =
+    item?.trackInventory !== false && item?.track_inventory !== false;
+  const isBatchTracked =
+    isInventoryTracked &&
+    (item?.inventoryTracking === 'batch' || item?.inventory_tracking === 'batch');
+  const isCompositeItem =
+    item?.itemType === 'Composite Item' || item?.item_type === 'Composite Item';
+
+  const effectiveActiveTab =
+    (activeTab === 'Locations' && !isInventoryTracked) ||
+    (activeTab === 'Batch Details' && !isBatchTracked) ||
+    (activeTab === 'Components' && !isCompositeItem)
+      ? 'Overview'
+      : activeTab;
+
   const { data: activities = [], isLoading: isLoadingActivities } = useQuery({
     queryKey: ['itemActivities', orgId, itemId],
     queryFn: () => itemsApi.fetchItemActivities(orgId!, itemId),
-    enabled: Boolean(orgId && itemId) && activeTab === 'History',
+    enabled: Boolean(orgId && itemId) && effectiveActiveTab === 'History',
   });
 
   const deleteMutation = useMutation({
@@ -287,16 +302,12 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
       >
         {[
           'Overview',
-          'Locations',
-          ...(item.inventoryTracking === 'batch' || (item as any).inventory_tracking === 'batch'
-            ? ['Batch Details']
-            : []),
+          ...(isInventoryTracked ? ['Locations'] : []),
+          ...(isBatchTracked ? ['Batch Details'] : []),
           'Transactions',
           'Related Lists',
           'History',
-          ...(item.itemType === 'Composite Item' || item.item_type === 'Composite Item'
-            ? ['Components']
-            : []),
+          ...(isCompositeItem ? ['Components'] : []),
         ].map((tab, idx) => (
           <Fragment key={tab}>
             {idx > 0 && <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />}
@@ -305,9 +316,10 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
               style={{
                 padding: '12px 0',
                 fontSize: '13px',
-                fontWeight: activeTab === tab ? 500 : 400,
-                color: activeTab === tab ? '#0062ff' : '#64748b',
-                borderBottom: activeTab === tab ? '2px solid #0062ff' : '2px solid transparent',
+                fontWeight: effectiveActiveTab === tab ? 500 : 400,
+                color: effectiveActiveTab === tab ? '#0062ff' : '#64748b',
+                borderBottom:
+                  effectiveActiveTab === tab ? '2px solid #0062ff' : '2px solid transparent',
                 cursor: 'pointer',
               }}
             >
@@ -319,16 +331,16 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
 
       {/* Content */}
       <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
-        {activeTab === 'History' ? (
+        {effectiveActiveTab === 'History' ? (
           <div style={{ margin: '-24px' }}>
             <ItemActivityHistory activities={activities} isLoading={isLoadingActivities} />
           </div>
-        ) : activeTab === 'Components' &&
+        ) : effectiveActiveTab === 'Components' &&
           (item.itemType === 'Composite Item' || item.item_type === 'Composite Item') ? (
           <div style={{ margin: '-24px' }}>
             <CompositeItemsList itemId={itemId} />
           </div>
-        ) : activeTab === 'Overview' ? (
+        ) : effectiveActiveTab === 'Overview' ? (
           <div
             style={{
               display: 'grid',
@@ -458,124 +470,126 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
               <ItemImageGallery orgId={orgId!} itemId={itemId} item={item} />
 
               {/* Opening Stock */}
-              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px' }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    marginBottom: '16px',
-                  }}
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="#0062ff"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+              {isInventoryTracked && (
+                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      marginBottom: '16px',
+                    }}
                   >
-                    <path d="M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35A2 2 0 0 1 3.26 6.5l8-3.2a2 2 0 0 1 1.48 0l8 3.2A2 2 0 0 1 22 8.35Z"></path>
-                    <path d="M6 18h12"></path>
-                    <path d="M6 14h12"></path>
-                    <rect width="12" height="12" x="6" y="10"></rect>
-                  </svg>
-                  <h3 style={{ fontSize: '13px', fontWeight: 500, color: '#0062ff', margin: 0 }}>
-                    Opening Stock
-                  </h3>
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#0062ff"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35A2 2 0 0 1 3.26 6.5l8-3.2a2 2 0 0 1 1.48 0l8 3.2A2 2 0 0 1 22 8.35Z"></path>
+                      <path d="M6 18h12"></path>
+                      <path d="M6 14h12"></path>
+                      <rect width="12" height="12" x="6" y="10"></rect>
+                    </svg>
+                    <h3 style={{ fontSize: '13px', fontWeight: 500, color: '#0062ff', margin: 0 }}>
+                      Opening Stock
+                    </h3>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div
+                      style={{
+                        background: '#fff',
+                        padding: '12px',
+                        borderRadius: '6px',
+                        border: '1px solid #eef0f3',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '2px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                        <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
+                          {item.openingStock || item.opening_stock || 0}
+                        </span>
+                        <span style={{ fontSize: '10px', color: '#64748b' }}>
+                          {item.unit || 'Qty'}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#1e293b' }}>Opening Stock</div>
+                    </div>
+
+                    <div
+                      style={{
+                        background: '#fff',
+                        padding: '12px',
+                        borderRadius: '6px',
+                        border: '1px solid #eef0f3',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '2px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                        <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>0</span>
+                        <span style={{ fontSize: '10px', color: '#64748b' }}>Qty</span>
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#1e293b' }}>Stock In</div>
+                    </div>
+
+                    <div
+                      style={{
+                        background: '#fff',
+                        padding: '12px',
+                        borderRadius: '6px',
+                        border: '1px solid #eef0f3',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '2px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                        <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>0</span>
+                        <span style={{ fontSize: '10px', color: '#64748b' }}>Qty</span>
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#1e293b' }}>Stock Out</div>
+                    </div>
+
+                    <div
+                      style={{
+                        background: '#fff',
+                        padding: '12px',
+                        borderRadius: '6px',
+                        border: '1px solid #eef0f3',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '2px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                        <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
+                          {item.openingStock || item.opening_stock || 0}
+                        </span>
+                        <span style={{ fontSize: '10px', color: '#64748b' }}>
+                          {item.unit || 'Qty'}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#1e293b' }}>Stock on Hand</div>
+                    </div>
+                  </div>
                 </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                  <div
-                    style={{
-                      background: '#fff',
-                      padding: '12px',
-                      borderRadius: '6px',
-                      border: '1px solid #eef0f3',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '2px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                      <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
-                        {item.openingStock || item.opening_stock || 0}
-                      </span>
-                      <span style={{ fontSize: '10px', color: '#64748b' }}>
-                        {item.unit || 'Qty'}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#1e293b' }}>Opening Stock</div>
-                  </div>
-
-                  <div
-                    style={{
-                      background: '#fff',
-                      padding: '12px',
-                      borderRadius: '6px',
-                      border: '1px solid #eef0f3',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '2px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                      <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>0</span>
-                      <span style={{ fontSize: '10px', color: '#64748b' }}>Qty</span>
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#1e293b' }}>Stock In</div>
-                  </div>
-
-                  <div
-                    style={{
-                      background: '#fff',
-                      padding: '12px',
-                      borderRadius: '6px',
-                      border: '1px solid #eef0f3',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '2px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                      <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>0</span>
-                      <span style={{ fontSize: '10px', color: '#64748b' }}>Qty</span>
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#1e293b' }}>Stock Out</div>
-                  </div>
-
-                  <div
-                    style={{
-                      background: '#fff',
-                      padding: '12px',
-                      borderRadius: '6px',
-                      border: '1px solid #eef0f3',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '2px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                      <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
-                        {item.openingStock || item.opening_stock || 0}
-                      </span>
-                      <span style={{ fontSize: '10px', color: '#64748b' }}>
-                        {item.unit || 'Qty'}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#1e293b' }}>Stock on Hand</div>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           </div>
-        ) : activeTab === 'Locations' ? (
+        ) : effectiveActiveTab === 'Locations' ? (
           <div style={{ margin: '0 -24px' }}>
             <ItemLocations orgId={orgId!} itemId={itemId} />
           </div>
-        ) : activeTab === 'Batch Details' ? (
+        ) : effectiveActiveTab === 'Batch Details' && isBatchTracked ? (
           <div style={{ margin: '0 -24px' }}>
             <ItemBatchDetails
               orgId={orgId!}

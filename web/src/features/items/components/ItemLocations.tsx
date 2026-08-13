@@ -56,8 +56,8 @@ export function ItemLocations({ orgId, itemId }: ItemLocationsProps) {
         (acc, batch) => acc + (Number(batch.quantityIn) || 0),
         0,
       );
-      const stockOnHand = Number(row.stockOnHand ?? row.openingStock ?? batchTotal) || 0;
-      map.set(row.locationId, stockOnHand);
+      const stockVal = Number(row.openingStock ?? row.stockOnHand ?? batchTotal) || 0;
+      map.set(row.locationId, stockVal);
     }
     return map;
   }, [openingStockRows]);
@@ -364,6 +364,7 @@ export function ItemLocations({ orgId, itemId }: ItemLocationsProps) {
           isOpen
           onClose={() => setIsOpeningStockModalOpen(false)}
           orgId={orgId}
+          itemId={itemId}
           inventoryTracking={item?.inventoryTracking}
           itemName={item?.name}
           initialRows={openingStockRows}

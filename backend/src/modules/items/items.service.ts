@@ -743,26 +743,52 @@ export class ItemsService {
           sourceDocType: 'item_opening_stock',
           movementType: 'reversal',
         },
-        select: { batchId: true },
       });
 
-      const reversedBatchIds = new Set(oldReversals.map((r) => r.batchId));
-      const activeOldEntries = oldOpenings.filter((old) => !reversedBatchIds.has(old.batchId));
+      // Track net active unreversed opening stock per (batchId, locationId)
+      const netMap = new Map<
+        string,
+        { batchId: string; locationId: string; netQty: Prisma.Decimal; netVal: Prisma.Decimal }
+      >();
 
-      for (const old of activeOldEntries) {
-        await postMovement(tx, {
-          organizationId,
+      for (const old of oldOpenings) {
+        const key = `${old.batchId}_${old.locationId}`;
+        const existing = netMap.get(key) ?? {
           batchId: old.batchId,
           locationId: old.locationId,
-          movementType: 'reversal',
-          qtyOut: old.qtyIn,
-          qtyIn: old.qtyOut,
-          valueOut: old.valueIn,
-          valueIn: old.valueOut,
-          sourceDocType: 'item_opening_stock',
-          sourceDocId: itemId,
-          userId,
-        });
+          netQty: new Prisma.Decimal(0),
+          netVal: new Prisma.Decimal(0),
+        };
+        existing.netQty = existing.netQty.plus(old.qtyIn ?? 0);
+        existing.netVal = existing.netVal.plus(old.valueIn ?? 0);
+        netMap.set(key, existing);
+      }
+
+      for (const rev of oldReversals) {
+        const key = `${rev.batchId}_${rev.locationId}`;
+        const existing = netMap.get(key);
+        if (existing) {
+          existing.netQty = existing.netQty.minus(rev.qtyOut ?? 0);
+          existing.netVal = existing.netVal.minus(rev.valueOut ?? 0);
+        }
+      }
+
+      for (const { batchId, locationId, netQty, netVal } of netMap.values()) {
+        if (netQty.greaterThan(0)) {
+          await postMovement(tx, {
+            organizationId,
+            batchId,
+            locationId,
+            movementType: 'reversal',
+            qtyOut: netQty,
+            qtyIn: new Prisma.Decimal(0),
+            valueOut: netVal,
+            valueIn: new Prisma.Decimal(0),
+            sourceDocType: 'item_opening_stock',
+            sourceDocId: itemId,
+            userId,
+          });
+        }
       }
 
       // Soft delete, not a wipe: the row carries who declared what and when.
@@ -778,13 +804,17 @@ export class ItemsService {
         const batchTotal = rows.reduce((sum, b) => sum + Number(b.quantityIn), 0);
 
         const declaredQty =
-          requiresBatchDetail && rows.length > 0
-            ? new Prisma.Decimal(batchTotal)
-            : locRow.openingStock !== null &&
-              locRow.openingStock !== undefined &&
-              locRow.openingStock !== ''
+          locRow.openingStock !== null &&
+          locRow.openingStock !== undefined &&
+          locRow.openingStock !== ''
             ? new Prisma.Decimal(locRow.openingStock)
             : new Prisma.Decimal(batchTotal);
+
+        if (requiresBatchDetail && rows.length > 0 && new Prisma.Decimal(batchTotal).greaterThan(declaredQty)) {
+          throw ApiError.badRequest(
+            `Total batch quantity (${batchTotal}) cannot exceed location opening stock (${declaredQty.toString()}).`,
+          );
+        }
 
         if (requiresBatchDetail && rows.length === 0 && declaredQty.greaterThan(0)) {
           throw ApiError.badRequest(

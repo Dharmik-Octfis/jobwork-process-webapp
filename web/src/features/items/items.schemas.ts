@@ -46,6 +46,7 @@ export const itemSchema = z.object({
     .number({ message: 'Selling price is required' })
     .min(0, 'Selling price must be positive'),
   rate: z.number().nullable().optional(),
+  mrp: z.union([z.string(), z.number()]).nullable().optional(),
   account_id: z.string().max(100).nullable().optional(),
   salesDescription: z.string().nullable().optional(),
   sales_description: z.string().nullable().optional(),
