@@ -46,7 +46,6 @@ export const jobOrderStepSchema = z.object({
       id: z.string(),
       name: z.string(),
       code: z.string().nullable(),
-      preservesPackaging: z.boolean(),
       requiresSingleBatch: z.boolean(),
     })
     .optional(),
