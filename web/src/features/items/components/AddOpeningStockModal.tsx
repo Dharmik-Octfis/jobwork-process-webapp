@@ -164,7 +164,28 @@ export function AddOpeningStockModal({
   const handleSave = async () => {
     try {
       if (onSave) {
-        await onSave(locationRows);
+        const rowsToSave = locationRows.map((r) => {
+          if (!isBatchTracked) {
+            const qty = r.openingStock || '0';
+            return {
+              ...r,
+              batches: [
+                {
+                  id: r.batches[0]?.id || crypto.randomUUID(),
+                  batchReference: '',
+                  manufacturerBatch: '',
+                  manufacturedDate: '',
+                  expiryDate: '',
+                  sellingPrice: '',
+                  mrp: '',
+                  quantityIn: qty,
+                },
+              ],
+            };
+          }
+          return r;
+        });
+        await onSave(rowsToSave);
       }
       onClose();
     } catch (error) {
@@ -191,8 +212,12 @@ export function AddOpeningStockModal({
       isOpen={isOpen}
       onClose={onClose}
       title="Add Opening Stock"
-      subtitle="Enter location stock and batch details, then save to persist them."
-      width="1300px"
+      subtitle={
+        isBatchTracked
+          ? 'Enter location stock and batch details, then save to persist them.'
+          : 'Enter location stock details, then save to persist them.'
+      }
+      width={isBatchTracked ? '1300px' : '750px'}
       position="right"
       footer={
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', width: '100%' }}>
@@ -234,7 +259,7 @@ export function AddOpeningStockModal({
       }
     >
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1200px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: isBatchTracked ? '1200px' : '100%' }}>
           <thead>
             <tr>
               <th

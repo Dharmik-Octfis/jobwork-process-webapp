@@ -1,10 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { itemsApi } from './items.api';
 import { useParams, useNavigate } from 'react-router-dom';
-import { X, Edit, ChevronDown } from 'lucide-react';
-import { useState, useRef, useEffect, Fragment } from 'react';
+import { X, Edit, ChevronDown, Building2, HelpCircle } from 'lucide-react';
+import { useState, useRef, useEffect, Fragment, useMemo } from 'react';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { ItemLocations } from './components/ItemLocations';
+import { ItemBatchDetails } from './components/ItemBatchDetails';
 import { ItemActivityHistory } from './ItemActivityHistory';
 import { ItemImageGallery } from './components/ItemImageGallery';
 import { CompositeItemsList } from '../inventory/composite-items/CompositeItemsList';
@@ -44,6 +45,34 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     queryFn: () => itemsApi.fetchItemActivities(orgId!, itemId),
     enabled: Boolean(orgId && itemId) && activeTab === 'History',
   });
+
+  const { data: openingStockRows = [] } = useQuery({
+    queryKey: ['itemOpeningStock', orgId, itemId],
+    queryFn: () => itemsApi.getOpeningStock(orgId!, itemId),
+    enabled: Boolean(orgId && itemId),
+  });
+
+  const isBatchTracked = useMemo(() => {
+    if (!item) return false;
+    return (
+      item.inventoryTracking === 'Batch' ||
+      item.inventory_tracking === 'Batch' ||
+      (Boolean(item.lotTracking) && item.lotTracking !== 'none')
+    );
+  }, [item]);
+
+  const totalOpeningStock = useMemo(() => {
+    if (Array.isArray(openingStockRows) && openingStockRows.length > 0) {
+      return openingStockRows.reduce((acc, row) => {
+        const batchTotal = Array.isArray(row.batches)
+          ? row.batches.reduce((bAcc, b) => bAcc + (Number(b.quantityIn) || 0), 0)
+          : 0;
+        const stockOnHand = Number(row.stockOnHand ?? row.openingStock ?? batchTotal) || batchTotal || 0;
+        return acc + stockOnHand;
+      }, 0);
+    }
+    return Number(item?.openingStock ?? item?.opening_stock ?? 0);
+  }, [openingStockRows, item]);
 
   const deleteMutation = useMutation({
     mutationFn: () => itemsApi.deleteItem(orgId!, itemId),
@@ -287,6 +316,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
         {[
           'Overview',
           'Locations',
+          ...(isBatchTracked ? ['Batch Details'] : []),
           'Transactions',
           'Related Lists',
           'History',
@@ -453,7 +483,253 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
               {/* Image Gallery & Upload */}
               <ItemImageGallery orgId={orgId!} itemId={itemId} item={item} />
 
-              {/* Opening Stock */}
+              {/* Opening Stock & Inventory Detailed Summary Card */}
+              <div
+                style={{
+                  background: '#f8fafc',
+                  padding: '20px 24px',
+                  borderRadius: '8px',
+                  border: '1px solid #f1f5f9',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '20px',
+                }}
+              >
+                {/* Opening Stock Header */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Building2 size={16} color="#0062ff" />
+                  <span style={{ fontSize: '14px', color: '#0062ff', fontWeight: 500 }}>
+                    Opening Stock
+                  </span>
+                  <span title="Total opening stock" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                    <HelpCircle
+                      size={14}
+                      color="#64748b"
+                      style={{ cursor: 'pointer' }}
+                    />
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      color: '#0f172a',
+                      marginLeft: '2px',
+                    }}
+                  >
+                    : {totalOpeningStock.toFixed(2)}
+                  </span>
+                </div>
+
+                {/* Accounting Stock Section */}
+                <div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      marginBottom: '12px',
+                    }}
+                  >
+                    <h3
+                      style={{
+                        fontSize: '15px',
+                        fontWeight: 600,
+                        color: '#0f172a',
+                        margin: 0,
+                      }}
+                    >
+                      Accounting Stock
+                    </h3>
+                    <span title="Accounting stock summary" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                      <HelpCircle
+                        size={14}
+                        color="#64748b"
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '140px 12px 1fr',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: '13px',
+                          color: '#475569',
+                          borderBottom: '1px dotted #94a3b8',
+                          width: 'fit-content',
+                          paddingBottom: '1px',
+                        }}
+                      >
+                        Stock on Hand
+                      </span>
+                      <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#0062ff' }}>
+                        {totalOpeningStock.toFixed(2)}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '140px 12px 1fr',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: '13px',
+                          color: '#475569',
+                          borderBottom: '1px dotted #94a3b8',
+                          width: 'fit-content',
+                          paddingBottom: '1px',
+                        }}
+                      >
+                        Committed Stock
+                      </span>
+                      <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
+                      <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
+                        0.00
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '140px 12px 1fr',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: '13px',
+                          color: '#475569',
+                          borderBottom: '1px dotted #94a3b8',
+                          width: 'fit-content',
+                          paddingBottom: '1px',
+                        }}
+                      >
+                        Available for Sale
+                      </span>
+                      <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
+                      <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
+                        {totalOpeningStock.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Physical Stock Section */}
+                <div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      marginBottom: '12px',
+                    }}
+                  >
+                    <h3
+                      style={{
+                        fontSize: '15px',
+                        fontWeight: 600,
+                        color: '#0f172a',
+                        margin: 0,
+                      }}
+                    >
+                      Physical Stock
+                    </h3>
+                    <span title="Physical stock summary" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                      <HelpCircle
+                        size={14}
+                        color="#64748b"
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '140px 12px 1fr',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: '13px',
+                          color: '#475569',
+                          borderBottom: '1px dotted #94a3b8',
+                          width: 'fit-content',
+                          paddingBottom: '1px',
+                        }}
+                      >
+                        Stock on Hand
+                      </span>
+                      <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
+                      <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
+                        {totalOpeningStock.toFixed(2)}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '140px 12px 1fr',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: '13px',
+                          color: '#475569',
+                          borderBottom: '1px dotted #94a3b8',
+                          width: 'fit-content',
+                          paddingBottom: '1px',
+                        }}
+                      >
+                        Committed Stock
+                      </span>
+                      <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
+                      <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
+                        0.00
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '140px 12px 1fr',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: '13px',
+                          color: '#475569',
+                          borderBottom: '1px dotted #94a3b8',
+                          width: 'fit-content',
+                          paddingBottom: '1px',
+                        }}
+                      >
+                        Available for Sale
+                      </span>
+                      <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
+                      <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
+                        {totalOpeningStock.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Opening Stock (4-box summary) - PLACED LAST */}
               <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px' }}>
                 <div
                   style={{
@@ -479,7 +755,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                     <rect width="12" height="12" x="6" y="10"></rect>
                   </svg>
                   <h3 style={{ fontSize: '13px', fontWeight: 500, color: '#0062ff', margin: 0 }}>
-                    Opening Stock
+                    Opening Stock Summary
                   </h3>
                 </div>
 
@@ -497,7 +773,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                   >
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
                       <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
-                        {item.openingStock || item.opening_stock || 0}
+                        {totalOpeningStock}
                       </span>
                       <span style={{ fontSize: '10px', color: '#64748b' }}>
                         {item.unit || 'Qty'}
@@ -555,7 +831,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                   >
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
                       <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
-                        {item.openingStock || item.opening_stock || 0}
+                        {totalOpeningStock}
                       </span>
                       <span style={{ fontSize: '10px', color: '#64748b' }}>
                         {item.unit || 'Qty'}
@@ -569,7 +845,11 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
           </div>
         ) : activeTab === 'Locations' ? (
           <div style={{ margin: '0 -24px' }}>
-            <ItemLocations orgId={orgId!} itemId={itemId} />
+            <ItemLocations orgId={orgId!} itemId={itemId} isBatchTracked={isBatchTracked} />
+          </div>
+        ) : activeTab === 'Batch Details' ? (
+          <div style={{ margin: '0 -24px' }}>
+            <ItemBatchDetails orgId={orgId!} itemId={itemId} unit={item.unit} />
           </div>
         ) : (
           <div

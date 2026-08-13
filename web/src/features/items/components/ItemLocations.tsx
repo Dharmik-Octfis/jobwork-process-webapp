@@ -12,9 +12,10 @@ const EMPTY_ROWS: ItemOpeningStockLocationRowDto[] = [];
 interface ItemLocationsProps {
   orgId: string;
   itemId: string;
+  isBatchTracked?: boolean;
 }
 
-export function ItemLocations({ orgId, itemId }: ItemLocationsProps) {
+export function ItemLocations({ orgId, itemId, isBatchTracked = true }: ItemLocationsProps) {
   const queryClient = useQueryClient();
   const [stockType, setStockType] = useState<'accounting' | 'physical'>('accounting');
   const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
@@ -76,19 +77,20 @@ export function ItemLocations({ orgId, itemId }: ItemLocationsProps) {
               type="button"
               onClick={() => setIsSettingsMenuOpen(!isSettingsMenuOpen)}
               style={{
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                width: '32px',
+                gap: '4px',
+                padding: '4px 8px',
                 height: '32px',
                 border: '1px solid #cbd5e1',
-                borderRadius: '4px',
-                background: '#fff',
+                borderRadius: '6px',
+                background: '#f8fafc',
                 cursor: 'pointer',
-                color: '#475569',
+                color: '#334155',
               }}
             >
-              <Settings size={16} />
+              <Settings size={15} />
+              <ChevronDown size={12} />
             </button>
             {isSettingsMenuOpen && (
               <>
@@ -100,16 +102,15 @@ export function ItemLocations({ orgId, itemId }: ItemLocationsProps) {
                   style={{
                     position: 'absolute',
                     top: '100%',
-                    marginTop: '4px',
-                    right: 0,
+                    marginTop: '6px',
+                    left: 0,
                     background: '#fff',
                     border: '1px solid #e2e8f0',
                     borderRadius: '6px',
                     boxShadow:
                       '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
                     zIndex: 10,
-                    minWidth: '180px',
-                    overflow: 'hidden',
+                    padding: '6px',
                   }}
                 >
                   <button
@@ -121,18 +122,23 @@ export function ItemLocations({ orgId, itemId }: ItemLocationsProps) {
                     style={{
                       width: '100%',
                       padding: '8px 16px',
-                      textAlign: 'left',
-                      background: 'none',
+                      textAlign: 'center',
+                      background: '#3b82f6',
                       border: 'none',
-                      fontSize: '14px',
-                      color: '#1e293b',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      color: '#ffffff',
                       cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+                      transition: 'background-color 0.15s ease',
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#f1f5f9';
+                      e.currentTarget.style.backgroundColor = '#2563eb';
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.backgroundColor = '#3b82f6';
                     }}
                   >
                     Add Opening Stock
