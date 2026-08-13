@@ -249,7 +249,7 @@ export function CurrencyFormModal({
                     <SearchableSelect
                       options={currencyOptions}
                       value={field.value}
-                      disabled={currencyToEdit?.currencyCode === 'INR'}
+                      disabled={currencyToEdit?.isBaseCurrency}
                       onChange={(val) => {
                         field.onChange(val);
                         const option = currencyOptions.find(
@@ -482,47 +482,6 @@ export function CurrencyFormModal({
                   </span>
                 )}
               </div>
-
-              {currencyToEdit && (
-                <div
-                  style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}
-                >
-                  <Controller
-                    name="isActive"
-                    control={control}
-                    render={({ field: { value, onChange } }) => (
-                      <label
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          cursor:
-                            currencyToEdit?.currencyCode === 'INR' ? 'not-allowed' : 'pointer',
-                          gap: '8px',
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={value}
-                          onChange={(e) => onChange(e.target.checked)}
-                          disabled={currencyToEdit?.currencyCode === 'INR'}
-                          style={{
-                            width: '16px',
-                            height: '16px',
-                            cursor:
-                              currencyToEdit?.currencyCode === 'INR' ? 'not-allowed' : 'pointer',
-                            accentColor: 'var(--color-primary)',
-                          }}
-                        />
-                        <span
-                          style={{ fontSize: '14px', color: 'var(--color-text)', fontWeight: 500 }}
-                        >
-                          Active
-                        </span>
-                      </label>
-                    )}
-                  />
-                </div>
-              )}
             </div>
           </form>
         </div>

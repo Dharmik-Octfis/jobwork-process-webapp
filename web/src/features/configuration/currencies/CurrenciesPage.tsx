@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
+import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import '../../users/Users.css';
 
 const CURRENCY_FILTERS = [
@@ -41,6 +42,10 @@ export function CurrenciesPage() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currencyToEdit, setCurrencyToEdit] = useState<Currency | null>(null);
+  const [isSetBaseModalOpen, setIsSetBaseModalOpen] = useState(false);
+  const [selectedBaseCurrencyId, setSelectedBaseCurrencyId] = useState<string>('');
+
+  const hasBaseCurrency = currencies.some((c) => c.isBaseCurrency);
 
   const handleToggleStatus = async (currency: Currency) => {
     if (currency.isBaseCurrency) return;
@@ -53,6 +58,16 @@ export function CurrenciesPage() {
   const handleEdit = (currency: Currency) => {
     setCurrencyToEdit(currency);
     setIsModalOpen(true);
+  };
+
+  const handleConfirmBaseCurrencySelection = async () => {
+    const targetId = selectedBaseCurrencyId || currencies[0]?.id;
+    if (!targetId) return;
+    await updateMutation.mutateAsync({
+      id: targetId,
+      data: { isBaseCurrency: true },
+    });
+    setIsSetBaseModalOpen(false);
   };
 
   const headerStyle = {
@@ -102,7 +117,31 @@ export function CurrenciesPage() {
               />
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {!hasBaseCurrency && currencies.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedBaseCurrencyId(currencies[0]?.id || '');
+                    setIsSetBaseModalOpen(true);
+                  }}
+                  style={{
+                    background: '#eff6ff',
+                    color: '#1d4ed8',
+                    border: '1px solid #bfdbfe',
+                    padding: '6px 12px',
+                    borderRadius: '4px',
+                    fontWeight: 500,
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  Set Base Currency
+                </button>
+              )}
               <button
                 onClick={() => {
                   setCurrencyToEdit(null);
@@ -197,24 +236,24 @@ export function CurrenciesPage() {
                 )}
               </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
                 <thead>
                   <tr
                     style={{ borderBottom: '1px solid var(--color-border)', background: '#f8fafc' }}
                   >
-                    <th style={{ ...headerStyle, width: '25%', textAlign: 'left' }}>
+                    <th style={{ ...headerStyle, width: '20%', textAlign: 'left' }}>
                       Currency Name
                     </th>
-                    <th style={{ ...headerStyle, width: '10%', textAlign: 'left' }}>Symbol</th>
-                    <th style={{ ...headerStyle, width: '15%', textAlign: 'left' }}>Exchange Rate</th>
-                    <th style={{ ...headerStyle, width: '15%', textAlign: 'left' }}>
+                    <th style={{ ...headerStyle, width: '8%', textAlign: 'left' }}>Symbol</th>
+                    <th style={{ ...headerStyle, width: '10%', textAlign: 'left' }}>Exchange Rate</th>
+                    <th style={{ ...headerStyle, width: '18%', textAlign: 'left' }}>
                       Created By & Time
                     </th>
-                    <th style={{ ...headerStyle, width: '15%', textAlign: 'left' }}>
+                    <th style={{ ...headerStyle, width: '18%', textAlign: 'left' }}>
                       Modified By & Time
                     </th>
-                    <th style={{ ...headerStyle, width: '15%', textAlign: 'left' }}>Status</th>
-                    <th style={{ ...headerStyle, width: '5%', textAlign: 'right' }}>Actions</th>
+                    <th style={{ ...headerStyle, width: '10%', textAlign: 'left' }}>Status</th>
+                    <th style={{ ...headerStyle, width: '16%', textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -407,6 +446,117 @@ export function CurrenciesPage() {
           </div>
         </div>
       </div>
+
+      {isSetBaseModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.4)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: '0 0 12px 12px',
+              width: '100%',
+              maxWidth: '440px',
+              padding: '24px',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <div
+                style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '50%',
+                  backgroundColor: '#fef3c7',
+                  color: '#d97706',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '20px',
+                  flexShrink: 0,
+                }}
+              >
+                ⚠️
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#1e293b' }}>
+                  Set Base Currency
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748b' }}>
+                  Select an active currency to set as your organization&apos;s Base Currency.
+                </p>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#334155', marginBottom: '6px' }}>
+                Select Currency <span style={{ color: '#dc2626' }}>*</span>
+              </label>
+              <SearchableSelect
+                options={currencies.map((c) => ({
+                  label: `${c.currencyName} (${c.currencyCode}) - ${c.symbol}`,
+                  value: c.id,
+                }))}
+                value={selectedBaseCurrencyId}
+                onChange={(val) => setSelectedBaseCurrencyId(val)}
+                placeholder="Search & select currency..."
+              />
+            </div>
+
+            <p style={{ fontSize: '13px', lineHeight: '1.5', color: '#334155', marginBottom: '20px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', padding: '12px', borderRadius: '6px' }}>
+              <strong style={{ color: '#dc2626' }}>Note:</strong> Once selected, the Base Currency cannot be changed or deleted later. To change the base currency in the future, a new organization will need to be created.
+            </p>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button
+                type="button"
+                onClick={() => setIsSetBaseModalOpen(false)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#ffffff',
+                  color: '#475569',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmBaseCurrencySelection}
+                disabled={!selectedBaseCurrencyId}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: '#16a34a',
+                  color: '#ffffff',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                }}
+              >
+                Confirm & Set Base Currency
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <CurrencyFormModal
         orgId={orgId!}
