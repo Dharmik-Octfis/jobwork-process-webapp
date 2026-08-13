@@ -86,6 +86,20 @@ export interface PostMovementInput {
   userId?: string | null;
 }
 
+/** Empty string is what an untouched date input posts 2014 it is "not stated", not an
+ * invalid date, so it must not reach `new Date()`. */
+function toDate(value: string | Date | null | undefined): Date | null {
+  if (value === undefined || value === null || value === '') return null;
+  return value instanceof Date ? value : new Date(value);
+}
+
+function toDecimalOrNull(
+  value: Prisma.Decimal | number | string | null | undefined,
+): Prisma.Decimal | null {
+  if (value === undefined || value === null || value === '') return null;
+  return new Prisma.Decimal(value);
+}
+
 function toDecimal(value: Prisma.Decimal | number | string | undefined): Prisma.Decimal {
   if (value === undefined || value === null || value === '') return new Prisma.Decimal(0);
   return new Prisma.Decimal(value);
@@ -285,6 +299,11 @@ export interface AvailableBatch {
   batchId: string;
   batchNumber: string;
   supplierBatchRef: string | null;
+  manufacturerBatch: string | null;
+  manufacturedDate: Date | null;
+  expiryDate: Date | null;
+  mrp: Prisma.Decimal | null;
+  sellingPrice: Prisma.Decimal | null;
   itemId: string;
   uomId: string | null;
   ownership: string;
@@ -346,6 +365,11 @@ export async function getAvailableBatches(
       id: true,
       batchNumber: true,
       supplierBatchRef: true,
+      manufacturerBatch: true,
+      manufacturedDate: true,
+      expiryDate: true,
+      mrp: true,
+      sellingPrice: true,
       itemId: true,
       uomId: true,
       ownership: true,
@@ -370,6 +394,14 @@ export interface CreateBatchInput {
    * tag. Omit it and the org's `batch` sequence supplies one. */
   batchNumber?: string;
   supplierBatchRef?: string | null;
+  /** Real columns since 2026-08-13, not `customFields` 2014 fixed attributes every
+   * org gets, and `expiryDate` is indexed because the expiry report is the reason
+   * anyone records one. */
+  manufacturerBatch?: string | null;
+  manufacturedDate?: string | Date | null;
+  expiryDate?: string | Date | null;
+  mrp?: Prisma.Decimal | number | string | null;
+  sellingPrice?: Prisma.Decimal | number | string | null;
   ownership?: Ownership;
   ownerPartyId?: string | null;
   /** Zero, one, or MANY — grey from two POs dyed together comes back as one batch. */
@@ -418,6 +450,11 @@ export async function createBatch(tx: TenantClient, input: CreateBatchInput) {
     organizationId: input.organizationId,
     batchNumber,
     supplierBatchRef: input.supplierBatchRef ?? null,
+    manufacturerBatch: input.manufacturerBatch ?? null,
+    manufacturedDate: toDate(input.manufacturedDate),
+    expiryDate: toDate(input.expiryDate),
+    mrp: toDecimalOrNull(input.mrp),
+    sellingPrice: toDecimalOrNull(input.sellingPrice),
     itemId: item.id,
     // The batch's unit is the item's stocking unit — one item, one stocking
     // unit (§5.1). Passing it explicitly is only for the rare case where the
@@ -448,6 +485,11 @@ interface BatchWriteData {
   organizationId: string;
   batchNumber: string;
   supplierBatchRef: string | null;
+  manufacturerBatch: string | null;
+  manufacturedDate: Date | null;
+  expiryDate: Date | null;
+  mrp: Prisma.Decimal | null;
+  sellingPrice: Prisma.Decimal | null;
   itemId: string;
   uomId: string | null;
   ownership: Ownership;

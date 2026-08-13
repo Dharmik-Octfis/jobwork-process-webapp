@@ -62,7 +62,6 @@ export const jobReceiptSchema = z.object({
   processorType: z.string(),
   processorId: z.string().nullable(),
   processorNameSnapshot: z.string().nullable(),
-  mode: z.string(),
   locationId: z.string(),
   outputBatchId: z.string().nullable(),
   reworkBatchId: z.string().nullable(),
@@ -149,7 +148,6 @@ export const receivePrefillSchema = z.object({
   }),
   mode: z.string(),
   /** Why the mode is what it is, in words. Shown instead of a disabled control. */
-  modeReason: z.string(),
   issues: z.array(
     z.object({
       id: z.string(),

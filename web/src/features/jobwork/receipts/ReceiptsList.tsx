@@ -42,8 +42,6 @@ function renderCell(receipt: JobReceipt, key: string): React.ReactNode {
     case 'outputItem':
       // Every item that came back, counted. A receipt returns shirts AND rejects.
       return itemSummary(receipt.outputs ?? []);
-    case 'mode':
-      return receipt.mode === 'unit_wise' ? 'Taka-wise' : 'Bulk';
     case 'status':
       return receipt.status === 'cancelled' ? 'Cancelled' : 'Posted';
     case 'totalReceivedQty':

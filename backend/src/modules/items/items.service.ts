@@ -7,10 +7,13 @@ import {
   validateCustomFields,
 } from '../settings/customization/custom-fields/customFields.engine.ts';
 import { Prisma } from '../../../generated/prisma/client.ts';
-import { randomUUID } from 'node:crypto';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../lib/pagination.ts';
 import { filterWhere } from '../settings/list-views/listFilters.catalog.ts';
-import { createBatch, postMovement } from '../inventory/stock-ledger/stockLedger.service.ts';
+import {
+  createBatch,
+  getBalance,
+  postMovement,
+} from '../inventory/stock-ledger/stockLedger.service.ts';
 import type { ItemOpeningStockDto } from './items.schemas.ts';
 
 export function toItemResponse(item: Record<string, unknown> | null | undefined) {
@@ -126,160 +129,27 @@ export function normalizeItemDto<T extends Record<string, unknown>>(rawData: T):
 }
 
 export class ItemsService {
-  private normalizeOpeningStockRow(row: {
-    id: string;
-    locationId: string;
-    openingStock: Prisma.Decimal | null;
-    openingStockValuePerUnit: Prisma.Decimal | null;
-    stockOnHand?: Prisma.Decimal | null;
-    committedStock?: Prisma.Decimal | null;
-    availableForSale?: Prisma.Decimal | null;
-    batches: Prisma.JsonValue;
-  }) {
-    const batches = Array.isArray(row.batches)
-      ? row.batches.map((batch, index) => {
-          const value = batch as Record<string, unknown>;
-          return {
-            id: typeof value.id === 'string' ? value.id : `${row.id}:${index}`,
-            batchReference: value.batchReference ?? null,
-            manufacturerBatch: value.manufacturerBatch ?? null,
-            manufacturedDate: value.manufacturedDate ?? null,
-            expiryDate: value.expiryDate ?? null,
-            sellingPrice: value.sellingPrice ?? null,
-            mrp: value.mrp ?? null,
-            quantityIn: value.quantityIn ?? null,
-          };
-        })
-      : [];
+  /**
+   * 🔴 ONE reader, and the LEDGER is the balance.
+   *
+   * This replaced four overlapping ones on 2026-08-13. The old shape read a
+   * `stock_on_hand` cache first and only fell back to the ledger when that table
+   * was empty — so the stale copy won over the truth, and the number on the Item
+   * page drifted from the ledger the moment any other module moved stock.
+   *
+   * `item_opening_stock_rows` supplies only what it is: the DECLARED figures.
+   * Quantity comes from `getBalance`, batch detail from the `batches` rows this
+   * document created.
+   */
+  private async readOpeningStock(tx: TenantClient, itemId: string, organizationId: string) {
+    const declared = await tx.itemOpeningStockRow.findMany({
+      where: { organizationId, itemId, isDeleted: false },
+      orderBy: { createdAt: 'asc' },
+    });
 
-    return {
-      id: row.id,
-      locationId: row.locationId,
-      openingStock: row.openingStock !== null ? Number(row.openingStock) : null,
-      openingStockValue:
-        row.openingStockValuePerUnit !== null ? Number(row.openingStockValuePerUnit) : null,
-      stockOnHand:
-        row.stockOnHand !== null && row.stockOnHand !== undefined ? Number(row.stockOnHand) : null,
-      committedStock:
-        row.committedStock !== null && row.committedStock !== undefined
-          ? Number(row.committedStock)
-          : null,
-      availableForSale:
-        row.availableForSale !== null && row.availableForSale !== undefined
-          ? Number(row.availableForSale)
-          : null,
-      batches,
-    };
-  }
-
-  private async readLocationStockRowsFromTable(
-    tx: TenantClient,
-    itemId: string,
-    organizationId: string,
-  ) {
-    const rows = await tx.$queryRaw<
-      Array<{
-        id: string;
-        locationId: string;
-        stockOnHand: Prisma.Decimal | null;
-        committedStock: Prisma.Decimal | null;
-        availableForSale: Prisma.Decimal | null;
-      }>
-    >(Prisma.sql`
-      SELECT
-        id,
-        location_id AS "locationId",
-        stock_on_hand AS "stockOnHand",
-        committed_stock AS "committedStock",
-        available_for_sale AS "availableForSale"
-      FROM item_location_stocks
-      WHERE organization_id = ${organizationId}::uuid
-        AND item_id = ${itemId}::uuid
-        AND is_deleted = false
-      ORDER BY created_at ASC
-    `);
-
-    return rows;
-  }
-
-  private async readOpeningStockRowsFromTable(
-    tx: TenantClient,
-    itemId: string,
-    organizationId: string,
-  ) {
-    const summaryRows = await this.readLocationStockRowsFromTable(tx, itemId, organizationId);
-    const rows = await tx.$queryRaw<
-      Array<{
-        id: string;
-        locationId: string;
-        openingStock: Prisma.Decimal | null;
-        openingStockValuePerUnit: Prisma.Decimal | null;
-        batches: Prisma.JsonValue;
-      }>
-    >(Prisma.sql`
-      SELECT
-        id,
-        location_id AS "locationId",
-        opening_stock AS "openingStock",
-        opening_stock_value_per_unit AS "openingStockValuePerUnit",
-        batches
-      FROM item_opening_stock_rows
-      WHERE organization_id = ${organizationId}::uuid
-        AND item_id = ${itemId}::uuid
-        AND is_deleted = false
-      ORDER BY created_at ASC
-      `);
-    type NormalizedOpeningStockRow = ReturnType<ItemsService['normalizeOpeningStockRow']>;
-    const byLocation = new Map<string, NormalizedOpeningStockRow>();
-    for (const summary of summaryRows) {
-      byLocation.set(summary.locationId, {
-        id: summary.id,
-        locationId: summary.locationId,
-        openingStock: null,
-        openingStockValue: null,
-        stockOnHand: summary.stockOnHand !== null ? Number(summary.stockOnHand) : null,
-        committedStock: summary.committedStock !== null ? Number(summary.committedStock) : null,
-        availableForSale:
-          summary.availableForSale !== null ? Number(summary.availableForSale) : null,
-        batches: [],
-      });
-    }
-
-    for (const row of rows) {
-      const normalized = this.normalizeOpeningStockRow(row);
-      const existing = byLocation.get(normalized.locationId);
-      if (existing) {
-        existing.id = normalized.id;
-        existing.openingStock = normalized.openingStock;
-        existing.openingStockValue = normalized.openingStockValue;
-        existing.batches = normalized.batches;
-        if (existing.stockOnHand === null) {
-          existing.stockOnHand = normalized.openingStock ?? 0;
-        }
-        if (existing.availableForSale === null) {
-          existing.availableForSale = existing.stockOnHand;
-        }
-        if (existing.committedStock === null) {
-          existing.committedStock = 0;
-        }
-      } else {
-        byLocation.set(normalized.locationId, {
-          ...normalized,
-          stockOnHand: normalized.openingStock ?? 0,
-          committedStock: 0,
-          availableForSale: normalized.openingStock ?? 0,
-        });
-      }
-    }
-
-    return Array.from(byLocation.values());
-  }
-
-  private async readOpeningStockRowsFromLedger(
-    tx: TenantClient,
-    itemId: string,
-    organizationId: string,
-  ) {
+    // The batches this document created, with the location each landed at. A
+    // batch has no location of its own — location lives on the movement (§5.4) —
+    // so the `opening` row is what ties the two together.
     const entries = await tx.stockLedgerEntry.findMany({
       where: {
         organizationId,
@@ -288,44 +158,51 @@ export class ItemsService {
         movementType: 'opening',
       },
       include: { batch: true },
+      orderBy: { postedAt: 'asc' },
     });
 
-    const locationMap = new Map<
-      string,
-      {
-        id: string;
-        locationId: string;
-        openingStock: null;
-        openingStockValue: null;
-        batches: Array<Record<string, unknown>>;
-      }
-    >();
-    for (const entry of entries) {
-      if (!locationMap.has(entry.locationId)) {
-        locationMap.set(entry.locationId, {
-          id: entry.locationId,
-          locationId: entry.locationId,
-          openingStock: null,
-          openingStockValue: null,
-          batches: [],
-        });
-      }
-      const row = locationMap.get(entry.locationId)!;
-      const cf = entry.batch.customFields as Record<string, unknown> | undefined;
-      row.batches.push({
-        id: entry.batch.id,
-        batchReference: entry.batch.supplierBatchRef,
-        manufacturerBatch: cf?.manufacturerBatch,
-        manufacturedDate: cf?.manufacturedDate,
-        expiryDate: cf?.expiryDate,
-        quantityIn: entry.qtyIn,
-        sellingPrice: cf?.sellingPrice,
-        mrp: cf?.mrp,
+    const locationIds = new Set<string>([
+      ...declared.map((row) => row.locationId),
+      ...entries.map((entry) => entry.locationId),
+    ]);
+
+    const out = [];
+    for (const locationId of locationIds) {
+      const row = declared.find((d) => d.locationId === locationId);
+      const balance = await getBalance(tx, { organizationId, itemId, locationId });
+      const mine = entries.filter((entry) => entry.locationId === locationId);
+
+      out.push({
+        id: row?.id ?? locationId,
+        locationId,
+        openingStock:
+          row?.openingStock !== undefined && row.openingStock !== null
+            ? Number(row.openingStock)
+            : null,
+        openingStockValue:
+          row?.openingStockValuePerUnit !== undefined && row.openingStockValuePerUnit !== null
+            ? Number(row.openingStockValuePerUnit)
+            : null,
+        /** Live, off the ledger — never a stored copy. */
+        stockOnHand: Number(balance.qty),
+        committedStock: 0,
+        availableForSale: Number(balance.qty),
+        batches: mine.map((entry) => ({
+          id: entry.batch.id,
+          batchNumber: entry.batch.batchNumber,
+          batchReference: entry.batch.supplierBatchRef,
+          manufacturerBatch: entry.batch.manufacturerBatch,
+          manufacturedDate: entry.batch.manufacturedDate,
+          expiryDate: entry.batch.expiryDate,
+          sellingPrice: entry.batch.sellingPrice !== null ? Number(entry.batch.sellingPrice) : null,
+          mrp: entry.batch.mrp !== null ? Number(entry.batch.mrp) : null,
+          quantityIn: Number(entry.qtyIn),
+        })),
       });
     }
-
-    return Array.from(locationMap.values());
+    return out;
   }
+
   /**
    * One paginated list endpoint that also does search — same shape as vendors /
    * customers, via the shared `searchWhere`/`pageContext` helpers. See
@@ -682,18 +559,28 @@ export class ItemsService {
   async getOpeningStock(itemId: string, organizationId: string) {
     return runAsTenant(organizationId, async (tx) => {
       const item = await tx.item.findFirst({
-        where: { id: itemId, organizationId },
-        select: { id: true, inventoryTracking: true },
+        where: { id: itemId, organizationId, isDeleted: false },
+        select: { id: true },
       });
       if (!item) throw ApiError.notFound('Item not found.');
 
-      const rows = await this.readOpeningStockRowsFromTable(tx, itemId, organizationId);
-      if (rows.length > 0) return rows;
-
-      return this.readOpeningStockRowsFromLedger(tx, itemId, organizationId);
+      return this.readOpeningStock(tx, itemId, organizationId);
     });
   }
 
+  /**
+   * Re-declare an item's opening stock.
+   *
+   * 🔴 EVERY DECLARED QUANTITY REACHES THE LEDGER. Until 2026-08-13 the batch and
+   * ledger writes sat inside the `for (batch of batches)` loop, so a location
+   * given a bulk quantity and no batch rows wrote the document and nothing else:
+   * the Item page showed stock that no jobwork screen could see or issue. One
+   * such row existed in dev. An item at `inventoryTracking = 'none'` is the
+   * NORMAL case for that shape, so it was not an edge case.
+   *
+   * A batch is created either way — `none` just means the user never names it
+   * (schema: `Item.inventoryTracking`).
+   */
   async saveOpeningStock(
     itemId: string,
     organizationId: string,
@@ -702,159 +589,123 @@ export class ItemsService {
   ) {
     return runAsTenant(organizationId, async (tx) => {
       const item = await tx.item.findFirst({
-        where: { id: itemId, organizationId },
-        select: { id: true, stockingUomId: true, inventoryTracking: true },
+        where: { id: itemId, organizationId, isDeleted: false },
+        select: { id: true, stockingUomId: true, inventoryTracking: true, trackInventory: true },
       });
       if (!item) throw ApiError.notFound('Item not found.');
+      if (!item.trackInventory)
+        throw ApiError.badRequest('Turn on inventory tracking for this item before adding stock.');
       if (!item.stockingUomId)
         throw ApiError.badRequest('Cannot add stock without a stocking unit of measurement.');
 
+      // A correction is a REVERSING ENTRY, never an edit (inventory.prisma). The
+      // old rows stay; their effect is cancelled.
       const oldEntries = await tx.stockLedgerEntry.findMany({
         where: { organizationId, itemId, sourceDocType: 'item_opening_stock' },
       });
-      for (const oldEntry of oldEntries) {
+      for (const old of oldEntries) {
         await postMovement(tx, {
           organizationId,
-          batchId: oldEntry.batchId,
-          locationId: oldEntry.locationId,
+          batchId: old.batchId,
+          locationId: old.locationId,
           movementType: 'reversal',
-          qtyOut: oldEntry.qtyIn,
-          qtyIn: oldEntry.qtyOut,
-          valueOut: oldEntry.valueIn,
-          valueIn: oldEntry.valueOut,
+          qtyOut: old.qtyIn,
+          qtyIn: old.qtyOut,
+          valueOut: old.valueIn,
+          valueIn: old.valueOut,
           sourceDocType: 'item_opening_stock',
           sourceDocId: itemId,
           userId,
         });
       }
 
-      await tx.$executeRaw(Prisma.sql`
-        DELETE FROM item_opening_stock_rows
-        WHERE organization_id = ${organizationId}::uuid
-          AND item_id = ${itemId}::uuid
-      `);
+      // Soft delete, not a wipe: the row carries who declared what and when.
+      await tx.itemOpeningStockRow.updateMany({
+        where: { organizationId, itemId, isDeleted: false },
+        data: { isDeleted: true, updatedBy: userId ?? null },
+      });
 
-      await tx.$executeRaw(Prisma.sql`
-        DELETE FROM item_location_stocks
-        WHERE organization_id = ${organizationId}::uuid
-          AND item_id = ${itemId}::uuid
-      `);
+      const requiresBatchDetail = item.inventoryTracking === 'batch';
 
       for (const locRow of data.locationRows) {
-        const batches = Array.isArray(locRow.batches)
-          ? locRow.batches.map((batch, index) => ({
-              id:
-                typeof batch.id === 'string' && batch.id.length > 0
-                  ? batch.id
-                  : `${locRow.locationId}:${index}:${randomUUID()}`,
-              batchReference: batch.batchReference ?? null,
-              manufacturerBatch: batch.manufacturerBatch ?? null,
-              manufacturedDate: batch.manufacturedDate ?? null,
-              expiryDate: batch.expiryDate ?? null,
-              sellingPrice: batch.sellingPrice ?? null,
-              mrp: batch.mrp ?? null,
-              quantityIn: batch.quantityIn ?? null,
-            }))
-          : [];
+        const rows = (locRow.batches ?? []).filter((b) => Number(b.quantityIn) > 0);
+        const batchTotal = rows.reduce((sum, b) => sum + Number(b.quantityIn), 0);
 
-        const batchTotal = batches.reduce((sum, batch) => sum + (Number(batch.quantityIn) || 0), 0);
-        const openingStock =
+        const declaredQty =
           locRow.openingStock !== null &&
           locRow.openingStock !== undefined &&
           locRow.openingStock !== ''
             ? new Prisma.Decimal(locRow.openingStock)
             : new Prisma.Decimal(batchTotal);
-        const openingStockValuePerUnit =
+
+        if (requiresBatchDetail && rows.length === 0 && declaredQty.greaterThan(0)) {
+          throw ApiError.badRequest(
+            'This item is batch-tracked, so opening stock needs at least one batch row with a quantity.',
+            { batches: 'Add a batch row, or set the item to no batch tracking.' },
+          );
+        }
+
+        const valuePerUnit =
           locRow.openingStockValue !== null &&
           locRow.openingStockValue !== undefined &&
           locRow.openingStockValue !== ''
             ? new Prisma.Decimal(locRow.openingStockValue)
             : null;
 
-        await tx.$executeRaw(Prisma.sql`
-          INSERT INTO item_location_stocks (
-            id,
-            organization_id,
-            item_id,
-            location_id,
-            stock_on_hand,
-            committed_stock,
-            available_for_sale,
-            custom_fields,
-            is_deleted,
-            created_by,
-            updated_by,
-            created_at,
-            updated_at
-          ) VALUES (
-            gen_random_uuid(),
-            ${organizationId}::uuid,
-            ${itemId}::uuid,
-            ${locRow.locationId}::uuid,
-            ${openingStock},
-            0,
-            ${openingStock},
-            '{}'::jsonb,
-            false,
-            ${userId ?? null}::uuid,
-            ${userId ?? null}::uuid,
-            CURRENT_TIMESTAMP,
-            CURRENT_TIMESTAMP
-          )
-        `);
+        // The DECLARATION. Upsert rather than insert: the unique key is still held
+        // by the row just soft-deleted, and reviving it keeps its history.
+        await tx.itemOpeningStockRow.upsert({
+          where: {
+            // eslint-disable-next-line @typescript-eslint/naming-convention
+            organizationId_itemId_locationId: {
+              organizationId,
+              itemId,
+              locationId: locRow.locationId,
+            },
+          },
+          create: {
+            organizationId,
+            itemId,
+            locationId: locRow.locationId,
+            openingStock: declaredQty,
+            openingStockValuePerUnit: valuePerUnit,
+            createdBy: userId ?? null,
+            updatedBy: userId ?? null,
+          },
+          update: {
+            openingStock: declaredQty,
+            openingStockValuePerUnit: valuePerUnit,
+            isDeleted: false,
+            updatedBy: userId ?? null,
+          },
+        });
 
-        await tx.$executeRaw(Prisma.sql`
-          INSERT INTO item_opening_stock_rows (
-            id,
-            organization_id,
-            item_id,
-            location_id,
-            opening_stock,
-            opening_stock_value_per_unit,
-            batches,
-            custom_fields,
-            is_deleted,
-            created_by,
-            updated_by,
-            created_at,
-            updated_at
-          ) VALUES (
-            gen_random_uuid(),
-            ${organizationId}::uuid,
-            ${itemId}::uuid,
-            ${locRow.locationId}::uuid,
-            ${openingStock},
-            ${openingStockValuePerUnit},
-            ${JSON.stringify(batches)}::jsonb,
-            '{}'::jsonb,
-            false,
-            ${userId ?? null}::uuid,
-            ${userId ?? null}::uuid,
-            CURRENT_TIMESTAMP,
-            CURRENT_TIMESTAMP
-          )
-        `);
+        if (declaredQty.lessThanOrEqualTo(0) && rows.length === 0) continue;
 
-        for (const row of batches) {
-          const qty = Number(row.quantityIn);
-          if (!qty || qty <= 0) continue;
+        // 🔴 No batch rows still means ONE batch. The ledger has to hang the
+        // quantity on something, and `none` is about what the user sees.
+        const toPost =
+          rows.length > 0
+            ? rows
+            : [{ quantityIn: declaredQty.toString() } as (typeof rows)[number]];
+
+        for (const detail of toPost) {
+          const qty = new Prisma.Decimal(detail.quantityIn ?? 0);
+          if (qty.lessThanOrEqualTo(0)) continue;
 
           const batch = await createBatch(tx, {
             organizationId,
             itemId,
             uomId: item.stockingUomId,
-            batchNumber: undefined,
-            supplierBatchRef: row.batchReference || null,
+            supplierBatchRef: detail.batchReference || null,
+            manufacturerBatch: detail.manufacturerBatch || null,
+            manufacturedDate: detail.manufacturedDate || null,
+            expiryDate: detail.expiryDate || null,
+            mrp: detail.mrp ?? null,
+            sellingPrice: detail.sellingPrice ?? null,
             sourceDocType: 'item_opening_stock',
             sourceDocId: itemId,
             userId,
-            customFields: {
-              manufacturerBatch: row.manufacturerBatch,
-              manufacturedDate: row.manufacturedDate,
-              expiryDate: row.expiryDate,
-              sellingPrice: row.sellingPrice,
-              mrp: row.mrp,
-            },
           });
 
           await postMovement(tx, {
@@ -863,6 +714,9 @@ export class ItemsService {
             locationId: locRow.locationId,
             movementType: 'opening',
             qtyIn: qty,
+            // Value follows quantity, so opening stock enters the books at the
+            // rate that was declared for it.
+            valueIn: valuePerUnit ? qty.times(valuePerUnit) : 0,
             sourceDocType: 'item_opening_stock',
             sourceDocId: itemId,
             userId,
@@ -870,7 +724,7 @@ export class ItemsService {
         }
       }
 
-      return this.readOpeningStockRowsFromTable(tx, itemId, organizationId);
+      return this.readOpeningStock(tx, itemId, organizationId);
     });
   }
 }

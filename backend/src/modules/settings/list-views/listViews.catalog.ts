@@ -242,7 +242,6 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'totalReworkQty', label: 'Rework' },
     { key: 'totalScrapQty', label: 'Scrap' },
     { key: 'totalReturnedQty', label: 'Returned' },
-    { key: 'mode', label: 'Mode' },
     { key: 'status', label: 'Status', defaultVisible: true },
     { key: 'createdAt', label: 'Created At' },
   ],

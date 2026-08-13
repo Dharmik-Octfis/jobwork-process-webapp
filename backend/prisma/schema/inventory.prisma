@@ -97,6 +97,28 @@ model Batch {
   /// open | consumed | closed
   state String @default("open") @db.VarChar(20)
 
+  /// 🔴 REAL COLUMNS, not `custom_fields`. Until 2026-08-13 all five lived in the
+  /// JSONB bag, which meant no type check, no constraint, and — the one that
+  /// actually bites — no index. "Which batches expire in 30 days" is the entire
+  /// reason a factory records an expiry date, and against JSONB that is a full
+  /// scan of every batch with the date stored as an untyped string.
+  ///
+  /// `custom_fields` stays for what it is for: PER-ORG dynamic fields. These five
+  /// are a fixed set every org gets (CLAUDE.md's rule).
+  ///
+  /// The maker's own batch number, which is NOT the supplier's — a trader passes
+  /// on goods whose manufacturer marked them differently from the trader's own
+  /// docket. `supplierBatchRef` above is who we bought from; this is who made it.
+  manufacturerBatch String?   @map("manufacturer_batch") @db.VarChar(100)
+  manufacturedDate  DateTime? @map("manufactured_date") @db.Date
+  expiryDate        DateTime? @map("expiry_date") @db.Date
+
+  /// Batch-wise pricing. Nullable because most batches never carry either — the
+  /// item's own price applies, and a zero here would read as "free" rather than
+  /// "not stated".
+  mrp          Decimal? @db.Decimal(18, 4)
+  sellingPrice Decimal? @map("selling_price") @db.Decimal(18, 4)
+
   customFields Json     @default("{}") @map("custom_fields")
   isDeleted    Boolean  @default(false) @map("is_deleted")
   createdBy    String?  @map("created_by") @db.Uuid
@@ -126,6 +148,10 @@ model Batch {
 
   @@unique([organizationId, batchNumber])
   @@index([organizationId, itemId])
+  /// The expiry report's index — the whole point of promoting the column out of
+  /// JSONB. Partial: a batch with no expiry date is never an answer to "what
+  /// expires soon", and most batches have none.
+  @@index([organizationId, expiryDate])
   @@map("batches")
 }
 

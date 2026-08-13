@@ -14,9 +14,9 @@
 >    `Item.lot_tracking` went with it — `inventory_tracking` (`none | batch`) is the one tracking
 >    column, and it is the one the item form has always written.
 >
-> **Sections below that describe takas, packages, unit-wise receiving or `lot_packages` are
-> HISTORY, not current behaviour.** They are kept because the reasoning still explains why the
-> boundary sits where it does, and re-adding packages would start from them.
+> **The rest of this document has been brought in line with both** — every table, column and
+> field listed below is one that exists today. `JOBWORK_DOMAIN_AND_MODULE_MAP.md` keeps the
+> package reasoning, marked as history, because that is where re-adding it would start.
 
 **Status:** explainer, reflects shipped code as of 2026-08-12. This document assumes **no prior
 knowledge** of the module. It answers three questions in one pass: what each module is for, what role
@@ -105,15 +105,14 @@ A Process is a single operation your shop does or buys: Dyeing, Cutting, Stitchi
 once. It holds _defaults_ and _behavioural flags_ — never quantities, never a price for a specific
 job.
 
-| Field                 | Source | What it decides                                                                                                                                                                |
-| --------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `name`                | typed  | Unique per organisation. Deleting and re-creating "Dyeing" **revives** the old row rather than failing — a soft-deleted row still holds its unique key                         |
-| `code`, `description` | typed  | Free text. Nothing derives meaning from either                                                                                                                                 |
-| `itemChanges`         | typed  | **Does what comes back differ from what went in?** Cutting: yes (fabric → panels). Washing: no. Drives whether the form seeds the output as a copy of the input                |
-| `rateBasis`           | typed  | `per_issued_unit` \| `per_received_unit` — do you pay for what you sent or for what came back? Copied down to each step, overridable there                                     |
-| `preservesPackaging`  | typed  | **Does the physical roll survive?** Dyeing: the same taka returns, so roll-to-roll traceability is possible. Cutting: the roll is destroyed. Decides unit-wise vs bulk receipt |
-| `requiresSingleBatch` | typed  | Blocks mixing two batches of one item on one challan. Two dye batches in one garment show shade variation nobody catches until it is assembled                                 |
-| `defaultTolerancePct` | typed  | The over-issue allowance a step inherits when it states none. 🔴 `null` ≠ `0` — null means "no default set", zero means "no tolerance whatsoever"                              |
+| Field                 | Source | What it decides                                                                                                                                                 |
+| --------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                | typed  | Unique per organisation. Deleting and re-creating "Dyeing" **revives** the old row rather than failing — a soft-deleted row still holds its unique key          |
+| `code`, `description` | typed  | Free text. Nothing derives meaning from either                                                                                                                  |
+| `itemChanges`         | typed  | **Does what comes back differ from what went in?** Cutting: yes (fabric → panels). Washing: no. Drives whether the form seeds the output as a copy of the input |
+| `rateBasis`           | typed  | `per_issued_unit` \| `per_received_unit` — do you pay for what you sent or for what came back? Copied down to each step, overridable there                      |
+| `requiresSingleBatch` | typed  | Blocks mixing two batches of one item on one challan. Two dye batches in one garment show shade variation nobody catches until it is assembled                  |
+| `defaultTolerancePct` | typed  | The over-issue allowance a step inherits when it states none. 🔴 `null` ≠ `0` — null means "no default set", zero means "no tolerance whatsoever"               |
 
 ---
 
@@ -247,7 +246,6 @@ One row per **batch** — or per physical roll, when the item is tracked that fi
 | ----------------- | --------------------------------------------------------------------------------------------- |
 | `itemId`, `uomId` | 🔴 The item lives **here**, not on the header. One challan carries fabric, thread and buttons |
 | `batchId`         | Which batch physically went                                                                   |
-| `batchPackageId`  | Which roll, when the item is tracked to package level. Null otherwise                         |
 | `qty`             | How much of that batch went                                                                   |
 
 You do not issue "100 metres" — you issue **100 metres from batch BATCH-0042**. That distinction is why a
@@ -280,7 +278,7 @@ are still yours, at a different location.
 
 ## 6. Receipt — what actually came back
 
-**Writes:** `job_receipts` · `job_receipt_outputs` · `job_receipt_lines` · `batches` · `lot_packages` ·
+**Writes:** `job_receipts` · `job_receipt_outputs` · `job_receipt_lines` · `batches` ·
 `stock_ledger` · `number_sequences`
 
 The most information-dense document in the module, because it answers three questions at once: what
@@ -303,21 +301,21 @@ itself.
 
 ### 6.2 Header — `job_receipts`
 
-| Field                                 | Role                                                                                                         |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `receiptNumber`, `receiptDate`        | Allocated on save; when the goods arrived                                                                    |
-| `mode`                                | `unit_wise` \| `bulk` — copied from the process at save, so a later edit cannot retell what this receipt did |
-| `outputItemId`, `outputUomId`         | What came back. A **different item** from what went out whenever the process says so                         |
-| `locationId`                          | Where the goods landed — ours again, so a godown                                                             |
-| `outputBatchId`, `reworkBatchId`      | The batches this receipt created. Shortcuts back; `Batch.parentBatchIds` is what carries genealogy           |
-| `totalIssuedQty` … `totalReturnedQty` | The six summed totals. Refused unless the split adds up                                                      |
-| `status`                              | `posted` \| `cancelled`. A cancellation posts **reversing** rows; it never deletes anything                  |
+| Field                                                                                         | Role                                                                                               |
+| --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `receiptNumber`, `receiptDate`                                                                | Allocated on save; when the goods arrived                                                          |
+| `bulk` — copied from the process at save, so a later edit cannot retell what this receipt did |
+| `outputItemId`, `outputUomId`                                                                 | What came back. A **different item** from what went out whenever the process says so               |
+| `locationId`                                                                                  | Where the goods landed — ours again, so a godown                                                   |
+| `outputBatchId`, `reworkBatchId`                                                              | The batches this receipt created. Shortcuts back; `Batch.parentBatchIds` is what carries genealogy |
+| `totalIssuedQty` … `totalReturnedQty`                                                         | The six summed totals. Refused unless the split adds up                                            |
+| `status`                                                                                      | `posted` \| `cancelled`. A cancellation posts **reversing** rows; it never deletes anything        |
 
 ### 6.3 Two child tables, different lengths
 
 | Table                 | Answers                                                        | Notable fields                                                                                                      |
 | --------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `job_receipt_lines`   | What was **consumed** — closes the challan lines that went out | `jobIssueId`, `jobIssueLineId`, `parentPackageId`, `issuedQty`, `receivedQty`, the four buckets                     |
+| `job_receipt_lines`   | What was **consumed** — closes the challan lines that went out | `jobIssueId`, `jobIssueLineId`, `issuedQty`, `receivedQty`, the four buckets                                        |
 | `job_receipt_outputs` | What **returned** — one row per item that came back            | `itemId`, `receivedQty`, the four buckets, `isPrimary`, `valueShare`, `outputBatchId`, `reasonId`, `responsibility` |
 
 They are separate because they are genuinely different lengths. Cutting consumes one fabric and
@@ -329,21 +327,18 @@ rows.
 
 - `responsibility` — `ours` \| `theirs`. Decides whether rework is re-charged to the vendor or
   absorbed, and feeds the vendor scorecard later.
-- `parentPackageId` — which roll that went out is this roll that came back. 🔴 **Only recordable at
-  this moment**; it cannot be reconstructed from quantities afterwards.
 
 ---
 
-## 7. Batches, packages and the ledger
+## 7. Batches and the ledger
 
-These three tables sit underneath the whole module and are shared with the rest of inventory. Jobwork
+These two tables sit underneath the whole module and are shared with the rest of inventory. Jobwork
 writes to them; it does not own them.
 
-| Table          | One row is                                   | Key fields                                                                                                                                                 |
-| -------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `batches`      | A batch of one item sharing an identity      | `batchNumber`, `itemId`, `uomId`, `ownership`, `ownerPartyId`, `parentBatchIds[]`, `sourceDocType`, `sourceDocId`, `status`                                |
-| `lot_packages` | One physical taka / roll / bundle in a batch | `packageNumber` (🔴 restarts at 1 inside each batch), `label`, `qty`, `parentPackageId`, `status`                                                          |
-| `stock_ledger` | One movement of one quantity. Append-only    | `itemId`, `batchId`, `batchPackageId`, `locationId`, `ownership`, `qtyIn`, `qtyOut`, `valueIn`, `valueOut`, `movementType`, `sourceDocType`, `sourceDocId` |
+| Table          | One row is                                | Key fields                                                                                                                               |
+| -------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `batches`      | A batch of one item sharing an identity   | `batchNumber`, `itemId`, `uomId`, `ownership`, `ownerPartyId`, `parentBatchIds[]`, `sourceDocType`, `sourceDocId`, `status`              |
+| `stock_ledger` | One movement of one quantity. Append-only | `itemId`, `batchId`, `locationId`, `ownership`, `qtyIn`, `qtyOut`, `valueIn`, `valueOut`, `movementType`, `sourceDocType`, `sourceDocId` |
 
 ### 7.1 Genealogy — `parentBatchIds`
 

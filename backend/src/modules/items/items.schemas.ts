@@ -156,7 +156,9 @@ export const locationRowSchema = z.object({
   locationId: z.string(),
   openingStock: z.union([z.string(), z.number()]).optional().nullable(),
   openingStockValue: z.union([z.string(), z.number()]).optional().nullable(),
-  batches: z.array(batchInfoSchema),
+  // Optional: an item at `inventoryTracking = none` declares a bulk quantity and
+  // names no batches. The service still creates one internally.
+  batches: z.array(batchInfoSchema).optional().default([]),
 });
 
 export const itemOpeningStockSchema = openApiRegistry.register(
