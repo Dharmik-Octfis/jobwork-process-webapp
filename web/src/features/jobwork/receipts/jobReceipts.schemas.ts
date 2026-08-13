@@ -11,18 +11,15 @@ import {
 /**
  * Receipts — goods back.
  *
- * 🔴 `mode` is READ-ONLY on the client. `Process.preservesPackaging` decides it
- * (§6.1): dyeing returns the same roll so takas can be received individually,
- * cutting destroys the roll so only a bulk quantity exists. It arrives from the
- * prefill endpoint alongside the sentence explaining it — a disabled toggle would
- * raise the question and answer nothing.
+ * ⚠️ `mode` (unit_wise | bulk) and `Process.preservesPackaging` went with
+ * package-level tracking on 2026-08-12. Every receipt is a quantity against a
+ * batch, so there is no second shape left to choose between.
  */
 
 export const jobReceiptLineSchema = z.object({
   id: z.string(),
   jobIssueId: z.string().nullable(),
   jobIssueLineId: z.string().nullable(),
-  parentPackageId: z.string().nullable(),
   issuedQty: z.union([z.string(), z.number()]),
   receivedQty: z.union([z.string(), z.number()]),
   acceptedQty: z.union([z.string(), z.number()]),
@@ -33,15 +30,6 @@ export const jobReceiptLineSchema = z.object({
   responsibility: z.string().nullable(),
   remarks: z.string().nullable(),
   reason: namedRefSchema.nullable().optional(),
-  parentPackage: z
-    .object({
-      id: z.string(),
-      packageNumber: z.number(),
-      label: z.string().nullable(),
-      qty: z.union([z.string(), z.number()]),
-    })
-    .nullable()
-    .optional(),
   jobIssue: z.object({ id: z.string(), challanNumber: z.string() }).nullable().optional(),
   /** The challan line this row closes, and therefore which item it consumed. */
   jobIssueLine: z
@@ -139,15 +127,13 @@ export const receivePrefillSchema = z.object({
     expectedYield: decimalString,
     rate: decimalString,
     rateBasis: z.string().nullable(),
-    process: z.object({ id: z.string(), name: z.string(), preservesPackaging: z.boolean() }),
+    process: z.object({ id: z.string(), name: z.string() }),
     jobOrder: z.object({ id: z.string(), jobOrderNumber: z.string(), ownership: z.string() }),
     /** 🔴 What the step plans to consume and produce — the only source for the
      * dialog's item and unit labels since Migration B dropped the scalars. */
     inputs: z.array(stepItemRowSchema).default([]),
     outputs: z.array(stepItemRowSchema).default([]),
   }),
-  mode: z.string(),
-  /** Why the mode is what it is, in words. Shown instead of a disabled control. */
   issues: z.array(
     z.object({
       id: z.string(),
@@ -170,8 +156,6 @@ export const receivePrefillSchema = z.object({
       uomSymbol: z.string().nullable(),
       batchId: z.string(),
       batchNumber: z.string(),
-      packageLabel: z.string().nullable(),
-      packageNumber: z.number().nullable(),
       issuedQty: z.string(),
     }),
   ),
@@ -204,7 +188,6 @@ export interface JobReceiptLineData {
   itemId?: string | null;
   jobIssueId?: string | null;
   jobIssueLineId?: string | null;
-  parentPackageId?: string | null;
   issuedQty?: number;
   receivedQty: number;
   acceptedQty?: number;
