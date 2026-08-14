@@ -21,14 +21,17 @@ export function CurrenciesPage() {
   const filter = params.get('filter') ?? 'active';
 
   const setFilter = (key: string) => {
-    setParams((prev) => {
-      if (key === 'active') {
-        prev.delete('filter');
-      } else {
-        prev.set('filter', key);
-      }
-      return prev;
-    }, { replace: true });
+    setParams(
+      (prev) => {
+        if (key === 'active') {
+          prev.delete('filter');
+        } else {
+          prev.set('filter', key);
+        }
+        return prev;
+      },
+      { replace: true },
+    );
   };
 
   const { data: currencies = [], isLoading, error } = useCurrencies(orgId!);
@@ -51,7 +54,7 @@ export function CurrenciesPage() {
     if (currency.isBaseCurrency) return;
     await updateMutation.mutateAsync({
       id: currency.id,
-      data: { isActive: !currency.isActive }
+      data: { isActive: !currency.isActive },
     });
   };
 
@@ -206,7 +209,14 @@ export function CurrenciesPage() {
                 </h3>
                 {currencies.length === 0 && (
                   <>
-                    <p style={{ margin: '0 0 24px 0', color: '#64748b', fontSize: 14, maxWidth: 300 }}>
+                    <p
+                      style={{
+                        margin: '0 0 24px 0',
+                        color: '#64748b',
+                        fontSize: 14,
+                        maxWidth: 300,
+                      }}
+                    >
                       Get started by adding your first currency.
                     </p>
                     <button
@@ -236,7 +246,14 @@ export function CurrenciesPage() {
                 )}
               </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
+              <table
+                style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  fontSize: 13,
+                  tableLayout: 'fixed',
+                }}
+              >
                 <thead>
                   <tr
                     style={{ borderBottom: '1px solid var(--color-border)', background: '#f8fafc' }}
@@ -245,7 +262,9 @@ export function CurrenciesPage() {
                       Currency Name
                     </th>
                     <th style={{ ...headerStyle, width: '8%', textAlign: 'left' }}>Symbol</th>
-                    <th style={{ ...headerStyle, width: '10%', textAlign: 'left' }}>Exchange Rate</th>
+                    <th style={{ ...headerStyle, width: '10%', textAlign: 'left' }}>
+                      Exchange Rate
+                    </th>
                     <th style={{ ...headerStyle, width: '18%', textAlign: 'left' }}>
                       Created By & Time
                     </th>
@@ -272,7 +291,14 @@ export function CurrenciesPage() {
                           fontWeight: 500,
                         }}
                       >
-                        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px' }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: '8px',
+                          }}
+                        >
                           <span>{currency.currencyName}</span>
                           {currency.isBaseCurrency && (
                             <span
@@ -285,7 +311,7 @@ export function CurrenciesPage() {
                                 fontWeight: 600,
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.05em',
-                                display: 'inline-flex'
+                                display: 'inline-flex',
                               }}
                             >
                               Base Currency
@@ -296,7 +322,13 @@ export function CurrenciesPage() {
                       <td style={{ padding: '12px 16px', color: 'var(--color-text)' }}>
                         {currency.symbol}
                       </td>
-                      <td style={{ padding: '12px 16px', color: 'var(--color-text)', textAlign: 'left' }}>
+                      <td
+                        style={{
+                          padding: '12px 16px',
+                          color: 'var(--color-text)',
+                          textAlign: 'left',
+                        }}
+                      >
                         {currency.exchangeRate}
                       </td>
                       <td
@@ -349,15 +381,44 @@ export function CurrenciesPage() {
                       <td style={{ padding: '12px 16px' }}>
                         {currency.isBaseCurrency ? (
                           <div
-                            style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'default', width: 120 }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 8,
+                              cursor: 'default',
+                              width: 120,
+                            }}
                           >
-                            <div style={{ position: 'relative', width: 34, height: 20, borderRadius: 10, background: '#22c55e', opacity: 0.6 }}>
-                              <div style={{ position: 'absolute', top: 2, left: 16, width: 16, height: 16, borderRadius: 8, background: '#fff' }} />
+                            <div
+                              style={{
+                                position: 'relative',
+                                width: 34,
+                                height: 20,
+                                borderRadius: 10,
+                                background: '#22c55e',
+                                opacity: 0.6,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  top: 2,
+                                  left: 16,
+                                  width: 16,
+                                  height: 16,
+                                  borderRadius: 8,
+                                  background: '#fff',
+                                }}
+                              />
                             </div>
-                            <span style={{ fontSize: 13, color: '#15803d', fontWeight: 500 }}>Active</span>
+                            <span style={{ fontSize: 13, color: '#15803d', fontWeight: 500 }}>
+                              Active
+                            </span>
                             <span className="users-tooltip-wrapper">
                               <Info size={14} color="#94a3b8" />
-                              <span className="users-tooltip-text">Base currency cannot be made inactive</span>
+                              <span className="users-tooltip-text">
+                                Base currency cannot be made inactive
+                              </span>
                             </span>
                           </div>
                         ) : (
@@ -404,7 +465,13 @@ export function CurrenciesPage() {
                                 }}
                               />
                             </div>
-                            <span style={{ fontSize: 13, color: currency.isActive ? '#15803d' : '#64748b', fontWeight: 500 }}>
+                            <span
+                              style={{
+                                fontSize: 13,
+                                color: currency.isActive ? '#15803d' : '#64748b',
+                                fontWeight: 500,
+                              }}
+                            >
                               {currency.isActive ? 'Active' : 'Inactive'}
                             </span>
                           </button>
@@ -470,10 +537,13 @@ export function CurrenciesPage() {
               width: '100%',
               maxWidth: '440px',
               padding: '24px',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+              boxShadow:
+                '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+            <div
+              style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}
+            >
               <div
                 style={{
                   width: '40px',
@@ -501,7 +571,15 @@ export function CurrenciesPage() {
             </div>
 
             <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#334155', marginBottom: '6px' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  color: '#334155',
+                  marginBottom: '6px',
+                }}
+              >
                 Select Currency <span style={{ color: '#dc2626' }}>*</span>
               </label>
               <SearchableSelect
@@ -515,8 +593,21 @@ export function CurrenciesPage() {
               />
             </div>
 
-            <p style={{ fontSize: '13px', lineHeight: '1.5', color: '#334155', marginBottom: '20px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', padding: '12px', borderRadius: '6px' }}>
-              <strong style={{ color: '#dc2626' }}>Note:</strong> Once selected, the Base Currency cannot be changed or deleted later. To change the base currency in the future, a new organization will need to be created.
+            <p
+              style={{
+                fontSize: '13px',
+                lineHeight: '1.5',
+                color: '#334155',
+                marginBottom: '20px',
+                backgroundColor: '#fef2f2',
+                border: '1px solid #fecaca',
+                padding: '12px',
+                borderRadius: '6px',
+              }}
+            >
+              <strong style={{ color: '#dc2626' }}>Note:</strong> Once selected, the Base Currency
+              cannot be changed or deleted later. To change the base currency in the future, a new
+              organization will need to be created.
             </p>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>

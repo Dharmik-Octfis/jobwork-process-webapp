@@ -274,7 +274,7 @@ export function CreateAssemblyPage() {
             style={{
               transition: 'all 0.3s ease',
               opacity: compositeItemId ? 1 : 0.4,
-              filter: compositeItemId ? 'none' : 'blur(2px)',
+              filter: compositeItemId ? 'none' : 'blur(0.5px)',
               pointerEvents: compositeItemId ? 'auto' : 'none',
               userSelect: compositeItemId ? 'auto' : 'none',
             }}
