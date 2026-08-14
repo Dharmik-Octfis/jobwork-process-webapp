@@ -2,12 +2,17 @@ import { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Trash2, Plus, Download, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { itemsApi } from '../items.api';
-import type { Item, ItemFormData} from '../items.schemas';
+import type { Item, ItemFormData } from '../items.schemas';
 
 function getImageKey(img: unknown): string | null {
   if (!img) return null;
   if (typeof img === 'string') return img;
-  if (typeof img === 'object' && img !== null && 'key' in img && typeof (img as { key: unknown }).key === 'string') {
+  if (
+    typeof img === 'object' &&
+    img !== null &&
+    'key' in img &&
+    typeof (img as { key: unknown }).key === 'string'
+  ) {
     return (img as { key: string }).key;
   }
   return null;
@@ -20,7 +25,7 @@ function ImageViewerModal({
   orgId,
   itemId,
   item,
-  initialImageKey
+  initialImageKey,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -39,7 +44,7 @@ function ImageViewerModal({
     if (frontKey) imgs.push(frontKey);
     if (rearKey) imgs.push(rearKey);
     if (Array.isArray(item.images)) {
-      item.images.forEach(img => {
+      item.images.forEach((img) => {
         const k = getImageKey(img);
         if (k) imgs.push(k);
       });
@@ -70,7 +75,7 @@ function ImageViewerModal({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['item', orgId, itemId] });
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
-    }
+    },
   });
 
   const handleMarkAsFront = () => {
@@ -82,7 +87,7 @@ function ImageViewerModal({
     let activeImageObj: unknown = activeImageKey;
     const updatePayload: Partial<ItemFormData> = {};
 
-    const index = newImages.findIndex(img => getImageKey(img) === activeImageKey);
+    const index = newImages.findIndex((img) => getImageKey(img) === activeImageKey);
     if (index !== -1) {
       // Image was in 'Other images'
       activeImageObj = newImages[index];
@@ -113,13 +118,18 @@ function ImageViewerModal({
     if (activeImageKey === frontKey) {
       updatePayload.frontImage = null as unknown as string;
       isDeleted = true;
-    } 
+    }
     if (activeImageKey === rearKey) {
       updatePayload.rearImage = null as unknown as string;
       isDeleted = true;
-    } 
-    if (Array.isArray(item.images) && item.images.some(img => getImageKey(img) === activeImageKey)) {
-      updatePayload.images = item.images.filter(img => getImageKey(img) !== activeImageKey) as unknown as string[];
+    }
+    if (
+      Array.isArray(item.images) &&
+      item.images.some((img) => getImageKey(img) === activeImageKey)
+    ) {
+      updatePayload.images = item.images.filter(
+        (img) => getImageKey(img) !== activeImageKey,
+      ) as unknown as string[];
       isDeleted = true;
     }
 
@@ -165,57 +175,189 @@ function ImageViewerModal({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '24px'
+        padding: '24px',
       }}
     >
       <div style={{ position: 'absolute', top: '24px', right: '24px' }}>
         <button
           onClick={onClose}
-          style={{ background: '#000', border: 'none', borderRadius: '50%', width: '44px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'white', transition: 'background 0.2s' }}
-          onMouseEnter={(e) => e.currentTarget.style.background = '#333'}
-          onMouseLeave={(e) => e.currentTarget.style.background = '#000'}
+          style={{
+            background: '#000',
+            border: 'none',
+            borderRadius: '50%',
+            width: '44px',
+            height: '44px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            color: 'white',
+            transition: 'background 0.2s',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = '#333')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = '#000')}
         >
           <X size={24} />
         </button>
       </div>
 
-      <div style={{ background: 'white', borderRadius: '16px', width: '560px', height: '520px', maxWidth: '90vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', boxSizing: 'border-box' }}>
-
+      <div
+        style={{
+          background: 'white',
+          borderRadius: '16px',
+          width: '560px',
+          height: '520px',
+          maxWidth: '90vw',
+          maxHeight: '90vh',
+          display: 'flex',
+          flexDirection: 'column',
+          position: 'relative',
+          overflow: 'hidden',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+          boxSizing: 'border-box',
+        }}
+      >
         {/* Main Image Area */}
-        <div style={{ height: '360px', width: '100%', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px 56px', boxSizing: 'border-box' }}>
-
+        <div
+          style={{
+            height: '360px',
+            width: '100%',
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px 56px',
+            boxSizing: 'border-box',
+          }}
+        >
           {/* Nav Arrows */}
           {activeIndex > 0 && (
-            <button onClick={handlePrevious} style={{ position: 'absolute', left: '16px', background: '#000', color: '#fff', border: 'none', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10, transition: 'background 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#333'} onMouseLeave={(e) => e.currentTarget.style.background = '#000'}>
+            <button
+              onClick={handlePrevious}
+              style={{
+                position: 'absolute',
+                left: '16px',
+                background: '#000',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '50%',
+                width: '40px',
+                height: '40px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                zIndex: 10,
+                transition: 'background 0.2s',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#333')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = '#000')}
+            >
               <ChevronLeft size={24} />
             </button>
           )}
 
           {url && (
-            <img src={url} alt="Viewer" style={{ maxWidth: '100%', maxHeight: '320px', objectFit: 'contain', display: 'block', borderRadius: '8px' }} />
+            <img
+              src={url}
+              alt="Viewer"
+              style={{
+                maxWidth: '100%',
+                maxHeight: '320px',
+                objectFit: 'contain',
+                display: 'block',
+                borderRadius: '8px',
+              }}
+            />
           )}
 
           {activeIndex >= 0 && activeIndex < allImages.length - 1 && (
-            <button onClick={handleNext} style={{ position: 'absolute', right: '16px', background: '#000', color: '#fff', border: 'none', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10, transition: 'background 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#333'} onMouseLeave={(e) => e.currentTarget.style.background = '#000'}>
+            <button
+              onClick={handleNext}
+              style={{
+                position: 'absolute',
+                right: '16px',
+                background: '#000',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '50%',
+                width: '40px',
+                height: '40px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                zIndex: 10,
+                transition: 'background 0.2s',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#333')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = '#000')}
+            >
               <ChevronRight size={24} />
             </button>
           )}
         </div>
 
         {/* Thumbnails */}
-        <div style={{ height: '70px', padding: '0 24px 12px', display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center', boxSizing: 'border-box' }}>
+        <div
+          style={{
+            height: '70px',
+            padding: '0 24px 12px',
+            display: 'flex',
+            gap: '8px',
+            justifyContent: 'center',
+            alignItems: 'center',
+            boxSizing: 'border-box',
+          }}
+        >
           {allImages.map((imgKey, idx) => (
-            <div key={idx} onClick={() => setActiveImageKey(imgKey)} style={{ width: '44px', height: '44px', border: activeImageKey === imgKey ? '2px solid #3b82f6' : '1px solid #eef0f3', borderRadius: '8px', padding: activeImageKey === imgKey ? '2px' : '0', cursor: 'pointer', overflow: 'hidden' }}>
+            <div
+              key={idx}
+              onClick={() => setActiveImageKey(imgKey)}
+              style={{
+                width: '44px',
+                height: '44px',
+                border: activeImageKey === imgKey ? '2px solid #3b82f6' : '1px solid #eef0f3',
+                borderRadius: '8px',
+                padding: activeImageKey === imgKey ? '2px' : '0',
+                cursor: 'pointer',
+                overflow: 'hidden',
+              }}
+            >
               <ImageThumbnail orgId={orgId} itemId={itemId} imageKey={imgKey} maxImgHeight="40px" />
             </div>
           ))}
         </div>
 
         {/* Bottom Bar */}
-        <div style={{ height: '58px', padding: '0 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #eef0f3', boxSizing: 'border-box', background: '#fff' }}>
+        <div
+          style={{
+            height: '58px',
+            padding: '0 24px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            borderTop: '1px solid #eef0f3',
+            boxSizing: 'border-box',
+            background: '#fff',
+          }}
+        >
           <div style={{ width: '120px' }}>
             {activeImageKey !== getImageKey(item.frontImage) && (
-              <button onClick={handleMarkAsFront} disabled={updateItemMutation.isPending} style={{ background: 'none', border: 'none', color: '#3b82f6', fontSize: '14px', fontWeight: 500, cursor: updateItemMutation.isPending ? 'not-allowed' : 'pointer', padding: '8px 12px', marginLeft: '-12px' }}>
+              <button
+                onClick={handleMarkAsFront}
+                disabled={updateItemMutation.isPending}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#3b82f6',
+                  fontSize: '14px',
+                  fontWeight: 500,
+                  cursor: updateItemMutation.isPending ? 'not-allowed' : 'pointer',
+                  padding: '8px 12px',
+                  marginLeft: '-12px',
+                }}
+              >
                 Mark as Front
               </button>
             )}
@@ -223,12 +365,32 @@ function ImageViewerModal({
 
           <button
             onClick={handleDownload}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#3b82f6', background: 'none', border: 'none', fontSize: '14px', fontWeight: 500, padding: '8px 12px', cursor: 'pointer' }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              color: '#3b82f6',
+              background: 'none',
+              border: 'none',
+              fontSize: '14px',
+              fontWeight: 500,
+              padding: '8px 12px',
+              cursor: 'pointer',
+            }}
           >
             <Download size={16} /> Download
           </button>
 
-          <button onClick={handleDeleteImage} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '8px 12px' }}>
+          <button
+            onClick={handleDeleteImage}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#ef4444',
+              cursor: 'pointer',
+              padding: '8px 12px',
+            }}
+          >
             <Trash2 size={18} />
           </button>
         </div>
@@ -263,7 +425,19 @@ function ImageThumbnail({
 
   if (isLoading) {
     return (
-      <div style={{ width: '100%', height: '100%', background: '#f8fafc', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', color: '#94a3b8' }}>
+      <div
+        style={{
+          width: '100%',
+          height: '100%',
+          background: '#f8fafc',
+          borderRadius: '6px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '11px',
+          color: '#94a3b8',
+        }}
+      >
         Loading...
       </div>
     );
@@ -272,13 +446,34 @@ function ImageThumbnail({
   if (!url) return null;
 
   return (
-    <div 
-      style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '6px', overflow: 'hidden', background: '#ffffff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} 
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        borderRadius: '6px',
+        overflow: 'hidden',
+        background: '#ffffff',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
       onClick={() => onClick?.(url)}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <img src={url} alt="Item" style={{ maxWidth: '100%', maxHeight: maxImgHeight, width: 'auto', height: 'auto', objectFit: 'contain' }} />
+      <img
+        src={url}
+        alt="Item"
+        style={{
+          maxWidth: '100%',
+          maxHeight: maxImgHeight,
+          width: 'auto',
+          height: 'auto',
+          objectFit: 'contain',
+        }}
+      />
       {onDelete && isHovered && (
         <button
           type="button"
@@ -287,7 +482,21 @@ function ImageThumbnail({
             onDelete();
           }}
           title="Delete image"
-          style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(255, 255, 255, 0.9)', border: '1px solid #cbd5e1', borderRadius: '4px', color: '#ef4444', cursor: 'pointer', padding: '3px', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5 }}
+          style={{
+            position: 'absolute',
+            top: '4px',
+            right: '4px',
+            background: 'rgba(255, 255, 255, 0.9)',
+            border: '1px solid #cbd5e1',
+            borderRadius: '4px',
+            color: '#ef4444',
+            cursor: 'pointer',
+            padding: '3px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 5,
+          }}
         >
           <Trash2 size={13} />
         </button>
@@ -297,7 +506,15 @@ function ImageThumbnail({
 }
 
 // --- Main Gallery Component ---
-export function ItemImageGallery({ orgId, itemId, item }: { orgId: string; itemId: string; item: Item }) {
+export function ItemImageGallery({
+  orgId,
+  itemId,
+  item,
+}: {
+  orgId: string;
+  itemId: string;
+  item: Item;
+}) {
   const queryClient = useQueryClient();
   const frontImageRef = useRef<HTMLInputElement>(null);
   const rearImageRef = useRef<HTMLInputElement>(null);
@@ -337,7 +554,7 @@ export function ItemImageGallery({ orgId, itemId, item }: { orgId: string; itemI
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['item', orgId, itemId] });
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
-    }
+    },
   });
 
   const handleFrontImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -359,7 +576,7 @@ export function ItemImageGallery({ orgId, itemId, item }: { orgId: string; itemI
   const handleOtherImagesUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const formData = new FormData();
-      Array.from(e.target.files).forEach(file => {
+      Array.from(e.target.files).forEach((file) => {
         formData.append('images', file);
       });
       uploadImagesMutation.mutate(formData);
@@ -384,18 +601,59 @@ export function ItemImageGallery({ orgId, itemId, item }: { orgId: string; itemI
     }
   };
 
-  const activeOtherIndex = otherImagesList.length > 0 ? Math.min(selectedOtherIndex, otherImagesList.length - 1) : 0;
-  const activeOtherKey = otherImagesList[activeOtherIndex] ? getImageKey(otherImagesList[activeOtherIndex]) : null;
+  const activeOtherIndex =
+    otherImagesList.length > 0 ? Math.min(selectedOtherIndex, otherImagesList.length - 1) : 0;
+  const activeOtherKey = otherImagesList[activeOtherIndex]
+    ? getImageKey(otherImagesList[activeOtherIndex])
+    : null;
 
   return (
     <>
-      <div style={{ border: '1px solid #eef0f3', borderRadius: '12px', padding: '16px', display: 'flex', gap: '16px', background: '#fff', boxSizing: 'border-box', height: '252px' }}>
+      <div
+        style={{
+          border: '1px solid #eef0f3',
+          borderRadius: '12px',
+          padding: '16px',
+          display: 'flex',
+          gap: '16px',
+          background: '#fff',
+          boxSizing: 'border-box',
+          height: '252px',
+        }}
+      >
         {/* Left Column (Front & Rear) */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '140px', flexShrink: 0 }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            width: '140px',
+            flexShrink: 0,
+          }}
+        >
           <div>
-            <div style={{ fontSize: '13px', marginBottom: '6px', color: '#1e293b', fontWeight: 500 }}>Front View</div>
-            <input type="file" ref={frontImageRef} onChange={handleFrontImageUpload} style={{ display: 'none' }} accept="image/*" />
-            <div style={{ height: '85px', border: '1px solid #eef0f3', borderRadius: '8px', overflow: 'hidden', position: 'relative', background: '#fafafa' }}>
+            <div
+              style={{ fontSize: '13px', marginBottom: '6px', color: '#1e293b', fontWeight: 500 }}
+            >
+              Front View
+            </div>
+            <input
+              type="file"
+              ref={frontImageRef}
+              onChange={handleFrontImageUpload}
+              style={{ display: 'none' }}
+              accept="image/*"
+            />
+            <div
+              style={{
+                height: '85px',
+                border: '1px solid #eef0f3',
+                borderRadius: '8px',
+                overflow: 'hidden',
+                position: 'relative',
+                background: '#fafafa',
+              }}
+            >
               {frontKey ? (
                 <ImageThumbnail
                   orgId={orgId}
@@ -406,7 +664,24 @@ export function ItemImageGallery({ orgId, itemId, item }: { orgId: string; itemI
                   maxImgHeight="75px"
                 />
               ) : (
-                <button type="button" onClick={() => frontImageRef.current?.click()} disabled={uploadImagesMutation.isPending} style={{ width: '100%', height: '100%', border: '1px dashed #cbd5e1', borderRadius: '8px', background: '#ffffff', color: '#0062ff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: uploadImagesMutation.isPending ? 'not-allowed' : 'pointer' }}>
+                <button
+                  type="button"
+                  onClick={() => frontImageRef.current?.click()}
+                  disabled={uploadImagesMutation.isPending}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    border: '1px dashed #cbd5e1',
+                    borderRadius: '8px',
+                    background: '#ffffff',
+                    color: '#0062ff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    cursor: uploadImagesMutation.isPending ? 'not-allowed' : 'pointer',
+                  }}
+                >
                   <span style={{ fontSize: 16 }}>↑</span>
                   <span style={{ fontSize: 12, fontWeight: 500 }}>Upload</span>
                 </button>
@@ -415,9 +690,28 @@ export function ItemImageGallery({ orgId, itemId, item }: { orgId: string; itemI
           </div>
 
           <div>
-            <div style={{ fontSize: '13px', marginBottom: '6px', color: '#1e293b', fontWeight: 500 }}>Rear View</div>
-            <input type="file" ref={rearImageRef} onChange={handleRearImageUpload} style={{ display: 'none' }} accept="image/*" />
-            <div style={{ height: '85px', border: '1px solid #eef0f3', borderRadius: '8px', overflow: 'hidden', position: 'relative', background: '#fafafa' }}>
+            <div
+              style={{ fontSize: '13px', marginBottom: '6px', color: '#1e293b', fontWeight: 500 }}
+            >
+              Rear View
+            </div>
+            <input
+              type="file"
+              ref={rearImageRef}
+              onChange={handleRearImageUpload}
+              style={{ display: 'none' }}
+              accept="image/*"
+            />
+            <div
+              style={{
+                height: '85px',
+                border: '1px solid #eef0f3',
+                borderRadius: '8px',
+                overflow: 'hidden',
+                position: 'relative',
+                background: '#fafafa',
+              }}
+            >
               {rearKey ? (
                 <ImageThumbnail
                   orgId={orgId}
@@ -428,7 +722,25 @@ export function ItemImageGallery({ orgId, itemId, item }: { orgId: string; itemI
                   maxImgHeight="75px"
                 />
               ) : (
-                <button type="button" onClick={() => rearImageRef.current?.click()} disabled={uploadImagesMutation.isPending} style={{ width: '100%', height: '100%', border: '1px dashed #cbd5e1', borderRadius: '8px', background: '#ffffff', color: '#0062ff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, cursor: uploadImagesMutation.isPending ? 'not-allowed' : 'pointer' }}>
+                <button
+                  type="button"
+                  onClick={() => rearImageRef.current?.click()}
+                  disabled={uploadImagesMutation.isPending}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    border: '1px dashed #cbd5e1',
+                    borderRadius: '8px',
+                    background: '#ffffff',
+                    color: '#0062ff',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 2,
+                    cursor: uploadImagesMutation.isPending ? 'not-allowed' : 'pointer',
+                  }}
+                >
                   <span style={{ fontSize: 16 }}>↑</span>
                   <span style={{ fontSize: 11, fontWeight: 500 }}>Upload Rear</span>
                 </button>
@@ -439,12 +751,46 @@ export function ItemImageGallery({ orgId, itemId, item }: { orgId: string; itemI
 
         {/* Right Column (Other Images) */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          <div style={{ fontSize: '13px', marginBottom: '6px', color: '#1e293b', fontWeight: 500 }}>Other Images</div>
-          <input type="file" ref={otherImagesRef} onChange={handleOtherImagesUpload} style={{ display: 'none' }} accept="image/*" multiple />
+          <div style={{ fontSize: '13px', marginBottom: '6px', color: '#1e293b', fontWeight: 500 }}>
+            Other Images
+          </div>
+          <input
+            type="file"
+            ref={otherImagesRef}
+            onChange={handleOtherImagesUpload}
+            style={{ display: 'none' }}
+            accept="image/*"
+            multiple
+          />
 
-          <div style={{ height: '194px', border: '1px solid #eef0f3', borderRadius: '8px', padding: '8px', display: 'flex', flexDirection: 'column', gap: '8px', background: '#fafafa', boxSizing: 'border-box' }}>
+          <div
+            style={{
+              height: '194px',
+              border: '1px solid #eef0f3',
+              borderRadius: '8px',
+              padding: '8px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+              background: '#fafafa',
+              boxSizing: 'border-box',
+            }}
+          >
             {/* Main large image inside Other Images */}
-            <div style={{ height: '128px', width: '100%', borderRadius: '6px', overflow: 'hidden', border: '1px solid #e2e8f0', background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+            <div
+              style={{
+                height: '128px',
+                width: '100%',
+                borderRadius: '6px',
+                overflow: 'hidden',
+                border: '1px solid #e2e8f0',
+                background: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                position: 'relative',
+              }}
+            >
               {activeOtherKey ? (
                 <ImageThumbnail
                   orgId={orgId}
@@ -455,14 +801,33 @@ export function ItemImageGallery({ orgId, itemId, item }: { orgId: string; itemI
                   maxImgHeight="115px"
                 />
               ) : (
-                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 12, background: '#f8fafc' }}>
+                <div
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#94a3b8',
+                    fontSize: 12,
+                    background: '#f8fafc',
+                  }}
+                >
                   No extra images
                 </div>
               )}
             </div>
 
             {/* Thumbnail row */}
-            <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', alignItems: 'center', paddingBottom: '2px' }}>
+            <div
+              style={{
+                display: 'flex',
+                gap: '6px',
+                overflowX: 'auto',
+                alignItems: 'center',
+                paddingBottom: '2px',
+              }}
+            >
               {otherImagesList.map((imgItem, idx: number) => {
                 const imgKey = getImageKey(imgItem);
                 if (!imgKey) return null;
@@ -479,14 +844,10 @@ export function ItemImageGallery({ orgId, itemId, item }: { orgId: string; itemI
                       padding: '1px',
                       cursor: 'pointer',
                       overflow: 'hidden',
-                      background: '#fff'
+                      background: '#fff',
                     }}
                   >
-                    <ImageThumbnail
-                      orgId={orgId}
-                      itemId={itemId}
-                      imageKey={imgKey}
-                    />
+                    <ImageThumbnail orgId={orgId} itemId={itemId} imageKey={imgKey} />
                   </div>
                 );
               })}
@@ -496,7 +857,19 @@ export function ItemImageGallery({ orgId, itemId, item }: { orgId: string; itemI
                 type="button"
                 onClick={() => otherImagesRef.current?.click()}
                 disabled={uploadImagesMutation.isPending}
-                style={{ width: '38px', height: '38px', flexShrink: 0, border: '1.5px dashed #0062ff', borderRadius: '6px', background: '#ffffff', color: '#0062ff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: uploadImagesMutation.isPending ? 'not-allowed' : 'pointer' }}
+                style={{
+                  width: '38px',
+                  height: '38px',
+                  flexShrink: 0,
+                  border: '1.5px dashed #0062ff',
+                  borderRadius: '6px',
+                  background: '#ffffff',
+                  color: '#0062ff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: uploadImagesMutation.isPending ? 'not-allowed' : 'pointer',
+                }}
                 title="Add Images"
               >
                 <Plus size={18} strokeWidth={2.5} />

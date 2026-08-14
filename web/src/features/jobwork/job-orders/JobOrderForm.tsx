@@ -358,14 +358,18 @@ export function JobOrderForm({ initialData, onSubmit, isPending, onCancel, field
                 style={readOnlyStyle}
               />
             ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              /* The gear belongs TO this field — it configures the number in it —
+                 so it sits inside the box rather than floating beside it as a
+                 second control. Still a real <button>, so Tab reaches it right
+                 after the input (CLAUDE.md's tab rule). */
+              <div style={{ position: 'relative' }}>
                 <input
                   id="jo-number"
                   type="text"
                   value={jobOrderNumber}
                   onChange={(e) => setTypedNumber(e.target.value)}
                   placeholder="(auto)"
-                  style={{ ...inputStyle, flex: 1 }}
+                  style={{ ...inputStyle, padding: '6px 34px 6px 8px', boxSizing: 'border-box' }}
                 />
                 <button
                   type="button"
@@ -373,20 +377,23 @@ export function JobOrderForm({ initialData, onSubmit, isPending, onCancel, field
                   title="Configure job order numbering"
                   aria-label="Configure job order numbering"
                   style={{
+                    position: 'absolute',
+                    right: 3,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    width: 32,
-                    minHeight: 32,
-                    border: '1px solid #d1d5db',
-                    borderRadius: 4,
-                    background: '#fff',
+                    width: 26,
+                    height: 26,
+                    border: 'none',
+                    borderRadius: 3,
+                    background: 'transparent',
                     color: '#64748b',
                     cursor: 'pointer',
-                    flexShrink: 0,
                   }}
                 >
-                  <Settings size={16} />
+                  <Settings size={15} />
                 </button>
               </div>
             )}
@@ -453,7 +460,7 @@ export function JobOrderForm({ initialData, onSubmit, isPending, onCancel, field
                 value={ownerPartyId ?? ''}
                 onChange={(value) => setOwnerPartyId(value || null)}
                 options={[
-                  { value: '', label: 'Pick a customer…' },
+                  { value: '', label: 'Select a customer…' },
                   ...customers.map((c) => ({
                     value: c.id,
                     label: c.companyName || c.contactName,

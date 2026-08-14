@@ -78,7 +78,9 @@ const toFormRows = (
             manufacturedDate: String(batch.manufacturedDate ?? ''),
             expiryDate: String(batch.expiryDate ?? ''),
             sellingPrice:
-              batch.sellingPrice !== null && batch.sellingPrice !== undefined && String(batch.sellingPrice) !== ''
+              batch.sellingPrice !== null &&
+              batch.sellingPrice !== undefined &&
+              String(batch.sellingPrice) !== ''
                 ? String(batch.sellingPrice)
                 : defaultSellingPrice,
             mrp:
@@ -128,8 +130,8 @@ export function AddOpeningStockModal({
     item?.sellingPrice !== undefined && item?.sellingPrice !== null
       ? String(item.sellingPrice)
       : item?.rate !== undefined && item?.rate !== null
-      ? String(item.rate)
-      : '';
+        ? String(item.rate)
+        : '';
 
   const defaultMrp =
     item?.mrp !== undefined && item?.mrp !== null && String(item.mrp) !== ''
@@ -178,7 +180,10 @@ export function AddOpeningStockModal({
     }));
 
   const handleAddLocation = () => {
-    setLocationRows([...locationRows, createEmptyLocation(isBatchTracked, defaultSellingPrice, defaultMrp)]);
+    setLocationRows([
+      ...locationRows,
+      createEmptyLocation(isBatchTracked, defaultSellingPrice, defaultMrp),
+    ]);
   };
 
   const handleDeleteLocation = (id: string) => {
@@ -209,7 +214,10 @@ export function AddOpeningStockModal({
     setLocationRows(
       locationRows.map((r) => {
         if (r.id === locationId) {
-          return { ...r, batches: [...r.batches, createEmptyBatch(defaultSellingPrice, defaultMrp)] };
+          return {
+            ...r,
+            batches: [...r.batches, createEmptyBatch(defaultSellingPrice, defaultMrp)],
+          };
         }
         return r;
       }),
@@ -464,7 +472,13 @@ export function AddOpeningStockModal({
             <tbody>
               {locationRows.map((loc) => (
                 <tr key={loc.id} style={{ borderBottom: '1px solid #eef0f3' }}>
-                  <td style={{ padding: '8px 12px', verticalAlign: 'middle', borderRight: '1px solid #eef0f3' }}>
+                  <td
+                    style={{
+                      padding: '8px 12px',
+                      verticalAlign: 'middle',
+                      borderRight: '1px solid #eef0f3',
+                    }}
+                  >
                     <Select
                       value={loc.locationId}
                       onChange={(val) => updateLocation(loc.id, 'locationId', val)}
@@ -473,7 +487,13 @@ export function AddOpeningStockModal({
                       minWidth="100%"
                     />
                   </td>
-                  <td style={{ padding: '8px 12px', verticalAlign: 'middle', borderRight: '1px solid #eef0f3' }}>
+                  <td
+                    style={{
+                      padding: '8px 12px',
+                      verticalAlign: 'middle',
+                      borderRight: '1px solid #eef0f3',
+                    }}
+                  >
                     <input
                       type="number"
                       step="any"
@@ -485,7 +505,13 @@ export function AddOpeningStockModal({
                       onBlur={(e) => (e.target.style.borderColor = '#cbd5e1')}
                     />
                   </td>
-                  <td style={{ padding: '8px 12px', verticalAlign: 'middle', borderRight: '1px solid #eef0f3' }}>
+                  <td
+                    style={{
+                      padding: '8px 12px',
+                      verticalAlign: 'middle',
+                      borderRight: '1px solid #eef0f3',
+                    }}
+                  >
                     <input
                       type="number"
                       step="any"
@@ -716,9 +742,7 @@ export function AddOpeningStockModal({
                           <input
                             type="number"
                             value={loc.openingStock}
-                            onChange={(e) =>
-                              updateLocation(loc.id, 'openingStock', e.target.value)
-                            }
+                            onChange={(e) => updateLocation(loc.id, 'openingStock', e.target.value)}
                             style={rightAlignStyle}
                             onFocus={(e) => (e.target.style.borderColor = '#0062ff')}
                             onBlur={(e) => (e.target.style.borderColor = '#cbd5e1')}
@@ -760,8 +784,12 @@ export function AddOpeningStockModal({
                             ? { background: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }
                             : {}),
                         }}
-                        onFocus={(e) => !batch.isExisting && (e.target.style.borderColor = '#0062ff')}
-                        onBlur={(e) => !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')}
+                        onFocus={(e) =>
+                          !batch.isExisting && (e.target.style.borderColor = '#0062ff')
+                        }
+                        onBlur={(e) =>
+                          !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')
+                        }
                       />
                     </td>
                     <td style={{ padding: '8px' }}>
@@ -779,8 +807,12 @@ export function AddOpeningStockModal({
                             ? { background: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }
                             : {}),
                         }}
-                        onFocus={(e) => !batch.isExisting && (e.target.style.borderColor = '#0062ff')}
-                        onBlur={(e) => !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')}
+                        onFocus={(e) =>
+                          !batch.isExisting && (e.target.style.borderColor = '#0062ff')
+                        }
+                        onBlur={(e) =>
+                          !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')
+                        }
                       />
                     </td>
                     <td style={{ padding: '8px' }}>
@@ -797,8 +829,12 @@ export function AddOpeningStockModal({
                             ? { background: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }
                             : {}),
                         }}
-                        onFocus={(e) => !batch.isExisting && (e.target.style.borderColor = '#0062ff')}
-                        onBlur={(e) => !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')}
+                        onFocus={(e) =>
+                          !batch.isExisting && (e.target.style.borderColor = '#0062ff')
+                        }
+                        onBlur={(e) =>
+                          !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')
+                        }
                       />
                     </td>
                     <td style={{ padding: '8px' }}>
@@ -815,8 +851,12 @@ export function AddOpeningStockModal({
                             ? { background: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }
                             : {}),
                         }}
-                        onFocus={(e) => !batch.isExisting && (e.target.style.borderColor = '#0062ff')}
-                        onBlur={(e) => !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')}
+                        onFocus={(e) =>
+                          !batch.isExisting && (e.target.style.borderColor = '#0062ff')
+                        }
+                        onBlur={(e) =>
+                          !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')
+                        }
                       />
                     </td>
                     <td style={{ padding: '8px' }}>
@@ -833,8 +873,12 @@ export function AddOpeningStockModal({
                             ? { background: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }
                             : {}),
                         }}
-                        onFocus={(e) => !batch.isExisting && (e.target.style.borderColor = '#0062ff')}
-                        onBlur={(e) => !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')}
+                        onFocus={(e) =>
+                          !batch.isExisting && (e.target.style.borderColor = '#0062ff')
+                        }
+                        onBlur={(e) =>
+                          !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')
+                        }
                       />
                     </td>
                     <td style={{ padding: '8px' }}>
@@ -849,8 +893,12 @@ export function AddOpeningStockModal({
                             ? { background: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }
                             : {}),
                         }}
-                        onFocus={(e) => !batch.isExisting && (e.target.style.borderColor = '#0062ff')}
-                        onBlur={(e) => !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')}
+                        onFocus={(e) =>
+                          !batch.isExisting && (e.target.style.borderColor = '#0062ff')
+                        }
+                        onBlur={(e) =>
+                          !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')
+                        }
                       />
                     </td>
                     <td style={{ padding: '8px' }}>
@@ -969,7 +1017,9 @@ export function AddOpeningStockModal({
                             >
                               Added Qty to Location : {batchSum}
                               {isExceeded && (
-                                <span style={{ marginLeft: '6px', fontSize: '11px', fontWeight: 700 }}>
+                                <span
+                                  style={{ marginLeft: '6px', fontSize: '11px', fontWeight: 700 }}
+                                >
                                   (Exceeds Opening Stock!)
                                 </span>
                               )}

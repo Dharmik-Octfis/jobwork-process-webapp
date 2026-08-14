@@ -202,6 +202,14 @@ export interface BalanceFilter {
   itemId?: string;
   batchId?: string;
   locationId?: string;
+  /**
+   * Several locations at once — a whole DISPATCH SITE (2026-08-14). One challan
+   * may draw from every godown under one site, so the picker and the FIFO queue
+   * are scoped to the set rather than to the one location the user picked.
+   *
+   * Ignored when `locationId` is set; a caller that names one location means it.
+   */
+  locationIds?: readonly string[];
   ownership?: Ownership;
   /** Balance as it stood at a moment in time, by `postedAt`. */
   asOf?: Date;
@@ -221,7 +229,11 @@ function balanceWhere(filter: BalanceFilter): Prisma.StockLedgerEntryWhereInput 
     organizationId: filter.organizationId,
     ...(filter.itemId ? { itemId: filter.itemId } : {}),
     ...(filter.batchId ? { batchId: filter.batchId } : {}),
-    ...(filter.locationId ? { locationId: filter.locationId } : {}),
+    ...(filter.locationId
+      ? { locationId: filter.locationId }
+      : filter.locationIds
+        ? { locationId: { in: [...filter.locationIds] } }
+        : {}),
     ...(filter.ownership ? { ownership: filter.ownership } : {}),
     ...(filter.asOf ? { postedAt: { lte: filter.asOf } } : {}),
     stockEffect: { in: [axis, 'both'] },
@@ -298,6 +310,13 @@ export async function getBalances(
 
 export interface AvailableBatch {
   batchId: string;
+  /**
+   * 🔴 WHICH GODOWN this quantity is in. A row is a batch AT A LOCATION, because a
+   * challan may draw from a whole dispatch site and one batch can sit in two of
+   * its racks. The challan line records this, and the ledger takes the stock out
+   * of exactly here.
+   */
+  locationId: string;
   batchNumber: string;
   supplierBatchRef: string | null;
   manufacturerBatch: string | null;
@@ -315,6 +334,19 @@ export interface AvailableBatch {
    * was one query per row, which is invisible at three batches and is the whole
    * response time at three hundred. */
   value: Prisma.Decimal;
+  /**
+   * When this batch came onto the books. Load-bearing for DISPLAY since
+   * 2026-08-14: references are deliberately not unique (Zoho allows duplicates
+   * and so do we), so two live rows can both read `jv2` and the date is one of
+   * the few things that tells them apart. `batchNumber` cannot — it is never
+   * rendered.
+   *
+   * ⚠️ A proxy, not the goods-inward date: it is the row's creation time, not the
+   * first inward ledger entry's `postedAt`. Close enough to identify a row, NOT
+   * close enough for FIFO — allocate on the ledger date, or a backdated receipt
+   * queues in the wrong place.
+   */
+  createdAt: Date;
 }
 
 /**
@@ -346,6 +378,9 @@ export async function getAvailableBatches(
     organizationId: string;
     itemId: string;
     locationId?: string;
+    /** A whole dispatch site — every godown one challan may draw from. Rows come
+     * back per (batch, location), so the caller knows where each balance is. */
+    locationIds?: readonly string[];
     ownership?: Ownership;
     asOf?: Date;
     /** Batch number or the supplier's own reference — the two things printed on
@@ -355,8 +390,19 @@ export async function getAvailableBatches(
     limit?: number;
   },
 ): Promise<AvailableBatch[]> {
+  /**
+   * 🔴 GROUPED BY (batch, LOCATION), not by batch (2026-08-14).
+   *
+   * A challan may now draw from every godown in a dispatch site, and one batch can
+   * hold stock in two of them. Summing across the site would offer a single row
+   * whose quantity exists in two places at once — the user would pick it, and the
+   * ledger would take material out of a rack the vehicle never visited.
+   *
+   * One row per batch PER LOCATION is the honest unit, and it is also what the
+   * challan line records.
+   */
   const grouped = await tx.stockLedgerEntry.groupBy({
-    by: ['batchId'],
+    by: ['batchId', 'locationId'],
     where: balanceWhere(filter),
     _sum: { qtyIn: true, qtyOut: true, valueIn: true, valueOut: true },
   });
@@ -365,6 +411,7 @@ export async function getAvailableBatches(
   const positive = grouped
     .map((row) => ({
       batchId: row.batchId,
+      locationId: row.locationId,
       availableQty: (row._sum.qtyIn ?? zero).minus(row._sum.qtyOut ?? zero),
       value: (row._sum.valueIn ?? zero).minus(row._sum.valueOut ?? zero),
     }))
@@ -377,15 +424,27 @@ export async function getAvailableBatches(
       id: { in: positive.map((row) => row.batchId) },
       organizationId: filter.organizationId,
       isDeleted: false,
-      ...searchWhere<Prisma.BatchWhereInput>(filter.search, ['batchNumber', 'supplierBatchRef']),
+      // The picker's own search. Matches what is on the physical tag and nothing
+      // else — `batchNumber` is never rendered, so it is never typed either
+      // (2026-08-14). Same two columns as `batches.service.SEARCH_COLUMNS`.
+      ...searchWhere<Prisma.BatchWhereInput>(filter.search, [
+        'supplierBatchRef',
+        'manufacturerBatch',
+      ]),
     },
     // Ordered and capped HERE rather than after hydration, so a limit actually
     // bounds the rows the database builds.
-    orderBy: { batchNumber: 'asc' },
+    //
+    // 🔴 Oldest first, NOT by `batchNumber` (2026-08-14). The number is invisible
+    // now, so ordering by it produced a sequence nobody on screen could explain —
+    // and, worse, the `take` then kept the LOWEST-numbered rows rather than the
+    // oldest, so a capped list dropped exactly the stock FIFO wants issued first.
+    orderBy: { createdAt: 'asc' },
     ...(filter.limit ? { take: filter.limit } : {}),
     select: {
       id: true,
       batchNumber: true,
+      createdAt: true,
       supplierBatchRef: true,
       manufacturerBatch: true,
       manufacturedDate: true,
@@ -399,14 +458,18 @@ export async function getAvailableBatches(
     },
   });
 
-  const balanceById = new Map(positive.map((row) => [row.batchId, row]));
-  return batches.flatMap((batch) => {
-    const balance = balanceById.get(batch.id);
-    return balance
+  // Driven by the BALANCE rows, not the batch rows: a batch with stock in two
+  // godowns of one site is two offers, and iterating batches would collapse it
+  // back to one.
+  const batchById = new Map(batches.map((batch) => [batch.id, batch]));
+  return positive.flatMap((balance) => {
+    const batch = batchById.get(balance.batchId);
+    return batch
       ? [
           {
             ...batch,
             batchId: batch.id,
+            locationId: balance.locationId,
             availableQty: balance.availableQty,
             value: balance.value,
           },
@@ -422,6 +485,8 @@ export interface CreateBatchInput {
   /** Manual entry is allowed — mills carry the supplier's number on a physical
    * tag. Omit it and the org's `batch` sequence supplies one. */
   batchNumber?: string;
+  /** 🔴 REQUIRED when the item is batch-tracked — it is the only label the user
+   * ever sees for this batch. See the note in `createBatch`. */
   supplierBatchRef?: string | null;
   /** Real columns since 2026-08-13, not `customFields` 2014 fixed attributes every
    * org gets, and `expiryDate` is indexed because the expiry report is the reason
@@ -468,17 +533,43 @@ export async function createBatch(tx: TenantClient, input: CreateBatchInput) {
 
   const item = await tx.item.findFirst({
     where: { id: input.itemId, organizationId: input.organizationId, isDeleted: false },
-    select: { id: true, stockingUomId: true },
+    select: { id: true, stockingUomId: true, inventoryTracking: true },
   });
   if (!item) throw ApiError.notFound('Item not found.');
 
   const manualNumber = input.batchNumber?.trim();
   const batchNumber = manualNumber || (await allocateNumber(tx, input.organizationId, 'batch'));
 
+  /**
+   * 🔴 A BATCH THE USER WILL SEE MUST CARRY A REFERENCE THEY SUPPLIED.
+   *
+   * `batchNumber` is an internal key and is deliberately never rendered, printed
+   * or searched (2026-08-14) — it is this system's equivalent of Zoho's hidden
+   * record id. That only works if every batch a user can SEE has a label of its
+   * own, or the picker renders a blank row nobody can identify. So the reference
+   * is required exactly where a batch is visible: `inventoryTracking = 'batch'`.
+   *
+   * An untracked item's batches are pure ledger plumbing — never listed, never
+   * picked, consumed by FIFO — so demanding a human label for them would be
+   * friction with nobody there to supply it (`items.service` creates them with no
+   * user in the room). Zoho draws the line in exactly the same place: the
+   * reference field appears only once batch tracking is on.
+   *
+   * NOT a database `NOT NULL`, because whether it is required depends on a column
+   * on ANOTHER table. This function is the only place a batch is born, so it is
+   * the only place the rule can live.
+   */
+  const supplierBatchRef = input.supplierBatchRef?.trim() || null;
+  if (item.inventoryTracking === 'batch' && !supplierBatchRef) {
+    throw ApiError.badRequest('This item is batch-tracked, so the batch needs a reference.', {
+      supplierBatchRef: 'Enter the batch reference.',
+    });
+  }
+
   const data: BatchWriteData = {
     organizationId: input.organizationId,
     batchNumber,
-    supplierBatchRef: input.supplierBatchRef ?? null,
+    supplierBatchRef,
     manufacturerBatch: input.manufacturerBatch ?? null,
     manufacturedDate: toDate(input.manufacturedDate),
     expiryDate: toDate(input.expiryDate),

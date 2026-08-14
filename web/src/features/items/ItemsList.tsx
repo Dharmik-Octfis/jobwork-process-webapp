@@ -299,7 +299,9 @@ export function ItemsList() {
                             gap: '6px',
                           }}
                         >
-                          {item.item_type === 'Composite Item' && <ShoppingBag size={14} color="#64748b" />}
+                          {item.item_type === 'Composite Item' && (
+                            <ShoppingBag size={14} color="#64748b" />
+                          )}
                           <span>{item.name}</span>
                         </div>
                         <div style={{ fontSize: '12px', color: '#64748b' }}>SKU: {item.sku}</div>

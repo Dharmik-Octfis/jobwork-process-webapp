@@ -35,7 +35,10 @@ export function CategorySelectDropdown({ value, onChange, error }: CategorySelec
     }
   });
 
-  const flattenCategories = (cats: ItemCategory[], level = 0): { cat: ItemCategory; level: number }[] => {
+  const flattenCategories = (
+    cats: ItemCategory[],
+    level = 0,
+  ): { cat: ItemCategory; level: number }[] => {
     let result: { cat: ItemCategory; level: number }[] = [];
     for (const cat of cats) {
       result.push({ cat, level });
@@ -49,7 +52,6 @@ export function CategorySelectDropdown({ value, onChange, error }: CategorySelec
   const filtered = search
     ? allFlattened.filter((item) => item.cat.name.toLowerCase().includes(search.toLowerCase()))
     : allFlattened;
-
 
   const {
     isOpen,
@@ -89,7 +91,7 @@ export function CategorySelectDropdown({ value, onChange, error }: CategorySelec
         default:
           return changes;
       }
-    }
+    },
   });
 
   return (
@@ -111,15 +113,13 @@ export function CategorySelectDropdown({ value, onChange, error }: CategorySelec
               fontSize: 12,
               minHeight: '30px',
               textAlign: 'left',
-            }
+            },
           })}
         >
-          <span style={{ color: value ? '#000' : '#6b7280' }}>
-            {value || 'Select a category'}
-          </span>
+          <span style={{ color: value ? '#000' : '#6b7280' }}>{value || 'Select a category'}</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             {value && (
-              <div 
+              <div
                 style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px' }}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -130,7 +130,14 @@ export function CategorySelectDropdown({ value, onChange, error }: CategorySelec
                 <X size={14} color="#94a3b8" />
               </div>
             )}
-            <ChevronDown size={14} color="#6b7280" style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+            <ChevronDown
+              size={14}
+              color="#6b7280"
+              style={{
+                transform: isOpen ? 'rotate(180deg)' : 'none',
+                transition: 'transform 0.2s',
+              }}
+            />
           </div>
         </button>
 
@@ -144,7 +151,9 @@ export function CategorySelectDropdown({ value, onChange, error }: CategorySelec
             background: '#fff',
             border: isOpen ? '1px solid #e2e8f0' : 'none',
             borderRadius: '6px',
-            boxShadow: isOpen ? '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' : 'none',
+            boxShadow: isOpen
+              ? '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)'
+              : 'none',
             zIndex: 50,
             display: isOpen ? 'flex' : 'none',
             flexDirection: 'column',
@@ -167,7 +176,7 @@ export function CategorySelectDropdown({ value, onChange, error }: CategorySelec
                   <Search size={14} color="#94a3b8" />
                   <input
                     {...getInputProps({
-                      placeholder: "Search",
+                      placeholder: 'Search',
                       autoFocus: true,
                       style: {
                         border: 'none',
@@ -176,7 +185,7 @@ export function CategorySelectDropdown({ value, onChange, error }: CategorySelec
                         fontSize: 12,
                         marginLeft: 6,
                         width: '100%',
-                      }
+                      },
                     })}
                   />
                 </div>
@@ -197,7 +206,11 @@ export function CategorySelectDropdown({ value, onChange, error }: CategorySelec
                           paddingLeft: `${12 + level * 16}px`,
                           fontSize: 13,
                           color: isSelected ? '#2563eb' : '#334155',
-                          background: isHighlighted ? '#f8fafc' : isSelected ? '#eff6ff' : 'transparent',
+                          background: isHighlighted
+                            ? '#f8fafc'
+                            : isSelected
+                              ? '#eff6ff'
+                              : 'transparent',
                           cursor: 'pointer',
                           display: 'flex',
                           alignItems: 'center',
@@ -211,7 +224,9 @@ export function CategorySelectDropdown({ value, onChange, error }: CategorySelec
                     );
                   })
                 ) : (
-                  <div style={{ padding: '12px', textAlign: 'center', fontSize: 12, color: '#94a3b8' }}>
+                  <div
+                    style={{ padding: '12px', textAlign: 'center', fontSize: 12, color: '#94a3b8' }}
+                  >
                     No categories found.
                   </div>
                 )}

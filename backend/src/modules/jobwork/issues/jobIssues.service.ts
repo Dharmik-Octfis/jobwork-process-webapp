@@ -4,13 +4,15 @@ import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
 import { allocateNumber } from '../../../lib/numberSequence.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
+// No `createBatch` here since 2026-08-14 — an issue consumes stock, it never
+// creates any. The scaffold that did was deleted with FIFO allocation.
 import {
-  createBatch,
   getAvailableBatches,
   getBalance,
   postMovement,
   type Ownership,
 } from '../../inventory/stock-ledger/stockLedger.service.ts';
+import { resolveDispatchSite } from '../../settings/configuration/locations/locationSites.ts';
 import { assertLocationsBelongToOrg, resolveProcessorName } from '../jobwork.refs.ts';
 import { SOURCE_DOC_TYPES, runAsDocument, type ProcessorType } from '../jobwork.types.ts';
 import { chainNotReady, recomputeStep } from '../job-orders/jobOrders.status.ts';
@@ -63,7 +65,9 @@ const ISSUE_INCLUDE = {
       // it, one section per input.
       item: { select: { id: true, name: true, sku: true, inventoryTracking: true } },
       uom: { select: { id: true, unitName: true, symbol: true } },
-      batch: { select: { id: true, batchNumber: true, supplierBatchRef: true } },
+      // 🔴 No `batchNumber` (2026-08-14). It is an internal key and must not leave
+      // the server — a field in the payload is a field somebody renders.
+      batch: { select: { id: true, supplierBatchRef: true } },
     },
   },
 } satisfies Prisma.JobIssueInclude;
@@ -278,19 +282,28 @@ async function assertWithinTolerance(
   }
 }
 
+/** One row of the availability query — what the FIFO queue is made of. */
+type AvailableRow = Awaited<ReturnType<typeof getAvailableBatches>>[number];
+
 /** A request line once its item is known. `batchId` is null when the item has no
  * stock on record — see the scaffold note in `resolveLines`. */
 interface ResolvedLineItem {
   itemId: string;
   uomId: string | null;
   batchId: string | null;
+  /** The godown the client picked this row from. Null means "the header's
+   * dispatch location", which is what a single-godown site always means. */
+  sourceLocationId: string | null;
   qty: number;
 }
 
-/** …and once the ledger has had its say. By this point every line HAS a batch:
- * one was created for it if there was none. */
+/** …and once the ledger has had its say. By this point every line names a real
+ * batch AND the godown it is coming out of. */
 interface ResolvedIssueLine extends Omit<ResolvedLineItem, 'qty' | 'batchId'> {
   batchId: string;
+  /** 🔴 Where this line physically leaves from — not necessarily the header's
+   * dispatch point, which is only the address on the challan. */
+  sourceLocationId: string;
   qty: Prisma.Decimal;
 }
 
@@ -349,15 +362,33 @@ async function resolveLines(
 ) {
   const itemIds = new Set(lines.map((line) => line.itemId));
 
-  const availableById = new Map<string, Awaited<ReturnType<typeof getAvailableBatches>>[number]>();
+  /**
+   * 🔴 THE WHOLE DISPATCH SITE, not the single location on the header
+   * (2026-08-14).
+   *
+   * The header's location is the address the challan is dispatched from; the
+   * goods may sit in any godown under that same site. Scoping availability to one
+   * location was what made the picker look like it was hiding stock — it was
+   * showing one rack of a compound and calling it everything.
+   *
+   * Crossing to ANOTHER site is still refused below: that is a second address, and
+   * a Rule 55 challan carries one.
+   */
+  const site = await resolveDispatchSite(tx, organizationId, context.locationId);
+
+  // Keyed by batch AND location: one batch can hold stock in two racks of a site,
+  // and they are two separate offers with two separate balances.
+  const availableByKey = new Map<string, AvailableRow>();
+  const keyOf = (batchId: string, locationId: string) => `${batchId}@${locationId}`;
+
   for (const itemId of itemIds) {
-    for (const batch of await getAvailableBatches(tx, {
+    for (const row of await getAvailableBatches(tx, {
       organizationId,
       itemId,
-      locationId: context.locationId,
+      locationIds: site.locationIds,
       ownership: context.ownership,
     })) {
-      availableById.set(batch.batchId, batch);
+      availableByKey.set(keyOf(row.batchId, row.locationId), row);
     }
   }
 
@@ -378,6 +409,52 @@ async function resolveLines(
   });
   const itemById = new Map(items.map((item) => [item.id, item]));
 
+  /**
+   * 🔴 THE FIFO QUEUE, PER ITEM — ordered by when the stock actually came IN.
+   *
+   * The key is the earliest inward ledger entry, NOT `batch.createdAt` and
+   * emphatically not `batchNumber`. The row's creation time is only a proxy: a
+   * receipt entered on Friday for goods that arrived on Monday creates its batch
+   * on Friday, and ordering by that queues genuinely older stock behind it —
+   * which is the one thing FIFO exists to prevent. `batchNumber` is worse again;
+   * it carries no meaning and manual entry has been possible.
+   *
+   * `createdAt` remains the tie-break, for a batch with no inward row yet.
+   *
+   * 🔴 THE QUEUE SPANS THE WHOLE SITE. That is the point of the site rule: older
+   * material in the next rack is issued before newer material in this one, which
+   * is what FIFO means and what a per-location queue could not see.
+   */
+  const fifoByItem = new Map<string, AvailableRow[]>();
+  if (availableByKey.size > 0) {
+    const batchIds = [...new Set([...availableByKey.values()].map((row) => row.batchId))];
+    const inward = await tx.stockLedgerEntry.groupBy({
+      by: ['batchId'],
+      where: { organizationId, batchId: { in: batchIds }, qtyIn: { gt: 0 } },
+      _min: { postedAt: true },
+    });
+    const firstInward = new Map(inward.map((row) => [row.batchId, row._min.postedAt]));
+
+    for (const batch of availableByKey.values()) {
+      const list = fifoByItem.get(batch.itemId) ?? [];
+      list.push(batch);
+      fifoByItem.set(batch.itemId, list);
+    }
+    for (const list of fifoByItem.values()) {
+      list.sort(
+        (a, b) =>
+          (firstInward.get(a.batchId) ?? a.createdAt).getTime() -
+          (firstInward.get(b.batchId) ?? b.createdAt).getTime(),
+      );
+    }
+  }
+
+  /** How much each batch-at-a-location has been committed across ALL lines so far.
+   * Two lines for the same untracked item draw from one queue; without this they
+   * would each see the full balance and together overdraw it. Keyed by location
+   * too, because the same batch in two racks has two independent balances. */
+  const takenByKey = new Map<string, Prisma.Decimal>();
+
   const resolved: ResolvedIssueLine[] = [];
 
   for (const [index, line] of lines.entries()) {
@@ -388,57 +465,96 @@ async function resolveLines(
         400,
         `${item.name} is batch-tracked, so the batch it goes out of has to be picked. ` +
           'Pick one on the Issue screen, or add the stock first if none is on record.',
-        { [`lines.${index}.batchId`]: 'Pick a batch.' },
+        { [`lines.${index}.batchId`]: 'Select a batch.' },
       );
     }
 
     /**
-     * ⚠️ TEMPORARY SCAFFOLD — a line with no batch gets one created for it.
+     * 🔴 FIFO ALLOCATION — the untracked item's whole path (2026-08-14).
      *
-     * Reachable only for `inventoryTracking = 'none'` now: the guard above turns
-     * a batch-tracked item away before it gets here, so the scaffold can no longer
-     * invent a batch for an item whose whole point is that its batches are real.
+     * An untracked item is never offered a picker, because its batches are ledger
+     * plumbing nobody is meant to identify: they carry no reference, they are not
+     * searchable, and they are not rendered. So the user types a quantity and the
+     * server decides which rows it comes out of, oldest first.
      *
-     * Material In was retired before Purchase Received and Opening Stock exist,
-     * so today there is no way to put stock on the books and the whole loop —
-     * issue, receive, rework, every status — would be untestable. A line with no
-     * batch therefore creates one and posts an `opening` movement for exactly the
-     * quantity being issued, at ZERO value: quantities behave normally all the
-     * way through, and costing reports nothing rather than reporting a number
-     * somebody invented.
+     * ⚠️ THIS REPLACED A SCAFFOLD THAT INVENTED STOCK. Until today a batch-less
+     * line CREATED a batch and posted an `opening` movement for exactly the
+     * quantity being issued — a bridge from before Purchase Received existed. Left
+     * in place once the picker was gated, every issue of an untracked item would
+     * have minted a phantom batch and left the real stock untouched, so the
+     * balance never fell. It is gone, and a shortfall is now refused outright:
+     * stock that appears because somebody issued it is stock nobody received.
      *
-     * 🔴 DELETE THIS BRANCH the day Purchase Received lands, and make `batchId`
-     * required again in `jobIssues.schemas.ts`. Stock that appears because
-     * somebody issued it is stock nobody received.
+     * One request line becomes SEVERAL resolved lines when the quantity spans
+     * batches. That is why `resolved` is flat and built here rather than mapped
+     * 1:1 from the request.
      */
     if (!line.batchId) {
-      const created = await createBatch(tx, {
-        organizationId,
-        itemId: line.itemId,
-        ownership: context.ownership,
-        ownerPartyId: context.ownerPartyId,
-        sourceDocType: SOURCE_DOC_TYPES.jobOrderMaterialIn,
-      });
-      await postMovement(tx, {
-        organizationId,
-        batchId: created.id,
-        locationId: context.locationId,
-        movementType: 'opening',
-        qtyIn: new Prisma.Decimal(line.qty),
-        valueIn: ZERO,
-        sourceDocType: SOURCE_DOC_TYPES.jobOrderMaterialIn,
-        sourceDocId: created.id,
-        remarks: 'Auto-created: no stock on record. Replace with Purchase Received.',
-      });
-      resolved.push({
-        ...line,
-        batchId: created.id,
-        qty: new Prisma.Decimal(line.qty),
-      });
+      let remaining = new Prisma.Decimal(line.qty);
+      const queue = fifoByItem.get(line.itemId) ?? [];
+
+      for (const row of queue) {
+        if (remaining.lessThanOrEqualTo(0)) break;
+        const key = keyOf(row.batchId, row.locationId);
+        const already = takenByKey.get(key) ?? ZERO;
+        const spare = row.availableQty.minus(already);
+        if (spare.lessThanOrEqualTo(0)) continue;
+
+        const take = remaining.lessThan(spare) ? remaining : spare;
+        takenByKey.set(key, already.plus(take));
+        // Each slice remembers the godown it came out of — the challan may span
+        // several within the site, and the ledger posts from exactly here.
+        resolved.push({
+          ...line,
+          batchId: row.batchId,
+          sourceLocationId: row.locationId,
+          qty: take,
+        });
+        remaining = remaining.minus(take);
+      }
+
+      if (remaining.greaterThan(0)) {
+        // Named in the item's own terms and across the whole site, because that is
+        // what was searched. The user never saw a batch here, so an error about
+        // batches would describe machinery they have no view of.
+        const onHand = queue.reduce((sum, b) => sum.plus(b.availableQty), ZERO);
+        throw new ApiError(
+          400,
+          `${item?.name ?? 'This item'} has ${onHand.toString()} available at this site, ` +
+            `but ${line.qty} is being issued. Add the stock first.`,
+          { [`lines.${index}.qty`]: `Only ${onHand.toString()} is available here.` },
+        );
+      }
       continue;
     }
 
-    const batch = availableById.get(line.batchId);
+    /**
+     * 🔴 A PICKED BATCH NAMES ITS GODOWN TOO. The picker offers one row per
+     * (batch, location), so the client sends the location back; without it a batch
+     * sitting in two racks of one site would be ambiguous and the ledger would
+     * guess which rack the goods left.
+     */
+    const pickedLocationId = line.sourceLocationId ?? context.locationId;
+
+    /**
+     * 🔴 ONE CHALLAN, ONE DISPATCH SITE. A Rule 55 challan carries a single
+     * dispatched-from address, so goods leaving a different premises need their
+     * own document.
+     *
+     * Checked explicitly rather than left to fall through the availability lookup
+     * below: that would refuse it too, but with "no stock available here", which
+     * sends the user hunting for a stock problem that does not exist.
+     */
+    if (!site.locationIds.includes(pickedLocationId)) {
+      throw new ApiError(
+        400,
+        'One of the selected batches is at a different site. A challan carries one ' +
+          'dispatch address, so stock from another site needs its own challan.',
+        { [`lines.${index}.sourceLocationId`]: 'Belongs to a different site.' },
+      );
+    }
+
+    const batch = availableByKey.get(keyOf(line.batchId, pickedLocationId));
     if (!batch) {
       // Covers all three failure modes at once — wrong tenant, wrong item, wrong
       // ownership, or simply nothing left. The picker only ever offers rows this
@@ -452,28 +568,32 @@ async function resolveLines(
     resolved.push({
       ...line,
       batchId: line.batchId,
+      sourceLocationId: batch.locationId,
       qty: new Prisma.Decimal(line.qty),
     });
   }
 
-  // Batch-level totals, checked after the lines are gathered: two lines against the
-  // same batch must not each pass on their own and overdraw it together.
+  // Totals per batch AND location, checked after the lines are gathered: two lines
+  // against the same batch in the same godown must not each pass on their own and
+  // overdraw it together. Keyed by location because the same batch in two racks
+  // holds two independent balances.
   const perBatch = new Map<string, Prisma.Decimal>();
   for (const line of resolved) {
-    perBatch.set(
-      line.batchId,
-      (perBatch.get(line.batchId) ?? new Prisma.Decimal(0)).plus(line.qty),
-    );
+    const key = keyOf(line.batchId, line.sourceLocationId);
+    perBatch.set(key, (perBatch.get(key) ?? new Prisma.Decimal(0)).plus(line.qty));
   }
-  for (const [batchId, wanted] of perBatch) {
-    const batch = availableById.get(batchId);
+  for (const [key, wanted] of perBatch) {
+    const batch = availableByKey.get(key);
     // A batch created for this very issue is not in the availability map and needs
     // no check — it holds exactly what is about to leave it.
     if (!batch) continue;
     if (wanted.greaterThan(batch.availableQty)) {
+      // Named by its reference, never by the internal number — an error message
+      // is a user surface, and quoting a number nowhere on their screen tells
+      // them nothing about which row to fix.
       throw ApiError.badRequest(
-        `Batch ${batch.batchNumber} has ${batch.availableQty.toString()} available, ` +
-          `but ${wanted.toString()} is being issued.`,
+        `Batch ${batch.supplierBatchRef ?? 'selected'} has ${batch.availableQty.toString()} ` +
+          `available, but ${wanted.toString()} is being issued.`,
       );
     }
   }
@@ -563,6 +683,7 @@ export async function createNewJobIssue(
         itemId: lineItemId,
         uomId: row.uomId,
         batchId: line.batchId ?? null,
+        sourceLocationId: line.sourceLocationId ?? null,
         // ⚠️ BATCH LEVEL ONLY. Anything a client sends here is dropped: material is
         // issued as a quantity against the batch.
         qty: line.qty,
@@ -722,6 +843,9 @@ export async function createNewJobIssue(
           itemId: line.itemId,
           uomId: line.uomId,
           batchId: line.batchId,
+          // 🔴 The godown this line actually left. The header's is the dispatch
+          // ADDRESS on the challan; within one site the two can differ.
+          sourceLocationId: line.sourceLocationId,
           qty: line.qty,
           createdBy: userId ?? null,
           updatedBy: userId ?? null,
@@ -734,10 +858,13 @@ export async function createNewJobIssue(
        * cost to where they physically are — a per-location valuation that only
        * moved quantity would report our material at the dyer's as worthless.
        */
+      // 🔴 Valued at the godown it is leaving, not the header's. Cost per unit is
+      // a per-location figure — the same batch can sit in two racks at different
+      // values once transfers have moved parts of it around.
       const batchValue = await getBalance(tx, {
         organizationId,
         batchId: line.batchId,
-        locationId: header.sourceLocationId,
+        locationId: line.sourceLocationId,
       });
       const unitValue = batchValue.qty.greaterThan(0)
         ? batchValue.value.dividedBy(batchValue.qty)
@@ -747,7 +874,7 @@ export async function createNewJobIssue(
       await postMovement(tx, {
         organizationId,
         batchId: line.batchId,
-        locationId: header.sourceLocationId,
+        locationId: line.sourceLocationId,
         movementType: 'transfer_out',
         qtyOut: line.qty,
         valueOut: lineValue,

@@ -151,7 +151,7 @@ export const jobOrderOverviewSchema = z.object({
   batches: z.array(
     z.object({
       id: z.string(),
-      batchNumber: z.string(),
+      /** 🔴 No `batchNumber` (2026-08-14) — internal key, no longer sent. */
       supplierBatchRef: z.string().nullable(),
       itemId: z.string(),
     }),

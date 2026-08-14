@@ -87,8 +87,14 @@ export const jobReceiptSchema = z.object({
         uom: uomRefSchema.nullable().optional(),
         reason: z.object({ id: z.string(), name: z.string() }).nullable().optional(),
         responsibility: z.string().nullable().optional(),
-        outputBatch: z.object({ id: z.string(), batchNumber: z.string() }).nullable().optional(),
-        reworkBatch: z.object({ id: z.string(), batchNumber: z.string() }).nullable().optional(),
+        outputBatch: z
+          .object({ id: z.string(), supplierBatchRef: z.string().nullable() })
+          .nullable()
+          .optional(),
+        reworkBatch: z
+          .object({ id: z.string(), supplierBatchRef: z.string().nullable() })
+          .nullable()
+          .optional(),
       }),
     )
     .default([]),
@@ -107,8 +113,14 @@ export const jobReceiptSchema = z.object({
     })
     .optional(),
   location: namedRefSchema.nullable().optional(),
-  outputBatch: z.object({ id: z.string(), batchNumber: z.string() }).nullable().optional(),
-  reworkBatch: z.object({ id: z.string(), batchNumber: z.string() }).nullable().optional(),
+  outputBatch: z
+    .object({ id: z.string(), supplierBatchRef: z.string().nullable() })
+    .nullable()
+    .optional(),
+  reworkBatch: z
+    .object({ id: z.string(), supplierBatchRef: z.string().nullable() })
+    .nullable()
+    .optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   customFields: z.record(z.string(), z.unknown()).optional(),
@@ -155,7 +167,9 @@ export const receivePrefillSchema = z.object({
       itemName: z.string().nullable(),
       uomSymbol: z.string().nullable(),
       batchId: z.string(),
-      batchNumber: z.string(),
+      /** The label, not the internal number (2026-08-14). Null for untracked
+       * stock, whose batches are not meant to be identified on screen. */
+      batchReference: z.string().nullable(),
       issuedQty: z.string(),
     }),
   ),
@@ -215,6 +229,14 @@ export interface JobReceiptOutputData {
   reasonId?: string | null;
   responsibility?: string | null;
   remarks?: string | null;
+  /** 🔴 What the accepted goods will be called from here on. The processor returns
+   * a physically new thing with no number of its own, and `batchNumber` is
+   * internal and never shown — so unless it is named here the batch has nothing to
+   * display in the next step's picker. Required for batch-tracked items; the
+   * server enforces it, since only it knows the item's tracking mode. */
+  batchReference?: string | null;
+  /** The rework batch is a separate batch, so it needs its own label. */
+  reworkBatchReference?: string | null;
 }
 
 export interface CreateJobReceiptData {
@@ -230,6 +252,10 @@ export interface CreateJobReceiptData {
   lines: JobReceiptLineData[];
   /** The return side. Omitted, the server derives one row from `lines`. */
   outputs?: JobReceiptOutputData[];
+  /** The single-output form's copy — with no `outputs` grid to carry them, the
+   * derived output takes its labels from here. */
+  batchReference?: string | null;
+  reworkBatchReference?: string | null;
   remarks?: string | null;
   customFields?: Record<string, unknown>;
 }

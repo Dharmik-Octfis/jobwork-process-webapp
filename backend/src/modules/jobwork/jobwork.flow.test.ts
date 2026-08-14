@@ -54,7 +54,11 @@ const unique = () => process.hrtime.bigint().toString(36);
  * Writing it here rather than through a document is what lets these tests keep
  * covering the loop while Purchase Received is still unbuilt.
  */
-async function seedStock(itemId: string, qty: number, opts: { value?: number } = {}) {
+async function seedStock(
+  itemId: string,
+  qty: number,
+  opts: { value?: number; locationId?: string } = {},
+) {
   // runAsDocument, not runAsTenant: a document posts several movements and the
   // 5-second default is tight (jobwork.types.ts).
   return runAsDocument(orgId, async (tx) => {
@@ -62,13 +66,17 @@ async function seedStock(itemId: string, qty: number, opts: { value?: number } =
       organizationId: orgId,
       itemId,
       ownership: 'own',
+      // Batch-tracked items need a user-facing reference since 2026-08-14 —
+      // `batchNumber` is internal and never rendered, so this is the only label
+      // the row would carry. Real inward documents ask a human for it.
+      supplierBatchRef: `SEED-${itemId.slice(0, 8)}-${process.hrtime.bigint().toString(36)}`,
       sourceDocType: SOURCE_DOC_TYPES.jobOrderMaterialIn,
     });
 
     await postMovement(tx, {
       organizationId: orgId,
       batchId: batch.id,
-      locationId: godownId,
+      locationId: opts.locationId ?? godownId,
       movementType: 'receipt',
       qtyIn: qty,
       valueIn: opts.value ?? 0,
@@ -377,6 +385,12 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
           receivedQty: 4850,
           acceptedQty: 4800,
           reworkQty: 50,
+          // 🔴 Both are required for a batch-tracked item (2026-08-14), and they
+          // must DIFFER: the rework pieces live in their own batch, so sharing
+          // one label would make the two indistinguishable in the next picker —
+          // which is the whole reason the rework batch is separate.
+          batchReference: 'DYED-A1',
+          reworkBatchReference: 'DYED-A1/RW',
         },
       ],
     });
@@ -447,6 +461,9 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
           scrapQty: 30,
         },
       ],
+      // No `outputs` array, so the single output is derived from the lines and
+      // takes its label from the header — the pre-Sprint-5 shape.
+      batchReference: 'PANEL-B1',
     });
 
     const panelBatch = await runAsTenant(orgId, (tx) =>
@@ -1154,6 +1171,10 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     });
 
     const dyedBatch = await stockUp(dyedId, 100);
+    // 🔴 Seeded explicitly. The untracked line below now CONSUMES stock rather
+    // than inventing it, so without this the test passes or fails on whatever an
+    // earlier test happened to leave behind at this godown.
+    await stockUp(shirtId, 50);
 
     const jobOrder = await createNewJobOrder(orgId, {
       steps: [
@@ -1179,11 +1200,12 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       }),
     ).rejects.toMatchObject({
       status: 400,
-      details: { 'lines.0.batchId': 'Pick a batch.' },
+      details: { 'lines.0.batchId': 'Select a batch.' },
     });
 
-    // Named batch for the tracked item, bare quantity for the untracked one —
-    // one challan, and the untracked line still gets a batch minted for it.
+    // Named batch for the tracked item, bare quantity for the untracked one — one
+    // challan. The untracked line is allocated FIFO out of stock that already
+    // exists; since 2026-08-14 nothing is minted at issue time.
     const issue = await createNewJobIssue(orgId, {
       jobOrderStepId: stepId,
       sourceLocationId: godownId,
@@ -1266,10 +1288,23 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
         { itemId: buttonId, issuedQty: 300, receivedQty: 0 },
       ],
       outputs: [
-        { itemId: shirtsId, isPrimary: true, receivedQty: 92, acceptedQty: 92 },
+        {
+          itemId: shirtsId,
+          isPrimary: true,
+          receivedQty: 92,
+          acceptedQty: 92,
+          batchReference: 'SHIRT-C1',
+        },
         // A by-product with an explicit value — deducted from the primary's
-        // share, never apportioned by quantity (§9.2.1).
-        { itemId: rejectsId, receivedQty: 8, acceptedQty: 8, valueShare: 40 },
+        // share, never apportioned by quantity (§9.2.1). Its own batch, so its
+        // own label.
+        {
+          itemId: rejectsId,
+          receivedQty: 8,
+          acceptedQty: 8,
+          valueShare: 40,
+          batchReference: 'SHIRT-C1/REJ',
+        },
       ],
     });
 
@@ -1852,5 +1887,302 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
         }),
       ).rejects.toMatchObject({ status: 409 });
     });
+  });
+});
+
+/**
+ * 🔴 FIFO ALLOCATION for untracked items (2026-08-14).
+ *
+ * An item at `inventoryTracking = 'none'` gets no picker — its batches carry no
+ * reference, are not searchable and are not rendered, so choosing between them is
+ * a choice the user cannot make. The server allocates instead, oldest stock first.
+ *
+ * This replaced a scaffold that INVENTED stock: a batch-less line used to create a
+ * batch and post an `opening` movement for the quantity being issued. Left in
+ * place once the picker was gated on the item, every issue would have minted a
+ * phantom batch while the real balance sat untouched. Nothing else in this file
+ * covers the allocator, because every other test names its batch explicitly.
+ */
+describe('jobwork — FIFO allocation for untracked items', () => {
+  /**
+   * 🔴 A FRESH ITEM PER TEST, and it is not fussiness.
+   *
+   * These tests assert which batch was drawn from, so they only mean anything if
+   * the queue holds exactly the batches the test seeded. Sharing one item let
+   * leftovers from the previous test sit at the head of the queue — FIFO
+   * dutifully consumed those instead, and the assertions failed while the
+   * allocator was behaving perfectly. An unshared item makes the queue knowable.
+   */
+  const freshItem = async () =>
+    runAsTenant(orgId, async (tx) => {
+      const item = await tx.item.create({
+        data: {
+          organizationId: orgId,
+          name: `Packing Tape ${unique()}`,
+          sku: `FIFO-${unique()}`,
+          unit: 'Piece',
+          stockingUomId: pieceId,
+          // The whole point: no picker, so the server chooses.
+          inventoryTracking: 'none',
+        },
+        select: { id: true },
+      });
+      return item.id;
+    });
+
+  const stepFor = async (itemId: string) => {
+    const packing = await createNewProcess(orgId, {
+      name: `Packing ${unique()}`,
+      itemChanges: true,
+    });
+    const jobOrder = await createNewJobOrder(orgId, {
+      steps: [
+        {
+          processId: packing.id,
+          processorId: cutterId,
+          // Same item in and out — this block is about the allocator, and a
+          // second output item would be a fixture with nothing to say.
+          inputs: [{ itemId, plannedQty: 1000 }],
+          outputs: [{ itemId, isPrimary: true }],
+        },
+      ],
+    });
+    return jobOrder.steps[0]!.id;
+  };
+
+  it('takes the OLDEST batch first and spans several when one cannot cover it', async () => {
+    const itemId = await freshItem();
+    const first = await seedStock(itemId, 30);
+    const second = await seedStock(itemId, 30);
+    const third = await seedStock(itemId, 30);
+
+    // 50 of 90: all of the oldest, 20 of the next, none of the newest.
+    const issue = await createNewJobIssue(orgId, {
+      jobOrderStepId: await stepFor(itemId),
+      sourceLocationId: godownId,
+      lines: [{ itemId, qty: 50 }],
+    });
+
+    const taken = new Map(issue.lines.map((line) => [line.batchId, Number(line.qty)]));
+    expect(taken.get(first.id)).toBe(30);
+    expect(taken.get(second.id)).toBe(20);
+    // 🔴 If the newest is touched the queue is not FIFO, and the stock that has
+    // sat longest is the stock that never leaves.
+    expect(taken.has(third.id)).toBe(false);
+  });
+
+  it('refuses a shortfall instead of inventing the difference', async () => {
+    const itemId = await freshItem();
+    await seedStock(itemId, 40);
+
+    // 🔴 The rule the whole change rests on. If this resolves, the scaffold that
+    // minted stock at issue time is back and the ledger gains quantity nobody
+    // ever received.
+    await expect(
+      createNewJobIssue(orgId, {
+        jobOrderStepId: await stepFor(itemId),
+        sourceLocationId: godownId,
+        lines: [{ itemId, qty: 500 }],
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('refuses outright when the item has no stock at all', async () => {
+    const itemId = await freshItem();
+
+    await expect(
+      createNewJobIssue(orgId, {
+        jobOrderStepId: await stepFor(itemId),
+        sourceLocationId: godownId,
+        lines: [{ itemId, qty: 1 }],
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('does not let two lines of one item spend the same batch twice', async () => {
+    const itemId = await freshItem();
+    await seedStock(itemId, 60);
+
+    // 40 + 40 against a single 60. Each passes alone; together they overdraw,
+    // which is what the per-batch running total exists to stop.
+    await expect(
+      createNewJobIssue(orgId, {
+        jobOrderStepId: await stepFor(itemId),
+        sourceLocationId: godownId,
+        lines: [
+          { itemId, qty: 40 },
+          { itemId, qty: 40 },
+        ],
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('leaves the ledger short by exactly what went out — nothing is created', async () => {
+    const itemId = await freshItem();
+    const batch = await seedStock(itemId, 25);
+
+    await createNewJobIssue(orgId, {
+      jobOrderStepId: await stepFor(itemId),
+      sourceLocationId: godownId,
+      lines: [{ itemId, qty: 10 }],
+    });
+
+    const atGodown = await runAsTenant(orgId, (tx) =>
+      getBalance(tx, { organizationId: orgId, batchId: batch.id, locationId: godownId }),
+    );
+    expect(atGodown.qty.toString()).toBe('15');
+  });
+});
+
+/**
+ * 🔴 THE DISPATCH SITE — what counts as one premises (2026-08-14).
+ *
+ * A Rule 55 job-work challan carries ONE dispatched-from address, so whether two
+ * godowns may share a challan is a question about the physical site. Customers
+ * differ — a compound with three racks, a company with two branches, plenty with
+ * both — and the answer is DERIVED from `Location.parentId` rather than
+ * configured, because a setting would put that question to every customer and get
+ * answered wrong by most.
+ *
+ *   dispatch site = the root of a location's ancestor chain
+ *
+ * These pin both halves. If the first fails the picker is back to showing one rack
+ * of a compound and calling it everything; if the second fails a challan can carry
+ * goods from two addresses, which is paperwork that does not match the lorry.
+ */
+describe('jobwork — one challan, one dispatch site', () => {
+  /** A root location with `children` godowns under it — the shape a compound has. */
+  const makeSite = async (childCount: number) =>
+    runAsTenant(orgId, async (tx) => {
+      const root = await tx.location.create({
+        data: { organizationId: orgId, name: `Site ${unique()}`, type: 'godown' },
+        select: { id: true },
+      });
+      const children: string[] = [];
+      for (let i = 0; i < childCount; i += 1) {
+        const child = await tx.location.create({
+          data: {
+            organizationId: orgId,
+            name: `Rack ${i} ${unique()}`,
+            type: 'godown',
+            parentId: root.id,
+          },
+          select: { id: true },
+        });
+        children.push(child.id);
+      }
+      return { rootId: root.id, children };
+    });
+
+  const untrackedItem = async () =>
+    runAsTenant(orgId, async (tx) => {
+      const item = await tx.item.create({
+        data: {
+          organizationId: orgId,
+          name: `Site Tape ${unique()}`,
+          sku: `SITE-${unique()}`,
+          unit: 'Piece',
+          stockingUomId: pieceId,
+          inventoryTracking: 'none',
+        },
+        select: { id: true },
+      });
+      return item.id;
+    });
+
+  const stepFor = async (itemId: string) => {
+    const packing = await createNewProcess(orgId, {
+      name: `Packing ${unique()}`,
+      itemChanges: true,
+    });
+    const jobOrder = await createNewJobOrder(orgId, {
+      steps: [
+        {
+          processId: packing.id,
+          processorId: cutterId,
+          inputs: [{ itemId, plannedQty: 1000 }],
+          outputs: [{ itemId, isPrimary: true }],
+        },
+      ],
+    });
+    return jobOrder.steps[0]!.id;
+  };
+
+  it('draws from every godown under ONE site on a single challan', async () => {
+    const { rootId, children } = await makeSite(2);
+    const itemId = await untrackedItem();
+    await seedStock(itemId, 30, { locationId: children[0] });
+    await seedStock(itemId, 30, { locationId: children[1] });
+
+    // 50 against 30 + 30 sitting in two different racks. Neither rack alone
+    // covers it; the site does.
+    const issue = await createNewJobIssue(orgId, {
+      jobOrderStepId: await stepFor(itemId),
+      sourceLocationId: rootId,
+      lines: [{ itemId, qty: 50 }],
+    });
+
+    const fromRacks = new Set(issue.lines.map((line) => line.sourceLocationId));
+    expect(fromRacks.has(children[0]!)).toBe(true);
+    expect(fromRacks.has(children[1]!)).toBe(true);
+    // 🔴 The header still names ONE dispatch address — that is what prints.
+    expect(issue.sourceLocationId).toBe(rootId);
+  });
+
+  it('refuses stock from a SECOND site — that is a second address', async () => {
+    const siteA = await makeSite(1);
+    const siteB = await makeSite(1);
+    const itemId = await untrackedItem();
+    await seedStock(itemId, 10, { locationId: siteA.children[0] });
+    await seedStock(itemId, 90, { locationId: siteB.children[0] });
+
+    // 100 exists across the org, but only 10 at site A. The other site's 90 is
+    // unreachable from this challan and the shortfall is refused.
+    await expect(
+      createNewJobIssue(orgId, {
+        jobOrderStepId: await stepFor(itemId),
+        sourceLocationId: siteA.rootId,
+        lines: [{ itemId, qty: 100 }],
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('a FLAT setup behaves exactly as it did before sites existed', async () => {
+    // No parents anywhere: every location is its own root, so a location is a
+    // site. This is every existing organization, and it must not change meaning.
+    const loneA = await runAsTenant(orgId, (tx) =>
+      tx.location.create({
+        data: { organizationId: orgId, name: `Flat A ${unique()}`, type: 'godown' },
+        select: { id: true },
+      }),
+    );
+    const loneB = await runAsTenant(orgId, (tx) =>
+      tx.location.create({
+        data: { organizationId: orgId, name: `Flat B ${unique()}`, type: 'godown' },
+        select: { id: true },
+      }),
+    );
+    const itemId = await untrackedItem();
+    await seedStock(itemId, 40, { locationId: loneA.id });
+    await seedStock(itemId, 40, { locationId: loneB.id });
+
+    // 60 against 40 here and 40 there. Two unrelated roots are two sites, so the
+    // second 40 is out of reach and this is short.
+    await expect(
+      createNewJobIssue(orgId, {
+        jobOrderStepId: await stepFor(itemId),
+        sourceLocationId: loneA.id,
+        lines: [{ itemId, qty: 60 }],
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+
+    // …and 40 out of the one location works, exactly as before.
+    const issue = await createNewJobIssue(orgId, {
+      jobOrderStepId: await stepFor(itemId),
+      sourceLocationId: loneA.id,
+      lines: [{ itemId, qty: 40 }],
+    });
+    expect(issue.lines).toHaveLength(1);
+    expect(issue.lines[0]!.sourceLocationId).toBe(loneA.id);
   });
 });

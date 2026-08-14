@@ -71,6 +71,13 @@ interface ReturnedRow {
   valueShare: number | null;
   reasonId: string | null;
   responsibility: string | null;
+  /** 🔴 The label the accepted goods carry from here on. What comes back from a
+   * processor is physically new and has no number of its own, and the internal
+   * `batchNumber` is never shown — so without this the batch is a blank row in
+   * the next step's picker. Required for batch-tracked items only. */
+  batchReference: string;
+  /** Rework becomes its own batch, so it cannot share the accepted one's label. */
+  reworkBatchReference: string;
 }
 
 const labelStyle: React.CSSProperties = {
@@ -283,6 +290,8 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
       valueShare: null,
       reasonId: null,
       responsibility: null,
+      batchReference: '',
+      reworkBatchReference: '',
     }));
   }, [returnedEdits, prefill]);
 
@@ -307,6 +316,27 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
    * exist — that one rule is what makes a separate rejection note unnecessary. */
   const brokenRows = effectiveReturned.filter(
     (row) => Math.abs(row.acceptedQty + row.reworkQty + row.scrapQty - row.receivedQty) > 0.00005,
+  );
+
+  /**
+   * 🔴 A batch-tracked item's new batch must be named here or nowhere. The server
+   * refuses it in `createBatch`; this is the same rule on the near side, so the
+   * refusal arrives while the box is still on screen rather than at save.
+   *
+   * Only for `inventoryTracking = 'batch'` — an untracked item's batch is ledger
+   * plumbing nobody ever sees, so a label for it would be a question with no
+   * purpose. Same line Zoho draws.
+   */
+  const batchRefRequired = (row: ReturnedRow) =>
+    Boolean(row.itemId && items.find((i) => i.id === row.itemId)?.inventoryTracking === 'batch');
+
+  /** Rows that need a reference and have not been given one — accepted goods, and
+   * rework separately, because they become two independent batches. */
+  const unlabelledRows = effectiveReturned.filter(
+    (row) =>
+      batchRefRequired(row) &&
+      ((row.acceptedQty > 0 && !row.batchReference.trim()) ||
+        (row.reworkQty > 0 && !row.reworkBatchReference.trim())),
   );
 
   /** What this receipt consumes, per item — for the preview, which must say what
@@ -380,6 +410,8 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
             reworkQty: row.reworkQty,
             scrapQty: row.scrapQty,
             returnedQty: 0,
+            batchReference: row.batchReference.trim() || null,
+            reworkBatchReference: row.reworkBatchReference.trim() || null,
             // 🔴 Position, not a control. The first returned item carries the
             // cost of the operation; every other row takes the value typed for
             // it (§9.2.1). A radio asking which was which decided nothing in the
@@ -430,6 +462,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
      */
     Boolean(effectiveLocationId) &&
     brokenRows.length === 0 &&
+    unlabelledRows.length === 0 &&
     effectiveReturned.every((row) => Boolean(row.itemId)) &&
     totals.received > 0 &&
     totals.issued > 0 &&
@@ -711,6 +744,9 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                       <th style={th} scope="col">
                         Scrap
                       </th>
+                      <th style={th} scope="col">
+                        Batch ref
+                      </th>
                       {/* 🔴 The disposition lives on THIS grid since 2026-08-12. It used
                           to sit on the consumed rows, per taka; with packages gone the
                           returned row is the only place that says how much was
@@ -763,6 +799,55 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                           {cell('acceptedQty', 'Good')}
                           {cell('reworkQty', 'Rework')}
                           {cell('scrapQty', 'Scrap')}
+                          {/* 🔴 The only label these goods will ever carry. What a
+                              processor hands back is physically new and has no
+                              number of its own, and `batchNumber` is internal and
+                              never shown — leave this empty on a batch-tracked
+                              item and the next step's picker offers a blank row.
+                              Two boxes, because rework becomes its own batch. */}
+                          <td style={{ ...td, minWidth: 160 }}>
+                            <input
+                              type="text"
+                              value={row.batchReference}
+                              onChange={(e) =>
+                                updateReturned(row.key, { batchReference: e.target.value })
+                              }
+                              placeholder={batchRefRequired(row) ? 'Required' : 'Optional'}
+                              aria-label="Batch reference for the accepted goods"
+                              style={{
+                                ...numberCell,
+                                width: '100%',
+                                textAlign: 'left',
+                                borderColor:
+                                  batchRefRequired(row) && !row.batchReference.trim()
+                                    ? '#fca5a5'
+                                    : '#d1d5db',
+                              }}
+                            />
+                            {row.reworkQty > 0 && (
+                              <input
+                                type="text"
+                                value={row.reworkBatchReference}
+                                onChange={(e) =>
+                                  updateReturned(row.key, {
+                                    reworkBatchReference: e.target.value,
+                                  })
+                                }
+                                placeholder={batchRefRequired(row) ? 'Rework ref*' : 'Rework ref'}
+                                aria-label="Batch reference for the rework goods"
+                                style={{
+                                  ...numberCell,
+                                  width: '100%',
+                                  textAlign: 'left',
+                                  marginTop: 4,
+                                  borderColor:
+                                    batchRefRequired(row) && !row.reworkBatchReference.trim()
+                                      ? '#fca5a5'
+                                      : '#d1d5db',
+                                }}
+                              />
+                            )}
+                          </td>
                           <td style={{ ...td, minWidth: 170 }}>
                             <Select
                               value={row.reasonId ?? ''}
@@ -830,6 +915,8 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                       valueShare: null,
                       reasonId: null,
                       responsibility: null,
+                      batchReference: '',
+                      reworkBatchReference: '',
                     },
                   ])
                 }
@@ -850,6 +937,15 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
               {brokenRows.length > 0 && (
                 <p style={{ fontSize: 12, color: '#b91c1c', margin: '8px 0 0 0' }}>
                   Good + rework + scrap must equal received on every row.
+                </p>
+              )}
+              {/* Named here or nowhere — the batch has no other label, and it is
+                  the row somebody has to find in the next step's picker. */}
+              {unlabelledRows.length > 0 && (
+                <p style={{ fontSize: 12, color: '#b91c1c', margin: '8px 0 0 0' }}>
+                  {unlabelledRows.length === 1
+                    ? 'One returned item is batch-tracked and still needs a batch reference.'
+                    : `${unlabelledRows.length} returned items are batch-tracked and still need a batch reference.`}
                 </p>
               )}
               {/* 🔴 Say what is missing. Preview is disabled until something has

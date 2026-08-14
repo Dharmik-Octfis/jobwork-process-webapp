@@ -241,11 +241,14 @@ export class ItemsService {
     });
     if (remove.greaterThan(balance.qty)) {
       const floor = position.qty.minus(balance.qty);
+      // The reference, not the internal number — the user has to find this row on
+      // their own screen, where the number does not appear.
+      const label = position.batch.supplierBatchRef ?? 'This batch';
       throw ApiError.badRequest(
-        `Batch ${position.batch.batchNumber} has already moved — only ${balance.qty.toString()} of it is ` +
+        `Batch ${label} has already moved — only ${balance.qty.toString()} of it is ` +
           `still here, so its opening stock cannot go below ${floor.toString()}. ` +
           'Cancel the documents that moved it first, or leave this batch as it is.',
-        { batches: `${position.batch.batchNumber} cannot go below ${floor.toString()}.` },
+        { batches: `${label} cannot go below ${floor.toString()}.` },
       );
     }
 
@@ -363,7 +366,8 @@ export class ItemsService {
           // what lets the writer tell "this batch, edited" from "a new batch", and
           // therefore what lets it adjust instead of reverse-and-recreate.
           id: entry.batch.id,
-          batchNumber: entry.batch.batchNumber,
+          // 🔴 No `batchNumber` (2026-08-14) — internal, and a field in the
+          // payload is a field somebody renders. `id` is the round-trip handle.
           batchReference: entry.batch.supplierBatchRef,
           manufacturerBatch: entry.batch.manufacturerBatch,
           manufacturedDate: entry.batch.manufacturedDate,
@@ -486,6 +490,26 @@ export class ItemsService {
           updatedBy: userId ?? null,
         },
       });
+
+      /**
+       * 🔴 The scalar shortcut cannot serve a batch-tracked item (2026-08-14).
+       * It creates one batch with no reference, and a batch-tracked batch must
+       * carry the label the user will pick it by — there is no field on this form
+       * to supply one. The opening-stock grid is where that item declares stock,
+       * and it asks for the reference per batch.
+       */
+      if (
+        item.inventoryTracking === 'batch' &&
+        rest.openingStock !== undefined &&
+        rest.openingStock !== null &&
+        Number(rest.openingStock) > 0
+      ) {
+        throw ApiError.badRequest(
+          'This item is batch-tracked, so its opening stock has to be entered batch by batch. ' +
+            'Save the item first, then add stock from the item page.',
+          { openingStock: 'Add opening stock batch by batch after saving.' },
+        );
+      }
 
       if (
         item.trackInventory &&

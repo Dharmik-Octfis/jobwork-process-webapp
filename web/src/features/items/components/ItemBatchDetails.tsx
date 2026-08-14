@@ -22,7 +22,6 @@ interface BatchItem {
   id: string;
   locationId: string;
   locationName: string;
-  batchNumber?: string;
   batchReference?: string;
   manufacturerBatch?: string;
   manufacturedDate?: string;
@@ -143,7 +142,6 @@ export function ItemBatchDetails({
           id: batchId,
           locationId: locRow.locationId,
           locationName: locName,
-          batchNumber: b.batchNumber ?? undefined,
           batchReference: b.batchReference ?? undefined,
           manufacturerBatch: b.manufacturerBatch ?? undefined,
           manufacturedDate: b.manufacturedDate ?? undefined,
@@ -177,10 +175,12 @@ export function ItemBatchDetails({
 
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
+        // 🔴 The tag, not the internal key. `batchNumber` is never rendered, so
+        // nobody types it, and matching on it only means a search for "42" hits
+        // rows whose visible label has nothing to do with 42 (2026-08-14).
         const refMatch = b.batchReference?.toLowerCase().includes(q);
-        const numMatch = b.batchNumber?.toLowerCase().includes(q);
         const mfrMatch = b.manufacturerBatch?.toLowerCase().includes(q);
-        if (!refMatch && !numMatch && !mfrMatch) return false;
+        if (!refMatch && !mfrMatch) return false;
       }
       return true;
     });
@@ -362,7 +362,14 @@ export function ItemBatchDetails({
           background: '#ffffff',
         }}
       >
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', tableLayout: 'auto' }}>
+        <table
+          style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            fontSize: '13px',
+            tableLayout: 'auto',
+          }}
+        >
           <thead>
             <tr style={{ background: '#f8fafc', borderBottom: '1px solid #eef0f3' }}>
               {activeColumns.map((col) => (
@@ -384,7 +391,9 @@ export function ItemBatchDetails({
                 </th>
               ))}
               {/* Reserved Action Header Column - Fixed Width 44px */}
-              <th style={{ padding: '11px 8px', width: '44px', minWidth: '44px', maxWidth: '44px' }} />
+              <th
+                style={{ padding: '11px 8px', width: '44px', minWidth: '44px', maxWidth: '44px' }}
+              />
             </tr>
           </thead>
           <tbody>
@@ -420,7 +429,8 @@ export function ItemBatchDetails({
                     onMouseLeave={() => setHoveredRowId(null)}
                     style={{
                       borderBottom: '1px solid #eef0f3',
-                      background: isHovered || isMenuOpen ? '#f8fafc' : b.isInactive ? '#f8fafc' : '#ffffff',
+                      background:
+                        isHovered || isMenuOpen ? '#f8fafc' : b.isInactive ? '#f8fafc' : '#ffffff',
                       opacity: b.isInactive ? 0.75 : 1,
                       transition: 'background 0.15s, opacity 0.15s',
                     }}
@@ -438,7 +448,11 @@ export function ItemBatchDetails({
                               textDecoration: b.isInactive ? 'line-through' : 'none',
                             }}
                           >
-                            {b.batchReference || b.batchNumber || '-'}
+                            {/* No `batchNumber` fallback (2026-08-14) — it is an
+                                internal key, and falling back to it puts the one
+                                identifier the user cannot act on into the column
+                                they identify batches by. */}
+                            {b.batchReference || '-'}
                             {b.isInactive && (
                               <span
                                 style={{
@@ -638,7 +652,9 @@ export function ItemBatchDetails({
                                 display: 'block',
                               }}
                               onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                              onMouseLeave={(e) =>
+                                (e.currentTarget.style.background = 'transparent')
+                              }
                             >
                               Edit
                             </button>
@@ -658,7 +674,9 @@ export function ItemBatchDetails({
                                 display: 'block',
                               }}
                               onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                              onMouseLeave={(e) =>
+                                (e.currentTarget.style.background = 'transparent')
+                              }
                             >
                               {b.isInactive ? 'Mark as Active' : 'Mark as Inactive'}
                             </button>
@@ -681,7 +699,9 @@ export function ItemBatchDetails({
                                 display: 'block',
                               }}
                               onMouseEnter={(e) => (e.currentTarget.style.background = '#fef2f2')}
-                              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                              onMouseLeave={(e) =>
+                                (e.currentTarget.style.background = 'transparent')
+                              }
                             >
                               Delete
                             </button>
@@ -716,7 +736,7 @@ export function ItemBatchDetails({
         <ConfirmDialog
           isOpen
           title="Delete Batch"
-          message={`Are you sure you want to delete batch "${batchToDelete.batchReference || batchToDelete.batchNumber || 'Selected Batch'}"? This action will remove the batch quantity from opening stock.`}
+          message={`Are you sure you want to delete batch "${batchToDelete.batchReference || 'Selected Batch'}"? This action will remove the batch quantity from opening stock.`}
           confirmText={saveOpeningStockMutation.isPending ? 'Deleting...' : 'Delete'}
           onConfirm={handleDeleteBatchConfirm}
           onCancel={() => setBatchToDelete(null)}

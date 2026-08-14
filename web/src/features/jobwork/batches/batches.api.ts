@@ -15,10 +15,29 @@ import { endpoints } from '../../../api/endpoints';
 
 export const availableBatchSchema = z.object({
   batchId: z.string(),
-  batchNumber: z.string(),
-  /** The supplier's own number off the tag. Searchable, so it has to be visible:
-   * a row you can match on but cannot read is one the user cannot identify. */
+  /**
+   * 🔴 A ROW IS A BATCH AT A GODOWN (2026-08-14), not a batch. One challan may
+   * draw from every godown in a dispatch site, and the same batch can sit in two
+   * of them with two independent balances — so this is sent back on the line and
+   * the ledger takes the stock out of exactly here.
+   */
+  locationId: z.string(),
+  /** Null only if the location vanished between the query and the render. */
+  locationName: z.string().nullable(),
+  /**
+   * 🔴 THE LABEL. What is on the physical tag, and since 2026-08-14 the only
+   * batch identifier a user ever sees — `batchNumber` is internal and is not
+   * rendered anywhere. Required on batch-tracked items, so it is null only for
+   * untracked stock, whose batches nobody is meant to be looking at.
+   */
   supplierBatchRef: z.string().nullable(),
+  /** The maker's own number, which is NOT the supplier's — a trader passes on
+   * goods the manufacturer marked differently from the trader's docket. */
+  manufacturerBatch: z.string().nullable(),
+  /** When the batch came onto the books. On screen because the label is NOT
+   * unique — two live rows can both read `jv2`, and this is one of the few things
+   * that separates them. */
+  createdAt: z.string(),
   itemId: z.string(),
   uomId: z.string().nullable(),
   ownership: z.string(),

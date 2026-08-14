@@ -317,7 +317,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
                   <td style={{ ...td, fontWeight: 500, color: '#111' }}>
                     {line.item?.name ?? '-'}
                   </td>
-                  <td style={td}>{line.batch?.batchNumber ?? '-'}</td>
+                  <td style={td}>{line.batch?.supplierBatchRef ?? '-'}</td>
                   <td style={td}>
                     {formatQty(line.qty)} {line.uom?.symbol ?? line.uom?.unitName ?? unit}
                   </td>

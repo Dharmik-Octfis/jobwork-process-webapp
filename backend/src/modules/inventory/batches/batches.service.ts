@@ -2,6 +2,7 @@ import { Prisma } from '../../../../generated/prisma/client.ts';
 import { runAsTenant } from '../../../db/prisma.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
+import { resolveDispatchSite } from '../../settings/configuration/locations/locationSites.ts';
 import {
   getAvailableBatches,
   getBalance,
@@ -27,7 +28,18 @@ import {
  * has been at the dyer's for a fortnight (field-sources §10).
  */
 
-const SEARCH_COLUMNS = ['batchNumber', 'supplierBatchRef'] as const;
+/**
+ * 🔴 `batchNumber` IS NOT SEARCHABLE, and that is deliberate (2026-08-14).
+ *
+ * Searchability follows visibility. The number is an internal key that is never
+ * rendered and never printed — this system's equivalent of Zoho's hidden record
+ * id — so nobody can be typing it, and matching on it only pollutes results: a
+ * search for `42` would hit internal numbers that have nothing to do with the
+ * batch the user is looking for.
+ *
+ * What people DO type is what is on the physical tag, which is one of these two.
+ */
+const SEARCH_COLUMNS = ['supplierBatchRef', 'manufacturerBatch'] as const;
 
 function batchListWhere(organizationId: string, opts: ListQuery): Prisma.BatchWhereInput {
   return {
@@ -122,15 +134,44 @@ export interface AvailabilityQuery {
  */
 export async function getAvailableStock(organizationId: string, query: AvailabilityQuery) {
   return runAsTenant(organizationId, async (tx) => {
+    /**
+     * 🔴 THE WHOLE DISPATCH SITE, not the one godown asked for (2026-08-14).
+     *
+     * One challan may draw from every godown under a site, so offering only the
+     * location the user happened to land on is what made the picker look like it
+     * was hiding stock. Crossing to another site is refused at save — that is a
+     * second address, and a Rule 55 challan carries one.
+     *
+     * Rows come back per (batch, location) and carry `locationId`, so the picker
+     * can say which godown each one is in.
+     */
+    const site = query.locationId
+      ? await resolveDispatchSite(tx, organizationId, query.locationId)
+      : null;
+
     const batches = await getAvailableBatches(tx, {
       organizationId,
       itemId: query.itemId,
-      locationId: query.locationId,
+      // No location asked for means no location filter — an org-wide question,
+      // which some reports ask and the picker never does.
+      locationIds: site?.locationIds,
       ownership: query.ownership,
       search: query.search,
       limit: query.limit,
     });
     if (batches.length === 0) return [];
+
+    // Named so the picker can label each row. Keyed off the rows actually
+    // returned, so it is one read whether the site has two godowns or twenty.
+    const locations = await tx.location.findMany({
+      where: {
+        organizationId,
+        id: { in: [...new Set(batches.map((row) => row.locationId))] },
+        isDeleted: false,
+      },
+      select: { id: true, name: true },
+    });
+    const locationNameById = new Map(locations.map((row) => [row.id, row.name]));
 
     // Every row here is the same item, so its tracking mode is one read, not one
     // per batch.
@@ -141,8 +182,20 @@ export async function getAvailableStock(organizationId: string, query: Availabil
 
     return batches.map((batch) => ({
       batchId: batch.batchId,
-      batchNumber: batch.batchNumber,
+      /* 🔴 Sent back on the line. A row is a batch AT A GODOWN, and the challan
+         records which one — within a site there may be several. */
+      locationId: batch.locationId,
+      locationName: locationNameById.get(batch.locationId) ?? null,
+      // 🔴 No `batchNumber` (2026-08-14). `batchId` is the handle the client sends
+      // back; the number is internal and a field in the payload is a field
+      // somebody eventually renders.
       supplierBatchRef: batch.supplierBatchRef,
+      /* 🔴 The picker's identifying line since 2026-08-14. `supplierBatchRef` is
+         the label but it is deliberately NOT unique — two live rows can both read
+         `jv2` — and `batchNumber` is never rendered, so these three are what
+         actually separate them on screen. */
+      manufacturerBatch: batch.manufacturerBatch,
+      createdAt: batch.createdAt.toISOString(),
       itemId: batch.itemId,
       uomId: batch.uomId,
       ownership: batch.ownership,

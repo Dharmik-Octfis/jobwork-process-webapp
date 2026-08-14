@@ -632,6 +632,7 @@ model Location {
   jobOrderStepWorkCentres JobOrderStep[]     @relation("JobOrderStepWorkCentre")
   jobIssuesFrom           JobIssue[]         @relation("JobIssueSource")
   jobIssuesTo             JobIssue[]         @relation("JobIssueDestination")
+  jobIssueLinesFrom       JobIssueLine[]     @relation("JobIssueLineSource")
   jobReceipts             JobReceipt[]       @relation("JobReceiptLocation")
   itemAssemblies          ItemAssembly[]     @relation("ItemAssemblyLocation")
   itemOpeningStockRows    ItemOpeningStockRow[]

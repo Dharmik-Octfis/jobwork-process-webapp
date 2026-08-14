@@ -80,8 +80,8 @@ const RECEIPT_INCLUDE = {
     },
   },
   location: { select: { id: true, name: true } },
-  outputBatch: { select: { id: true, batchNumber: true } },
-  reworkBatch: { select: { id: true, batchNumber: true } },
+  outputBatch: { select: { id: true, supplierBatchRef: true } },
+  reworkBatch: { select: { id: true, supplierBatchRef: true } },
   /** The CONSUMPTION record — one row per challan line this receipt closes. */
   lines: {
     where: { isDeleted: false },
@@ -100,8 +100,8 @@ const RECEIPT_INCLUDE = {
       item: { select: { id: true, name: true, sku: true } },
       uom: { select: { id: true, unitName: true, symbol: true } },
       reason: { select: { id: true, name: true } },
-      outputBatch: { select: { id: true, batchNumber: true } },
-      reworkBatch: { select: { id: true, batchNumber: true } },
+      outputBatch: { select: { id: true, supplierBatchRef: true } },
+      reworkBatch: { select: { id: true, supplierBatchRef: true } },
     },
   },
 } satisfies Prisma.JobReceiptInclude;
@@ -196,7 +196,7 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
           include: {
             item: { select: { id: true, name: true, sku: true } },
             uom: { select: { id: true, unitName: true, symbol: true } },
-            batch: { select: { id: true, batchNumber: true } },
+            batch: { select: { id: true, supplierBatchRef: true } },
           },
         },
       },
@@ -225,7 +225,8 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
           itemName: line.item?.name ?? null,
           uomSymbol: line.uom?.symbol ?? line.uom?.unitName ?? null,
           batchId: line.batchId,
-          batchNumber: line.batch.batchNumber,
+          // The label, not the internal number (2026-08-14).
+          batchReference: line.batch.supplierBatchRef,
           issuedQty: outstanding.toString(),
         });
       }
@@ -294,6 +295,12 @@ interface ResolvedOutput {
   reasonId: string | null;
   responsibility: string | null;
   remarks: string | null;
+  /** What the accepted goods will be called from here on. `createBatch` refuses a
+   * null on a batch-tracked item — see the note there. */
+  batchReference: string | null;
+  /** The rework batch is a separate batch with a separate life, so it needs its
+   * own label rather than sharing the accepted one's. */
+  reworkBatchReference: string | null;
 }
 
 /**
@@ -319,7 +326,12 @@ function resolveOutputs(
     scrap: Prisma.Decimal;
     returned: Prisma.Decimal;
   },
-  fallback: { itemId: string; uomId: string | null },
+  fallback: {
+    itemId: string;
+    uomId: string | null;
+    batchReference: string | null;
+    reworkBatchReference: string | null;
+  },
 ): ResolvedOutput[] {
   if (!sent || sent.length === 0) {
     return [
@@ -336,6 +348,10 @@ function resolveOutputs(
         reasonId: null,
         responsibility: null,
         remarks: null,
+        // The single-output form has no per-row grid to carry these, so they ride
+        // on the header instead.
+        batchReference: fallback.batchReference,
+        reworkBatchReference: fallback.reworkBatchReference,
       },
     ];
   }
@@ -374,6 +390,8 @@ function resolveOutputs(
       reasonId: row.reasonId ?? null,
       responsibility: row.responsibility ?? null,
       remarks: row.remarks?.trim() || null,
+      batchReference: row.batchReference?.trim() || null,
+      reworkBatchReference: row.reworkBatchReference?.trim() || null,
     };
   });
 }
@@ -688,6 +706,8 @@ export async function createNewJobReceipt(
     const outputRows = resolveOutputs(sentOutputs, totals, {
       itemId: outputItemId,
       uomId: outputUomId,
+      batchReference: data.batchReference?.trim() || null,
+      reworkBatchReference: data.reworkBatchReference?.trim() || null,
     });
     await assertItemsBelongToOrg(
       tx,
@@ -871,6 +891,7 @@ export async function createNewJobReceipt(
           // history that was not recorded (§11.3). EVERY output traces back to
           // EVERY batch consumed — offcuts came from the same fabric the panels did.
           parentBatchIds: [...parentBatchIds],
+          supplierBatchRef: output.batchReference,
           sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
           sourceDocId: receipt.id,
           userId,
@@ -908,6 +929,7 @@ export async function createNewJobReceipt(
           ownership,
           ownerPartyId: step.jobOrder.ownerPartyId,
           parentBatchIds: [...parentBatchIds],
+          supplierBatchRef: output.reworkBatchReference,
           sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
           sourceDocId: receipt.id,
           userId,

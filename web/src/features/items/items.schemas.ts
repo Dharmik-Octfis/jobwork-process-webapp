@@ -141,7 +141,7 @@ export type ItemFormData = z.infer<typeof itemFormSchema>;
 
 export const itemOpeningStockBatchSchema = z.object({
   id: z.string().optional(),
-  batchNumber: z.string().optional().nullable(),
+  /** 🔴 Removed from the payload 2026-08-14 — internal key. */
   batchReference: z.string().optional().nullable(),
   manufacturerBatch: z.string().optional().nullable(),
   manufacturedDate: z.string().optional().nullable(),

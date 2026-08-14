@@ -40,8 +40,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     enabled: Boolean(orgId && itemId),
   });
 
-  const isInventoryTracked =
-    item?.trackInventory !== false && item?.track_inventory !== false;
+  const isInventoryTracked = item?.trackInventory !== false && item?.track_inventory !== false;
   const isBatchTracked =
     isInventoryTracked &&
     (item?.inventoryTracking === 'batch' || item?.inventory_tracking === 'batch');

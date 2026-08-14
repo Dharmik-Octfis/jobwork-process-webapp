@@ -1,7 +1,15 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { itemsApi } from '../items.api';
-import { Search, X, Plus, SlidersHorizontal, Filter, ChevronLeft, ChevronRight,} from 'lucide-react';
+import {
+  Search,
+  X,
+  Plus,
+  SlidersHorizontal,
+  Filter,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
 import type { Item } from '../items.schemas';
 import { Button } from '../../../components/ui/Button';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
@@ -90,9 +98,15 @@ export function MultiSelectItemModal({
     return () => clearTimeout(handler);
   }, [query]);
 
-  const { data: itemsPage} = useQuery({
+  const { data: itemsPage } = useQuery({
     queryKey: ['items-modal', orgId, debouncedQuery, page, filter],
-    queryFn: () => itemsApi.getItems(orgId, { ...(debouncedQuery ? { search: debouncedQuery } : {}), page, perPage: 50, filter }),
+    queryFn: () =>
+      itemsApi.getItems(orgId, {
+        ...(debouncedQuery ? { search: debouncedQuery } : {}),
+        page,
+        perPage: 50,
+        filter,
+      }),
     enabled: Boolean(orgId) && isOpen,
     refetchOnWindowFocus: false,
   });
@@ -118,7 +132,6 @@ export function MultiSelectItemModal({
       setPage(1);
     }
   }
-
 
   const fullCatalog = useMemo(() => {
     const base = [...ITEM_MODAL_CATALOG];
@@ -153,8 +166,10 @@ export function MultiSelectItemModal({
         filtered = filtered.filter((item) => {
           if (key === 'name') return item.name.toLowerCase().includes(searchVal);
           if (key === 'sku') return (item.sku || '').toLowerCase().includes(searchVal);
-          if (key === 'hsn') return (item.hsnCode || item.hsn_or_sac || '').toLowerCase().includes(searchVal);
-          if (key === 'type') return (item.type || item.item_type || '').toLowerCase() === searchVal;
+          if (key === 'hsn')
+            return (item.hsnCode || item.hsn_or_sac || '').toLowerCase().includes(searchVal);
+          if (key === 'type')
+            return (item.type || item.item_type || '').toLowerCase() === searchVal;
           if (key === 'category') return (item.category || '').toLowerCase() === searchVal;
           const cfKey = key.replace('cf_', '');
           const val = item.custom_fields?.[cfKey] ?? item.customFields?.[cfKey];
@@ -168,11 +183,15 @@ export function MultiSelectItemModal({
   const paginatedItems = shownItems;
 
   const handleSelectAll = () => {
-    if (selectedItemsMap.size >= shownItems.length && shownItems.length > 0 && shownItems.every(i => selectedItemsMap.has(i.id))) {
+    if (
+      selectedItemsMap.size >= shownItems.length &&
+      shownItems.length > 0 &&
+      shownItems.every((i) => selectedItemsMap.has(i.id))
+    ) {
       setSelectedItemsMap(new Map());
     } else {
       const next = new Map(selectedItemsMap);
-      shownItems.forEach(i => next.set(i.id, i));
+      shownItems.forEach((i) => next.set(i.id, i));
       setSelectedItemsMap(next);
       const nextInputs = { ...itemInputs };
       shownItems.forEach((i) => {
@@ -214,20 +233,19 @@ export function MultiSelectItemModal({
   };
 
   const handleAssign = () => {
-    const selected = Array.from(selectedItemsMap.values())
-      .map((i) => {
-        const inputs = itemInputs[i.id];
-        if (inputs) {
-          return {
-            ...i,
-            _quantity: Number(inputs.quantity) || 1,
-            _rate: Number(inputs.rate) || 0,
-            _discount: Number(inputs.discount) || 0,
-            _discountType: inputs.discountType || 'percentage',
-          };
-        }
-        return i;
-      });
+    const selected = Array.from(selectedItemsMap.values()).map((i) => {
+      const inputs = itemInputs[i.id];
+      if (inputs) {
+        return {
+          ...i,
+          _quantity: Number(inputs.quantity) || 1,
+          _rate: Number(inputs.rate) || 0,
+          _discount: Number(inputs.discount) || 0,
+          _discountType: inputs.discountType || 'percentage',
+        };
+      }
+      return i;
+    });
     onAssign(selected);
     setSelectedItemsMap(new Map()); // Reset for next time
     setQuery('');
@@ -390,7 +408,9 @@ export function MultiSelectItemModal({
                 >
                   <input
                     type="checkbox"
-                    checked={shownItems.length > 0 && shownItems.every(i => selectedItemsMap.has(i.id))}
+                    checked={
+                      shownItems.length > 0 && shownItems.every((i) => selectedItemsMap.has(i.id))
+                    }
                     onChange={handleSelectAll}
                     style={{ cursor: 'pointer' }}
                   />
@@ -481,7 +501,9 @@ export function MultiSelectItemModal({
                   </th>
                   {activeColumns.map((col) => {
                     const val = columnFilters[col.key] || '';
-                    const onChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+                    const onChange = (
+                      e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+                    ) => {
                       setColumnFilters((prev) => ({ ...prev, [col.key]: e.target.value }));
                       setPage(1);
                     };
@@ -521,7 +543,9 @@ export function MultiSelectItemModal({
                           <select value={val} onChange={onChange} style={inputStyle}>
                             <option value="">- None -</option>
                             {categories.map((c) => (
-                              <option key={c} value={c}>{c}</option>
+                              <option key={c} value={c}>
+                                {c}
+                              </option>
                             ))}
                           </select>
                         ) : (
@@ -719,20 +743,37 @@ export function MultiSelectItemModal({
           <span style={{ fontSize: 13, color: '#64748b' }}>{selectedItemsMap.size} selected</span>
           <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
             <span style={{ fontSize: '13px', color: '#64748b' }}>
-              {shownItems.length > 0 ? ((page - 1) * 50) + 1 : 0} - {Math.min(page * 50, shownItems.length)} of {shownItems.length}
+              {shownItems.length > 0 ? (page - 1) * 50 + 1 : 0} -{' '}
+              {Math.min(page * 50, shownItems.length)} of {shownItems.length}
             </span>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
                 disabled={page === 1}
-                onClick={() => setPage(p => p - 1)}
-                style={{ cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.5 : 1, background: 'none', border: 'none', padding: '2px', display: 'flex', alignItems: 'center' }}
+                onClick={() => setPage((p) => p - 1)}
+                style={{
+                  cursor: page === 1 ? 'not-allowed' : 'pointer',
+                  opacity: page === 1 ? 0.5 : 1,
+                  background: 'none',
+                  border: 'none',
+                  padding: '2px',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
               >
                 <ChevronLeft size={16} />
               </button>
               <button
                 disabled={page * 50 >= shownItems.length}
-                onClick={() => setPage(p => p + 1)}
-                style={{ cursor: page * 50 >= shownItems.length ? 'not-allowed' : 'pointer', opacity: page * 50 >= shownItems.length ? 0.5 : 1, background: 'none', border: 'none', padding: '2px', display: 'flex', alignItems: 'center' }}
+                onClick={() => setPage((p) => p + 1)}
+                style={{
+                  cursor: page * 50 >= shownItems.length ? 'not-allowed' : 'pointer',
+                  opacity: page * 50 >= shownItems.length ? 0.5 : 1,
+                  background: 'none',
+                  border: 'none',
+                  padding: '2px',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
               >
                 <ChevronRight size={16} />
               </button>
@@ -762,5 +803,3 @@ export function MultiSelectItemModal({
     </div>
   );
 }
-
-

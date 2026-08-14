@@ -381,10 +381,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                     background: '#fff',
                   }}
                 >
-                  {batch.batchNumber}
-                  {batch.supplierBatchRef && (
-                    <span style={{ color: '#94a3b8' }}> · {batch.supplierBatchRef}</span>
-                  )}
+                  {batch.supplierBatchRef ?? 'Untracked stock'}
                 </span>
               ))}
             </div>

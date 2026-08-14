@@ -273,33 +273,41 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
   const singleBatchOnly = step.process?.requiresSingleBatch ?? false;
 
   /**
-   * ⚠️ Which items are on the batch-less path right now — computed ONCE and read
-   * by both the render and `lines`.
+   * 🔴 WHETHER A PICKER APPEARS IS THE ITEM'S DECISION (2026-08-14).
    *
-   * 🔴 The two must not work it out separately. When they did, adding stock for
-   * an item whose quantity had already been typed hid the input but left the
-   * typed number in state, and `lines` went on sending it: one challan carrying
-   * both the picked batch AND a phantom line that minted a second batch for the
-   * same goods.
+   * `inventoryTracking = 'batch'` gets the picker; everything else gets a plain
+   * quantity box and the server allocates FIFO. Nothing about the query's
+   * results is consulted, which is the whole change.
    *
-   * A search that matched nothing is also not the same fact as an item with no
-   * stock, so an active search never puts an item on this path.
+   * ⚠️ It used to key off "this item happens to have zero batches right now", so
+   * the moment one internal batch existed the item flipped back to a picker full
+   * of rows nobody had named — the complaint that started all of this. Worse, the
+   * batch-less path used to INVENT stock rather than consume it, so gating on the
+   * item without the FIFO allocator underneath would have made every issue mint a
+   * phantom batch and leave the real balance untouched. The two are one change.
    */
-  const batchlessItemIds = useMemo(() => {
-    const ids = new Set<string>();
+  const batchlessItemIds = useMemo(
+    () => new Set(inputItems.filter((input) => !input.isBatchTracked).map((i) => i.itemId)),
+    [inputItems],
+  );
+
+  /**
+   * What the ledger holds for each untracked item at this location — the ceiling
+   * on what can be typed, shown because the user has no picker to read it off.
+   *
+   * Free: it is the sum of the availability query already fetched for the picker.
+   */
+  const availableByItem = useMemo(() => {
+    const totals = new Map<string, number>();
     inputItems.forEach((input, index) => {
-      const query = batchQueries[index];
-      if (
-        !input.isBatchTracked &&
-        !query?.isLoading &&
-        (query?.data ?? []).length === 0 &&
-        !(debouncedSearch[input.itemId] ?? '')
-      ) {
-        ids.add(input.itemId);
-      }
+      const rows = batchQueries[index]?.data ?? [];
+      totals.set(
+        input.itemId,
+        rows.reduce((sum, row) => sum + toNumber(row.availableQty), 0),
+      );
     });
-    return ids;
-  }, [inputItems, batchQueries, debouncedSearch]);
+    return totals;
+  }, [inputItems, batchQueries]);
 
   /**
    * 🔴 EVERY LINE CARRIES ITS OWN ITEM (§5.7). The server refuses a line naming
@@ -314,7 +322,15 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
 
     for (const sel of Object.values(selection)) {
       if (sel.qty > 0) {
-        out.push({ itemId: sel.batch.itemId, batchId: sel.batch.batchId, qty: sel.qty });
+        out.push({
+          itemId: sel.batch.itemId,
+          batchId: sel.batch.batchId,
+          // 🔴 Which godown this row was picked from. The same batch can be
+          // offered twice within a dispatch site, and without this the server
+          // cannot tell which of the two the goods actually left.
+          sourceLocationId: sel.batch.locationId,
+          qty: sel.qty,
+        });
       }
     }
 
@@ -377,6 +393,23 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
     },
   });
 
+  /**
+   * Untracked items typed past what the ledger holds. The server refuses these
+   * outright (no shortfall is ever invented any more), so the same rule runs here
+   * and the refusal arrives while the box is still on screen.
+   *
+   * Batch-tracked items are not checked here — their quantities are already
+   * capped per batch by the picker's own `max`.
+   */
+  const overDrawn = useMemo(() => {
+    const ids = new Set<string>();
+    for (const itemId of batchlessItemIds) {
+      const typed = unstocked[itemId] ?? 0;
+      if (typed > 0 && typed > (availableByItem.get(itemId) ?? 0) + 0.00005) ids.add(itemId);
+    }
+    return ids;
+  }, [batchlessItemIds, unstocked, availableByItem]);
+
   const addStockItem = inputItems.find((input) => input.itemId === addStockFor) ?? null;
 
   /**
@@ -434,7 +467,8 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
     setAddStockFor(id);
   };
 
-  const canSave = lines.length > 0 && Boolean(effectiveSourceId) && !mutation.isPending;
+  const canSave =
+    lines.length > 0 && Boolean(effectiveSourceId) && overDrawn.size === 0 && !mutation.isPending;
 
   return (
     <Modal
@@ -592,7 +626,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                 value={processorId ?? ''}
                 onChange={(value) => setProcessorId(value || null)}
                 options={[
-                  { value: '', label: 'Pick a processor…' },
+                  { value: '', label: 'Select a processor…' },
                   ...processors.map((v) => ({
                     value: v.id,
                     label: v.companyName || v.contactName,
@@ -721,18 +755,22 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
               <div style={{ padding: 10 }}>
                 {showUnstockedInput ? (
                   /*
-                    ⚠️ TEMPORARY — no batches and no batch tracking means no stock
-                    has ever been recorded for this item, which is normal today:
-                    Material In was retired before Purchase Received exists. Type
-                    the quantity and a zero-valued batch is created for it on save.
-                    🔴 Remove when PR lands.
+                    🔴 AN UNTRACKED ITEM HAS NO PICKER AND NEVER WILL. Its batches
+                    carry no reference, are not searchable and are not rendered —
+                    offering them would be asking the user to choose between rows
+                    they cannot tell apart. A quantity, and the server takes it
+                    out of the oldest stock first.
+
+                    The ceiling is shown because there is no picker to read it off,
+                    and a shortfall is refused on save: this box no longer invents
+                    stock, it spends it.
                   */
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                     <label
                       htmlFor={`unstocked-${input.itemId}`}
                       style={{ fontSize: 12, color: '#64748b' }}
                     >
-                      No stock on record — issue anyway:
+                      Quantity to issue:
                     </label>
                     <input
                       id={`unstocked-${input.itemId}`}
@@ -747,9 +785,28 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                           [input.itemId]: Number(e.target.value) || 0,
                         }))
                       }
+                      max={availableByItem.get(input.itemId) ?? undefined}
                       placeholder={`Quantity${input.uomLabel ? ` (${input.uomLabel})` : ''}`}
-                      style={{ ...inputStyle, width: 200 }}
+                      aria-label={`Quantity of ${input.name} to issue`}
+                      style={{
+                        ...inputStyle,
+                        width: 200,
+                        borderColor: overDrawn.has(input.itemId) ? '#fca5a5' : '#d1d5db',
+                      }}
                     />
+                    {/* The ceiling, in words. There is no picker here to read the
+                        balance off, so without this the only way to discover it is
+                        to be refused at save. */}
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: overDrawn.has(input.itemId) ? '#b91c1c' : '#64748b',
+                      }}
+                    >
+                      {query?.isLoading
+                        ? 'Checking stock…'
+                        : `${formatQty(availableByItem.get(input.itemId) ?? 0)} ${input.uomLabel} available here`}
+                    </span>
                     {/* Same button, same words as the picker's — it opens the same
                         screen, so calling it something else here would read as a
                         different action. */}

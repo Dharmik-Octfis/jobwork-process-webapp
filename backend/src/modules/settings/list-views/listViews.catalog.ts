@@ -263,9 +263,18 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
    * first step towards someone storing it.
    */
   batch: [
-    { key: 'batchNumber', label: 'Batch #', locked: true },
+    /**
+     * 🔴 The reference holds the locked slot, not `batchNumber` (2026-08-14).
+     * The number is an internal key that is never rendered — having it LOCKED
+     * meant the one column nobody can identify a batch by was also the one column
+     * nobody could turn off. The tag reference is what a user reads.
+     *
+     * Dropping a key needs no migration: `resolveColumns` filters saved
+     * preferences against this catalog, so a stored `batchNumber` is ignored.
+     */
+    { key: 'supplierBatchRef', label: 'Batch Reference#', locked: true },
     { key: 'item', label: 'Item', defaultVisible: true },
-    { key: 'supplierBatchRef', label: 'Supplier Ref', defaultVisible: true },
+    { key: 'manufacturerBatch', label: 'Manufacturer Batch#', defaultVisible: true },
     { key: 'ownership', label: 'Ownership', defaultVisible: true },
     { key: 'state', label: 'State', defaultVisible: true },
     { key: 'packageCount', label: 'Takas' },

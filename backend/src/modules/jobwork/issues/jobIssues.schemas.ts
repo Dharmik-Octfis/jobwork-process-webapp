@@ -58,6 +58,15 @@ export const jobIssueLineSchema = z.object({
    */
   batchId: z.string().uuid().nullable().optional(),
   /**
+   * 🔴 Which godown this line leaves from (2026-08-14). The picker offers one row
+   * per (batch, location) because a challan may draw from every godown in a
+   * dispatch site, so the client sends back the row it picked.
+   *
+   * Omitted, the header's dispatch location is assumed — which is what a
+   * single-godown site always means, and what every pre-2026-08-14 client sends.
+   */
+  sourceLocationId: z.string().uuid().nullable().optional(),
+  /**
    * Set only for a package-granular issue. When it is set the quantity is the
    * package's own measured quantity — ticking a taka takes ALL of it (§5.3), so
    * `qty` is checked against the package rather than typed freely.
