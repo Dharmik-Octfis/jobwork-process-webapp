@@ -13,6 +13,9 @@ interface Props {
   onClose: () => void;
   jobOrderId: string;
   jobOrderNumber: string;
+  /** own | customer, from the order. Decides which batches the planner may name —
+   * one customer's goods must never be planned into another's order (§5.3). */
+  ownership: string;
   /** Every step already on the order, in seq order. */
   steps: OverviewStep[];
   onAdded: () => void;
@@ -43,6 +46,7 @@ export function AddStepsDialog({
   onClose,
   jobOrderId,
   jobOrderNumber,
+  ownership,
   steps,
   onAdded,
 }: Props) {
@@ -208,6 +212,8 @@ export function AddStepsDialog({
         errors={fieldErrors}
         disabled={mutation.isPending}
         showPlannedQty
+        allowPlannedBatches
+        ownership={ownership}
         seqOffset={startSeq - 1}
         priorProducers={priorProducers}
         priorSpare={priorSpare}

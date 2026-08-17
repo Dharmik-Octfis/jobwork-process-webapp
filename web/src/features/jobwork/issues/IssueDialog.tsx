@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { Modal } from '../../../components/ui/Modal';
 import { Select } from '../../../components/ui/Select';
-import { PackagePlus } from 'lucide-react';
 import { blurOnWheel } from '../../../components/ui/blurOnWheel';
 import { fetchVendors } from '../../purchases/vendors/vendors.api';
 import { fetchLocations } from '../../configuration/locations/locations.api';
@@ -13,10 +12,8 @@ import { formatQty, toNumber } from '../jobwork.schemas';
 import type { JobOrder, OverviewStep } from '../job-orders/jobOrders.schemas';
 import { createJobIssue } from './jobIssues.api';
 import type { JobIssueLineData } from './jobIssues.schemas';
-import { itemsApi } from '../../items/items.api';
-import type { ItemOpeningStockLocationRowDto } from '../../items/items.schemas';
-import { AddOpeningStockModal } from '../../items/components/AddOpeningStockModal';
-import { BatchPicker, type BatchSelection } from './BatchPicker';
+import { AddBatchesModal } from './AddBatchesModal';
+import { rowKey, type BatchSelection } from './batchSelection';
 
 interface Props {
   isOpen: boolean;
@@ -58,6 +55,26 @@ const sectionHeading: React.CSSProperties = {
   letterSpacing: 0.4,
 };
 
+/** The line-items grid. Fixed columns are the point — see the note above the table. */
+const lineTh: React.CSSProperties = {
+  padding: '8px 12px',
+  fontWeight: 600,
+  fontSize: 10.5,
+  color: '#64748b',
+  textTransform: 'uppercase',
+  letterSpacing: 0.3,
+  textAlign: 'left',
+  whiteSpace: 'nowrap',
+};
+
+const lineTd: React.CSSProperties = {
+  padding: '10px 12px',
+  fontSize: 13,
+  color: '#334155',
+  whiteSpace: 'nowrap',
+  verticalAlign: 'top',
+};
+
 /** How many batches one picker asks for. The server caps at this too; the picker
  * says so when it hits the ceiling rather than showing a slice as if it were all. */
 const BATCH_LIMIT = 200;
@@ -94,13 +111,21 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
    * is a search now and a picked batch can leave the result set (see
    * `BatchSelection`). */
   const [selection, setSelection] = useState<Record<string, BatchSelection>>({});
-  /** ⚠️ Quantities typed for items that have no stock on record. Temporary, and
-   * reachable only for items that are NOT batch-tracked — see the note in `lines`. */
+  /** Quantities typed on an UNTRACKED item's line — no picker, no named batch, the
+   * server allocates FIFO out of what the ledger already holds. See `lines`. */
   const [unstocked, setUnstocked] = useState<Record<string, number>>({});
+  /**
+   * 🔴 What was typed on a BATCH-TRACKED line — the target, not the allocation.
+   * `selection` says which batches cover it. The two are separate facts on purpose:
+   * the user states how much is going out, then says where it comes from, and Add
+   * Batches pre-fills each batch from this. The challan will not save while they
+   * disagree — see `unallocated`.
+   */
+  const [trackedQty, setTrackedQty] = useState<Record<string, number>>({});
   const [searchByItem, setSearchByItem] = useState<Record<string, string>>({});
   const [debouncedSearch, setDebouncedSearch] = useState<Record<string, string>>({});
-  /** Which item section opened the Add-stock popup. Null when it is closed. */
-  const [addStockFor, setAddStockFor] = useState<string | null>(null);
+  /** Which item section opened Add Batches. Null when it is closed. */
+  const [addBatchesFor, setAddBatchesFor] = useState<string | null>(null);
   const [remarks, setRemarks] = useState('');
   const [overrideReason, setOverrideReason] = useState('');
   const [needsOverride, setNeedsOverride] = useState(false);
@@ -127,6 +152,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
       step.inputs.map((row) => ({
         itemId: row.itemId,
         name: row.item?.name ?? 'Item',
+        sku: row.item?.sku ?? null,
         uomLabel: row.uom ? (row.uom.symbol ?? row.uom.unitName) : '',
         plannedQty: row.plannedQty === null ? null : toNumber(row.plannedQty),
         fromStock: row.fromStock ?? true,
@@ -136,6 +162,9 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
          * on the near side, so the dialog never offers a path that will be
          * rejected. */
         isBatchTracked: row.item?.inventoryTracking === 'batch',
+        /** What the job order PLANNED this row to come out of. A note, not a hold
+         * — the stock may well have moved since. See `JobOrderStepInputBatch`. */
+        plannedBatches: row.plannedBatches ?? [],
       })),
     [step],
   );
@@ -261,6 +290,64 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
     })),
   });
 
+  /**
+   * 🔴 SEED FROM THE JOB ORDER'S PLAN, ONCE PER ITEM.
+   *
+   * The whole reason the plan is stored: the planner already said which rolls this
+   * step should come off, and asking again is asking the same question twice.
+   *
+   * What it deliberately does NOT do is trust the plan. A plan is a note taken days
+   * ago and nothing was reserved — the batch may have been issued elsewhere, drained,
+   * or be sitting in a different godown from the one this challan goes out of. So a
+   * planned row is seeded ONLY if the availability query is offering it right now,
+   * at this location, and whatever could not be matched is COUNTED and said out
+   * loud rather than dropped in silence.
+   *
+   * Guarded by a ref rather than by state: `batchQueries` is a new array on every
+   * render, and the seed must not fight the user's own edits afterwards.
+   */
+  const seededItems = useRef<Set<string>>(new Set());
+  const [planUnmatched, setPlanUnmatched] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!isOpen) return;
+    inputItems.forEach((input, index) => {
+      if (!input.isBatchTracked || input.plannedBatches.length === 0) return;
+      if (seededItems.current.has(input.itemId)) return;
+      const offered = batchQueries[index]?.data;
+      if (!offered) return; // still loading — try again next render
+      seededItems.current.add(input.itemId);
+
+      const seeded: Record<string, BatchSelection> = {};
+      let matchedQty = 0;
+      let missing = 0;
+      for (const planned of input.plannedBatches) {
+        const batch = offered.find(
+          (row) => row.batchId === planned.batchId && row.locationId === planned.locationId,
+        );
+        if (!batch) {
+          missing += 1;
+          continue;
+        }
+        // Never seed more than the batch actually still holds — the plan is old
+        // and the ceiling is now.
+        const qty = Math.min(Number(planned.qty), toNumber(batch.availableQty));
+        if (qty <= 0) {
+          missing += 1;
+          continue;
+        }
+        seeded[rowKey(batch)] = { batch, qty };
+        matchedQty += qty;
+      }
+
+      if (Object.keys(seeded).length > 0) {
+        setSelection((prev) => ({ ...prev, ...seeded }));
+        setTrackedQty((prev) => ({ ...prev, [input.itemId]: matchedQty }));
+      }
+      if (missing > 0) setPlanUnmatched((prev) => ({ ...prev, [input.itemId]: missing }));
+    });
+  }, [isOpen, inputItems, batchQueries]);
+
   const { data: vendorsPage } = useQuery({
     queryKey: ['vendors', orgId, 'processors'],
     queryFn: () => fetchVendors(orgId!, { perPage: 500 }),
@@ -333,16 +420,20 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
     }
 
     /**
-     * ⚠️ TEMPORARY — an item with no stock on record can still be issued as a
-     * plain quantity with no batch behind it, and the server creates a zero-valued
-     * batch for it. Material In was retired before Purchase Received exists.
+     * 🔴 An untracked item goes out as a plain quantity and the server allocates it
+     * FIFO out of existing stock.
+     *
+     * It does NOT invent a batch to cover a shortfall. That scaffold is gone from
+     * `jobIssues.service` — every issue of an untracked item used to mint a phantom
+     * batch and leave the real balance untouched — and a line asking for more than
+     * the ledger holds is now refused outright. `overDrawn` applies the same ceiling
+     * here so the refusal arrives while the box is still on screen.
      *
      * 🔴 NOT for a batch-tracked item. `inventoryTracking = 'batch'` says every
      * metre is traceable to its roll; a batch invented at the moment of issue
      * traces to nothing, and the trace can never be reconstructed afterwards. The
-     * server refuses those lines, and the input is not rendered for them either.
-     *
-     * 🔴 Remove the rest of this the day Purchase Received lands.
+     * server refuses those lines, and this input is not rendered for them — they
+     * allocate named batches through Add Batches instead.
      */
     for (const itemId of batchlessItemIds) {
       const typed = unstocked[itemId] ?? 0;
@@ -408,65 +499,72 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
     return ids;
   }, [batchlessItemIds, unstocked, availableByItem]);
 
-  const addStockItem = inputItems.find((input) => input.itemId === addStockFor) ?? null;
+  /**
+   * 🔴 Batch-tracked lines that cannot go out as they stand, and why.
+   *
+   * Two failures, one rule. `'batches'` — a quantity was typed and no batch names
+   * where it comes from; batch selection is COMPULSORY for these items, because
+   * `inventoryTracking = 'batch'` promises every metre traces to its roll and the
+   * server refuses a batch-less line anyway. `'mismatch'` — batches were chosen but
+   * do not add up to the quantity, so the number on the challan is not the number
+   * leaving the godown.
+   *
+   * An item with neither a quantity nor an allocation is simply not on this challan
+   * and never appears here.
+   */
+  const blockedLines = useMemo(() => {
+    const out = new Map<string, 'batches' | 'mismatch'>();
+    for (const input of inputItems) {
+      if (!input.isBatchTracked) continue;
+      const typed = trackedQty[input.itemId] ?? 0;
+      const allocated = qtyByItem.get(input.itemId) ?? 0;
+      if (typed <= 0 && allocated <= 0) continue;
+      if (allocated <= 0) out.set(input.itemId, 'batches');
+      else if (Math.abs(typed - allocated) > 0.00005) out.set(input.itemId, 'mismatch');
+    }
+    return out;
+  }, [inputItems, trackedQty, qtyByItem]);
+
+  /** Items that actually carry a quantity — what the footer counts. */
+  const readyCount = inputItems.filter((input) => (qtyByItem.get(input.itemId) ?? 0) > 0).length;
+
+  const addBatchesIndex = inputItems.findIndex((input) => input.itemId === addBatchesFor);
+  const addBatchesItem = addBatchesIndex === -1 ? null : inputItems[addBatchesIndex]!;
 
   /**
-   * 🔴 THE ITEM SCREEN'S OWN OPENING-STOCK EDITOR, opened from here — the same
-   * component, showing every location and every existing batch, not a cut-down
-   * copy. Two screens that write the same document must not offer two different
-   * pictures of it: someone who adds a batch here and then opens the Item page has
-   * to see what they just did, and someone correcting a quantity has to see what
-   * is already there rather than blindly adding another row.
+   * 🔴 THIS DIALOG NO LONGER PUTS STOCK ON THE BOOKS (2026-08-17).
    *
-   * Safe to open from here only since the re-declaration defect was fixed —
-   * `items.service.settleOpening` now moves each batch by a delta and refuses to
-   * take out stock that has already been issued. Before that, saving this form
-   * for an item with a part-issued batch drove that batch negative.
+   * It used to open the Item screen's opening-stock editor, for either kind of
+   * item, because Material In was retired before Purchase Received existed and
+   * this was the only way in. That escape hatch is gone: an issue SPENDS stock,
+   * and a screen that can also create it can cover a shortage by inventing one —
+   * which reads on every report afterwards as material that was always there.
+   *
+   * The consequence is deliberate and worth stating: an item whose ledger is empty
+   * at the chosen godown cannot be issued from it at all, tracked or not. Each
+   * branch says so on the line rather than offering a button that papers over it.
+   * Stock arrives through a receipt, and until Purchase Received lands that means
+   * the Item page's own opening-stock grid.
    */
-  const { data: openingStockRows = [], isSuccess: openingStockReady } = useQuery({
-    queryKey: ['itemOpeningStock', orgId, addStockFor],
-    queryFn: () => itemsApi.getOpeningStock(orgId!, addStockFor!),
-    enabled: Boolean(orgId && addStockFor),
-  });
 
-  const openingStockMutation = useMutation({
-    mutationFn: (rows: ItemOpeningStockLocationRowDto[]) =>
-      itemsApi.saveOpeningStock(orgId!, addStockFor!, {
-        locationRows: rows,
-        /* 🔴 From the job order. Stock added as our own cannot be issued into a
-           customer-ownership order — the availability query filters on ownership
-           (§5.2) — so it would be added and then appear to have vanished. Applies
-           to batches this save CREATES; existing ones keep whose they are. */
-        ownership: jobOrder.ownership === 'customer' ? 'customer' : 'own',
-        ownerPartyId: jobOrder.ownership === 'customer' ? jobOrder.ownerPartyId : null,
-      }),
-    onSuccess: (rows) => {
-      queryClient.setQueryData(['itemOpeningStock', orgId, addStockFor], rows);
-      queryClient.invalidateQueries({ queryKey: ['available-batches', orgId] });
-      queryClient.invalidateQueries({ queryKey: ['stock-locations', orgId] });
-      queryClient.invalidateQueries({ queryKey: ['item', orgId, addStockFor] });
-      // Pin the godown, so the batches that just landed are the ones the picker
-      // below is looking at.
-      setSourceLocationId(effectiveSourceId);
-    },
-    onError: (err: AxiosError<{ message?: string }>) =>
-      setError(err.response?.data?.message ?? 'Could not save this stock'),
-  });
-
-  /** Stock has to land somewhere, and the only somewhere that helps this challan
-   * is the godown it is going out of — so the source is a precondition. */
-  const openAddStock = (id: string) => {
+  /** The batches on offer are the ones at the godown this challan goes out of, so
+   * there is nothing to choose from until that is settled. */
+  const openAddBatches = (id: string) => {
     if (!effectiveSourceId) {
-      setNotice('Pick the godown this material goes out of first — added stock has to land there.');
+      setNotice('Pick the godown this material goes out of first — batches are per godown.');
       return;
     }
     setNotice(null);
     setError(null);
-    setAddStockFor(id);
+    setAddBatchesFor(id);
   };
 
   const canSave =
-    lines.length > 0 && Boolean(effectiveSourceId) && overDrawn.size === 0 && !mutation.isPending;
+    lines.length > 0 &&
+    Boolean(effectiveSourceId) &&
+    overDrawn.size === 0 &&
+    blockedLines.size === 0 &&
+    !mutation.isPending;
 
   return (
     <Modal
@@ -517,15 +615,19 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
           >
             Cancel
           </button>
-          {/* Per item, never one total — 100 PCS + 5 CONE is 105 of nothing. */}
+          {/*
+            🔴 A COUNT, never one summed total — 100 PCS + 5 CONE is 105 of nothing
+            (§6.5). It used to spell out every item and its quantity here, which on a
+            ten-input step was a paragraph in the footer restating the grid directly
+            above it. The per-item figures now live in that grid's own columns, so
+            this only has to say how much of the challan is filled in.
+          */}
           <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>
-            {inputItems
-              .filter((input) => (qtyByItem.get(input.itemId) ?? 0) > 0)
-              .map(
-                (input) =>
-                  `${formatQty(qtyByItem.get(input.itemId) ?? 0)} ${input.uomLabel} ${input.name}`,
-              )
-              .join(' · ') || 'nothing selected yet'}
+            {readyCount === 0
+              ? 'nothing selected yet'
+              : `${readyCount} of ${inputItems.length} ${
+                  inputItems.length === 1 ? 'item' : 'items'
+                } on this challan`}
           </span>
         </>
       }
@@ -593,6 +695,14 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                 // The picker is per location; a stale selection would issue batches
                 // from somewhere they no longer are.
                 setSelection({});
+                /* A new godown is a different set of batches, so the job order's
+                   plan has to be re-matched against it. Reset here rather than in
+                   an effect on `effectiveSourceId` — this is the event that means
+                   it, and an effect would be a cascading render for a change we
+                   already know about (react-hooks/set-state-in-effect). */
+                seededItems.current = new Set();
+                setPlanUnmatched({});
+                setTrackedQty({});
               }}
               options={
                 sourceOptions.length === 0
@@ -672,183 +782,310 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
         <h3 style={sectionHeading}>Pick the material</h3>
 
         {/*
-          🔴 ONE PICKER PER INPUT ITEM (§5.7). Issuing all seven of a step's items
-          on one challan, or two of them today and the rest tomorrow, are both
-          normal — nothing here forces a section to be filled in, so a challan
-          carries whatever was actually loaded onto the vehicle.
+          🔴 ONE ROW PER INPUT ITEM (§5.7). Issuing all seven of a step's items on
+          one challan, or two of them today and the rest tomorrow, are both normal —
+          nothing here forces a row to be filled in, so a challan carries whatever
+          was actually loaded onto the vehicle.
+
+          🔴 A TABLE, NOT A CARD PER ITEM (2026-08-17). Each item used to be its own
+          bordered strip with the figures pushed right by `margin-left: auto`, so
+          every quantity, unit and link landed at whatever x the item's name and
+          badges happened to end at — no two rows aligned, and a step with ten
+          inputs was a staircase. Columns are the whole point of a line-items grid:
+          the eye reads DOWN a column to compare, and that only works if the column
+          is in the same place on every row.
         */}
-        {inputItems.map((input, index) => {
-          const query = batchQueries[index];
-          const itemBatches = query?.data ?? [];
-          const search = searchByItem[input.itemId] ?? '';
-          const picked = qtyByItem.get(input.itemId) ?? 0;
-          /* ⚠️ The same set `lines` reads — see `batchlessItemIds`. */
-          const showUnstockedInput = batchlessItemIds.has(input.itemId);
-
-          return (
-            <div
-              key={input.itemId}
-              style={{
-                border: '1px solid #eef0f3',
-                borderRadius: 6,
-                marginBottom: 12,
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  flexWrap: 'wrap',
-                  padding: '8px 12px',
-                  background: '#f9f9fb',
-                  borderBottom: '1px solid #eef0f3',
-                }}
-              >
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{input.name}</span>
-                <span
-                  style={{
-                    padding: '1px 7px',
-                    borderRadius: 9,
-                    fontSize: 10,
-                    fontWeight: 600,
-                    background: input.fromStock ? '#f1f5f9' : '#eff6ff',
-                    color: input.fromStock ? '#475569' : '#1d4ed8',
-                  }}
-                >
-                  {input.fromStock ? 'From stock' : 'From an earlier step'}
-                </span>
-                {input.isBatchTracked && (
-                  <span
-                    style={{
-                      padding: '1px 7px',
-                      borderRadius: 9,
-                      fontSize: 10,
-                      fontWeight: 600,
-                      background: '#fef3c7',
-                      color: '#92400e',
-                    }}
-                    title="This item is batch-tracked, so the batch it goes out of has to be picked."
+        <div style={{ border: '1px solid #eef0f3', borderRadius: 6, overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+            <thead>
+              <tr style={{ background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
+                <th style={lineTh} scope="col">
+                  Item
+                </th>
+                <th style={{ ...lineTh, textAlign: 'right', width: 110 }} scope="col">
+                  Planned
+                </th>
+                <th style={{ ...lineTh, textAlign: 'right', width: 110 }} scope="col">
+                  Available
+                </th>
+                <th style={{ ...lineTh, textAlign: 'right', width: 140 }} scope="col">
+                  Quantity
+                </th>
+                <th style={{ ...lineTh, width: 70 }} scope="col">
+                  Unit
+                </th>
+                <th style={{ ...lineTh, width: 200 }} scope="col">
+                  Batches
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {inputItems.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    style={{ padding: 24, textAlign: 'center', fontSize: 13, color: '#64748b' }}
                   >
-                    Batch required
-                  </span>
-                )}
-                {input.plannedQty !== null && (
-                  <span style={{ fontSize: 11, color: '#64748b' }}>
-                    Planned {formatQty(input.plannedQty)} {input.uomLabel}
-                  </span>
-                )}
-                <span
-                  style={{
-                    marginLeft: 'auto',
-                    fontSize: 12,
-                    color: picked > 0 ? '#111' : '#94a3b8',
-                  }}
-                >
-                  {formatQty(picked)} {input.uomLabel} selected
-                </span>
-              </div>
+                    This step lists nothing to issue.
+                  </td>
+                </tr>
+              )}
+              {inputItems.map((input, index) => {
+                const query = batchQueries[index];
+                const search = searchByItem[input.itemId] ?? '';
+                const picked = qtyByItem.get(input.itemId) ?? 0;
+                /* 🔴 A SEARCH-FILTERED SUM. `availableByItem` adds up whatever the
+                   availability query last returned, and that query carries the Add
+                   Batches search — so while a search is live this is a subset, not
+                   the balance. The search is cleared when that dialog closes, and
+                   `search` is checked here too so the 300ms debounce window cannot
+                   flash a false "nothing on the books". */
+                const available = availableByItem.get(input.itemId) ?? 0;
+                /** How many batch rows this item carries — "…added to N batches". */
+                const pickedBatchCount = Object.values(selection).filter(
+                  (sel) => sel.batch.itemId === input.itemId && sel.qty > 0,
+                ).length;
+                /* ⚠️ The same set `lines` reads — see `batchlessItemIds`. */
+                const showUnstockedInput = batchlessItemIds.has(input.itemId);
+                const isEmptyHere = !query?.isLoading && !search && available === 0;
 
-              <div style={{ padding: 10 }}>
-                {showUnstockedInput ? (
-                  /*
-                    🔴 AN UNTRACKED ITEM HAS NO PICKER AND NEVER WILL. Its batches
-                    carry no reference, are not searchable and are not rendered —
-                    offering them would be asking the user to choose between rows
-                    they cannot tell apart. A quantity, and the server takes it
-                    out of the oldest stock first.
+                return (
+                  <tr key={input.itemId} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ ...lineTd, whiteSpace: 'normal' }}>
+                      <div style={{ fontWeight: 600, color: '#111' }}>{input.name}</div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          flexWrap: 'wrap',
+                          marginTop: 3,
+                        }}
+                      >
+                        <span
+                          style={{
+                            padding: '1px 6px',
+                            borderRadius: 9,
+                            fontSize: 10,
+                            fontWeight: 600,
+                            background: input.fromStock ? '#f1f5f9' : '#eff6ff',
+                            color: input.fromStock ? '#475569' : '#1d4ed8',
+                          }}
+                        >
+                          {input.fromStock ? 'From stock' : 'From an earlier step'}
+                        </span>
+                        {input.isBatchTracked && (
+                          <span
+                            style={{
+                              padding: '1px 6px',
+                              borderRadius: 9,
+                              fontSize: 10,
+                              fontWeight: 600,
+                              background: '#fef3c7',
+                              color: '#92400e',
+                            }}
+                            title="This item is batch-tracked, so the batch it goes out of has to be picked."
+                          >
+                            Batch required
+                          </span>
+                        )}
+                      </div>
+                      {/* The dead end, under the item it is about — a full sentence
+                          in a narrow numeric column would wreck the alignment this
+                          table exists for. */}
+                      {isEmptyHere && (
+                        <div
+                          style={{
+                            marginTop: 4,
+                            fontSize: 11.5,
+                            color: '#b45309',
+                            lineHeight: 1.45,
+                          }}
+                        >
+                          Nothing of this item is on the books at {sourceLocationName} for this job
+                          order’s ownership. Receive it first, or issue from a different godown.
+                        </div>
+                      )}
 
-                    The ceiling is shown because there is no picker to read it off,
-                    and a shortfall is refused on save: this box no longer invents
-                    stock, it spends it.
-                  */
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <label
-                      htmlFor={`unstocked-${input.itemId}`}
-                      style={{ fontSize: 12, color: '#64748b' }}
-                    >
-                      Quantity to issue:
-                    </label>
-                    <input
-                      id={`unstocked-${input.itemId}`}
-                      type="number"
-                      onWheel={blurOnWheel}
-                      step="0.0001"
-                      min="0"
-                      value={unstocked[input.itemId] ?? ''}
-                      onChange={(e) =>
-                        setUnstocked((prev) => ({
-                          ...prev,
-                          [input.itemId]: Number(e.target.value) || 0,
-                        }))
-                      }
-                      max={availableByItem.get(input.itemId) ?? undefined}
-                      placeholder={`Quantity${input.uomLabel ? ` (${input.uomLabel})` : ''}`}
-                      aria-label={`Quantity of ${input.name} to issue`}
+                      {/* 🔴 Said out loud, never swallowed. Nothing was reserved, so
+                          a planned batch going missing between planning and issuing
+                          is expected — but the user has to know the pre-fill is
+                          short of what the order intended. */}
+                      {(planUnmatched[input.itemId] ?? 0) > 0 && (
+                        <div
+                          style={{
+                            marginTop: 4,
+                            fontSize: 11.5,
+                            color: '#b45309',
+                            lineHeight: 1.45,
+                          }}
+                        >
+                          {planUnmatched[input.itemId]} planned{' '}
+                          {planUnmatched[input.itemId] === 1 ? 'batch is' : 'batches are'} no longer
+                          available here — nothing was reserved. Pick replacements.
+                        </div>
+                      )}
+                    </td>
+
+                    <td style={{ ...lineTd, textAlign: 'right', color: '#64748b' }}>
+                      {input.plannedQty === null ? '—' : formatQty(input.plannedQty)}
+                    </td>
+
+                    <td
                       style={{
-                        ...inputStyle,
-                        width: 200,
-                        borderColor: overDrawn.has(input.itemId) ? '#fca5a5' : '#d1d5db',
-                      }}
-                    />
-                    {/* The ceiling, in words. There is no picker here to read the
-                        balance off, so without this the only way to discover it is
-                        to be refused at save. */}
-                    <span
-                      style={{
-                        fontSize: 12,
-                        color: overDrawn.has(input.itemId) ? '#b91c1c' : '#64748b',
+                        ...lineTd,
+                        textAlign: 'right',
+                        color: isEmptyHere ? '#b45309' : '#334155',
                       }}
                     >
-                      {query?.isLoading
-                        ? 'Checking stock…'
-                        : `${formatQty(availableByItem.get(input.itemId) ?? 0)} ${input.uomLabel} available here`}
-                    </span>
-                    {/* Same button, same words as the picker's — it opens the same
-                        screen, so calling it something else here would read as a
-                        different action. */}
-                    <button
-                      type="button"
-                      onClick={() => openAddStock(input.itemId)}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        padding: '6px 12px',
-                        fontSize: 12,
-                        fontWeight: 500,
-                        color: '#0062ff',
-                        background: '#fff',
-                        border: '1px solid #bfdbfe',
-                        borderRadius: 4,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      <PackagePlus size={14} /> Add stock
-                    </button>
-                  </div>
-                ) : (
-                  <BatchPicker
-                    batches={itemBatches}
-                    selection={selection}
-                    onChange={setSelection}
-                    itemId={input.itemId}
-                    uomLabel={input.uomLabel}
-                    search={search}
-                    onSearchChange={(value) =>
-                      setSearchByItem((prev) => ({ ...prev, [input.itemId]: value }))
-                    }
-                    isCapped={itemBatches.length >= BATCH_LIMIT}
-                    onAddStock={() => openAddStock(input.itemId)}
-                    isLoading={query?.isLoading ?? false}
-                  />
-                )}
-              </div>
-            </div>
-          );
-        })}
+                      {query?.isLoading ? '…' : formatQty(available)}
+                    </td>
+
+                    <td style={{ ...lineTd, textAlign: 'right' }}>
+                      {showUnstockedInput ? (
+                        /*
+                          🔴 AN UNTRACKED ITEM HAS NO PICKER AND NEVER WILL. Its
+                          batches carry no reference, are not searchable and are not
+                          rendered — offering them would be asking the user to choose
+                          between rows they cannot tell apart. A quantity, and the
+                          server takes it out of the oldest stock first.
+
+                          A shortfall is refused on save: this box no longer invents
+                          stock, it spends it. `Available` beside it is the ceiling.
+                        */
+                        <input
+                          id={`unstocked-${input.itemId}`}
+                          type="number"
+                          onWheel={blurOnWheel}
+                          step="0.0001"
+                          min="0"
+                          value={unstocked[input.itemId] ?? ''}
+                          onChange={(e) =>
+                            setUnstocked((prev) => ({
+                              ...prev,
+                              [input.itemId]: Number(e.target.value) || 0,
+                            }))
+                          }
+                          max={available || undefined}
+                          disabled={isEmptyHere}
+                          placeholder="0"
+                          aria-label={`Quantity of ${input.name} to issue`}
+                          style={{
+                            ...inputStyle,
+                            width: 120,
+                            textAlign: 'right',
+                            background: isEmptyHere ? '#f8fafc' : '#fff',
+                            borderColor: overDrawn.has(input.itemId) ? '#fca5a5' : '#d1d5db',
+                          }}
+                        />
+                      ) : (
+                        /*
+                          The target for this line. Add Batches pre-fills each batch
+                          it picks from what is still unallocated against this, and
+                          the challan will not save until the batches add up to it.
+                        */
+                        <input
+                          id={`tracked-${input.itemId}`}
+                          type="number"
+                          onWheel={blurOnWheel}
+                          step="0.0001"
+                          min="0"
+                          value={trackedQty[input.itemId] ?? ''}
+                          onChange={(e) =>
+                            setTrackedQty((prev) => ({
+                              ...prev,
+                              [input.itemId]: Number(e.target.value) || 0,
+                            }))
+                          }
+                          disabled={isEmptyHere}
+                          placeholder="0"
+                          aria-label={`Quantity of ${input.name} to issue`}
+                          style={{
+                            ...inputStyle,
+                            width: 120,
+                            textAlign: 'right',
+                            background: isEmptyHere ? '#f8fafc' : '#fff',
+                            borderColor: blockedLines.has(input.itemId) ? '#fca5a5' : '#d1d5db',
+                          }}
+                        />
+                      )}
+                    </td>
+
+                    <td style={{ ...lineTd, color: '#64748b' }}>{input.uomLabel || '—'}</td>
+
+                    <td style={lineTd}>
+                      {showUnstockedInput ? (
+                        /* Untracked stock is allocated FIFO by the server, so there
+                           is nothing to pick — saying so keeps the column meaningful
+                           on every row rather than blank on half of them. */
+                        <span style={{ fontSize: 12, color: '#94a3b8' }}>Oldest stock first</span>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openAddBatches(input.itemId)}
+                            disabled={isEmptyHere}
+                            style={{
+                              padding: 0,
+                              border: 'none',
+                              background: 'none',
+                              fontSize: 12.5,
+                              fontWeight: 500,
+                              textAlign: 'left',
+                              cursor: isEmptyHere ? 'not-allowed' : 'pointer',
+                              color: isEmptyHere ? '#cbd5e1' : '#0062ff',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {pickedBatchCount === 0
+                              ? 'Add Batches'
+                              : `${pickedBatchCount} ${pickedBatchCount === 1 ? 'batch' : 'batches'}`}
+                          </button>
+
+                          {/* Why this line is holding the challan up, next to the
+                              control that fixes it. Blocking silently and greying
+                              out Issue would leave the user hunting the offender
+                              across ten rows. */}
+                          {blockedLines.get(input.itemId) === 'batches' && (
+                            <div
+                              style={{
+                                fontSize: 11.5,
+                                color: '#b91c1c',
+                                marginTop: 3,
+                                whiteSpace: 'normal',
+                                lineHeight: 1.4,
+                              }}
+                            >
+                              Select the batches this comes out of.
+                            </div>
+                          )}
+                          {blockedLines.get(input.itemId) === 'mismatch' && (
+                            <div
+                              style={{
+                                fontSize: 11.5,
+                                color: '#b91c1c',
+                                marginTop: 3,
+                                whiteSpace: 'normal',
+                                lineHeight: 1.4,
+                              }}
+                            >
+                              {formatQty(Math.abs((trackedQty[input.itemId] ?? 0) - picked))}{' '}
+                              {input.uomLabel}{' '}
+                              {(trackedQty[input.itemId] ?? 0) > picked
+                                ? 'not allocated yet'
+                                : 'allocated over the quantity'}
+                              .
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
 
         {/*
           🔴 No running-totals strip. Every figure it carried — already issued,
@@ -877,26 +1114,54 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
         )}
       </section>
 
-      {/*
-        🔴 Mounted only once its rows have arrived, and KEYED on the item.
-        `AddOpeningStockModal` seeds its form state once, on mount — rows that turn
-        up afterwards never reach it, so mounting it early shows an empty grid for
-        an item that has six batches, and saving that grid would delete them.
-      */}
-      {addStockItem && effectiveSourceId && openingStockReady && (
-        <AddOpeningStockModal
-          key={addStockItem.itemId}
+      {/* Keyed and mounted only while open — `AddBatchesModal` seeds its grid once,
+          on mount, so a shared instance would show one item's rows against another
+          item's name and saving it would move the allocation to the wrong line. */}
+      {addBatchesItem && effectiveSourceId && (
+        <AddBatchesModal
+          key={addBatchesItem.itemId}
           isOpen
-          onClose={() => setAddStockFor(null)}
-          orgId={orgId!}
-          itemId={addStockItem.itemId}
-          inventoryTracking={addStockItem.isBatchTracked ? 'batch' : 'none'}
-          itemName={`${addStockItem.name} — stock at ${sourceLocationName}`}
-          initialRows={openingStockRows}
-          isSaving={openingStockMutation.isPending}
-          onSave={async (rows) => {
-            await openingStockMutation.mutateAsync(rows);
+          onClose={() => {
+            setAddBatchesFor(null);
+            /* 🔴 The search goes with the dialog. It is a parameter of the
+               availability query, so a term left behind keeps the grid's Available
+               column showing a filtered subset — and re-opening the dialog would
+               start narrowed to whatever was last typed. */
+            setSearchByItem((prev) => ({ ...prev, [addBatchesItem.itemId]: '' }));
           }}
+          itemName={addBatchesItem.name}
+          sku={addBatchesItem.sku}
+          uomLabel={addBatchesItem.uomLabel}
+          locationName={sourceLocationName}
+          plannedQty={addBatchesItem.plannedQty}
+          lineQty={trackedQty[addBatchesItem.itemId] ?? 0}
+          selection={Object.fromEntries(
+            Object.entries(selection).filter(
+              ([, sel]) => sel.batch.itemId === addBatchesItem.itemId,
+            ),
+          )}
+          onSave={(rows, overwriteQty) => {
+            // Replace THIS item's slice and leave every other item's alone — one
+            // dialog holds every input's allocation in one map (§5.7).
+            setSelection((prev) => {
+              const kept = Object.fromEntries(
+                Object.entries(prev).filter(
+                  ([, sel]) => sel.batch.itemId !== addBatchesItem.itemId,
+                ),
+              );
+              return { ...kept, ...rows };
+            });
+            if (overwriteQty !== null) {
+              setTrackedQty((prev) => ({ ...prev, [addBatchesItem.itemId]: overwriteQty }));
+            }
+          }}
+          batches={batchQueries[addBatchesIndex]?.data ?? []}
+          search={searchByItem[addBatchesItem.itemId] ?? ''}
+          onSearchChange={(value) =>
+            setSearchByItem((prev) => ({ ...prev, [addBatchesItem.itemId]: value }))
+          }
+          isLoading={batchQueries[addBatchesIndex]?.isLoading ?? false}
+          isCapped={(batchQueries[addBatchesIndex]?.data ?? []).length >= BATCH_LIMIT}
         />
       )}
     </Modal>

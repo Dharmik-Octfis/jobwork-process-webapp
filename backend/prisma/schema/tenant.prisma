@@ -136,30 +136,33 @@ model User {
   updatedJobReceiptLines        JobReceiptLine[]        @relation("JobReceiptLineUpdatedBy")
 
   // Multi-item steps (domain §5.7) — the six new child tables.
-  createdRouteStepInputs     RouteStepInput[]     @relation("RouteStepInputCreatedBy")
-  updatedRouteStepInputs     RouteStepInput[]     @relation("RouteStepInputUpdatedBy")
-  createdRouteStepOutputs    RouteStepOutput[]    @relation("RouteStepOutputCreatedBy")
-  updatedRouteStepOutputs    RouteStepOutput[]    @relation("RouteStepOutputUpdatedBy")
-  createdJobOrderStepInputs  JobOrderStepInput[]  @relation("JobOrderStepInputCreatedBy")
-  updatedJobOrderStepInputs  JobOrderStepInput[]  @relation("JobOrderStepInputUpdatedBy")
-  createdJobOrderStepOutputs JobOrderStepOutput[] @relation("JobOrderStepOutputCreatedBy")
-  updatedJobOrderStepOutputs JobOrderStepOutput[] @relation("JobOrderStepOutputUpdatedBy")
-  createdJobReceiptOutputs   JobReceiptOutput[]   @relation("JobReceiptOutputCreatedBy")
-  updatedJobReceiptOutputs   JobReceiptOutput[]   @relation("JobReceiptOutputUpdatedBy")
-  createdRejectionReasons    RejectionReason[]    @relation("RejectionReasonCreatedBy")
-  updatedRejectionReasons    RejectionReason[]    @relation("RejectionReasonUpdatedBy")
-  createdCompositeComponents CompositeItemComponent[] @relation("CompositeComponentCreatedBy")
-  updatedCompositeComponents CompositeItemComponent[] @relation("CompositeComponentUpdatedBy")
-  createdItemAssemblies      ItemAssembly[]           @relation("ItemAssemblyCreatedBy")
-  updatedItemAssemblies      ItemAssembly[]           @relation("ItemAssemblyUpdatedBy")
-  createdItemAssemblyLines     ItemAssemblyLine[]       @relation("ItemAssemblyLineCreatedBy")
-  updatedItemAssemblyLines     ItemAssemblyLine[]       @relation("ItemAssemblyLineUpdatedBy")
-  createdItemAssemblyComments  ItemAssemblyComment[]    @relation("ItemAssemblyCommentCreatedBy")
-  updatedItemAssemblyComments  ItemAssemblyComment[]    @relation("ItemAssemblyCommentUpdatedBy")
-  createdItemAssemblyActivities ItemAssemblyActivity[] @relation("ItemAssemblyActivityCreatedBy")
-  updatedItemAssemblyActivities ItemAssemblyActivity[] @relation("ItemAssemblyActivityUpdatedBy")
-  createdItemOpeningStockRows   ItemOpeningStockRow[]    @relation("ItemOpeningStockRowCreatedBy")
-  updatedItemOpeningStockRows   ItemOpeningStockRow[]    @relation("ItemOpeningStockRowUpdatedBy")
+  createdRouteStepInputs    RouteStepInput[]    @relation("RouteStepInputCreatedBy")
+  updatedRouteStepInputs    RouteStepInput[]    @relation("RouteStepInputUpdatedBy")
+  createdRouteStepOutputs   RouteStepOutput[]   @relation("RouteStepOutputCreatedBy")
+  updatedRouteStepOutputs   RouteStepOutput[]   @relation("RouteStepOutputUpdatedBy")
+  createdJobOrderStepInputs JobOrderStepInput[] @relation("JobOrderStepInputCreatedBy")
+  updatedJobOrderStepInputs JobOrderStepInput[] @relation("JobOrderStepInputUpdatedBy")
+
+  createdJobOrderStepInputBatches JobOrderStepInputBatch[] @relation("JobOrderStepInputBatchCreatedBy")
+  updatedJobOrderStepInputBatches JobOrderStepInputBatch[] @relation("JobOrderStepInputBatchUpdatedBy")
+  createdJobOrderStepOutputs      JobOrderStepOutput[]     @relation("JobOrderStepOutputCreatedBy")
+  updatedJobOrderStepOutputs      JobOrderStepOutput[]     @relation("JobOrderStepOutputUpdatedBy")
+  createdJobReceiptOutputs        JobReceiptOutput[]       @relation("JobReceiptOutputCreatedBy")
+  updatedJobReceiptOutputs        JobReceiptOutput[]       @relation("JobReceiptOutputUpdatedBy")
+  createdRejectionReasons         RejectionReason[]        @relation("RejectionReasonCreatedBy")
+  updatedRejectionReasons         RejectionReason[]        @relation("RejectionReasonUpdatedBy")
+  createdCompositeComponents      CompositeItemComponent[] @relation("CompositeComponentCreatedBy")
+  updatedCompositeComponents      CompositeItemComponent[] @relation("CompositeComponentUpdatedBy")
+  createdItemAssemblies           ItemAssembly[]           @relation("ItemAssemblyCreatedBy")
+  updatedItemAssemblies           ItemAssembly[]           @relation("ItemAssemblyUpdatedBy")
+  createdItemAssemblyLines        ItemAssemblyLine[]       @relation("ItemAssemblyLineCreatedBy")
+  updatedItemAssemblyLines        ItemAssemblyLine[]       @relation("ItemAssemblyLineUpdatedBy")
+  createdItemAssemblyComments     ItemAssemblyComment[]    @relation("ItemAssemblyCommentCreatedBy")
+  updatedItemAssemblyComments     ItemAssemblyComment[]    @relation("ItemAssemblyCommentUpdatedBy")
+  createdItemAssemblyActivities   ItemAssemblyActivity[]   @relation("ItemAssemblyActivityCreatedBy")
+  updatedItemAssemblyActivities   ItemAssemblyActivity[]   @relation("ItemAssemblyActivityUpdatedBy")
+  createdItemOpeningStockRows     ItemOpeningStockRow[]    @relation("ItemOpeningStockRowCreatedBy")
+  updatedItemOpeningStockRows     ItemOpeningStockRow[]    @relation("ItemOpeningStockRowUpdatedBy")
 
   @@map("users")
 }
@@ -295,17 +298,18 @@ model Organization {
   // `organization_id` so it can hold its own RLS policy, exactly like
   // `job_issue_lines` — a child table that has to join its parent to be filtered
   // is a table whose policy is one forgotten join away from leaking.
-  routeStepInputs     RouteStepInput[]
-  routeStepOutputs    RouteStepOutput[]
-  jobOrderStepInputs  JobOrderStepInput[]
-  jobOrderStepOutputs JobOrderStepOutput[]
-  jobReceiptOutputs   JobReceiptOutput[]
-  compositeItemComponents CompositeItemComponent[]
-  itemAssemblies            ItemAssembly[]
-  itemAssemblyLines         ItemAssemblyLine[]
-  itemAssemblyComments      ItemAssemblyComment[]
-  itemAssemblyActivities    ItemAssemblyActivity[]
-  itemOpeningStockRows      ItemOpeningStockRow[]
+  routeStepInputs          RouteStepInput[]
+  routeStepOutputs         RouteStepOutput[]
+  jobOrderStepInputs       JobOrderStepInput[]
+  jobOrderStepInputBatches JobOrderStepInputBatch[]
+  jobOrderStepOutputs      JobOrderStepOutput[]
+  jobReceiptOutputs        JobReceiptOutput[]
+  compositeItemComponents  CompositeItemComponent[]
+  itemAssemblies           ItemAssembly[]
+  itemAssemblyLines        ItemAssemblyLine[]
+  itemAssemblyComments     ItemAssemblyComment[]
+  itemAssemblyActivities   ItemAssemblyActivity[]
+  itemOpeningStockRows     ItemOpeningStockRow[]
 
   @@map("organizations")
 }
@@ -586,24 +590,24 @@ model ListViewPreference {
 }
 
 model Location {
-  id                      String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId          String             @map("organization_id") @db.Uuid
-  name                    String
-  addressString           String?            @map("address_string")
-  isPrimary               Boolean            @default(false) @map("is_primary")
-  isDeleted               Boolean            @default(false) @map("is_deleted")
-  createdBy               String?            @map("created_by") @db.Uuid
-  updatedBy               String?            @map("updated_by") @db.Uuid
-  createdAt               DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt               DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  city                    String?
-  country                 String?
-  logo                    String?
-  parentId                String?            @map("parent_id") @db.Uuid
-  phone                   String?
-  state                   String?
-  street1                 String?
-  street2                 String?
+  id                       String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId           String                   @map("organization_id") @db.Uuid
+  name                     String
+  addressString            String?                  @map("address_string")
+  isPrimary                Boolean                  @default(false) @map("is_primary")
+  isDeleted                Boolean                  @default(false) @map("is_deleted")
+  createdBy                String?                  @map("created_by") @db.Uuid
+  updatedBy                String?                  @map("updated_by") @db.Uuid
+  createdAt                DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  city                     String?
+  country                  String?
+  logo                     String?
+  parentId                 String?                  @map("parent_id") @db.Uuid
+  phone                    String?
+  state                    String?
+  street1                  String?
+  street2                  String?
   /// Business | Warehouse | godown | shopfloor | work_centre | processor |
   /// in_transit | customer_site
   ///
@@ -613,29 +617,30 @@ model Location {
   /// plain ledger query grouped by location and aged by movement date. That report
   /// is not a nicety: Indian GST reverses the input credit if jobwork goods do not
   /// come back within 180/365 days.
-  type                    String             @default("Business")
+  type                     String                   @default("Business")
   /// The jobworker a `processor` location stands for. Auto-provisioned the first
   /// time a vendor is used for jobwork, so nobody has to create the location by
   /// hand before they can issue material to them.
-  vendorId                String?            @map("vendor_id") @db.Uuid
-  zip                     String?
-  createdByUser           User?              @relation("LocationCreatedBy", fields: [createdBy], references: [id])
-  organization            Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  parentLocation          Location?          @relation("LocationHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
-  childLocations          Location[]         @relation("LocationHierarchy")
-  updatedByUser           User?              @relation("LocationUpdatedBy", fields: [updatedBy], references: [id])
-  vendor                  Vendor?            @relation("LocationVendor", fields: [vendorId], references: [id])
-  deliveryPurchaseOrders  PurchaseOrder[]
-  sourcePurchaseOrders    PurchaseOrder[]    @relation("PoSourceLocation")
-  ledgerEntries           StockLedgerEntry[] @relation("StockLedgerLocation")
-  routeStepWorkCentres    RouteStep[]        @relation("RouteStepWorkCentre")
-  jobOrderStepWorkCentres JobOrderStep[]     @relation("JobOrderStepWorkCentre")
-  jobIssuesFrom           JobIssue[]         @relation("JobIssueSource")
-  jobIssuesTo             JobIssue[]         @relation("JobIssueDestination")
-  jobIssueLinesFrom       JobIssueLine[]     @relation("JobIssueLineSource")
-  jobReceipts             JobReceipt[]       @relation("JobReceiptLocation")
-  itemAssemblies          ItemAssembly[]     @relation("ItemAssemblyLocation")
-  itemOpeningStockRows    ItemOpeningStockRow[]
+  vendorId                 String?                  @map("vendor_id") @db.Uuid
+  zip                      String?
+  createdByUser            User?                    @relation("LocationCreatedBy", fields: [createdBy], references: [id])
+  organization             Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parentLocation           Location?                @relation("LocationHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  childLocations           Location[]               @relation("LocationHierarchy")
+  updatedByUser            User?                    @relation("LocationUpdatedBy", fields: [updatedBy], references: [id])
+  vendor                   Vendor?                  @relation("LocationVendor", fields: [vendorId], references: [id])
+  deliveryPurchaseOrders   PurchaseOrder[]
+  sourcePurchaseOrders     PurchaseOrder[]          @relation("PoSourceLocation")
+  ledgerEntries            StockLedgerEntry[]       @relation("StockLedgerLocation")
+  routeStepWorkCentres     RouteStep[]              @relation("RouteStepWorkCentre")
+  jobOrderStepWorkCentres  JobOrderStep[]           @relation("JobOrderStepWorkCentre")
+  jobIssuesFrom            JobIssue[]               @relation("JobIssueSource")
+  jobIssuesTo              JobIssue[]               @relation("JobIssueDestination")
+  jobIssueLinesFrom        JobIssueLine[]           @relation("JobIssueLineSource")
+  jobReceipts              JobReceipt[]             @relation("JobReceiptLocation")
+  itemAssemblies           ItemAssembly[]           @relation("ItemAssemblyLocation")
+  itemOpeningStockRows     ItemOpeningStockRow[]
+  jobOrderStepInputBatches JobOrderStepInputBatch[] @relation("JobOrderStepInputBatchLocation")
 
   @@unique([organizationId, name])
   @@map("locations")

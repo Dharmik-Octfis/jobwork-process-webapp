@@ -134,9 +134,12 @@ model Batch {
 
   ledgerEntries StockLedgerEntry[]
 
-  issueLines       JobIssueLine[] @relation("JobIssueLineBatch")
-  receiptsAsOutput JobReceipt[]   @relation("JobReceiptOutputBatch")
-  receiptsAsRework JobReceipt[]   @relation("JobReceiptReworkBatch")
+  issueLines JobIssueLine[] @relation("JobIssueLineBatch")
+
+  /// Job orders that PLAN to use this batch. A note, not a hold — see the model.
+  plannedForStepInputs JobOrderStepInputBatch[] @relation("JobOrderStepInputBatchBatch")
+  receiptsAsOutput     JobReceipt[]             @relation("JobReceiptOutputBatch")
+  receiptsAsRework     JobReceipt[]             @relation("JobReceiptReworkBatch")
 
   /// Multi-item receipts (domain §5.7): one output ROW per returned item, each
   /// creating its own batch. The two above are the single-output header columns.

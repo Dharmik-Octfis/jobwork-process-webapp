@@ -1,7 +1,11 @@
 import { blurOnWheel } from '../../components/ui/blurOnWheel';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { fetchAvailableBatches } from './batches/batches.api';
+import { AddBatchesModal } from './issues/AddBatchesModal';
+import { rowKey } from './issues/batchSelection';
 import { Select } from '../../components/ui/Select';
 import { useUoms } from '../inventory/uom/uom.api';
 import { itemsApi } from '../items/items.api';
@@ -36,6 +40,10 @@ import {
  * `StepGridRow` and `emptyStep` live in `jobwork.schemas.ts` so this file exports
  * components only, which is what keeps fast refresh working for it.
  */
+/** Same ceiling the Issue dialog uses. The picker says so when it hits it rather
+ * than showing a slice as if it were everything. */
+const PLAN_BATCH_LIMIT = 200;
+
 interface Props<T extends StepGridRow> {
   steps: T[];
   onChange: (steps: T[]) => void;
@@ -60,6 +68,18 @@ interface Props<T extends StepGridRow> {
    * either would put a number on the receipt screen nobody had reason to believe.
    */
   showInputQty?: boolean;
+  /**
+   * 🔴 Job orders only. Lets the planner note WHICH batches a batch-tracked input
+   * is meant to come out of (`JobOrderStepInputBatch`).
+   *
+   * Never on a route: a template is reused across runs, and a batch is a specific
+   * roll that will be gone by the next one — a route that named batches would be
+   * wrong the second time it was used, and silently.
+   */
+  allowPlannedBatches?: boolean;
+  /** own | customer. Decides which batches may even be offered — one customer's
+   * goods must never be planned into another's order (§5.3). */
+  ownership?: string;
   /**
    * How many steps already exist above these. The grid captions positions, and on
    * the append dialog position 1 of the array is step 4 of the order — a block
@@ -216,6 +236,14 @@ interface ItemListProps {
    * tick instead of retyping every row.
    */
   mirrorSource?: StepItemRow[];
+  /**
+   * Inputs, job orders only. Opens the planner's batch grid for one row. Absent
+   * means the whole affordance is off — see `allowPlannedBatches`.
+   */
+  onPlanBatches?: (rowIndex: number) => void;
+  /** Whether this item's batches are the user's to pick. Untracked items have
+   * batches too, but nobody is meant to identify them (`inventoryTracking`). */
+  isBatchTracked?: (itemId: string | null | undefined) => boolean;
 }
 
 /**
@@ -258,6 +286,8 @@ function ItemList({
   warningFor,
   emptyHint,
   mirrorSource,
+  onPlanBatches,
+  isBatchTracked,
 }: ItemListProps) {
   const isInput = side === 'inputs';
   const update = (rowIndex: number, patch: Partial<StepItemRow>) =>
@@ -521,6 +551,47 @@ function ItemList({
                 {!rowError && warning && (
                   <span style={{ fontSize: 11, color: '#b45309' }}>{warning}</span>
                 )}
+
+                {/*
+                  🔴 THE PLANNER'S BATCH NOTE. Only for a batch-tracked item, and
+                  only once a quantity exists — there is nothing to allocate against
+                  a blank, and the grid pre-fills each batch from it.
+
+                  A note, not a hold: nothing is reserved, so this never claims the
+                  stock will still be there. The wording says "plan", never
+                  "reserve".
+                */}
+                {onPlanBatches && isInput && isBatchTracked?.(row.itemId) && (
+                  <button
+                    type="button"
+                    onClick={() => onPlanBatches(rowIndex)}
+                    disabled={disabled || !(row.plannedQty && row.plannedQty > 0)}
+                    title={
+                      row.plannedQty && row.plannedQty > 0
+                        ? 'Note which batches this is planned to come out of. Nothing is reserved.'
+                        : 'Enter a quantity first — batches are planned against it.'
+                    }
+                    style={{
+                      padding: 0,
+                      border: 'none',
+                      background: 'none',
+                      fontSize: 11,
+                      fontWeight: 500,
+                      cursor:
+                        disabled || !(row.plannedQty && row.plannedQty > 0)
+                          ? 'not-allowed'
+                          : 'pointer',
+                      color:
+                        disabled || !(row.plannedQty && row.plannedQty > 0) ? '#cbd5e1' : '#0062ff',
+                    }}
+                  >
+                    {(row.plannedBatches?.length ?? 0) === 0
+                      ? 'Add Batches'
+                      : `${row.plannedBatches!.length} ${
+                          row.plannedBatches!.length === 1 ? 'batch' : 'batches'
+                        } planned`}
+                  </button>
+                )}
               </div>
             </div>
           );
@@ -583,6 +654,8 @@ export function StepsGrid<T extends StepGridRow>({
   disabled,
   showPlannedQty,
   showInputQty,
+  allowPlannedBatches,
+  ownership = 'own',
   seqOffset = 0,
   priorProducers,
   priorSpare,
@@ -623,6 +696,57 @@ export function StepsGrid<T extends StepGridRow>({
     enabled: Boolean(orgId),
   });
   const workCentres = locations.filter((l) => l.type === 'work_centre' || l.type === 'shopfloor');
+
+  /**
+   * Which input row has the planner's batch grid open. Null when it is closed.
+   * Held HERE rather than in `ItemList` because saving writes back through
+   * `update(stepIndex, …)`, which only this component owns.
+   */
+  const [planning, setPlanning] = useState<{ stepIndex: number; rowIndex: number } | null>(null);
+  const [planSearch, setPlanSearch] = useState('');
+  const [planSearchDebounced, setPlanSearchDebounced] = useState('');
+  // A query per keystroke would be one round trip per letter of a batch reference.
+  useEffect(() => {
+    const timer = setTimeout(() => setPlanSearchDebounced(planSearch), 300);
+    return () => clearTimeout(timer);
+  }, [planSearch]);
+
+  const planningRow = planning
+    ? ((steps[planning.stepIndex]?.inputs ?? [])[planning.rowIndex] ?? null)
+    : null;
+  const planningItem = items.find((i) => i.id === planningRow?.itemId) ?? null;
+
+  /** Only a batch-tracked item gets the affordance — an untracked item's batches
+   * carry no reference and are not meant to be identified (2026-08-14). */
+  const isBatchTracked = (itemId: string | null | undefined) =>
+    Boolean(itemId) && items.find((i) => i.id === itemId)?.inventoryTracking === 'batch';
+
+  /**
+   * 🔴 NO LOCATION FILTER, unlike the Issue dialog's identical query.
+   *
+   * A job order has no source godown — nothing is going anywhere yet — so the plan
+   * may name a batch in any of them, and each row records the godown it chose
+   * (`JobOrderStepInputBatch.locationId`). `ownership` stays mandatory: one
+   * customer's goods must never be planned into another's order (§5.2).
+   */
+  const { data: planningBatches = [], isLoading: planningBatchesLoading } = useQuery({
+    queryKey: [
+      'available-batches',
+      orgId,
+      planningRow?.itemId,
+      ownership,
+      planSearchDebounced,
+      'plan',
+    ],
+    queryFn: () =>
+      fetchAvailableBatches(orgId!, {
+        itemId: planningRow!.itemId!,
+        ownership,
+        search: planSearchDebounced || undefined,
+        limit: PLAN_BATCH_LIMIT,
+      }),
+    enabled: Boolean(orgId && planningRow?.itemId),
+  });
 
   const update = (index: number, patch: Partial<StepGridRow>) => {
     onChange(steps.map((step, i) => (i === index ? { ...step, ...patch } : step)));
@@ -968,6 +1092,12 @@ export function StepsGrid<T extends StepGridRow>({
                   side="inputs"
                   rows={step.inputs ?? []}
                   onChange={(rows) => update(index, { inputs: rows })}
+                  onPlanBatches={
+                    allowPlannedBatches
+                      ? (rowIndex) => setPlanning({ stepIndex: index, rowIndex })
+                      : undefined
+                  }
+                  isBatchTracked={isBatchTracked}
                   items={items}
                   itemUnit={itemUnit}
                   uomOptions={uomOptions}
@@ -1055,6 +1185,64 @@ export function StepsGrid<T extends StepGridRow>({
           );
         })}
       </div>
+
+      {/*
+        Mounted only while open and keyed on the row, because `AddBatchesModal`
+        seeds its grid once on mount — a shared instance would show one row's
+        allocation against another row's item.
+      */}
+      {planning && planningRow?.itemId && (
+        <AddBatchesModal
+          key={`${planning.stepIndex}-${planning.rowIndex}-${planningRow.itemId}`}
+          isOpen
+          onClose={() => {
+            setPlanning(null);
+            // The search is a parameter of the availability query — left behind it
+            // would narrow the next row's grid to whatever was last typed.
+            setPlanSearch('');
+          }}
+          itemName={planningItem?.name ?? 'Item'}
+          sku={planningItem?.sku ?? null}
+          uomLabel={itemUnit(planningRow.itemId)?.label ?? ''}
+          /* 🔴 Null — a plan has no source godown, so the grid spans every one and
+             names each batch's own. See the prop's note. */
+          locationName={null}
+          plannedQty={planningRow.plannedQty ?? null}
+          lineQty={planningRow.plannedQty ?? 0}
+          selection={Object.fromEntries(
+            (planningRow.plannedBatches ?? []).flatMap((planned) => {
+              const batch = planningBatches.find(
+                (b) => b.batchId === planned.batchId && b.locationId === planned.locationId,
+              );
+              // A batch that has since been consumed is no longer offered, so there
+              // is nothing to render or check a quantity against — the row drops
+              // and the user re-picks. Silently keeping it would show a plan
+              // against stock that no longer exists.
+              return batch ? [[rowKey(batch), { batch, qty: planned.qty }] as const] : [];
+            }),
+          )}
+          onSave={(rows, overwriteQty) => {
+            const inputs = [...(steps[planning.stepIndex]?.inputs ?? [])];
+            const current = inputs[planning.rowIndex];
+            if (!current) return;
+            inputs[planning.rowIndex] = {
+              ...current,
+              ...(overwriteQty !== null ? { plannedQty: overwriteQty } : {}),
+              plannedBatches: Object.values(rows).map((sel) => ({
+                batchId: sel.batch.batchId,
+                locationId: sel.batch.locationId,
+                qty: sel.qty,
+              })),
+            };
+            update(planning.stepIndex, { inputs } as Partial<T>);
+          }}
+          batches={planningBatches}
+          search={planSearch}
+          onSearchChange={setPlanSearch}
+          isLoading={planningBatchesLoading}
+          isCapped={planningBatches.length >= PLAN_BATCH_LIMIT}
+        />
+      )}
 
       {/*
         🔴 The new step is SEEDED, not inferred. Carrying on from the step above

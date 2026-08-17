@@ -73,18 +73,18 @@ model Item {
   defaultRouteId String? @map("default_route_id") @db.Uuid
 
   /// Rows where THIS item is the composite — its own recipe.
-  recipeComponents CompositeItemComponent[] @relation("CompositeRecipe")
+  recipeComponents      CompositeItemComponent[] @relation("CompositeRecipe")
   /// Rows where THIS item is a component — every composite that uses it.
-  usedInComposites CompositeItemComponent[] @relation("CompositeUsage")
-  assembliesAsComposite ItemAssembly[]      @relation("ItemAssemblyComposite")
-  assemblyLines         ItemAssemblyLine[]  @relation("ItemAssemblyLineItem")
+  usedInComposites      CompositeItemComponent[] @relation("CompositeUsage")
+  assembliesAsComposite ItemAssembly[]           @relation("ItemAssemblyComposite")
+  assemblyLines         ItemAssemblyLine[]       @relation("ItemAssemblyLineItem")
 
   activities         ItemActivity[]
   openingStockRows   ItemOpeningStockRow[]
-  createdByUser      User?               @relation("ItemCreatedBy", fields: [createdBy], references: [id])
-  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  updatedByUser      User?               @relation("ItemUpdatedBy", fields: [updatedBy], references: [id])
-  stockingUom        UnitOfMeasurement?  @relation("ItemStockingUom", fields: [stockingUomId], references: [id])
+  createdByUser      User?                 @relation("ItemCreatedBy", fields: [createdBy], references: [id])
+  organization       Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedByUser      User?                 @relation("ItemUpdatedBy", fields: [updatedBy], references: [id])
+  stockingUom        UnitOfMeasurement?    @relation("ItemStockingUom", fields: [stockingUomId], references: [id])
   purchaseOrderItems PurchaseOrderItem[]
   batches            Batch[]
   ledgerEntries      StockLedgerEntry[]
@@ -122,9 +122,9 @@ model UnitOfMeasurement {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   updatedByUser  User?        @relation("UomUpdatedBy", fields: [updatedBy], references: [id])
 
-  stockedItems           Item[]             @relation("ItemStockingUom")
-  batches                Batch[]            @relation("BatchUom")
-  ledgerEntries          StockLedgerEntry[] @relation("StockLedgerUom")
+  stockedItems  Item[]             @relation("ItemStockingUom")
+  batches       Batch[]            @relation("BatchUom")
+  ledgerEntries StockLedgerEntry[] @relation("StockLedgerUom")
 
   jobOrderInputUoms JobOrder[] @relation("JobOrderInputUom")
 
@@ -209,31 +209,30 @@ model ItemActivity {
 ///     was correct until the first job issue and silently wrong forever after.
 ///     If one is ever needed, it belongs inside `postMovement`, never here.
 model ItemOpeningStockRow {
-  id                      String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId          String        @map("organization_id") @db.Uuid
-  itemId                  String        @map("item_id") @db.Uuid
-  locationId              String        @map("location_id") @db.Uuid
+  id                       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId           String   @map("organization_id") @db.Uuid
+  itemId                   String   @map("item_id") @db.Uuid
+  locationId               String   @map("location_id") @db.Uuid
   /// (18,4) to match `stock_ledger.qty_in`. They were (10,2): a quantity the
   /// ledger held as 12.3456 came back from here as 12.35, so the document and the
   /// movement it produced disagreed on paper.
-  openingStock            Decimal?      @map("opening_stock") @db.Decimal(18, 4)
-  openingStockValuePerUnit Decimal?     @map("opening_stock_value_per_unit") @db.Decimal(18, 4)
-  customFields            Json          @default("{}") @map("custom_fields")
-  isDeleted               Boolean       @default(false) @map("is_deleted")
-  createdBy               String?       @map("created_by") @db.Uuid
-  updatedBy               String?       @map("updated_by") @db.Uuid
-  createdAt               DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt               DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  openingStock             Decimal? @map("opening_stock") @db.Decimal(18, 4)
+  openingStockValuePerUnit Decimal? @map("opening_stock_value_per_unit") @db.Decimal(18, 4)
+  customFields             Json     @default("{}") @map("custom_fields")
+  isDeleted                Boolean  @default(false) @map("is_deleted")
+  createdBy                String?  @map("created_by") @db.Uuid
+  updatedBy                String?  @map("updated_by") @db.Uuid
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  organization            Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  item                    Item          @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  location                Location      @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  createdByUser           User?         @relation("ItemOpeningStockRowCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser           User?         @relation("ItemOpeningStockRowUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  item          Item         @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  location      Location     @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  createdByUser User?        @relation("ItemOpeningStockRowCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?        @relation("ItemOpeningStockRowUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, itemId, locationId])
   @@index([organizationId, itemId])
   @@index([organizationId, locationId])
   @@map("item_opening_stock_rows")
 }
-

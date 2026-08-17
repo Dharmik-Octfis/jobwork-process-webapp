@@ -187,12 +187,12 @@ model RouteStep {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  route         Route              @relation(fields: [routeId], references: [id], onDelete: Cascade)
-  process       Process            @relation("RouteStepProcess", fields: [processId], references: [id])
-  workCentre    Location?          @relation("RouteStepWorkCentre", fields: [workCentreLocationId], references: [id])
-  createdByUser User?              @relation("RouteStepCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser User?              @relation("RouteStepUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  route         Route        @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  process       Process      @relation("RouteStepProcess", fields: [processId], references: [id])
+  workCentre    Location?    @relation("RouteStepWorkCentre", fields: [workCentreLocationId], references: [id])
+  createdByUser User?        @relation("RouteStepCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?        @relation("RouteStepUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   inputs  RouteStepInput[]
   outputs RouteStepOutput[]
@@ -448,12 +448,12 @@ model JobOrderStep {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  jobOrder      JobOrder           @relation(fields: [jobOrderId], references: [id], onDelete: Cascade)
-  process       Process            @relation("JobOrderStepProcess", fields: [processId], references: [id])
-  workCentre    Location?          @relation("JobOrderStepWorkCentre", fields: [workCentreLocationId], references: [id])
-  createdByUser User?              @relation("JobOrderStepCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser User?              @relation("JobOrderStepUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jobOrder      JobOrder     @relation(fields: [jobOrderId], references: [id], onDelete: Cascade)
+  process       Process      @relation("JobOrderStepProcess", fields: [processId], references: [id])
+  workCentre    Location?    @relation("JobOrderStepWorkCentre", fields: [workCentreLocationId], references: [id])
+  createdByUser User?        @relation("JobOrderStepCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?        @relation("JobOrderStepUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   issues   JobIssue[]
   receipts JobReceipt[]
@@ -518,9 +518,62 @@ model JobOrderStepInput {
   createdByUser User?              @relation("JobOrderStepInputCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User?              @relation("JobOrderStepInputUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
+  plannedBatches JobOrderStepInputBatch[]
+
   @@unique([jobOrderStepId, itemId])
   @@index([organizationId, jobOrderStepId])
   @@map("job_order_step_inputs")
+}
+
+/// 🔴 WHICH BATCHES THE PLANNER MEANT TO USE. A NOTE, NOT A RESERVATION.
+///
+/// Recorded at job order creation so the Issue dialog can pre-fill instead of
+/// asking the same question twice. It moves NO stock, and it holds nothing back:
+/// `getAvailableBatches` reads the ledger and does not subtract these rows, so two
+/// job orders may both plan the same 100 metres and the second only finds out when
+/// it tries to issue. That is a deliberate 2026-08-17 decision — a real reservation
+/// means netting these out of every availability query and releasing them on
+/// cancel, short-close and delete, which is a different and much larger feature
+/// (`Item.committedStock` is still hardcoded 0 for the same reason).
+///
+/// Every major ERP binds batches at PICKING, not at planning, precisely because an
+/// unenforced plan-time allocation reads as a guarantee. So the issue picker warns
+/// when a batch is spoken for elsewhere rather than pretending it is free.
+///
+/// 🔴 A ROW IS A BATCH AT A LOCATION, like every other batch reference in this
+/// codebase — one batch can sit in two godowns of a dispatch site with two
+/// independent balances, and the plan has to say which one it meant.
+model JobOrderStepInputBatch {
+  id                  String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String @map("organization_id") @db.Uuid
+  jobOrderStepInputId String @map("job_order_step_input_id") @db.Uuid
+
+  batchId    String @map("batch_id") @db.Uuid
+  locationId String @map("location_id") @db.Uuid
+
+  /// In the INPUT ROW's unit, which is the batch's stocking unit (§5.1). These sum
+  /// to the input's `plannedQty`; the form refuses to save while they do not.
+  qty Decimal @db.Decimal(18, 4)
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stepInput     JobOrderStepInput @relation(fields: [jobOrderStepInputId], references: [id], onDelete: Cascade)
+  batch         Batch             @relation("JobOrderStepInputBatchBatch", fields: [batchId], references: [id])
+  location      Location          @relation("JobOrderStepInputBatchLocation", fields: [locationId], references: [id])
+  createdByUser User?             @relation("JobOrderStepInputBatchCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?             @relation("JobOrderStepInputBatchUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([jobOrderStepInputId, batchId, locationId])
+  @@index([organizationId, jobOrderStepInputId])
+  /// "What else is planning to use this batch" — the issue picker's warning.
+  @@index([organizationId, batchId])
+  @@map("job_order_step_input_batches")
 }
 
 /// What the step is expected to produce. The receipt is what says what actually
@@ -636,13 +689,13 @@ model JobIssue {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  jobOrder       JobOrder           @relation(fields: [jobOrderId], references: [id], onDelete: Cascade)
-  step           JobOrderStep       @relation(fields: [jobOrderStepId], references: [id], onDelete: Cascade)
-  sourceLocation Location           @relation("JobIssueSource", fields: [sourceLocationId], references: [id])
-  destination    Location           @relation("JobIssueDestination", fields: [destinationLocationId], references: [id])
-  createdByUser  User?              @relation("JobIssueCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser  User?              @relation("JobIssueUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jobOrder       JobOrder     @relation(fields: [jobOrderId], references: [id], onDelete: Cascade)
+  step           JobOrderStep @relation(fields: [jobOrderStepId], references: [id], onDelete: Cascade)
+  sourceLocation Location     @relation("JobIssueSource", fields: [sourceLocationId], references: [id])
+  destination    Location     @relation("JobIssueDestination", fields: [destinationLocationId], references: [id])
+  createdByUser  User?        @relation("JobIssueCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser  User?        @relation("JobIssueUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   lines        JobIssueLine[]
   receiptLines JobReceiptLine[]
@@ -708,8 +761,8 @@ model JobIssueLine {
   uom            UnitOfMeasurement? @relation("JobIssueLineUom", fields: [uomId], references: [id])
   batch          Batch              @relation("JobIssueLineBatch", fields: [batchId], references: [id])
   sourceLocation Location           @relation("JobIssueLineSource", fields: [sourceLocationId], references: [id])
-  createdByUser User?              @relation("JobIssueLineCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser User?              @relation("JobIssueLineUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  createdByUser  User?              @relation("JobIssueLineCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser  User?              @relation("JobIssueLineUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   receiptLines JobReceiptLine[]
 
@@ -820,14 +873,14 @@ model JobReceipt {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  jobOrder      JobOrder           @relation(fields: [jobOrderId], references: [id], onDelete: Cascade)
-  step          JobOrderStep       @relation(fields: [jobOrderStepId], references: [id], onDelete: Cascade)
-  location      Location           @relation("JobReceiptLocation", fields: [locationId], references: [id])
-  outputBatch   Batch?             @relation("JobReceiptOutputBatch", fields: [outputBatchId], references: [id])
-  reworkBatch   Batch?             @relation("JobReceiptReworkBatch", fields: [reworkBatchId], references: [id])
-  createdByUser User?              @relation("JobReceiptCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser User?              @relation("JobReceiptUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jobOrder      JobOrder     @relation(fields: [jobOrderId], references: [id], onDelete: Cascade)
+  step          JobOrderStep @relation(fields: [jobOrderStepId], references: [id], onDelete: Cascade)
+  location      Location     @relation("JobReceiptLocation", fields: [locationId], references: [id])
+  outputBatch   Batch?       @relation("JobReceiptOutputBatch", fields: [outputBatchId], references: [id])
+  reworkBatch   Batch?       @relation("JobReceiptReworkBatch", fields: [reworkBatchId], references: [id])
+  createdByUser User?        @relation("JobReceiptCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?        @relation("JobReceiptUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   lines   JobReceiptLine[]
   outputs JobReceiptOutput[]

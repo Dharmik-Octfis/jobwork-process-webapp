@@ -36,10 +36,33 @@ const nullableUuid = z.string().uuid().nullable().optional();
  * the earlier steps produce (§6.4), and a client that could send it could label
  * a chain-fed input as stock and hide a broken chain.
  */
+/**
+ * One batch the planner intends this input to come out of.
+ *
+ * 🔴 A NOTE, NOT A RESERVATION (2026-08-17). Nothing is held back: availability is
+ * a ledger query and does not subtract these, so two orders may plan the same
+ * batch. See the `JobOrderStepInputBatch` model for why that trade was taken.
+ *
+ * 🔴 `locationId` is part of the identity, not decoration — one batch can sit in
+ * two godowns of a dispatch site with two independent balances, so a plan that
+ * named only the batch would not say which stock it meant.
+ */
+export const plannedBatchRowSchema = z.object({
+  batchId: z.string().uuid({ message: 'Every planned batch row needs a batch.' }),
+  locationId: z.string().uuid({ message: 'Every planned batch row needs a location.' }),
+  qty: z.coerce.number().positive({ message: 'A planned batch needs a quantity above zero.' }),
+});
+
+export type PlannedBatchRow = z.infer<typeof plannedBatchRowSchema>;
+
 export const stepInputRowSchema = z.object({
   itemId: z.string().uuid({ message: 'Every input row needs an item.' }),
   uomId: nullableUuid,
   plannedQty: z.coerce.number().min(0).nullable().optional(),
+  /** Which batches this row is planned to come out of. Optional everywhere — only
+   * batch-tracked items get the picker, and planning without naming batches stays
+   * perfectly valid. */
+  plannedBatches: z.array(plannedBatchRowSchema).optional(),
   /** Over-issue allowance for THIS item. Null falls through to the step's —
    * which is why it is nullable and not defaulted: 0 means no tolerance at all
    * and must be distinguishable from "not set" (§2.5). */

@@ -114,6 +114,19 @@ export interface StepItemRow {
   /** Outputs only — the one that absorbs the step's cost (§9.2.1). No longer
    * asked for on the grid; see `primaryOutputIndex`. */
   isPrimary?: boolean;
+  /**
+   * Inputs, job orders only. Which batches the planner means this row to come out
+   * of — a NOTE, not a reservation: nothing is held back and two orders may name
+   * the same batch. The server refuses a set that does not add up to `plannedQty`.
+   */
+  plannedBatches?: PlannedBatchWrite[];
+}
+
+/** What the form sends for one planned batch. A row is a batch AT A LOCATION. */
+export interface PlannedBatchWrite {
+  batchId: string;
+  locationId: string;
+  qty: number;
 }
 
 export interface StepGridRow {
@@ -404,6 +417,31 @@ export const namedRefSchema = z.object({ id: z.string(), name: z.string() });
  * broken chain. `plannedQty` / `expectedQty` / `isPrimary` are likewise absent on
  * the side they mean nothing.
  */
+/**
+ * One planned batch as the server returns it.
+ *
+ * 🔴 The LABEL is `supplierBatchRef` — what is on the physical tag. `batchNumber`
+ * is internal and is deliberately never sent (2026-08-14), so there is nothing to
+ * fall back to and nothing to accidentally render.
+ */
+export const plannedBatchReadSchema = z.object({
+  id: z.string(),
+  batchId: z.string(),
+  locationId: z.string(),
+  qty: decimalString,
+  batch: z
+    .object({
+      id: z.string(),
+      supplierBatchRef: z.string().nullable(),
+      manufacturerBatch: z.string().nullable(),
+    })
+    .nullable()
+    .optional(),
+  location: z.object({ id: z.string(), name: z.string() }).nullable().optional(),
+});
+
+export type PlannedBatchRead = z.infer<typeof plannedBatchReadSchema>;
+
 export const stepItemRowSchema = z.object({
   id: z.string(),
   seq: z.number(),
@@ -417,6 +455,9 @@ export const stepItemRowSchema = z.object({
   isPrimary: z.boolean().optional(),
   item: itemRefSchema.nullable().optional(),
   uom: uomRefSchema.nullable().optional(),
+  /** Inputs only. Hydrated with the batch's label and godown so the grid can render
+   * a saved plan without a second round trip. */
+  plannedBatches: z.array(plannedBatchReadSchema).default([]),
 });
 
 export type StepItemRowRead = z.infer<typeof stepItemRowSchema>;

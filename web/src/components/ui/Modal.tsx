@@ -246,7 +246,28 @@ export function Modal({
           </button>
         </header>
 
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 20px' }}>
+        {/*
+          🔴 `scrollbar-gutter: stable` is load-bearing, not polish.
+
+          A dropdown inside the body is absolutely positioned, and an out-of-flow
+          child still extends its scroll container's OVERFLOW REGION — so opening
+          one made this body scrollable, the scrollbar took ~15px of width, and any
+          `repeat(auto-fit, minmax(…))` grid inside lost a column and grew a row.
+          The whole dialog visibly resized when you opened the Processor dropdown.
+
+          Reserving the gutter up front means the content width never changes, so
+          nothing reflows. This is what the property exists for; the alternative is
+          every dialog's layout being one dropdown away from moving.
+        */}
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            scrollbarGutter: 'stable',
+            padding: '16px 20px',
+          }}
+        >
           {children}
         </div>
 
