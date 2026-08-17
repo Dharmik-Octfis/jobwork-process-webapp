@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ClipboardList, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
-import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
+import { ClipboardList, Plus, SlidersHorizontal } from 'lucide-react';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { Pagination } from '../../../components/ui/Pagination';
@@ -11,7 +10,7 @@ import { useListCount } from '../../../hooks/useListCount';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 import { JOB_ORDER_STATUS_META, formatQty, statusMeta } from '../jobwork.schemas';
-import { deleteJobOrder, fetchJobOrderCount, fetchJobOrders } from './jobOrders.api';
+import { fetchJobOrderCount, fetchJobOrders } from './jobOrders.api';
 import { JobOrderOverview } from './JobOrderOverview';
 import type { JobOrder } from './jobOrders.schemas';
 
@@ -111,27 +110,6 @@ export function JobOrdersList() {
     save: saveColumns,
   } = useListColumns(orgId, 'job_order');
   const [isColumnsOpen, setIsColumnsOpen] = useState(false);
-
-  const queryClient = useQueryClient();
-  const [toDelete, setToDelete] = useState<JobOrder | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteJobOrder(orgId!, id),
-    onSuccess: (_result, id) => {
-      queryClient.invalidateQueries({ queryKey: ['job-orders', orgId] });
-      // Deleting the open order must close the panel, or it sits there showing a
-      // row that no longer exists.
-      if (searchParams.get('id') === id) setSearchParams({});
-      setToDelete(null);
-      setDeleteError(null);
-    },
-    onError: (error: { response?: { data?: { message?: string } } }) => {
-      // A started order refuses deletion — its ledger rows have to stay. The
-      // server's message says so; showing it beats a silent no-op.
-      setDeleteError(error.response?.data?.message ?? 'Could not delete this job order');
-    },
-  });
 
   const newPath = `/organizations/${orgId}/jobwork/job-orders/new`;
 
@@ -363,7 +341,6 @@ export function JobOrdersList() {
                         {col.label}
                       </th>
                     ))}
-                    <th style={{ ...headerStyle, width: 60 }} scope="col" aria-label="Actions" />
                   </tr>
                 </thead>
                 <tbody>
@@ -408,33 +385,6 @@ export function JobOrdersList() {
                           )}
                         </td>
                       ))}
-                      <td style={{ padding: '12px 16px' }}>
-                        <button
-                          type="button"
-                          // Deleting must not also open the row underneath it.
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteError(null);
-                            setToDelete(order);
-                          }}
-                          title={`Delete ${order.jobOrderNumber}`}
-                          aria-label={`Delete ${order.jobOrderNumber}`}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: 28,
-                            height: 28,
-                            border: '1px solid #e2e8f0',
-                            borderRadius: 4,
-                            background: '#fff',
-                            cursor: 'pointer',
-                            color: '#94a3b8',
-                          }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -471,26 +421,6 @@ export function JobOrdersList() {
         visible={visible}
         isSaving={saveColumns.isPending}
         onSave={(cols) => saveColumns.mutate(cols, { onSuccess: () => setIsColumnsOpen(false) })}
-      />
-
-      <ConfirmDialog
-        isOpen={Boolean(toDelete)}
-        title="Delete Job Order"
-        message={
-          deleteError ? (
-            <span style={{ color: '#b91c1c' }}>{deleteError}</span>
-          ) : (
-            `Delete ${toDelete?.jobOrderNumber}? Only a job order that has not issued anything yet can be deleted.`
-          )
-        }
-        confirmText={deleteMutation.isPending ? 'Deleting…' : 'Delete'}
-        onConfirm={() => {
-          if (toDelete) deleteMutation.mutate(toDelete.id);
-        }}
-        onCancel={() => {
-          setToDelete(null);
-          setDeleteError(null);
-        }}
       />
     </div>
   );
