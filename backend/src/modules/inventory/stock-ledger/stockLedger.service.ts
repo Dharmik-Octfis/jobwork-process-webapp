@@ -268,6 +268,44 @@ export async function getBalance(
   };
 }
 
+/**
+ * WHERE this item is, in one query — keyed by location.
+ *
+ * 🔴 A "stock by location" view has to START from the ledger. The Item page used to
+ * build its location list from the opening-stock document and then ask
+ * `getBalance` about each one, which meant it could only ever show the places some
+ * other document happened to mention: 5,000 metres sitting at a dyer on a job
+ * issue rendered as a zero, because no opening stock had ever been declared there
+ * (2026-08-17). Balances were right; the set of locations was not.
+ *
+ * Also one grouped query instead of one aggregate per location.
+ *
+ * Locations with a zero net balance are still returned — the caller decides
+ * whether "declared here, none left" is worth a row. Negative balances are
+ * returned too, deliberately: that is a data problem someone needs to SEE.
+ */
+export async function getBalanceByLocation(
+  tx: TenantClient,
+  filter: Omit<BalanceFilter, 'locationId' | 'locationIds'>,
+): Promise<Map<string, { qty: Prisma.Decimal; value: Prisma.Decimal }>> {
+  const grouped = await tx.stockLedgerEntry.groupBy({
+    by: ['locationId'],
+    where: balanceWhere(filter),
+    _sum: { qtyIn: true, qtyOut: true, valueIn: true, valueOut: true },
+  });
+
+  const zero = new Prisma.Decimal(0);
+  return new Map(
+    grouped.map((row) => [
+      row.locationId,
+      {
+        qty: (row._sum.qtyIn ?? zero).minus(row._sum.qtyOut ?? zero),
+        value: (row._sum.valueIn ?? zero).minus(row._sum.valueOut ?? zero),
+      },
+    ]),
+  );
+}
+
 export interface MultiAxisBalance {
   physicalQty: Prisma.Decimal;
   accountingQty: Prisma.Decimal;
