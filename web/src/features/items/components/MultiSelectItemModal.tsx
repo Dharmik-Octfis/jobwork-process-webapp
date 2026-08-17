@@ -87,6 +87,7 @@ export function MultiSelectItemModal({
   const [visibleColumns, setVisibleColumns] = useState<string[]>(['name', 'sku', 'hsn']);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
+  const [step, setStep] = useState<'select' | 'values'>('select');
 
   const [page, setPage] = useState(1);
 
@@ -129,6 +130,7 @@ export function MultiSelectItemModal({
       setItemInputs({});
       setColumnFilters({});
       setIsFilterOpen(false);
+      setStep('select');
       setPage(1);
     }
   }
@@ -166,10 +168,8 @@ export function MultiSelectItemModal({
         filtered = filtered.filter((item) => {
           if (key === 'name') return item.name.toLowerCase().includes(searchVal);
           if (key === 'sku') return (item.sku || '').toLowerCase().includes(searchVal);
-          if (key === 'hsn')
-            return (item.hsnCode || item.hsn_or_sac || '').toLowerCase().includes(searchVal);
-          if (key === 'type')
-            return (item.type || item.item_type || '').toLowerCase() === searchVal;
+          if (key === 'hsn') return (item.hsnCode || item.hsn_or_sac || '').toLowerCase().includes(searchVal);
+          if (key === 'type') return (item.type || item.item_type || '').toLowerCase() === searchVal;
           if (key === 'category') return (item.category || '').toLowerCase() === searchVal;
           const cfKey = key.replace('cf_', '');
           const val = item.custom_fields?.[cfKey] ?? item.customFields?.[cfKey];
@@ -305,340 +305,439 @@ export function MultiSelectItemModal({
           </button>
         </div>
 
-        {/* Search */}
-        <div
-          style={{
-            padding: '14px 20px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <div
-            style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '300px' }}
-          >
-            <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: 12 }} />
-            <input
-              type="text"
-              placeholder="Search products..."
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setPage(1);
-              }}
+        {step === 'select' ? (
+          <>
+            {/* Search */}
+            <div
               style={{
-                width: '100%',
-                padding: '8px 12px 8px 34px',
-                fontSize: 13,
-                border: '1px solid #d1d5db',
-                borderRadius: 6,
-                outline: 'none',
-                boxSizing: 'border-box',
-              }}
-              onFocus={(e) => (e.target.style.borderColor = '#2563eb')}
-              onBlur={(e) => (e.target.style.borderColor = '#d1d5db')}
-            />
-          </div>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <Button
-              variant={isFilterOpen ? 'primary' : 'secondary'}
-              onClick={() => {
-                setIsFilterOpen(!isFilterOpen);
-                setPage(1);
-              }}
-              style={{
-                padding: '8px',
+                padding: '14px 20px',
                 display: 'flex',
+                justifyContent: 'space-between',
                 alignItems: 'center',
-                justifyContent: 'center',
               }}
-              title="Toggle Filters"
             >
-              <Filter size={16} color={isFilterOpen ? '#ffffff' : '#64748b'} />
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => setIsColumnsOpen(true)}
-              style={{
-                padding: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-              title="Manage Columns"
-            >
-              <SlidersHorizontal size={16} color="#64748b" />
-            </Button>
-            {onAddNewItem && (
-              <Button
-                variant="primary"
-                onClick={onAddNewItem}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              <div
+                style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '300px' }}
               >
-                <Plus size={16} /> New Product
-              </Button>
-            )}
-          </div>
-        </div>
+                <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: 12 }} />
+                <input
+                  type="text"
+                  placeholder="Search products..."
+                  value={query}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setPage(1);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px 8px 34px',
+                    fontSize: 13,
+                    border: '1px solid #d1d5db',
+                    borderRadius: 6,
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                  onFocus={(e) => (e.target.style.borderColor = '#2563eb')}
+                  onBlur={(e) => (e.target.style.borderColor = '#d1d5db')}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <Button
+                  variant={isFilterOpen ? 'primary' : 'secondary'}
+                  onClick={() => {
+                    setIsFilterOpen(!isFilterOpen);
+                    setPage(1);
+                  }}
+                  style={{
+                    padding: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  title="Filter"
+                >
+                  <Filter size={16} color={isFilterOpen ? '#fff' : '#64748b'} />
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => setIsColumnsOpen(true)}
+                  style={{
+                    padding: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  title="Manage Columns"
+                >
+                  <SlidersHorizontal size={16} color="#64748b" />
+                </Button>
+                {onAddNewItem && (
+                  <Button
+                    variant="primary"
+                    onClick={onAddNewItem}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <Plus size={16} /> New Product
+                  </Button>
+                )}
+              </div>
+            </div>
 
-        {/* Table */}
-        <div style={{ flex: 1, overflow: 'auto', borderTop: '1px solid #eef0f3' }}>
-          <table
-            style={{
-              width: '100%',
-              borderCollapse: 'collapse',
-              textAlign: 'left',
-              fontSize: 13,
-              whiteSpace: 'nowrap',
-            }}
-          >
-            <thead style={{ position: 'sticky', top: 0, background: '#ffffff', zIndex: 10 }}>
-              <tr>
-                <th
-                  style={{
-                    padding: '12px 12px',
-                    borderBottom: '1px solid #eef0f3',
-                    width: 44,
-                    minWidth: 44,
-                    position: 'sticky',
-                    left: 0,
-                    zIndex: 2,
-                    background: '#ffffff',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={
-                      shownItems.length > 0 && shownItems.every((i) => selectedItemsMap.has(i.id))
-                    }
-                    onChange={handleSelectAll}
-                    style={{ cursor: 'pointer' }}
-                  />
-                </th>
-                {activeColumns.map((col) => (
-                  <th
-                    key={col.key}
-                    style={{
-                      padding: '12px 20px',
-                      borderBottom: '1px solid #eef0f3',
-                      color: '#475569',
-                      fontWeight: 600,
-                      ...(col.key === 'name'
-                        ? {
-                            position: 'sticky',
-                            left: 44,
-                            zIndex: 2,
-                            background: '#ffffff',
-                            boxShadow: '4px 0 4px -4px rgba(0,0,0,0.1)',
-                          }
-                        : {}),
-                    }}
-                  >
-                    {col.label}
-                  </th>
-                ))}
-                <th
-                  style={{
-                    padding: '12px 20px',
-                    borderBottom: '1px solid #eef0f3',
-                    color: '#475569',
-                    fontWeight: 600,
-                  }}
-                >
-                  Qty
-                </th>
-                <th
-                  style={{
-                    padding: '12px 20px',
-                    borderBottom: '1px solid #eef0f3',
-                    color: '#475569',
-                    fontWeight: 600,
-                  }}
-                >
-                  Rate
-                </th>
-                <th
-                  style={{
-                    padding: '12px 20px',
-                    borderBottom: '1px solid #eef0f3',
-                    color: '#475569',
-                    fontWeight: 600,
-                  }}
-                >
-                  Disc
-                </th>
-              </tr>
-              {isFilterOpen && (
-                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #eef0f3' }}>
-                  <th
-                    style={{
-                      padding: '8px 12px',
-                      position: 'sticky',
-                      left: 0,
-                      zIndex: 2,
-                      background: '#f8fafc',
-                      textAlign: 'center',
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setColumnFilters({});
-                        setPage(1);
-                      }}
+            {/* Table */}
+            <div style={{ flex: 1, overflow: 'auto', borderTop: '1px solid #eef0f3' }}>
+              <table
+                style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  textAlign: 'left',
+                  fontSize: 13,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <thead style={{ position: 'sticky', top: 0, background: '#ffffff', zIndex: 10 }}>
+                  <tr>
+                    <th
                       style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#ef4444',
-                        cursor: 'pointer',
-                        fontSize: 12,
-                        padding: 4,
+                        padding: '12px 12px',
+                        borderBottom: '1px solid #eef0f3',
+                        width: 44,
+                        minWidth: 44,
+                        position: 'sticky',
+                        left: 0,
+                        zIndex: 2,
+                        background: '#ffffff',
                       }}
-                      title="Clear Filters"
                     >
-                      <X size={14} />
-                    </button>
-                  </th>
-                  {activeColumns.map((col) => {
-                    const val = columnFilters[col.key] || '';
-                    const onChange = (
-                      e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
-                    ) => {
-                      setColumnFilters((prev) => ({ ...prev, [col.key]: e.target.value }));
-                      setPage(1);
-                    };
-                    const inputStyle = {
-                      width: '100%',
-                      padding: '6px 8px',
-                      fontSize: 12,
-                      border: '1px solid #d1d5db',
-                      borderRadius: 4,
-                      outline: 'none',
-                    };
-
-                    return (
+                      <input
+                        type="checkbox"
+                        checked={
+                          shownItems.length > 0 && shownItems.every((i) => selectedItemsMap.has(i.id))
+                        }
+                        onChange={handleSelectAll}
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </th>
+                    {activeColumns.map((col) => (
                       <th
-                        key={`filter-${col.key}`}
+                        key={col.key}
                         style={{
-                          padding: '8px 20px',
-                          fontWeight: 'normal',
+                          padding: '12px 20px',
+                          borderBottom: '1px solid #eef0f3',
+                          color: '#475569',
+                          fontWeight: 600,
                           ...(col.key === 'name'
                             ? {
                                 position: 'sticky',
                                 left: 44,
                                 zIndex: 2,
-                                background: '#f8fafc',
+                                background: '#ffffff',
                                 boxShadow: '4px 0 4px -4px rgba(0,0,0,0.1)',
                               }
                             : {}),
                         }}
                       >
-                        {col.key === 'type' ? (
-                          <select value={val} onChange={onChange} style={inputStyle}>
-                            <option value="">- None -</option>
-                            <option value="goods">Goods</option>
-                            <option value="service">Service</option>
-                          </select>
-                        ) : col.key === 'category' ? (
-                          <select value={val} onChange={onChange} style={inputStyle}>
-                            <option value="">- None -</option>
-                            {categories.map((c) => (
-                              <option key={c} value={c}>
-                                {c}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <input
-                            type="text"
-                            placeholder={col.label}
-                            value={val}
-                            onChange={onChange}
-                            style={inputStyle}
-                          />
-                        )}
+                        {col.label}
                       </th>
-                    );
-                  })}
-                  <th style={{ padding: '8px 20px', background: '#f8fafc' }}></th>
-                  <th style={{ padding: '8px 20px', background: '#f8fafc' }}></th>
-                  <th style={{ padding: '8px 20px', background: '#f8fafc' }}></th>
-                </tr>
-              )}
-            </thead>
-            <tbody>
-              {paginatedItems.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={activeColumns.length + 2}
-                    style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}
-                  >
-                    No products found.
-                  </td>
-                </tr>
-              ) : (
-                paginatedItems.map((item) => (
-                  <tr
-                    key={item.id}
-                    onClick={() => toggleSelect(item)}
+                    ))}
+                  </tr>
+                  {isFilterOpen && (
+                    <tr style={{ background: '#f8fafc' }}>
+                      <th
+                        style={{
+                          padding: '8px 12px',
+                          borderBottom: '1px solid #eef0f3',
+                          position: 'sticky',
+                          left: 0,
+                          zIndex: 2,
+                          background: '#f8fafc',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setColumnFilters({});
+                            setPage(1);
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: '#94a3b8',
+                            padding: 4,
+                            display: 'flex',
+                          }}
+                          title="Clear filters"
+                        >
+                          <X size={14} />
+                        </button>
+                      </th>
+                      {activeColumns.map((col) => {
+                        const val = columnFilters[col.key] || '';
+                        const onChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+                          setColumnFilters((prev) => ({ ...prev, [col.key]: e.target.value }));
+                          setPage(1);
+                        };
+                        const inputStyle = {
+                          width: '100%',
+                          padding: '4px 8px',
+                          fontSize: 12,
+                          border: '1px solid #cbd5e1',
+                          borderRadius: 4,
+                          outline: 'none',
+                        };
+
+                        return (
+                          <th
+                            key={`filter-${col.key}`}
+                            style={{
+                              padding: '8px 20px',
+                              borderBottom: '1px solid #eef0f3',
+                              ...(col.key === 'name'
+                                ? {
+                                    position: 'sticky',
+                                    left: 44,
+                                    zIndex: 2,
+                                    background: '#f8fafc',
+                                    boxShadow: '4px 0 4px -4px rgba(0,0,0,0.1)',
+                                  }
+                                : {}),
+                            }}
+                          >
+                            {col.key === 'category' ? (
+                              <select value={val} onChange={onChange} style={inputStyle}>
+                                <option value="">- None -</option>
+                                {categories.map((c) => (
+                                  <option key={c} value={c}>{c}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                type="text"
+                                value={val}
+                                onChange={onChange}
+                                placeholder={`Filter ${col.label}...`}
+                                style={inputStyle}
+                              />
+                            )}
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  )}
+                </thead>
+                <tbody>
+                  {paginatedItems.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={activeColumns.length + 1}
+                        style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}
+                      >
+                        No products found.
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedItems.map((item) => (
+                      <tr
+                        key={item.id}
+                        onClick={() => toggleSelect(item)}
+                        style={{
+                          background: selectedItemsMap.has(item.id) ? '#eff6ff' : '#ffffff',
+                          borderBottom: '1px solid #eef0f3',
+                          cursor: 'pointer',
+                          transition: 'background 0.2s',
+                        }}
+                      >
+                        <td
+                          style={{
+                            padding: '8px 12px',
+                            position: 'sticky',
+                            left: 0,
+                            background: selectedItemsMap.has(item.id) ? '#eff6ff' : '#ffffff',
+                            zIndex: 1,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedItemsMap.has(item.id)}
+                            onChange={() => toggleSelect(item)}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ cursor: 'pointer' }}
+                          />
+                        </td>
+                        {activeColumns.map((col) => (
+                          <td
+                            key={col.key}
+                            style={{
+                              padding: '8px 20px',
+                              ...(col.key === 'name'
+                                ? {
+                                    position: 'sticky',
+                                    left: 44,
+                                    background: selectedItemsMap.has(item.id) ? '#eff6ff' : '#ffffff',
+                                    zIndex: 1,
+                                    boxShadow: '4px 0 4px -4px rgba(0,0,0,0.1)',
+                                  }
+                                : {}),
+                            }}
+                          >
+                            {renderCell(item, col.key)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '16px 20px',
+                borderTop: '1px solid #eef0f3',
+                background: '#ffffff',
+                borderRadius: '0 0 8px 8px',
+              }}
+            >
+              <span style={{ fontSize: 13, color: '#64748b' }}>{selectedItemsMap.size} selected</span>
+              <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                <span style={{ fontSize: '13px', color: '#64748b' }}>
+                  {shownItems.length > 0 ? (page - 1) * 50 + 1 : 0} -{' '}
+                  {Math.min(page * 50, shownItems.length)} of {shownItems.length}
+                </span>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    disabled={page === 1}
+                    onClick={() => setPage((p) => p - 1)}
                     style={{
-                      borderBottom: '1px solid #eef0f3',
-                      cursor: 'pointer',
-                      background: selectedItemsMap.has(item.id) ? '#f8fafc' : '#ffffff',
+                      cursor: page === 1 ? 'not-allowed' : 'pointer',
+                      opacity: page === 1 ? 0.5 : 1,
+                      background: 'none',
+                      border: 'none',
+                      padding: '2px',
+                      display: 'flex',
+                      alignItems: 'center',
                     }}
                   >
-                    <td
-                      onClick={(e) => e.stopPropagation()}
-                      style={{
-                        padding: '12px 12px',
-                        width: 44,
-                        minWidth: 44,
-                        position: 'sticky',
-                        left: 0,
-                        zIndex: 1,
-                        background: selectedItemsMap.has(item.id) ? '#f8fafc' : '#ffffff',
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedItemsMap.has(item.id)}
-                        onChange={() => toggleSelect(item)}
-                        style={{ cursor: 'pointer' }}
-                      />
-                    </td>
-                    {activeColumns.map((col) => (
-                      <td
-                        key={col.key}
-                        style={{
-                          padding: '12px 20px',
-                          color: '#334155',
-                          ...(col.key === 'name'
-                            ? {
-                                position: 'sticky',
-                                left: 44,
-                                zIndex: 1,
-                                background: selectedItemsMap.has(item.id) ? '#f8fafc' : '#ffffff',
-                                boxShadow: '4px 0 4px -4px rgba(0,0,0,0.1)',
-                              }
-                            : {}),
-                        }}
-                      >
-                        {renderCell(item, col.key)}
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    disabled={page * 50 >= shownItems.length}
+                    onClick={() => setPage((p) => p + 1)}
+                    style={{
+                      cursor: page * 50 >= shownItems.length ? 'not-allowed' : 'pointer',
+                      opacity: page * 50 >= shownItems.length ? 0.5 : 1,
+                      background: 'none',
+                      border: 'none',
+                      padding: '2px',
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <Button variant="secondary" onClick={onClose}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => setStep('values')}
+                  disabled={selectedItemsMap.size === 0}
+                >
+                  Add values for selection
+                </Button>
+                <Button variant="primary" onClick={handleAssign} disabled={selectedItemsMap.size === 0}>
+                  Assign
+                </Button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Values Table */}
+            <div style={{ flex: 1, overflow: 'auto', borderTop: '1px solid #eef0f3' }}>
+              <table
+                style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  textAlign: 'left',
+                  fontSize: 13,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <thead style={{ position: 'sticky', top: 0, background: '#ffffff', zIndex: 10 }}>
+                  <tr>
+                    <th style={{ padding: '12px 20px', borderBottom: '1px solid #eef0f3', color: '#475569', fontWeight: 600 }}>Product Name</th>
+                    <th style={{ padding: '12px 20px', borderBottom: '1px solid #eef0f3', color: '#475569', fontWeight: 600 }}>Product Code</th>
+                    <th style={{ padding: '12px 20px', borderBottom: '1px solid #eef0f3', color: '#475569', fontWeight: 600 }}>HSN/SAC</th>
+                    <th style={{ padding: '12px 20px', borderBottom: '1px solid #eef0f3', color: '#475569', fontWeight: 600 }}>Qty</th>
+                    <th style={{ padding: '12px 20px', borderBottom: '1px solid #eef0f3', color: '#475569', fontWeight: 600 }}>Rate</th>
+                    <th style={{ padding: '12px 20px', borderBottom: '1px solid #eef0f3', color: '#475569', fontWeight: 600 }}>Disc</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from(selectedItemsMap.values()).map((item) => (
+                    <tr key={item.id} style={{ borderBottom: '1px solid #eef0f3' }}>
+                      <td style={{ padding: '12px 20px' }}>
+                        <span style={{ color: '#2563eb' }}>{item.name}</span>
                       </td>
-                    ))}
-                    {selectedItemsMap.has(item.id) ? (
-                      <>
-                        <td style={{ padding: '8px 20px' }}>
+                      <td style={{ padding: '12px 20px' }}>{item.sku || '-'}</td>
+                      <td style={{ padding: '12px 20px' }}>{item.hsnCode || item.hsn_or_sac || '-'}</td>
+                      <td style={{ padding: '8px 20px' }}>
+                        <input
+                          type="number"
+                          value={itemInputs[item.id]?.quantity ?? 1}
+                          onChange={(e) =>
+                            setItemInputs((prev) => ({
+                              ...prev,
+                              [item.id]: { ...prev[item.id], quantity: e.target.value === '' ? '' : Number(e.target.value) },
+                            }))
+                          }
+                          style={{
+                            width: 60,
+                            padding: '6px',
+                            border: '1px solid #d1d5db',
+                            borderRadius: 4,
+                            outline: 'none',
+                          }}
+                        />
+                      </td>
+                      <td style={{ padding: '8px 20px' }}>
+                        <input
+                          type="number"
+                          value={itemInputs[item.id]?.rate ?? 0}
+                          onChange={(e) =>
+                            setItemInputs((prev) => ({
+                              ...prev,
+                              [item.id]: { ...prev[item.id], rate: e.target.value === '' ? '' : Number(e.target.value) },
+                            }))
+                          }
+                          style={{
+                            width: 80,
+                            padding: '6px',
+                            border: '1px solid #d1d5db',
+                            borderRadius: 4,
+                            outline: 'none',
+                          }}
+                        />
+                      </td>
+                      <td style={{ padding: '8px 20px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                           <input
                             type="number"
-                            value={itemInputs[item.id]?.quantity ?? 1}
+                            value={itemInputs[item.id]?.discount ?? 0}
                             onChange={(e) =>
                               setItemInputs((prev) => ({
                                 ...prev,
-                                [item.id]: { ...prev[item.id], quantity: e.target.value },
+                                [item.id]: { ...prev[item.id], discount: e.target.value === '' ? '' : Number(e.target.value) },
                               }))
                             }
-                            onClick={(e) => e.stopPropagation()}
                             style={{
                               width: 60,
                               padding: '6px',
@@ -647,147 +746,60 @@ export function MultiSelectItemModal({
                               outline: 'none',
                             }}
                           />
-                        </td>
-                        <td style={{ padding: '8px 20px' }}>
-                          <input
-                            type="number"
-                            value={itemInputs[item.id]?.rate ?? 0}
+                          <select
+                            value={itemInputs[item.id]?.discountType ?? 'percentage'}
                             onChange={(e) =>
                               setItemInputs((prev) => ({
                                 ...prev,
-                                [item.id]: { ...prev[item.id], rate: e.target.value },
+                                [item.id]: {
+                                  ...prev[item.id],
+                                  discountType: e.target.value as 'percentage' | 'fixed',
+                                },
                               }))
                             }
-                            onClick={(e) => e.stopPropagation()}
                             style={{
-                              width: 80,
                               padding: '6px',
                               border: '1px solid #d1d5db',
                               borderRadius: 4,
                               outline: 'none',
+                              background: '#fff',
                             }}
-                          />
-                        </td>
-                        <td style={{ padding: '8px 20px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <input
-                              type="number"
-                              value={itemInputs[item.id]?.discount ?? 0}
-                              onChange={(e) =>
-                                setItemInputs((prev) => ({
-                                  ...prev,
-                                  [item.id]: { ...prev[item.id], discount: e.target.value },
-                                }))
-                              }
-                              onClick={(e) => e.stopPropagation()}
-                              style={{
-                                width: 60,
-                                padding: '6px',
-                                border: '1px solid #d1d5db',
-                                borderRadius: 4,
-                                outline: 'none',
-                              }}
-                            />
-                            <select
-                              value={itemInputs[item.id]?.discountType ?? 'percentage'}
-                              onChange={(e) =>
-                                setItemInputs((prev) => ({
-                                  ...prev,
-                                  [item.id]: {
-                                    ...prev[item.id],
-                                    discountType: e.target.value as 'percentage' | 'fixed',
-                                  },
-                                }))
-                              }
-                              onClick={(e) => e.stopPropagation()}
-                              style={{
-                                padding: '6px',
-                                border: '1px solid #d1d5db',
-                                borderRadius: 4,
-                                outline: 'none',
-                                background: '#fff',
-                              }}
-                            >
-                              <option value="percentage">%</option>
-                              <option value="fixed">₹</option>
-                            </select>
-                          </div>
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td />
-                        <td />
-                        <td />
-                      </>
-                    )}
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Footer */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '16px 20px',
-            borderTop: '1px solid #eef0f3',
-            background: '#ffffff',
-            borderRadius: '0 0 8px 8px',
-          }}
-        >
-          <span style={{ fontSize: 13, color: '#64748b' }}>{selectedItemsMap.size} selected</span>
-          <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-            <span style={{ fontSize: '13px', color: '#64748b' }}>
-              {shownItems.length > 0 ? (page - 1) * 50 + 1 : 0} -{' '}
-              {Math.min(page * 50, shownItems.length)} of {shownItems.length}
-            </span>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                disabled={page === 1}
-                onClick={() => setPage((p) => p - 1)}
-                style={{
-                  cursor: page === 1 ? 'not-allowed' : 'pointer',
-                  opacity: page === 1 ? 0.5 : 1,
-                  background: 'none',
-                  border: 'none',
-                  padding: '2px',
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <button
-                disabled={page * 50 >= shownItems.length}
-                onClick={() => setPage((p) => p + 1)}
-                style={{
-                  cursor: page * 50 >= shownItems.length ? 'not-allowed' : 'pointer',
-                  opacity: page * 50 >= shownItems.length ? 0.5 : 1,
-                  background: 'none',
-                  border: 'none',
-                  padding: '2px',
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
-              >
-                <ChevronRight size={16} />
-              </button>
+                          >
+                            <option value="percentage">%</option>
+                            <option value="fixed">₹</option>
+                          </select>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </div>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <Button variant="secondary" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button variant="primary" onClick={handleAssign} disabled={selectedItemsMap.size === 0}>
-              Assign
-            </Button>
-          </div>
-        </div>
+
+            {/* Footer */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '16px 20px',
+                borderTop: '1px solid #eef0f3',
+                background: '#ffffff',
+                borderRadius: '0 0 8px 8px',
+              }}
+            >
+              <span style={{ fontSize: 13, color: '#64748b' }}>{selectedItemsMap.size} selected</span>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <Button variant="secondary" onClick={() => setStep('select')}>
+                  Back
+                </Button>
+                <Button variant="primary" onClick={handleAssign}>
+                  Assign
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       <CustomizeColumnsModal

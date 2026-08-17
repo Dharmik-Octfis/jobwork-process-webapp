@@ -890,7 +890,15 @@ export class ItemsService {
       const requiresBatchDetail = item.inventoryTracking === 'batch';
 
       for (const locRow of data.locationRows) {
-        const rows = (locRow.batches ?? []).filter((b) => Number(b.quantityIn) > 0);
+        const rows = locRow.batches ?? [];
+        for (const b of rows) {
+          if (Number(b.quantityIn === '' ? 0 : (b.quantityIn ?? 0)) <= 0) {
+            throw ApiError.badRequest(
+              'Batch quantity must be greater than zero.',
+              { batches: 'All batches must have a quantity greater than zero.' }
+            );
+          }
+        }
         const batchTotal = rows.reduce((sum, b) => sum + Number(b.quantityIn), 0);
 
         const declaredQty =
@@ -966,7 +974,7 @@ export class ItemsService {
           await this.settleOpening(
             tx,
             position,
-            new Prisma.Decimal(detail.quantityIn ?? 0),
+            new Prisma.Decimal(detail.quantityIn === '' ? 0 : (detail.quantityIn ?? 0)),
             settleContext,
           );
 
@@ -988,8 +996,7 @@ export class ItemsService {
         for (const detail of rows) {
           if (detail.id && positions.has(key(detail.id, locRow.locationId))) continue;
 
-          const qty = new Prisma.Decimal(detail.quantityIn ?? 0);
-          if (qty.lessThanOrEqualTo(0)) continue;
+          const qty = new Prisma.Decimal(detail.quantityIn === '' ? 0 : (detail.quantityIn ?? 0));
 
           const batch = await createBatch(tx, {
             organizationId,

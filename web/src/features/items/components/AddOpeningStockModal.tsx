@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { toast } from 'react-hot-toast';
 import { Modal } from '../../../components/ui/Modal';
 import { Select } from '../../../components/ui/Select';
 import { Trash2, Plus, X } from 'lucide-react';
@@ -259,45 +260,43 @@ export function AddOpeningStockModal({
 
   const handleSave = async () => {
     try {
-      const preparedRows = locationRows.map((loc) => {
-        if (isBatchTracked) {
-          const declared = parseFloat(loc.openingStock) || 0;
-          const batchSum = loc.batches.reduce(
-            (acc, b) => acc + (parseFloat(String(b.quantityIn)) || 0),
-            0,
-          );
-          if (declared === 0 && batchSum > 0) {
-            return { ...loc, openingStock: String(batchSum) };
-          }
-        }
-        return loc;
-      });
+      for (const loc of locationRows) {
+        const locObj = locations.find((l) => l.id === loc.locationId);
+        const locName = locObj?.name || 'Selected Location';
+        const declared = parseFloat(loc.openingStock) || 0;
+        const valuePerUnit = parseFloat(loc.openingStockValue) || 0;
 
-      if (isBatchTracked) {
-        for (const loc of preparedRows) {
-          const locObj = locations.find((l) => l.id === loc.locationId);
-          const locName = locObj?.name || 'Selected Location';
-          const declared = parseFloat(loc.openingStock) || 0;
+        if (isBatchTracked) {
           const batchSum = loc.batches.reduce(
             (acc, b) => acc + (parseFloat(String(b.quantityIn)) || 0),
             0,
           );
+
+          if (batchSum > 0 && declared === 0) {
+            toast.error(`Please enter the Opening Stock for "${locName}".`);
+            return;
+          }
 
           if (declared > 0 && batchSum > declared) {
-            alert(
+            toast.error(
               `Total batch quantity (${batchSum}) cannot exceed location opening stock (${declared}) for "${locName}". Please adjust batch quantities.`,
             );
             return;
           }
           if (declared > 0 && loc.batches.length === 0) {
-            alert(`Opening stock is declared for "${locName}", but no batch details were entered.`);
+            toast.error(`Opening stock is declared for "${locName}", but no batch details were entered.`);
             return;
           }
+        }
+
+        if (declared > 0 && valuePerUnit <= 0) {
+          toast.error(`Please enter a valid Per Unit Value for "${locName}".`);
+          return;
         }
       }
 
       if (onSave) {
-        await onSave(preparedRows);
+        await onSave(locationRows);
       }
       onClose();
     } catch (error) {

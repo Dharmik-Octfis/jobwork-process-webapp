@@ -257,7 +257,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                   onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
                   onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                 >
-                  Clone Item
+                  Clone
                 </div>
                 <div
                   onClick={() =>
@@ -288,7 +288,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                   onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#fef2f2')}
                   onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                 >
-                  Delete Item
+                  Delete
                 </div>
               </div>
             )}

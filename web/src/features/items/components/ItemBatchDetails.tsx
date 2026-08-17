@@ -1,10 +1,11 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Plus, ChevronDown, SlidersHorizontal } from 'lucide-react';
+import { Search,ChevronDown, SlidersHorizontal} from 'lucide-react';
+import { format } from 'date-fns';
 import { itemsApi } from '../items.api';
 import { fetchLocations } from '../../configuration/locations/locations.api';
+import '../../users/Users.css'; // For users-tooltip-wrapper classes
 import { AddOpeningStockModal } from './AddOpeningStockModal';
-import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { Select, type SelectOption } from '../../../components/ui/Select';
 import type { ItemOpeningStockLocationRowDto } from '../items.schemas';
@@ -72,8 +73,9 @@ export function ItemBatchDetails({
   const [isOpeningStockModalOpen, setIsOpeningStockModalOpen] = useState(false);
   const [activeMenuBatchId, setActiveMenuBatchId] = useState<string | null>(null);
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
-  const [batchToDelete, setBatchToDelete] = useState<BatchItem | null>(null);
+
   const [inactiveBatchIds, setInactiveBatchIds] = useState<Record<string, boolean>>({});
+  const [menuCoords, setMenuCoords] = useState<{ top?: number; right?: number; bottom?: number } | null>(null);
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState<string[]>(() =>
@@ -192,45 +194,12 @@ export function ItemBatchDetails({
       .filter((col): col is ColumnDef => Boolean(col));
   }, [visibleColumns]);
 
-  const handleEditBatch = (_batch: BatchItem) => {
-    setActiveMenuBatchId(null);
-    setIsOpeningStockModalOpen(true);
-  };
-
   const handleToggleInactive = (batch: BatchItem) => {
     setActiveMenuBatchId(null);
     setInactiveBatchIds((prev) => ({
       ...prev,
       [batch.id]: !prev[batch.id],
     }));
-  };
-
-  const handleDeleteBatchConfirm = async () => {
-    if (!batchToDelete) return;
-
-    try {
-      const updatedRows = openingStockRows.map((locRow) => {
-        if (locRow.locationId === batchToDelete.locationId) {
-          const remainingBatches = (locRow.batches || []).filter((b) => b.id !== batchToDelete.id);
-          const newBatchSum = remainingBatches.reduce(
-            (sum, b) => sum + (Number(b.quantityIn) || 0),
-            0,
-          );
-          return {
-            ...locRow,
-            openingStock: newBatchSum,
-            batches: remainingBatches,
-          };
-        }
-        return locRow;
-      });
-
-      await saveOpeningStockMutation.mutateAsync(updatedRows);
-      setBatchToDelete(null);
-      setActiveMenuBatchId(null);
-    } catch (error) {
-      console.error('Failed to delete batch', error);
-    }
   };
 
   return (
@@ -252,7 +221,7 @@ export function ItemBatchDetails({
             onChange={(val) => setStatusFilter(val as BatchStatusFilter)}
             options={STATUS_OPTIONS}
             fullWidth={false}
-            minWidth={155}
+            minWidth={130}
             buttonStyle={{ height: 34, borderRadius: 6, borderColor: '#cbd5e1' }}
             ariaLabel="Status Filter"
           />
@@ -264,14 +233,14 @@ export function ItemBatchDetails({
               onChange={setSelectedLocationId}
               options={locationOptions}
               fullWidth={false}
-              minWidth={140}
+              minWidth={120}
               menuWidth={400}
               buttonStyle={{ height: 34, borderRadius: 6, borderColor: '#cbd5e1' }}
               ariaLabel="Location Filter"
             />
           </div>
 
-          <div style={{ position: 'relative', width: '240px' }}>
+          <div style={{ position: 'relative', width: '200px' }}>
             <Search
               size={15}
               style={{
@@ -327,29 +296,7 @@ export function ItemBatchDetails({
             <SlidersHorizontal size={15} />
           </button>
 
-          <button
-            type="button"
-            onClick={() => setIsOpeningStockModalOpen(true)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              height: '34px',
-              background: '#15803d',
-              color: '#fff',
-              border: 'none',
-              padding: '0 16px',
-              borderRadius: '6px',
-              fontSize: '13px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-              boxSizing: 'border-box',
-            }}
-          >
-            <Plus size={16} />
-            New
-          </button>
+
         </div>
       </div>
 
@@ -416,11 +363,9 @@ export function ItemBatchDetails({
                 </td>
               </tr>
             ) : (
-              filteredBatches.map((b, index) => {
+              filteredBatches.map((b) => {
                 const isHovered = hoveredRowId === b.id;
                 const isMenuOpen = activeMenuBatchId === b.id;
-                const isNearBottom =
-                  filteredBatches.length > 2 && index >= filteredBatches.length - 2;
 
                 return (
                   <tr
@@ -489,7 +434,7 @@ export function ItemBatchDetails({
                             key={col.key}
                             style={{ padding: '12px 16px', color: '#334155', whiteSpace: 'nowrap' }}
                           >
-                            {b.manufacturedDate || '-'}
+                            {b.manufacturedDate ? format(new Date(b.manufacturedDate), 'dd/MM/yyyy') : '-'}
                           </td>
                         );
                       }
@@ -503,7 +448,7 @@ export function ItemBatchDetails({
                               whiteSpace: 'nowrap',
                             }}
                           >
-                            {b.expiryDate || '-'}
+                            {b.expiryDate ? format(new Date(b.expiryDate), 'dd/MM/yyyy') : '-'}
                             {b.isExpired && (
                               <span
                                 style={{
@@ -588,7 +533,19 @@ export function ItemBatchDetails({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setActiveMenuBatchId(isMenuOpen ? null : b.id);
+                          if (isMenuOpen) {
+                            setActiveMenuBatchId(null);
+                          } else {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const isNearBottom = rect.bottom > window.innerHeight - 150;
+                            setMenuCoords({
+                              right: window.innerWidth - rect.right,
+                              ...(isNearBottom
+                                ? { bottom: window.innerHeight - rect.top + 4 }
+                                : { top: rect.bottom + 4 }),
+                            });
+                            setActiveMenuBatchId(b.id);
+                          }
                         }}
                         style={{
                           width: '20px',
@@ -621,9 +578,10 @@ export function ItemBatchDetails({
                           <div
                             ref={menuRef}
                             style={{
-                              position: 'absolute',
-                              right: '8px',
-                              ...(isNearBottom ? { bottom: '32px' } : { top: '32px' }),
+                              position: 'fixed',
+                              right: menuCoords?.right,
+                              top: menuCoords?.top,
+                              bottom: menuCoords?.bottom,
                               width: '160px',
                               background: '#ffffff',
                               borderRadius: '8px',
@@ -634,30 +592,7 @@ export function ItemBatchDetails({
                               padding: '4px 0',
                               textAlign: 'left',
                               overflow: 'hidden',
-                            }}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => handleEditBatch(b)}
-                              style={{
-                                width: '100%',
-                                padding: '8px 16px',
-                                border: 'none',
-                                background: 'transparent',
-                                color: '#334155',
-                                fontSize: '13px',
-                                fontWeight: 400,
-                                textAlign: 'left',
-                                cursor: 'pointer',
-                                display: 'block',
-                              }}
-                              onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                              onMouseLeave={(e) =>
-                                (e.currentTarget.style.background = 'transparent')
-                              }
-                            >
-                              Edit
-                            </button>
+                            }}>
                             <button
                               type="button"
                               onClick={() => handleToggleInactive(b)}
@@ -679,31 +614,6 @@ export function ItemBatchDetails({
                               }
                             >
                               {b.isInactive ? 'Mark as Active' : 'Mark as Inactive'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setActiveMenuBatchId(null);
-                                setBatchToDelete(b);
-                              }}
-                              style={{
-                                width: '100%',
-                                padding: '8px 16px',
-                                border: 'none',
-                                background: 'transparent',
-                                color: '#ef4444',
-                                fontSize: '13px',
-                                fontWeight: 400,
-                                textAlign: 'left',
-                                cursor: 'pointer',
-                                display: 'block',
-                              }}
-                              onMouseEnter={(e) => (e.currentTarget.style.background = '#fef2f2')}
-                              onMouseLeave={(e) =>
-                                (e.currentTarget.style.background = 'transparent')
-                              }
-                            >
-                              Delete
                             </button>
                           </div>
                         </>
@@ -732,16 +642,7 @@ export function ItemBatchDetails({
         />
       )}
 
-      {batchToDelete && (
-        <ConfirmDialog
-          isOpen
-          title="Delete Batch"
-          message={`Are you sure you want to delete batch "${batchToDelete.batchReference || 'Selected Batch'}"? This action will remove the batch quantity from opening stock.`}
-          confirmText={saveOpeningStockMutation.isPending ? 'Deleting...' : 'Delete'}
-          onConfirm={handleDeleteBatchConfirm}
-          onCancel={() => setBatchToDelete(null)}
-        />
-      )}
+
 
       <CustomizeColumnsModal
         isOpen={isColumnPickerOpen}
