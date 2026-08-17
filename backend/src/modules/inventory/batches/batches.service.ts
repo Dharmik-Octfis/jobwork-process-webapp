@@ -196,6 +196,16 @@ export async function getAvailableStock(organizationId: string, query: Availabil
          actually separate them on screen. */
       manufacturerBatch: batch.manufacturerBatch,
       createdAt: batch.createdAt.toISOString(),
+      /* Read-only on the Add Batches grid — the issue screen shows what the chosen
+         batch already says and never edits it. Date-only columns (`@db.Date`) come
+         back as UTC midnight, so they are sliced rather than sent as timestamps:
+         an ISO instant renders a day early anywhere behind UTC. */
+      manufacturedDate: batch.manufacturedDate
+        ? batch.manufacturedDate.toISOString().slice(0, 10)
+        : null,
+      expiryDate: batch.expiryDate ? batch.expiryDate.toISOString().slice(0, 10) : null,
+      mrp: batch.mrp !== null ? batch.mrp.toString() : null,
+      sellingPrice: batch.sellingPrice !== null ? batch.sellingPrice.toString() : null,
       itemId: batch.itemId,
       uomId: batch.uomId,
       ownership: batch.ownership,

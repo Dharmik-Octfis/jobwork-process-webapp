@@ -133,16 +133,16 @@ model ItemAssembly {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  compositeItem Item               @relation("ItemAssemblyComposite", fields: [compositeItemId], references: [id])
-  compositeUom  UnitOfMeasurement? @relation("ItemAssemblyCompositeUom", fields: [compositeUomId], references: [id])
-  compositeBatch Batch?            @relation("ItemAssemblyCompositeBatch", fields: [compositeBatchId], references: [id])
-  location      Location           @relation("ItemAssemblyLocation", fields: [locationId], references: [id])
-  createdByUser User?              @relation("ItemAssemblyCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser User?              @relation("ItemAssemblyUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  compositeItem  Item               @relation("ItemAssemblyComposite", fields: [compositeItemId], references: [id])
+  compositeUom   UnitOfMeasurement? @relation("ItemAssemblyCompositeUom", fields: [compositeUomId], references: [id])
+  compositeBatch Batch?             @relation("ItemAssemblyCompositeBatch", fields: [compositeBatchId], references: [id])
+  location       Location           @relation("ItemAssemblyLocation", fields: [locationId], references: [id])
+  createdByUser  User?              @relation("ItemAssemblyCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser  User?              @relation("ItemAssemblyUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
-  lines ItemAssemblyLine[]
-  comments ItemAssemblyComment[]
+  lines      ItemAssemblyLine[]
+  comments   ItemAssemblyComment[]
   activities ItemAssemblyActivity[]
 
   @@unique([organizationId, assemblyNumber])
@@ -206,43 +206,43 @@ model ItemAssemblyLine {
 }
 
 model ItemAssemblyComment {
-  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId  String       @map("organization_id") @db.Uuid
-  assemblyId      String       @map("assembly_id") @db.Uuid
-  content         String
-  performedBy     String?      @map("performed_by") @db.VarChar(255)
-  isDeleted       Boolean      @default(false) @map("is_deleted")
-  createdBy       String?      @map("created_by") @db.Uuid
-  updatedBy       String?      @map("updated_by") @db.Uuid
-  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  assembly        ItemAssembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
-  createdByUser   User?        @relation("ItemAssemblyCommentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser   User?        @relation("ItemAssemblyCommentUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  assemblyId     String   @map("assembly_id") @db.Uuid
+  content        String
+  performedBy    String?  @map("performed_by") @db.VarChar(255)
+  isDeleted      Boolean  @default(false) @map("is_deleted")
+  createdBy      String?  @map("created_by") @db.Uuid
+  updatedBy      String?  @map("updated_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assembly      ItemAssembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  createdByUser User?        @relation("ItemAssemblyCommentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?        @relation("ItemAssemblyCommentUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   @@index([assemblyId])
   @@map("item_assembly_comments")
 }
 
 model ItemAssemblyActivity {
-  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId  String       @map("organization_id") @db.Uuid
-  assemblyId      String       @map("assembly_id") @db.Uuid
-  title           String       @db.VarChar(255)
-  description     String?
-  performedBy     String?      @map("performed_by") @db.VarChar(255)
-  isDeleted       Boolean      @default(false) @map("is_deleted")
-  createdBy       String?      @map("created_by") @db.Uuid
-  updatedBy       String?      @map("updated_by") @db.Uuid
-  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  assembly        ItemAssembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
-  createdByUser   User?        @relation("ItemAssemblyActivityCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser   User?        @relation("ItemAssemblyActivityUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  assemblyId     String   @map("assembly_id") @db.Uuid
+  title          String   @db.VarChar(255)
+  description    String?
+  performedBy    String?  @map("performed_by") @db.VarChar(255)
+  isDeleted      Boolean  @default(false) @map("is_deleted")
+  createdBy      String?  @map("created_by") @db.Uuid
+  updatedBy      String?  @map("updated_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assembly      ItemAssembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  createdByUser User?        @relation("ItemAssemblyActivityCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?        @relation("ItemAssemblyActivityUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   @@index([assemblyId])
   @@map("item_assembly_activities")

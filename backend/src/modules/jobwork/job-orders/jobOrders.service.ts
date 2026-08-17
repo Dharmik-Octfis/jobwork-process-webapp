@@ -28,6 +28,7 @@ import type {
   AppendJobOrderStepsInput,
   CreateJobOrderInput,
   JobOrderStepInput,
+  PlannedBatchRow,
   StepInputRow,
   StepOutputRow,
   UpdateJobOrderInput,
@@ -79,7 +80,24 @@ const STEP_INCLUDE = {
   // 🔴 The bill of materials (§5.7). Ordered by seq, because the first input is
   // the principal one — what the step is fundamentally about — and every screen
   // renders it first.
-  inputs: { where: { isDeleted: false }, orderBy: { seq: 'asc' }, include: ROW_INCLUDE },
+  inputs: {
+    where: { isDeleted: false },
+    orderBy: { seq: 'asc' },
+    include: {
+      ...ROW_INCLUDE,
+      /* The planner's batch note, read back so the form round-trips and the Issue
+         dialog can pre-fill from it. `batch` is included for the label — the grid
+         renders `supplierBatchRef`, never `batchNumber` (2026-08-14). */
+      plannedBatches: {
+        where: { isDeleted: false },
+        orderBy: { createdAt: 'asc' },
+        include: {
+          batch: { select: { id: true, supplierBatchRef: true, manufacturerBatch: true } },
+          location: { select: { id: true, name: true } },
+        },
+      },
+    },
+  },
   outputs: { where: { isDeleted: false }, orderBy: { seq: 'asc' }, include: ROW_INCLUDE },
   process: {
     select: { id: true, name: true, code: true },
@@ -136,6 +154,9 @@ interface ResolvedInput {
    * "not set" and "no tolerance at all" become the same value. */
   tolerancePct: number | null;
   fromStock: boolean;
+  /** The planner's batch note. Empty for every untracked item and for anyone who
+   * simply did not fill it in — see `JobOrderStepInputBatch`. */
+  plannedBatches: PlannedBatchRow[];
 }
 
 interface ResolvedOutput {
@@ -674,6 +695,7 @@ async function buildSteps(
         // Overwritten by `classifyStepInputs` below, once every step's outputs
         // are known. Nothing may read it before then.
         fromStock: true,
+        plannedBatches: row.plannedBatches ?? [],
       })),
       resolvedOutputs: flagPrimaryOutput(outputs, index),
     });
@@ -858,6 +880,69 @@ function headerItemFrom(rows: readonly StepRow[]) {
   };
 }
 
+/**
+ * 🔴 EVERY PLANNED BATCH IS A CLAIM UNTIL THIS RUNS.
+ *
+ * `batchId` and `locationId` arrive from a browser. Postgres checks foreign keys
+ * OUTSIDE row-level security, so the FK alone accepts another tenant's batch id —
+ * it only rejects one that exists nowhere at all (the same trap documented on
+ * `Batch.ownerPartyId`). This is the check that actually matters, and it also
+ * catches the subtler error: a batch of a DIFFERENT item than the row it is
+ * planned against, which would read as a plan nobody could ever issue.
+ *
+ * The quantity rule mirrors the Issue dialog: what the batches add up to must be
+ * what the row plans to consume. A plan whose parts do not equal its whole is not
+ * a plan, it is two numbers.
+ */
+async function assertPlannedBatches(
+  tx: TenantClient,
+  organizationId: string,
+  rows: readonly StepRow[],
+) {
+  const wanted = new Map<string, PlannedBatchRow[]>();
+  for (const step of rows) {
+    for (const input of step.inputs) {
+      if (input.plannedBatches.length === 0) continue;
+      wanted.set(input.itemId, [...(wanted.get(input.itemId) ?? []), ...input.plannedBatches]);
+    }
+  }
+  if (wanted.size === 0) return;
+
+  const ids = [...new Set([...wanted.values()].flat().map((row) => row.batchId))];
+  const batches = await tx.batch.findMany({
+    // The `where` is what the query means; RLS is the net under it. Both stay.
+    where: { id: { in: ids }, organizationId, isDeleted: false },
+    select: { id: true, itemId: true, supplierBatchRef: true },
+  });
+  const byId = new Map(batches.map((batch) => [batch.id, batch]));
+
+  for (const step of rows) {
+    for (const input of step.inputs) {
+      if (input.plannedBatches.length === 0) continue;
+
+      for (const planned of input.plannedBatches) {
+        const batch = byId.get(planned.batchId);
+        if (!batch)
+          throw ApiError.badRequest('A planned batch does not exist in this organization.');
+        if (batch.itemId !== input.itemId) {
+          throw ApiError.badRequest(
+            `Batch ${batch.supplierBatchRef ?? 'selected'} belongs to a different item than the row it is planned against.`,
+          );
+        }
+      }
+
+      const total = roundQty(input.plannedBatches.reduce((sum, row) => sum + row.qty, 0));
+      const planned = input.plannedQty ?? 0;
+      if (Math.abs(total - roundQty(planned)) > 0.00005) {
+        throw ApiError.badRequest(
+          `Planned batches add up to ${total}, but the row plans ${planned}. They have to match.`,
+          { plannedBatches: `${total} allocated against ${planned} planned.` },
+        );
+      }
+    }
+  }
+}
+
 async function writeSteps(
   tx: TenantClient,
   organizationId: string,
@@ -865,6 +950,7 @@ async function writeSteps(
   rows: readonly StepRow[],
   userId?: string,
 ) {
+  await assertPlannedBatches(tx, organizationId, rows);
   const defs = await loadActiveDefinitions(tx, organizationId, 'job_order');
   for (const row of rows) {
     const { customFields: raw, inputs, outputs, ...scalars } = row;
@@ -895,6 +981,23 @@ async function writeSteps(
             fromStock: input.fromStock,
             createdBy: userId ?? null,
             updatedBy: userId ?? null,
+            /**
+             * 🔴 REPLACED WHOLESALE, never soft-deleted. A plan is a statement of
+             * CURRENT intent with no history worth keeping — unlike the documents
+             * that move stock, where a delete destroys the audit trail. Steps are
+             * already re-created on every save, so these ride along and the unique
+             * key can never be occupied by a dead row (see the migration's note).
+             */
+            plannedBatches: {
+              create: input.plannedBatches.map((planned) => ({
+                organizationId,
+                batchId: planned.batchId,
+                locationId: planned.locationId,
+                qty: planned.qty,
+                createdBy: userId ?? null,
+                updatedBy: userId ?? null,
+              })),
+            },
           })),
         },
         outputs: {

@@ -592,6 +592,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
           onClose={() => setAddStepsOpen(false)}
           jobOrderId={jobOrder.id}
           jobOrderNumber={jobOrder.jobOrderNumber}
+          ownership={jobOrder.ownership}
           steps={steps}
           onAdded={() => {
             // The list too: appending to a completed order reopens it as

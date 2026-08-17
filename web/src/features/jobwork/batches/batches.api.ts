@@ -38,6 +38,12 @@ export const availableBatchSchema = z.object({
    * unique — two live rows can both read `jv2`, and this is one of the few things
    * that separates them. */
   createdAt: z.string(),
+  /** Read-only on the Add Batches grid. `yyyy-mm-dd`, not an instant — these are
+   * `@db.Date` columns and an ISO timestamp renders a day early behind UTC. */
+  manufacturedDate: z.string().nullable().default(null),
+  expiryDate: z.string().nullable().default(null),
+  mrp: z.string().nullable().default(null),
+  sellingPrice: z.string().nullable().default(null),
   itemId: z.string(),
   uomId: z.string().nullable(),
   ownership: z.string(),

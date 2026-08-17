@@ -86,6 +86,15 @@ function toInputRows(rows: StepItemRowRead[] = []): StepItemRow[] {
     uomId: row.uomId,
     plannedQty: num(row.plannedQty),
     tolerancePct: num(row.tolerancePct),
+    /* The saved plan, back into the WRITE shape. The read rows carry the batch's
+       label and godown for rendering; the server only wants the three ids and the
+       quantity, and sending the hydrated objects back would be a payload the
+       schema rejects. */
+    plannedBatches: (row.plannedBatches ?? []).map((planned) => ({
+      batchId: planned.batchId,
+      locationId: planned.locationId,
+      qty: Number(planned.qty),
+    })),
   }));
 }
 
@@ -531,6 +540,14 @@ export function JobOrderForm({
           onChange={setSteps}
           errors={fieldErrors}
           showPlannedQty
+          /* 🔴 Job orders only — never on a route. A route is a template reused
+             across runs and a batch is a specific roll that will be gone by the
+             next one, so a route naming batches would be wrong the second time it
+             was used, and silently. */
+          allowPlannedBatches
+          /* Decides which batches may even be offered: one customer's goods must
+             never be planned into another's order (§5.3). */
+          ownership={ownership}
           lockedCount={lockedCount}
         />
       </section>
