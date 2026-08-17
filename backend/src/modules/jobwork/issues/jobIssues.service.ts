@@ -21,7 +21,7 @@ import type { CreateJobIssueInput } from './jobIssues.schemas.ts';
 /**
  * Issues — material leaving for a processor, and the challan it travels with.
  *
- * FOUR GUARDS, AND WHAT EACH ONE PREVENTS
+ * THREE GUARDS, AND WHAT EACH ONE PREVENTS
  *
  * 1. 🔴 OWNERSHIP. A batch may only be issued into a job order of the same
  *    ownership. Without it one customer's goods can be issued into another
@@ -30,11 +30,14 @@ import type { CreateJobIssueInput } from './jobIssues.schemas.ts';
  *    (§5.2).
  * 2. 🔴 AVAILABILITY, from the LEDGER. Not from `batches`, and not from a stored
  *    balance. A batch row outlives its last metre.
- * 3. 🔴 SINGLE BATCH, when the process demands it. Two dye batches in one garment is
- *    a reject nobody catches until the garment is assembled (§5.4).
- * 4. 🔴 TOLERANCE. Over the ceiling, an override reason is required — never
+ * 3. 🔴 TOLERANCE. Over the ceiling, an override reason is required — never
  *    silently allowed. A breach that leaves no trace is a tolerance that does
  *    not exist.
+ *
+ * ⚠️ A fourth — SINGLE BATCH, from `Process.requiresSingleBatch` — was removed on
+ * 2026-08-17 with the column. It ran over `resolvedLines`, i.e. AFTER FIFO
+ * allocation had already split one request line across batches, so on an
+ * untracked item it refused a quantity the user had no way to enter differently.
  *
  * And one rule about writes: every ledger row here goes through
  * `stockLedger.service.ts`. Nothing in this file touches `stock_ledger`.
@@ -205,7 +208,7 @@ async function resolveDestination(
 const ZERO = new Prisma.Decimal(0);
 
 /**
- * 🔴 Guard 4 — the tolerance ceiling, one item at a time.
+ * 🔴 Guard 3 — the tolerance ceiling, one item at a time.
  *
  * The planned quantity lives on `job_order_step_inputs` per item now (§5.7);
  * `step.plannedInputQty` is the principal input's copy of the same number and is
@@ -624,7 +627,6 @@ export async function createNewJobIssue(
             isDeleted: true,
           },
         },
-        process: { select: { requiresSingleBatch: true, name: true } },
       },
     });
     if (!step) throw ApiError.notFound('Job order step not found');
@@ -742,32 +744,13 @@ export async function createNewJobIssue(
       ownerPartyId: step.jobOrder.ownerPartyId,
     });
 
-    // 🔴 Guard 3 — shade-batch matching, PER ITEM. Blocked rather than warned
-    // about, because the defect it prevents is invisible until the garment is
-    // sewn. Per item because two items are necessarily two batches: checking the
-    // challan as a whole would refuse every multi-item issue on principle.
-    if (step.process.requiresSingleBatch) {
-      const batchesByItem = new Map<string, Set<string>>();
-      for (const line of resolvedLines) {
-        const seen = batchesByItem.get(line.itemId) ?? new Set<string>();
-        seen.add(line.batchId);
-        batchesByItem.set(line.itemId, seen);
-      }
-      if ([...batchesByItem.values()].some((batches) => batches.size > 1)) {
-        throw ApiError.badRequest(
-          `${step.process.name} must run on a single batch — mixing batches produces visible ` +
-            'shade variation that no inspection catches until the goods are assembled.',
-        );
-      }
-    }
-
     const qtyByItem = new Map<string, Prisma.Decimal>();
     for (const line of resolvedLines) {
       qtyByItem.set(line.itemId, (qtyByItem.get(line.itemId) ?? ZERO).plus(line.qty));
     }
     const totalQty = [...qtyByItem.values()].reduce((acc, qty) => acc.plus(qty), ZERO);
 
-    // 🔴 Guard 4 — tolerance, PER ITEM against that item's own planned quantity
+    // 🔴 Guard 3 — tolerance, PER ITEM against that item's own planned quantity
     // (§5.7). One ceiling for the whole challan would compare 12 cones of thread
     // against a plan written in metres of fabric.
     //

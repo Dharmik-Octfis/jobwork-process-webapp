@@ -111,7 +111,6 @@ job.
 | `code`, `description` | typed  | Free text. Nothing derives meaning from either                                                                                                                  |
 | `itemChanges`         | typed  | **Does what comes back differ from what went in?** Cutting: yes (fabric → panels). Washing: no. Drives whether the form seeds the output as a copy of the input |
 | `rateBasis`           | typed  | `per_issued_unit` \| `per_received_unit` — do you pay for what you sent or for what came back? Copied down to each step, overridable there                      |
-| `requiresSingleBatch` | typed  | Blocks mixing two batches of one item on one challan. Two dye batches in one garment show shade variation nobody catches until it is assembled                  |
 | `defaultTolerancePct` | typed  | The over-issue allowance a step inherits when it states none. 🔴 `null` ≠ `0` — null means "no default set", zero means "no tolerance whatsoever"               |
 
 ---

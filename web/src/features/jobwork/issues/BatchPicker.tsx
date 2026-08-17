@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useCombobox } from 'downshift';
-import { Check, ChevronDown, PackagePlus, Trash2 } from 'lucide-react';
+import { ChevronDown, PackagePlus, Trash2 } from 'lucide-react';
 import { blurOnWheel } from '../../../components/ui/blurOnWheel';
 import { formatQty, toNumber } from '../jobwork.schemas';
 import type { AvailableBatch } from '../batches/batches.api';
@@ -47,10 +47,6 @@ interface Props {
   /** True once the server returned a full page — more batches exist than are
    * shown, and the only way to reach them is a narrower search. */
   isCapped: boolean;
-  /** When the process demands one batch, picking a second is refused with the
-   * reason shown rather than silently ignored. */
-  singleBatchOnly: boolean;
-  onSingleBatchBlocked: () => void;
   onAddStock: () => void;
   isLoading: boolean;
 }
@@ -168,8 +164,6 @@ export function BatchPicker({
   search,
   onSearchChange,
   isCapped,
-  singleBatchOnly,
-  onSingleBatchBlocked,
   onAddStock,
   isLoading,
 }: Props) {
@@ -177,10 +171,8 @@ export function BatchPicker({
 
   /**
    * 🔴 Scoped to THIS item (§5.7). The dialog shows a section per input item and
-   * they share one selection map, so counting the whole map would make picking
-   * fabric block picking thread on any single-batch process. Two items are
-   * necessarily two batches; the rule is about two batches of the SAME item, which
-   * is what shade variation means, and the server checks it exactly this way.
+   * they share one selection map, so the rows rendered below — and the ones taken
+   * out of the dropdown — have to be this item's, not the whole challan's.
    */
   const picked = useMemo(
     () => Object.values(selection).filter((sel) => sel.batch.itemId === itemId),
@@ -212,17 +204,7 @@ export function BatchPicker({
     [batches, pickedKeys],
   );
 
-  /** Checked on ADDING a batch, not on typing into one. A second row sitting at
-   * zero is a pick the server would refuse the moment a quantity landed in it, so
-   * it never gets added at all — the refusal arrives while the user is still
-   * choosing rather than at save. */
-  const blockedByBatchRule = singleBatchOnly && picked.length > 0;
-
   const addBatch = (batch: AvailableBatch) => {
-    if (blockedByBatchRule) {
-      onSingleBatchBlocked();
-      return;
-    }
     onChange({ ...selection, [rowKey(batch)]: { batch, qty: 0 } });
   };
 
@@ -563,13 +545,6 @@ export function BatchPicker({
             </tbody>
           </table>
         </div>
-      )}
-
-      {singleBatchOnly && picked.length > 0 && (
-        <p style={{ margin: '8px 0 0 0', fontSize: 11, color: '#92400e' }}>
-          <Check size={11} style={{ verticalAlign: -1 }} /> This process runs on a single batch, so
-          only one can be picked per item.
-        </p>
       )}
     </div>
   );

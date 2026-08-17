@@ -32,12 +32,6 @@ export const createProcessSchema = openApiRegistry.register(
 
     rateBasis: z.enum(RATE_BASES).optional(),
 
-    /** Does the taka survive? Decides whether unit-wise receipt is even possible
-     * (§5.2.3). A property of the process, never a user preference. */
-
-    /** Shade-batch matching — blocks mixing batches on one issue (§5.2.4). */
-    requiresSingleBatch: z.boolean().optional(),
-
     /**
      * Percent. Nullable because "no default" is a real answer and is NOT the same
      * as 0, which means "no tolerance at all". Capped at 100 — a tolerance above

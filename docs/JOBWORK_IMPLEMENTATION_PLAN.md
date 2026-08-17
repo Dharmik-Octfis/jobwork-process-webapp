@@ -108,7 +108,7 @@ Key columns only — **this is not the schema**, it is a planning inventory.
 | 1      | `batches`                                                           | Traceable quantity                                   | `batchNumber`, `supplierBatchRef`, `itemId`, `ownership`, `ownerPartyId`, `parentBatchIds`, `sourceDocType/Id`, `state`                                                                                                                                                                                     |
 | 1      | `lot_packages`                                                      | Physical packages (takas)                            | `packageNumber` (restarts at 1 per batch), `qty`, `parentPackageId`, `state`                                                                                                                                                                                                                                |
 | 1      | `stock_ledger`                                                      | 🔴 Every movement                                    | `itemId`, `batchId`, `batchPackageId`, `locationId`, `ownership`, `qtyIn/qtyOut`, `valueIn/valueOut`, `sourceDocType/Id/LineId`, `movementType`, `postedAt`                                                                                                                                                 |
-| 1      | `processes`                                                         | Operation master                                     | `name`, `itemChanges`, `rateBasis`, `preservesPackaging`, `requiresSingleBatch`, `defaultTolerancePct`                                                                                                                                                                                                      |
+| 1      | `processes`                                                         | Operation master                                     | `name`, `itemChanges`, `rateBasis`, `defaultTolerancePct` (`preservesPackaging` dropped 2026-08-12, `requiresSingleBatch` 2026-08-17)                                                                                                                                                                       |
 | 2      | `routes` · `route_steps`                                            | Reusable template                                    | step: `seq`, `processId`, defaults for processor / rate / yield / tolerance                                                                                                                                                                                                                                 |
 | 2      | `route_step_inputs` · `route_step_outputs`                          | The template's bill of materials                     | `seq`, `itemId`, `uomId`, `plannedQty` / `expectedQty`, `isPrimary` on outputs                                                                                                                                                                                                                              |
 | 2      | `job_orders`                                                        | One run                                              | `jobOrderNumber`, `inputItemId`, `inputQty`, `routeId` + `routeNameSnapshot`, `ownership`, `status`                                                                                                                                                                                                         |
@@ -266,7 +266,8 @@ frontSeq` — `JobIssue.step` and `JobReceipt.step` are `onDelete: Cascade`, so 
 - [ ] Running totals: selected qty, already issued, remaining
 - [ ] **Tolerance guard** — ceiling is `plannedQty × (1 + tolerancePct/100)`; over it, block or require
       an override reason
-- [ ] **Single-batch guard** — `Process.requiresSingleBatch` blocks a second batch with the reason shown
+- [x] ~~**Single-batch guard**~~ — dropped 2026-08-17 with the column; two batches of one item on one
+      challan is now the supported path, pinned by a flow test
 - [ ] Ledger posting — `−qty` at source, `+qty` at the processor's location, auto-creating that
       location on first use
 - [ ] **Printable challan (PDF)** — goods cannot legally move without it. Not deferrable
@@ -501,6 +502,14 @@ someone reading the older sections: **`expectedYield`** (one ratio cannot relate
 outputs, and every output already carries its own expected quantity) and the **by-product value box**
 (every by-product is recorded at ₹0 and the primary absorbs the pot, which is §9.2.1's own default).
 `Process.preservesPackaging` and `requiresSingleBatch` came off the Process form with them.
+
+⚠️ **Removing `requiresSingleBatch` from the form alone was not enough, and the half-state was worse
+than either end.** The column and both enforcement points stayed for five days. Because
+`writableFields()` spread the flag into UPDATE as well as CREATE and the form no longer sent it, every
+process edit silently reset it — a rule nobody could set, see, or clear, that could still fire on
+legacy rows and on FIFO-split lines. It was removed end to end on 2026-08-17; §5.2.4 of the domain doc
+carries the reasoning. The lesson generalises to the two fields above: **dropping a control without
+dropping its column leaves a live rule with no way to reach it.**
 
 ### 12.6 ⚠️ The no-stock scaffold — temporary, and how to remove it
 

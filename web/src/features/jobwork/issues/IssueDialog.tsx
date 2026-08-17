@@ -270,8 +270,6 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
     (v) => !v.vendorTypes?.length || v.vendorTypes.includes('job_worker'),
   );
 
-  const singleBatchOnly = step.process?.requiresSingleBatch ?? false;
-
   /**
    * 🔴 WHETHER A PICKER APPEARS IS THE ITEM'S DECISION (2026-08-14).
    *
@@ -843,15 +841,6 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                       setSearchByItem((prev) => ({ ...prev, [input.itemId]: value }))
                     }
                     isCapped={itemBatches.length >= BATCH_LIMIT}
-                    /* Single-batch is a per-ITEM rule: two items are necessarily two
-                     batches, so checking the challan as a whole would refuse every
-                     multi-item issue on principle (§5.4). */
-                    singleBatchOnly={singleBatchOnly}
-                    onSingleBatchBlocked={() =>
-                      setNotice(
-                        `${step.processNameSnapshot} must run on a single batch — fabric from two dye batches shows shade variation nobody catches until the goods are assembled.`,
-                      )
-                    }
                     onAddStock={() => openAddStock(input.itemId)}
                     isLoading={query?.isLoading ?? false}
                   />

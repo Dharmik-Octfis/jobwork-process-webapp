@@ -4,23 +4,31 @@
 /// Sprints 2–4 and belong in THIS file (see docs/JOBWORK_IMPLEMENTATION_PLAN.md §8.1).
 ///
 /// A Process is what someone DOES to material: dyeing, printing, cutting,
-/// stitching. It is a small per-org master, but three of its flags are read by the
+/// stitching. It is a small per-org master, but two of its flags are read by the
 /// issue and receipt screens later and decide what those screens are even allowed
 /// to offer — so they exist from the first migration rather than being bolted on:
 ///
 ///   itemChanges          the thing that comes back is a DIFFERENT item (cloth → shirt).
 ///                        Domain doc §5.1: a changed unit means a changed item, never
 ///                        a conversion factor.
-///   requiresSingleBatch  shade-batch matching (§5.2.4). Mixing two dye batches in one
-///                        garment produces a reject no inspection catches until the
-///                        garment is assembled, so the Issue dialog blocks a second batch.
 ///   rateBasis            how the processor charges (§9.2). Decides which quantity the
 ///                        cost is multiplied by, so it cannot be inferred later.
 ///
-/// ⚠️ `preservesPackaging` was the fourth, and went with package-level tracking on
+/// ⚠️ `preservesPackaging` was a third, and went with package-level tracking on
 /// 2026-08-12. It existed only to decide unit-wise vs bulk receipt; with quantity
 /// granularity stopping at the batch, every receipt is bulk and the flag could only
 /// ever hold one meaningful value.
+///
+/// ⚠️ `requiresSingleBatch` was a fourth — shade-batch matching (§5.2.4) — and went
+/// on 2026-08-17. Do not re-add it without re-reading why it failed. It came off the
+/// Process form alongside `preservesPackaging`, but `writableFields()` kept spreading
+/// it into BOTH create and update, so every subsequent edit of a process silently
+/// reset it to false: the rule could not be set, seen, or deliberately cleared. Worse,
+/// the guard ran over `resolvedLines` — AFTER FIFO allocation splits one request line
+/// across batches — so on a non-batch-tracked item it refused a quantity the user had
+/// no picker for and no way to enter differently. If shade matching is ever wanted
+/// back, it belongs on the ITEM or the job order step, checked against what the user
+/// actually picked, not against what the allocator chose.
 model Process {
   id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String  @map("organization_id") @db.Uuid
@@ -39,9 +47,6 @@ model Process {
   /// is no weight to multiply, and a lump sum billed in full against a step that
   /// received nothing.
   rateBasis String @default("per_issued_unit") @map("rate_basis") @db.VarChar(30)
-
-  /// Blocks mixing batches on one issue — shade matching (§5.2.4).
-  requiresSingleBatch Boolean @default(false) @map("requires_single_batch")
 
   /// Default over-receipt allowance, in percent. Nullable: "no default" is a real
   /// answer and is not the same as 0 (which means "no tolerance at all").
