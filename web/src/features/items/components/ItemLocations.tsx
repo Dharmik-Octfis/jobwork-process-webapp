@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { Settings } from 'lucide-react';
+import { Settings, ChevronDown } from 'lucide-react';
 import { fetchLocations, type Location } from '../../configuration/locations/locations.api';
 import { AddOpeningStockModal } from './AddOpeningStockModal';
 import { itemsApi } from '../items.api';
@@ -15,7 +15,7 @@ interface ItemLocationsProps {
   isBatchTracked?: boolean;
 }
 
-export function ItemLocations({ orgId, itemId, isBatchTracked = true }: ItemLocationsProps) {
+export function ItemLocations({ orgId, itemId, isBatchTracked: _isBatchTracked = true }: ItemLocationsProps) {
   const queryClient = useQueryClient();
   const [stockType, setStockType] = useState<'accounting' | 'physical'>('accounting');
   const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);

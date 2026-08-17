@@ -41,9 +41,13 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
   });
 
   const isInventoryTracked = item?.trackInventory !== false && item?.track_inventory !== false;
-  const isBatchTracked =
-    isInventoryTracked &&
-    (item?.inventoryTracking === 'batch' || item?.inventory_tracking === 'batch');
+
+  const isBatchTracked = useMemo(() => {
+    if (!item || !isInventoryTracked) return false;
+    const tracking = String(item.inventoryTracking ?? item.inventory_tracking ?? '').toLowerCase();
+    return tracking === 'batch';
+  }, [item, isInventoryTracked]);
+
   const isCompositeItem =
     item?.itemType === 'Composite Item' || item?.item_type === 'Composite Item';
 
@@ -65,15 +69,6 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     queryFn: () => itemsApi.getOpeningStock(orgId!, itemId),
     enabled: Boolean(orgId && itemId),
   });
-
-  const isBatchTracked = useMemo(() => {
-    if (!item) return false;
-    return (
-      item.inventoryTracking === 'Batch' ||
-      item.inventory_tracking === 'Batch' ||
-      (Boolean(item.lotTracking) && item.lotTracking !== 'none')
-    );
-  }, [item]);
 
   const totalOpeningStock = useMemo(() => {
     if (Array.isArray(openingStockRows) && openingStockRows.length > 0) {
@@ -858,9 +853,18 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
               )}
             </div>
           </div>
-        ) : activeTab === 'Locations' ? (
+        ) : effectiveActiveTab === 'Locations' ? (
           <div style={{ margin: '0 -24px' }}>
-            <ItemLocations orgId={orgId!} itemId={itemId} />
+            <ItemLocations orgId={orgId!} itemId={itemId} isBatchTracked={isBatchTracked} />
+          </div>
+        ) : effectiveActiveTab === 'Batch Details' ? (
+          <div style={{ margin: '0 -24px' }}>
+            <ItemBatchDetails
+              orgId={orgId!}
+              itemId={itemId}
+              itemName={item.name}
+              inventoryTracking={item.inventoryTracking || item.inventory_tracking}
+            />
           </div>
         ) : (
           <div
