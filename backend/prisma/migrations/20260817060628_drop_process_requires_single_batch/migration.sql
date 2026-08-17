@@ -1,0 +1,25 @@
+-- drop_process_requires_single_batch
+--
+-- Removes `Process.requiresSingleBatch` — the shade-batch guard on the Issue
+-- dialog — end to end. The flag came off the Process form on 2026-08-12 with
+-- `preservesPackaging`, but the column and both enforcement points stayed, which
+-- left the rule in the worst possible state:
+--
+--   * `writableFields()` spread it into UPDATE as well as CREATE, and the form
+--     stopped sending it — so every subsequent edit of a process silently reset
+--     it to false. Nobody could set it, see it, or deliberately clear it.
+--   * The server guard ran over `resolvedLines`, i.e. AFTER FIFO allocation had
+--     already split one request line across several batches. On a
+--     non-batch-tracked item that refused a quantity the user had no picker for
+--     and no way to enter differently.
+--
+-- @destructive-ok: the column holds no decision anyone can still make. It has
+-- been unsettable from the UI since 2026-08-12 and is reset to false by any edit
+-- of the process, so a surviving `true` is a stale value from before that date
+-- rather than a rule in force. The reasoning is preserved on the Prisma model.
+--
+-- IF EXISTS because migrations here are not transactional: a re-run after a
+-- partial failure elsewhere must not abort on this line.
+
+-- AlterTable
+ALTER TABLE "processes" DROP COLUMN IF EXISTS "requires_single_batch";

@@ -25,6 +25,19 @@ import { JobOrderNumberConfigModal } from './JobOrderNumberConfigModal';
 
 interface Props {
   initialData?: Partial<JobOrder>;
+  /**
+   * 🔴 THE PREFILL IS ANOTHER ORDER'S PLAN, NOT ITS IDENTITY.
+   *
+   * `initialData` is a saved order, so everything that says *which* order it is
+   * has to come off here — one place, rather than at each of the three call sites
+   * that could get it wrong. Its number goes back to the series (the old one is
+   * printed on that order's challans); its step ids go, because a step id belongs
+   * to the order it was saved on and `jobOrderStepSchema` refuses a foreign one on
+   * create; its step statuses go, or the grid would freeze the rows that had
+   * already started on the ORIGINAL; and its dates go, because a due date belongs
+   * to the run that was promised, not to the plan being copied.
+   */
+  isClone?: boolean;
   onSubmit: (data: CreateJobOrderData) => void;
   isPending: boolean;
   onCancel: () => void;
@@ -85,12 +98,13 @@ function toOutputRows(rows: StepItemRowRead[] = []): StepItemRow[] {
   }));
 }
 
-function toFormSteps(order?: Partial<JobOrder>): JobOrderStepData[] {
+function toFormSteps(order?: Partial<JobOrder>, isClone = false): JobOrderStepData[] {
   if (!order?.steps?.length) return [emptyStep() as JobOrderStepData];
   return order.steps.map((step) => ({
     // Carried so the server can match the locked rows on save (§6.6). A route
-    // copied into a new order deliberately has none — see `toGridSteps`.
-    id: step.id,
+    // copied into a new order deliberately has none — see `toGridSteps` — and
+    // nor does a clone, which is the same copy from a different source.
+    id: isClone ? undefined : step.id,
     processId: step.processId,
     processorType: step.processorType,
     processorId: step.processorId,
@@ -125,6 +139,18 @@ function toGridSteps(route: Route): JobOrderStepData[] {
   }));
 }
 
+/** Closing an order short appends `Closed short: <reason>` to its remarks
+ * (`shortCloseJobOrder`). That line is how the PREVIOUS run ended — carried into
+ * a clone it would read as a note about work nobody has started yet. */
+function stripClosureNotes(remarks: string | null | undefined): string {
+  if (!remarks) return '';
+  return remarks
+    .split('\n')
+    .filter((line) => !line.trimStart().startsWith('Closed short:'))
+    .join('\n')
+    .trim();
+}
+
 function toDateInput(value: string | null | undefined): string {
   if (!value) return '';
   return new Date(value).toISOString().slice(0, 10);
@@ -141,25 +167,34 @@ function toDateInput(value: string | null | undefined): string {
  * route replaces the grid instead of locking it — and why a job order with no
  * route at all is completely normal, with the steps typed by hand.
  */
-export function JobOrderForm({ initialData, onSubmit, isPending, onCancel, fieldErrors }: Props) {
+export function JobOrderForm({
+  initialData,
+  isClone = false,
+  onSubmit,
+  isPending,
+  onCancel,
+  fieldErrors,
+}: Props) {
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
-  const isEdit = Boolean(initialData?.id);
+  const isEdit = Boolean(initialData?.id) && !isClone;
 
   /** `null` = "follow the series"; a string = the number the user typed over it. */
   const [typedNumber, setTypedNumber] = useState<string | null>(null);
   const [isNumberConfigOpen, setIsNumberConfigOpen] = useState(false);
   const [routeId, setRouteId] = useState<string>(initialData?.routeId ?? '');
   const [orderDate, setOrderDate] = useState(
-    toDateInput(initialData?.orderDate) || new Date().toISOString().slice(0, 10),
+    (isClone ? '' : toDateInput(initialData?.orderDate)) || new Date().toISOString().slice(0, 10),
   );
-  const [targetDate, setTargetDate] = useState(toDateInput(initialData?.targetDate));
+  const [targetDate, setTargetDate] = useState(isClone ? '' : toDateInput(initialData?.targetDate));
   const [ownership, setOwnership] = useState(initialData?.ownership ?? 'own');
   const [ownerPartyId, setOwnerPartyId] = useState<string | null>(
     initialData?.ownerPartyId ?? null,
   );
-  const [remarks, setRemarks] = useState(initialData?.remarks ?? '');
-  const [steps, setSteps] = useState<JobOrderStepData[]>(toFormSteps(initialData));
+  const [remarks, setRemarks] = useState(
+    (isClone ? stripClosureNotes(initialData?.remarks) : initialData?.remarks) ?? '',
+  );
+  const [steps, setSteps] = useState<JobOrderStepData[]>(toFormSteps(initialData, isClone));
   const [customFields, setCustomFields] = useState<CustomFieldValues>(
     (initialData?.customFields as CustomFieldValues) ?? {},
   );
@@ -177,10 +212,12 @@ export function JobOrderForm({ initialData, onSubmit, isPending, onCancel, field
    * locked here and be editable there. Erring toward MORE locked is the safe
    * direction: the save is refused with a message, never silently misapplied.
    */
-  const lockedCount = (initialData?.steps ?? []).reduce(
-    (count, step, index) => (step.status !== 'pending' ? index + 1 : count),
-    0,
-  );
+  const lockedCount = isClone
+    ? 0 // Nothing has run on THIS order yet — the source's work front is not its.
+    : (initialData?.steps ?? []).reduce(
+        (count, step, index) => (step.status !== 'pending' ? index + 1 : count),
+        0,
+      );
 
   const { data: routesPage } = useQuery({
     queryKey: ['routes', orgId, 'job-order-form'],
@@ -506,7 +543,7 @@ export function JobOrderForm({ initialData, onSubmit, isPending, onCancel, field
           values={customFields}
           onChange={setCustomFields}
           errors={fieldErrors}
-          applyDefaults={!initialData?.id}
+          applyDefaults={!isEdit}
         />
       </section>
 

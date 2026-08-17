@@ -50,15 +50,24 @@ export function ItemLocations({ orgId, itemId, isBatchTracked: _isBatchTracked =
     },
   });
 
-  const openingStockByLocation = useMemo(() => {
-    const map = new Map<string, number>();
+  // 🔴 `stockOnHand` FIRST — it is the ledger balance, which is what every other
+  // screen sees. Reading `openingStock` ahead of it froze this column at the
+  // declared figure, so an item that had since been issued to a processor still
+  // showed its full opening quantity here and nowhere else. The declared value and
+  // the batch total survive only as fallbacks for a payload that predates them; a
+  // location drained to 0 must read 0, which is why this tests nullish and not
+  // truthiness.
+  const stockByLocation = useMemo(() => {
+    const map = new Map<string, { onHand: number; committed: number; available: number }>();
     for (const row of Array.isArray(openingStockRows) ? openingStockRows : []) {
       const batchTotal = row.batches.reduce(
         (acc, batch) => acc + (Number(batch.quantityIn) || 0),
         0,
       );
-      const stockVal = Number(row.openingStock ?? row.stockOnHand ?? batchTotal) || 0;
-      map.set(row.locationId, stockVal);
+      const onHand = Number(row.stockOnHand ?? row.openingStock ?? batchTotal) || 0;
+      const committed = Number(row.committedStock ?? 0) || 0;
+      const available = Number(row.availableForSale ?? onHand - committed) || 0;
+      map.set(row.locationId, { onHand, committed, available });
     }
     return map;
   }, [openingStockRows]);
@@ -312,7 +321,11 @@ export function ItemLocations({ orgId, itemId, isBatchTracked: _isBatchTracked =
               [...locations]
                 .sort((a, b) => (a.isPrimary ? -1 : b.isPrimary ? 1 : 0))
                 .map((loc: Location) => {
-                  const stockOnHand = openingStockByLocation.get(loc.id) || 0;
+                  const stock = stockByLocation.get(loc.id) ?? {
+                    onHand: 0,
+                    committed: 0,
+                    available: 0,
+                  };
                   return (
                     <tr key={loc.id} style={{ borderBottom: '1px solid #eef0f3' }}>
                       <td
@@ -334,7 +347,7 @@ export function ItemLocations({ orgId, itemId, isBatchTracked: _isBatchTracked =
                           textAlign: 'right',
                         }}
                       >
-                        {stockOnHand.toFixed(2)}
+                        {stock.onHand.toFixed(2)}
                       </td>
                       <td
                         style={{
@@ -345,7 +358,7 @@ export function ItemLocations({ orgId, itemId, isBatchTracked: _isBatchTracked =
                           textAlign: 'right',
                         }}
                       >
-                        0.00
+                        {stock.committed.toFixed(2)}
                       </td>
                       <td
                         style={{
@@ -355,7 +368,7 @@ export function ItemLocations({ orgId, itemId, isBatchTracked: _isBatchTracked =
                           textAlign: 'right',
                         }}
                       >
-                        {stockOnHand.toFixed(2)}
+                        {stock.available.toFixed(2)}
                       </td>
                     </tr>
                   );

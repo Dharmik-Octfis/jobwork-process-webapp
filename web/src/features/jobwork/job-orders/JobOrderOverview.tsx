@@ -1,13 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Pencil } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Pencil } from 'lucide-react';
+import type { AxiosError } from 'axios';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
 import { IssueDialog } from '../issues/IssueDialog';
 import { ReceiveDialog } from '../receipts/ReceiveDialog';
 import { JOB_ORDER_STATUS_META, formatQty, statusMeta } from '../jobwork.schemas';
-import { fetchJobOrderOverview, shortCloseJobOrder } from './jobOrders.api';
+import { deleteJobOrder, fetchJobOrderOverview, shortCloseJobOrder } from './jobOrders.api';
 import { AddStepsDialog } from './AddStepsDialog';
 import { JobOrderFlow } from './JobOrderFlow';
 import { JobOrderStepDetail } from './JobOrderStepDetail';
@@ -23,6 +24,164 @@ const sectionLabel: React.CSSProperties = {
   letterSpacing: 0.4,
   margin: '0 0 8px 0',
 };
+
+interface MenuAction {
+  key: string;
+  label: string;
+  danger?: boolean;
+  onSelect: () => void;
+}
+
+/**
+ * The ▾ beside Edit — Clone / Close short / Delete.
+ *
+ * Plain buttons rather than `downshift` (CLAUDE.md: native first), but keyboard
+ * complete all the same: the trigger opens on ↓/Enter/Space, ↑↓ move between the
+ * rows with focus following, Enter runs one, Esc closes and hands focus back. The
+ * rows carry `tabIndex={-1}` because focus is driven here — only the trigger sits
+ * in the page's tab order, which is what keeps Tab walking this header the same
+ * way it walks every other one.
+ */
+function ActionsMenu({ actions, label }: { actions: MenuAction[]; label: string }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!wrapRef.current?.contains(event.target as Node)) setIsOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen) itemRefs.current[activeIndex]?.focus();
+  }, [isOpen, activeIndex]);
+
+  const close = () => {
+    setIsOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  const open = (index: number) => {
+    setActiveIndex(index);
+    setIsOpen(true);
+  };
+
+  return (
+    <div style={{ position: 'relative' }} ref={wrapRef}>
+      <button
+        type="button"
+        ref={triggerRef}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        aria-label={label}
+        title={label}
+        onClick={() => (isOpen ? setIsOpen(false) : open(0))}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            open(0);
+          } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            open(actions.length - 1);
+          }
+        }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '6px 8px',
+          border: '1px solid #d1d5db',
+          borderRadius: 4,
+          background: '#fff',
+          cursor: 'pointer',
+          color: '#333',
+        }}
+      >
+        <ChevronDown size={14} />
+      </button>
+
+      {isOpen && (
+        <div
+          role="menu"
+          aria-label={label}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowDown') {
+              event.preventDefault();
+              setActiveIndex((index) => (index + 1) % actions.length);
+            } else if (event.key === 'ArrowUp') {
+              event.preventDefault();
+              setActiveIndex((index) => (index - 1 + actions.length) % actions.length);
+            } else if (event.key === 'Escape') {
+              event.preventDefault();
+              close();
+            } else if (event.key === 'Tab') {
+              // Closing mid-Tab would unmount the focused row and drop focus to
+              // the body, restarting the walk at the top of the page. Park it on
+              // the trigger instead; the next Tab carries on from there.
+              event.preventDefault();
+              close();
+            }
+          }}
+          style={{
+            position: 'absolute',
+            top: '100%',
+            right: 0,
+            marginTop: 4,
+            minWidth: 180,
+            padding: '4px 0',
+            background: '#fff',
+            border: '1px solid #eef0f3',
+            borderRadius: 6,
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+            zIndex: 20,
+          }}
+        >
+          {actions.map((action, index) => (
+            <button
+              key={action.key}
+              type="button"
+              role="menuitem"
+              tabIndex={-1}
+              ref={(element) => {
+                itemRefs.current[index] = element;
+              }}
+              onMouseEnter={() => setActiveIndex(index)}
+              onClick={() => {
+                // Focus back on the trigger BEFORE the action runs: the row is
+                // about to unmount, and an action that opens a dialog would
+                // otherwise leave focus on the body with nothing to come back to.
+                close();
+                action.onSelect();
+              }}
+              style={{
+                display: 'block',
+                width: '100%',
+                padding: '8px 14px',
+                border: 'none',
+                background:
+                  index === activeIndex ? (action.danger ? '#fef2f2' : '#f8fafc') : '#fff',
+                color: action.danger ? '#dc2626' : '#1e293b',
+                fontFamily: 'inherit',
+                fontSize: 13,
+                fontWeight: 400,
+                textAlign: 'left',
+                cursor: 'pointer',
+              }}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** One number on the strip. */
 function Tile({ label, value, unit }: { label: string; value: string; unit?: string }) {
@@ -85,6 +244,8 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   const [addStepsOpen, setAddStepsOpen] = useState(false);
   const [shortCloseOpen, setShortCloseOpen] = useState(false);
   const [shortCloseReason, setShortCloseReason] = useState('');
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['job-order-overview', orgId, id],
@@ -116,6 +277,27 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
       queryClient.invalidateQueries({ queryKey: ['job-orders', orgId] });
       setShortCloseOpen(false);
       setShortCloseReason('');
+    },
+  });
+
+  /**
+   * Only an order that has issued nothing can go (`deleteJobOrderById`) — past
+   * that the ledger rows behind it have to stay, and the server says so in words.
+   * The refusal is shown in the dialog rather than swallowed: a Delete that
+   * quietly does nothing is the worse failure.
+   */
+  const remove = useMutation({
+    mutationFn: () => deleteJobOrder(orgId!, id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['job-orders', orgId] });
+      setDeleteOpen(false);
+      // The panel is showing a row that no longer exists; the standalone page is
+      // showing a document that no longer exists. Both leave.
+      if (onClose) onClose();
+      else navigate(`/organizations/${orgId}/jobwork/job-orders`);
+    },
+    onError: (error: AxiosError<{ message?: string }>) => {
+      setDeleteError(error.response?.data?.message ?? 'Could not delete this job order');
     },
   });
 
@@ -261,23 +443,38 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                 <Pencil size={14} /> Edit
               </button>
             )}
-            {!isClosed && (
-              <button
-                type="button"
-                onClick={() => setShortCloseOpen(true)}
-                style={{
-                  padding: '6px 12px',
-                  fontSize: 13,
-                  border: '1px solid #fed7aa',
-                  borderRadius: 4,
-                  background: '#fff',
-                  cursor: 'pointer',
-                  color: '#b45309',
-                }}
-              >
-                Close short
-              </button>
-            )}
+            {/* Clone and Delete apply to a closed order too — the first is the
+                usual reason anyone opens a finished one, and the second is the
+                server's call, not this page's. Close short is the exception: it
+                is the one action a closed order has already had. */}
+            <ActionsMenu
+              label={`More actions for ${jobOrder.jobOrderNumber}`}
+              actions={[
+                {
+                  key: 'clone',
+                  label: 'Clone',
+                  onSelect: () => navigate(`${listPath}/new?cloneFrom=${jobOrder.id}`),
+                },
+                ...(isClosed
+                  ? []
+                  : [
+                      {
+                        key: 'short-close',
+                        label: 'Close short',
+                        onSelect: () => setShortCloseOpen(true),
+                      },
+                    ]),
+                {
+                  key: 'delete',
+                  label: 'Delete',
+                  danger: true,
+                  onSelect: () => {
+                    setDeleteError(null);
+                    setDeleteOpen(true);
+                  },
+                },
+              ]}
+            />
           </div>
         </div>
 
@@ -465,6 +662,25 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
         onCancel={() => {
           setShortCloseOpen(false);
           setShortCloseReason('');
+        }}
+      />
+
+      <ConfirmDialog
+        isOpen={deleteOpen}
+        title="Delete Job Order"
+        message={
+          deleteError ? (
+            <span style={{ color: '#b91c1c' }}>{deleteError}</span>
+          ) : (
+            `Delete ${jobOrder.jobOrderNumber}? Only a job order that has not issued anything yet can be deleted.`
+          )
+        }
+        confirmText="Delete"
+        isConfirming={remove.isPending}
+        onConfirm={() => remove.mutate()}
+        onCancel={() => {
+          setDeleteOpen(false);
+          setDeleteError(null);
         }}
       />
     </div>

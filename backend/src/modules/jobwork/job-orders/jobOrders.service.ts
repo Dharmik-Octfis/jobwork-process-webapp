@@ -82,7 +82,7 @@ const STEP_INCLUDE = {
   inputs: { where: { isDeleted: false }, orderBy: { seq: 'asc' }, include: ROW_INCLUDE },
   outputs: { where: { isDeleted: false }, orderBy: { seq: 'asc' }, include: ROW_INCLUDE },
   process: {
-    select: { id: true, name: true, code: true, requiresSingleBatch: true },
+    select: { id: true, name: true, code: true },
   },
   workCentre: { select: { id: true, name: true } },
 } satisfies Prisma.JobOrderStepInclude;

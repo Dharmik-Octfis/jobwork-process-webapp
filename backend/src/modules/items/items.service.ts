@@ -12,6 +12,7 @@ import { filterWhere } from '../settings/list-views/listFilters.catalog.ts';
 import {
   createBatch,
   getBalance,
+  getBalanceByLocation,
   postMovement,
 } from '../inventory/stock-ledger/stockLedger.service.ts';
 import type { ItemOpeningStockDto } from './items.schemas.ts';
@@ -292,9 +293,20 @@ export class ItemsService {
     const positions = [...(await this.openingPositions(tx, itemId, organizationId)).values()];
     const activeEntries = positions.filter((position) => position.qty.greaterThan(0));
 
+    // 🔴 EVERY location the LEDGER puts this item at, not just the ones opening
+    // stock named (2026-08-17). Building the list from this document alone made the
+    // page blind to its own domain: material taken in against a job order, stock
+    // sitting at a processor after an issue, and a receipt's output all rendered as
+    // a zero at a location that really held them. 9 of 17 real balances in dev were
+    // invisible this way. The quantity was never wrong — the list of places was.
+    const balances = await getBalanceByLocation(tx, { organizationId, itemId });
+
     const locationIds = new Set<string>([
       ...declared.map((row) => row.locationId),
       ...activeEntries.map((entry) => entry.locationId),
+      ...[...balances]
+        .filter(([, balance]) => !balance.qty.isZero())
+        .map(([locationId]) => locationId),
     ]);
 
     if (locationIds.size === 0) {
@@ -343,7 +355,8 @@ export class ItemsService {
     const out = [];
     for (const locationId of locationIds) {
       const row = declared.find((d) => d.locationId === locationId);
-      const balance = await getBalance(tx, { organizationId, itemId, locationId });
+      // Off the map above — one grouped query, not an aggregate per location.
+      const balance = balances.get(locationId) ?? { qty: new Prisma.Decimal(0) };
       const mine = activeEntries.filter((entry) => entry.locationId === locationId);
 
       out.push({

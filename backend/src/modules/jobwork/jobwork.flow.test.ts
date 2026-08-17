@@ -518,36 +518,45 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
     expect(afterClose.jobOrder.status).toBe('short_closed');
   });
 
-  it('refuses to issue a second batch when the process demands one', async () => {
-    const shadeMatched = await createNewProcess(orgId, {
-      name: `Shade-matched dyeing ${unique()}`,
-      requiresSingleBatch: true,
-    });
+  /**
+   * The positive case that replaced `requiresSingleBatch` when the flag was
+   * removed on 2026-08-17. Two batches of ONE item on one challan is now the
+   * supported path, and it was never covered while the guard refused it — so the
+   * guard's removal is only complete once something asserts the split survives
+   * into the lines.
+   */
+  it('issues two batches of the same item on one challan', async () => {
+    const process = await createNewProcess(orgId, { name: `Two-batch dyeing ${unique()}` });
 
     // Two separate batches of the same item at the same place.
     const batchA = await seedStock(greyId, 100);
     const batchB = await seedStock(greyId, 100);
-    const batches = [batchA, batchB];
 
     const jobOrder = await createNewJobOrder(orgId, {
       steps: [
         {
-          processId: shadeMatched.id,
+          processId: process.id,
           processorId: dyerId,
           inputs: [{ itemId: greyId, plannedQty: 200 }],
         },
       ],
     });
 
-    await expect(
-      createNewJobIssue(orgId, {
-        jobOrderStepId: jobOrder.steps[0]!.id,
-        sourceLocationId: godownId,
-        lines: batches.map((batch) => ({ batchId: batch.id, qty: 50 })),
-      }),
-      // Shade variation is invisible until the garment is assembled, which is
-      // why this is a block and not a warning (§5.4).
-    ).rejects.toMatchObject({ status: 400 });
+    const issue = await createNewJobIssue(orgId, {
+      jobOrderStepId: jobOrder.steps[0]!.id,
+      sourceLocationId: godownId,
+      lines: [
+        { batchId: batchA.id, qty: 50 },
+        { batchId: batchB.id, qty: 50 },
+      ],
+    });
+
+    // Two lines, one per batch — not merged into a single 100 that loses which
+    // batch left the godown.
+    expect(issue.lines).toHaveLength(2);
+    expect(new Set(issue.lines.map((line) => line.batchId))).toEqual(
+      new Set([batchA.id, batchB.id]),
+    );
   });
 
   it('refuses a disposition split that does not add up', async () => {

@@ -8,8 +8,10 @@ import { paginatedSchema, type Paginated } from '../../../lib/pagination';
  * is allowed to offer, so the wording on the form matters as much as the column:
  *
  *   itemChanges         the thing that comes back is a different item
- *   requiresSingleBatch blocks mixing dye batches on one issue
  *   rateBasis           which quantity the processor's rate multiplies
+ *
+ * ⚠️ `requiresSingleBatch` was a third and is gone (2026-08-17) — see the
+ * tombstone on the Prisma model before considering it back.
  */
 
 /**
@@ -39,7 +41,6 @@ export const processSchema = z.object({
   description: z.string().nullable(),
   itemChanges: z.boolean(),
   rateBasis: z.string(),
-  requiresSingleBatch: z.boolean(),
   // Prisma serialises Decimal as a string over JSON; a plain `z.number()` here
   // would reject "2.500" and blank the whole row.
   defaultTolerancePct: z.union([z.string(), z.number()]).nullable(),
@@ -55,7 +56,6 @@ export const createProcessSchema = z.object({
   description: z.string().nullable().optional(),
   itemChanges: z.boolean().optional(),
   rateBasis: z.string().optional(),
-  requiresSingleBatch: z.boolean().optional(),
   defaultTolerancePct: z.number().min(0).max(100).nullable().optional(),
 });
 
