@@ -446,7 +446,10 @@ jobwork order can be issued into another customer's job order — you would be p
 on B's order and both stock reports would be wrong. This is the same class of failure as a missing
 tenant filter.
 
-### 5.3 The taka (batch unit) expansion
+### 5.3 The taka (batch unit) expansion — ⚠️ REMOVED 2026-08-12
+
+> This screen no longer exists. Package-level tracking was removed end to end; an item's stock is
+> a quantity against a batch. Kept as the record of what it did, because re-adding it starts here.
 
 > ⚠️ **SWITCHED OFF, 2026-08-07 — not decided against.** Issue and receive are both BATCH level:
 > material moves as a quantity against the batch and no screen names an individual taka. The code below
@@ -522,7 +525,6 @@ be silently wrong on the rest, which is the worst of both.
 | Date                           | `CTX`     | Server date. **Must be ≥ the date of every issue it closes**                                                                                                           |
 | Issue reference (multi-select) | `MASTER`  | `job_issues` where `jobOrderStepId = :step AND status IN ('issued','partially_returned') AND NOT isDeleted`. Multi-select because one receipt may close several issues |
 | Processor                      | `INHERIT` | From the selected issues. Locked — receiving from a different processor than you issued to is a transfer, not a receipt                                                |
-| **Mode (unit-wise / bulk)**    | `MASTER`  | 🔴 **Not a user preference.** `Process.preservesPackaging` decides it. Dyeing returns the same roll → unit-wise; cutting destroys rolls → bulk only                    |
 | ~~Output item / UoM~~          | —         | **Gone from the header.** A receipt returns several items now (domain §5.7), each with its own quantity and disposition split. They live in the Returned grid, §6.4    |
 | Custom fields                  | `CF`      | `entityType = 'job_receipt'`                                                                                                                                           |
 
@@ -531,7 +533,11 @@ units, of different lengths — §6.2 is the consumed side, §6.4 the returned s
 both would leave half its columns blank on every row, and the two sum checks would have to skip rows
 rather than add them up.
 
-### 6.2 Consumed grid — unit-wise mode
+### 6.2 Consumed grid — unit-wise mode — ⚠️ REMOVED 2026-08-12
+
+> `JobReceipt.mode` and `Process.preservesPackaging` are gone with packages. Every receipt is now
+> the bulk shape in §6.3: one row per ITEM. The disposition (reason, responsibility) moved to the
+> RETURNED grid, which is the only place that now says how much was rejected.
 
 > ⚠️ **SWITCHED OFF, 2026-08-07 — not decided against.** Issue and receive are both BATCH level:
 > material moves as a quantity against the batch and no screen names an individual taka. The code below
@@ -711,7 +717,6 @@ Useful for both the build sequence and for writing seed data.
 | Job Order create   | ≥1 Item · ≥1 UoM · ≥1 Location · ≥1 Process · (Route optional)                              |
 | Job Order Overview | A saved job order with ≥1 step                                                              |
 | **Issue dialog**   | A job order step · ≥1 job-worker Vendor · **stock in the ledger for the step's issue item** |
-| Taka expansion     | Item with `inventoryTracking = 'batch_and_unit'` · batch units created at Purchase Received |
 | Receive dialog     | ≥1 posted issue with an open balance                                                        |
 | Traceability       | ≥1 batch with genealogy                                                                     |
 
@@ -725,15 +730,14 @@ document puts Purchase Received in phase 2 and Issue in phase 3.
 
 Each has been seen in production systems of this shape:
 
-| Defect                                | Symptom                                                       | Correct source                                        |
-| ------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------- |
-| Batch picker reads `batches` directly | Shows fully-consumed batches; users issue stock that is gone  | `LEDGER` query with `HAVING > 0`                      |
-| Availability stored as a column       | Drifts from history; nobody can say when                      | `LEDGER`, always computed                             |
-| Missing `ownership` filter            | One customer's goods issued into another's job order          | Filter on `jobOrder.ownership`                        |
-| Party name stored as FK only          | Reprinting an old challan shows today's address               | `SNAP` alongside the FK                               |
-| Route referenced live                 | Editing a route silently rewrites running job orders          | `SNAP` at job order creation                          |
-| Number allocated on dialog open       | Sequence gaps; a GST compliance issue                         | Allocate inside the save transaction                  |
-| Receive mode offered as a choice      | Users pick taka-wise for cutting, where no 1:1 mapping exists | `Process.preservesPackaging`                          |
-| Yield reused as a conversion factor   | Stock silently invented or destroyed                          | Observation only; never a factor                      |
-| Unfiltered vendor dropdown            | Transporters offered as processors                            | Filter on `vendorTypes`                               |
-| `createdBy` accepted from the client  | Audit trail forgeable                                         | `CTX` from `req.user.id`, omitted from the input type |
+| Defect                                | Symptom                                                      | Correct source                                        |
+| ------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------- |
+| Batch picker reads `batches` directly | Shows fully-consumed batches; users issue stock that is gone | `LEDGER` query with `HAVING > 0`                      |
+| Availability stored as a column       | Drifts from history; nobody can say when                     | `LEDGER`, always computed                             |
+| Missing `ownership` filter            | One customer's goods issued into another's job order         | Filter on `jobOrder.ownership`                        |
+| Party name stored as FK only          | Reprinting an old challan shows today's address              | `SNAP` alongside the FK                               |
+| Route referenced live                 | Editing a route silently rewrites running job orders         | `SNAP` at job order creation                          |
+| Number allocated on dialog open       | Sequence gaps; a GST compliance issue                        | Allocate inside the save transaction                  |
+| Yield reused as a conversion factor   | Stock silently invented or destroyed                         | Observation only; never a factor                      |
+| Unfiltered vendor dropdown            | Transporters offered as processors                           | Filter on `vendorTypes`                               |
+| `createdBy` accepted from the client  | Audit trail forgeable                                        | `CTX` from `req.user.id`, omitted from the input type |

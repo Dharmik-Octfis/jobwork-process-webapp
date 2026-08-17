@@ -671,6 +671,23 @@ model JobIssueLine {
 
   batchId String @map("batch_id") @db.Uuid
 
+  /// 🔴 WHICH GODOWN THIS LINE PHYSICALLY LEFT (2026-08-14).
+  ///
+  /// The header's `sourceLocationId` is the DISPATCH POINT — the address printed
+  /// on the Rule 55 challan. This is where the goods actually were, which is not
+  /// the same question once a site has more than one godown: a mill with three
+  /// racks under one roof loads a single vehicle from all three, and forcing one
+  /// challan per rack invents paperwork that does not match the lorry.
+  ///
+  /// 🔴 CONSTRAINED, NOT FREE. Every line must sit in the same DISPATCH SITE as
+  /// the header — the root of the location hierarchy (`Location.parentId`). Two
+  /// godowns under one site share an address, so one challan is honest; two
+  /// genuinely separate premises have two addresses and legally need two
+  /// challans. The rule is derived from how the customer modelled their
+  /// locations, so nothing has to be configured, and a flat setup with no parents
+  /// behaves exactly as it did before this column existed.
+  sourceLocationId String @map("source_location_id") @db.Uuid
+
   qty Decimal @db.Decimal(18, 4)
 
   customFields Json     @default("{}") @map("custom_fields")
@@ -680,17 +697,19 @@ model JobIssueLine {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  jobIssue      JobIssue           @relation(fields: [jobIssueId], references: [id], onDelete: Cascade)
-  item          Item               @relation("JobIssueLineItem", fields: [itemId], references: [id])
-  uom           UnitOfMeasurement? @relation("JobIssueLineUom", fields: [uomId], references: [id])
-  batch         Batch              @relation("JobIssueLineBatch", fields: [batchId], references: [id])
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jobIssue       JobIssue           @relation(fields: [jobIssueId], references: [id], onDelete: Cascade)
+  item           Item               @relation("JobIssueLineItem", fields: [itemId], references: [id])
+  uom            UnitOfMeasurement? @relation("JobIssueLineUom", fields: [uomId], references: [id])
+  batch          Batch              @relation("JobIssueLineBatch", fields: [batchId], references: [id])
+  sourceLocation Location           @relation("JobIssueLineSource", fields: [sourceLocationId], references: [id])
   createdByUser User?              @relation("JobIssueLineCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User?              @relation("JobIssueLineUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   receiptLines JobReceiptLine[]
 
   @@index([organizationId, jobIssueId])
+  @@index([organizationId, sourceLocationId])
   @@map("job_issue_lines")
 }
 

@@ -11,8 +11,9 @@
 > Quantity granularity stops at the batch. `Item.lot_tracking` went too; `inventory_tracking`
 > (`none | batch`) is now the single tracking column and the item form writes it.
 >
-> **Text below about takas, packages, unit-wise receiving or `lot_packages` is HISTORY.** It is
-> kept for the reasoning, which is where re-adding packages would start.
+> **This spec has been brought in line** — the per-taka grid it specified in §5 is marked as no
+> longer buildable, and the CSV import is one file. `JOBWORK_DOMAIN_AND_MODULE_MAP.md` keeps the
+> package reasoning, marked as history.
 
 **Status:** design, agreed 2026-08-06. No code written from it yet.
 
@@ -54,7 +55,7 @@ with `ownership = customer`"_, which is only possible if PR works with no PO and
 (verified 2026-08-06: captured in `items.schemas.ts`, echoed by `items.service.ts`, rendered on
 `CreateItemPage.tsx` / `EditItemPage.tsx`, and read by no balance, report or ledger query).
 
-A single number on the item cannot express which batch, which location, which packages, whose goods, or
+A single number on the item cannot express which batch, which location, whose goods, or
 when they arrived — and every one of those is required before the Issue screen can offer the stock.
 It is also a column, so it gets `UPDATE`d, which contradicts the append-only ledger (§5.6).
 
@@ -105,7 +106,7 @@ multi-customer stock common. See §9.
 | **It is**                    | The document that records goods physically arriving, and the only thing (after D3) that creates inward stock               |
 | **It is not**                | A price document. Rate is captured provisionally; the Purchase Bill and three-way match remain deferred (domain doc §11.2) |
 | **It is not**                | A quality document. Inspection/rejection of purchased goods is out of scope for v1 — everything received is accepted       |
-| **Writes to the ledger via** | `stockLedger.service.ts` only. `postMovement`, `createBatch`, `createPackages`. Nothing else, ever                         |
+| **Writes to the ledger via** | `stockLedger.service.ts` only. `postMovement`, `createBatch`. Nothing else, ever                                           |
 
 ---
 
@@ -124,7 +125,7 @@ multi-customer stock common. See §9.
 
 | #       | Change                                                                                                                                                                                                                                                                                                                              | Why                                                                                                                                                                                                                                                    |
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **I-1** | **Surface `stockingUomId`, `inventoryTracking` and `nature` on the item form.** They exist in the database and are set by nothing in the UI today                                                                                                                                                                                   | PR cannot receive an item with no stocking uom (§4.6 V-2), and `inventoryTracking` decides whether the taka grid appears at all. Leaving them invisible means every new item defaults to `inventoryTracking = 'none'` and no user can change it        |
+| **I-1** | **Surface `stockingUomId`, `inventoryTracking` and `nature` on the item form.** They exist in the database and are set by nothing in the UI today                                                                                                                                                                                   | PR cannot receive an item with no stocking uom (§4.6 V-2), and `inventoryTracking` decides whether batch fields appear at all. ✅ Both surfaced 2026-08-12                                                                                             |
 | **I-2** | **Block PR (not item save) when `stockingUomId` is null.** A clear message: _"Set a stocking unit on «item» before receiving it."_                                                                                                                                                                                                  | The backfill left unmatched rows null on purpose — a loud, fixable failure beats a silently wrong balance (`items.prisma:37`). Do **not** make the column required by migration: that would need a value invented for every unmatched row              |
 | **I-3** | **Remove `openingStock` and `openingStockValuePerUnit`** from the form, the Zod schemas, the service mapping and finally the table                                                                                                                                                                                                  | D2. A field a user fills, that saves, and that does nothing, is worse than a missing field — they believe they have stock and they have none                                                                                                           |
 | **I-4** | ✅ **DONE 2026-08-12 — both are now live.** `trackInventory` = is this item stocked at all; `inventoryTracking` = `none \| batch`, NOT NULL, lowercase. The third column they duplicated (`lot_tracking`) was dropped and every jobwork reader repointed at `inventoryTracking`, so the item form's radio finally changes behaviour | It was the worst version of I-3: a control the user could set, that saved, and that nothing read — so ticking "Batch" produced an item tracking nothing. Backed with real logic rather than dropped, because the form already asked the right question |
@@ -173,7 +174,7 @@ breaks — PR's `opening_balance` source type covers it.
 | `customer_supplied` | **Customer** (picked) | none         | `customer` + `ownerPartyId` | **Forced to 0**       | `receipt`      |
 | `opening_balance`   | none                  | none         | `own`                       | Typed                 | `opening`      |
 
-Everything else on the form is identical across the four. That is the point — one grid, one taka
+Everything else on the form is identical across the four. That is the point — one grid, one batch
 entry screen, one ledger write path.
 
 🔴 **The zero value on `customer_supplied` is not enforced here.** `postMovement` already zeroes
@@ -186,17 +187,12 @@ passes whatever it has and the rule stays in one place. Do not re-implement it.
 posted → cancelled
 ```
 
-**There is no draft in v1.** A draft would need somewhere to hold typed package quantities before the
-batch exists, which means a staging table that duplicates `lot_packages` — for a document that in
-practice is filled and saved at the gate in one sitting. Material In has worked this way through
-Sprints 2–4.
-
-If a draft is added later, hold the packages as JSONB on the line and materialise them at post. Do not
-add a second package table.
+**There is no draft in v1.** The document is filled and saved at the gate in one sitting, and
+Material In has worked this way through Sprints 2–4.
 
 ### 4.3 Schema
 
-Two tables. Packages are **not** a third table — they are `lot_packages`, created by the post.
+Two tables.
 
 ```prisma
 model PurchaseReceipt {
@@ -255,7 +251,7 @@ model PurchaseReceipt {
 
 model PurchaseReceiptLine {
   id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  /// Denormalised so this table carries its own RLS policy, like lot_packages.
+  /// Denormalised so this table carries its own RLS policy, like job_issue_lines.
   organizationId String @map("organization_id") @db.Uuid
 
   purchaseReceiptId  String  @map("purchase_receipt_id") @db.Uuid
@@ -343,32 +339,24 @@ Tags per `JOBWORK_UI_FIELD_SOURCES.md` §1.
 | Batch number       | `AUTO` / `INPUT`     | Blank → `NumberSequence('batch')`. Typed when the physical tag already carries one                 |
 | Supplier batch ref | `INPUT`              | The vendor's batch number, the heat number, whatever the tag says                                  |
 
-**Package (taka) grid — per line, only when `Item.inventoryTracking = 'batch'`**
-
-| Column           | Tag     | Source                                                                              |
-| ---------------- | ------- | ----------------------------------------------------------------------------------- |
-| Package no.      | `AUTO`  | Restarts at 1 inside the batch. Assigned by `createPackages`                        |
-| Label            | `INPUT` | Defaults to `<batchNumber>/<n>`; mills override with the supplier's own taka number |
-| **Measured qty** | `INPUT` | The whole reason `lot_packages` exists. No two are the same                         |
-| Sum vs line qty  | `CALC`  | Live. Must match exactly before save (V-4)                                          |
-
-A **"generate N rows"** helper is worth building — 50 takas is the worked example in domain doc §A.1,
-and 50 manual row-adds is how a user gives up on the screen.
+⚠️ **A per-taka grid was specified here and is no longer buildable.** Package-level tracking went
+on 2026-08-12 — a line receives a QUANTITY against one batch. When the item is batch-tracked
+(`Item.inventoryTracking = 'batch'`), one PR line may still need several batches from one delivery;
+spec that as repeated lines, not as a package grid.
 
 ### 4.6 Validation rules
 
-| #        | Rule                                                                                                                                                  | Failure                                                                                                             |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| **V-1**  | Source-type conditionals: `purchase_order` needs a PO; `direct` needs a vendor; `customer_supplied` needs a customer; `opening_balance` needs neither | 400 with the field keyed                                                                                            |
-| **V-2**  | Every line's item must have `stockingUomId` set                                                                                                       | 400: _"Set a stocking unit on «item» before receiving it"_                                                          |
-| **V-3**  | Packages may only be entered when `Item.inventoryTracking = 'batch'`                                                                                  | 400 — copy the message from `jobOrders.service.ts:336`                                                              |
-| **V-4**  | `SUM(packages.qty) === line.receivedQty`, exactly                                                                                                     | 400. **Never silently overwrite one with the other** — one of the two is a typo and guessing invents or loses stock |
-| **V-5**  | `receivedQty > 0`                                                                                                                                     | 400                                                                                                                 |
-| **V-6**  | The PO, its lines, the vendor, the customer, the item, the uom and the location all belong to this org                                                | 400. FK checks bypass RLS in Postgres — the service must check                                                      |
-| **V-7**  | A PO line's item must equal the receipt line's item                                                                                                   | 400                                                                                                                 |
-| **V-8**  | Over-receipt against ordered qty → **warn, do not block**                                                                                             | Partial and over deliveries are normal (domain doc §6.1)                                                            |
-| **V-9**  | `receiptDate` not in the future                                                                                                                       | 400                                                                                                                 |
-| **V-10** | Custom fields validated through `customFields.engine.ts` in the **same** transaction                                                                  | 400 with `customFields.<key>` details                                                                               |
+| #        | Rule                                                                                                                                                  | Failure                                                        |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| **V-1**  | Source-type conditionals: `purchase_order` needs a PO; `direct` needs a vendor; `customer_supplied` needs a customer; `opening_balance` needs neither | 400 with the field keyed                                       |
+| **V-2**  | Every line's item must have `stockingUomId` set                                                                                                       | 400: _"Set a stocking unit on «item» before receiving it"_     |
+| **V-3**  | A batch-tracked item (`Item.inventoryTracking = 'batch'`) needs a supplier batch ref on every line                                                    | 400 — the physical tag is the whole point of tracking it       |
+| **V-5**  | `receivedQty > 0`                                                                                                                                     | 400                                                            |
+| **V-6**  | The PO, its lines, the vendor, the customer, the item, the uom and the location all belong to this org                                                | 400. FK checks bypass RLS in Postgres — the service must check |
+| **V-7**  | A PO line's item must equal the receipt line's item                                                                                                   | 400                                                            |
+| **V-8**  | Over-receipt against ordered qty → **warn, do not block**                                                                                             | Partial and over deliveries are normal (domain doc §6.1)       |
+| **V-9**  | `receiptDate` not in the future                                                                                                                       | 400                                                            |
+| **V-10** | Custom fields validated through `customFields.engine.ts` in the **same** transaction                                                                  | 400 with `customFields.<key>` details                          |
 
 ### 4.7 What the save writes
 
@@ -380,16 +368,15 @@ In one transaction, in this order:
    1. `purchase_receipt_lines` row
    2. `createBatch(tx, { itemId, uomId, batchNumber?, supplierBatchRef, ownership, ownerPartyId, sourceDocType: 'purchase_receipt', sourceDocId: receipt.id, parentBatchIds: [] })`
    3. write `batchId` back onto the line
-   4. when packages were entered: `createPackages(tx, { batchId, packages })`
-   5. `postMovement` — **one row per package**, or one row for the batch when there are none.
-      `movementType` per §4.1, `qtyIn` = the measured quantity, `valueIn` = that package's share
+   4. `postMovement` — one row for the batch. `movementType` per §4.1, `qtyIn` = the received
+      quantity, `valueIn` = the line's value
 4. Nothing else. PO status is **derived**, not written — see §4.9
 
-🔴 **Value is spread across packages pro-rata, remainder on the last row.** Copy
-`jobOrders.service.ts:407-428` exactly. Putting the whole amount on the first taka makes one roll
+🔴 **Value is spread across batches pro-rata, remainder on the last row.** Copy
+`jobOrders.service.ts:407-428` exactly. Putting the whole amount on the first batch makes one
 carry the cost of forty, and every per-unit cost derived from it is wrong.
 
-🔴 **Use `runAsDocument`, not `runAsTenant`.** A 50-taka receipt writes ~100 rows through
+🔴 **Use `runAsDocument`, not `runAsTenant`.** A many-line receipt writes rows through
 `postMovement`, each of which re-reads its batch; Prisma's 5-second default transaction timeout is
 comfortably exceeded and the failure shape is a half-written document. `runAsDocument` already exists
 in `jobwork.types.ts` — move it somewhere shared (`src/lib/`) rather than importing jobwork from
@@ -406,7 +393,7 @@ Cancelling posts **reversing entries**; it never edits or deletes (§5.6).
 2. For every ledger row the receipt wrote, post its opposite with `movementType: 'reversal'` and a
    `remarks` carrying the reason
 3. `status → 'cancelled'`, stamp `cancelledAt` / `cancelledBy` / `cancelReason`
-4. Soft-delete the batches and packages the receipt created (they now hold zero and must not appear in
+4. Soft-delete the batches the receipt created (they now hold zero and must not appear in
    any picker)
 
 ### 4.9 PO linkage
@@ -463,27 +450,26 @@ backend/prisma/schema/purchases.prisma        + PurchaseReceipt, PurchaseReceipt
 backend/src/modules/purchases/receipts/       purchaseReceipts.{routes,controller,service,schemas,types}.ts
 web/src/features/purchases/receipts/          purchaseReceipts.api.ts · .schemas.ts
                                               PurchaseReceiptsList · CreatePurchaseReceipt
-                                              PurchaseReceiptDetail · ReceiptLinesGrid · PackageGrid
+                                              PurchaseReceiptDetail · ReceiptLinesGrid
 ```
 
 Copy `src/modules/purchases/vendors/` for module shape. Copy
-`web/src/features/jobwork/job-orders/MaterialInSection.tsx` for the package grid — it already solves
+`web/src/features/jobwork/job-orders/MaterialInSection.tsx` for the lines grid — it already solves
 the sum-check and the row generation.
 
 ---
 
 ## 5. Reuse — do not rebuild
 
-| Need                                                | Already exists                                                                              |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Batch creation, package creation, ledger posting    | `stockLedger.service.ts` — `createBatch`, `createPackages`, `postMovement`, `postMovements` |
-| Document number allocation                          | `allocateNumber` (`lib/numberSequence.ts`), `PR-` prefix already reserved                   |
-| Long-transaction budget                             | `runAsDocument` (`jobwork.types.ts` — move to `src/lib/`)                                   |
-| Package grid with live sum check                    | `MaterialInSection.tsx`                                                                     |
-| List page with search, pagination, columns, filters | `VendorsList.tsx`                                                                           |
-| Detail page with activity + comments                | `VendorDetail.tsx`                                                                          |
-| Modal with focus trap                               | `components/ui/Modal.tsx`                                                                   |
-| Dropdowns                                           | `Select.tsx` · `SearchableSelect.tsx` · `ComboBox.tsx`                                      |
+| Need                                                | Already exists                                                            |
+| --------------------------------------------------- | ------------------------------------------------------------------------- |
+| Batch creation, ledger posting                      | `stockLedger.service.ts` — `createBatch`, `postMovement`, `postMovements` |
+| Document number allocation                          | `allocateNumber` (`lib/numberSequence.ts`), `PR-` prefix already reserved |
+| Long-transaction budget                             | `runAsDocument` (`jobwork.types.ts` — move to `src/lib/`)                 |
+| List page with search, pagination, columns, filters | `VendorsList.tsx`                                                         |
+| Detail page with activity + comments                | `VendorDetail.tsx`                                                        |
+| Modal with focus trap                               | `components/ui/Modal.tsx`                                                 |
+| Dropdowns                                           | `Select.tsx` · `SearchableSelect.tsx` · `ComboBox.tsx`                    |
 
 ---
 
@@ -502,8 +488,8 @@ the sum-check and the row generation.
 
 ⚠️ **Step 1 is now partly done too:** `stockingUomId` is on the item form (2026-08-07), set by the
 existing Unit dropdown, which writes the FK and the legacy `unit` string together. `inventoryTracking` and
-`nature` are still unsurfaced — `inventoryTracking` matters much less while taka-level movement is off
-(plan §12.5), but PR's package grid needs it before takas come back.
+`nature` were still unsurfaced when this was written; ✅ `inventoryTracking` was surfaced and made
+load-bearing on 2026-08-12 (I-4), and `nature` remains open.
 
 ---
 
@@ -551,16 +537,17 @@ early breaks every job order.
 
 ## 8. Go-live: opening stock at volume
 
-The screen is not the hard part. A mill switching systems has thousands of takas in hand on day one,
-and nobody is typing those (domain doc §12, question 7).
+The screen is not the hard part. A mill switching systems has thousands of batches in hand on day
+one, and nobody is typing those (domain doc §12, question 7).
 
 **CSV import against `sourceType = 'opening_balance'`** is the real requirement, and it is the thing
 that decides whether a rollout succeeds. Two files or one file with a parent key:
 
 ```
 item_sku, batch_number, supplier_batch_ref, location, qty, value, received_date
-item_sku, batch_number, package_label, package_qty
 ```
+
+One file since 2026-08-12: a batch is the finest granularity, so there is no second per-package file.
 
 Import validates everything in §4.6, reports every failing row **before** writing anything, then posts
 as one or more receipts. Not in the first release of PR, but the schema above already supports it —

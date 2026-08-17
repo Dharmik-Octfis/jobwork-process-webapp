@@ -4,7 +4,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { X } from 'lucide-react';
 import { z } from 'zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createItemCategory, updateItemCategory } from '../../inventory/item-categories/item-categories.api';
+import {
+  createItemCategory,
+  updateItemCategory,
+} from '../../inventory/item-categories/item-categories.api';
 import type { ItemCategory } from '../../inventory/item-categories/item-categories.api';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import { useParams } from 'react-router-dom';
@@ -146,9 +149,7 @@ export function CategoryFormModal({
         </div>
 
         <div style={{ padding: 'var(--space-5)' }}>
-          <div
-            style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}
-          >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-danger)' }}>
                 Category Name*

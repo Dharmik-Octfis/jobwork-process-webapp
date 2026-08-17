@@ -29,12 +29,13 @@ const th: React.CSSProperties = {
 const td: React.CSSProperties = { padding: '8px 10px', fontSize: 13, color: '#333' };
 
 /**
- * A batch number, as a chip.
+ * A batch REFERENCE, as a chip — what is written on the tag, never the internal
+ * `batchNumber`, which since 2026-08-14 does not leave the server.
  *
  * 🔴 It is an IDENTIFIER, not a footnote — somebody reads it off a physical tag
  * and types it into a search box, so it needs to be findable at a glance and
  * copyable without selecting half a sentence. Monospaced for the same reason:
- * BATCH-00011 and BATCH-000ll are one glyph apart in a proportional face.
+ * `jv2/DY11` and `jv2/DYll` are one glyph apart in a proportional face.
  *
  * Green is stock you can issue onward; amber is rework, kept in its own batch so
  * the pieces stay countable.
@@ -325,15 +326,15 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
             {receipt.outputBatch && (
               <tr>
                 <td style={rowLabel}>Output batch</td>
-                <td style={rowValue}>{receipt.outputBatch.batchNumber}</td>
+                <td style={rowValue}>{receipt.outputBatch.supplierBatchRef ?? '—'}</td>
               </tr>
             )}
             {receipt.reworkBatch && (
               <tr>
                 <td style={rowLabel}>Rework batch</td>
                 <td style={{ ...rowValue, color: '#b45309' }}>
-                  {receipt.reworkBatch.batchNumber} — kept separate so the reworked pieces stay
-                  countable
+                  {receipt.reworkBatch.supplierBatchRef ?? '—'} — kept separate so the reworked
+                  pieces stay countable
                 </td>
               </tr>
             )}
@@ -416,10 +417,13 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
                     {(row.outputBatch || row.reworkBatch) && (
                       <span style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
                         {row.outputBatch && (
-                          <BatchChip batch={row.outputBatch.batchNumber} tone="good" />
+                          <BatchChip batch={row.outputBatch.supplierBatchRef ?? '—'} tone="good" />
                         )}
                         {row.reworkBatch && (
-                          <BatchChip batch={row.reworkBatch.batchNumber} tone="rework" />
+                          <BatchChip
+                            batch={row.reworkBatch.supplierBatchRef ?? '—'}
+                            tone="rework"
+                          />
                         )}
                       </span>
                     )}

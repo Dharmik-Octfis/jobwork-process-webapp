@@ -349,6 +349,10 @@ to be reconciled.
 
 ### 5.2 Batch and Batch Unit — the traceability spine
 
+> ⚠️ **HISTORY as of 2026-08-12.** Batch units / packages were removed end to end — quantity
+> granularity stops at the batch. This section is kept deliberately: it is the reasoning that
+> decided where the boundary sits, and re-adding per-taka tracking would start here.
+
 - A **Batch** is the traceable quantity. It carries value, ownership, genealogy (`parentBatchIds`),
   and current state. Every movement references a batch.
 - A **Batch Unit** is the physical package inside it — the taka, roll, bale, coil, plate, bundle. It
@@ -427,6 +431,10 @@ legal traceability requirement for structural steel) lands in exactly this field
 where people look for it: a **Batches tab on the PO detail page** (`PO-0031 · 12 batches · 5,000.00 MTR`).
 
 #### 5.2.3 Batch units need parentage too — but only sometimes
+
+> ⚠️ **HISTORY as of 2026-08-12.** Batch units / packages were removed end to end — quantity
+> granularity stops at the batch. This section is kept deliberately: it is the reasoning that
+> decided where the boundary sits, and re-adding per-taka tracking would start here.
 
 Taka-wise receipt (§8.4) matches _issued_ package to _returned_ package one-to-one, with a wastage
 figure per package. That mapping is `BatchUnit.parentBatchUnitId`. It only exists when the physical
@@ -1036,6 +1044,11 @@ meet.
 
 Mirrors the issue, and is where §5.1, §5.5 and §5.7 all land.
 
+> ⚠️ **2026-08-12:** the unit-wise (taka-by-taka) shape described below is gone with package
+> tracking. Every receipt is the bulk shape — one row per ITEM — and the disposition (reason,
+> responsibility) is typed on the RETURNED grid, which is now the only place that says how much was
+> rejected. The two-grid split below is still exactly right and still shipped.
+
 🔴 **Two grids, because there are now two lists.** What was consumed and what came back are different
 items, in different units, of different lengths — one table cannot hold both without half its columns
 being blank on every row.
@@ -1336,6 +1349,10 @@ an order for 2,800 printed shirts, buys grey fabric, runs five processes, dispat
 | **PO-0031** | Sunrise Mills · Grey Fabric 60×60 · 5,000 MTR @ ₹50.00 = **₹250,000** |
 
 ### A.1 Purchase Received — the batch and the takas are born
+
+> ⚠️ **HISTORY as of 2026-08-12.** Batch units / packages were removed end to end — quantity
+> granularity stops at the batch. This section is kept deliberately: it is the reasoning that
+> decided where the boundary sits, and re-adding per-taka tracking would start here.
 
 **PR-0007** (01 Aug) → **BATCH-00012** · Grey Fabric 60×60 · 5,000.00 MTR · ₹250,000 · `ownership = own`
 

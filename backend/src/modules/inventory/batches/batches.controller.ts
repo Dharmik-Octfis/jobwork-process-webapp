@@ -25,6 +25,15 @@ const availabilityQuerySchema = z.object({
     .enum(['true', 'false'])
     .optional()
     .transform((v) => v === 'true'),
+  /** The picker narrows by typing rather than paging: a batch is looked up by the
+   * number on its tag, and nobody walks page 7 of a batch list. */
+  search: z.string().trim().min(1).max(100).optional(),
+  /**
+   * A ceiling, and it has a default on purpose. An item with three hundred live
+   * batches is normal in a mill, and the picker that renders them is inside a
+   * dialog — so the answer is bounded here and narrowed with `search`.
+   */
+  limit: z.coerce.number().int().positive().max(500).default(200),
 });
 
 openApiRegistry.registerPath({
@@ -39,9 +48,11 @@ openApiRegistry.registerPath({
       locationId: z.string().optional(),
       ownership: z.string().optional(),
       withPackages: z.string().optional(),
+      search: z.string().optional(),
+      limit: z.string().optional(),
     }),
   },
-  responses: { 200: { description: 'Available batches, each with its takas when tracked' } },
+  responses: { 200: { description: 'Available batches, newest balances derived from the ledger' } },
 });
 
 openApiRegistry.registerPath({

@@ -26,14 +26,13 @@ interface Props {
 /**
  * 🔴 ONE CONSUMED ROW — what this receipt accounts for on the INPUT side.
  *
- * Unit-wise: one row per taka that went out, and its disposition columns are
- * what build the returned batch's packages — the 1:1 mapping that cannot be
- * rebuilt afterwards (§6.2).
+ * One row per ITEM: "how much of the fabric, how much of the thread". Grouped per
+ * item rather than one total, or the allocation would settle a panel receipt by
+ * eating the thread, which is simply older.
  *
- * Bulk: one row per ITEM, because the takas were destroyed and all that is left
- * is "how much of the fabric, how much of the thread". Grouped per item rather
- * than one total, or the allocation would settle a panel receipt by eating the
- * thread, which is simply older.
+ * ⚠️ There was a second shape, unit_wise, with one row per taka and a 1:1 mapping
+ * back to the roll that went out. It went with package-level tracking on
+ * 2026-08-12 — goods come back as a quantity against the batch.
  */
 interface Row {
   key: string;
@@ -72,6 +71,13 @@ interface ReturnedRow {
   valueShare: number | null;
   reasonId: string | null;
   responsibility: string | null;
+  /** 🔴 The label the accepted goods carry from here on. What comes back from a
+   * processor is physically new and has no number of its own, and the internal
+   * `batchNumber` is never shown — so without this the batch is a blank row in
+   * the next step's picker. Required for batch-tracked items only. */
+  batchReference: string;
+  /** Rework becomes its own batch, so it cannot share the accepted one's label. */
+  reworkBatchReference: string;
 }
 
 const labelStyle: React.CSSProperties = {
@@ -130,19 +136,13 @@ const sectionHeading: React.CSSProperties = {
 /**
  * The Receive dialog — the second genuinely new screen (§9).
  *
- * THREE THINGS IT DOES THAT ARE NOT OBVIOUS FROM LOOKING AT IT
+ * TWO THINGS IT DOES THAT ARE NOT OBVIOUS FROM LOOKING AT IT
  *
- * 1. 🔴 THE MODE IS NOT A CHOICE. `Process.preservesPackaging` decides whether
- *    goods come back taka by taka or as one bulk quantity, and the dialog states
- *    the reason in words rather than showing a disabled toggle (§6.1). Offering
- *    the choice is how someone records a 1:1 taka mapping for an operation that
- *    physically destroyed the takas.
+ * 1. 🔴 THE ROWS ARE GENERATED, NOT ENTERED. They come from what is still out
+ *    against the selected challans (§6.2). Re-keying quantities that are already
+ *    on the challan is how the two lists stop matching.
  *
- * 2. 🔴 THE ROWS ARE GENERATED, NOT ENTERED. They come from what is still out
- *    against the selected challans (§6.2). Re-keying forty taka numbers that are
- *    already on the challan is how the two lists stop matching.
- *
- * 3. 🔴 THE SPLIT MUST ADD UP. Accepted + rework + scrap + returned has to equal
+ * 2. 🔴 THE SPLIT MUST ADD UP. Accepted + rework + scrap + returned has to equal
  *    received on every row, and the dialog will not save otherwise. That one rule
  *    is what makes a separate "Rejection Note" document unnecessary (§6.4).
  */
@@ -203,7 +203,6 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
   });
   const reasons = reasonsPage?.results ?? [];
 
-  const mode = prefill?.mode ?? 'bulk';
   /* Both units come off the step's two LISTS — primary output and principal
      input. The scalars that mirrored them went with Migration B (2026-08-12). */
   const plannedPrimaryOut =
@@ -226,64 +225,41 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
     if (!prefill) return [];
     const open = prefill.lines.filter((line) => selectedIssueIds.includes(line.jobIssueId));
 
-    let base: Row[];
-    if (mode === 'unit_wise') {
-      base = open.map((line) => ({
-        key: line.jobIssueLineId,
-        jobIssueId: line.jobIssueId,
-        jobIssueLineId: line.jobIssueLineId,
+    // 🔴 One row per ITEM. A single "Total" row across fabric, thread and
+    // buttons is a number in no unit at all, and the server refuses a bulk
+    // line that does not say which item it accounts for.
+    const byItem = new Map<string, Row>();
+    for (const line of open) {
+      const itemId = line.itemId ?? 'unknown';
+      const existing = byItem.get(itemId);
+      if (existing) {
+        existing.issuedQty += toNumber(line.issuedQty);
+        continue;
+      }
+      byItem.set(itemId, {
+        key: `bulk:${itemId}`,
+        jobIssueId: null,
+        jobIssueLineId: null,
         itemId: line.itemId,
-        itemName: line.itemName ?? '',
+        itemName: line.itemName ?? 'Item',
         unit: line.uomSymbol ?? '',
-        label:
-          line.packageLabel ??
-          (line.packageNumber ? `${line.batchNumber}/${line.packageNumber}` : line.batchNumber),
+        label: line.itemName ?? 'Item',
         issuedQty: toNumber(line.issuedQty),
-        receivedQty: toNumber(line.issuedQty),
-        acceptedQty: toNumber(line.issuedQty),
+        receivedQty: 0,
+        acceptedQty: 0,
         reworkQty: 0,
         scrapQty: 0,
         returnedQty: 0,
         reasonId: null,
         responsibility: null,
-      }));
-    } else {
-      // 🔴 One row per ITEM. A single "Total" row across fabric, thread and
-      // buttons is a number in no unit at all, and the server refuses a bulk
-      // line that does not say which item it accounts for.
-      const byItem = new Map<string, Row>();
-      for (const line of open) {
-        const itemId = line.itemId ?? 'unknown';
-        const existing = byItem.get(itemId);
-        if (existing) {
-          existing.issuedQty += toNumber(line.issuedQty);
-          continue;
-        }
-        byItem.set(itemId, {
-          key: `bulk:${itemId}`,
-          jobIssueId: null,
-          jobIssueLineId: null,
-          itemId: line.itemId,
-          itemName: line.itemName ?? 'Item',
-          unit: line.uomSymbol ?? '',
-          label: line.itemName ?? 'Item',
-          issuedQty: toNumber(line.issuedQty),
-          receivedQty: 0,
-          acceptedQty: 0,
-          reworkQty: 0,
-          scrapQty: 0,
-          returnedQty: 0,
-          reasonId: null,
-          responsibility: null,
-        });
-      }
-      base = [...byItem.values()];
+      });
     }
+    const base: Row[] = [...byItem.values()];
 
     // Edits for rows that no longer exist are simply never read — un-ticking a
     // challan cannot leave its quantities behind in the totals.
     return base.map((row) => ({ ...row, ...edits[row.key] }));
-  }, [prefill, selectedIssueIds, mode, edits]);
+  }, [prefill, selectedIssueIds, edits]);
 
   /**
    * 🔴 WHAT CAME BACK, as many items as actually came back (§5.7).
@@ -314,45 +290,15 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
       valueShare: null,
       reasonId: null,
       responsibility: null,
+      batchReference: '',
+      reworkBatchReference: '',
     }));
   }, [returnedEdits, prefill]);
 
-  /**
-   * In unit-wise mode the per-taka split IS the main output — it is what builds
-   * its packages — so that row is derived rather than typed, and the server
-   * refuses the two if they disagree.
-   */
-  const takaTotals = useMemo(
-    () =>
-      rows.reduce(
-        (acc, row) => ({
-          received: acc.received + row.receivedQty,
-          accepted: acc.accepted + row.acceptedQty,
-          rework: acc.rework + row.reworkQty,
-          scrap: acc.scrap + row.scrapQty,
-          returned: acc.returned + row.returnedQty,
-        }),
-        { received: 0, accepted: 0, rework: 0, scrap: 0, returned: 0 },
-      ),
-    [rows],
-  );
-
-  const effectiveReturned: ReturnedRow[] = useMemo(
-    () =>
-      returnedRows.map((row, index) =>
-        mode === 'unit_wise' && index === 0
-          ? {
-              ...row,
-              receivedQty: takaTotals.received,
-              acceptedQty: takaTotals.accepted,
-              reworkQty: takaTotals.rework,
-              scrapQty: takaTotals.scrap,
-              returnedQty: takaTotals.returned,
-            }
-          : row,
-      ),
-    [returnedRows, mode, takaTotals],
-  );
+  // What came back is typed on the returned rows, full stop. Under unit_wise the
+  // first returned row used to be DERIVED from the consumed rows' per-taka split;
+  // with packages gone there is no per-taka split to derive it from.
+  const effectiveReturned: ReturnedRow[] = returnedRows;
 
   const totals = useMemo(
     () => ({
@@ -370,6 +316,27 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
    * exist — that one rule is what makes a separate rejection note unnecessary. */
   const brokenRows = effectiveReturned.filter(
     (row) => Math.abs(row.acceptedQty + row.reworkQty + row.scrapQty - row.receivedQty) > 0.00005,
+  );
+
+  /**
+   * 🔴 A batch-tracked item's new batch must be named here or nowhere. The server
+   * refuses it in `createBatch`; this is the same rule on the near side, so the
+   * refusal arrives while the box is still on screen rather than at save.
+   *
+   * Only for `inventoryTracking = 'batch'` — an untracked item's batch is ledger
+   * plumbing nobody ever sees, so a label for it would be a question with no
+   * purpose. Same line Zoho draws.
+   */
+  const batchRefRequired = (row: ReturnedRow) =>
+    Boolean(row.itemId && items.find((i) => i.id === row.itemId)?.inventoryTracking === 'batch');
+
+  /** Rows that need a reference and have not been given one — accepted goods, and
+   * rework separately, because they become two independent batches. */
+  const unlabelledRows = effectiveReturned.filter(
+    (row) =>
+      batchRefRequired(row) &&
+      ((row.acceptedQty > 0 && !row.batchReference.trim()) ||
+        (row.reworkQty > 0 && !row.reworkBatchReference.trim())),
   );
 
   /** What this receipt consumes, per item — for the preview, which must say what
@@ -407,18 +374,18 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
     mutationFn: () => {
       /**
        * Two independent lists (§5.7): what this receipt consumes, and what came
-       * back. In bulk mode the consumed rows carry no disposition at all — the
-       * returned grid is the only place that is said.
+       * back. The consumed rows carry NO disposition — the returned grid is the
+       * only place that is said.
        */
       const lines: JobReceiptLineData[] = rows.map((row) => ({
         itemId: row.itemId,
         jobIssueId: row.jobIssueId,
         jobIssueLineId: row.jobIssueLineId,
         issuedQty: row.issuedQty,
-        receivedQty: mode === 'unit_wise' ? row.receivedQty : 0,
-        acceptedQty: mode === 'unit_wise' ? row.acceptedQty : 0,
-        reworkQty: mode === 'unit_wise' ? row.reworkQty : 0,
-        scrapQty: mode === 'unit_wise' ? row.scrapQty : 0,
+        receivedQty: 0,
+        acceptedQty: 0,
+        reworkQty: 0,
+        scrapQty: 0,
         // ⚠️ "Sent back" is not asked for. Goods refused at the gate never
         // entered stock, so nothing was ever posted for them — the box recorded
         // a number no report reads and one more figure to reconcile. What you
@@ -443,6 +410,8 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
             reworkQty: row.reworkQty,
             scrapQty: row.scrapQty,
             returnedQty: 0,
+            batchReference: row.batchReference.trim() || null,
+            reworkBatchReference: row.reworkBatchReference.trim() || null,
             // 🔴 Position, not a control. The first returned item carries the
             // cost of the operation; every other row takes the value typed for
             // it (§9.2.1). A radio asking which was which decided nothing in the
@@ -493,6 +462,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
      */
     Boolean(effectiveLocationId) &&
     brokenRows.length === 0 &&
+    unlabelledRows.length === 0 &&
     effectiveReturned.every((row) => Boolean(row.itemId)) &&
     totals.received > 0 &&
     totals.issued > 0 &&
@@ -774,36 +744,41 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                       <th style={th} scope="col">
                         Scrap
                       </th>
+                      <th style={th} scope="col">
+                        Batch ref
+                      </th>
+                      {/* 🔴 The disposition lives on THIS grid since 2026-08-12. It used
+                          to sit on the consumed rows, per taka; with packages gone the
+                          returned row is the only place that says how much was
+                          rejected, so it has to be the place that says why. */}
+                      <th style={th} scope="col">
+                        Reason
+                      </th>
+                      <th style={th} scope="col">
+                        Whose
+                      </th>
                       <th style={th} scope="col" />
                     </tr>
                   </thead>
                   <tbody>
-                    {effectiveReturned.map((row, index) => {
-                      // 🔴 The FIRST returned item carries the cost. Position,
-                      // not a control — see the note on the Value cell.
-                      const isMain = index === 0;
-                      const derived = mode === 'unit_wise' && isMain;
+                    {effectiveReturned.map((row) => {
                       const cell = (
                         field: 'receivedQty' | 'acceptedQty' | 'reworkQty' | 'scrapQty',
                         label: string,
                       ) => (
                         <td style={td}>
-                          {derived ? (
-                            <span style={{ color: '#64748b' }}>{formatQty(row[field])}</span>
-                          ) : (
-                            <input
-                              type="number"
-                              onWheel={blurOnWheel}
-                              step="0.0001"
-                              min="0"
-                              aria-label={`${label} for ${row.itemId}`}
-                              value={row[field]}
-                              onChange={(e) =>
-                                updateReturned(row.key, { [field]: Number(e.target.value) || 0 })
-                              }
-                              style={numberCell}
-                            />
-                          )}
+                          <input
+                            type="number"
+                            onWheel={blurOnWheel}
+                            step="0.0001"
+                            min="0"
+                            aria-label={`${label} for ${row.itemId}`}
+                            value={row[field]}
+                            onChange={(e) =>
+                              updateReturned(row.key, { [field]: Number(e.target.value) || 0 })
+                            }
+                            style={numberCell}
+                          />
                         </td>
                       );
                       return (
@@ -824,6 +799,80 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                           {cell('acceptedQty', 'Good')}
                           {cell('reworkQty', 'Rework')}
                           {cell('scrapQty', 'Scrap')}
+                          {/* 🔴 The only label these goods will ever carry. What a
+                              processor hands back is physically new and has no
+                              number of its own, and `batchNumber` is internal and
+                              never shown — leave this empty on a batch-tracked
+                              item and the next step's picker offers a blank row.
+                              Two boxes, because rework becomes its own batch. */}
+                          <td style={{ ...td, minWidth: 160 }}>
+                            <input
+                              type="text"
+                              value={row.batchReference}
+                              onChange={(e) =>
+                                updateReturned(row.key, { batchReference: e.target.value })
+                              }
+                              placeholder={batchRefRequired(row) ? 'Required' : 'Optional'}
+                              aria-label="Batch reference for the accepted goods"
+                              style={{
+                                ...numberCell,
+                                width: '100%',
+                                textAlign: 'left',
+                                borderColor:
+                                  batchRefRequired(row) && !row.batchReference.trim()
+                                    ? '#fca5a5'
+                                    : '#d1d5db',
+                              }}
+                            />
+                            {row.reworkQty > 0 && (
+                              <input
+                                type="text"
+                                value={row.reworkBatchReference}
+                                onChange={(e) =>
+                                  updateReturned(row.key, {
+                                    reworkBatchReference: e.target.value,
+                                  })
+                                }
+                                placeholder={batchRefRequired(row) ? 'Rework ref*' : 'Rework ref'}
+                                aria-label="Batch reference for the rework goods"
+                                style={{
+                                  ...numberCell,
+                                  width: '100%',
+                                  textAlign: 'left',
+                                  marginTop: 4,
+                                  borderColor:
+                                    batchRefRequired(row) && !row.reworkBatchReference.trim()
+                                      ? '#fca5a5'
+                                      : '#d1d5db',
+                                }}
+                              />
+                            )}
+                          </td>
+                          <td style={{ ...td, minWidth: 170 }}>
+                            <Select
+                              value={row.reasonId ?? ''}
+                              onChange={(value) =>
+                                updateReturned(row.key, { reasonId: value || null })
+                              }
+                              options={[
+                                { value: '', label: '—' },
+                                ...reasons.map((r) => ({ value: r.id, label: r.name })),
+                              ]}
+                              ariaLabel="Rejection reason"
+                              minWidth={0}
+                            />
+                          </td>
+                          <td style={{ ...td, minWidth: 130 }}>
+                            <Select
+                              value={row.responsibility ?? ''}
+                              onChange={(value) =>
+                                updateReturned(row.key, { responsibility: value || null })
+                              }
+                              options={[{ value: '', label: '—' }, ...RESPONSIBILITY_OPTIONS]}
+                              ariaLabel="Who is responsible"
+                              minWidth={0}
+                            />
+                          </td>
                           <td style={td}>
                             <button
                               type="button"
@@ -866,6 +915,8 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                       valueShare: null,
                       reasonId: null,
                       responsibility: null,
+                      batchReference: '',
+                      reworkBatchReference: '',
                     },
                   ])
                 }
@@ -888,6 +939,15 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                   Good + rework + scrap must equal received on every row.
                 </p>
               )}
+              {/* Named here or nowhere — the batch has no other label, and it is
+                  the row somebody has to find in the next step's picker. */}
+              {unlabelledRows.length > 0 && (
+                <p style={{ fontSize: 12, color: '#b91c1c', margin: '8px 0 0 0' }}>
+                  {unlabelledRows.length === 1
+                    ? 'One returned item is batch-tracked and still needs a batch reference.'
+                    : `${unlabelledRows.length} returned items are batch-tracked and still need a batch reference.`}
+                </p>
+              )}
               {/* 🔴 Say what is missing. Preview is disabled until something has
                   actually come back, and a dead button with nothing beside it is
                   how somebody concludes the screen is broken. */}
@@ -899,50 +959,18 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
             </section>
 
             <section style={{ marginBottom: 20 }}>
-              <h3 style={sectionHeading}>
-                {mode === 'unit_wise' ? 'Taka by taka' : 'What this accounts for'}
-              </h3>
+              <h3 style={sectionHeading}>What this accounts for</h3>
 
               <div style={{ overflowX: 'auto', border: '1px solid #eef0f3', borderRadius: 4 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 940 }}>
                   <thead>
                     <tr style={{ background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
                       <th style={th} scope="col">
-                        {mode === 'unit_wise' ? 'Taka' : 'Item'}
+                        Item
                       </th>
                       <th style={th} scope="col">
-                        {mode === 'unit_wise' ? `Issued (${inUnit})` : 'Still out'}
+                        Still out
                       </th>
-                      {/* 🔴 Only unit-wise carries a disposition here: those
-                          per-taka numbers ARE the main output, and they build its
-                          packages. In bulk mode the takas were destroyed, so what
-                          came back is said once, above, per item — showing these
-                          columns would be four boxes whose values are ignored. */}
-                      {mode === 'unit_wise' && (
-                        <>
-                          <th style={th} scope="col">
-                            Received ({outUnit})
-                          </th>
-                          <th style={th} scope="col">
-                            Accepted
-                          </th>
-                          <th style={th} scope="col">
-                            Rework
-                          </th>
-                          <th style={th} scope="col">
-                            Scrap
-                          </th>
-                          <th style={th} scope="col">
-                            Returned
-                          </th>
-                          <th style={th} scope="col">
-                            Reason
-                          </th>
-                          <th style={th} scope="col">
-                            Whose
-                          </th>
-                        </>
-                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -958,101 +986,21 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                         >
                           <td style={{ ...td, fontWeight: 500, color: '#111' }}>{row.label}</td>
                           <td style={td}>
-                            {mode === 'unit_wise' ? (
-                              formatQty(row.issuedQty)
-                            ) : (
-                              /* Editable in bulk: this receipt may close only part
-                                 of what is still out for this item. */
-                              <input
-                                type="number"
-                                onWheel={blurOnWheel}
-                                step="0.0001"
-                                min="0"
-                                value={row.issuedQty || ''}
-                                onChange={(e) =>
-                                  update(row.key, { issuedQty: Number(e.target.value) || 0 })
-                                }
-                                aria-label={`${row.label} quantity accounted for`}
-                                style={numberCell}
-                              />
-                            )}
+                            {/* Editable: this receipt may close only part of what
+                                is still out for this item. */}
+                            <input
+                              type="number"
+                              onWheel={blurOnWheel}
+                              step="0.0001"
+                              min="0"
+                              value={row.issuedQty || ''}
+                              onChange={(e) =>
+                                update(row.key, { issuedQty: Number(e.target.value) || 0 })
+                              }
+                              aria-label={`${row.label} quantity accounted for`}
+                              style={numberCell}
+                            />
                           </td>
-                          {mode === 'unit_wise' && (
-                            <>
-                              <td style={td}>
-                                <input
-                                  type="number"
-                                  onWheel={blurOnWheel}
-                                  step="0.0001"
-                                  min="0"
-                                  value={row.receivedQty || ''}
-                                  onChange={(e) => {
-                                    const receivedQty = Number(e.target.value);
-                                    // Accepted follows received while the row is
-                                    // otherwise untouched, so the common case — it all
-                                    // came back good — takes no typing at all.
-                                    const untouched = row.reworkQty === 0 && row.scrapQty === 0;
-                                    update(row.key, {
-                                      receivedQty,
-                                      ...(untouched ? { acceptedQty: receivedQty } : {}),
-                                    });
-                                  }}
-                                  aria-label={`${row.label} received quantity`}
-                                  style={numberCell}
-                                />
-                              </td>
-                              {(['acceptedQty', 'reworkQty', 'scrapQty'] as const).map((field) => (
-                                <td style={td} key={field}>
-                                  <input
-                                    type="number"
-                                    onWheel={blurOnWheel}
-                                    step="0.0001"
-                                    min="0"
-                                    value={row[field] || ''}
-                                    onChange={(e) =>
-                                      update(row.key, {
-                                        [field]: Number(e.target.value),
-                                      } as Partial<Row>)
-                                    }
-                                    aria-label={`${row.label} ${field.replace('Qty', '')} quantity`}
-                                    style={numberCell}
-                                  />
-                                </td>
-                              ))}
-                              <td style={td}>
-                                <Select
-                                  value={row.reasonId ?? ''}
-                                  onChange={(value) => {
-                                    const reason = reasons.find((r) => r.id === value);
-                                    update(row.key, {
-                                      reasonId: value || null,
-                                      // The reason's usual responsibility pre-fills;
-                                      // it is a default, never a rule.
-                                      responsibility:
-                                        row.responsibility ?? reason?.defaultResponsibility ?? null,
-                                    });
-                                  }}
-                                  options={[
-                                    { value: '', label: '—' },
-                                    ...reasons.map((r) => ({ value: r.id, label: r.name })),
-                                  ]}
-                                  ariaLabel={`${row.label} rejection reason`}
-                                  minWidth={150}
-                                />
-                              </td>
-                              <td style={td}>
-                                <Select
-                                  value={row.responsibility ?? ''}
-                                  onChange={(value) =>
-                                    update(row.key, { responsibility: value || null })
-                                  }
-                                  options={[{ value: '', label: '—' }, ...RESPONSIBILITY_OPTIONS]}
-                                  ariaLabel={`${row.label} responsibility`}
-                                  minWidth={100}
-                                />
-                              </td>
-                            </>
-                          )}
                         </tr>
                       );
                     })}
@@ -1061,16 +1009,6 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                     <tr style={{ background: '#f9f9fb', fontWeight: 600 }}>
                       <td style={td}>Total</td>
                       <td style={td}>{formatQty(totals.issued)}</td>
-                      {mode === 'unit_wise' && (
-                        <>
-                          <td style={td}>{formatQty(totals.received)}</td>
-                          <td style={td}>{formatQty(totals.accepted)}</td>
-                          <td style={td}>{formatQty(totals.rework)}</td>
-                          <td style={td}>{formatQty(totals.scrap)}</td>
-                          <td style={td}>{formatQty(totals.returned)}</td>
-                          <td style={td} colSpan={2} />
-                        </>
-                      )}
                     </tr>
                   </tfoot>
                 </table>

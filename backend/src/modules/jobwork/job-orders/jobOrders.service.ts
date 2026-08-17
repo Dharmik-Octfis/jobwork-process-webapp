@@ -1295,7 +1295,8 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
 
     const batches = await tx.batch.findMany({
       where: { organizationId, isDeleted: false, sourceDocId: id },
-      select: { id: true, batchNumber: true, supplierBatchRef: true, itemId: true },
+      // 🔴 No `batchNumber` (2026-08-14) — internal key, never leaves the server.
+      select: { id: true, supplierBatchRef: true, itemId: true },
     });
 
     // In hand = this order's own batches, wherever they physically are — including

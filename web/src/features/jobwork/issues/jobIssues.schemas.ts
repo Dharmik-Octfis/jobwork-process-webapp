@@ -14,9 +14,9 @@ export const jobIssueLineSchema = z.object({
   uom: uomRefSchema.nullable().optional(),
   batchId: z.string(),
   qty: z.union([z.string(), z.number()]),
-  batch: z
-    .object({ id: z.string(), batchNumber: z.string(), supplierBatchRef: z.string().nullable() })
-    .optional(),
+  /** 🔴 No `batchNumber` (2026-08-14) — it is an internal key and the server no
+   * longer sends it. `id` is the handle; `supplierBatchRef` is the label. */
+  batch: z.object({ id: z.string(), supplierBatchRef: z.string().nullable() }).optional(),
 });
 
 export type JobIssueLine = z.infer<typeof jobIssueLineSchema>;
@@ -67,10 +67,15 @@ export interface JobIssueLineData {
    * renders a batch picker per input item and each stamps its own id here. Omitted,
    * the server falls back to the step's principal input. */
   itemId?: string | null;
-  /** ⚠️ TEMPORARY — omitted when the item has no stock on record, which is normal
-   * until Purchase Received ships. The server creates a zero-valued batch for the
-   * line. 🔴 Make it required again then. */
+  /** Omitted for an UNTRACKED item — it gets no picker, and the server allocates
+   * FIFO out of the dispatch site's oldest stock. Required for a batch-tracked
+   * item, which the server refuses without. */
   batchId?: string | null;
+  /** Which godown this row came from. The picker offers one row per (batch,
+   * godown) because a challan may draw from a whole dispatch site. Omitted, the
+   * header's dispatch location is assumed — which is what a single-godown site
+   * always means. */
+  sourceLocationId?: string | null;
   qty: number;
 }
 

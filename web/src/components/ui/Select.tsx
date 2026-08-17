@@ -20,6 +20,7 @@ export function Select({
   containerStyle,
   buttonStyle,
   actionItem,
+  menuWidth,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -34,6 +35,7 @@ export function Select({
   containerStyle?: React.CSSProperties;
   buttonStyle?: React.CSSProperties;
   actionItem?: React.ReactNode;
+  menuWidth?: number | string;
 }) {
   const selected = options.find((o) => o.value === value);
 
@@ -102,7 +104,9 @@ export function Select({
           position: 'absolute',
           ...(dropUp ? { bottom: 'calc(100% + 4px)' } : { top: 'calc(100% + 4px)' }),
           left: 0,
-          right: 0,
+          minWidth: menuWidth ?? '100%',
+          width: menuWidth ? menuWidth : 'max-content',
+          maxWidth: menuWidth ?? 400,
           background: 'var(--color-surface)',
           border: isOpen && !disabled ? '1px solid var(--color-border)' : 'none',
           borderRadius: 'var(--radius-md)',
@@ -142,6 +146,7 @@ export function Select({
                         fontSize: 13,
                         color: 'var(--color-text)',
                         cursor: 'pointer',
+                        whiteSpace: 'nowrap',
                       }}
                     >
                       {opt.label}

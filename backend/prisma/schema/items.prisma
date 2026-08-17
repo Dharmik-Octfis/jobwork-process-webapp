@@ -81,7 +81,6 @@ model Item {
 
   activities         ItemActivity[]
   openingStockRows   ItemOpeningStockRow[]
-  locationStocks     ItemLocationStock[]
   createdByUser      User?               @relation("ItemCreatedBy", fields: [createdBy], references: [id])
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   updatedByUser      User?               @relation("ItemUpdatedBy", fields: [updatedBy], references: [id])
@@ -186,14 +185,39 @@ model ItemActivity {
   @@map("item_activities")
 }
 
+/// 🔴 THE OPENING-STOCK DOCUMENT — what the user DECLARED, per item × location.
+/// It is not a balance and must never be read as one.
+///
+/// Opening stock is a posted document like every other (Zoho Inventory, Odoo and
+/// ERPNext all model it this way): the document is kept so it can be shown and
+/// corrected, and the BALANCE is always `SUM(qty_in − qty_out)` off the ledger.
+/// `openingStockValuePerUnit` earns its place because it is a rate somebody
+/// typed — the ledger stores the resulting value, not the rate that produced it.
+///
+/// ⚠️ Two things were removed on 2026-08-13 because they duplicated the ledger:
+///
+///   - a `batches` JSONB array, holding a second copy of rows that already exist
+///     in `batches` — with no batch id in it, so once a batch was split or
+///     consumed the two could never be reconciled. It had already diverged in
+///     dev: 3 elements against 10 real batches. Batch detail is READ BACK from
+///     `batches` joined to its `opening` ledger rows, which is what
+///     `readOpeningStockFromLedger` has always done correctly.
+///   - `item_location_stocks`, a per-item × per-location `stock_on_hand` cache
+///     that only this one screen ever wrote. A balance cache is normal in ERPs
+///     (ERPNext's `Bin`), but only when EVERY posting maintains it in the same
+///     transaction as the ledger row. Nothing else in this app touched it, so it
+///     was correct until the first job issue and silently wrong forever after.
+///     If one is ever needed, it belongs inside `postMovement`, never here.
 model ItemOpeningStockRow {
   id                      String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId          String        @map("organization_id") @db.Uuid
   itemId                  String        @map("item_id") @db.Uuid
   locationId              String        @map("location_id") @db.Uuid
-  openingStock            Decimal?      @map("opening_stock") @db.Decimal(10, 2)
-  openingStockValuePerUnit Decimal?     @map("opening_stock_value_per_unit") @db.Decimal(10, 2)
-  batches                 Json          @default("[]")
+  /// (18,4) to match `stock_ledger.qty_in`. They were (10,2): a quantity the
+  /// ledger held as 12.3456 came back from here as 12.35, so the document and the
+  /// movement it produced disagreed on paper.
+  openingStock            Decimal?      @map("opening_stock") @db.Decimal(18, 4)
+  openingStockValuePerUnit Decimal?     @map("opening_stock_value_per_unit") @db.Decimal(18, 4)
   customFields            Json          @default("{}") @map("custom_fields")
   isDeleted               Boolean       @default(false) @map("is_deleted")
   createdBy               String?       @map("created_by") @db.Uuid
@@ -213,29 +237,3 @@ model ItemOpeningStockRow {
   @@map("item_opening_stock_rows")
 }
 
-model ItemLocationStock {
-  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String       @map("organization_id") @db.Uuid
-  itemId         String       @map("item_id") @db.Uuid
-  locationId     String       @map("location_id") @db.Uuid
-  stockOnHand    Decimal      @default(0) @map("stock_on_hand") @db.Decimal(10, 2)
-  committedStock Decimal      @default(0) @map("committed_stock") @db.Decimal(10, 2)
-  availableForSale Decimal    @default(0) @map("available_for_sale") @db.Decimal(10, 2)
-  customFields   Json         @default("{}") @map("custom_fields")
-  isDeleted      Boolean      @default(false) @map("is_deleted")
-  createdBy      String?      @map("created_by") @db.Uuid
-  updatedBy      String?      @map("updated_by") @db.Uuid
-  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  item           Item         @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  location       Location     @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  createdByUser  User?        @relation("ItemLocationStockCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser  User?        @relation("ItemLocationStockUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
-
-  @@unique([organizationId, itemId, locationId])
-  @@index([organizationId, itemId])
-  @@index([organizationId, locationId])
-  @@map("item_location_stocks")
-}

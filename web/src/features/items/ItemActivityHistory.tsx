@@ -88,11 +88,16 @@ export function ItemActivityHistory({ activities, isLoading }: ItemActivityHisto
                 }}
               >
                 <span style={{ fontWeight: 600, color: '#1e293b' }}>
-                  {activity.description.endsWith('.') ? activity.description : `${activity.description}.`}
+                  {activity.description.endsWith('.')
+                    ? activity.description
+                    : `${activity.description}.`}
                 </span>
                 {activity.performedBy && (
                   <span style={{ color: '#64748b', marginLeft: '6px', fontSize: '13px' }}>
-                    by - <span style={{ color: '#60a5fa', cursor: 'pointer' }}>{activity.performedBy.replace(/\s*\(User\)$/i, '')}</span>
+                    by -{' '}
+                    <span style={{ color: '#60a5fa', cursor: 'pointer' }}>
+                      {activity.performedBy.replace(/\s*\(User\)$/i, '')}
+                    </span>
                   </span>
                 )}
               </td>

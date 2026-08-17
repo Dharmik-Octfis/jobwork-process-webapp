@@ -11,18 +11,15 @@ import {
 /**
  * Receipts — goods back.
  *
- * 🔴 `mode` is READ-ONLY on the client. `Process.preservesPackaging` decides it
- * (§6.1): dyeing returns the same roll so takas can be received individually,
- * cutting destroys the roll so only a bulk quantity exists. It arrives from the
- * prefill endpoint alongside the sentence explaining it — a disabled toggle would
- * raise the question and answer nothing.
+ * ⚠️ `mode` (unit_wise | bulk) and `Process.preservesPackaging` went with
+ * package-level tracking on 2026-08-12. Every receipt is a quantity against a
+ * batch, so there is no second shape left to choose between.
  */
 
 export const jobReceiptLineSchema = z.object({
   id: z.string(),
   jobIssueId: z.string().nullable(),
   jobIssueLineId: z.string().nullable(),
-  parentPackageId: z.string().nullable(),
   issuedQty: z.union([z.string(), z.number()]),
   receivedQty: z.union([z.string(), z.number()]),
   acceptedQty: z.union([z.string(), z.number()]),
@@ -33,15 +30,6 @@ export const jobReceiptLineSchema = z.object({
   responsibility: z.string().nullable(),
   remarks: z.string().nullable(),
   reason: namedRefSchema.nullable().optional(),
-  parentPackage: z
-    .object({
-      id: z.string(),
-      packageNumber: z.number(),
-      label: z.string().nullable(),
-      qty: z.union([z.string(), z.number()]),
-    })
-    .nullable()
-    .optional(),
   jobIssue: z.object({ id: z.string(), challanNumber: z.string() }).nullable().optional(),
   /** The challan line this row closes, and therefore which item it consumed. */
   jobIssueLine: z
@@ -62,7 +50,6 @@ export const jobReceiptSchema = z.object({
   processorType: z.string(),
   processorId: z.string().nullable(),
   processorNameSnapshot: z.string().nullable(),
-  mode: z.string(),
   locationId: z.string(),
   outputBatchId: z.string().nullable(),
   reworkBatchId: z.string().nullable(),
@@ -100,8 +87,14 @@ export const jobReceiptSchema = z.object({
         uom: uomRefSchema.nullable().optional(),
         reason: z.object({ id: z.string(), name: z.string() }).nullable().optional(),
         responsibility: z.string().nullable().optional(),
-        outputBatch: z.object({ id: z.string(), batchNumber: z.string() }).nullable().optional(),
-        reworkBatch: z.object({ id: z.string(), batchNumber: z.string() }).nullable().optional(),
+        outputBatch: z
+          .object({ id: z.string(), supplierBatchRef: z.string().nullable() })
+          .nullable()
+          .optional(),
+        reworkBatch: z
+          .object({ id: z.string(), supplierBatchRef: z.string().nullable() })
+          .nullable()
+          .optional(),
       }),
     )
     .default([]),
@@ -120,8 +113,14 @@ export const jobReceiptSchema = z.object({
     })
     .optional(),
   location: namedRefSchema.nullable().optional(),
-  outputBatch: z.object({ id: z.string(), batchNumber: z.string() }).nullable().optional(),
-  reworkBatch: z.object({ id: z.string(), batchNumber: z.string() }).nullable().optional(),
+  outputBatch: z
+    .object({ id: z.string(), supplierBatchRef: z.string().nullable() })
+    .nullable()
+    .optional(),
+  reworkBatch: z
+    .object({ id: z.string(), supplierBatchRef: z.string().nullable() })
+    .nullable()
+    .optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   customFields: z.record(z.string(), z.unknown()).optional(),
@@ -140,16 +139,13 @@ export const receivePrefillSchema = z.object({
     expectedYield: decimalString,
     rate: decimalString,
     rateBasis: z.string().nullable(),
-    process: z.object({ id: z.string(), name: z.string(), preservesPackaging: z.boolean() }),
+    process: z.object({ id: z.string(), name: z.string() }),
     jobOrder: z.object({ id: z.string(), jobOrderNumber: z.string(), ownership: z.string() }),
     /** 🔴 What the step plans to consume and produce — the only source for the
      * dialog's item and unit labels since Migration B dropped the scalars. */
     inputs: z.array(stepItemRowSchema).default([]),
     outputs: z.array(stepItemRowSchema).default([]),
   }),
-  mode: z.string(),
-  /** Why the mode is what it is, in words. Shown instead of a disabled control. */
-  modeReason: z.string(),
   issues: z.array(
     z.object({
       id: z.string(),
@@ -171,9 +167,9 @@ export const receivePrefillSchema = z.object({
       itemName: z.string().nullable(),
       uomSymbol: z.string().nullable(),
       batchId: z.string(),
-      batchNumber: z.string(),
-      packageLabel: z.string().nullable(),
-      packageNumber: z.number().nullable(),
+      /** The label, not the internal number (2026-08-14). Null for untracked
+       * stock, whose batches are not meant to be identified on screen. */
+      batchReference: z.string().nullable(),
       issuedQty: z.string(),
     }),
   ),
@@ -206,7 +202,6 @@ export interface JobReceiptLineData {
   itemId?: string | null;
   jobIssueId?: string | null;
   jobIssueLineId?: string | null;
-  parentPackageId?: string | null;
   issuedQty?: number;
   receivedQty: number;
   acceptedQty?: number;
@@ -234,6 +229,14 @@ export interface JobReceiptOutputData {
   reasonId?: string | null;
   responsibility?: string | null;
   remarks?: string | null;
+  /** 🔴 What the accepted goods will be called from here on. The processor returns
+   * a physically new thing with no number of its own, and `batchNumber` is
+   * internal and never shown — so unless it is named here the batch has nothing to
+   * display in the next step's picker. Required for batch-tracked items; the
+   * server enforces it, since only it knows the item's tracking mode. */
+  batchReference?: string | null;
+  /** The rework batch is a separate batch, so it needs its own label. */
+  reworkBatchReference?: string | null;
 }
 
 export interface CreateJobReceiptData {
@@ -249,6 +252,10 @@ export interface CreateJobReceiptData {
   lines: JobReceiptLineData[];
   /** The return side. Omitted, the server derives one row from `lines`. */
   outputs?: JobReceiptOutputData[];
+  /** The single-output form's copy — with no `outputs` grid to carry them, the
+   * derived output takes its labels from here. */
+  batchReference?: string | null;
+  reworkBatchReference?: string | null;
   remarks?: string | null;
   customFields?: Record<string, unknown>;
 }

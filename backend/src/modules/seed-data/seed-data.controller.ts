@@ -32,7 +32,7 @@ import { createMemoryCache } from '../../lib/memoryCache.ts';
  * they are simply produced once instead of per request.
  */
 
-const MASTER_CURRENCIES = [
+export const MASTER_CURRENCIES = [
   { code: 'AED', name: 'UAE Dirham', symbol: 'AED' },
   { code: 'AFN', name: 'Afghan Afghani', symbol: 'AFN' },
   { code: 'ALL', name: 'Albanian Lek', symbol: 'ALL' },

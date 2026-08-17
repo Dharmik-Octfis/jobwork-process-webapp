@@ -2,6 +2,7 @@ import { Prisma } from '../../../../generated/prisma/client.ts';
 import { runAsTenant } from '../../../db/prisma.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
+import { resolveDispatchSite } from '../../settings/configuration/locations/locationSites.ts';
 import {
   getAvailableBatches,
   getBalance,
@@ -27,7 +28,18 @@ import {
  * has been at the dyer's for a fortnight (field-sources §10).
  */
 
-const SEARCH_COLUMNS = ['batchNumber', 'supplierBatchRef'] as const;
+/**
+ * 🔴 `batchNumber` IS NOT SEARCHABLE, and that is deliberate (2026-08-14).
+ *
+ * Searchability follows visibility. The number is an internal key that is never
+ * rendered and never printed — this system's equivalent of Zoho's hidden record
+ * id — so nobody can be typing it, and matching on it only pollutes results: a
+ * search for `42` would hit internal numbers that have nothing to do with the
+ * batch the user is looking for.
+ *
+ * What people DO type is what is on the physical tag, which is one of these two.
+ */
+const SEARCH_COLUMNS = ['supplierBatchRef', 'manufacturerBatch'] as const;
 
 function batchListWhere(organizationId: string, opts: ListQuery): Prisma.BatchWhereInput {
   return {
@@ -97,60 +109,106 @@ export interface AvailabilityQuery {
   /** Include each batch's takas. Only worth asking for when the item is tracked
    * that way; otherwise it is a query per batch returning nothing. */
   withPackages?: boolean;
+  /** What the user typed into the picker's batch box — matched against the batch
+   * number and the supplier's own reference. */
+  search?: string;
+  /** A ceiling on rows, so an item with hundreds of live batches still answers. */
+  limit?: number;
 }
 
 /**
  * What can actually be issued: the picker's grid.
  *
- * The picker shows the batch, what is left of it and what that is worth — nothing
- * else. Batch age and the supplier's own reference were dropped from this payload
- * on 2026-08-10: both were display-only columns nobody read off the dialog. If a
- * FIFO suggestion or the 180-day GST clock ever needs age, compute it HERE and
- * not on the client — the two must agree.
+ * The picker shows the batch, what is left of it and what that is worth. Batch age
+ * was dropped from this payload on 2026-08-10 and stays gone — if a FIFO
+ * suggestion or the 180-day GST clock ever needs it, compute it HERE and not on
+ * the client, so the two agree. `supplierBatchRef` came BACK on 2026-08-13: the
+ * picker is searchable now, and a batch you can match on but cannot see is a row
+ * the user has no way to identify.
+ *
+ * 🔴 One query for the balances, not one per batch. `getAvailableBatches` sums
+ * value in the same pass as quantity precisely so this loop stays a loop over
+ * memory — the `getBalance` that used to sit inside it was a database round trip
+ * per row, which is nothing at three batches and is the entire response at three
+ * hundred.
  */
 export async function getAvailableStock(organizationId: string, query: AvailabilityQuery) {
   return runAsTenant(organizationId, async (tx) => {
+    /**
+     * 🔴 THE WHOLE DISPATCH SITE, not the one godown asked for (2026-08-14).
+     *
+     * One challan may draw from every godown under a site, so offering only the
+     * location the user happened to land on is what made the picker look like it
+     * was hiding stock. Crossing to another site is refused at save — that is a
+     * second address, and a Rule 55 challan carries one.
+     *
+     * Rows come back per (batch, location) and carry `locationId`, so the picker
+     * can say which godown each one is in.
+     */
+    const site = query.locationId
+      ? await resolveDispatchSite(tx, organizationId, query.locationId)
+      : null;
+
     const batches = await getAvailableBatches(tx, {
       organizationId,
       itemId: query.itemId,
-      locationId: query.locationId,
+      // No location asked for means no location filter — an org-wide question,
+      // which some reports ask and the picker never does.
+      locationIds: site?.locationIds,
       ownership: query.ownership,
+      search: query.search,
+      limit: query.limit,
     });
     if (batches.length === 0) return [];
 
-    const rows = await tx.batch.findMany({
-      where: { id: { in: batches.map((l) => l.batchId) }, organizationId, isDeleted: false },
-      select: { id: true, state: true, item: { select: { inventoryTracking: true } } },
-    });
-    const metaById = new Map(rows.map((r) => [r.id, r]));
-
-    const out = [];
-    for (const batch of batches) {
-      const meta = metaById.get(batch.batchId);
-      const balance = await getBalance(tx, {
+    // Named so the picker can label each row. Keyed off the rows actually
+    // returned, so it is one read whether the site has two godowns or twenty.
+    const locations = await tx.location.findMany({
+      where: {
         organizationId,
-        batchId: batch.batchId,
-        locationId: query.locationId,
-      });
+        id: { in: [...new Set(batches.map((row) => row.locationId))] },
+        isDeleted: false,
+      },
+      select: { id: true, name: true },
+    });
+    const locationNameById = new Map(locations.map((row) => [row.id, row.name]));
 
-      out.push({
-        batchId: batch.batchId,
-        batchNumber: batch.batchNumber,
-        itemId: batch.itemId,
-        uomId: batch.uomId,
-        ownership: batch.ownership,
-        ownerPartyId: batch.ownerPartyId,
-        availableQty: batch.availableQty.toString(),
-        accumulatedValue: balance.value.toString(),
-        // Cost per unit of what is LEFT, not of what was received. Derived every
-        // time; there is no stored cost column (plan §3, decision 1).
-        costPerUnit: batch.availableQty.greaterThan(0)
-          ? balance.value.dividedBy(batch.availableQty).toDecimalPlaces(4).toString()
-          : null,
-        inventoryTracking: meta?.item.inventoryTracking ?? 'none',
-      });
-    }
-    return out;
+    // Every row here is the same item, so its tracking mode is one read, not one
+    // per batch.
+    const item = await tx.item.findFirst({
+      where: { id: query.itemId, organizationId, isDeleted: false },
+      select: { inventoryTracking: true },
+    });
+
+    return batches.map((batch) => ({
+      batchId: batch.batchId,
+      /* 🔴 Sent back on the line. A row is a batch AT A GODOWN, and the challan
+         records which one — within a site there may be several. */
+      locationId: batch.locationId,
+      locationName: locationNameById.get(batch.locationId) ?? null,
+      // 🔴 No `batchNumber` (2026-08-14). `batchId` is the handle the client sends
+      // back; the number is internal and a field in the payload is a field
+      // somebody eventually renders.
+      supplierBatchRef: batch.supplierBatchRef,
+      /* 🔴 The picker's identifying line since 2026-08-14. `supplierBatchRef` is
+         the label but it is deliberately NOT unique — two live rows can both read
+         `jv2` — and `batchNumber` is never rendered, so these three are what
+         actually separate them on screen. */
+      manufacturerBatch: batch.manufacturerBatch,
+      createdAt: batch.createdAt.toISOString(),
+      itemId: batch.itemId,
+      uomId: batch.uomId,
+      ownership: batch.ownership,
+      ownerPartyId: batch.ownerPartyId,
+      availableQty: batch.availableQty.toString(),
+      accumulatedValue: batch.value.toString(),
+      // Cost per unit of what is LEFT, not of what was received. Derived every
+      // time; there is no stored cost column (plan §3, decision 1).
+      costPerUnit: batch.availableQty.greaterThan(0)
+        ? batch.value.dividedBy(batch.availableQty).toDecimalPlaces(4).toString()
+        : null,
+      inventoryTracking: item?.inventoryTracking ?? 'none',
+    }));
   });
 }
 

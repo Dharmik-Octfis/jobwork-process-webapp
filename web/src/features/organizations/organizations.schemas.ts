@@ -3,6 +3,7 @@ import { z } from 'zod';
 const baseOrganizationSchema = z.object({
   name: z.string().min(1, 'Organization name is required').max(100),
   industryType: z.string().min(1, 'Industry is required'),
+  baseCurrency: z.string().optional(),
   email: z.string().email('Invalid email address').optional().or(z.literal('')),
   dialCode: z.string().optional(),
   phone: z

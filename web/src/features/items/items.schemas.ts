@@ -46,6 +46,7 @@ export const itemSchema = z.object({
     .number({ message: 'Selling price is required' })
     .min(0, 'Selling price must be positive'),
   rate: z.number().nullable().optional(),
+  mrp: z.union([z.string(), z.number()]).nullable().optional(),
   account_id: z.string().max(100).nullable().optional(),
   salesDescription: z.string().nullable().optional(),
   sales_description: z.string().nullable().optional(),
@@ -140,6 +141,7 @@ export type ItemFormData = z.infer<typeof itemFormSchema>;
 
 export const itemOpeningStockBatchSchema = z.object({
   id: z.string().optional(),
+  /** 🔴 Removed from the payload 2026-08-14 — internal key. */
   batchReference: z.string().optional().nullable(),
   manufacturerBatch: z.string().optional().nullable(),
   manufacturedDate: z.string().optional().nullable(),
@@ -162,6 +164,14 @@ export const itemOpeningStockLocationRowSchema = z.object({
 
 export const itemOpeningStockSchema = z.object({
   locationRows: z.array(itemOpeningStockLocationRowSchema),
+  /**
+   * Whose goods these are — applied to batches the save CREATES, never to ones it
+   * merely adjusts. The Item screen omits it and gets `own`; the Issue dialog
+   * passes the job order's, because a customer-ownership order can only be fed by
+   * customer-owned stock and anything added as our own would be invisible to it.
+   */
+  ownership: z.enum(['own', 'customer']).optional(),
+  ownerPartyId: z.string().nullable().optional(),
 });
 
 export type ItemOpeningStockBatchDto = z.infer<typeof itemOpeningStockBatchSchema>;

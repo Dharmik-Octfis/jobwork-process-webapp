@@ -54,10 +54,14 @@ export function buildChallanHtml(issue: JobIssue, orgName: string): string {
 
   const rows = issue.lines
     .map((line, index) => {
+      // 🔴 ONE batch column, and it is the REFERENCE (2026-08-14). The internal
+      // number used to print in a column beside it — a number that appears
+      // nowhere on screen and means nothing to the processor receiving this
+      // challan. This document is the goods' identity papers, so it carries what
+      // is written on the tag and nothing else.
       return `<tr>
         <td>${index + 1}</td>
         <td>${escapeHtml(line.item?.name ?? '')}</td>
-        <td>${escapeHtml(line.batch?.batchNumber ?? '')}</td>
         <td>${escapeHtml(line.batch?.supplierBatchRef ?? '')}</td>
         <td class="num">${formatQty(line.qty)} ${escapeHtml(unitOf(line))}</td>
       </tr>`;
@@ -132,7 +136,6 @@ export function buildChallanHtml(issue: JobIssue, orgName: string): string {
         <th style="width:36px">#</th>
         <th>Item</th>
         <th>Batch</th>
-        <th>Party ref</th>
         <th class="num">Quantity</th>
       </tr>
     </thead>

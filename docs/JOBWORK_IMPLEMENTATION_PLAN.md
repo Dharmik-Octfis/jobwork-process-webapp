@@ -99,6 +99,10 @@ recorded. See the domain doc §11.3.
 
 Key columns only — **this is not the schema**, it is a planning inventory.
 
+> ⚠️ **As-planned, 2026-08-05.** `lot_packages` and every `batchPackageId` / `parentPackageId`
+> below were removed on 2026-08-12, and `Process.preservesPackaging` with them. The live schema is
+> `prisma/schema/*.prisma`; this table records what Sprints 1–5 set out to build.
+
 | Sprint | Table                                                               | Purpose                                              | Notable columns                                                                                                                                                                                                                                                                                             |
 | ------ | ------------------------------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1      | `batches`                                                           | Traceable quantity                                   | `batchNumber`, `supplierBatchRef`, `itemId`, `ownership`, `ownerPartyId`, `parentBatchIds`, `sourceDocType/Id`, `state`                                                                                                                                                                                     |
@@ -257,9 +261,9 @@ frontSeq` — `JobIssue.step` and `JobReceipt.step` are `onDelete: Cascade`, so 
 - [ ] `job_issues` + `job_issue_lines`
 - [ ] **Batch picker** — the availability query from field-sources §5.2.
       🔴 Reads the **ledger**, not the `batches` table, and filters on `ownership`
-- [ ] **Taka expansion** — shown only when `inventoryTracking = 'batch'`. Ticking a package takes
-      its full measured quantity
-- [ ] Running totals: selected packages, selected qty, already issued, remaining
+- [x] ~~**Taka expansion**~~ — dropped 2026-08-12 with package-level tracking; the picker takes a
+      typed quantity against the batch
+- [ ] Running totals: selected qty, already issued, remaining
 - [ ] **Tolerance guard** — ceiling is `plannedQty × (1 + tolerancePct/100)`; over it, block or require
       an override reason
 - [ ] **Single-batch guard** — `Process.requiresSingleBatch` blocks a second batch with the reason shown
@@ -280,9 +284,8 @@ frontSeq` — `JobIssue.step` and `JobReceipt.step` are `onDelete: Cascade`, so 
 
 - [ ] `job_receipts` + `job_receipt_lines` + `rejection_reasons`
 - [ ] Issue reference multi-select — one receipt can close several issues
-- [ ] 🔴 **Mode is decided by `Process.preservesPackaging`, not by the user.** Dyeing returns the same
-      roll → unit-wise; cutting destroys rolls → bulk only
-- [ ] Unit-wise grid rows generated from what was issued; `parentPackageId` persisted per row
+- [x] ~~Mode, unit-wise grid, `parentPackageId`~~ — dropped 2026-08-12. Every receipt is the bulk
+      shape: one row per ITEM, and the disposition is typed on the RETURNED grid
 - [ ] Yield strip — actual vs expected, with both units. **Never used as a conversion factor**
 - [ ] **Disposition split** — accepted / rework / scrap / return-to-processor, with a sum check that
       blocks save. This is what makes a separate "Rejection Note" unnecessary

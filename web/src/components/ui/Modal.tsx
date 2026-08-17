@@ -41,6 +41,22 @@ interface ModalProps {
  * CSS module, and rewriting it to route through this would be a change with no
  * user-visible benefit. This is for dialogs that contain a form or a grid.
  */
+
+/**
+ * 🔴 WHICH DIALOG IS ON TOP, when one opens over another.
+ *
+ * Every open Modal listens for Escape on `document` in the CAPTURE phase, and
+ * `stopPropagation` does not stop a second listener on the same node — that needs
+ * `stopImmediatePropagation`, and even then the OUTER dialog registered first, so
+ * it would be the one to win and the wrong one would close. Without this stack,
+ * one Escape over the Issue dialog's "Add stock" popup closed both of them and
+ * threw away a half-filled challan.
+ *
+ * A module-level array rather than context: nesting is rare, the only question is
+ * "am I last", and a provider every caller has to remember to mount is a trap of
+ * exactly the kind this file exists to close.
+ */
+const modalStack: symbol[] = [];
 export function Modal({
   isOpen,
   title,
@@ -54,9 +70,33 @@ export function Modal({
   const dialogRef = useRef<HTMLDivElement>(null);
   // Captured on open, restored on close — see requirement 4.
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  // Stable across renders, so this instance keeps its place in the stack.
+  const idRef = useRef<symbol>(Symbol('modal'));
+  /**
+   * 🔴 THE EFFECT BELOW MUST RUN ONCE PER OPEN, NOT ONCE PER RENDER.
+   *
+   * Nearly every caller passes an inline `onClose={() => setThing(null)}`, which
+   * is a new function on each of the PARENT's renders — so depending on it re-ran
+   * the whole effect whenever anything upstream re-rendered. Two things broke:
+   * the dialog re-took focus mid-typing, and, once dialogs could nest, an outer
+   * one re-pushed itself onto the stack ABOVE the popup covering it, so Escape
+   * closed the wrong dialog. Reading the latest handler out of a ref keeps the
+   * effect keyed on `isOpen` alone.
+   */
+  const onCloseRef = useRef(onClose);
+  // Its own effect, not an assignment during render — writing a ref while
+  // rendering is what `react-hooks/refs` forbids, and it is forbidden for a
+  // reason under concurrent rendering.
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
+
+    const id = idRef.current;
+    modalStack.push(id);
+    const isTopmost = () => modalStack[modalStack.length - 1] === id;
 
     returnFocusRef.current = document.activeElement as HTMLElement | null;
 
@@ -75,9 +115,14 @@ export function Modal({
     const raf = requestAnimationFrame(focusFirst);
 
     const onKeyDown = (event: KeyboardEvent) => {
+      // A dialog with another one open over it is inert: Escape belongs to the
+      // top one, and so does Tab — trapping focus into a covered dialog would
+      // drag it out of the one the user is actually looking at.
+      if (!isTopmost()) return;
+
       if (event.key === 'Escape') {
         event.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== 'Tab') return;
@@ -113,10 +158,14 @@ export function Modal({
     return () => {
       cancelAnimationFrame(raf);
       document.removeEventListener('keydown', onKeyDown, true);
-      document.body.style.overflow = previousOverflow;
+      const at = modalStack.lastIndexOf(id);
+      if (at !== -1) modalStack.splice(at, 1);
+      // Only the last dialog to close gives the page its scrollbar back — an
+      // inner one closing must leave the outer one's lock in place.
+      if (modalStack.length === 0) document.body.style.overflow = previousOverflow;
       returnFocusRef.current?.focus?.();
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

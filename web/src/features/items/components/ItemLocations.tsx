@@ -21,6 +21,12 @@ export function ItemLocations({ orgId, itemId, isBatchTracked = true }: ItemLoca
   const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
   const [isOpeningStockModalOpen, setIsOpeningStockModalOpen] = useState(false);
 
+  const { data: item } = useQuery({
+    queryKey: ['item', orgId, itemId],
+    queryFn: () => itemsApi.getItem(orgId, itemId),
+    enabled: !!orgId && !!itemId,
+  });
+
   const { data: locations = [], isLoading } = useQuery({
     queryKey: ['locations', orgId],
     queryFn: () => fetchLocations(orgId),
@@ -51,8 +57,8 @@ export function ItemLocations({ orgId, itemId, isBatchTracked = true }: ItemLoca
         (acc, batch) => acc + (Number(batch.quantityIn) || 0),
         0,
       );
-      const stockOnHand = Number(row.stockOnHand ?? row.openingStock ?? batchTotal) || 0;
-      map.set(row.locationId, stockOnHand);
+      const stockVal = Number(row.openingStock ?? row.stockOnHand ?? batchTotal) || 0;
+      map.set(row.locationId, stockVal);
     }
     return map;
   }, [openingStockRows]);
@@ -364,6 +370,9 @@ export function ItemLocations({ orgId, itemId, isBatchTracked = true }: ItemLoca
           isOpen
           onClose={() => setIsOpeningStockModalOpen(false)}
           orgId={orgId}
+          itemId={itemId}
+          inventoryTracking={item?.inventoryTracking}
+          itemName={item?.name}
           initialRows={openingStockRows}
           isSaving={saveOpeningStockMutation.isPending}
           onSave={async (rows) => {

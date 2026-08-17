@@ -10,6 +10,17 @@ import {
 } from './stockLedger.service.ts';
 
 /**
+ * The fixture item is batch-tracked, and since 2026-08-14 a batch-tracked batch
+ * must carry a user-facing reference — `batchNumber` is internal and never
+ * rendered, so the reference is the only label the row would ever show. These
+ * tests are about numbering, balances and ownership, so the reference is pure
+ * boilerplate and is supplied once here rather than at sixteen call sites.
+ * The rule itself is pinned in its own describe block at the bottom.
+ */
+const newBatch: typeof createBatch = (tx, input) =>
+  createBatch(tx, { supplierBatchRef: 'REF', ...input });
+
+/**
  * The ledger is the one thing in this domain that cannot be repaired after the
  * fact: a wrong number can be recomputed from history, a wrong history cannot be
  * recomputed from anything. So the four properties everything else assumes are
@@ -116,7 +127,7 @@ afterAll(async () => {
 /** A fresh own-stock batch with `qty` already received into the godown. */
 async function batchWithStock(qty: number, valuePerUnit = 0) {
   return runAsTenant(orgId, async (tx) => {
-    const batch = await createBatch(tx, {
+    const batch = await newBatch(tx, {
       organizationId: orgId,
       itemId,
       sourceDocType: 'test',
@@ -269,7 +280,7 @@ describe('stock ledger — value is derived, never stored', () => {
 describe('stock ledger — ownership isolation', () => {
   it('customer-owned stock counts in quantity and never in valuation', async () => {
     const batch = await runAsTenant(orgId, async (tx) => {
-      const created = await createBatch(tx, {
+      const created = await newBatch(tx, {
         organizationId: orgId,
         itemId,
         ownership: 'customer',
@@ -301,7 +312,7 @@ describe('stock ledger — ownership isolation', () => {
   it('an ownership-filtered balance sees only that ownership', async () => {
     const own = await batchWithStock(70);
     const theirs = await runAsTenant(orgId, async (tx) => {
-      const created = await createBatch(tx, {
+      const created = await newBatch(tx, {
         organizationId: orgId,
         itemId,
         ownership: 'customer',
@@ -337,7 +348,7 @@ describe('stock ledger — ownership isolation', () => {
   it('rejects the two ownership combinations that have no meaning', async () => {
     await expect(
       runAsTenant(orgId, (tx) =>
-        createBatch(tx, {
+        newBatch(tx, {
           organizationId: orgId,
           itemId,
           ownership: 'customer',
@@ -348,7 +359,7 @@ describe('stock ledger — ownership isolation', () => {
 
     await expect(
       runAsTenant(orgId, (tx) =>
-        createBatch(tx, {
+        newBatch(tx, {
           organizationId: orgId,
           itemId,
           ownership: 'own',
@@ -400,7 +411,7 @@ describe('stock ledger — the picker reads the ledger, not the batches table', 
 
   it('never mixes our stock and a customer’s in one picker', async () => {
     const theirs = await runAsTenant(orgId, async (tx) => {
-      const created = await createBatch(tx, {
+      const created = await newBatch(tx, {
         organizationId: orgId,
         itemId,
         ownership: 'customer',
@@ -434,8 +445,8 @@ describe('stock ledger — the picker reads the ledger, not the batches table', 
 describe('batches', () => {
   it('allocates batch numbers from the org sequence', async () => {
     const [first, second] = await runAsTenant(orgId, async (tx) => [
-      await createBatch(tx, { organizationId: orgId, itemId, sourceDocType: 'test' }),
-      await createBatch(tx, { organizationId: orgId, itemId, sourceDocType: 'test' }),
+      await newBatch(tx, { organizationId: orgId, itemId, sourceDocType: 'test' }),
+      await newBatch(tx, { organizationId: orgId, itemId, sourceDocType: 'test' }),
     ]);
 
     expect(first.batchNumber).toMatch(/^BATCH-\d{5}$/);
@@ -445,7 +456,7 @@ describe('batches', () => {
   it('accepts a manual batch number — the supplier’s tag wins when it is given', async () => {
     const manual = `SUPPLIER-${unique()}`;
     const batch = await runAsTenant(orgId, (tx) =>
-      createBatch(tx, {
+      newBatch(tx, {
         organizationId: orgId,
         itemId,
         batchNumber: manual,
@@ -467,7 +478,7 @@ describe('batches', () => {
   it('re-uses the row a deleted batch left behind when the number is typed again', async () => {
     const number = `TAG-${unique()}`;
     const first = await runAsTenant(orgId, (tx) =>
-      createBatch(tx, {
+      newBatch(tx, {
         organizationId: orgId,
         itemId,
         batchNumber: number,
@@ -483,7 +494,7 @@ describe('batches', () => {
     );
 
     const second = await runAsTenant(orgId, (tx) =>
-      createBatch(tx, {
+      newBatch(tx, {
         organizationId: orgId,
         itemId,
         batchNumber: number,
@@ -502,7 +513,7 @@ describe('batches', () => {
   it('refuses to re-use a deleted batch that already moved stock', async () => {
     const number = `TAG-${unique()}`;
     const batch = await runAsTenant(orgId, async (tx) => {
-      const created = await createBatch(tx, {
+      const created = await newBatch(tx, {
         organizationId: orgId,
         itemId,
         batchNumber: number,
@@ -527,7 +538,7 @@ describe('batches', () => {
 
     await expect(
       runAsTenant(orgId, (tx) =>
-        createBatch(tx, {
+        newBatch(tx, {
           organizationId: orgId,
           itemId,
           batchNumber: number,
@@ -549,7 +560,7 @@ describe('batches', () => {
     // Plant a soft-deleted batch on exactly the number the sequence will hand out
     // next — a user typed it before the sequence caught up.
     const probe = await runAsTenant(orgId, (tx) =>
-      createBatch(tx, { organizationId: orgId, itemId, sourceDocType: 'test' }),
+      newBatch(tx, { organizationId: orgId, itemId, sourceDocType: 'test' }),
     );
     // Split on the separator rather than slicing a fixed width — the prefix is
     // per-org data (`number_sequences.prefix`), so its length is not a constant.
@@ -557,7 +568,7 @@ describe('batches', () => {
     const nextNumber = `${prefix}-${String(Number(digits) + 1).padStart(digits!.length, '0')}`;
 
     const planted = await runAsTenant(orgId, (tx) =>
-      createBatch(tx, {
+      newBatch(tx, {
         organizationId: orgId,
         itemId,
         batchNumber: nextNumber,
@@ -575,8 +586,149 @@ describe('batches', () => {
     // convenience — nobody asked for that number.
     await expect(
       runAsTenant(orgId, (tx) =>
-        createBatch(tx, { organizationId: orgId, itemId, sourceDocType: 'test' }),
+        newBatch(tx, { organizationId: orgId, itemId, sourceDocType: 'test' }),
       ),
     ).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+/**
+ * 🔴 The rule that lets `batchNumber` stay invisible (2026-08-14).
+ *
+ * `batchNumber` is an internal key — never rendered, never printed, never
+ * searched, this system's equivalent of Zoho's hidden record id. That is only
+ * safe while every batch a user can SEE carries a label of its own, or the issue
+ * picker renders a blank row nobody can identify. `createBatch` is the single
+ * place a batch is born, so it is the only place that rule can be enforced.
+ *
+ * The line is drawn at the ITEM, not the batch: an untracked item's batches are
+ * ledger plumbing that is never listed, never picked and never printed, so
+ * demanding a human label for them would be friction with nobody there to supply
+ * it. Zoho draws it in the same place — the reference field only appears once
+ * batch tracking is on.
+ *
+ * NOT a database constraint, because it depends on a column on ANOTHER table.
+ * If this block goes green with the check removed, blank rows are reachable.
+ */
+describe('batches — the reference that replaces the hidden number', () => {
+  it('refuses a batch-tracked batch with no reference', async () => {
+    await expect(
+      runAsTenant(orgId, (tx) =>
+        createBatch(tx, { organizationId: orgId, itemId, sourceDocType: 'test' }),
+      ),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('refuses one whose reference is only whitespace', async () => {
+    await expect(
+      runAsTenant(orgId, (tx) =>
+        createBatch(tx, {
+          organizationId: orgId,
+          itemId,
+          supplierBatchRef: '   ',
+          sourceDocType: 'test',
+        }),
+      ),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  // 🔴 Numbers are typed, not allocated, throughout this block. The describe above
+  // ends by planting a soft-deleted batch that still holds the sequence's next
+  // number — that is its point — so anything drawing from the sequence afterwards
+  // gets a 409 that has nothing to do with what is under test here.
+  it('stores the reference trimmed', async () => {
+    const created = await runAsTenant(orgId, (tx) =>
+      createBatch(tx, {
+        organizationId: orgId,
+        itemId,
+        batchNumber: `REF-${unique()}`,
+        supplierBatchRef: '  jv2  ',
+        sourceDocType: 'test',
+      }),
+    );
+    expect(created.supplierBatchRef).toBe('jv2');
+  });
+
+  it('allows an UNTRACKED item no reference at all — nobody ever sees that batch', async () => {
+    const looseItemId = await runAsTenant(orgId, async (tx) => {
+      const item = await tx.item.create({
+        data: {
+          organizationId: orgId,
+          name: 'Packing Tape',
+          sku: `LOOSE-${unique()}`,
+          unit: 'Metre',
+          stockingUomId: uomId,
+          inventoryTracking: 'none',
+        },
+        select: { id: true },
+      });
+      return item.id;
+    });
+
+    const created = await runAsTenant(orgId, (tx) =>
+      createBatch(tx, {
+        organizationId: orgId,
+        itemId: looseItemId,
+        batchNumber: `LOOSE-${unique()}`,
+        sourceDocType: 'test',
+      }),
+    );
+    expect(created.supplierBatchRef).toBeNull();
+  });
+});
+
+/**
+ * 🔴 SEARCHABILITY FOLLOWS VISIBILITY (2026-08-14).
+ *
+ * `batchNumber` is never rendered and never printed, so nobody can be typing it —
+ * and matching on it actively hurts: a search for "42" would hit internal numbers
+ * belonging to rows whose visible label has nothing to do with 42. What people
+ * type is what is on the physical tag, which is `supplierBatchRef` or
+ * `manufacturerBatch`.
+ *
+ * Re-adding `batchNumber` to the search columns is a one-word change that nothing
+ * else would catch, which is why it is pinned here.
+ */
+describe('batches — what the picker search matches', () => {
+  it('matches the tag reference and the manufacturer number, never the internal number', async () => {
+    const stamp = unique();
+    const internalNumber = `HIDDEN-${stamp}`;
+
+    const batch = await runAsTenant(orgId, async (tx) => {
+      const created = await createBatch(tx, {
+        organizationId: orgId,
+        itemId,
+        batchNumber: internalNumber,
+        supplierBatchRef: `TAG-${stamp}`,
+        manufacturerBatch: `MFR-${stamp}`,
+        sourceDocType: 'test',
+      });
+      await postMovement(tx, {
+        organizationId: orgId,
+        batchId: created.id,
+        locationId: godownId,
+        movementType: 'receipt',
+        qtyIn: 100,
+        sourceDocType: 'test',
+      });
+      return created;
+    });
+
+    const find = (search: string) =>
+      runAsTenant(orgId, (tx) =>
+        getAvailableBatches(tx, {
+          organizationId: orgId,
+          itemId,
+          locationId: godownId,
+          ownership: 'own',
+          search,
+        }),
+      );
+
+    expect((await find(`TAG-${stamp}`)).map((b) => b.batchId)).toContain(batch.id);
+    expect((await find(`MFR-${stamp}`)).map((b) => b.batchId)).toContain(batch.id);
+    // The one that must NOT match. If this goes green the internal key is
+    // reachable from the search box again.
+    expect((await find(internalNumber)).map((b) => b.batchId)).not.toContain(batch.id);
   });
 });

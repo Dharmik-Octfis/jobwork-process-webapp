@@ -13,6 +13,7 @@ interface CreateCurrencyData {
   format: string;
   exchangeRate: number;
   isActive?: boolean;
+  isBaseCurrency?: boolean;
 }
 
 interface UpdateCurrencyData {
@@ -23,6 +24,7 @@ interface UpdateCurrencyData {
   format?: string;
   exchangeRate?: number;
   isActive?: boolean;
+  isBaseCurrency?: boolean;
 }
 
 /**
@@ -80,6 +82,17 @@ export const createNewCurrency = async (
       },
     });
 
+    if (data.isBaseCurrency) {
+      const existingBase = await tx.currency.findFirst({
+        where: { organizationId: orgId, isBaseCurrency: true, isDeleted: false },
+      });
+      if (existingBase && existingBase.id !== existing?.id) {
+        throw ApiError.badRequest(
+          'Base currency is already set for this organization and cannot be changed. To use a different base currency, a new organization must be created.',
+        );
+      }
+    }
+
     if (existing) {
       if (!existing.isDeleted) {
         throw ApiError.conflict(DUPLICATE_CODE);
@@ -91,8 +104,9 @@ export const createNewCurrency = async (
           symbol: data.symbol,
           decimalPlaces: data.decimalPlaces,
           format: data.format,
-          exchangeRate: data.exchangeRate,
+          exchangeRate: data.isBaseCurrency ? 1 : data.exchangeRate,
           isActive: data.isActive ?? true,
+          isBaseCurrency: data.isBaseCurrency ?? existing.isBaseCurrency,
           isDeleted: false,
           updatedBy: userId,
         },
@@ -107,8 +121,9 @@ export const createNewCurrency = async (
         symbol: data.symbol,
         decimalPlaces: data.decimalPlaces,
         format: data.format,
-        exchangeRate: data.exchangeRate,
+        exchangeRate: data.isBaseCurrency ? 1 : data.exchangeRate,
         isActive: data.isActive ?? true,
+        isBaseCurrency: data.isBaseCurrency ?? false,
         createdBy: userId,
         updatedBy: userId,
       },
@@ -143,20 +158,39 @@ export const updateCurrencyById = async (
       throw ApiError.notFound('Currency not found');
     }
 
-    if (existingCurrency.currencyCode === 'INR') {
+    if (data.isBaseCurrency && !existingCurrency.isBaseCurrency) {
+      const currentBase = await tx.currency.findFirst({
+        where: { organizationId: orgId, isBaseCurrency: true, isDeleted: false },
+      });
+      if (currentBase && currentBase.id !== id) {
+        throw ApiError.badRequest(
+          'Base currency is already set for this organization and cannot be changed. To use a different base currency, a new organization must be created.',
+        );
+      }
+    }
+
+    if (existingCurrency.isBaseCurrency) {
       if (data.isActive === false) {
-        throw ApiError.badRequest('Default INR currency cannot be deactivated');
+        throw ApiError.badRequest('Base currency cannot be deactivated.');
       }
-      if (data.currencyCode && data.currencyCode !== 'INR') {
-        throw ApiError.badRequest('Default INR currency code cannot be changed');
+      if (data.currencyCode && data.currencyCode !== existingCurrency.currencyCode) {
+        throw ApiError.badRequest(
+          'Base currency code cannot be changed once set. To change base currency, a new organization must be created.',
+        );
       }
+    }
+
+    const payload = { ...data };
+    if (data.isBaseCurrency) {
+      payload.exchangeRate = 1;
+      payload.isActive = true;
     }
 
     return withUniqueViolation(DUPLICATE_CODE, () =>
       tx.currency.update({
         where: { id },
         data: {
-          ...data,
+          ...payload,
           updatedBy: userId,
         },
       }),
@@ -174,8 +208,10 @@ export const deleteCurrencyById = async (orgId: string, id: string, userId?: str
       throw ApiError.notFound('Currency not found');
     }
 
-    if (existingCurrency.currencyCode === 'INR') {
-      throw ApiError.badRequest('Default INR currency cannot be deleted');
+    if (existingCurrency.isBaseCurrency) {
+      throw ApiError.badRequest(
+        'Base currency cannot be deleted. To use a different base currency, a new organization must be created.',
+      );
     }
 
     return tx.currency.update({

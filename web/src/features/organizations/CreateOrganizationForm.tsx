@@ -9,6 +9,7 @@ import { toApiErrorMessage } from '../../api/client';
 import { X } from 'lucide-react';
 import { useLogout } from '../auth/useLogout';
 import { SearchableSelect } from '../../components/ui/SearchableSelect';
+import { LAST_ORG_KEY } from '../../routes/OrgRedirect';
 import './CreateOrganizationForm.css';
 
 type MasterData = {
@@ -118,13 +119,23 @@ export function CreateOrganizationForm() {
       setServerError(null);
       const submitData = data;
       const createdOrg = await organizationsApi.createOrganization(submitData);
+      const targetOrgId = createdOrg.organizationId || (createdOrg as unknown as { id?: string }).id;
       
-      if (logoFile && createdOrg.organizationId) {
-        await organizationsApi.uploadLogo(createdOrg.organizationId, logoFile);
+      if (logoFile && targetOrgId) {
+        await organizationsApi.uploadLogo(targetOrgId, logoFile);
+      }
+
+      if (targetOrgId) {
+        localStorage.setItem(LAST_ORG_KEY, targetOrgId);
       }
 
       await queryClient.invalidateQueries({ queryKey: ['organizations'] });
-      navigate('/'); // Go back to dashboard or organizations list after onboarding
+      
+      if (targetOrgId) {
+        navigate(`/organizations/${targetOrgId}`);
+      } else {
+        navigate('/');
+      }
     } catch (err) {
       setServerError(toApiErrorMessage(err));
     }

@@ -331,6 +331,18 @@ sendSuccess(res, null, 'Vendor deleted.'); // 200, no payload
 - Tenant pages live at `/organizations/:orgId/...` — the org comes from `useParams`, never localStorage.
   Query keys must include `orgId` or switching org serves the previous tenant's cache.
 - No UI library; hand-built controls. See `docs/UI_UX_PRINCIPLES.md`.
+- **Placeholders say "Select", never "Pick" or "Choose"** — `Select a batch…`, `Select a customer…`,
+  `Select a work centre…`. One verb across the whole app, matching `components/ui/Select.tsx`'s
+  default of `Select…`. Applies to input placeholders and to the empty option of a dropdown; prose
+  and headings are free to read however they read best.
+- **A dropdown inside a `Modal` must be portalled to `document.body` and positioned `fixed`.** The
+  dialog body is a scroll container and cards inside it set `overflow: hidden` for their rounded
+  corners, so a `position: absolute` menu is clipped to the card — it opens _inside_ the section and
+  most of it is unreachable. `issues/BatchPicker.tsx` is the worked example: measure the anchor in
+  `useLayoutEffect`, re-measure on `resize` and on `scroll` **in the capture phase** (scroll does not
+  bubble, so a `window` listener never hears the dialog body scrolling), flip upwards when the room
+  below runs out, and keep the menu element mounted while closed so downshift's `getMenuProps` ref
+  still tells an inside click from an outside one.
 - 🔴 **Tab navigation is mandatory and must be perfect — a control you cannot reach with Tab is not
   done.** Native elements (`input`, `textarea`, `select`, `button`, `a[href]`) are focusable for free;
   a `<div onClick>` is **not**. Tab skips straight past it, so the control is unreachable by keyboard

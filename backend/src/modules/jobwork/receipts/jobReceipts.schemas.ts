@@ -120,6 +120,21 @@ export const jobReceiptOutputSchema = z
      */
     valueShare: z.coerce.number().min(0).nullable().optional(),
 
+    /**
+     * 🔴 The label the accepted goods will carry from here on. What the processor
+     * returns is a physically NEW thing with no number of its own, so unless
+     * somebody names it here the batch has nothing to show in the next step's
+     * picker — `batchNumber` is internal and never rendered (2026-08-14).
+     *
+     * Required only for batch-tracked items, and enforced in `createBatch` rather
+     * than here: whether it is needed depends on the ITEM, which this schema
+     * cannot see.
+     */
+    batchReference: z.string().trim().max(100).nullable().optional(),
+    /** The same, for the rework batch — it is a separate batch with a separate
+     * life, so it cannot share the accepted batch's label. */
+    reworkBatchReference: z.string().trim().max(100).nullable().optional(),
+
     reasonId: z.string().uuid().nullable().optional(),
     responsibility: z.enum(RESPONSIBILITIES).nullable().optional(),
     remarks: z.string().trim().max(2000).nullable().optional(),
@@ -172,6 +187,12 @@ export const createJobReceiptSchema = openApiRegistry.register(
      * Sprints 1–4 did, which is what keeps the old Receive dialog working.
      */
     outputs: z.array(jobReceiptOutputSchema).optional(),
+
+    /** The single-output form's copy of the same two fields — with no `outputs`
+     * grid to carry them, the derived output takes them from the header. Ignored
+     * whenever `outputs` is supplied, since each row then names its own. */
+    batchReference: z.string().trim().max(100).nullable().optional(),
+    reworkBatchReference: z.string().trim().max(100).nullable().optional(),
 
     remarks: z.string().trim().max(2000).nullable().optional(),
     customFields: z.record(z.string(), z.unknown()).optional(),

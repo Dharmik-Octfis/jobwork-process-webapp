@@ -160,8 +160,6 @@ model User {
   updatedItemAssemblyActivities ItemAssemblyActivity[] @relation("ItemAssemblyActivityUpdatedBy")
   createdItemOpeningStockRows   ItemOpeningStockRow[]    @relation("ItemOpeningStockRowCreatedBy")
   updatedItemOpeningStockRows   ItemOpeningStockRow[]    @relation("ItemOpeningStockRowUpdatedBy")
-  createdItemLocationStocks     ItemLocationStock[]      @relation("ItemLocationStockCreatedBy")
-  updatedItemLocationStocks     ItemLocationStock[]      @relation("ItemLocationStockUpdatedBy")
 
   @@map("users")
 }
@@ -308,7 +306,6 @@ model Organization {
   itemAssemblyComments      ItemAssemblyComment[]
   itemAssemblyActivities    ItemAssemblyActivity[]
   itemOpeningStockRows      ItemOpeningStockRow[]
-  itemLocationStocks        ItemLocationStock[]
 
   @@map("organizations")
 }
@@ -635,10 +632,10 @@ model Location {
   jobOrderStepWorkCentres JobOrderStep[]     @relation("JobOrderStepWorkCentre")
   jobIssuesFrom           JobIssue[]         @relation("JobIssueSource")
   jobIssuesTo             JobIssue[]         @relation("JobIssueDestination")
+  jobIssueLinesFrom       JobIssueLine[]     @relation("JobIssueLineSource")
   jobReceipts             JobReceipt[]       @relation("JobReceiptLocation")
   itemAssemblies          ItemAssembly[]     @relation("ItemAssemblyLocation")
   itemOpeningStockRows    ItemOpeningStockRow[]
-  itemLocationStocks      ItemLocationStock[]
 
   @@unique([organizationId, name])
   @@map("locations")

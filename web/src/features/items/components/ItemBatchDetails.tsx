@@ -1,98 +1,117 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState, useEffect } from 'react';
-import {
-  Plus,
-  Layers,
-  ChevronDown,
-  HelpCircle,
-  Pencil,
-  XCircle,
-  CheckCircle2,
-  Trash2,
-  ArrowUpDown,
-  SlidersHorizontal,
-} from 'lucide-react';
-import { fetchLocations } from '../../configuration/locations/locations.api';
+import { useState, useMemo, useRef, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Search, Plus, ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { itemsApi } from '../items.api';
+import { fetchLocations } from '../../configuration/locations/locations.api';
 import { AddOpeningStockModal } from './AddOpeningStockModal';
-import { Select } from '../../../components/ui/Select';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
-import type { ColumnDef } from '../../list-views/listViews.api';
+import { Select, type SelectOption } from '../../../components/ui/Select';
 import type { ItemOpeningStockLocationRowDto } from '../items.schemas';
 
 interface ItemBatchDetailsProps {
   orgId: string;
   itemId: string;
-  unit?: string | null;
+  itemName?: string;
+  inventoryTracking?: string | null;
 }
 
-export interface FlattenedBatchItem {
+type BatchStatusFilter = 'all' | 'active' | 'inactive' | 'empty' | 'expired';
+
+interface BatchItem {
   id: string;
   locationId: string;
   locationName: string;
-  batchReference: string;
-  manufacturerBatch: string;
-  manufacturedDate: string;
-  expiryDate: string;
-  sellingPrice: string | number | null;
-  mrp: string | number | null;
+  batchReference?: string;
+  manufacturerBatch?: string;
+  manufacturedDate?: string;
+  expiryDate?: string;
   quantityIn: number;
+  quantityAvailable: number;
+  sellingPrice?: number | null;
+  mrp?: number | null;
+  isExpired: boolean;
+  isInactive?: boolean;
 }
 
-const BATCH_COLUMNS_CATALOG: ColumnDef[] = [
-  { key: 'batchReference', label: 'BATCH REFERENCE#', locked: true },
-  { key: 'manufacturerBatch', label: 'MANUFACTURER BATCH #' },
-  { key: 'manufacturedDate', label: 'MANUFACTURED DATE' },
-  { key: 'expiryDate', label: 'EXPIRY DATE' },
-  { key: 'quantityIn', label: 'QUANTITY IN' },
-  { key: 'quantityAvailable', label: 'QUANTITY AVAILABLE' },
-  { key: 'sellingPrice', label: 'SELLING PRICE' },
-  { key: 'mrp', label: 'MRP' },
+interface ColumnDef {
+  key: string;
+  label: string;
+  align: 'left' | 'right';
+  width: string;
+}
+
+const ALL_COLUMNS: ColumnDef[] = [
+  { key: 'batchReference', label: 'BATCH REFERENCE#', align: 'left', width: '180px' },
+  { key: 'manufacturerBatch', label: 'MANUFACTURER BATCH #', align: 'left', width: '180px' },
+  { key: 'manufacturedDate', label: 'MANUFACTURED DATE', align: 'left', width: '150px' },
+  { key: 'expiryDate', label: 'EXPIRY DATE', align: 'left', width: '150px' },
+  { key: 'quantityIn', label: 'QUANTITY IN', align: 'right', width: '130px' },
+  { key: 'quantityAvailable', label: 'QUANTITY AVAILABLE', align: 'right', width: '160px' },
+  { key: 'sellingPrice', label: 'SELLING PRICE', align: 'right', width: '140px' },
 ];
 
-export function ItemBatchDetails({ orgId, itemId, unit: _unit }: ItemBatchDetailsProps) {
-  const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
-  const [selectedLocationId, setSelectedLocationId] = useState<string>('all');
-  const [showEmptyBatches, setShowEmptyBatches] = useState<boolean>(false);
-  const [isOpeningStockModalOpen, setIsOpeningStockModalOpen] = useState(false);
-  const [isColumnsModalOpen, setIsColumnsModalOpen] = useState(false);
-  const [visibleColumns, setVisibleColumns] = useState<string[]>(
-    BATCH_COLUMNS_CATALOG.map((c) => c.key),
-  );
-  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
-  const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
-  const [inactiveBatchIds, setInactiveBatchIds] = useState<Set<string>>(new Set());
+const STATUS_OPTIONS: SelectOption[] = [
+  { value: 'all', label: 'All Batches' },
+  { value: 'active', label: 'Active Batches' },
+  { value: 'inactive', label: 'Inactive Batches' },
+  { value: 'empty', label: 'Empty Batches' },
+  { value: 'expired', label: 'Expired Batches' },
+];
 
-  const { data: locations = [], isLoading: isLocationsLoading } = useQuery({
+export function ItemBatchDetails({
+  orgId,
+  itemId,
+  itemName,
+  inventoryTracking,
+}: ItemBatchDetailsProps) {
+  const queryClient = useQueryClient();
+  const [selectedLocationId, setSelectedLocationId] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<BatchStatusFilter>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isOpeningStockModalOpen, setIsOpeningStockModalOpen] = useState(false);
+  const [activeMenuBatchId, setActiveMenuBatchId] = useState<string | null>(null);
+  const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
+  const [batchToDelete, setBatchToDelete] = useState<BatchItem | null>(null);
+  const [inactiveBatchIds, setInactiveBatchIds] = useState<Record<string, boolean>>({});
+
+  // Column visibility state
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(() =>
+    ALL_COLUMNS.map((col) => col.key),
+  );
+  const [isColumnPickerOpen, setIsColumnPickerOpen] = useState(false);
+
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setActiveMenuBatchId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const { data: locations = [] } = useQuery({
     queryKey: ['locations', orgId],
     queryFn: () => fetchLocations(orgId),
     enabled: !!orgId,
   });
 
-  const { data: openingStockRows = [], isLoading: isOpeningStockLoading } = useQuery({
+  const locationOptions: SelectOption[] = useMemo(
+    () => [
+      { value: 'all', label: 'All' },
+      ...locations.map((loc) => ({ value: loc.id, label: loc.name })),
+    ],
+    [locations],
+  );
+
+  const { data: openingStockRows = [], isLoading } = useQuery({
     queryKey: ['itemOpeningStock', orgId, itemId],
     queryFn: () => itemsApi.getOpeningStock(orgId, itemId),
     enabled: !!orgId && !!itemId,
   });
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (openDropdownId && !(e.target as HTMLElement).closest('.batch-row-action-menu')) {
-        setOpenDropdownId(null);
-      }
-    };
-    window.addEventListener('click', handleClickOutside);
-    return () => window.removeEventListener('click', handleClickOutside);
-  }, [openDropdownId]);
-
-  const locationMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const loc of locations) {
-      map.set(loc.id, loc.name);
-    }
-    return map;
-  }, [locations]);
 
   const saveOpeningStockMutation = useMutation({
     mutationFn: (rows: ItemOpeningStockLocationRowDto[]) =>
@@ -102,129 +121,127 @@ export function ItemBatchDetails({ orgId, itemId, unit: _unit }: ItemBatchDetail
       queryClient.setQueryData(['itemOpeningStock', orgId, itemId], nextRows);
       await queryClient.invalidateQueries({ queryKey: ['itemOpeningStock', orgId, itemId] });
       await queryClient.invalidateQueries({ queryKey: ['item', orgId, itemId] });
-      setIsOpeningStockModalOpen(false);
     },
   });
 
-  const handleToggleInactiveBatch = (batch: FlattenedBatchItem) => {
-    setInactiveBatchIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(batch.id)) {
-        next.delete(batch.id);
-      } else {
-        next.add(batch.id);
-      }
-      return next;
-    });
-  };
+  const allBatches = useMemo(() => {
+    const list: BatchItem[] = [];
+    const todayStr = new Date().toISOString().split('T')[0];
 
-  const handleDeleteBatch = async (batch: FlattenedBatchItem) => {
-    if (!window.confirm(`Are you sure you want to delete batch "${batch.batchReference}"?`)) {
-      return;
-    }
-    const currentRows = Array.isArray(openingStockRows) ? openingStockRows : [];
-    const updatedRows = currentRows.map((row) => {
-      if (row.locationId !== batch.locationId) return row;
-      const remainingBatches = row.batches.filter((b) => {
-        if (b.id && batch.id && b.id === batch.id) return false;
-        if (b.batchReference === batch.batchReference) return false;
-        return true;
-      });
-      return {
-        ...row,
-        batches: remainingBatches,
-      };
-    });
+    for (const locRow of openingStockRows) {
+      const loc = locations.find((l) => l.id === locRow.locationId);
+      const locName = loc?.name || 'Primary Location';
 
-    await saveOpeningStockMutation.mutateAsync(updatedRows);
-  };
+      for (const b of locRow.batches || []) {
+        const expDate = b.expiryDate ? String(b.expiryDate).split('T')[0] : null;
+        const isExpired = !!(expDate && expDate < todayStr);
+        const batchId = b.id ?? crypto.randomUUID();
+        const isInactive = !!inactiveBatchIds[batchId];
 
-  const allBatches = useMemo<FlattenedBatchItem[]>(() => {
-    const list: FlattenedBatchItem[] = [];
-    const rows = Array.isArray(openingStockRows) ? openingStockRows : [];
-
-    for (let rIdx = 0; rIdx < rows.length; rIdx++) {
-      const row = rows[rIdx];
-      const locName = locationMap.get(row.locationId) || 'Unknown Location';
-      const batches = Array.isArray(row.batches) ? row.batches : [];
-
-      for (let bIdx = 0; bIdx < batches.length; bIdx++) {
-        const b = batches[bIdx];
-        const qty = Number(b.quantityIn) || 0;
         list.push({
-          id: b.id || `${row.locationId}-${b.batchReference || 'nobatch'}-${rIdx}-${bIdx}`,
-          locationId: row.locationId,
+          id: batchId,
+          locationId: locRow.locationId,
           locationName: locName,
-          batchReference: b.batchReference || '-',
-          manufacturerBatch: b.manufacturerBatch || '-',
-          manufacturedDate: b.manufacturedDate || '-',
-          expiryDate: b.expiryDate || '-',
-          sellingPrice: b.sellingPrice ?? null,
-          mrp: b.mrp ?? null,
-          quantityIn: qty,
+          batchReference: b.batchReference ?? undefined,
+          manufacturerBatch: b.manufacturerBatch ?? undefined,
+          manufacturedDate: b.manufacturedDate ?? undefined,
+          expiryDate: b.expiryDate ?? undefined,
+          quantityIn: Number(b.quantityIn ?? 0),
+          quantityAvailable: Number(b.quantityIn ?? 0),
+          sellingPrice:
+            b.sellingPrice !== null && b.sellingPrice !== undefined ? Number(b.sellingPrice) : null,
+          mrp: b.mrp !== null && b.mrp !== undefined ? Number(b.mrp) : null,
+          isExpired,
+          isInactive,
         });
       }
     }
     return list;
-  }, [openingStockRows, locationMap]);
+  }, [openingStockRows, locations, inactiveBatchIds]);
 
   const filteredBatches = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
-
     return allBatches.filter((b) => {
-      const isMarkedInactive = inactiveBatchIds.has(b.id);
-      const isExpired = b.expiryDate && b.expiryDate !== '-' && b.expiryDate < todayStr;
-      const isInactive = isMarkedInactive || isExpired || b.quantityIn <= 0;
+      if (selectedLocationId !== 'all' && b.locationId !== selectedLocationId) return false;
 
-      // 1. Show Empty Batches Filter
-      if (!showEmptyBatches && b.quantityIn <= 0) {
-        return false;
-      }
-
-      // 2. Location Filter
-      if (selectedLocationId !== 'all' && b.locationId !== selectedLocationId) {
-        return false;
-      }
-
-      // 3. Status Filter
       if (statusFilter === 'active') {
-        if (isInactive) return false;
+        if (b.quantityAvailable <= 0 || b.isExpired || b.isInactive) return false;
       } else if (statusFilter === 'inactive') {
-        if (!isInactive) return false;
+        if (!b.isInactive) return false;
+      } else if (statusFilter === 'empty') {
+        if (b.quantityAvailable > 0) return false;
+      } else if (statusFilter === 'expired') {
+        if (!b.isExpired) return false;
       }
 
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        // 🔴 The tag, not the internal key. `batchNumber` is never rendered, so
+        // nobody types it, and matching on it only means a search for "42" hits
+        // rows whose visible label has nothing to do with 42 (2026-08-14).
+        const refMatch = b.batchReference?.toLowerCase().includes(q);
+        const mfrMatch = b.manufacturerBatch?.toLowerCase().includes(q);
+        if (!refMatch && !mfrMatch) return false;
+      }
       return true;
     });
-  }, [allBatches, showEmptyBatches, selectedLocationId, statusFilter, inactiveBatchIds]);
+  }, [allBatches, selectedLocationId, statusFilter, searchQuery]);
 
-  const isLoading = isLocationsLoading || isOpeningStockLoading;
+  const activeColumns = useMemo(() => {
+    return visibleColumns
+      .map((key) => ALL_COLUMNS.find((col) => col.key === key))
+      .filter((col): col is ColumnDef => Boolean(col));
+  }, [visibleColumns]);
 
-  const isColVisible = (key: string) => visibleColumns.includes(key);
+  const handleEditBatch = (_batch: BatchItem) => {
+    setActiveMenuBatchId(null);
+    setIsOpeningStockModalOpen(true);
+  };
 
-  const statusOptions = [
-    { value: 'all', label: 'All Batches' },
-    { value: 'active', label: 'Active' },
-    { value: 'inactive', label: 'Inactive' },
-  ];
+  const handleToggleInactive = (batch: BatchItem) => {
+    setActiveMenuBatchId(null);
+    setInactiveBatchIds((prev) => ({
+      ...prev,
+      [batch.id]: !prev[batch.id],
+    }));
+  };
 
-  const locationOptions = useMemo(() => {
-    return [
-      { value: 'all', label: 'Location: All Locations' },
-      ...locations.map((loc) => ({
-        value: loc.id,
-        label: `Location: ${loc.name}`,
-      })),
-    ];
-  }, [locations]);
+  const handleDeleteBatchConfirm = async () => {
+    if (!batchToDelete) return;
+
+    try {
+      const updatedRows = openingStockRows.map((locRow) => {
+        if (locRow.locationId === batchToDelete.locationId) {
+          const remainingBatches = (locRow.batches || []).filter((b) => b.id !== batchToDelete.id);
+          const newBatchSum = remainingBatches.reduce(
+            (sum, b) => sum + (Number(b.quantityIn) || 0),
+            0,
+          );
+          return {
+            ...locRow,
+            openingStock: newBatchSum,
+            batches: remainingBatches,
+          };
+        }
+        return locRow;
+      });
+
+      await saveOpeningStockMutation.mutateAsync(updatedRows);
+      setBatchToDelete(null);
+      setActiveMenuBatchId(null);
+    } catch (error) {
+      console.error('Failed to delete batch', error);
+    }
+  };
 
   return (
-    <div style={{ padding: '0 24px' }}>
+    <div style={{ padding: '24px' }}>
+      {/* Top Filter & Toolbar Bar */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: '16px',
+          marginBottom: '20px',
           gap: '12px',
           flexWrap: 'wrap',
         }}
@@ -232,71 +249,79 @@ export function ItemBatchDetails({ orgId, itemId, unit: _unit }: ItemBatchDetail
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           <Select
             value={statusFilter}
-            onChange={(val) => setStatusFilter(val as 'all' | 'active' | 'inactive')}
-            options={statusOptions}
-            minWidth={140}
+            onChange={(val) => setStatusFilter(val as BatchStatusFilter)}
+            options={STATUS_OPTIONS}
             fullWidth={false}
+            minWidth={155}
+            buttonStyle={{ height: 34, borderRadius: 6, borderColor: '#cbd5e1' }}
+            ariaLabel="Status Filter"
           />
-          <Select
-            value={selectedLocationId}
-            onChange={(val) => setSelectedLocationId(val)}
-            options={locationOptions}
-            minWidth={180}
-            fullWidth={false}
-          />
-          <label
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '13px',
-              color: '#475569',
-              cursor: 'pointer',
-              userSelect: 'none',
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={showEmptyBatches}
-              onChange={(e) => setShowEmptyBatches(e.target.checked)}
-              style={{ accentColor: '#16a34a', width: '14px', height: '14px', cursor: 'pointer' }}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 500 }}>Location:</span>
+            <Select
+              value={selectedLocationId}
+              onChange={setSelectedLocationId}
+              options={locationOptions}
+              fullWidth={false}
+              minWidth={140}
+              menuWidth={400}
+              buttonStyle={{ height: 34, borderRadius: 6, borderColor: '#cbd5e1' }}
+              ariaLabel="Location Filter"
             />
-            <span>Show Empty Batches</span>
-            <span
-              title="Select this option to display batches with zero quantity"
-              style={{ display: 'inline-flex', alignItems: 'center' }}
-            >
-              <HelpCircle size={14} style={{ color: '#94a3b8', cursor: 'help' }} />
-            </span>
-          </label>
+          </div>
+
+          <div style={{ position: 'relative', width: '240px' }}>
+            <Search
+              size={15}
+              style={{
+                position: 'absolute',
+                left: '10px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: '#94a3b8',
+              }}
+            />
+            <input
+              type="text"
+              placeholder="Find Batch Number"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                height: '34px',
+                padding: '0 12px 0 32px',
+                fontSize: '13px',
+                border: '1px solid #cbd5e1',
+                borderRadius: '6px',
+                outline: 'none',
+                background: '#fff',
+                color: '#0f172a',
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {/* Column Customizer Toggle Button */}
           <button
             type="button"
-            onClick={() => setIsColumnsModalOpen(true)}
+            onClick={() => setIsColumnPickerOpen(true)}
             title="Customize Columns"
             aria-label="Customize Columns"
             style={{
-              display: 'inline-flex',
+              display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: '32px',
-              height: '32px',
+              width: '34px',
+              height: '34px',
               borderRadius: '6px',
               border: '1px solid #cbd5e1',
-              background: '#fff',
+              background: '#ffffff',
               cursor: 'pointer',
-              color: '#64748b',
-              transition: 'all 0.15s ease',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = '#94a3b8';
-              e.currentTarget.style.color = '#334155';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = '#cbd5e1';
-              e.currentTarget.style.color = '#64748b';
+              color: '#475569',
+              boxSizing: 'border-box',
             }}
           >
             <SlidersHorizontal size={15} />
@@ -306,26 +331,20 @@ export function ItemBatchDetails({ orgId, itemId, unit: _unit }: ItemBatchDetail
             type="button"
             onClick={() => setIsOpeningStockModalOpen(true)}
             style={{
-              display: 'inline-flex',
+              display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              padding: '6px 16px',
-              height: '32px',
-              fontSize: '13px',
-              fontWeight: 600,
-              color: '#fff',
+              height: '34px',
               background: '#15803d',
+              color: '#fff',
               border: 'none',
+              padding: '0 16px',
               borderRadius: '6px',
+              fontSize: '13px',
+              fontWeight: 500,
               cursor: 'pointer',
               boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-              transition: 'background 0.2s',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = '#166534';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = '#15803d';
+              boxSizing: 'border-box',
             }}
           >
             <Plus size={16} />
@@ -334,523 +353,406 @@ export function ItemBatchDetails({ orgId, itemId, unit: _unit }: ItemBatchDetail
         </div>
       </div>
 
+      {/* Table Container with Horizontal Scroll support */}
       <div
         style={{
-          border: '1px solid #e2e8f0',
-          borderRadius: '8px',
-          overflow: 'hidden',
-          background: '#fff',
+          border: '1px solid #eef0f3',
+          borderRadius: '6px',
+          overflowX: 'auto',
+          background: '#ffffff',
         }}
       >
-        {isLoading ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
-            Loading batch details...
-          </div>
-        ) : filteredBatches.length === 0 ? (
-          <div
-            style={{
-              padding: '48px 24px',
-              textAlign: 'center',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '12px',
-            }}
-          >
-            <div
-              style={{
-                width: '48px',
-                height: '48px',
-                borderRadius: '50%',
-                background: '#f1f5f9',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#64748b',
-              }}
-            >
-              <Layers size={24} />
-            </div>
-            <div style={{ fontSize: '15px', fontWeight: 500, color: '#334155' }}>
-              No matching batches found
-            </div>
-            <div style={{ fontSize: '13px', color: '#64748b', maxWidth: '400px' }}>
-              Click "+ New" to add batch references, mfg/expiry dates, and quantities per location.
-            </div>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto', width: '100%' }}>
-            <table
-              style={{
-                width: '100%',
-                borderCollapse: 'collapse',
-                textAlign: 'left',
-                tableLayout: 'auto',
-              }}
-            >
-              <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                  {isColVisible('batchReference') && (
-                    <th
-                      style={{
-                        padding: '12px 16px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.03em',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        BATCH REFERENCE#
-                        <ArrowUpDown size={12} style={{ color: '#94a3b8' }} />
-                      </div>
-                    </th>
-                  )}
-                  {isColVisible('manufacturerBatch') && (
-                    <th
-                      style={{
-                        padding: '12px 16px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.03em',
-                      }}
-                    >
-                      MANUFACTURER BATCH #
-                    </th>
-                  )}
-                  {isColVisible('manufacturedDate') && (
-                    <th
-                      style={{
-                        padding: '12px 16px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.03em',
-                      }}
-                    >
-                      MANUFACTURED DATE
-                    </th>
-                  )}
-                  {isColVisible('expiryDate') && (
-                    <th
-                      style={{
-                        padding: '12px 16px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.03em',
-                      }}
-                    >
-                      EXPIRY DATE
-                    </th>
-                  )}
-                  {isColVisible('quantityIn') && (
-                    <th
-                      style={{
-                        padding: '12px 16px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.03em',
-                        textAlign: 'right',
-                      }}
-                    >
-                      QUANTITY IN
-                    </th>
-                  )}
-                  {isColVisible('quantityAvailable') && (
-                    <th
-                      style={{
-                        padding: '12px 16px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.03em',
-                        textAlign: 'right',
-                      }}
-                    >
-                      QUANTITY AVAILABLE
-                    </th>
-                  )}
-                  {isColVisible('sellingPrice') && (
-                    <th
-                      style={{
-                        padding: '12px 16px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.03em',
-                        textAlign: 'right',
-                      }}
-                    >
-                      SELLING PRICE
-                    </th>
-                  )}
-                  {isColVisible('mrp') && (
-                    <th
-                      style={{
-                        padding: '12px 16px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.03em',
-                        textAlign: 'right',
-                      }}
-                    >
-                      MRP
-                    </th>
-                  )}
-                  <th style={{ padding: '12px 16px', width: '40px', minWidth: '40px' }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredBatches.map((batch, index) => {
-                  const isHovered = hoveredRowId === batch.id;
-                  const isDropdownOpen = openDropdownId === batch.id;
-                  const isMarkedInactive = inactiveBatchIds.has(batch.id);
+        <table
+          style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            fontSize: '13px',
+            tableLayout: 'auto',
+          }}
+        >
+          <thead>
+            <tr style={{ background: '#f8fafc', borderBottom: '1px solid #eef0f3' }}>
+              {activeColumns.map((col) => (
+                <th
+                  key={col.key}
+                  style={{
+                    padding: '11px 16px',
+                    textAlign: col.align,
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: '#64748b',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.03em',
+                    minWidth: col.width,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {col.label}
+                </th>
+              ))}
+              {/* Reserved Action Header Column - Fixed Width 44px */}
+              <th
+                style={{ padding: '11px 8px', width: '44px', minWidth: '44px', maxWidth: '44px' }}
+              />
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr>
+                <td
+                  colSpan={activeColumns.length + 1}
+                  style={{ padding: '36px', textAlign: 'center', color: '#64748b' }}
+                >
+                  Loading batch details...
+                </td>
+              </tr>
+            ) : filteredBatches.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={activeColumns.length + 1}
+                  style={{ padding: '36px', textAlign: 'center', color: '#64748b' }}
+                >
+                  No batch details found.
+                </td>
+              </tr>
+            ) : (
+              filteredBatches.map((b, index) => {
+                const isHovered = hoveredRowId === b.id;
+                const isMenuOpen = activeMenuBatchId === b.id;
+                const isNearBottom =
+                  filteredBatches.length > 2 && index >= filteredBatches.length - 2;
 
-                  return (
-                    <tr
-                      key={batch.id}
-                      onMouseEnter={() => setHoveredRowId(batch.id)}
-                      onMouseLeave={() => setHoveredRowId(null)}
+                return (
+                  <tr
+                    key={b.id}
+                    onMouseEnter={() => setHoveredRowId(b.id)}
+                    onMouseLeave={() => setHoveredRowId(null)}
+                    style={{
+                      borderBottom: '1px solid #eef0f3',
+                      background:
+                        isHovered || isMenuOpen ? '#f8fafc' : b.isInactive ? '#f8fafc' : '#ffffff',
+                      opacity: b.isInactive ? 0.75 : 1,
+                      transition: 'background 0.15s, opacity 0.15s',
+                    }}
+                  >
+                    {activeColumns.map((col) => {
+                      if (col.key === 'batchReference') {
+                        return (
+                          <td
+                            key={col.key}
+                            style={{
+                              padding: '12px 16px',
+                              color: b.isInactive ? '#64748b' : '#0062ff',
+                              fontWeight: 500,
+                              whiteSpace: 'nowrap',
+                              textDecoration: b.isInactive ? 'line-through' : 'none',
+                            }}
+                          >
+                            {/* No `batchNumber` fallback (2026-08-14) — it is an
+                                internal key, and falling back to it puts the one
+                                identifier the user cannot act on into the column
+                                they identify batches by. */}
+                            {b.batchReference || '-'}
+                            {b.isInactive && (
+                              <span
+                                style={{
+                                  marginLeft: '8px',
+                                  fontSize: '10px',
+                                  background: '#e2e8f0',
+                                  color: '#475569',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  fontWeight: 500,
+                                  textDecoration: 'none',
+                                  display: 'inline-block',
+                                }}
+                              >
+                                Inactive
+                              </span>
+                            )}
+                          </td>
+                        );
+                      }
+                      if (col.key === 'manufacturerBatch') {
+                        return (
+                          <td
+                            key={col.key}
+                            style={{ padding: '12px 16px', color: '#334155', whiteSpace: 'nowrap' }}
+                          >
+                            {b.manufacturerBatch || '-'}
+                          </td>
+                        );
+                      }
+                      if (col.key === 'manufacturedDate') {
+                        return (
+                          <td
+                            key={col.key}
+                            style={{ padding: '12px 16px', color: '#334155', whiteSpace: 'nowrap' }}
+                          >
+                            {b.manufacturedDate || '-'}
+                          </td>
+                        );
+                      }
+                      if (col.key === 'expiryDate') {
+                        return (
+                          <td
+                            key={col.key}
+                            style={{
+                              padding: '12px 16px',
+                              color: b.isExpired ? '#ef4444' : '#334155',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {b.expiryDate || '-'}
+                            {b.isExpired && (
+                              <span
+                                style={{
+                                  marginLeft: '6px',
+                                  fontSize: '10px',
+                                  background: '#fef2f2',
+                                  color: '#ef4444',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Expired
+                              </span>
+                            )}
+                          </td>
+                        );
+                      }
+                      if (col.key === 'quantityIn') {
+                        return (
+                          <td
+                            key={col.key}
+                            style={{
+                              padding: '12px 16px',
+                              textAlign: 'right',
+                              color: '#334155',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {b.quantityIn}
+                          </td>
+                        );
+                      }
+                      if (col.key === 'quantityAvailable') {
+                        return (
+                          <td
+                            key={col.key}
+                            style={{
+                              padding: '12px 16px',
+                              textAlign: 'right',
+                              color: b.quantityAvailable <= 0 ? '#64748b' : '#0f172a',
+                              fontWeight: b.quantityAvailable > 0 ? 500 : 400,
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {b.quantityAvailable}
+                          </td>
+                        );
+                      }
+                      if (col.key === 'sellingPrice') {
+                        return (
+                          <td
+                            key={col.key}
+                            style={{
+                              padding: '12px 16px',
+                              textAlign: 'right',
+                              color: '#334155',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {b.sellingPrice !== null && b.sellingPrice !== undefined
+                              ? `₹${Number(b.sellingPrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+                              : '-'}
+                          </td>
+                        );
+                      }
+                      return null;
+                    })}
+
+                    {/* Fixed Action Button Column - Reserved 44px Space */}
+                    <td
                       style={{
-                        borderBottom:
-                          index === filteredBatches.length - 1 ? 'none' : '1px solid #f1f5f9',
-                        background: isHovered || isDropdownOpen ? '#f8fafc' : '#fff',
-                        height: '44px',
-                        transition: 'background 0.15s ease',
+                        padding: '12px 8px',
+                        textAlign: 'center',
+                        position: 'relative',
+                        width: '44px',
+                        minWidth: '44px',
+                        maxWidth: '44px',
                       }}
                     >
-                      {isColVisible('batchReference') && (
-                        <td
-                          style={{
-                            padding: '10px 16px',
-                            fontSize: '13px',
-                            fontWeight: 500,
-                            color: isMarkedInactive ? '#94a3b8' : '#0284c7',
-                            maxWidth: '220px',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                          title={batch.batchReference}
-                        >
-                          <span
-                            style={{ textDecoration: isMarkedInactive ? 'line-through' : 'none' }}
-                          >
-                            {batch.batchReference}
-                          </span>
-                          {isMarkedInactive && (
-                            <span
-                              style={{
-                                marginLeft: '6px',
-                                fontSize: '10px',
-                                padding: '1px 5px',
-                                borderRadius: '4px',
-                                background: '#f1f5f9',
-                                color: '#64748b',
-                                fontWeight: 500,
-                              }}
-                            >
-                              Inactive
-                            </span>
-                          )}
-                        </td>
-                      )}
-                      {isColVisible('manufacturerBatch') && (
-                        <td
-                          style={{
-                            padding: '10px 16px',
-                            fontSize: '13px',
-                            color: '#475569',
-                            maxWidth: '220px',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                          title={batch.manufacturerBatch}
-                        >
-                          {batch.manufacturerBatch}
-                        </td>
-                      )}
-                      {isColVisible('manufacturedDate') && (
-                        <td style={{ padding: '10px 16px', fontSize: '13px', color: '#64748b' }}>
-                          {batch.manufacturedDate}
-                        </td>
-                      )}
-                      {isColVisible('expiryDate') && (
-                        <td style={{ padding: '10px 16px', fontSize: '13px', color: '#64748b' }}>
-                          {batch.expiryDate}
-                        </td>
-                      )}
-                      {isColVisible('quantityIn') && (
-                        <td
-                          style={{
-                            padding: '10px 16px',
-                            fontSize: '13px',
-                            color: '#334155',
-                            textAlign: 'right',
-                          }}
-                        >
-                          {batch.quantityIn.toLocaleString()}
-                        </td>
-                      )}
-                      {isColVisible('quantityAvailable') && (
-                        <td
-                          style={{
-                            padding: '10px 16px',
-                            fontSize: '13px',
-                            fontWeight: 600,
-                            color: '#0f172a',
-                            textAlign: 'right',
-                          }}
-                        >
-                          {batch.quantityIn.toLocaleString()}
-                        </td>
-                      )}
-                      {isColVisible('sellingPrice') && (
-                        <td
-                          style={{
-                            padding: '10px 16px',
-                            fontSize: '13px',
-                            color: '#334155',
-                            textAlign: 'right',
-                          }}
-                        >
-                          {batch.sellingPrice !== null && batch.sellingPrice !== ''
-                            ? `₹${Number(batch.sellingPrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
-                            : '-'}
-                        </td>
-                      )}
-                      {isColVisible('mrp') && (
-                        <td
-                          style={{
-                            padding: '10px 16px',
-                            fontSize: '13px',
-                            color: '#334155',
-                            textAlign: 'right',
-                          }}
-                        >
-                          {batch.mrp !== null && batch.mrp !== ''
-                            ? `₹${Number(batch.mrp).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
-                            : '-'}
-                        </td>
-                      )}
-                      <td
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveMenuBatchId(isMenuOpen ? null : b.id);
+                        }}
                         style={{
-                          padding: '0 12px',
-                          width: '40px',
-                          minWidth: '40px',
-                          textAlign: 'right',
-                          verticalAlign: 'middle',
+                          width: '20px',
+                          height: '20px',
+                          borderRadius: '50%',
+                          background: '#15803d',
+                          border: 'none',
+                          color: '#ffffff',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.12)',
+                          visibility: isHovered || isMenuOpen ? 'visible' : 'hidden',
+                          transition: 'opacity 0.15s',
                         }}
                       >
-                        <div
-                          className="batch-row-action-menu"
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            position: 'relative',
-                            width: '26px',
-                            height: '26px',
-                            opacity: isHovered || isDropdownOpen ? 1 : 0,
-                            pointerEvents: isHovered || isDropdownOpen ? 'auto' : 'none',
-                            transition: 'opacity 0.15s ease',
-                          }}
-                        >
-                          <button
-                            type="button"
+                        <ChevronDown size={12} />
+                      </button>
+
+                      {isMenuOpen && (
+                        <>
+                          <div
+                            style={{ position: 'fixed', inset: 0, zIndex: 999 }}
                             onClick={(e) => {
                               e.stopPropagation();
-                              setOpenDropdownId(isDropdownOpen ? null : batch.id);
+                              setActiveMenuBatchId(null);
                             }}
+                          />
+                          <div
+                            ref={menuRef}
                             style={{
-                              width: '26px',
-                              height: '26px',
-                              borderRadius: '50%',
-                              background: '#2563eb',
-                              border: 'none',
-                              color: '#fff',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              cursor: 'pointer',
-                              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                              position: 'absolute',
+                              right: '8px',
+                              ...(isNearBottom ? { bottom: '32px' } : { top: '32px' }),
+                              width: '160px',
+                              background: '#ffffff',
+                              borderRadius: '8px',
+                              boxShadow:
+                                '0 10px 25px -5px rgba(0,0,0,0.15), 0 8px 10px -6px rgba(0,0,0,0.1)',
+                              border: '1px solid #cbd5e1',
+                              zIndex: 1000,
+                              padding: '4px 0',
+                              textAlign: 'left',
+                              overflow: 'hidden',
                             }}
                           >
-                            <ChevronDown size={14} />
-                          </button>
-
-                          {/* Dropdown Menu (Opens to the LEFT side without overlapping the action button) */}
-                          {isDropdownOpen && (
-                            <div
+                            <button
+                              type="button"
+                              onClick={() => handleEditBatch(b)}
                               style={{
-                                position: 'absolute',
-                                right: 'calc(100% + 8px)',
-                                top: 0,
-                                background: '#fff',
-                                border: '1px solid #cbd5e1',
-                                borderRadius: '8px',
-                                boxShadow:
-                                  '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-                                zIndex: 100,
-                                minWidth: '150px',
-                                padding: '4px 0',
-                                whiteSpace: 'nowrap',
+                                width: '100%',
+                                padding: '8px 16px',
+                                border: 'none',
+                                background: 'transparent',
+                                color: '#334155',
+                                fontSize: '13px',
+                                fontWeight: 400,
+                                textAlign: 'left',
+                                cursor: 'pointer',
+                                display: 'block',
                               }}
+                              onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                              onMouseLeave={(e) =>
+                                (e.currentTarget.style.background = 'transparent')
+                              }
                             >
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setOpenDropdownId(null);
-                                  setIsOpeningStockModalOpen(true);
-                                }}
-                                style={{
-                                  width: '100%',
-                                  padding: '8px 14px',
-                                  fontSize: '13px',
-                                  color: '#334155',
-                                  background: 'transparent',
-                                  border: 'none',
-                                  textAlign: 'left',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '8px',
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.backgroundColor = '#f1f5f9';
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.backgroundColor = 'transparent';
-                                }}
-                              >
-                                <Pencil size={13} style={{ color: '#64748b' }} />
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setOpenDropdownId(null);
-                                  handleToggleInactiveBatch(batch);
-                                }}
-                                style={{
-                                  width: '100%',
-                                  padding: '8px 14px',
-                                  fontSize: '13px',
-                                  color: '#334155',
-                                  background: 'transparent',
-                                  border: 'none',
-                                  textAlign: 'left',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '8px',
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.backgroundColor = '#f1f5f9';
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.backgroundColor = 'transparent';
-                                }}
-                              >
-                                {isMarkedInactive ? (
-                                  <>
-                                    <CheckCircle2 size={13} style={{ color: '#16a34a' }} />
-                                    Mark as Active
-                                  </>
-                                ) : (
-                                  <>
-                                    <XCircle size={13} style={{ color: '#64748b' }} />
-                                    Mark as Inactive
-                                  </>
-                                )}
-                              </button>
-                              <div
-                                style={{ height: '1px', background: '#e2e8f0', margin: '4px 0' }}
-                              />
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setOpenDropdownId(null);
-                                  handleDeleteBatch(batch);
-                                }}
-                                style={{
-                                  width: '100%',
-                                  padding: '8px 14px',
-                                  fontSize: '13px',
-                                  color: '#ef4444',
-                                  background: 'transparent',
-                                  border: 'none',
-                                  textAlign: 'left',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '8px',
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.backgroundColor = '#fef2f2';
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.backgroundColor = 'transparent';
-                                }}
-                              >
-                                <Trash2 size={13} />
-                                Delete
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleInactive(b)}
+                              style={{
+                                width: '100%',
+                                padding: '8px 16px',
+                                border: 'none',
+                                background: 'transparent',
+                                color: '#334155',
+                                fontSize: '13px',
+                                fontWeight: 400,
+                                textAlign: 'left',
+                                cursor: 'pointer',
+                                display: 'block',
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                              onMouseLeave={(e) =>
+                                (e.currentTarget.style.background = 'transparent')
+                              }
+                            >
+                              {b.isInactive ? 'Mark as Active' : 'Mark as Inactive'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveMenuBatchId(null);
+                                setBatchToDelete(b);
+                              }}
+                              style={{
+                                width: '100%',
+                                padding: '8px 16px',
+                                border: 'none',
+                                background: 'transparent',
+                                color: '#ef4444',
+                                fontSize: '13px',
+                                fontWeight: 400,
+                                textAlign: 'left',
+                                cursor: 'pointer',
+                                display: 'block',
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.background = '#fef2f2')}
+                              onMouseLeave={(e) =>
+                                (e.currentTarget.style.background = 'transparent')
+                              }
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
       </div>
 
       {isOpeningStockModalOpen && (
         <AddOpeningStockModal
-          isOpen={isOpeningStockModalOpen}
+          isOpen
           onClose={() => setIsOpeningStockModalOpen(false)}
           orgId={orgId}
+          inventoryTracking={inventoryTracking}
+          itemName={itemName}
           initialRows={openingStockRows}
+          isSaving={saveOpeningStockMutation.isPending}
           onSave={async (rows) => {
             await saveOpeningStockMutation.mutateAsync(rows);
           }}
-          isSaving={saveOpeningStockMutation.isPending}
         />
       )}
 
-      {isColumnsModalOpen && (
-        <CustomizeColumnsModal
-          isOpen={isColumnsModalOpen}
-          onClose={() => setIsColumnsModalOpen(false)}
-          catalog={BATCH_COLUMNS_CATALOG}
-          visible={visibleColumns}
-          onSave={(cols) => {
-            setVisibleColumns(cols);
-            setIsColumnsModalOpen(false);
-          }}
+      {batchToDelete && (
+        <ConfirmDialog
+          isOpen
+          title="Delete Batch"
+          message={`Are you sure you want to delete batch "${batchToDelete.batchReference || 'Selected Batch'}"? This action will remove the batch quantity from opening stock.`}
+          confirmText={saveOpeningStockMutation.isPending ? 'Deleting...' : 'Delete'}
+          onConfirm={handleDeleteBatchConfirm}
+          onCancel={() => setBatchToDelete(null)}
         />
       )}
+
+      <CustomizeColumnsModal
+        isOpen={isColumnPickerOpen}
+        onClose={() => setIsColumnPickerOpen(false)}
+        catalog={ALL_COLUMNS}
+        visible={visibleColumns}
+        onSave={(cols) => {
+          setVisibleColumns(cols);
+          setIsColumnPickerOpen(false);
+        }}
+      />
     </div>
   );
 }

@@ -8,7 +8,9 @@ import { seedSystemTemplates } from '../permission-templates/permission-template
 import { seedSystemRoles } from '../roles/roles.service.ts';
 import { withOrgCodeRetry } from './orgCode.ts';
 import { composeFullName } from '../../../../lib/memberDirectory.ts';
-import { uploadFile} from '../../../../lib/storage.ts';
+import { uploadFile, getFileUrl } from '../../../../lib/storage.ts';
+
+import { MASTER_CURRENCIES } from '../../../seed-data/seed-data.controller.ts';
 
 import type { Organization, Prisma, Industry } from '../../../../../generated/prisma/client.ts';
 
@@ -21,7 +23,49 @@ async function resolveLogoUrl(logoUrl: string | null | undefined): Promise<strin
   ) {
     return logoUrl;
   }
-  return `/api/storage/stream?key=${encodeURIComponent(logoUrl)}`;
+  try {
+    return await getFileUrl(logoUrl);
+  } catch {
+    return logoUrl;
+  }
+}
+
+export function getDefaultCurrencyForCountry(country?: string | null) {
+  const code = country?.trim().toUpperCase();
+  if (code === 'IN' || code === 'IND' || code === 'INDIA') {
+    return {
+      currencyCode: 'INR',
+      currencyName: 'Indian Rupee',
+      symbol: '₹',
+    };
+  }
+  if (code === 'CA' || code === 'CAN' || code === 'CANADA') {
+    return {
+      currencyCode: 'CAD',
+      currencyName: 'Canadian Dollar',
+      symbol: 'CA$',
+    };
+  }
+  return {
+    currencyCode: 'USD',
+    currencyName: 'US Dollar',
+    symbol: '$',
+  };
+}
+
+export function getCurrencyDetails(requestedCode?: string | null, country?: string | null) {
+  if (requestedCode) {
+    const code = requestedCode.trim().toUpperCase();
+    const found = MASTER_CURRENCIES.find((c) => c.code === code);
+    if (found) {
+      return {
+        currencyCode: found.code,
+        currencyName: found.name,
+        symbol: found.symbol,
+      };
+    }
+  }
+  return getDefaultCurrencyForCountry(country);
 }
 
 // Mapper to convert Prisma Organization to Zoho-style format
@@ -92,20 +136,22 @@ export async function createOrganization(req: Request, res: Response, next: Next
           },
         });
 
+        const baseCurrency = getCurrencyDetails(data.baseCurrency, data.address?.country);
+
         const [{ ownerTemplateId }, { ownerRoleId }] = await Promise.all([
           seedSystemTemplates(tx, orgId, userId),
           seedSystemRoles(tx, orgId, userId),
-          // Automatically create a default INR Currency
+          // Automatically create a default Currency based on country
           tx.currency.create({
             data: {
               organizationId: orgId,
-              currencyCode: 'INR',
-              currencyName: 'Indian Rupee',
-              symbol: '₹',
+              currencyCode: baseCurrency.currencyCode,
+              currencyName: baseCurrency.currencyName,
+              symbol: baseCurrency.symbol,
               decimalPlaces: 2,
               format: '1,234,567.89',
               exchangeRate: 1,
-              isBaseCurrency: true,
+              isBaseCurrency: false,
               createdBy: userId,
               updatedBy: userId,
             },
@@ -276,11 +322,8 @@ export async function uploadOrganizationLogo(req: Request, res: Response, next: 
       include: { industry: { select: { name: true } } },
     });
 
-    res.status(200).json({
-      code: 0,
-      message: 'Logo uploaded successfully.',
-      organization: await mapToZohoFormat(updatedOrg),
-    });
+    const formatted = await mapToZohoFormat(updatedOrg);
+    sendSuccess(res, formatted, 'Logo uploaded successfully.');
   } catch (error) {
     next(error);
   }
@@ -326,11 +369,8 @@ export async function deleteOrganizationLogo(req: Request, res: Response, next: 
       include: { industry: { select: { name: true } } },
     });
 
-    res.status(200).json({
-      code: 0,
-      message: 'Logo removed successfully.',
-      organization: await mapToZohoFormat(updatedOrg),
-    });
+    const formatted = await mapToZohoFormat(updatedOrg);
+    sendSuccess(res, formatted, 'Logo removed successfully.');
   } catch (error) {
     next(error);
   }

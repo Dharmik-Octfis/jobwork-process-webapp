@@ -129,6 +129,11 @@ screens.
 
 - Use verbs on buttons ("Save changes," "Start job"), not vague "OK/Submit."
 - Keep terminology consistent across the whole app.
+- **Placeholders use "Select", never "Pick" or "Choose"** — "Select a batch…", "Select a customer…".
+  One verb everywhere, matching `components/ui/Select.tsx`'s default of "Select…". This covers input
+  placeholders and the empty option of a dropdown; ordinary prose is not bound by it.
+- An empty state that only says "nothing chosen yet" belongs on the line beside the control, not in a
+  panel of its own — a dashed box costs a block of vertical space to say nothing has happened yet.
 
 ---
 

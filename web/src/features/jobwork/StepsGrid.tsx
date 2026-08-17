@@ -859,7 +859,7 @@ export function StepsGrid<T extends StepGridRow>({
                       value={step.workCentreLocationId ?? ''}
                       onChange={(value) => update(index, { workCentreLocationId: value || null })}
                       options={[
-                        { value: '', label: 'Pick a work centre…' },
+                        { value: '', label: 'Select a work centre…' },
                         ...workCentres.map((l) => ({ value: l.id, label: l.name })),
                       ]}
                       disabled={readOnly}
