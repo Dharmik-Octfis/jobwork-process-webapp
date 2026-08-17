@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Filter, Check } from 'lucide-react';
+import { useState, useRef,} from 'react';
+import { Filter, Check, ChevronDown } from 'lucide-react';
+import { Select } from '../Select';
 import './AdvancedFilter.css';
 
 export type FilterOperator =
@@ -16,12 +17,13 @@ export type FilterOperator =
   | 'is_empty'
   | 'is_not_empty';
 
-export type FilterDataType = 'string' | 'number' | 'date' | 'boolean';
+export type FilterDataType = 'string' | 'number' | 'date' | 'boolean' | 'select';
 
 export interface FilterField {
   key: string;
   label: string;
   dataType: FilterDataType;
+  options?: { label: string; value: string | number }[];
 }
 
 export interface FilterCondition {
@@ -36,6 +38,8 @@ interface AdvancedFilterProps {
   onChange: (conditions: FilterCondition[]) => void;
   matchType?: 'any' | 'all';
   onMatchTypeChange?: (matchType: 'any' | 'all') => void;
+  align?: 'left' | 'right';
+  leftOffset?: number;
 }
 
 const getOperatorsForType = (type: FilterDataType): { value: FilterOperator; label: string }[] => {
@@ -55,6 +59,13 @@ const getOperatorsForType = (type: FilterDataType): { value: FilterOperator; lab
     case 'boolean':
       return [
         { value: 'equals', label: 'Is' },
+      ];
+    case 'select':
+      return [
+        { value: 'equals', label: 'Is' },
+        { value: 'not_equals', label: 'Is Not' },
+        { value: 'is_empty', label: 'Is Empty' },
+        { value: 'is_not_empty', label: 'Is Not Empty' },
       ];
     case 'string':
     default:
@@ -77,13 +88,16 @@ export function AdvancedFilter({
   onChange,
   matchType = 'all',
   onMatchTypeChange,
+  align = 'right',
+  leftOffset = 0,
 }: AdvancedFilterProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeFieldKey, setActiveFieldKey] = useState<string | null>(fields[0]?.key || null);
   const [localConditions, setLocalConditions] = useState<FilterCondition[]>(conditions);
   const [prevConditions, setPrevConditions] = useState<FilterCondition[]>(conditions);
   const [localMatchType, setLocalMatchType] = useState<'any' | 'all'>(matchType);
   const [prevMatchType, setPrevMatchType] = useState<'any' | 'all'>(matchType);
+
+  const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
 
   if (conditions !== prevConditions) {
     setPrevConditions(conditions);
@@ -95,28 +109,30 @@ export function AdvancedFilter({
     setLocalMatchType(matchType);
   }
 
+  const handleToggleOpen = () => {
+    if (!isOpen) {
+      const active = new Set<string>();
+      localConditions.forEach(c => {
+        if ((c.value !== '' && c.value != null) || ['is_empty', 'is_not_empty'].includes(c.operator)) {
+          active.add(c.field);
+        }
+      });
+      setExpandedFields(active);
+    }
+    setIsOpen(!isOpen);
+  };
+
   const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isOpen]);
-
-  const activeField = fields.find((f) => f.key === activeFieldKey) || fields[0];
-  const activeConditionIndex = localConditions.findIndex((c) => c.field === activeField?.key);
-  const activeCondition = activeConditionIndex >= 0 ? localConditions[activeConditionIndex] : null;
-
-  const operators = activeField ? getOperatorsForType(activeField.dataType) : [];
+  // Intentionally removed handleClickOutside so the filter
+  // only closes when explicitly closed via Cancel/Find/Reset.
 
   const handleApply = () => {
-    onChange(localConditions);
+    const active = localConditions.filter((c) => {
+      if (['is_empty', 'is_not_empty'].includes(c.operator)) return true;
+      return c.value !== '' && c.value !== null && c.value !== undefined;
+    });
+    onChange(active);
     if (onMatchTypeChange) onMatchTypeChange(localMatchType);
     setIsOpen(false);
   };
@@ -124,29 +140,17 @@ export function AdvancedFilter({
   const handleReset = () => {
     setLocalConditions([]);
     onChange([]);
-    setIsOpen(false);
+    setExpandedFields(new Set());
   };
 
-  const updateCondition = (updates: Partial<FilterCondition>) => {
-    if (!activeField) return;
-
-    const newConditions = [...localConditions];
-    const index = newConditions.findIndex((c) => c.field === activeField.key);
-
-    if (index >= 0) {
-      newConditions[index] = { ...newConditions[index], ...updates };
-
-      // If value is empty and operator is not "is_empty"/"is_not_empty", maybe we should remove it?
-      // For now, keep it simple.
+  const toggleField = (key: string) => {
+    const next = new Set(expandedFields);
+    if (next.has(key)) {
+      next.delete(key);
     } else {
-      newConditions.push({
-        field: activeField.key,
-        operator: operators[0].value,
-        value: '',
-        ...updates,
-      });
+      next.add(key);
     }
-    setLocalConditions(newConditions);
+    setExpandedFields(next);
   };
 
   return (
@@ -154,13 +158,18 @@ export function AdvancedFilter({
       <button
         type="button"
         className={`filter-trigger-btn ${conditions.length > 0 ? 'active' : ''}`}
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleToggleOpen}
       >
         <Filter size={16} />
       </button>
 
       {isOpen && (
-        <div className="filter-dropdown-panel">
+        <div
+          className="filter-dropdown-panel"
+          style={{
+            ...(align === 'left' ? { left: leftOffset, right: 'auto' } : { right: 0, left: 'auto' })
+          }}
+        >
           <div className="filter-header">
             <h3>Filter</h3>
             <button type="button" className="filter-reset-btn" onClick={handleReset}>
@@ -169,58 +178,92 @@ export function AdvancedFilter({
           </div>
 
           <div className="filter-body">
-            <div className="filter-sidebar">
-              {fields.map((field) => {
-                const hasCondition = localConditions.some((c) => c.field === field.key);
-                return (
-                  <button
-                    key={field.key}
-                    type="button"
-                    className={`filter-field-btn ${activeFieldKey === field.key ? 'active' : ''}`}
-                    onClick={() => setActiveFieldKey(field.key)}
-                  >
-                    <span>{field.label}</span>
-                    {hasCondition && <Check size={14} className="condition-indicator" />}
-                  </button>
-                );
-              })}
-            </div>
+            {fields.map((field) => {
+              const condition = localConditions.find((c) => c.field === field.key);
+              const operators = getOperatorsForType(field.dataType);
+              const currentOperator = condition?.operator || operators[0].value;
+              const isExpanded = expandedFields.has(field.key);
+              const hasCondition = condition && (condition.value !== '' && condition.value != null || ['is_empty', 'is_not_empty'].includes(condition.operator));
 
-            <div className="filter-content">
-              {activeField && (
-                <div className="filter-condition-builder">
-                  <div className="filter-field-title">{activeField.label}</div>
+              const updateFieldCondition = (updates: Partial<FilterCondition>) => {
+                const newConditions = [...localConditions];
+                const index = newConditions.findIndex((c) => c.field === field.key);
+                if (index >= 0) {
+                  newConditions[index] = { ...newConditions[index], ...updates };
+                } else {
+                  newConditions.push({
+                    field: field.key,
+                    operator: operators[0].value,
+                    value: '',
+                    ...updates,
+                  });
+                }
+                setLocalConditions(newConditions);
+              };
 
-                  <div className="filter-control-group">
-                    <label>Operator</label>
-                    <select
-                      className="filter-select"
-                      value={activeCondition?.operator || operators[0].value}
-                      onChange={(e) => updateCondition({ operator: e.target.value as FilterOperator })}
-                    >
-                      {operators.map((op) => (
-                        <option key={op.value} value={op.value}>
-                          {op.label}
-                        </option>
-                      ))}
-                    </select>
+              const isNoValueOperator = ['is_empty', 'is_not_empty'].includes(currentOperator);
+
+              return (
+                <div key={field.key} className="filter-row-container">
+                  <div className="filter-row-header" onClick={() => toggleField(field.key)}>
+                    <span className={`filter-row-title ${hasCondition ? 'active' : ''}`}>{field.label}</span>
+                    <div className="filter-row-status" onClick={(e) => e.stopPropagation()}>
+                      {isExpanded && (
+                        <div style={{ width: 140 }}>
+                          <Select
+                            options={operators}
+                            value={currentOperator}
+                            onChange={(val) => updateFieldCondition({ operator: val as FilterOperator })}
+                            minWidth={140}
+                            fullWidth={true}
+                            buttonStyle={{ height: 26, padding: '0 8px', fontSize: 12, border: 'none', background: 'transparent' }}
+                          />
+                        </div>
+                      )}
+                      {hasCondition && <Check size={14} className="condition-indicator" />}
+                      <button type="button" className="filter-row-toggle-btn" onClick={() => toggleField(field.key)}>
+                        <ChevronDown size={16} className={`chevron ${isExpanded ? 'open' : ''}`} />
+                      </button>
+                    </div>
                   </div>
 
-                  {!['is_empty', 'is_not_empty'].includes(activeCondition?.operator || '') && (
-                    <div className="filter-control-group">
-                      <label>Value</label>
-                      <input
-                        type={activeField.dataType === 'number' ? 'number' : 'text'}
-                        className="filter-input"
-                        placeholder="Enter value..."
-                        value={(activeCondition?.value as string | number) || ''}
-                        onChange={(e) => updateCondition({ value: e.target.value })}
-                      />
+                  {isExpanded && !isNoValueOperator && (
+                    <div className="filter-row-body">
+                      <div className="filter-row-input-wrapper">
+                        {field.dataType === 'select' ? (
+                          <Select
+                            options={field.options?.map(o => ({ label: o.label, value: o.value.toString() })) || []}
+                            value={(condition?.value as string | number)?.toString() || ''}
+                            onChange={(val) => updateFieldCondition({ value: val })}
+                            placeholder="- Select -"
+                            buttonStyle={{ height: 32, fontSize: 13 }}
+                          />
+                        ) : field.dataType === 'boolean' ? (
+                          <Select
+                            options={[
+                              { label: 'True', value: 'true' },
+                              { label: 'False', value: 'false' },
+                            ]}
+                            value={condition?.value === true ? 'true' : condition?.value === false ? 'false' : ''}
+                            onChange={(val) => updateFieldCondition({ value: val === 'true' })}
+                            placeholder="- Select -"
+                            buttonStyle={{ height: 32, fontSize: 13 }}
+                          />
+                        ) : (
+                          <input
+                            type={field.dataType === 'number' ? 'number' : field.dataType === 'date' ? 'date' : 'text'}
+                            className="filter-row-input"
+                            placeholder={`Search by ${field.label.toLowerCase()}...`}
+                            value={(condition?.value as string | number) || ''}
+                            onChange={(e) => updateFieldCondition({ value: e.target.value })}
+                          />
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
-              )}
-            </div>
+              );
+            })}
           </div>
 
           <div className="filter-footer">

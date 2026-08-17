@@ -13,6 +13,8 @@ import {
 import type { Item } from '../items.schemas';
 import { Button } from '../../../components/ui/Button';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
+import { AdvancedFilter } from '../../../components/ui/AdvancedFilter/AdvancedFilter';
+import type { FilterField, FilterCondition, FilterDataType } from '../../../components/ui/AdvancedFilter/AdvancedFilter';
 import type { ColumnDef } from '../../list-views/listViews.api';
 
 const ITEM_MODAL_CATALOG: ColumnDef[] = [
@@ -87,6 +89,8 @@ export function MultiSelectItemModal({
   const [visibleColumns, setVisibleColumns] = useState<string[]>(['name', 'sku', 'hsn']);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
+  const [advancedConditions, setAdvancedConditions] = useState<FilterCondition[]>([]);
+  const [advancedMatchType, setAdvancedMatchType] = useState<'any' | 'all'>('all');
   const [step, setStep] = useState<'select' | 'values'>('select');
 
   const [page, setPage] = useState(1);
@@ -159,6 +163,95 @@ export function MultiSelectItemModal({
       .filter((c): c is ColumnDef => Boolean(c));
   }, [visibleColumns, fullCatalog]);
 
+  const customFieldTypes = useMemo(() => {
+    const types = new Map<string, FilterDataType>();
+    (itemsPage?.results || []).forEach((item) => {
+      const fields = item.custom_fields || item.customFields;
+      if (fields) {
+        Object.entries(fields).forEach(([k, v]) => {
+          if (v !== null && v !== undefined && !types.has(k)) {
+            if (typeof v === 'number') types.set(k, 'number');
+            else if (typeof v === 'boolean') types.set(k, 'boolean');
+            else types.set(k, 'string');
+          }
+        });
+      }
+    });
+    return types;
+  }, [itemsPage?.results]);
+
+  const productTypes = useMemo(() => {
+    const types = new Set<string>();
+    (itemsPage?.results || []).forEach((item) => {
+      const t = item.type || item.item_type;
+      if (t) types.add(t);
+    });
+    return Array.from(types).sort();
+  }, [itemsPage?.results]);
+
+  const filterFields = useMemo<FilterField[]>(() => {
+    return fullCatalog.map((c) => {
+      let dataType: FilterDataType = 'string';
+      let options: { label: string; value: string | number }[] | undefined = undefined;
+
+      if (c.key.startsWith('cf_')) {
+        dataType = customFieldTypes.get(c.key.replace('cf_', '')) || 'string';
+      } else if (c.key === 'category') {
+        dataType = 'select';
+        options = categories.map((cat) => ({ label: cat, value: cat }));
+      } else if (c.key === 'type') {
+        dataType = 'select';
+        options = productTypes.map((t) => ({ label: t, value: t }));
+      }
+
+      return {
+        key: c.key,
+        label: c.label,
+        dataType,
+        options,
+      };
+    });
+  }, [fullCatalog, customFieldTypes, categories, productTypes]);
+
+  const evaluateCondition = (itemValue: unknown, operator: string, filterValue: unknown) => {
+    if (operator === 'is_empty') return itemValue == null || itemValue === '';
+    if (operator === 'is_not_empty') return itemValue != null && itemValue !== '';
+
+    if (typeof itemValue === 'number') {
+      const val = Number(itemValue);
+      const filterVal = Number(filterValue);
+      if (isNaN(filterVal)) return false;
+      
+      switch (operator) {
+        case 'equals': return val === filterVal;
+        case 'not_equals': return val !== filterVal;
+        case 'gt': return val > filterVal;
+        case 'lt': return val < filterVal;
+        case 'gte': return val >= filterVal;
+        case 'lte': return val <= filterVal;
+        default: return false;
+      }
+    }
+
+    if (typeof itemValue === 'boolean') {
+      const filterVal = String(filterValue) === 'true';
+      return operator === 'equals' ? itemValue === filterVal : itemValue !== filterVal;
+    }
+
+    const val = String(itemValue || '').toLowerCase();
+    const filterVal = String(filterValue || '').toLowerCase();
+    
+    switch (operator) {
+      case 'contains': return val.includes(filterVal);
+      case 'not_contains': return !val.includes(filterVal);
+      case 'equals': return val === filterVal;
+      case 'not_equals': return val !== filterVal;
+      case 'starts_with': return val.startsWith(filterVal);
+      case 'ends_with': return val.endsWith(filterVal);
+      default: return true;
+    }
+  };
+
   const shownItems = useMemo(() => {
     let filtered = itemsPage?.results || [];
     if (isFilterOpen) {
@@ -177,8 +270,29 @@ export function MultiSelectItemModal({
         });
       });
     }
+    if (advancedConditions.length > 0) {
+      filtered = filtered.filter((item) => {
+        const results = advancedConditions.map((cond) => {
+          let itemValue: unknown;
+          if (cond.field === 'name') itemValue = item.name;
+          else if (cond.field === 'sku') itemValue = item.sku;
+          else if (cond.field === 'hsn') itemValue = item.hsnCode || item.hsn_or_sac;
+          else if (cond.field === 'type') itemValue = item.type || item.item_type;
+          else if (cond.field === 'category') itemValue = item.category;
+          else if (cond.field.startsWith('cf_')) {
+            const cfKey = cond.field.replace('cf_', '');
+            itemValue = item.custom_fields?.[cfKey] ?? item.customFields?.[cfKey];
+          }
+
+          return evaluateCondition(itemValue, cond.operator, cond.value);
+        });
+
+        return advancedMatchType === 'any' ? results.some(Boolean) : results.every(Boolean);
+      });
+    }
+
     return filtered;
-  }, [itemsPage?.results, isFilterOpen, columnFilters]);
+  }, [itemsPage?.results, isFilterOpen, columnFilters, advancedConditions, advancedMatchType]);
 
   const paginatedItems = shownItems;
 
@@ -316,30 +430,44 @@ export function MultiSelectItemModal({
                 alignItems: 'center',
               }}
             >
-              <div
-                style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '300px' }}
-              >
-                <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: 12 }} />
-                <input
-                  type="text"
-                  placeholder="Search products..."
-                  value={query}
-                  onChange={(e) => {
-                    setQuery(e.target.value);
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <AdvancedFilter
+                  fields={filterFields}
+                  conditions={advancedConditions}
+                  onChange={(conds) => {
+                    setAdvancedConditions(conds);
                     setPage(1);
                   }}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px 8px 34px',
-                    fontSize: 13,
-                    border: '1px solid #d1d5db',
-                    borderRadius: 6,
-                    outline: 'none',
-                    boxSizing: 'border-box',
-                  }}
-                  onFocus={(e) => (e.target.style.borderColor = '#2563eb')}
-                  onBlur={(e) => (e.target.style.borderColor = '#d1d5db')}
+                  matchType={advancedMatchType}
+                  onMatchTypeChange={setAdvancedMatchType}
+                  align="left"
+                  leftOffset={-20}
                 />
+                <div
+                  style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '300px' }}
+                >
+                  <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: 12 }} />
+                  <input
+                    type="text"
+                    placeholder="Search products..."
+                    value={query}
+                    onChange={(e) => {
+                      setQuery(e.target.value);
+                      setPage(1);
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px 8px 34px',
+                      fontSize: 13,
+                      border: '1px solid #d1d5db',
+                      borderRadius: 6,
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                    onFocus={(e) => (e.target.style.borderColor = '#2563eb')}
+                    onBlur={(e) => (e.target.style.borderColor = '#d1d5db')}
+                  />
+                </div>
               </div>
               <div style={{ display: 'flex', gap: 12 }}>
                 <Button
@@ -450,6 +578,9 @@ export function MultiSelectItemModal({
                           left: 0,
                           zIndex: 2,
                           background: '#f8fafc',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
                         }}
                       >
                         <button
