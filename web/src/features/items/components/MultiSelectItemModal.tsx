@@ -14,7 +14,7 @@ import type { Item } from '../items.schemas';
 import { Button } from '../../../components/ui/Button';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { AdvancedFilter } from '../../../components/ui/AdvancedFilter/AdvancedFilter';
-import type { FilterField, FilterCondition, FilterDataType } from '../../../components/ui/AdvancedFilter/filterUtils';
+import type { FilterField, FilterCondition, FilterDataType, FilterOperator } from '../../../components/ui/AdvancedFilter/filterUtils';
 import { evaluateCondition } from '../../../components/ui/AdvancedFilter/filterUtils';
 import type { ColumnDef } from '../../list-views/listViews.api';
 
@@ -259,7 +259,7 @@ export function MultiSelectItemModal({
             const filterFieldDef = filterFields.find(f => f.key === cond.field);
             const dataType = filterFieldDef?.dataType || 'text';
 
-            return evaluateCondition(itemValue, cond.operator as any, cond.value, dataType);
+            return evaluateCondition(itemValue, cond.operator as FilterOperator, cond.value, dataType);
         });
 
         return advancedMatchType === 'any' ? results.some(Boolean) : results.every(Boolean);
