@@ -17,7 +17,7 @@ export type FilterOperator =
   | 'is_empty'
   | 'is_not_empty';
 
-export type FilterDataType = 'string' | 'number' | 'date' | 'boolean' | 'select';
+export type FilterDataType = 'string' | 'number' | 'date' | 'boolean' | 'select' | 'time';
 
 export interface FilterField {
   key: string;
@@ -46,6 +46,7 @@ const getOperatorsForType = (type: FilterDataType): { value: FilterOperator; lab
   switch (type) {
     case 'number':
     case 'date':
+    case 'time':
       return [
         { value: 'equals', label: 'Is' },
         { value: 'not_equals', label: 'Is Not' },
@@ -251,7 +252,7 @@ export function AdvancedFilter({
                           />
                         ) : (
                           <input
-                            type={field.dataType === 'number' ? 'number' : field.dataType === 'date' ? 'date' : 'text'}
+                            type={field.dataType === 'number' ? 'number' : field.dataType === 'date' ? 'date' : field.dataType === 'time' ? 'time' : 'text'}
                             className="filter-row-input"
                             placeholder={`Search by ${field.label.toLowerCase()}...`}
                             value={(condition?.value as string | number) || ''}
