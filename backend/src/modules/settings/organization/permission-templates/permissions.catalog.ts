@@ -98,7 +98,10 @@ const MODULE_GROUPS: readonly {
   {
     key: 'purchases',
     label: 'Purchases',
-    resources: [{ resource: 'vendor', label: 'Vendors' }],
+    resources: [
+      { resource: 'vendor', label: 'Vendors' },
+      { resource: 'bill', label: 'Bills' },
+    ],
   },
   {
     key: 'sales',

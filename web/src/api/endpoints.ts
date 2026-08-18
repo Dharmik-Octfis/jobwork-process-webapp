@@ -92,6 +92,9 @@ export const endpoints = {
     purchaseOrders: (orgId: string) => `/organizations/${orgId}/purchases/purchase-orders`,
     purchaseOrderPreferences: (orgId: string) =>
       `/organizations/${orgId}/purchases/purchase-orders/preferences/number-sequence`,
+    bills: (orgId: string) => `/organizations/${orgId}/purchases/bills`,
+    billPreferences: (orgId: string) =>
+      `/organizations/${orgId}/purchases/bills/preferences/number-sequence`,
   },
   /**
    * Jobwork. `stock_ledger` has no HTTP surface at all, deliberately: it is

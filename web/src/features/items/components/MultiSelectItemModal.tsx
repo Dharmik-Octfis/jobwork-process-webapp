@@ -14,7 +14,8 @@ import type { Item } from '../items.schemas';
 import { Button } from '../../../components/ui/Button';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { AdvancedFilter } from '../../../components/ui/AdvancedFilter/AdvancedFilter';
-import type { FilterField, FilterCondition, FilterDataType } from '../../../components/ui/AdvancedFilter/AdvancedFilter';
+import type { FilterField, FilterCondition, FilterDataType } from '../../../components/ui/AdvancedFilter/filterUtils';
+import { evaluateCondition } from '../../../components/ui/AdvancedFilter/filterUtils';
 import type { ColumnDef } from '../../list-views/listViews.api';
 
 const ITEM_MODAL_CATALOG: ColumnDef[] = [
@@ -172,7 +173,15 @@ export function MultiSelectItemModal({
           if (v !== null && v !== undefined && !types.has(k)) {
             if (typeof v === 'number') types.set(k, 'number');
             else if (typeof v === 'boolean') types.set(k, 'boolean');
-            else types.set(k, 'string');
+            else if (
+              typeof v === 'string' &&
+              /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d{3})?(Z|[+-]\d{2}:\d{2})?)?$/.test(v) &&
+              !isNaN(Date.parse(v))
+            ) {
+              types.set(k, 'date');
+            } else {
+              types.set(k, 'text');
+            }
           }
         });
       }
@@ -195,7 +204,7 @@ export function MultiSelectItemModal({
       let options: { label: string; value: string | number }[] | undefined = undefined;
 
       if (c.key.startsWith('cf_')) {
-        dataType = customFieldTypes.get(c.key.replace('cf_', '')) || 'string';
+        dataType = customFieldTypes.get(c.key.replace('cf_', '')) || 'text';
       } else if (c.key === 'category') {
         dataType = 'select';
         options = categories.map((cat) => ({ label: cat, value: cat }));
@@ -213,44 +222,7 @@ export function MultiSelectItemModal({
     });
   }, [fullCatalog, customFieldTypes, categories, productTypes]);
 
-  const evaluateCondition = (itemValue: unknown, operator: string, filterValue: unknown) => {
-    if (operator === 'is_empty') return itemValue == null || itemValue === '';
-    if (operator === 'is_not_empty') return itemValue != null && itemValue !== '';
 
-    if (typeof itemValue === 'number') {
-      const val = Number(itemValue);
-      const filterVal = Number(filterValue);
-      if (isNaN(filterVal)) return false;
-      
-      switch (operator) {
-        case 'equals': return val === filterVal;
-        case 'not_equals': return val !== filterVal;
-        case 'gt': return val > filterVal;
-        case 'lt': return val < filterVal;
-        case 'gte': return val >= filterVal;
-        case 'lte': return val <= filterVal;
-        default: return false;
-      }
-    }
-
-    if (typeof itemValue === 'boolean') {
-      const filterVal = String(filterValue) === 'true';
-      return operator === 'equals' ? itemValue === filterVal : itemValue !== filterVal;
-    }
-
-    const val = String(itemValue || '').toLowerCase();
-    const filterVal = String(filterValue || '').toLowerCase();
-    
-    switch (operator) {
-      case 'contains': return val.includes(filterVal);
-      case 'not_contains': return !val.includes(filterVal);
-      case 'equals': return val === filterVal;
-      case 'not_equals': return val !== filterVal;
-      case 'starts_with': return val.startsWith(filterVal);
-      case 'ends_with': return val.endsWith(filterVal);
-      default: return true;
-    }
-  };
 
   const shownItems = useMemo(() => {
     let filtered = itemsPage?.results || [];
@@ -284,7 +256,10 @@ export function MultiSelectItemModal({
             itemValue = item.custom_fields?.[cfKey] ?? item.customFields?.[cfKey];
           }
 
-          return evaluateCondition(itemValue, cond.operator, cond.value);
+            const filterFieldDef = filterFields.find(f => f.key === cond.field);
+            const dataType = filterFieldDef?.dataType || 'text';
+
+            return evaluateCondition(itemValue, cond.operator as any, cond.value, dataType);
         });
 
         return advancedMatchType === 'any' ? results.some(Boolean) : results.every(Boolean);
@@ -434,7 +409,7 @@ export function MultiSelectItemModal({
                 <AdvancedFilter
                   fields={filterFields}
                   conditions={advancedConditions}
-                  onChange={(conds) => {
+                  onChange={(conds: FilterCondition[]) => {
                     setAdvancedConditions(conds);
                     setPage(1);
                   }}

@@ -3,34 +3,21 @@ import { Filter, Check, ChevronDown } from 'lucide-react';
 import { Select } from '../Select';
 import './AdvancedFilter.css';
 
-export type FilterOperator =
-  | 'contains'
-  | 'not_contains'
-  | 'equals'
-  | 'not_equals'
-  | 'starts_with'
-  | 'ends_with'
-  | 'gt'
-  | 'lt'
-  | 'gte'
-  | 'lte'
-  | 'is_empty'
-  | 'is_not_empty';
+export type { FilterOperator, FilterDataType, FilterField, FilterCondition } from './filterUtils';
+import type { FilterOperator, FilterField, FilterCondition } from './filterUtils';
+import { getOperatorsForType } from './filterUtils';
 
-export type FilterDataType = 'string' | 'number' | 'date' | 'boolean' | 'select' | 'time';
+const isNoValueOperator = (op: FilterOperator) =>
+  ['is_empty', 'is_not_empty', 'has_file', 'has_no_file', 'is_true', 'is_false'].includes(op);
 
-export interface FilterField {
-  key: string;
-  label: string;
-  dataType: FilterDataType;
-  options?: { label: string; value: string | number }[];
-}
-
-export interface FilterCondition {
-  field: string;
-  operator: FilterOperator;
-  value: unknown;
-}
+const hasValidValue = (c: FilterCondition) => {
+  if (isNoValueOperator(c.operator)) return true;
+  if (c.operator === 'between') {
+    const val = c.value as { from?: unknown; to?: unknown };
+    return val && (val.from !== '' || val.to !== '') && (val.from != null || val.to != null);
+  }
+  return c.value !== '' && c.value !== null && c.value !== undefined;
+};
 
 interface AdvancedFilterProps {
   fields: FilterField[];
@@ -41,47 +28,6 @@ interface AdvancedFilterProps {
   align?: 'left' | 'right';
   leftOffset?: number;
 }
-
-const getOperatorsForType = (type: FilterDataType): { value: FilterOperator; label: string }[] => {
-  switch (type) {
-    case 'number':
-    case 'date':
-    case 'time':
-      return [
-        { value: 'equals', label: 'Is' },
-        { value: 'not_equals', label: 'Is Not' },
-        { value: 'gt', label: 'Greater Than' },
-        { value: 'lt', label: 'Less Than' },
-        { value: 'gte', label: 'Greater Than or Equal' },
-        { value: 'lte', label: 'Less Than or Equal' },
-        { value: 'is_empty', label: 'Is Empty' },
-        { value: 'is_not_empty', label: 'Is Not Empty' },
-      ];
-    case 'boolean':
-      return [
-        { value: 'equals', label: 'Is' },
-      ];
-    case 'select':
-      return [
-        { value: 'equals', label: 'Is' },
-        { value: 'not_equals', label: 'Is Not' },
-        { value: 'is_empty', label: 'Is Empty' },
-        { value: 'is_not_empty', label: 'Is Not Empty' },
-      ];
-    case 'string':
-    default:
-      return [
-        { value: 'contains', label: 'Contains' },
-        { value: 'not_contains', label: "Doesn't Contain" },
-        { value: 'equals', label: 'Is' },
-        { value: 'not_equals', label: 'Is Not' },
-        { value: 'starts_with', label: 'Starts With' },
-        { value: 'ends_with', label: 'Ends With' },
-        { value: 'is_empty', label: 'Is Empty' },
-        { value: 'is_not_empty', label: 'Is Not Empty' },
-      ];
-  }
-};
 
 export function AdvancedFilter({
   fields,
@@ -113,8 +59,8 @@ export function AdvancedFilter({
   const handleToggleOpen = () => {
     if (!isOpen) {
       const active = new Set<string>();
-      localConditions.forEach(c => {
-        if ((c.value !== '' && c.value != null) || ['is_empty', 'is_not_empty'].includes(c.operator)) {
+      localConditions.forEach((c: FilterCondition) => {
+        if (hasValidValue(c)) {
           active.add(c.field);
         }
       });
@@ -129,10 +75,7 @@ export function AdvancedFilter({
   // only closes when explicitly closed via Cancel/Find/Reset.
 
   const handleApply = () => {
-    const active = localConditions.filter((c) => {
-      if (['is_empty', 'is_not_empty'].includes(c.operator)) return true;
-      return c.value !== '' && c.value !== null && c.value !== undefined;
-    });
+    const active = localConditions.filter(hasValidValue);
     onChange(active);
     if (onMatchTypeChange) onMatchTypeChange(localMatchType);
     setIsOpen(false);
@@ -184,7 +127,7 @@ export function AdvancedFilter({
               const operators = getOperatorsForType(field.dataType);
               const currentOperator = condition?.operator || operators[0].value;
               const isExpanded = expandedFields.has(field.key);
-              const hasCondition = condition && (condition.value !== '' && condition.value != null || ['is_empty', 'is_not_empty'].includes(condition.operator));
+              const hasCondition = condition && hasValidValue(condition);
 
               const updateFieldCondition = (updates: Partial<FilterCondition>) => {
                 const newConditions = [...localConditions];
@@ -202,7 +145,16 @@ export function AdvancedFilter({
                 setLocalConditions(newConditions);
               };
 
-              const isNoValueOperator = ['is_empty', 'is_not_empty'].includes(currentOperator);
+              const isNoVal = isNoValueOperator(currentOperator);
+              const isBetween = currentOperator === 'between';
+
+              const getInputType = () => {
+                if (['number', 'currency', 'percentage'].includes(field.dataType)) return 'number';
+                if (field.dataType === 'date') return 'date';
+                if (['time', 'datetime'].includes(field.dataType)) return 'time'; // HTML5 time input or datetime-local
+                if (field.dataType === 'datetime') return 'datetime-local';
+                return 'text';
+              };
 
               return (
                 <div key={field.key} className="filter-row-container">
@@ -214,7 +166,11 @@ export function AdvancedFilter({
                           <Select
                             options={operators}
                             value={currentOperator}
-                            onChange={(val) => updateFieldCondition({ operator: val as FilterOperator })}
+                            onChange={(val) => {
+                                // If switching to between, convert value to object
+                                const valToObj = val === 'between' ? { from: '', to: '' } : '';
+                                updateFieldCondition({ operator: val as FilterOperator, value: valToObj });
+                            }}
                             minWidth={140}
                             fullWidth={true}
                             buttonStyle={{ height: 26, padding: '0 8px', fontSize: 12, border: 'none', background: 'transparent' }}
@@ -228,31 +184,56 @@ export function AdvancedFilter({
                     </div>
                   </div>
 
-                  {isExpanded && !isNoValueOperator && (
+                  {isExpanded && !isNoVal && (
                     <div className="filter-row-body">
-                      <div className="filter-row-input-wrapper">
-                        {field.dataType === 'select' ? (
+                      <div className="filter-row-input-wrapper" style={{ display: 'flex', gap: '8px' }}>
+                        {field.dataType === 'select' || field.dataType === 'radio' ? (
                           <Select
-                            options={field.options?.map(o => ({ label: o.label, value: o.value.toString() })) || []}
+                            options={field.options?.map((o) => ({ label: o.label, value: o.value.toString() })) || []}
                             value={(condition?.value as string | number)?.toString() || ''}
                             onChange={(val) => updateFieldCondition({ value: val })}
                             placeholder="- Select -"
-                            buttonStyle={{ height: 32, fontSize: 13 }}
+                            buttonStyle={{ height: 32, fontSize: 13, flex: 1 }}
                           />
                         ) : field.dataType === 'boolean' ? (
                           <Select
                             options={[
-                              { label: 'True', value: 'true' },
-                              { label: 'False', value: 'false' },
+                              { label: 'Yes', value: 'true' },
+                              { label: 'No', value: 'false' },
                             ]}
                             value={condition?.value === true ? 'true' : condition?.value === false ? 'false' : ''}
                             onChange={(val) => updateFieldCondition({ value: val === 'true' })}
                             placeholder="- Select -"
-                            buttonStyle={{ height: 32, fontSize: 13 }}
+                            buttonStyle={{ height: 32, fontSize: 13, flex: 1 }}
                           />
+                        ) : field.dataType === 'multi_select' ? (
+                            <input
+                              type="text"
+                              className="filter-row-input"
+                              placeholder={`Enter comma-separated values...`}
+                              value={(condition?.value as string) || ''}
+                              onChange={(e) => updateFieldCondition({ value: e.target.value })}
+                            />
+                        ) : isBetween ? (
+                            <>
+                                <input
+                                    type={getInputType()}
+                                    className="filter-row-input"
+                                    placeholder="From..."
+                                    value={(condition?.value as { from?: string; to?: string })?.from || ''}
+                                    onChange={(e) => updateFieldCondition({ value: { ...((condition?.value as { from?: string; to?: string }) || {}), from: e.target.value } })}
+                                />
+                                <input
+                                    type={getInputType()}
+                                    className="filter-row-input"
+                                    placeholder="To..."
+                                    value={(condition?.value as { from?: string; to?: string })?.to || ''}
+                                    onChange={(e) => updateFieldCondition({ value: { ...((condition?.value as { from?: string; to?: string }) || {}), to: e.target.value } })}
+                                />
+                            </>
                         ) : (
                           <input
-                            type={field.dataType === 'number' ? 'number' : field.dataType === 'date' ? 'date' : field.dataType === 'time' ? 'time' : 'text'}
+                            type={getInputType()}
                             className="filter-row-input"
                             placeholder={`Search by ${field.label.toLowerCase()}...`}
                             value={(condition?.value as string | number) || ''}

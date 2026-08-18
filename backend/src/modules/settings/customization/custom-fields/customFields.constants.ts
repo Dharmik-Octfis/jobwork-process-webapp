@@ -22,6 +22,7 @@ export const ENTITY_TYPES = [
   'customer',
   'item',
   'purchase_order',
+  'bill',
   'member',
   /**
    * Sprints 2–4. Every one of these tables carries `custom_fields`, which is

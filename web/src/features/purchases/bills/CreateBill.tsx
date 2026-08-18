@@ -3,37 +3,59 @@ import { useEffect, useState } from 'react';
 import { useForm, useFieldArray, useWatch } from 'react-hook-form';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AxiosError } from 'axios';
-import { Plus, Trash2, Pencil, Settings, Mail, Phone, PlusCircle, Check, Image, Upload, ChevronDown, FileText, X } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  Settings,
+  Mail,
+  Phone,
+  PlusCircle,
+  Image,
+  Upload,
+  ChevronDown,
+  FileText,
+  X,
+} from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchPaymentTerms } from './payment-terms.api';
 import { MultiSelectItemModal } from '../../items/components/MultiSelectItemModal';
 import { ItemComboBox } from '../../../components/ui/ItemComboBox';
 import { Select } from '../../../components/ui/Select';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
-import type { CreatePurchaseOrderData, PurchaseOrderItem } from './purchase-orders.schemas';
-import {
-  createPurchaseOrder,
-  fetchPurchaseOrderById,
-  updatePurchaseOrder,
-  fetchLocations,
-  uploadPOAttachments,
-  fetchPONumberPreference,
-  updatePONumberPreference,
-  type POAttachment,
-} from './purchase-orders.api';
-import { fetchVendors } from '../vendors/vendors.api';
 import { itemsApi } from '../../items/items.api';
+import type { ItemOpeningStockLocationRowDto } from '../../items/items.schemas';
+import type { CreateBillData, BillItem } from './bills.schemas';
+import {
+  createBill,
+  fetchBillById,
+  updateBill,
+  fetchLocations,
+  uploadBillAttachments,
+  fetchBillNumberPreference,
+  updateBillNumberPreference,
+  type BillAttachment,
+} from './bills.api';
+import { fetchPaymentTerms } from '../../sales/customers/payment-terms.api';
+import { fetchVendors } from '../vendors/vendors.api';
 import type { Location } from '../../configuration/locations/locations.api';
-import { fetchCustomers, type Customer } from '../../sales/customers/customers.api';
-import { PurchaseOrderNumberConfigModal } from './PurchaseOrderNumberConfigModal';
-import { PaymentTermModal } from '../../sales/customers/PaymentTermModal';
+import { fetchCustomers } from '../../sales/customers/customers.api';
+import { BillNumberConfigModal } from './BillNumberConfigModal';
 import { DeliveryAddressModal } from './DeliveryAddressModal';
 import { CreateVendorModal } from '../vendors/CreateVendorModal';
+import { PaymentTermModal } from '../../sales/customers/PaymentTermModal';
 import { CreateItemModal } from '../../items/CreateItemModal';
+import { AddBillBatchesModal } from './AddBillBatchesModal';
+import { WarehouseLocationsPopover } from './components/WarehouseLocationsPopover';
+import { LineItemStockDisplay } from './components/LineItemStockDisplay';
+
 function getImageKey(img: unknown): string | null {
   if (!img) return null;
   if (typeof img === 'string') return img;
-  if (typeof img === 'object' && img !== null && 'key' in img && typeof (img as { key: unknown }).key === 'string') {
+  if (
+    typeof img === 'object' &&
+    img !== null &&
+    'key' in img &&
+    typeof (img as { key: unknown }).key === 'string'
+  ) {
     return (img as { key: string }).key;
   }
   return null;
@@ -54,7 +76,10 @@ function ItemImage({
 }) {
   const resolvedKey = getImageKey(imageKey);
   const isDirectUrl = Boolean(
-    resolvedKey && (resolvedKey.startsWith('http://') || resolvedKey.startsWith('https://') || resolvedKey.startsWith('data:')),
+    resolvedKey &&
+    (resolvedKey.startsWith('http://') ||
+      resolvedKey.startsWith('https://') ||
+      resolvedKey.startsWith('data:')),
   );
 
   const { data: signedUrl } = useQuery({
@@ -82,7 +107,7 @@ function ItemImage({
   );
 }
 
-export function CreatePurchaseOrder() {
+export function CreateBill() {
   const navigate = useNavigate();
   const { orgId, id } = useParams<{ orgId: string; id?: string }>();
   const [searchParams] = useSearchParams();
@@ -97,10 +122,17 @@ export function CreatePurchaseOrder() {
   const [itemModalIndex, setItemModalIndex] = useState<number | null>(null);
   const [isMultiSelectItemModalOpen, setIsMultiSelectItemModalOpen] = useState(false);
   const [multiSelectTargetIndex, setMultiSelectTargetIndex] = useState<number | null>(null);
+  const [batchModalIndex, setBatchModalIndex] = useState<number | null>(null);
 
-  const { data: existingPo, isLoading: isFetchingPo } = useQuery({
-    queryKey: ['purchaseOrder', orgId, poIdToFetch],
-    queryFn: () => fetchPurchaseOrderById(orgId!, poIdToFetch!),
+  // Stock Popover State
+  const [stockPopoverAnchor, setStockPopoverAnchor] = useState<{
+    element: HTMLElement;
+    stockRows: ItemOpeningStockLocationRowDto[];
+  } | null>(null);
+
+  const { data: existingPo, isLoading: isFetchingBill } = useQuery({
+    queryKey: ['bill', orgId, poIdToFetch],
+    queryFn: () => fetchBillById(orgId!, poIdToFetch!),
     enabled: Boolean(orgId && poIdToFetch),
   });
 
@@ -115,9 +147,10 @@ export function CreatePurchaseOrder() {
     queryFn: () => fetchLocations(orgId!),
   });
 
-  const { data: paymentTerms } = useQuery({
+  const { data: paymentTerms = [] } = useQuery({
     queryKey: ['payment-terms', orgId],
     queryFn: () => fetchPaymentTerms(orgId!),
+    enabled: Boolean(orgId),
   });
 
   const { data: customersPage } = useQuery({
@@ -125,8 +158,6 @@ export function CreatePurchaseOrder() {
     queryFn: () => fetchCustomers(orgId!),
   });
   const customers = customersPage?.results || [];
-
-
 
   const {
     register,
@@ -137,10 +168,10 @@ export function CreatePurchaseOrder() {
     reset,
     trigger,
     formState: { errors },
-  } = useForm<CreatePurchaseOrderData>({
+  } = useForm<CreateBillData>({
     defaultValues: {
       status: 'Draft',
-      date: new Date().toISOString().split('T')[0],
+      bill_date: new Date().toISOString().split('T')[0],
       delivery_type: 'Location',
       line_items: [
         {
@@ -149,20 +180,21 @@ export function CreatePurchaseOrder() {
           rate: '' as unknown as number,
           discountValue: '' as unknown as number,
           discountType: 'percentage',
-          item_total: 0,
-        } as PurchaseOrderItem,
+          amount: 0,
+        } as BillItem,
       ],
       sub_total: 0,
-      total: 0,
+      total_amount: 0,
     },
   });
 
   useEffect(() => {
     if (existingPo) {
       const formattedLineItems = (existingPo.line_items || []).map((item) => {
-        const discountVal = item.discountValue !== undefined && item.discountValue !== null
-          ? item.discountValue
-          : item.discount_percentage || item.discount || 0;
+        const discountVal =
+          item.discountValue !== undefined && item.discountValue !== null
+            ? item.discountValue
+            : item.discount_percentage || 0;
         return {
           item_id: item.item_id,
           item: item.item,
@@ -170,49 +202,52 @@ export function CreatePurchaseOrder() {
           rate: item.rate || ('' as unknown as number),
           discountValue: discountVal || ('' as unknown as number),
           discountType: item.discountType || (item.discount_percentage ? 'percentage' : 'fixed'),
-          item_total: item.item_total || 0,
+          amount: item.amount || 0,
         };
       });
 
-      const resetData: CreatePurchaseOrderData = {
+      const resetData: CreateBillData = {
         vendor_id: existingPo.vendor_id || '',
-        purchaseorder_number: isClone ? '' : existingPo.purchaseorder_number || '',
-        date: isClone
+        bill_number: isClone ? '' : existingPo.bill_number || '',
+        bill_date: isClone
           ? new Date().toISOString().split('T')[0]
-          : existingPo.date
-          ? new Date(existingPo.date).toISOString().split('T')[0]
-          : new Date().toISOString().split('T')[0],
-        delivery_date: existingPo.delivery_date ? new Date(existingPo.delivery_date).toISOString().split('T')[0] : '',
-        payment_terms: existingPo.payment_terms || '',
+          : existingPo.bill_date
+            ? new Date(existingPo.bill_date).toISOString().split('T')[0]
+            : new Date().toISOString().split('T')[0],
+        due_date: existingPo.due_date
+          ? new Date(existingPo.due_date).toISOString().split('T')[0]
+          : '',
         delivery_type: existingPo.delivery_type || 'Location',
         delivery_location_id: existingPo.delivery_location_id || '',
         delivery_customer_id: existingPo.delivery_customer_id || '',
-        notes: existingPo.notes || '',
-        terms: existingPo.terms || '',
+        terms_and_conditions: existingPo.terms_and_conditions || '',
         status: isClone ? 'Draft' : existingPo.status || 'Draft',
         custom_fields: existingPo.custom_fields || {},
-        line_items: formattedLineItems.length > 0 ? (formattedLineItems as unknown as PurchaseOrderItem[]) : [
-          {
-            item_id: '',
-            quantity: '' as unknown as number,
-            rate: '' as unknown as number,
-            discountValue: '' as unknown as number,
-            discountType: 'percentage',
-            item_total: 0,
-          } as PurchaseOrderItem,
-        ],
+        line_items:
+          formattedLineItems.length > 0
+            ? (formattedLineItems as unknown as BillItem[])
+            : [
+                {
+                  item_id: '',
+                  quantity: '' as unknown as number,
+                  rate: '' as unknown as number,
+                  discountValue: '' as unknown as number,
+                  discountType: 'percentage',
+                  item_total: 0,
+                } as BillItem,
+              ],
         sub_total: Number(existingPo.sub_total) || 0,
-        total: Number(existingPo.total) || 0,
+        total_amount: Number(existingPo.total_amount) || 0,
       };
 
-      if (existingPo.purchaseorder_number && !isClone) {
-        resetData.purchaseorder_number = existingPo.purchaseorder_number;
+      if (existingPo.bill_number && !isClone) {
+        resetData.bill_number = existingPo.bill_number;
       }
 
       reset(resetData);
 
-      if (existingPo.documents && Array.isArray(existingPo.documents)) {
-        setAttachedFiles(existingPo.documents);
+      if (existingPo.attachments && Array.isArray(existingPo.attachments)) {
+        setAttachedFiles(existingPo.attachments);
       }
     }
   }, [existingPo, isClone, reset]);
@@ -230,7 +265,8 @@ export function CreatePurchaseOrder() {
   const watchDeliveryType = watch('delivery_type');
   const watchDeliveryLocationId = watch('delivery_location_id');
   const watchDeliveryCustomerId = watch('delivery_customer_id');
-  const watchPoDate = watch('date');
+  const watchLocationId = watch('location_id');
+  const watchPoDate = watch('bill_date');
   const watchPaymentTerms = watch('payment_terms');
 
   useEffect(() => {
@@ -239,18 +275,21 @@ export function CreatePurchaseOrder() {
       if (term && term.dueAfterDays !== undefined && term.dueAfterDays !== null) {
         const d = new Date(watchPoDate);
         d.setDate(d.getDate() + term.dueAfterDays);
-        setValue('delivery_date', d.toISOString().split('T')[0], { shouldValidate: true, shouldDirty: true });
+        setValue('due_date', d.toISOString().split('T')[0], {
+          shouldValidate: true,
+          shouldDirty: true,
+        });
       }
     }
   }, [watchPoDate, watchPaymentTerms, paymentTerms, setValue]);
 
   const [poPrefix, setPoPrefix] = useState('PO-');
   const [isNumberConfigOpen, setIsNumberConfigOpen] = useState(false);
-  const [isPaymentTermModalOpen, setIsPaymentTermModalOpen] = useState(false);
+
   const [isDeliveryAddressModalOpen, setIsDeliveryAddressModalOpen] = useState(false);
-  const [isEditingDeliveryName, setIsEditingDeliveryName] = useState(false);
+  const [isPaymentTermModalOpen, setIsPaymentTermModalOpen] = useState(false);
   const [customDeliveryName, setCustomDeliveryName] = useState('');
-  const [attachedFiles, setAttachedFiles] = useState<POAttachment[]>([]);
+  const [attachedFiles, setAttachedFiles] = useState<BillAttachment[]>([]);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [fileUploadError, setFileUploadError] = useState<string | null>(null);
 
@@ -281,10 +320,12 @@ export function CreatePurchaseOrder() {
       for (const f of newFilesArray) {
         formData.append('files', f);
       }
-      const uploadedAttachments = await uploadPOAttachments(orgId!, formData);
+      const uploadedAttachments = await uploadBillAttachments(orgId!, formData);
       setAttachedFiles((prev) => [...prev, ...uploadedAttachments]);
     } catch (err: unknown) {
-      const errorMsg = (err as AxiosError<{ message?: string }>)?.response?.data?.message || 'Failed to upload attachment.';
+      const errorMsg =
+        (err as AxiosError<{ message?: string }>)?.response?.data?.message ||
+        'Failed to upload attachment.';
       setFileUploadError(errorMsg);
     } finally {
       setIsUploadingFile(false);
@@ -297,12 +338,8 @@ export function CreatePurchaseOrder() {
     setFileUploadError(null);
   };
 
-  const selectedLocation = locations.find((l: Location) => l.id === watchDeliveryLocationId);
-  const selectedCustomer = customers.find((c: Customer) => c.id === watchDeliveryCustomerId);
-
   useEffect(() => {
     setCustomDeliveryName('');
-    setIsEditingDeliveryName(false);
   }, [watchDeliveryLocationId, watchDeliveryCustomerId, watchDeliveryType]);
 
   useEffect(() => {
@@ -316,14 +353,15 @@ export function CreatePurchaseOrder() {
 
   let computedSubTotal = 0;
   let computedTotalDiscount = 0;
-  (watchItems || []).forEach((item: PurchaseOrderItem) => {
+  (watchItems || []).forEach((item: BillItem) => {
     const qty = isNaN(Number(item?.quantity)) ? 0 : Number(item?.quantity);
     const rate = isNaN(Number(item?.rate)) ? 0 : Number(item?.rate);
     const basePrice = qty * rate;
     const discountVal = isNaN(Number(item?.discountValue)) ? 0 : Number(item?.discountValue);
     const discType = item?.discountType || 'percentage';
 
-    const discountAmount = discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
+    const discountAmount =
+      discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
     computedSubTotal += basePrice;
     computedTotalDiscount += discountAmount;
   });
@@ -331,12 +369,12 @@ export function CreatePurchaseOrder() {
 
   useEffect(() => {
     setValue('sub_total', computedSubTotal);
-    setValue('total', computedTotalAmount);
+    setValue('total_amount', computedTotalAmount);
   }, [computedSubTotal, computedTotalAmount, setValue]);
 
   const { data: preference } = useQuery({
     queryKey: ['po-number-preference', orgId],
-    queryFn: () => fetchPONumberPreference(orgId!),
+    queryFn: () => fetchBillNumberPreference(orgId!),
     enabled: !!orgId,
   });
 
@@ -345,10 +383,10 @@ export function CreatePurchaseOrder() {
   useEffect(() => {
     if (preference && !isEdit) {
       const generatedNumber = `${preference.prefix}${preference.nextNumber.toString().padStart(5, '0')}`;
-      const currentValue = watch('purchaseorder_number');
+      const currentValue = watch('bill_number');
 
       if (!currentValue || currentValue === lastPrefilledNumber) {
-        setValue('purchaseorder_number', generatedNumber);
+        setValue('bill_number', generatedNumber);
         setLastPrefilledNumber(generatedNumber);
         setPoPrefix(preference.prefix);
       }
@@ -357,50 +395,57 @@ export function CreatePurchaseOrder() {
 
   const updatePreferenceMutation = useMutation({
     mutationFn: (data: { prefix: string; nextNumber: number }) =>
-      updatePONumberPreference(orgId!, data),
+      updateBillNumberPreference(orgId!, data),
     onSuccess: (data) => {
       queryClient.setQueryData(['po-number-preference', orgId], data);
-      setValue('purchaseorder_number', `${data.prefix}${data.nextNumber.toString().padStart(5, '0')}`);
+      setValue('bill_number', `${data.prefix}${data.nextNumber.toString().padStart(5, '0')}`);
       setPoPrefix(data.prefix);
       setIsNumberConfigOpen(false);
     },
   });
 
   const mutation = useMutation({
-    mutationFn: (data: CreatePurchaseOrderData) => {
+    mutationFn: (data: CreateBillData) => {
       if (isEdit && id) {
-        return updatePurchaseOrder({ orgId: orgId!, id, data });
+        return updateBill({ orgId: orgId!, id, data });
       }
-      return createPurchaseOrder(orgId!, data);
+      return createBill(orgId!, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['purchaseOrders', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
       if (id) {
-        queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId, id] });
+        queryClient.invalidateQueries({ queryKey: ['bill', orgId, id] });
       }
       queryClient.invalidateQueries({ queryKey: ['po-number-preference', orgId] });
-      navigate(`/organizations/${orgId}/purchases/purchase-orders${isEdit && id ? `?id=${id}` : ''}`);
+      navigate(`/organizations/${orgId}/purchases/bills${isEdit && id ? `?id=${id}` : ''}`);
     },
     onError: (error: AxiosError<{ message?: string }>) => {
-      alert(error.response?.data?.message || error.message || `Failed to ${isEdit ? 'update' : 'create'} purchase order`);
+      alert(
+        error.response?.data?.message ||
+          error.message ||
+          `Failed to ${isEdit ? 'update' : 'create'} Bill`,
+      );
     },
   });
 
-  const onSubmit = (data: CreatePurchaseOrderData) => {
+  const onSubmit = (data: CreateBillData) => {
     const finalItems = (data.line_items || []).map((item) => {
       const qty = isNaN(Number(item?.quantity)) ? 0 : Number(item?.quantity);
       const rate = isNaN(Number(item?.rate)) ? 0 : Number(item?.rate);
       const basePrice = qty * rate;
       const discountVal = isNaN(Number(item?.discountValue)) ? 0 : Number(item?.discountValue);
       const discType = item?.discountType || 'percentage';
-      const discountAmount = discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
+      const discountAmount =
+        discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
       const item_total = Math.max(0, basePrice - discountAmount);
       return {
         ...item,
         quantity: qty,
         rate: rate,
+        amount: item_total,
         item_total: item_total,
         discount: discountAmount,
+        discount_amount: discountAmount,
         discount_percentage: discType === 'percentage' ? discountVal : null,
       };
     });
@@ -409,17 +454,18 @@ export function CreatePurchaseOrder() {
       ...data,
       delivery_customer_id: data.delivery_customer_id || null,
       delivery_location_id: data.delivery_location_id || null,
-      delivery_date: data.delivery_date || null,
-      payment_terms: data.payment_terms || null,
-      notes: data.notes || null,
-      terms: data.terms || null,
+      due_date: data.due_date || null,
+      terms_and_conditions: data.terms_and_conditions || null,
       line_items: finalItems,
       sub_total: computedSubTotal,
-      total: computedTotalAmount,
-      documents: attachedFiles,
-      custom_fields: { ...data.custom_fields, ...(customDeliveryName ? { customDeliveryName } : {}) },
+      total_amount: computedTotalAmount,
+      attachments: attachedFiles,
+      custom_fields: {
+        ...data.custom_fields,
+        ...(customDeliveryName ? { customDeliveryName } : {}),
+      },
     };
-    console.log('Submitting PO data:', finalData);
+    console.log('Submitting Bill data:', finalData);
     mutation.mutate(finalData);
   };
 
@@ -430,7 +476,7 @@ export function CreatePurchaseOrder() {
     gap: '6px',
     color: '#111',
   };
-    const inputStyle = {
+  const inputStyle = {
     width: '100%',
     maxWidth: '440px',
     padding: '8px 12px',
@@ -441,10 +487,10 @@ export function CreatePurchaseOrder() {
   };
   const searchableSelectStyle = { width: '100%', maxWidth: '440px' };
 
-  if (isFetchingPo) {
+  if (isFetchingBill) {
     return (
       <div style={{ padding: '64px', textAlign: 'center', color: '#64748b' }}>
-        Loading purchase order details...
+        Loading Bill details...
       </div>
     );
   }
@@ -464,7 +510,11 @@ export function CreatePurchaseOrder() {
       {/* Header */}
       <div style={{ padding: '24px 32px' }}>
         <h1 style={{ fontSize: '22px', fontWeight: 400, margin: 0, color: '#000' }}>
-          {isEdit ? `Edit Purchase Order (${existingPo?.purchaseorder_number || ''})` : isClone ? 'Clone Purchase Order' : 'New Purchase Order'}
+          {isEdit
+            ? `Edit Bill (${existingPo?.bill_number || ''})`
+            : isClone
+              ? 'Clone Bill'
+              : 'New Bill'}
         </h1>
       </div>
 
@@ -495,401 +545,186 @@ export function CreatePurchaseOrder() {
               fontSize: '13px',
             }}
           >
-          <label style={{ ...labelStyle, color: '#ef4444' }}>
-            Vendor Name*</label>
-          <div>
-            <input type="hidden" {...register('vendor_id', { required: true })} />
-            <SearchableSelect
-              options={vendors.map((v) => ({ label: v.contactName, value: v.id }))}
-              value={watch('vendor_id') || undefined}
-              onChange={(val) => setValue('vendor_id', val, { shouldValidate: true })}
-              placeholder="Select a Vendor"
-            renderOption={(option, isSelected) => {
-              const vendor = vendors.find((v) => v.id === option.value);
-              if (!vendor) return <>{option.label}</>;
-              return (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div
-                    style={{
-                      width: '36px',
-                      height: '36px',
-                      borderRadius: '50%',
-                      backgroundColor: isSelected ? '#bfdbfe' : '#e2e8f0',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: isSelected ? '#1e40af' : '#64748b',
-                      fontWeight: 500,
-                      fontSize: '14px',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {vendor.contactName.charAt(0).toUpperCase()}
-                  </div>
-                  <div style={{ flex: 1, overflow: 'hidden' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontWeight: 500 }}>{vendor.contactName}</span>
-                      <span style={{ color: isSelected ? '#bfdbfe' : '#94a3b8' }}>|</span>
-                      <span style={{ fontSize: '12px', color: isSelected ? '#dbeafe' : '#64748b' }}>
-                        {vendor.contactNumber}
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px',
-                        marginTop: '4px',
-                        fontSize: '12px',
-                        color: isSelected ? '#bfdbfe' : '#94a3b8',
-                      }}
-                    >
-                      {vendor.email && (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <Mail size={12} /> {vendor.email}
-                        </span>
-                      )}
-                      {vendor.mobile && (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <Phone size={12} /> {vendor.mobile}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            }}
-
-            footerAction={{
-              text: 'New Vendor',
-              icon: <PlusCircle size={16} />,
-              onClick: () => setIsVendorModalOpen(true),
-            }}
-            style={searchableSelectStyle}
-          />
-          {errors.vendor_id && (
-            <div style={{ color: '#e54d4d', fontSize: '12px', marginTop: '4px' }}>
-              Vendor Name is required
-            </div>
-          )}
-          </div>
-
-
-          <label style={labelStyle}>Location</label>
-          <SearchableSelect
-            options={locations.map((l: Location) => ({ label: l.name, value: l.id }))}
-            value={watch('location_id') || undefined}
-            onChange={(val) => setValue('location_id', val)}
-            placeholder="Select Location"
-            footerAction={{
-              text: 'New Location',
-              icon: <PlusCircle size={16} />,
-              onClick: () => navigate(`/organizations/${orgId}/settings/locations/new`),
-            }}
-            style={searchableSelectStyle}
-          />
-
-
-          <label style={{ ...labelStyle, alignSelf: 'flex-start', color: '#ef4444' }}>Delivery Address*</label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <div style={{ display: 'flex', gap: '16px', alignItems: 'center', minHeight: '20px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0, lineHeight: 1 }}>
-                <input type="radio" value="Location" {...register('delivery_type')} style={{ margin: 0, cursor: 'pointer' }} /> Locations
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0, lineHeight: 1 }}>
-                <input type="radio" value="Customer" {...register('delivery_type')} style={{ margin: 0, cursor: 'pointer' }} /> Customer
-              </label>
-            </div>
-
-            {watchDeliveryType === 'Location' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <SearchableSelect
-                  options={locations.map((l: Location) => ({ label: l.name, value: l.id }))}
-                  value={watch('delivery_location_id') || undefined}
-                  onChange={(val) => setValue('delivery_location_id', val)}
-                  placeholder="Select Location"
-                  footerAction={{
-                    text: 'New Location',
-                    icon: <PlusCircle size={16} />,
-                    onClick: () => navigate(`/organizations/${orgId}/settings/locations/new`),
-                  }}
-                  style={searchableSelectStyle}
-                />
-
-                {selectedLocation && (
-                  <div
-                    style={{ padding: '8px 0', color: '#555', fontSize: '13px', lineHeight: '1.6' }}
-                  >
-                    <div
-                      style={{
-                        fontWeight: 500,
-                        fontSize: '14px',
-                        marginBottom: '8px',
-                        color: '#111',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                      }}
-                    >
-                      {isEditingDeliveryName ? (
+            <label style={{ ...labelStyle, color: '#ef4444' }}>Vendor Name*</label>
+            <div>
+              <input type="hidden" {...register('vendor_id', { required: true })} />
+              <SearchableSelect
+                options={vendors.map((v) => ({ label: v.contactName, value: v.id }))}
+                value={watch('vendor_id') || undefined}
+                onChange={(val) => setValue('vendor_id', val, { shouldValidate: true })}
+                placeholder="Select a Vendor"
+                renderOption={(option, isSelected) => {
+                  const vendor = vendors.find((v) => v.id === option.value);
+                  if (!vendor) return <>{option.label}</>;
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div
+                        style={{
+                          width: '36px',
+                          height: '36px',
+                          borderRadius: '50%',
+                          backgroundColor: isSelected ? '#bfdbfe' : '#e2e8f0',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: isSelected ? '#1e40af' : '#64748b',
+                          fontWeight: 500,
+                          fontSize: '14px',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {vendor.contactName.charAt(0).toUpperCase()}
+                      </div>
+                      <div style={{ flex: 1, overflow: 'hidden' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <input
-                            type="text"
-                            value={customDeliveryName}
-                            onChange={(e) => setCustomDeliveryName(e.target.value)}
-                            onBlur={() => setIsEditingDeliveryName(false)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                setIsEditingDeliveryName(false);
-                              }
-                            }}
-                            autoFocus
-                            style={{
-                              padding: '4px 8px',
-                              fontSize: '14px',
-                              fontWeight: 500,
-                              border: '1px solid #0062ff',
-                              borderRadius: '4px',
-                              outline: 'none',
-                              color: '#111',
-                              minWidth: '200px',
-                            }}
-                          />
-                          <Check
-                            size={18}
-                            color="#10b981"
-                            style={{ cursor: 'pointer' }}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              setIsEditingDeliveryName(false);
-                            }}
-                          />
+                          <span style={{ fontWeight: 500 }}>{vendor.contactName}</span>
+                          <span style={{ color: isSelected ? '#bfdbfe' : '#94a3b8' }}>|</span>
+                          <span
+                            style={{ fontSize: '12px', color: isSelected ? '#dbeafe' : '#64748b' }}
+                          >
+                            {vendor.contactNumber}
+                          </span>
                         </div>
-                      ) : (
-                        <>
-                          <span>{customDeliveryName || selectedLocation.name}</span>
-                          <Pencil
-                            size={14}
-                            color="#0062ff"
-                            style={{ cursor: 'pointer' }}
-                            onClick={() => {
-                              setCustomDeliveryName(customDeliveryName || selectedLocation.name);
-                              setIsEditingDeliveryName(true);
-                            }}
-                          />
-                        </>
-                      )}
-                    </div>
-                    <div>
-                      {selectedLocation.street1} {selectedLocation.street2}
-                    </div>
-                    <div>
-                      {selectedLocation.city}, {selectedLocation.state}
-                    </div>
-                    <div>
-                      {selectedLocation.country}, {selectedLocation.zip}
-                    </div>
-                    <div>{selectedLocation.phone}</div>
-                    <div
-                      style={{ marginTop: '12px', color: '#0062ff', cursor: 'pointer', display: 'inline-block', fontWeight: 500 }}
-                      onClick={() => setIsDeliveryAddressModalOpen(true)}
-                    >
-                      Change destination to deliver
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-            {watchDeliveryType === 'Customer' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <SearchableSelect
-                  options={customers.map((c: Customer) => ({ label: c.contactName, value: c.id }))}
-                  value={watchDeliveryCustomerId || undefined}
-                  onChange={(val) => setValue('delivery_customer_id', val)}
-                  placeholder="Select Customer"
-                  footerAction={{
-                    text: 'New Customer',
-                    icon: <PlusCircle size={16} />,
-                    onClick: () => navigate(`/organizations/${orgId}/sales/customers/new`),
-                  }}
-                  style={searchableSelectStyle}
-                />
-
-                {selectedCustomer && (
-                  <div
-                    style={{ padding: '8px 0', color: '#555', fontSize: '13px', lineHeight: '1.6' }}
-                  >
-                    <div
-                      style={{
-                        fontWeight: 500,
-                        fontSize: '14px',
-                        marginBottom: '8px',
-                        color: '#333',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                      }}
-                    >
-                      {isEditingDeliveryName ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <input
-                            type="text"
-                            value={customDeliveryName}
-                            onChange={(e) => setCustomDeliveryName(e.target.value)}
-                            onBlur={() => setIsEditingDeliveryName(false)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                setIsEditingDeliveryName(false);
-                              }
-                            }}
-                            autoFocus
-                            style={{
-                              padding: '4px 8px',
-                              fontSize: '14px',
-                              fontWeight: 500,
-                              border: '1px solid #0062ff',
-                              borderRadius: '4px',
-                              outline: 'none',
-                              color: '#111',
-                              minWidth: '200px',
-                            }}
-                          />
-                          <Check
-                            size={18}
-                            color="#10b981"
-                            style={{ cursor: 'pointer' }}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              setIsEditingDeliveryName(false);
-                            }}
-                          />
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            marginTop: '4px',
+                            fontSize: '12px',
+                            color: isSelected ? '#bfdbfe' : '#94a3b8',
+                          }}
+                        >
+                          {vendor.email && (
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Mail size={12} /> {vendor.email}
+                            </span>
+                          )}
+                          {vendor.mobile && (
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Phone size={12} /> {vendor.mobile}
+                            </span>
+                          )}
                         </div>
-                      ) : (
-                        <>
-                          <span>{customDeliveryName || selectedCustomer.contactName}</span>
-                          <Pencil
-                            size={14}
-                            color="#0062ff"
-                            style={{ cursor: 'pointer' }}
-                            onClick={() => {
-                              setCustomDeliveryName(customDeliveryName || selectedCustomer.contactName);
-                              setIsEditingDeliveryName(true);
-                            }}
-                          />
-                        </>
-                      )}
+                      </div>
                     </div>
-                    <div>
-                      {selectedCustomer.shippingStreet1} {selectedCustomer.shippingStreet2}
-                    </div>
-                    <div>
-                      {selectedCustomer.shippingCity}, {selectedCustomer.shippingState}
-                    </div>
-                    <div>
-                      {selectedCustomer.shippingCountry}, {selectedCustomer.shippingPinCode}
-                    </div>
-                    <div>{selectedCustomer.shippingPhone}</div>
-                    <div
-                      style={{ marginTop: '12px', color: '#0062ff', cursor: 'pointer', display: 'inline-block', fontWeight: 500 }}
-                      onClick={() => setIsDeliveryAddressModalOpen(true)}
-                    >
-                      Change destination to deliver
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <label style={{ ...labelStyle, color: '#ef4444' }}>Purchase Order#*</label>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', maxWidth: '440px' }}>
-              <input
-                type="text"
-                {...register('purchaseorder_number', { required: true })}
-                style={{ ...inputStyle, flex: 1 }}
-              />
-              <button
-                type="button"
-                onClick={() => setIsNumberConfigOpen(true)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#888',
-                  cursor: 'pointer',
-                  padding: '4px',
-                  display: 'flex',
+                  );
                 }}
-              >
-                <Settings size={18} />
-              </button>
+                footerAction={{
+                  text: 'New Vendor',
+                  icon: <PlusCircle size={16} />,
+                  onClick: () => setIsVendorModalOpen(true),
+                }}
+                style={searchableSelectStyle}
+              />
+              {errors.vendor_id && (
+                <div style={{ color: '#e54d4d', fontSize: '12px', marginTop: '4px' }}>
+                  Vendor Name is required
+                </div>
+              )}
             </div>
-            {errors.purchaseorder_number && (
-              <div style={{ color: '#e54d4d', fontSize: '12px', marginTop: '4px' }}>
-                Purchase Order# is required
-              </div>
-            )}
-          </div>
 
-          <label style={{ ...labelStyle, color: '#ef4444' }}>Date*</label>
-          <div style={{ position: 'relative', width: '100%', maxWidth: '440px' }}>
-            <input
-              type="date"
-              {...register('date', {
-                required: 'Date is required',
-                onChange: () => {
-                  if (watch('delivery_date')) {
-                    trigger('delivery_date');
-                  }
-                },
-              })}
-              className="date-input-no-icon"
-              onClick={(e) => (e.target as HTMLInputElement).showPicker()}
-              style={{ ...inputStyle, maxWidth: '100%' }}
+            <label style={labelStyle}>Location</label>
+            <SearchableSelect
+              options={locations.map((l: Location) => ({ label: l.name, value: l.id }))}
+              value={watch('location_id') || undefined}
+              onChange={(val) => setValue('location_id', val)}
+              placeholder="Select Location"
+              footerAction={{
+                text: 'New Location',
+                icon: <PlusCircle size={16} />,
+                onClick: () => navigate(`/organizations/${orgId}/settings/locations/new`),
+              }}
+              style={searchableSelectStyle}
             />
-          </div>
 
-          <label style={labelStyle}>Delivery Date</label>
-          <div style={{ position: 'relative', width: '100%', maxWidth: '440px' }}>
-            <input
-              type="date"
-              min={watchPoDate}
-              {...register('delivery_date', {
-                validate: (val) => {
-                  if (!val || !watchPoDate) return true;
-                  return val >= watchPoDate || 'Delivery date must be on or after PO date';
-                },
-              })}
-              className="date-input-no-icon"
-              onClick={(e) => (e.target as HTMLInputElement).showPicker()}
-              style={{ ...inputStyle, maxWidth: '100%' }}
-            />
-            {errors.delivery_date && (
-              <div style={{ color: '#e54d4d', fontSize: '12px', marginTop: '4px' }}>
-                {errors.delivery_date.message || 'Delivery date must be on or after PO date'}
+            <label style={{ ...labelStyle, color: '#ef4444' }}>Bill#*</label>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', maxWidth: '440px' }}>
+                <input
+                  type="text"
+                  {...register('bill_number', { required: true })}
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setIsNumberConfigOpen(true)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#888',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    display: 'flex',
+                  }}
+                >
+                  <Settings size={18} />
+                </button>
               </div>
-            )}
-          </div>
+              {errors.bill_number && (
+                <div style={{ color: '#e54d4d', fontSize: '12px', marginTop: '4px' }}>
+                  Bill# is required
+                </div>
+              )}
+            </div>
 
-          <label style={labelStyle}>Payment Terms</label>
-          <SearchableSelect
-            options={
-              paymentTerms?.map((pt) => ({ label: pt.termName, value: pt.id.toString() })) || []
-            }
-            value={watch('payment_terms') || undefined}
-            onChange={(val) => setValue('payment_terms', val)}
-            placeholder="Select Payment Terms"
-            footerAction={{
-              text: 'New Payment Term',
-              icon: <PlusCircle size={16} />,
-              onClick: () => setIsPaymentTermModalOpen(true),
-            }}
-            style={searchableSelectStyle}
-          />
+            <label style={{ ...labelStyle, color: '#ef4444' }}>Date*</label>
+            <div style={{ position: 'relative', width: '100%', maxWidth: '440px' }}>
+              <input
+                type="date"
+                {...register('bill_date', {
+                  required: 'Date is required',
+                  onChange: () => {
+                    if (watch('due_date')) {
+                      trigger('due_date');
+                    }
+                  },
+                })}
+                className="date-input-no-icon"
+                onClick={(e) => (e.target as HTMLInputElement).showPicker()}
+                style={{ ...inputStyle, maxWidth: '100%' }}
+              />
+            </div>
+
+            <label style={labelStyle}>Payment Terms</label>
+            <SearchableSelect
+              options={
+                paymentTerms?.map((pt) => ({ label: pt.termName, value: pt.id.toString() })) || []
+              }
+              value={watch('payment_terms') || undefined}
+              onChange={(val) => setValue('payment_terms', val)}
+              placeholder="Select Payment Terms"
+              footerAction={{
+                text: 'New Payment Term',
+                icon: <PlusCircle size={16} />,
+                onClick: () => setIsPaymentTermModalOpen(true),
+              }}
+              style={searchableSelectStyle}
+            />
+
+            <label style={labelStyle}>Delivery Date</label>
+            <div style={{ position: 'relative', width: '100%', maxWidth: '440px' }}>
+              <input
+                type="date"
+                min={watchPoDate}
+                {...register('due_date', {
+                  validate: (val) => {
+                    if (!val || !watchPoDate) return true;
+                    return val >= watchPoDate || 'Delivery date must be on or after Bill Date';
+                  },
+                })}
+                className="date-input-no-icon"
+                onClick={(e) => (e.target as HTMLInputElement).showPicker()}
+                style={{ ...inputStyle, maxWidth: '100%' }}
+              />
+              {errors.due_date && (
+                <div style={{ color: '#e54d4d', fontSize: '12px', marginTop: '4px' }}>
+                  {errors.due_date.message || 'Delivery date must be on or after Bill Date'}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
 
         {/* Items Table Section */}
         <div
@@ -938,25 +773,85 @@ export function CreatePurchaseOrder() {
                   textAlign: 'left',
                 }}
               >
-                <th style={{ padding: '10px 16px', width: '35%', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>ITEM DETAILS</th>
-                <th style={{ padding: '10px 16px', width: '13%', textAlign: 'right', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>QUANTITY</th>
-                <th style={{ padding: '10px 16px', width: '15%', textAlign: 'right', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>RATE</th>
-                <th style={{ padding: '10px 16px', width: '18%', textAlign: 'right', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>DISCOUNT</th>
-                <th style={{ padding: '10px 16px', width: '15%', textAlign: 'right', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>AMOUNT</th>
-                <th style={{ padding: '10px 12px', width: '4%', textAlign: 'center', borderBottom: '1px solid #e2e8f0' }}></th>
+                <th
+                  style={{
+                    padding: '10px 16px',
+                    width: '35%',
+                    borderBottom: '1px solid #e2e8f0',
+                    borderRight: '1px solid #e2e8f0',
+                  }}
+                >
+                  ITEM DETAILS
+                </th>
+                <th
+                  style={{
+                    padding: '10px 16px',
+                    width: '13%',
+                    textAlign: 'right',
+                    borderBottom: '1px solid #e2e8f0',
+                    borderRight: '1px solid #e2e8f0',
+                  }}
+                >
+                  QUANTITY
+                </th>
+                <th
+                  style={{
+                    padding: '10px 16px',
+                    width: '15%',
+                    textAlign: 'right',
+                    borderBottom: '1px solid #e2e8f0',
+                    borderRight: '1px solid #e2e8f0',
+                  }}
+                >
+                  RATE
+                </th>
+                <th
+                  style={{
+                    padding: '10px 16px',
+                    width: '18%',
+                    textAlign: 'right',
+                    borderBottom: '1px solid #e2e8f0',
+                    borderRight: '1px solid #e2e8f0',
+                  }}
+                >
+                  DISCOUNT
+                </th>
+                <th
+                  style={{
+                    padding: '10px 16px',
+                    width: '15%',
+                    textAlign: 'right',
+                    borderBottom: '1px solid #e2e8f0',
+                    borderRight: '1px solid #e2e8f0',
+                  }}
+                >
+                  AMOUNT
+                </th>
+                <th
+                  style={{
+                    padding: '10px 12px',
+                    width: '4%',
+                    textAlign: 'center',
+                    borderBottom: '1px solid #e2e8f0',
+                  }}
+                ></th>
               </tr>
             </thead>
             <tbody>
               {itemFields.map((field, index) => {
                 const curItem = watchItems?.[index];
                 const selectedItem = curItem?.item;
-                const itemImageUrl = getImageKey(selectedItem?.frontImage) || getImageKey(selectedItem?.images?.[0]);
+                const itemImageUrl =
+                  getImageKey(selectedItem?.frontImage) || getImageKey(selectedItem?.images?.[0]);
                 const qty = isNaN(Number(curItem?.quantity)) ? 0 : Number(curItem?.quantity);
                 const rate = isNaN(Number(curItem?.rate)) ? 0 : Number(curItem?.rate);
                 const basePrice = qty * rate;
-                const discountVal = isNaN(Number(curItem?.discountValue)) ? 0 : Number(curItem?.discountValue);
+                const discountVal = isNaN(Number(curItem?.discountValue))
+                  ? 0
+                  : Number(curItem?.discountValue);
                 const discType = curItem?.discountType || 'percentage';
-                const discountAmount = discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
+                const discountAmount =
+                  discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
                 const calculatedRowAmount = Math.max(0, basePrice - discountAmount);
 
                 return (
@@ -968,14 +863,22 @@ export function CreatePurchaseOrder() {
                       zIndex: itemFields.length - index + 2,
                     }}
                   >
-                    <td style={{ padding: '14px 16px', verticalAlign: 'top', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>
+                    <td
+                      style={{
+                        padding: '14px 16px',
+                        verticalAlign: 'top',
+                        borderBottom: '1px solid #e2e8f0',
+                        borderRight: '1px solid #e2e8f0',
+                      }}
+                    >
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                            <ItemComboBox
-                              orgId={orgId!}
-                              value={watchItems?.[index]?.item_id}
-                              initialItem={watchItems?.[index]?.item}
-                              selectedImage={selectedItem ? (
+                          <ItemComboBox
+                            orgId={orgId!}
+                            value={watchItems?.[index]?.item_id}
+                            initialItem={watchItems?.[index]?.item}
+                            selectedImage={
+                              selectedItem ? (
                                 <ItemImage
                                   orgId={orgId}
                                   itemId={selectedItem.id}
@@ -983,34 +886,52 @@ export function CreatePurchaseOrder() {
                                   alt={selectedItem.name}
                                   iconSize={14}
                                 />
-                              ) : null}
-                              onOpenMultiSelect={() => {
-                                setMultiSelectTargetIndex(index);
-                                setIsMultiSelectItemModalOpen(true);
-                              }}
-                              onChange={(val) => {
-                                setValue(`line_items.${index}.item_id`, val?.id || '', { shouldValidate: true });
-                                setValue(`line_items.${index}.item`, val);
-                                const selected = val;
-                                if (selected) {
-                                  setValue(`line_items.${index}.rate`, (selected.costPrice || selected.sellingPrice || '') as unknown as number);
-                                  setValue(`line_items.${index}.quantity`, 1 as unknown as number);
-                                  setValue(`line_items.${index}.description`, selected.purchaseDescription || selected.purchase_description || selected.salesDescription || selected.sales_description || '');
-                                } else {
-                                  setValue(`line_items.${index}.rate`, '' as unknown as number);
-                                  setValue(`line_items.${index}.quantity`, '' as unknown as number);
-                                  setValue(`line_items.${index}.discountValue`, '' as unknown as number);
-                                  setValue(`line_items.${index}.discountType`, 'percentage');
-                                  setValue(`line_items.${index}.description`, '');
-                                }
-                              }}
-                              placeholder="Type or click to select an item."
-                              footerAction={{
-                                text: 'New Product',
-                                onClick: () => setItemModalIndex(index),
-                              }}
-                            />
-                          </div>
+                              ) : null
+                            }
+                            onOpenMultiSelect={() => {
+                              setMultiSelectTargetIndex(index);
+                              setIsMultiSelectItemModalOpen(true);
+                            }}
+                            onChange={(val) => {
+                              setValue(`line_items.${index}.item_id`, val?.id || '', {
+                                shouldValidate: true,
+                              });
+                              setValue(`line_items.${index}.item`, val);
+                              const selected = val;
+                              if (selected) {
+                                setValue(
+                                  `line_items.${index}.rate`,
+                                  (selected.costPrice ||
+                                    selected.sellingPrice ||
+                                    '') as unknown as number,
+                                );
+                                setValue(`line_items.${index}.quantity`, 1 as unknown as number);
+                                setValue(
+                                  `line_items.${index}.description`,
+                                  selected.purchaseDescription ||
+                                    selected.purchase_description ||
+                                    selected.salesDescription ||
+                                    selected.sales_description ||
+                                    '',
+                                );
+                              } else {
+                                setValue(`line_items.${index}.rate`, '' as unknown as number);
+                                setValue(`line_items.${index}.quantity`, '' as unknown as number);
+                                setValue(
+                                  `line_items.${index}.discountValue`,
+                                  '' as unknown as number,
+                                );
+                                setValue(`line_items.${index}.discountType`, 'percentage');
+                                setValue(`line_items.${index}.description`, '');
+                              }
+                            }}
+                            placeholder="Type or click to select an item."
+                            footerAction={{
+                              text: 'New Product',
+                              onClick: () => setItemModalIndex(index),
+                            }}
+                          />
+                        </div>
 
                         {/* Description Field - only shown when an item is selected */}
                         {selectedItem && (
@@ -1036,7 +957,15 @@ export function CreatePurchaseOrder() {
 
                         {/* Badges: GOODS / SERVICES + HSN Code */}
                         {selectedItem && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', marginTop: '2px' }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              fontSize: '11px',
+                              marginTop: '2px',
+                            }}
+                          >
                             <span
                               style={{
                                 background: '#0062ff',
@@ -1053,14 +982,26 @@ export function CreatePurchaseOrder() {
                             </span>
                             {selectedItem.hsnCode && (
                               <span style={{ color: '#475569', fontWeight: 500 }}>
-                                HSN Code: <span style={{ color: '#2563eb', fontWeight: 600 }}>{selectedItem.hsnCode}</span>
+                                HSN Code:{' '}
+                                <span style={{ color: '#2563eb', fontWeight: 600 }}>
+                                  {selectedItem.hsnCode}
+                                </span>
                               </span>
                             )}
                           </div>
                         )}
                       </div>
                     </td>
-                    <td style={{ padding: '14px 16px', verticalAlign: 'top', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', boxSizing: 'border-box' }}>
+                    <td
+                      style={{
+                        padding: '14px 16px',
+                        verticalAlign: 'top',
+                        borderBottom: '1px solid #e2e8f0',
+                        borderRight: '1px solid #e2e8f0',
+                        boxSizing: 'border-box',
+                      }}
+                    >
+
                       <input
                         type="number"
                         step="0.01"
@@ -1070,10 +1011,62 @@ export function CreatePurchaseOrder() {
                           required: true,
                           min: 0.01,
                         })}
-                        style={{ ...inputStyle, width: '100%', maxWidth: '100%', boxSizing: 'border-box', textAlign: 'right', borderRadius: '6px' }}
+                        style={{
+                          ...inputStyle,
+                          width: '100%',
+                          maxWidth: '100%',
+                          boxSizing: 'border-box',
+                          textAlign: 'right',
+                          borderRadius: '6px',
+                        }}
                       />
+                      {selectedItem?.trackInventory &&
+                        selectedItem?.inventoryTracking === 'batch' && (
+                          <div style={{ marginTop: '6px', textAlign: 'right' }}>
+                            <button
+                              type="button"
+                              onClick={() => setBatchModalIndex(index)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#2563eb',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                padding: '2px 4px',
+                              }}
+                            >
+                              {curItem.batches?.length
+                                ? `${curItem.batches.length} Batches Added`
+                                : '+ Add Batches'}
+                            </button>
+                          </div>
+                        )}
+
+                      {/* Stock Display (below batch button) */}
+                      {selectedItem && (
+                        <div style={{ marginTop: '6px' }}>
+                          <LineItemStockDisplay
+                            orgId={orgId!}
+                            itemId={selectedItem.id}
+                            deliveryLocationId={watchLocationId || watchDeliveryLocationId}
+                            locations={locations}
+                            onClick={(e, rows) =>
+                              setStockPopoverAnchor({ element: e.currentTarget, stockRows: rows })
+                            }
+                          />
+                        </div>
+                      )}
                     </td>
-                    <td style={{ padding: '14px 16px', verticalAlign: 'top', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', boxSizing: 'border-box' }}>
+                    <td
+                      style={{
+                        padding: '14px 16px',
+                        verticalAlign: 'top',
+                        borderBottom: '1px solid #e2e8f0',
+                        borderRight: '1px solid #e2e8f0',
+                        boxSizing: 'border-box',
+                      }}
+                    >
                       <input
                         type="number"
                         step="0.01"
@@ -1083,10 +1076,25 @@ export function CreatePurchaseOrder() {
                           required: true,
                           min: 0,
                         })}
-                        style={{ ...inputStyle, width: '100%', maxWidth: '100%', boxSizing: 'border-box', textAlign: 'right', borderRadius: '6px' }}
+                        style={{
+                          ...inputStyle,
+                          width: '100%',
+                          maxWidth: '100%',
+                          boxSizing: 'border-box',
+                          textAlign: 'right',
+                          borderRadius: '6px',
+                        }}
                       />
                     </td>
-                    <td style={{ padding: '14px 16px', verticalAlign: 'top', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', boxSizing: 'border-box' }}>
+                    <td
+                      style={{
+                        padding: '14px 16px',
+                        verticalAlign: 'top',
+                        borderBottom: '1px solid #e2e8f0',
+                        borderRight: '1px solid #e2e8f0',
+                        boxSizing: 'border-box',
+                      }}
+                    >
                       <div
                         style={{
                           display: 'flex',
@@ -1123,7 +1131,10 @@ export function CreatePurchaseOrder() {
                         <Select
                           value={watchItems?.[index]?.discountType || 'percentage'}
                           onChange={(val) => {
-                            setValue(`line_items.${index}.discountType`, val as 'percentage' | 'fixed');
+                            setValue(
+                              `line_items.${index}.discountType`,
+                              val as 'percentage' | 'fixed',
+                            );
                           }}
                           options={[
                             { value: 'percentage', label: '%' },
@@ -1166,7 +1177,14 @@ export function CreatePurchaseOrder() {
                     >
                       ₹{calculatedRowAmount.toFixed(2)}
                     </td>
-                    <td style={{ padding: '14px 12px', textAlign: 'center', verticalAlign: 'top', borderBottom: '1px solid #e2e8f0' }}>
+                    <td
+                      style={{
+                        padding: '14px 12px',
+                        textAlign: 'center',
+                        verticalAlign: 'top',
+                        borderBottom: '1px solid #e2e8f0',
+                      }}
+                    >
                       <button
                         type="button"
                         onClick={() => removeItem(index)}
@@ -1192,10 +1210,32 @@ export function CreatePurchaseOrder() {
             </tbody>
           </table>
 
-          <div style={{ padding: '12px 16px', borderTop: '1px solid #e2e8f0', background: '#ffffff', borderBottomLeftRadius: '8px', borderBottomRightRadius: '8px', position: 'relative', zIndex: 1 }}>
+          <div
+            style={{
+              padding: '12px 16px',
+              borderTop: '1px solid #e2e8f0',
+              background: '#ffffff',
+              borderBottomLeftRadius: '8px',
+              borderBottomRightRadius: '8px',
+              position: 'relative',
+              zIndex: 1,
+            }}
+          >
             <button
               type="button"
-              onClick={() => appendItem({ item_id: '', quantity: '' as unknown as number, rate: '' as unknown as number, discountValue: '' as unknown as number, discountType: 'percentage', item_total: 0 } as PurchaseOrderItem, { shouldFocus: false })}
+              onClick={() =>
+                appendItem(
+                  {
+                    item_id: '',
+                    quantity: '' as unknown as number,
+                    rate: '' as unknown as number,
+                    discountValue: '' as unknown as number,
+                    discountType: 'percentage',
+                    item_total: 0,
+                  } as BillItem,
+                  { shouldFocus: false },
+                )
+              }
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -1216,15 +1256,15 @@ export function CreatePurchaseOrder() {
         </div>
 
         {/* Footer Notes and Totals */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '24px', fontSize: '13px' }}>
-          <div style={{ flex: 1, maxWidth: '500px' }}>
-            <label style={{ ...labelStyle, marginBottom: '8px', color: '#475569' }}>Customer / Vendor Notes</label>
-            <textarea
-              {...register('notes')}
-              placeholder="Will be displayed on the purchase order document"
-              style={{ ...inputStyle, maxWidth: '100%', height: '90px', resize: 'vertical', borderRadius: '6px' }}
-            />
-          </div>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: '24px',
+            fontSize: '13px',
+          }}
+        >
+          <div style={{ flex: 1, maxWidth: '500px' }}></div>
           <div
             style={{
               width: '320px',
@@ -1235,13 +1275,29 @@ export function CreatePurchaseOrder() {
               boxShadow: '0 1px 2px 0 rgba(0,0,0,0.03)',
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', color: '#475569' }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                marginBottom: '10px',
+                color: '#475569',
+              }}
+            >
               <span>Sub Total</span>
-              <span style={{ fontWeight: 600, color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>
+              <span
+                style={{ fontWeight: 600, color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}
+              >
                 ₹{computedSubTotal.toFixed(2)}
               </span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '14px', color: '#16a34a' }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                marginBottom: '14px',
+                color: '#16a34a',
+              }}
+            >
               <span>Total Discount</span>
               <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
                 -₹{computedTotalDiscount.toFixed(2)}
@@ -1286,7 +1342,7 @@ export function CreatePurchaseOrder() {
               Terms & Conditions
             </label>
             <textarea
-              {...register('terms')}
+              {...register('terms_and_conditions')}
               placeholder="Enter terms and conditions..."
               rows={4}
               style={{
@@ -1306,9 +1362,17 @@ export function CreatePurchaseOrder() {
           </div>
 
           {/* Attach File(s) */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', borderLeft: '1px solid #e2e8f0', paddingLeft: '32px' }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+              borderLeft: '1px solid #e2e8f0',
+              paddingLeft: '32px',
+            }}
+          >
             <label style={{ fontSize: '13px', fontWeight: 600, color: '#334155', margin: 0 }}>
-              Attach File(s) to Purchase Order
+              Attach File(s) to Bill
             </label>
             <div>
               <label
@@ -1343,14 +1407,23 @@ export function CreatePurchaseOrder() {
                 You can upload a maximum of 2 files, 5MB each
               </div>
               {fileUploadError && (
-                <div style={{ fontSize: '12px', color: '#ef4444', marginTop: '6px', fontWeight: 500 }}>
+                <div
+                  style={{ fontSize: '12px', color: '#ef4444', marginTop: '6px', fontWeight: 500 }}
+                >
                   {fileUploadError}
                 </div>
               )}
 
               {/* Attached Files List */}
               {attachedFiles.length > 0 && (
-                <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div
+                  style={{
+                    marginTop: '12px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                  }}
+                >
                   {attachedFiles.map((fileObj, idx) => (
                     <div
                       key={idx}
@@ -1366,9 +1439,24 @@ export function CreatePurchaseOrder() {
                         maxWidth: '360px',
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          overflow: 'hidden',
+                        }}
+                      >
                         <FileText size={14} color="#2563eb" />
-                        <span style={{ fontWeight: 500, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span
+                          style={{
+                            fontWeight: 500,
+                            color: '#1e293b',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
                           {fileObj.name}
                         </span>
                         <span style={{ color: '#94a3b8', fontSize: '11px', flexShrink: 0 }}>
@@ -1453,16 +1541,16 @@ export function CreatePurchaseOrder() {
         </div>
       </form>
 
-      <PurchaseOrderNumberConfigModal
+      <BillNumberConfigModal
         isOpen={isNumberConfigOpen}
         onClose={() => setIsNumberConfigOpen(false)}
         initialPrefix={preference?.prefix || poPrefix}
         initialNextNumber={
           preference?.nextNumber !== undefined
             ? preference.nextNumber.toString().padStart(5, '0')
-            : watch('purchaseorder_number')
-            ? watch('purchaseorder_number').replace(poPrefix, '')
-            : '00001'
+            : watch('bill_number')
+              ? watch('bill_number').replace(poPrefix, '')
+              : '00001'
         }
         onSave={(newPrefix, newNextNumberStr) => {
           const parsed = parseInt(newNextNumberStr, 10);
@@ -1470,16 +1558,6 @@ export function CreatePurchaseOrder() {
             prefix: newPrefix,
             nextNumber: isNaN(parsed) ? 1 : parsed,
           });
-        }}
-      />
-
-      <PaymentTermModal
-        orgId={orgId!}
-        isOpen={isPaymentTermModalOpen}
-        onClose={() => setIsPaymentTermModalOpen(false)}
-        onSuccess={(newTerm) => {
-          setValue('payment_terms', newTerm.id);
-          setIsPaymentTermModalOpen(false);
         }}
       />
 
@@ -1499,6 +1577,16 @@ export function CreatePurchaseOrder() {
         onClose={() => setIsVendorModalOpen(false)}
         onSuccess={(vendorId) => {
           setValue('vendor_id', vendorId, { shouldValidate: true });
+        }}
+      />
+
+      <PaymentTermModal
+        orgId={orgId!}
+        isOpen={isPaymentTermModalOpen}
+        onClose={() => setIsPaymentTermModalOpen(false)}
+        onSuccess={(newTerm) => {
+          setValue('payment_terms', newTerm.id, { shouldValidate: true });
+          setIsPaymentTermModalOpen(false);
         }}
       />
       <CreateItemModal
@@ -1547,25 +1635,101 @@ export function CreatePurchaseOrder() {
               setValue(`line_items.${targetIndex}.rate`, rate as unknown as number);
               setValue(`line_items.${targetIndex}.quantity`, qty as unknown as number);
               setValue(`line_items.${targetIndex}.discountValue`, disc as unknown as number);
-              setValue(`line_items.${targetIndex}.discountType`, item._discountType ?? 'percentage');
-              setValue(`line_items.${targetIndex}.description`, item.purchaseDescription || item.purchase_description || item.salesDescription || item.sales_description || '');
+              setValue(
+                `line_items.${targetIndex}.discountType`,
+                item._discountType ?? 'percentage',
+              );
+              setValue(
+                `line_items.${targetIndex}.description`,
+                item.purchaseDescription ||
+                  item.purchase_description ||
+                  item.salesDescription ||
+                  item.sales_description ||
+                  '',
+              );
             } else {
-              appendItem({
-                item_id: item.id,
-                item: item,
-                quantity: qty as unknown as number,
-                rate: rate as unknown as number,
-                description: item.purchaseDescription || item.purchase_description || item.salesDescription || item.sales_description || '',
-                discountValue: disc as unknown as number,
-                discountType: item._discountType ?? 'percentage',
-                item_total: 0,
-              } as PurchaseOrderItem, { shouldFocus: false });
+              appendItem(
+                {
+                  item_id: item.id,
+                  item: item,
+                  quantity: qty as unknown as number,
+                  rate: rate as unknown as number,
+                  description:
+                    item.purchaseDescription ||
+                    item.purchase_description ||
+                    item.salesDescription ||
+                    item.sales_description ||
+                    '',
+                  discountValue: disc as unknown as number,
+                  discountType: item._discountType ?? 'percentage',
+                  item_total: 0,
+                } as BillItem,
+                { shouldFocus: false },
+              );
             }
           });
 
           setIsMultiSelectItemModalOpen(false);
           setMultiSelectTargetIndex(null);
         }}
+      />
+
+      {/* Bill Batches Modal */}
+      {batchModalIndex !== null && watchItems?.[batchModalIndex]?.item && (
+        <AddBillBatchesModal
+          orgId={orgId!}
+          itemId={watchItems[batchModalIndex].item?.id}
+          isOpen={true}
+          onClose={() => setBatchModalIndex(null)}
+          itemName={watchItems[batchModalIndex].item?.name || 'Unknown Item'}
+          sku={watchItems[batchModalIndex].item?.sku}
+          uomLabel={
+            watchItems[batchModalIndex].item?.stockingUom?.code ||
+            watchItems[batchModalIndex].item?.stocking_uom?.code ||
+            'pcs'
+          }
+          locationName={
+            locations.find((l: Location) => l.id === (watchLocationId || watchDeliveryLocationId))?.name ||
+            (watchDeliveryType !== 'Location' ? 'Customer Location' : null)
+          }
+          lineQty={Number(watchItems[batchModalIndex].quantity) || 0}
+          initialBatches={watchItems[batchModalIndex].batches || []}
+          defaultSellingPrice={
+            watchItems[batchModalIndex].item?.sellingPrice
+              ? String(watchItems[batchModalIndex].item?.sellingPrice)
+              : ''
+          }
+          defaultMrp={''}
+          onSave={(batches, overwriteQty) => {
+            const mappedBatches = batches.map((b) => ({
+              ...b,
+              manufacturedDate: b.manufacturedDate ? String(b.manufacturedDate) : undefined,
+              expiryDate: b.expiryDate ? String(b.expiryDate) : undefined,
+            }));
+            setValue(
+              `line_items.${batchModalIndex}.batches`,
+              mappedBatches as BillItem['batches'],
+              { shouldValidate: true },
+            );
+            if (overwriteQty !== null) {
+              setValue(
+                `line_items.${batchModalIndex}.quantity`,
+                overwriteQty as unknown as number,
+                { shouldValidate: true },
+              );
+            }
+          }}
+        />
+      )}
+
+      {/* Warehouse Locations Popover */}
+      <WarehouseLocationsPopover
+        isOpen={!!stockPopoverAnchor}
+        onClose={() => setStockPopoverAnchor(null)}
+        anchorEl={stockPopoverAnchor?.element || null}
+        locations={locations}
+        stockRows={stockPopoverAnchor?.stockRows || []}
+        selectedLocationId={watchLocationId || watchDeliveryLocationId}
       />
     </div>
   );

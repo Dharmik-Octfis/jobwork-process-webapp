@@ -89,6 +89,13 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'createdAt', label: 'Created At' },
     { key: 'updatedAt', label: 'Last Modified' },
   ],
+  bill: [
+    { key: 'bill_number', label: 'Bill Number', locked: true },
+    { key: 'bill_date', label: 'Bill Date', defaultVisible: true },
+    { key: 'due_date', label: 'Due Date', defaultVisible: true },
+    { key: 'total_amount', label: 'Total', defaultVisible: true },
+    { key: 'status', label: 'Status', defaultVisible: true },
+  ],
   customer: [
     { key: 'contactName', label: 'Name', locked: true },
     { key: 'companyName', label: 'Company Name', defaultVisible: true },

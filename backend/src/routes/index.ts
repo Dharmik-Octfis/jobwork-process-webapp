@@ -13,6 +13,7 @@ import {
 import { appModulesRouter } from '../modules/settings/customization/app-modules/app-modules.routes.ts';
 import { vendorsRouter } from '../modules/purchases/vendors/vendors.routes.ts';
 import { purchaseOrdersRouter } from '../modules/purchases/purchase-orders/purchase-orders.routes.ts';
+import { billsRouter } from '../modules/purchases/bills/bills.routes.ts';
 import { customersRouter } from '../modules/sales/customers/customers.routes.ts';
 import { uomRouter } from '../modules/settings/inventory/uom/uom.routes.ts';
 import { currenciesRouter } from '../modules/settings/configuration/currencies/currencies.routes.ts';
@@ -65,6 +66,7 @@ apiRouter.use('/auth', authRouter);
 // Specific before general keeps the path short and the middleware chain honest.
 apiRouter.use('/organizations/:orgId/purchases/vendors', vendorsRouter);
 apiRouter.use('/organizations/:orgId/purchases/purchase-orders', purchaseOrdersRouter);
+apiRouter.use('/organizations/:orgId/purchases/bills', billsRouter);
 apiRouter.use('/organizations/:orgId/sales/customers', customersRouter);
 // Jobwork, Sprints 1–4 (plan §8.1).
 //
