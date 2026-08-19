@@ -79,6 +79,14 @@ const lineTd: React.CSSProperties = {
  * says so when it hits the ceiling rather than showing a slice as if it were all. */
 const BATCH_LIMIT = 200;
 
+/** Why the job order's planned batches did not all seed — see `planUnmatched`. */
+interface PlanGap {
+  /** Planned at THIS location, but drained or already issued since. */
+  gone: number;
+  /** Planned at a godown this challan does not go out of, counted per godown. */
+  elsewhere: { name: string; count: number }[];
+}
+
 /**
  * The Issue dialog — one of the two genuinely new screens in this plan (§9).
  *
@@ -131,6 +139,39 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
   const [needsOverride, setNeedsOverride] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /**
+   * 🔴 A LOCATION CHANGE WITH WORK ON THE SCREEN IS ASKED FIRST, NOT UNDONE
+   * AFTER (2026-08-19).
+   *
+   * Batches are per location, so switching godown invalidates every allocation
+   * on the dialog — the server refuses a batch that is not at the header's
+   * location, which is the guarantee under this. Applying that silently threw
+   * away work the user could still see a moment ago; a confirm costs one click
+   * and the alternative — locking the dropdown once a batch is picked — makes
+   * them clear every row by hand to correct a wrong first choice.
+   *
+   * Null when nothing is pending. Holds the location the user is moving TO.
+   */
+  const [pendingLocationId, setPendingLocationId] = useState<string | null>(null);
+
+  /**
+   * 🔴 WHAT THIS CHALLAN COULD NOT CARRY, AFTER IT HAS BEEN RAISED (2026-08-19).
+   *
+   * One challan goes out of one location, so a step whose items are split across
+   * godowns genuinely needs more than one. That is correct, but a user who is not
+   * told discovers it by reopening the dialog, re-reading the rows, and working
+   * out for themselves which item is still outstanding — three times over, for a
+   * step with three godowns.
+   *
+   * So the dialog does not close on those saves. It says what is left, names the
+   * godown holding it, and offers to carry straight on there with the form
+   * already cleared for the next document.
+   */
+  const [continuation, setContinuation] = useState<{
+    itemNames: string[];
+    locationId: string;
+    locationName: string;
+  } | null>(null);
 
   // A query per keystroke would be one round trip per letter of a batch number.
   useEffect(() => {
@@ -169,18 +210,31 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
     [step],
   );
 
-  /** The principal input — what the step is fundamentally about. The location
-   * list and the tolerance strip are its, because the challan has ONE source
-   * location and the header figures are in one unit. */
+  /** The principal input — what the step is fundamentally about. The tolerance
+   * strip is its, because the header figures are in one unit. The LOCATION list
+   * is no longer its: see the query below. */
   const principal = inputItems[0] ?? null;
-  const itemId = principal?.itemId ?? '';
   const uomLabel = principal?.uomLabel ?? '';
 
-  /** 🔴 A ledger query. Only locations that actually hold this item appear. */
+  /**
+   * 🔴 A ledger query, over EVERY item on this challan (2026-08-19).
+   *
+   * It used to ask about the principal item alone and then apply that answer to
+   * all of them. On a fabric + thread + buttons challan the dropdown listed the
+   * godowns holding FABRIC, and if the thread lived elsewhere its picker came
+   * back empty with nothing on screen to say why.
+   *
+   * Each row now carries `items` — which of the asked-for items it holds, and how
+   * much — which is what the coverage label, the per-item blocked state and the
+   * "it is over at Godown B" line are all read from.
+   */
+  const inputItemIds = useMemo(() => inputItems.map((input) => input.itemId), [inputItems]);
+
   const { data: locations = [] } = useQuery({
-    queryKey: ['stock-locations', orgId, itemId, jobOrder.ownership],
-    queryFn: () => fetchStockLocations(orgId!, { itemId, ownership: jobOrder.ownership }),
-    enabled: isOpen && Boolean(orgId && itemId),
+    queryKey: ['stock-locations', orgId, inputItemIds, jobOrder.ownership],
+    queryFn: () =>
+      fetchStockLocations(orgId!, { itemIds: inputItemIds, ownership: jobOrder.ownership }),
+    enabled: isOpen && Boolean(orgId) && inputItemIds.length > 0,
   });
 
   /**
@@ -234,11 +288,26 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
    * stayed blank, and both the batch queries and the save button died with no
    * explanation anywhere on screen.
    */
+  /**
+   * 🔴 THE LABEL IS COVERAGE, NOT A QUANTITY (2026-08-19).
+   *
+   * A challan goes out of ONE location, so the question the user is really
+   * answering is "which godown can fill this step" — and a single quantity in the
+   * principal item's unit cannot say that. `2 of 3 items` can, and it is what
+   * makes the trip to a second challan visible BEFORE the picker is filled in
+   * rather than at save.
+   *
+   * A single-item challan keeps the quantity, because there coverage is a
+   * tautology and the balance is the useful fact.
+   */
   const ledgerOptions = locations
     .filter((l) => l.id !== excludedSourceId)
     .map((l) => ({
       value: l.id,
-      label: `${l.name} — ${formatQty(l.availableQty)} ${uomLabel}`,
+      label:
+        inputItems.length > 1
+          ? `${l.name} — ${l.items.length} of ${inputItems.length} items`
+          : `${l.name} — ${formatQty(l.availableQty)} ${uomLabel}`,
     }));
 
   const sourceOptions = ledgerOptions.length
@@ -254,6 +323,30 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
     allLocations.find((l) => l.id === effectiveSourceId)?.name ??
     locations.find((l) => l.id === effectiveSourceId)?.name ??
     'the selected location';
+
+  /**
+   * 🔴 …AND WHERE THE REST OF IT IS.
+   *
+   * A disabled Add Batches button with no reason is the worst thing this dialog
+   * can do: the user sees an item they know they have and a control that will not
+   * open. Naming the godown turns that dead end into a decision — switch the
+   * location, or raise the second challan.
+   */
+  const elsewhereByItem = useMemo(() => {
+    const out = new Map<string, { id: string; name: string; qty: string }[]>();
+    for (const location of locations) {
+      if (location.id === effectiveSourceId) continue;
+      for (const held of location.items) {
+        out.set(held.itemId, [
+          ...(out.get(held.itemId) ?? []),
+          // The id, not just the name: two godowns may share a name, and the
+          // continuation below switches the form to one of these by identity.
+          { id: location.id, name: location.name, qty: held.availableQty },
+        ]);
+      }
+    }
+    return out;
+  }, [locations, effectiveSourceId]);
 
   /**
    * One availability query PER ITEM, at the challan's single source location.
@@ -307,7 +400,21 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
    * render, and the seed must not fight the user's own edits afterwards.
    */
   const seededItems = useRef<Set<string>>(new Set());
-  const [planUnmatched, setPlanUnmatched] = useState<Record<string, number>>({});
+  /**
+   * 🔴 WHY a planned batch did not seed, not just how many did not (2026-08-19).
+   *
+   * Under the one-location rule these are two different problems with two
+   * different fixes, and lumping them together told the user neither:
+   *
+   *   `elsewhere` — the plan names a batch in ANOTHER godown. Nothing is wrong
+   *                 with the stock; this challan simply cannot reach it. The fix
+   *                 is to switch location or raise a second challan, so the
+   *                 godown has to be named.
+   *   `gone`      — the batch is at this location but drained or already issued.
+   *                 Nothing was ever reserved, so this is expected. Pick a
+   *                 replacement.
+   */
+  const [planUnmatched, setPlanUnmatched] = useState<Record<string, PlanGap>>({});
 
   useEffect(() => {
     if (!isOpen) return;
@@ -320,20 +427,32 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
 
       const seeded: Record<string, BatchSelection> = {};
       let matchedQty = 0;
-      let missing = 0;
+      let gone = 0;
+      const elsewhere = new Map<string, number>();
+
       for (const planned of input.plannedBatches) {
+        /* Planned somewhere this challan does not go out of. Counted BEFORE the
+           availability lookup, which would only report it as missing stock and
+           send the user hunting for a problem that does not exist. */
+        if (planned.locationId !== effectiveSourceId) {
+          const name =
+            allLocations.find((l) => l.id === planned.locationId)?.name ?? 'another godown';
+          elsewhere.set(name, (elsewhere.get(name) ?? 0) + 1);
+          continue;
+        }
+
         const batch = offered.find(
           (row) => row.batchId === planned.batchId && row.locationId === planned.locationId,
         );
         if (!batch) {
-          missing += 1;
+          gone += 1;
           continue;
         }
         // Never seed more than the batch actually still holds — the plan is old
         // and the ceiling is now.
         const qty = Math.min(Number(planned.qty), toNumber(batch.availableQty));
         if (qty <= 0) {
-          missing += 1;
+          gone += 1;
           continue;
         }
         seeded[rowKey(batch)] = { batch, qty };
@@ -344,9 +463,17 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
         setSelection((prev) => ({ ...prev, ...seeded }));
         setTrackedQty((prev) => ({ ...prev, [input.itemId]: matchedQty }));
       }
-      if (missing > 0) setPlanUnmatched((prev) => ({ ...prev, [input.itemId]: missing }));
+      if (gone > 0 || elsewhere.size > 0) {
+        setPlanUnmatched((prev) => ({
+          ...prev,
+          [input.itemId]: {
+            gone,
+            elsewhere: [...elsewhere].map(([name, count]) => ({ name, count })),
+          },
+        }));
+      }
     });
-  }, [isOpen, inputItems, batchQueries]);
+  }, [isOpen, inputItems, batchQueries, allLocations, effectiveSourceId]);
 
   const { data: vendorsPage } = useQuery({
     queryKey: ['vendors', orgId, 'processors'],
@@ -469,7 +596,34 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, jobOrder.id] });
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
       queryClient.invalidateQueries({ queryKey: ['available-batches', orgId] });
+      // Balances at every location just moved, and the coverage labels are read
+      // off them — without this the next challan is planned against stale figures.
+      queryClient.invalidateQueries({ queryKey: ['stock-locations', orgId] });
       onIssued();
+
+      /* Items this challan carried nothing of. Read off `qtyByItem`, which is the
+         allocation that was actually sent, not what was typed. */
+      const left = inputItems.filter((input) => (qtyByItem.get(input.itemId) ?? 0) <= 0);
+
+      /* The godown that covers most of what is left — the one worth offering. An
+         item with stock nowhere is not a continuation, it is a receipt problem,
+         and it drops out of this by having no entry in `elsewhereByItem`. */
+      const coverage = new Map<string, { id: string; name: string; items: string[] }>();
+      for (const input of left) {
+        for (const at of elsewhereByItem.get(input.itemId) ?? []) {
+          const entry = coverage.get(at.id) ?? { id: at.id, name: at.name, items: [] };
+          entry.items.push(input.name);
+          coverage.set(at.id, entry);
+        }
+      }
+      const best = [...coverage.values()].sort((a, b) => b.items.length - a.items.length)[0];
+
+      if (best) {
+        resetAllocations(best.id);
+        setContinuation({ itemNames: best.items, locationId: best.id, locationName: best.name });
+        return;
+      }
+
       onClose();
     },
     onError: (err: AxiosError<{ message?: string; details?: Record<string, string> }>) => {
@@ -549,6 +703,42 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
 
   /** The batches on offer are the ones at the godown this challan goes out of, so
    * there is nothing to choose from until that is settled. */
+  /** Everything the user has typed or picked. What a location change destroys,
+   * and what decides whether the change needs asking about at all. */
+  const allocatedCount =
+    Object.keys(selection).length +
+    Object.values(trackedQty).filter((q) => q > 0).length +
+    Object.values(unstocked).filter((q) => q > 0).length;
+
+  /**
+   * The clearing itself. Batches, the typed targets, and the plan seed — a new
+   * godown is a different set of batches, so the job order's plan has to be
+   * re-matched against it.
+   *
+   * Split from `applyLocation` because the continuation after a save moves to a
+   * new location AND sets a banner: sharing one function would mean clearing the
+   * banner and setting it in the same tick and relying on the order of two
+   * setState calls to land the right way round.
+   */
+  const resetAllocations = (value: string) => {
+    setSourceLocationId(value);
+    setSelection({});
+    setTrackedQty({});
+    setUnstocked({});
+    seededItems.current = new Set();
+    setPlanUnmatched({});
+    setPendingLocationId(null);
+    setError(null);
+    setNotice(null);
+  };
+
+  /** A location change the USER made — so anything left over from the last save
+   * no longer describes the screen. */
+  const applyLocation = (value: string) => {
+    resetAllocations(value);
+    setContinuation(null);
+  };
+
   const openAddBatches = (id: string) => {
     if (!effectiveSourceId) {
       setNotice('Pick the godown this material goes out of first — batches are per godown.');
@@ -648,6 +838,113 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
           {error}
         </p>
       )}
+      {/* 🔴 THE CHALLAN WENT; THE STEP IS NOT DONE.
+          Green, because nothing failed — this is a receipt for what just happened
+          plus the one next action, with the form already cleared and pointed at
+          the godown holding the rest. */}
+      {continuation && (
+        <div
+          style={{
+            fontSize: 13,
+            color: '#065f46',
+            background: '#ecfdf5',
+            border: '1px solid #a7f3d0',
+            borderRadius: 4,
+            padding: '10px 12px',
+            margin: '0 0 16px 0',
+          }}
+          role="status"
+        >
+          <p style={{ margin: '0 0 8px 0', lineHeight: 1.5 }}>
+            Challan raised. {continuation.itemNames.join(', ')}{' '}
+            {continuation.itemNames.length === 1 ? 'was' : 'were'} not on it — a challan goes out of
+            one location, and {continuation.itemNames.length === 1 ? 'it is' : 'they are'} at{' '}
+            <strong>{continuation.locationName}</strong>. This form is now set to{' '}
+            {continuation.locationName} for the next one.
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: '5px 14px',
+              background: '#fff',
+              color: '#334155',
+              border: '1px solid #d1d5db',
+              borderRadius: 4,
+              cursor: 'pointer',
+              fontWeight: 500,
+              fontSize: 12.5,
+            }}
+          >
+            Not now — close
+          </button>
+        </div>
+      )}
+
+      {/* 🔴 THE CONFIRM, INLINE — not a nested dialog.
+          A Modal inside a Modal fights over the focus trap and Esc, and this
+          question is about the field three rows below it, so it belongs on the
+          same surface. The Select keeps showing the CURRENT location until this
+          is answered, so nothing has changed behind the question. */}
+      {pendingLocationId && (
+        <div
+          style={{
+            fontSize: 13,
+            color: '#92400e',
+            background: '#fffbeb',
+            border: '1px solid #fde68a',
+            borderRadius: 4,
+            padding: '10px 12px',
+            margin: '0 0 16px 0',
+          }}
+          role="alert"
+        >
+          <p style={{ margin: '0 0 8px 0', lineHeight: 1.5 }}>
+            Move this challan to{' '}
+            <strong>
+              {locations.find((l) => l.id === pendingLocationId)?.name ??
+                allLocations.find((l) => l.id === pendingLocationId)?.name ??
+                'that location'}
+            </strong>
+            ? Batches are held per location, so the {allocatedCount}{' '}
+            {allocatedCount === 1 ? 'entry' : 'entries'} allocated here will be cleared.
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => applyLocation(pendingLocationId)}
+              style={{
+                padding: '5px 14px',
+                background: '#b45309',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 4,
+                cursor: 'pointer',
+                fontWeight: 500,
+                fontSize: 12.5,
+              }}
+            >
+              Change and clear
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingLocationId(null)}
+              style={{
+                padding: '5px 14px',
+                background: '#fff',
+                color: '#334155',
+                border: '1px solid #d1d5db',
+                borderRadius: 4,
+                cursor: 'pointer',
+                fontWeight: 500,
+                fontSize: 12.5,
+              }}
+            >
+              Keep this location
+            </button>
+          </div>
+        </div>
+      )}
       {notice && (
         <p
           style={{
@@ -691,18 +988,12 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
             <Select
               value={effectiveSourceId}
               onChange={(value) => {
-                setSourceLocationId(value);
-                // The picker is per location; a stale selection would issue batches
-                // from somewhere they no longer are.
-                setSelection({});
-                /* A new godown is a different set of batches, so the job order's
-                   plan has to be re-matched against it. Reset here rather than in
-                   an effect on `effectiveSourceId` — this is the event that means
-                   it, and an effect would be a cascading render for a change we
-                   already know about (react-hooks/set-state-in-effect). */
-                seededItems.current = new Set();
-                setPlanUnmatched({});
-                setTrackedQty({});
+                if (value === effectiveSourceId) return;
+                /* Ask only when there is something to lose. Changing the godown
+                   before anything is picked is the ordinary first action on this
+                   dialog and must not cost a confirm. */
+                if (allocatedCount > 0) setPendingLocationId(value);
+                else applyLocation(value);
               }}
               options={
                 sourceOptions.length === 0
@@ -712,6 +1003,12 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
               ariaLabel="Issue from location"
               fullWidth
             />
+            {/* 🔴 States the rule BEFORE any work is done. The confirm strip catches
+                it at the moment it happens; this is what stops it being a surprise. */}
+            <p style={{ fontSize: 11, color: '#64748b', margin: '4px 0 0 0', lineHeight: 1.45 }}>
+              A challan goes out of one location. Only this location&rsquo;s batches can be issued,
+              and changing it clears whatever has been allocated.
+            </p>
           </div>
 
           {step.processorType === 'internal' ? (
@@ -902,16 +1199,32 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                             lineHeight: 1.45,
                           }}
                         >
-                          Nothing of this item is on the books at {sourceLocationName} for this job
-                          order’s ownership. Receive it first, or issue from a different godown.
+                          {/* 🔴 NAME WHERE IT IS. A disabled Add Batches with only
+                              "not here" on it sends the user hunting; the godown and
+                              the quantity turn it into a decision — switch the
+                              location, or raise the second challan. */}
+                          Nothing of this item is at {sourceLocationName} for this job order’s
+                          ownership.{' '}
+                          {(elsewhereByItem.get(input.itemId) ?? []).length > 0 ? (
+                            <>
+                              It is at{' '}
+                              {(elsewhereByItem.get(input.itemId) ?? [])
+                                .map((at) => `${at.name} (${formatQty(at.qty)} ${input.uomLabel})`)
+                                .join(', ')}
+                              . Issue from there, or raise a separate challan for it.
+                            </>
+                          ) : (
+                            <>It is not on the books anywhere yet — receive it first.</>
+                          )}
                         </div>
                       )}
 
                       {/* 🔴 Said out loud, never swallowed. Nothing was reserved, so
                           a planned batch going missing between planning and issuing
                           is expected — but the user has to know the pre-fill is
-                          short of what the order intended. */}
-                      {(planUnmatched[input.itemId] ?? 0) > 0 && (
+                          short of what the order intended, and WHICH of the two
+                          reasons it is, because they have different fixes. */}
+                      {(planUnmatched[input.itemId]?.elsewhere ?? []).length > 0 && (
                         <div
                           style={{
                             marginTop: 4,
@@ -920,9 +1233,30 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                             lineHeight: 1.45,
                           }}
                         >
-                          {planUnmatched[input.itemId]} planned{' '}
-                          {planUnmatched[input.itemId] === 1 ? 'batch is' : 'batches are'} no longer
-                          available here — nothing was reserved. Pick replacements.
+                          The plan places{' '}
+                          {planUnmatched[input.itemId]!.elsewhere.map((at, i, all) => (
+                            <span key={at.name}>
+                              {at.count} {at.count === 1 ? 'batch' : 'batches'} at{' '}
+                              <strong>{at.name}</strong>
+                              {i < all.length - 1 ? ', ' : ''}
+                            </span>
+                          ))}
+                          , which this challan does not go out of. Switch the location, or issue
+                          those on their own challan.
+                        </div>
+                      )}
+                      {(planUnmatched[input.itemId]?.gone ?? 0) > 0 && (
+                        <div
+                          style={{
+                            marginTop: 4,
+                            fontSize: 11.5,
+                            color: '#b45309',
+                            lineHeight: 1.45,
+                          }}
+                        >
+                          {planUnmatched[input.itemId]!.gone} planned{' '}
+                          {planUnmatched[input.itemId]!.gone === 1 ? 'batch is' : 'batches are'} no
+                          longer available here — nothing was reserved. Pick replacements.
                         </div>
                       )}
                     </td>
