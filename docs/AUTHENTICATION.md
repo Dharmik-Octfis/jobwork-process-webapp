@@ -6,6 +6,11 @@
 
 _Last updated: 2026-07-31 — rotation removed, session rows retained for reporting (§3, §4.4)._
 
+> **This describes the single-app model, which is what runs today.**
+> `docs/SSO_AND_IDENTITY.md` is the design for one login across several apps. Almost everything
+> below survives that change unaltered — the two tokens, this session table, and `refresh` become
+> the app-local layer beneath a shared identity provider.
+
 ---
 
 ## 1. The two tokens in one minute
