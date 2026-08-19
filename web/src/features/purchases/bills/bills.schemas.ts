@@ -18,15 +18,19 @@ export const billItemSchema = z.object({
   item: z.any().optional(),
   discountType: z.enum(['percentage', 'fixed']).optional(),
   discountValue: z.number().or(z.string()).nullable().optional(),
-  batches: z.array(z.object({
-    supplierBatchRef: z.string().optional(),
-    manufacturerBatch: z.string().nullable().optional(),
-    manufacturedDate: z.string().nullable().optional(),
-    expiryDate: z.string().nullable().optional(),
-    mrp: z.number().or(z.string()).nullable().optional(),
-    sellingPrice: z.number().or(z.string()).nullable().optional(),
-    quantity: z.number().or(z.string()),
-  })).optional(),
+  batches: z
+    .array(
+      z.object({
+        supplierBatchRef: z.string().optional(),
+        manufacturerBatch: z.string().nullable().optional(),
+        manufacturedDate: z.string().nullable().optional(),
+        expiryDate: z.string().nullable().optional(),
+        mrp: z.number().or(z.string()).nullable().optional(),
+        sellingPrice: z.number().or(z.string()).nullable().optional(),
+        quantity: z.number().or(z.string()),
+      }),
+    )
+    .optional(),
 });
 
 export const billSchema = z.object({

@@ -80,9 +80,7 @@ export function WarehouseLocationsPopover({
       if (!a.isPrimary && b.isPrimary) return 1;
       return a.name.localeCompare(b.name);
     })
-    .filter((loc) =>
-      loc.name.toLowerCase().includes(search.toLowerCase())
-    );
+    .filter((loc) => loc.name.toLowerCase().includes(search.toLowerCase()));
 
   return createPortal(
     <div
@@ -177,7 +175,15 @@ export function WarehouseLocationsPopover({
         </div>
       </header>
 
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto', maxHeight: '300px' }}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          flex: 1,
+          overflowY: 'auto',
+          maxHeight: '300px',
+        }}
+      >
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
           <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
             <tr style={{ borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
@@ -259,13 +265,14 @@ export function WarehouseLocationsPopover({
           <tbody>
             {filteredLocations.map((loc) => {
               const row = stockRows.find((r) => r.locationId === loc.id);
-              
+
               // Determine stock values from row or default to 0
               // The API usually returns these fields, but we should fallback gracefully
               let onHand = 0;
               if (row) {
-                 const batchTotal = row.batches?.reduce((acc, b) => acc + (Number(b.quantityIn) || 0), 0) || 0;
-                 onHand = Number(row.stockOnHand ?? row.openingStock ?? batchTotal) || 0;
+                const batchTotal =
+                  row.batches?.reduce((acc, b) => acc + (Number(b.quantityIn) || 0), 0) || 0;
+                onHand = Number(row.stockOnHand ?? row.openingStock ?? batchTotal) || 0;
               }
               const committed = Number(row?.committedStock ?? 0) || 0;
               const available = Number(row?.availableForSale ?? onHand - committed) || 0;
@@ -351,6 +358,6 @@ export function WarehouseLocationsPopover({
         </table>
       </div>
     </div>,
-    document.body
+    document.body,
   );
 }

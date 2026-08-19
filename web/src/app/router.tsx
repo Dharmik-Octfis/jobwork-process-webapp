@@ -98,10 +98,7 @@ const CreatePurchaseOrder = lazyPage(
   () => import('../features/purchases/purchase-orders/CreatePurchaseOrder'),
   'CreatePurchaseOrder',
 );
-const CreateBill = lazyPage(
-  () => import('../features/purchases/bills/CreateBill'),
-  'CreateBill',
-);
+const CreateBill = lazyPage(() => import('../features/purchases/bills/CreateBill'), 'CreateBill');
 const CustomersList = lazyPage(
   () => import('../features/sales/customers/CustomersList'),
   'CustomersList',

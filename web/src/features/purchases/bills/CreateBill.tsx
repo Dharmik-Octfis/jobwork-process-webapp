@@ -411,7 +411,9 @@ export function CreateBill() {
 
   useEffect(() => {
     if (locations.length > 0) {
-      const defaultLocation = locations.find((l: Location) => l.isPrimary) || locations.find((l: Location) => !l.parentId);
+      const defaultLocation =
+        locations.find((l: Location) => l.isPrimary) ||
+        locations.find((l: Location) => !l.parentId);
       if (defaultLocation) {
         if (!watchLocationId) {
           setValue('location_id', defaultLocation.id);
@@ -974,60 +976,60 @@ export function CreateBill() {
                               orgId={orgId!}
                               value={watchItems?.[index]?.item_id}
                               initialItem={watchItems?.[index]?.item}
-                            selectedImage={
-                              selectedItem ? (
-                                <ItemImage
-                                  orgId={orgId}
-                                  itemId={selectedItem.id}
-                                  imageKey={itemImageUrl}
-                                  alt={selectedItem.name}
-                                  iconSize={14}
-                                />
-                              ) : null
-                            }
-                            onOpenMultiSelect={() => {
-                              setMultiSelectTargetIndex(index);
-                              setIsMultiSelectItemModalOpen(true);
-                            }}
-                            onChange={(val) => {
-                              setValue(`line_items.${index}.item_id`, val?.id || '', {
-                                shouldValidate: true,
-                              });
-                              setValue(`line_items.${index}.item`, val);
-                              const selected = val;
-                              if (selected) {
-                                setValue(
-                                  `line_items.${index}.rate`,
-                                  (selected.costPrice ||
-                                    selected.sellingPrice ||
-                                    '') as unknown as number,
-                                );
-                                setValue(`line_items.${index}.quantity`, 1 as unknown as number);
-                                setValue(
-                                  `line_items.${index}.description`,
-                                  selected.purchaseDescription ||
-                                    selected.purchase_description ||
-                                    selected.salesDescription ||
-                                    selected.sales_description ||
-                                    '',
-                                );
-                              } else {
-                                setValue(`line_items.${index}.rate`, '' as unknown as number);
-                                setValue(`line_items.${index}.quantity`, '' as unknown as number);
-                                setValue(
-                                  `line_items.${index}.discountValue`,
-                                  '' as unknown as number,
-                                );
-                                setValue(`line_items.${index}.discountType`, 'percentage');
-                                setValue(`line_items.${index}.description`, '');
+                              selectedImage={
+                                selectedItem ? (
+                                  <ItemImage
+                                    orgId={orgId}
+                                    itemId={selectedItem.id}
+                                    imageKey={itemImageUrl}
+                                    alt={selectedItem.name}
+                                    iconSize={14}
+                                  />
+                                ) : null
                               }
-                            }}
-                            placeholder="Type or click to select an item."
-                            footerAction={{
-                              text: 'New Product',
-                              onClick: () => setItemModalIndex(index),
-                            }}
-                          />
+                              onOpenMultiSelect={() => {
+                                setMultiSelectTargetIndex(index);
+                                setIsMultiSelectItemModalOpen(true);
+                              }}
+                              onChange={(val) => {
+                                setValue(`line_items.${index}.item_id`, val?.id || '', {
+                                  shouldValidate: true,
+                                });
+                                setValue(`line_items.${index}.item`, val);
+                                const selected = val;
+                                if (selected) {
+                                  setValue(
+                                    `line_items.${index}.rate`,
+                                    (selected.costPrice ||
+                                      selected.sellingPrice ||
+                                      '') as unknown as number,
+                                  );
+                                  setValue(`line_items.${index}.quantity`, 1 as unknown as number);
+                                  setValue(
+                                    `line_items.${index}.description`,
+                                    selected.purchaseDescription ||
+                                      selected.purchase_description ||
+                                      selected.salesDescription ||
+                                      selected.sales_description ||
+                                      '',
+                                  );
+                                } else {
+                                  setValue(`line_items.${index}.rate`, '' as unknown as number);
+                                  setValue(`line_items.${index}.quantity`, '' as unknown as number);
+                                  setValue(
+                                    `line_items.${index}.discountValue`,
+                                    '' as unknown as number,
+                                  );
+                                  setValue(`line_items.${index}.discountType`, 'percentage');
+                                  setValue(`line_items.${index}.description`, '');
+                                }
+                              }}
+                              placeholder="Type or click to select an item."
+                              footerAction={{
+                                text: 'New Product',
+                                onClick: () => setItemModalIndex(index),
+                              }}
+                            />
                           )}
                         </div>
 
@@ -1099,7 +1101,6 @@ export function CreateBill() {
                         boxSizing: 'border-box',
                       }}
                     >
-
                       <input
                         type="number"
                         step="0.01"
@@ -1788,8 +1789,8 @@ export function CreateBill() {
           }
           locationId={watchLocationId || watchDeliveryLocationId || undefined}
           locationName={
-            locations.find((l: Location) => l.id === (watchLocationId || watchDeliveryLocationId))?.name ||
-            (watchDeliveryType !== 'Location' ? 'Customer Location' : null)
+            locations.find((l: Location) => l.id === (watchLocationId || watchDeliveryLocationId))
+              ?.name || (watchDeliveryType !== 'Location' ? 'Customer Location' : null)
           }
           lineQty={Number(watchItems[batchModalIndex].quantity) || 0}
           initialBatches={watchItems[batchModalIndex].batches || []}

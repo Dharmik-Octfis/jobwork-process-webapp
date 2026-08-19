@@ -210,11 +210,15 @@ export function BillsList() {
                 >
                   <FileText size={40} color="#94a3b8" />
                 </div>
-                <h2 style={{ fontSize: 20, fontWeight: 600, color: '#1e293b', margin: '0 0 8px 0' }}>
+                <h2
+                  style={{ fontSize: 20, fontWeight: 600, color: '#1e293b', margin: '0 0 8px 0' }}
+                >
                   No Bills Found
                 </h2>
-                <p style={{ color: '#64748b', maxWidth: 400, margin: '0 0 24px 0', lineHeight: 1.5 }}>
-                  {search ? `No bills match "${search}".` : 'You haven\'t created any bills yet.'}
+                <p
+                  style={{ color: '#64748b', maxWidth: 400, margin: '0 0 24px 0', lineHeight: 1.5 }}
+                >
+                  {search ? `No bills match "${search}".` : "You haven't created any bills yet."}
                 </p>
                 <button
                   onClick={() => navigate(`/organizations/${orgId}/purchases/bills/new`)}
@@ -236,7 +240,16 @@ export function BillsList() {
               <div>
                 {selectedPoId ? (
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <div style={{ padding: '8px 16px', fontSize: '12px', fontWeight: 600, color: '#64748b', background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
+                    <div
+                      style={{
+                        padding: '8px 16px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: '#64748b',
+                        background: '#f9f9fb',
+                        borderBottom: '1px solid #eef0f3',
+                      }}
+                    >
                       Bills
                     </div>
                     {bills.map((po) => (
@@ -254,10 +267,18 @@ export function BillsList() {
                           if (selectedPoId !== po.id) e.currentTarget.style.background = '#f8fafc';
                         }}
                         onMouseLeave={(e) => {
-                          if (selectedPoId !== po.id) e.currentTarget.style.background = 'transparent';
+                          if (selectedPoId !== po.id)
+                            e.currentTarget.style.background = 'transparent';
                         }}
                       >
-                        <div style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b', marginBottom: '4px' }}>
+                        <div
+                          style={{
+                            fontSize: '13px',
+                            fontWeight: 500,
+                            color: '#1e293b',
+                            marginBottom: '4px',
+                          }}
+                        >
                           {po.bill_number}
                         </div>
                         <div style={{ fontSize: '12px', color: '#64748b' }}>
@@ -288,7 +309,11 @@ export function BillsList() {
                         <tr
                           key={po.id}
                           onClick={() => setSearchParams({ id: po.id })}
-                          style={{ borderBottom: '1px solid #eef0f3', transition: 'background 0.1s', cursor: 'pointer' }}
+                          style={{
+                            borderBottom: '1px solid #eef0f3',
+                            transition: 'background 0.1s',
+                            cursor: 'pointer',
+                          }}
                           onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >

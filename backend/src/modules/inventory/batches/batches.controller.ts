@@ -59,12 +59,12 @@ openApiRegistry.registerPath({
   method: 'get',
   path: '/organizations/{orgId}/inventory/batches/locations',
   tags: ['Batches'],
-  summary: 'Locations actually holding this item, with balances',
+  summary: 'Locations actually holding these items, with per-item balances',
   request: {
     params: orgParam,
-    query: z.object({ itemId: z.string(), ownership: z.string().optional() }),
+    query: z.object({ itemIds: z.string(), ownership: z.string().optional() }),
   },
-  responses: { 200: { description: 'Locations with a positive balance' } },
+  responses: { 200: { description: 'Locations with a positive balance, per item' } },
 });
 
 export const getBatches = async (req: Request, res: Response) => {
@@ -85,11 +85,20 @@ export const getAvailable = async (req: Request, res: Response) => {
   sendSuccess(res, await getAvailableStock(req.tenantId!, parsed.data));
 };
 
+/** `itemIds` is comma-separated: a challan carries several items and the dialog
+ * asks about all of them at once, so a repeated query param would make the caller
+ * build the URL by hand. */
+const sourceLocationsQuerySchema = z.object({
+  itemIds: z
+    .string()
+    .transform((value) => value.split(',').filter(Boolean))
+    .pipe(z.array(z.string().uuid()).min(1)),
+  ownership: z.enum(OWNERSHIPS).optional(),
+});
+
 export const getLocations = async (req: Request, res: Response) => {
-  const parsed = availabilityQuerySchema
-    .pick({ itemId: true, ownership: true })
-    .safeParse(req.query);
-  if (!parsed.success) throw ApiError.badRequest('An item is required to look up stock.');
+  const parsed = sourceLocationsQuerySchema.safeParse(req.query);
+  if (!parsed.success) throw ApiError.badRequest('At least one item is required to look up stock.');
   sendSuccess(res, await getSourceLocations(req.tenantId!, parsed.data));
 };
 

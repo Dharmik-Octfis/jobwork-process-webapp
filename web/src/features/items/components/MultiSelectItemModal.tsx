@@ -14,7 +14,12 @@ import type { Item } from '../items.schemas';
 import { Button } from '../../../components/ui/Button';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { AdvancedFilter } from '../../../components/ui/AdvancedFilter/AdvancedFilter';
-import type { FilterField, FilterCondition, FilterDataType, FilterOperator } from '../../../components/ui/AdvancedFilter/filterUtils';
+import type {
+  FilterField,
+  FilterCondition,
+  FilterDataType,
+  FilterOperator,
+} from '../../../components/ui/AdvancedFilter/filterUtils';
 import { evaluateCondition } from '../../../components/ui/AdvancedFilter/filterUtils';
 import type { ColumnDef } from '../../list-views/listViews.api';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
@@ -29,7 +34,11 @@ const ITEM_MODAL_CATALOG: ColumnDef[] = [
 
 import type { CustomFieldDefinition } from '../../custom-fields/customFields.schemas';
 
-function renderCell(item: Item, key: string, customFieldsDef?: CustomFieldDefinition[]): React.ReactNode {
+function renderCell(
+  item: Item,
+  key: string,
+  customFieldsDef?: CustomFieldDefinition[],
+): React.ReactNode {
   if (key.startsWith('cf_')) {
     const cfKey = key.replace('cf_', '');
     const val = item.custom_fields?.[cfKey] ?? item.customFields?.[cfKey];
@@ -223,11 +232,12 @@ export function MultiSelectItemModal({
       if (c.key.startsWith('cf_')) {
         const cfKey = c.key.replace('cf_', '');
         const def = customFieldsDef?.find((d) => d.key === cfKey);
-        
+
         if (def) {
           dataType = def.dataType as FilterDataType;
           if (def.dataType === 'select' || def.dataType === 'multi_select') {
-            options = def.config?.options?.map(opt => ({ label: opt.label, value: opt.label })) || [];
+            options =
+              def.config?.options?.map((opt) => ({ label: opt.label, value: opt.label })) || [];
           }
         } else {
           dataType = customFieldTypes.get(cfKey) || 'text';
@@ -249,8 +259,6 @@ export function MultiSelectItemModal({
     });
   }, [fullCatalog, customFieldTypes, categories, productTypes, customFieldsDef]);
 
-
-
   const shownItems = useMemo(() => {
     let filtered = itemsPage?.results || [];
     if (isFilterOpen) {
@@ -260,12 +268,14 @@ export function MultiSelectItemModal({
         filtered = filtered.filter((item) => {
           if (key === 'name') return item.name.toLowerCase().includes(searchVal);
           if (key === 'sku') return (item.sku || '').toLowerCase().includes(searchVal);
-          if (key === 'hsn') return (item.hsnCode || item.hsn_or_sac || '').toLowerCase().includes(searchVal);
-          if (key === 'type') return (item.type || item.item_type || '').toLowerCase() === searchVal;
+          if (key === 'hsn')
+            return (item.hsnCode || item.hsn_or_sac || '').toLowerCase().includes(searchVal);
+          if (key === 'type')
+            return (item.type || item.item_type || '').toLowerCase() === searchVal;
           if (key === 'category') return (item.category || '').toLowerCase() === searchVal;
           const cfKey = key.replace('cf_', '');
           const rawVal = item.custom_fields?.[cfKey] ?? item.customFields?.[cfKey];
-          
+
           let val = rawVal;
           const def = customFieldsDef?.find((d) => d.key === cfKey);
           if (def && (def.dataType === 'select' || def.dataType === 'multi_select')) {
@@ -276,7 +286,7 @@ export function MultiSelectItemModal({
               val = options.find((o) => o.id === rawVal)?.label || rawVal;
             }
           }
-          
+
           return val != null && String(val).toLowerCase().includes(searchVal);
         });
       });
@@ -293,7 +303,7 @@ export function MultiSelectItemModal({
           else if (cond.field.startsWith('cf_')) {
             const cfKey = cond.field.replace('cf_', '');
             const rawVal = item.custom_fields?.[cfKey] ?? item.customFields?.[cfKey];
-            
+
             const def = customFieldsDef?.find((d) => d.key === cfKey);
             if (def && (def.dataType === 'select' || def.dataType === 'multi_select')) {
               const options = def.config?.options || [];
@@ -307,10 +317,15 @@ export function MultiSelectItemModal({
             }
           }
 
-            const filterFieldDef = filterFields.find(f => f.key === cond.field);
-            const dataType = filterFieldDef?.dataType || 'text';
+          const filterFieldDef = filterFields.find((f) => f.key === cond.field);
+          const dataType = filterFieldDef?.dataType || 'text';
 
-            return evaluateCondition(itemValue, cond.operator as FilterOperator, cond.value, dataType);
+          return evaluateCondition(
+            itemValue,
+            cond.operator as FilterOperator,
+            cond.value,
+            dataType,
+          );
         });
 
         return advancedMatchType === 'any' ? results.some(Boolean) : results.every(Boolean);
@@ -470,7 +485,12 @@ export function MultiSelectItemModal({
                   leftOffset={-20}
                 />
                 <div
-                  style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '300px' }}
+                  style={{
+                    position: 'relative',
+                    display: 'flex',
+                    alignItems: 'center',
+                    width: '300px',
+                  }}
                 >
                   <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: 12 }} />
                   <input
@@ -565,7 +585,8 @@ export function MultiSelectItemModal({
                       <input
                         type="checkbox"
                         checked={
-                          shownItems.length > 0 && shownItems.every((i) => selectedItemsMap.has(i.id))
+                          shownItems.length > 0 &&
+                          shownItems.every((i) => selectedItemsMap.has(i.id))
                         }
                         onChange={handleSelectAll}
                         style={{ cursor: 'pointer' }}
@@ -630,7 +651,9 @@ export function MultiSelectItemModal({
                       </th>
                       {activeColumns.map((col) => {
                         const val = columnFilters[col.key] || '';
-                        const onChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+                        const onChange = (
+                          e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+                        ) => {
                           setColumnFilters((prev) => ({ ...prev, [col.key]: e.target.value }));
                           setPage(1);
                         };
@@ -664,7 +687,9 @@ export function MultiSelectItemModal({
                               <select value={val} onChange={onChange} style={inputStyle}>
                                 <option value="">- None -</option>
                                 {categories.map((c) => (
-                                  <option key={c} value={c}>{c}</option>
+                                  <option key={c} value={c}>
+                                    {c}
+                                  </option>
                                 ))}
                               </select>
                             ) : (
@@ -730,7 +755,9 @@ export function MultiSelectItemModal({
                                 ? {
                                     position: 'sticky',
                                     left: 44,
-                                    background: selectedItemsMap.has(item.id) ? '#eff6ff' : '#ffffff',
+                                    background: selectedItemsMap.has(item.id)
+                                      ? '#eff6ff'
+                                      : '#ffffff',
                                     zIndex: 1,
                                     boxShadow: '4px 0 4px -4px rgba(0,0,0,0.1)',
                                   }
@@ -759,7 +786,9 @@ export function MultiSelectItemModal({
                 borderRadius: '0 0 8px 8px',
               }}
             >
-              <span style={{ fontSize: 13, color: '#64748b' }}>{selectedItemsMap.size} selected</span>
+              <span style={{ fontSize: 13, color: '#64748b' }}>
+                {selectedItemsMap.size} selected
+              </span>
               <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
                 <span style={{ fontSize: '13px', color: '#64748b' }}>
                   {shownItems.length > 0 ? (page - 1) * 50 + 1 : 0} -{' '}
@@ -809,7 +838,11 @@ export function MultiSelectItemModal({
                 >
                   Add values for selection
                 </Button>
-                <Button variant="primary" onClick={handleAssign} disabled={selectedItemsMap.size === 0}>
+                <Button
+                  variant="primary"
+                  onClick={handleAssign}
+                  disabled={selectedItemsMap.size === 0}
+                >
                   Assign
                 </Button>
               </div>
@@ -830,12 +863,66 @@ export function MultiSelectItemModal({
               >
                 <thead style={{ position: 'sticky', top: 0, background: '#ffffff', zIndex: 10 }}>
                   <tr>
-                    <th style={{ padding: '12px 20px', borderBottom: '1px solid #eef0f3', color: '#475569', fontWeight: 600 }}>Product Name</th>
-                    <th style={{ padding: '12px 20px', borderBottom: '1px solid #eef0f3', color: '#475569', fontWeight: 600 }}>Product Code</th>
-                    <th style={{ padding: '12px 20px', borderBottom: '1px solid #eef0f3', color: '#475569', fontWeight: 600 }}>HSN/SAC</th>
-                    <th style={{ padding: '12px 20px', borderBottom: '1px solid #eef0f3', color: '#475569', fontWeight: 600 }}>Qty</th>
-                    <th style={{ padding: '12px 20px', borderBottom: '1px solid #eef0f3', color: '#475569', fontWeight: 600 }}>Rate</th>
-                    <th style={{ padding: '12px 20px', borderBottom: '1px solid #eef0f3', color: '#475569', fontWeight: 600 }}>Disc</th>
+                    <th
+                      style={{
+                        padding: '12px 20px',
+                        borderBottom: '1px solid #eef0f3',
+                        color: '#475569',
+                        fontWeight: 600,
+                      }}
+                    >
+                      Product Name
+                    </th>
+                    <th
+                      style={{
+                        padding: '12px 20px',
+                        borderBottom: '1px solid #eef0f3',
+                        color: '#475569',
+                        fontWeight: 600,
+                      }}
+                    >
+                      Product Code
+                    </th>
+                    <th
+                      style={{
+                        padding: '12px 20px',
+                        borderBottom: '1px solid #eef0f3',
+                        color: '#475569',
+                        fontWeight: 600,
+                      }}
+                    >
+                      HSN/SAC
+                    </th>
+                    <th
+                      style={{
+                        padding: '12px 20px',
+                        borderBottom: '1px solid #eef0f3',
+                        color: '#475569',
+                        fontWeight: 600,
+                      }}
+                    >
+                      Qty
+                    </th>
+                    <th
+                      style={{
+                        padding: '12px 20px',
+                        borderBottom: '1px solid #eef0f3',
+                        color: '#475569',
+                        fontWeight: 600,
+                      }}
+                    >
+                      Rate
+                    </th>
+                    <th
+                      style={{
+                        padding: '12px 20px',
+                        borderBottom: '1px solid #eef0f3',
+                        color: '#475569',
+                        fontWeight: 600,
+                      }}
+                    >
+                      Disc
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -845,7 +932,9 @@ export function MultiSelectItemModal({
                         <span style={{ color: '#2563eb' }}>{item.name}</span>
                       </td>
                       <td style={{ padding: '12px 20px' }}>{item.sku || '-'}</td>
-                      <td style={{ padding: '12px 20px' }}>{item.hsnCode || item.hsn_or_sac || '-'}</td>
+                      <td style={{ padding: '12px 20px' }}>
+                        {item.hsnCode || item.hsn_or_sac || '-'}
+                      </td>
                       <td style={{ padding: '8px 20px' }}>
                         <input
                           type="number"
@@ -853,7 +942,10 @@ export function MultiSelectItemModal({
                           onChange={(e) =>
                             setItemInputs((prev) => ({
                               ...prev,
-                              [item.id]: { ...prev[item.id], quantity: e.target.value === '' ? '' : Number(e.target.value) },
+                              [item.id]: {
+                                ...prev[item.id],
+                                quantity: e.target.value === '' ? '' : Number(e.target.value),
+                              },
                             }))
                           }
                           style={{
@@ -872,7 +964,10 @@ export function MultiSelectItemModal({
                           onChange={(e) =>
                             setItemInputs((prev) => ({
                               ...prev,
-                              [item.id]: { ...prev[item.id], rate: e.target.value === '' ? '' : Number(e.target.value) },
+                              [item.id]: {
+                                ...prev[item.id],
+                                rate: e.target.value === '' ? '' : Number(e.target.value),
+                              },
                             }))
                           }
                           style={{
@@ -892,7 +987,10 @@ export function MultiSelectItemModal({
                             onChange={(e) =>
                               setItemInputs((prev) => ({
                                 ...prev,
-                                [item.id]: { ...prev[item.id], discount: e.target.value === '' ? '' : Number(e.target.value) },
+                                [item.id]: {
+                                  ...prev[item.id],
+                                  discount: e.target.value === '' ? '' : Number(e.target.value),
+                                },
                               }))
                             }
                             style={{
@@ -945,7 +1043,9 @@ export function MultiSelectItemModal({
                 borderRadius: '0 0 8px 8px',
               }}
             >
-              <span style={{ fontSize: 13, color: '#64748b' }}>{selectedItemsMap.size} selected</span>
+              <span style={{ fontSize: 13, color: '#64748b' }}>
+                {selectedItemsMap.size} selected
+              </span>
               <div style={{ display: 'flex', gap: 12 }}>
                 <Button variant="secondary" onClick={() => setStep('select')}>
                   Back

@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search,ChevronDown, SlidersHorizontal} from 'lucide-react';
+import { Search, ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { format } from 'date-fns';
 import { itemsApi } from '../items.api';
 import { fetchLocations } from '../../configuration/locations/locations.api';
@@ -18,7 +18,6 @@ interface ItemBatchDetailsProps {
 }
 
 type BatchStatusFilter = 'all' | 'active' | 'inactive' | 'empty' | 'expired';
-
 
 interface BatchItem {
   id: string;
@@ -76,7 +75,11 @@ export function ItemBatchDetails({
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
 
   const [inactiveBatchIds, setInactiveBatchIds] = useState<Record<string, boolean>>({});
-  const [menuCoords, setMenuCoords] = useState<{ top?: number; right?: number; bottom?: number } | null>(null);
+  const [menuCoords, setMenuCoords] = useState<{
+    top?: number;
+    right?: number;
+    bottom?: number;
+  } | null>(null);
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState<string[]>(() =>
@@ -294,8 +297,6 @@ export function ItemBatchDetails({
           >
             <SlidersHorizontal size={15} />
           </button>
-
-
         </div>
       </div>
 
@@ -433,7 +434,9 @@ export function ItemBatchDetails({
                             key={col.key}
                             style={{ padding: '12px 16px', color: '#334155', whiteSpace: 'nowrap' }}
                           >
-                            {b.manufacturedDate ? format(new Date(b.manufacturedDate), 'dd/MM/yyyy') : '-'}
+                            {b.manufacturedDate
+                              ? format(new Date(b.manufacturedDate), 'dd/MM/yyyy')
+                              : '-'}
                           </td>
                         );
                       }
@@ -591,7 +594,8 @@ export function ItemBatchDetails({
                               padding: '4px 0',
                               textAlign: 'left',
                               overflow: 'hidden',
-                            }}>
+                            }}
+                          >
                             <button
                               type="button"
                               onClick={() => handleToggleInactive(b)}
@@ -640,8 +644,6 @@ export function ItemBatchDetails({
           }}
         />
       )}
-
-
 
       <CustomizeColumnsModal
         isOpen={isColumnPickerOpen}

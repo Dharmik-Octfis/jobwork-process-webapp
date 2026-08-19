@@ -15,11 +15,7 @@ function billListWhere(organizationId: string, opts: ListQuery): Prisma.BillWher
     organization_id: organizationId,
     isDeleted: false,
     ...filterWhere<Prisma.BillWhereInput>('bill', opts.filter),
-    ...searchWhere<Prisma.BillWhereInput>(opts.search, [
-      'bill_number',
-      'notes',
-      'status',
-    ]),
+    ...searchWhere<Prisma.BillWhereInput>(opts.search, ['bill_number', 'notes', 'status']),
   };
 }
 
@@ -75,17 +71,20 @@ export async function getBillById(orgId: string, id: string) {
       },
     });
 
-    const movementsByLineId = movements.reduce((acc, mov) => {
-      if (mov.sourceDocLineId) {
-        if (!acc[mov.sourceDocLineId]) acc[mov.sourceDocLineId] = [];
-        acc[mov.sourceDocLineId]!.push(mov);
-      }
-      return acc;
-    }, {} as Record<string, typeof movements>);
+    const movementsByLineId = movements.reduce(
+      (acc, mov) => {
+        if (mov.sourceDocLineId) {
+          if (!acc[mov.sourceDocLineId]) acc[mov.sourceDocLineId] = [];
+          acc[mov.sourceDocLineId]!.push(mov);
+        }
+        return acc;
+      },
+      {} as Record<string, typeof movements>,
+    );
 
-    const lineItemsWithBatches = bill.line_items.map(li => {
+    const lineItemsWithBatches = bill.line_items.map((li) => {
       const liMovements = movementsByLineId[li.id] || [];
-      const batches = liMovements.map(m => ({
+      const batches = liMovements.map((m) => ({
         batchId: m.batchId,
         supplierBatchRef: m.batch?.supplierBatchRef || undefined,
         manufacturerBatch: m.batch?.manufacturerBatch || undefined,
@@ -109,7 +108,15 @@ export async function getBillById(orgId: string, id: string) {
 }
 
 export async function createBill(orgId: string, userId: string, data: CreateBillPayload) {
-  const { line_items: lineItems, custom_fields: rawCustomFields, total_amount: totalAmount, terms_and_conditions: termsAndConditions, attachments, notes: _notes, ...billData } = data as CreateBillPayload & { notes?: string };
+  const {
+    line_items: lineItems,
+    custom_fields: rawCustomFields,
+    total_amount: totalAmount,
+    terms_and_conditions: termsAndConditions,
+    attachments,
+    notes: _notes,
+    ...billData
+  } = data as CreateBillPayload & { notes?: string };
   return runAsTenant(orgId, async (tx) => {
     let performedBy = 'System';
     if (userId) {
@@ -186,7 +193,7 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
       const itemIds = lineItems.map((li: BillItemPayload) => li.item_id);
       const items = await tx.item.findMany({
         where: { id: { in: itemIds }, organizationId: orgId },
-        select: { id: true, inventoryTracking: true, trackInventory: true }
+        select: { id: true, inventoryTracking: true, trackInventory: true },
       });
       const itemsById = new Map(items.map((i) => [i.id, i]));
 
@@ -198,7 +205,9 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
         const item = itemsById.get(payload.item_id);
 
         if (item?.trackInventory && item.inventoryTracking !== 'none') {
-          const batches = payload.batches?.length ? payload.batches : [{ quantity: payload.quantity } as NonNullable<BillItemPayload['batches']>[number]];
+          const batches = payload.batches?.length
+            ? payload.batches
+            : [{ quantity: payload.quantity } as NonNullable<BillItemPayload['batches']>[number]];
           for (const b of batches) {
             let batchId = b.batchId;
             if (!batchId) {
@@ -264,7 +273,15 @@ export async function updateBill(
   userId: string,
   data: UpdateBillPayload,
 ) {
-  const { line_items: lineItems, custom_fields: rawCustomFields, total_amount: totalAmount, terms_and_conditions: termsAndConditions, attachments, notes: _notes, ...billData } = data as UpdateBillPayload & { notes?: string };
+  const {
+    line_items: lineItems,
+    custom_fields: rawCustomFields,
+    total_amount: totalAmount,
+    terms_and_conditions: termsAndConditions,
+    attachments,
+    notes: _notes,
+    ...billData
+  } = data as UpdateBillPayload & { notes?: string };
   return runAsTenant(orgId, async (tx) => {
     const existing = await tx.bill.findFirst({
       where: { id, organization_id: orgId, isDeleted: false },
@@ -300,7 +317,8 @@ export async function updateBill(
           total: totalAmount,
           terms: termsAndConditions,
           documents: attachments !== undefined ? (attachments as Prisma.InputJsonValue) : undefined,
-          customFields: customFields !== undefined ? (customFields as Prisma.InputJsonObject) : undefined,
+          customFields:
+            customFields !== undefined ? (customFields as Prisma.InputJsonObject) : undefined,
           updatedBy: userId,
           activities: {
             create: {
@@ -372,7 +390,12 @@ export async function getBillComments(orgId: string, billId: string) {
   );
 }
 
-export async function createBillComment(orgId: string, billId: string, content: string, userId: string | null) {
+export async function createBillComment(
+  orgId: string,
+  billId: string,
+  content: string,
+  userId: string | null,
+) {
   return runAsTenant(orgId, async (tx) => {
     const existing = await tx.bill.findFirst({
       where: { id: billId, organization_id: orgId, isDeleted: false },
@@ -427,7 +450,11 @@ export async function getBillNumberPreference(orgId: string) {
   );
 }
 
-export async function updateBillNumberPreference(orgId: string, prefix: string, nextNumber: number) {
+export async function updateBillNumberPreference(
+  orgId: string,
+  prefix: string,
+  nextNumber: number,
+) {
   return runAsTenant(orgId, (tx) =>
     tx.numberSequence.upsert({
       // eslint-disable-next-line @typescript-eslint/naming-convention

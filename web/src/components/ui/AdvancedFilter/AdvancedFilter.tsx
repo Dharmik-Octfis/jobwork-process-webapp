@@ -1,4 +1,4 @@
-import { useState, useRef,} from 'react';
+import { useState, useRef } from 'react';
 import { Filter, Check, ChevronDown } from 'lucide-react';
 import { Select } from '../Select';
 import './AdvancedFilter.css';
@@ -111,7 +111,9 @@ export function AdvancedFilter({
         <div
           className="filter-dropdown-panel"
           style={{
-            ...(align === 'left' ? { left: leftOffset, right: 'auto' } : { right: 0, left: 'auto' })
+            ...(align === 'left'
+              ? { left: leftOffset, right: 'auto' }
+              : { right: 0, left: 'auto' }),
           }}
         >
           <div className="filter-header">
@@ -159,7 +161,9 @@ export function AdvancedFilter({
               return (
                 <div key={field.key} className="filter-row-container">
                   <div className="filter-row-header" onClick={() => toggleField(field.key)}>
-                    <span className={`filter-row-title ${hasCondition ? 'active' : ''}`}>{field.label}</span>
+                    <span className={`filter-row-title ${hasCondition ? 'active' : ''}`}>
+                      {field.label}
+                    </span>
                     <div className="filter-row-status" onClick={(e) => e.stopPropagation()}>
                       {isExpanded && (
                         <div style={{ width: 140 }}>
@@ -167,18 +171,31 @@ export function AdvancedFilter({
                             options={operators}
                             value={currentOperator}
                             onChange={(val) => {
-                                // If switching to between, convert value to object
-                                const valToObj = val === 'between' ? { from: '', to: '' } : '';
-                                updateFieldCondition({ operator: val as FilterOperator, value: valToObj });
+                              // If switching to between, convert value to object
+                              const valToObj = val === 'between' ? { from: '', to: '' } : '';
+                              updateFieldCondition({
+                                operator: val as FilterOperator,
+                                value: valToObj,
+                              });
                             }}
                             minWidth={140}
                             fullWidth={true}
-                            buttonStyle={{ height: 26, padding: '0 8px', fontSize: 12, border: 'none', background: 'transparent' }}
+                            buttonStyle={{
+                              height: 26,
+                              padding: '0 8px',
+                              fontSize: 12,
+                              border: 'none',
+                              background: 'transparent',
+                            }}
                           />
                         </div>
                       )}
                       {hasCondition && <Check size={14} className="condition-indicator" />}
-                      <button type="button" className="filter-row-toggle-btn" onClick={() => toggleField(field.key)}>
+                      <button
+                        type="button"
+                        className="filter-row-toggle-btn"
+                        onClick={() => toggleField(field.key)}
+                      >
                         <ChevronDown size={16} className={`chevron ${isExpanded ? 'open' : ''}`} />
                       </button>
                     </div>
@@ -186,10 +203,18 @@ export function AdvancedFilter({
 
                   {isExpanded && !isNoVal && (
                     <div className="filter-row-body">
-                      <div className="filter-row-input-wrapper" style={{ display: 'flex', gap: '8px' }}>
+                      <div
+                        className="filter-row-input-wrapper"
+                        style={{ display: 'flex', gap: '8px' }}
+                      >
                         {field.dataType === 'select' || field.dataType === 'radio' ? (
                           <Select
-                            options={field.options?.map((o) => ({ label: o.label, value: o.value.toString() })) || []}
+                            options={
+                              field.options?.map((o) => ({
+                                label: o.label,
+                                value: o.value.toString(),
+                              })) || []
+                            }
                             value={(condition?.value as string | number)?.toString() || ''}
                             onChange={(val) => updateFieldCondition({ value: val })}
                             placeholder="- Select -"
@@ -201,36 +226,58 @@ export function AdvancedFilter({
                               { label: 'Yes', value: 'true' },
                               { label: 'No', value: 'false' },
                             ]}
-                            value={condition?.value === true ? 'true' : condition?.value === false ? 'false' : ''}
+                            value={
+                              condition?.value === true
+                                ? 'true'
+                                : condition?.value === false
+                                  ? 'false'
+                                  : ''
+                            }
                             onChange={(val) => updateFieldCondition({ value: val === 'true' })}
                             placeholder="- Select -"
                             buttonStyle={{ height: 32, fontSize: 13, flex: 1 }}
                           />
                         ) : field.dataType === 'multi_select' ? (
-                            <input
-                              type="text"
-                              className="filter-row-input"
-                              placeholder={`Enter comma-separated values...`}
-                              value={(condition?.value as string) || ''}
-                              onChange={(e) => updateFieldCondition({ value: e.target.value })}
-                            />
+                          <input
+                            type="text"
+                            className="filter-row-input"
+                            placeholder={`Enter comma-separated values...`}
+                            value={(condition?.value as string) || ''}
+                            onChange={(e) => updateFieldCondition({ value: e.target.value })}
+                          />
                         ) : isBetween ? (
-                            <>
-                                <input
-                                    type={getInputType()}
-                                    className="filter-row-input"
-                                    placeholder="From..."
-                                    value={(condition?.value as { from?: string; to?: string })?.from || ''}
-                                    onChange={(e) => updateFieldCondition({ value: { ...((condition?.value as { from?: string; to?: string }) || {}), from: e.target.value } })}
-                                />
-                                <input
-                                    type={getInputType()}
-                                    className="filter-row-input"
-                                    placeholder="To..."
-                                    value={(condition?.value as { from?: string; to?: string })?.to || ''}
-                                    onChange={(e) => updateFieldCondition({ value: { ...((condition?.value as { from?: string; to?: string }) || {}), to: e.target.value } })}
-                                />
-                            </>
+                          <>
+                            <input
+                              type={getInputType()}
+                              className="filter-row-input"
+                              placeholder="From..."
+                              value={
+                                (condition?.value as { from?: string; to?: string })?.from || ''
+                              }
+                              onChange={(e) =>
+                                updateFieldCondition({
+                                  value: {
+                                    ...((condition?.value as { from?: string; to?: string }) || {}),
+                                    from: e.target.value,
+                                  },
+                                })
+                              }
+                            />
+                            <input
+                              type={getInputType()}
+                              className="filter-row-input"
+                              placeholder="To..."
+                              value={(condition?.value as { from?: string; to?: string })?.to || ''}
+                              onChange={(e) =>
+                                updateFieldCondition({
+                                  value: {
+                                    ...((condition?.value as { from?: string; to?: string }) || {}),
+                                    to: e.target.value,
+                                  },
+                                })
+                              }
+                            />
+                          </>
                         ) : (
                           <input
                             type={getInputType()}
@@ -249,7 +296,6 @@ export function AdvancedFilter({
           </div>
 
           <div className="filter-footer">
-
             <div className="filter-actions">
               <button type="button" className="btn-cancel" onClick={() => setIsOpen(false)}>
                 Cancel

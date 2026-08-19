@@ -66,9 +66,13 @@ interface Props {
    *
    * 🔴 NULL at PLANNING time, and that is not a missing value — a job order has no
    * source location. Nothing is going anywhere yet, so the batches on offer are the
-   * item's across every godown and each row has to say which godown it is in. With
-   * a location set (the Issue dialog) the availability query has already scoped
-   * everything to one dispatch site and repeating it per row is noise.
+   * item's across every godown and each row has to say which godown it is in.
+   *
+   * Set (the Issue dialog) means the availability query has already scoped itself
+   * to that ONE location (2026-08-19), so every row on offer is there by
+   * construction and a godown printed per row would repeat the header. It is
+   * stated once, above the grid, because it is the thing the whole selection is
+   * conditional on.
    */
   locationName: string | null;
   /** What the step planned for this item, when it states one. Context only. */

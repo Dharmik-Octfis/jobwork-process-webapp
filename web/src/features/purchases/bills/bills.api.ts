@@ -12,18 +12,12 @@ import {
   billsPageSchema,
 } from './bills.schemas';
 
-export async function fetchBills(
-  orgId: string,
-  params: PageParams = {},
-): Promise<BillsPage> {
+export async function fetchBills(orgId: string, params: PageParams = {}): Promise<BillsPage> {
   const response = await apiClient.get(endpoints.purchases.bills(orgId), { params });
   return billsPageSchema.parse(response.data);
 }
 
-export async function fetchBillCount(
-  orgId: string,
-  params: PageParams = {},
-): Promise<number> {
+export async function fetchBillCount(orgId: string, params: PageParams = {}): Promise<number> {
   const response = await apiClient.get(`${endpoints.purchases.bills(orgId)}/count`, { params });
   return (response.data as { total: number }).total;
 }
@@ -38,7 +32,15 @@ export async function fetchBillById(orgId: string, id: string): Promise<Bill> {
   return response.data;
 }
 
-export async function updateBill({ orgId, id, data }: { orgId: string; id: string; data: UpdateBillData }): Promise<Bill> {
+export async function updateBill({
+  orgId,
+  id,
+  data,
+}: {
+  orgId: string;
+  id: string;
+  data: UpdateBillData;
+}): Promise<Bill> {
   const response = await apiClient.patch(`${endpoints.purchases.bills(orgId)}/${id}`, data);
   return response.data;
 }
@@ -93,7 +95,10 @@ export interface BillAttachment {
   url?: string;
 }
 
-export async function uploadBillAttachments(orgId: string, formData: FormData): Promise<BillAttachment[]> {
+export async function uploadBillAttachments(
+  orgId: string,
+  formData: FormData,
+): Promise<BillAttachment[]> {
   const response = await apiClient.post(
     `${endpoints.purchases.bills(orgId)}/attachments/upload`,
     formData,
