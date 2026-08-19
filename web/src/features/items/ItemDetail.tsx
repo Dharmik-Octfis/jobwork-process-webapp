@@ -9,6 +9,7 @@ import { ItemBatchDetails } from './components/ItemBatchDetails';
 import { ItemActivityHistory } from './ItemActivityHistory';
 import { ItemImageGallery } from './components/ItemImageGallery';
 import { CompositeItemsList } from '../inventory/composite-items/CompositeItemsList';
+import { ItemTransactions } from './components/ItemTransactions';
 
 interface ItemDetailProps {
   itemId: string;
@@ -865,6 +866,10 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
               itemName={item.name}
               inventoryTracking={item.inventoryTracking || item.inventory_tracking}
             />
+          </div>
+        ) : effectiveActiveTab === 'Transactions' ? (
+          <div style={{ margin: '-24px', height: 'calc(100% + 48px)' }}>
+            <ItemTransactions orgId={orgId!} itemId={itemId} />
           </div>
         ) : (
           <div

@@ -17,6 +17,7 @@ interface Html2PdfOptions {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchPurchaseOrderById, getPOSignedUrl, deletePurchaseOrder, type POAttachment } from './purchase-orders.api';
 import { fetchPaymentTerms } from './payment-terms.api';
+import { deleteBill } from '../bills/bills.api';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { useParams, useNavigate } from 'react-router-dom';
 import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer } from 'lucide-react';
@@ -121,6 +122,16 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
       queryClient.invalidateQueries({ queryKey: ['purchaseOrders', orgId] });
       setIsConfirmDeleteOpen(false);
       onClose();
+    },
+  });
+
+  const [billToDelete, setBillToDelete] = useState<string | null>(null);
+
+  const deleteBillMutation = useMutation({
+    mutationFn: (billId: string) => deleteBill(orgId!, billId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId, poId] });
+      setBillToDelete(null);
     },
   });
 
@@ -356,27 +367,54 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
         <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />
 
         {/* PDF / Print Dropdown next to Activity tab */}
-        <div style={{ position: 'relative' }} ref={pdfMenuRef}>
-          <button
-            onClick={() => setIsPdfMenuOpen(!isPdfMenuOpen)}
-            style={{
-              padding: '4px 8px',
-              border: 'none',
-              background: 'transparent',
-              borderRadius: '4px',
-              fontSize: '14px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              color: '#475569',
-              fontWeight: 500,
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-          >
-            <FileText size={16} /> PDF/Print <ChevronDown size={14} />
-          </button>
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div ref={pdfMenuRef}>
+            <button
+              onClick={() => setIsPdfMenuOpen(!isPdfMenuOpen)}
+              style={{
+                padding: '4px 8px',
+                border: 'none',
+                background: 'transparent',
+                borderRadius: '4px',
+                fontSize: '14px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                color: '#475569',
+                fontWeight: 500,
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <FileText size={16} /> PDF/Print <ChevronDown size={14} />
+            </button>
+          </div>
+
+          {(!po.bills || po.bills.length === 0) && (
+            <>
+              <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />
+
+              <button
+                onClick={() => navigate(`/organizations/${orgId}/purchases/bills/new?fromPo=${poId}`)}
+                style={{
+                  padding: '6px 16px',
+                  background: '#0062ff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <FileText size={16} /> Convert to Bill
+              </button>
+            </>
+          )}
 
           {isPdfMenuOpen && (
             <div
@@ -468,7 +506,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   gap: '6px',
                 }}
               >
-                Bills <span style={{ background: '#eff6ff', color: '#0062ff', padding: '1px 6px', borderRadius: '10px', fontSize: '11px' }}>0</span>
+                Bills <span style={{ background: '#eff6ff', color: '#0062ff', padding: '1px 6px', borderRadius: '10px', fontSize: '11px' }}>{po.bills?.length || 0}</span>
               </button>
               <button
                 type="button"
@@ -513,7 +551,9 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               </span>
               <span style={{ color: '#cbd5e1' }}>|</span>
               <span>
-                Bill Status : <strong style={{ color: '#16a34a' }}>UNBILLED</strong>
+                Bill Status : <strong style={{ color: po.bills?.length ? '#16a34a' : '#64748b' }}>
+                  {po.bills?.length ? 'BILLED' : 'UNBILLED'}
+                </strong>
               </span>
             </div>
 
@@ -565,6 +605,77 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               </label>
             </div>
           </div>
+
+          {/* Bills List View */}
+          {!isPdfView && activeSubTab === 'Bills' && po.bills && po.bills.length > 0 && (
+            <div style={{ marginBottom: '24px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Bill#</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Date</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Status</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Due Date</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Amount</th>
+                    <th style={{ padding: '12px 16px', width: '40px' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {po.bills.map((bill: import('../bills/bills.schemas').Bill) => (
+                    <tr 
+                      key={bill.id} 
+                      style={{ borderBottom: '1px solid #f1f5f9' }}
+                      onMouseEnter={(e) => {
+                        const icon = e.currentTarget.querySelector('.delete-bill-icon') as HTMLElement;
+                        if (icon) icon.style.opacity = '1';
+                      }}
+                      onMouseLeave={(e) => {
+                        const icon = e.currentTarget.querySelector('.delete-bill-icon') as HTMLElement;
+                        if (icon) icon.style.opacity = '0';
+                      }}
+                    >
+                      <td style={{ padding: '14px 16px', fontSize: '13px' }}>
+                        <span
+                          onClick={() => navigate(`/organizations/${orgId}/purchases/bills/${bill.id}`)}
+                          style={{ color: '#0062ff', cursor: 'pointer', fontWeight: 500 }}
+                        >
+                          {bill.bill_number}
+                        </span>
+                      </td>
+                      <td style={{ padding: '14px 16px', fontSize: '13px', color: '#1e293b' }}>
+                        {bill.bill_date ? format(new Date(bill.bill_date), 'dd-MM-yyyy') : '-'}
+                      </td>
+                      <td style={{ padding: '14px 16px', fontSize: '13px', color: '#64748b', textTransform: 'uppercase' }}>
+                        {bill.status}
+                      </td>
+                      <td style={{ padding: '14px 16px', fontSize: '13px', color: '#1e293b' }}>
+                        {bill.due_date ? format(new Date(bill.due_date), 'dd-MM-yyyy') : '-'}
+                      </td>
+                      <td style={{ padding: '14px 16px', fontSize: '13px', color: '#0f172a', fontWeight: 500, textAlign: 'right' }}>
+                        ₹{Number(bill.total_amount || 0).toFixed(2)}
+                      </td>
+                      <td style={{ width: '40px', padding: '14px 16px', textAlign: 'right' }}>
+                        <div
+                          className="delete-bill-icon"
+                          style={{
+                            display: 'inline-flex',
+                            cursor: 'pointer',
+                            color: '#ef4444',
+                            opacity: 0,
+                            transition: 'opacity 0.2s'
+                          }}
+                          onClick={() => setBillToDelete(bill.id)}
+                          title="Delete Bill"
+                        >
+                          <Trash2 size={16} />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* VIEW MODE 1: Standard Web View (isPdfView === false) */}
           {!isPdfView && (
@@ -966,6 +1077,15 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
         confirmText={deleteMutation.isPending ? 'Deleting...' : 'Delete'}
         onConfirm={() => deleteMutation.mutate()}
         onCancel={() => setIsConfirmDeleteOpen(false)}
+      />
+
+      <ConfirmDialog
+        isOpen={Boolean(billToDelete)}
+        title="Delete Bill"
+        message="Are you sure you want to delete this bill? This action cannot be undone."
+        confirmText={deleteBillMutation.isPending ? 'Deleting...' : 'Delete'}
+        onConfirm={() => billToDelete && deleteBillMutation.mutate(billToDelete)}
+        onCancel={() => setBillToDelete(null)}
       />
     </div>
   );

@@ -48,8 +48,8 @@ export async function countBills(organizationId: string, opts: ListQuery): Promi
 }
 
 export async function getBillById(orgId: string, id: string) {
-  return runAsTenant(orgId, (tx) =>
-    tx.bill.findFirst({
+  return runAsTenant(orgId, async (tx) => {
+    const bill = await tx.bill.findFirst({
       where: { id, organization_id: orgId, isDeleted: false },
       include: {
         line_items: {
@@ -59,8 +59,53 @@ export async function getBillById(orgId: string, id: string) {
         vendor: { select: { contactName: true, email: true, phone: true, addresses: true } },
         location: true,
       },
-    }),
-  );
+    });
+
+    if (!bill) return null;
+
+    const lineItemIds = bill.line_items.map((li) => li.id);
+    const movements = await tx.stockLedgerEntry.findMany({
+      where: {
+        sourceDocId: bill.id,
+        sourceDocLineId: { in: lineItemIds },
+        sourceDocType: 'bill',
+      },
+      include: {
+        batch: true,
+      },
+    });
+
+    const movementsByLineId = movements.reduce((acc, mov) => {
+      if (mov.sourceDocLineId) {
+        if (!acc[mov.sourceDocLineId]) acc[mov.sourceDocLineId] = [];
+        acc[mov.sourceDocLineId]!.push(mov);
+      }
+      return acc;
+    }, {} as Record<string, typeof movements>);
+
+    const lineItemsWithBatches = bill.line_items.map(li => {
+      const liMovements = movementsByLineId[li.id] || [];
+      const batches = liMovements.map(m => ({
+        batchId: m.batchId,
+        supplierBatchRef: m.batch?.supplierBatchRef || undefined,
+        manufacturerBatch: m.batch?.manufacturerBatch || undefined,
+        manufacturedDate: m.batch?.manufacturedDate || undefined,
+        expiryDate: m.batch?.expiryDate || undefined,
+        quantity: Number(m.qtyIn) || 0,
+        mrp: m.batch?.mrp !== null ? Number(m.batch?.mrp) : undefined,
+        sellingPrice: m.batch?.sellingPrice !== null ? Number(m.batch?.sellingPrice) : undefined,
+      }));
+      return {
+        ...li,
+        batches: batches.length > 0 ? batches : undefined,
+      };
+    });
+
+    return {
+      ...bill,
+      line_items: lineItemsWithBatches,
+    };
+  });
 }
 
 export async function createBill(orgId: string, userId: string, data: CreateBillPayload) {
@@ -102,6 +147,7 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
           total: totalAmount,
           terms: termsAndConditions,
           organization_id: orgId,
+          source_po_id: billData.source_po_id || null,
           createdBy: userId,
           updatedBy: userId,
           documents: (attachments ?? []) as Prisma.InputJsonValue,
@@ -152,24 +198,28 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
         const item = itemsById.get(payload.item_id);
 
         if (item?.trackInventory && item.inventoryTracking !== 'none') {
-          const batches = payload.batches?.length ? payload.batches : [{ quantity: payload.quantity }];
+          const batches = payload.batches?.length ? payload.batches : [{ quantity: payload.quantity } as NonNullable<BillItemPayload['batches']>[number]];
           for (const b of batches) {
-            const batch = await createBatch(tx, {
-              organizationId: orgId,
-              itemId: item.id,
-              supplierBatchRef: b.supplierBatchRef,
-              manufacturerBatch: b.manufacturerBatch,
-              manufacturedDate: b.manufacturedDate,
-              expiryDate: b.expiryDate,
-              mrp: b.mrp,
-              sellingPrice: b.sellingPrice,
-              sourceDocType: 'bill',
-              sourceDocId: createdBill.id,
-              userId: userId || undefined,
-            });
+            let batchId = b.batchId;
+            if (!batchId) {
+              const batch = await createBatch(tx, {
+                organizationId: orgId,
+                itemId: item.id,
+                supplierBatchRef: b.supplierBatchRef,
+                manufacturerBatch: b.manufacturerBatch,
+                manufacturedDate: b.manufacturedDate,
+                expiryDate: b.expiryDate,
+                mrp: b.mrp,
+                sellingPrice: b.sellingPrice,
+                sourceDocType: 'bill',
+                sourceDocId: createdBill.id,
+                userId: userId || undefined,
+              });
+              batchId = batch.id;
+            }
             await postMovement(tx, {
               organizationId: orgId,
-              batchId: batch.id,
+              batchId: batchId,
               locationId: createdBill.location_id,
               movementType: 'receipt',
               qtyIn: b.quantity,

@@ -469,6 +469,63 @@ export class ItemsService {
     });
   }
 
+  async getItemBills(itemId: string, organizationId: string, opts: ListQuery) {
+    const { page, perPage } = opts;
+    return runAsTenant(organizationId, async (tx) => {
+      // First verify the item exists
+      const item = await tx.item.findFirst({
+        where: { id: itemId, organizationId, isDeleted: false },
+        select: { id: true },
+      });
+      if (!item) {
+        throw ApiError.notFound('Item not found');
+      }
+
+      const rows = await tx.billItem.findMany({
+        where: {
+          item_id: itemId,
+          isDeleted: false,
+          bill: {
+            organization_id: organizationId,
+            isDeleted: false,
+            // Search applied to the bill level
+            ...searchWhere<Prisma.BillWhereInput>(opts.search, [
+              'bill_number',
+              'status',
+            ]),
+          },
+        },
+        orderBy: { bill: { bill_date: 'desc' } },
+        skip: (page - 1) * perPage,
+        take: takeForPage(perPage),
+        include: {
+          bill: {
+            include: {
+              vendor: { select: { contactName: true } },
+            },
+          },
+        },
+      });
+
+      const paginated = pageSlice(rows, page, perPage);
+      
+      return {
+        ...paginated,
+        results: paginated.results.map(row => ({
+          id: row.id,
+          billId: row.bill?.id,
+          billDate: row.bill?.bill_date,
+          billNumber: row.bill?.bill_number,
+          vendorName: row.bill?.vendor?.contactName,
+          quantity: Number(row.quantity),
+          rate: Number(row.rate),
+          amount: Number(row.item_total),
+          status: row.bill?.status,
+        })),
+      };
+    });
+  }
+
   async create(organizationId: string, rawData: CreateItemDto, userId?: string) {
     const data = normalizeItemDto(rawData);
     return runAsTenant(organizationId, async (tx) => {
@@ -850,6 +907,77 @@ export class ItemsService {
     });
   }
 
+  async getItemBatches(itemId: string, organizationId: string) {
+    return runAsTenant(organizationId, async (tx) => {
+      const grouped = await tx.stockLedgerEntry.groupBy({
+        by: ['batchId', 'locationId'],
+        where: { organizationId, itemId },
+        _sum: { qtyIn: true, qtyOut: true },
+      });
+
+      const batchIds = [...new Set(grouped.map((g) => g.batchId))];
+      const batches = await tx.batch.findMany({
+        where: { id: { in: batchIds }, isDeleted: false },
+      });
+      const batchMap = new Map(batches.map((b) => [b.id, b]));
+
+      const locationIds = [...new Set(grouped.map((g) => g.locationId))];
+      const locations = await tx.location.findMany({
+        where: { id: { in: locationIds } },
+        select: { id: true, name: true },
+      });
+      const locMap = new Map(locations.map((l) => [l.id, l.name]));
+
+      const usedBatchIdsResult = await tx.stockLedgerEntry.findMany({
+        where: {
+          batchId: { in: batchIds },
+          movementType: { notIn: ['opening', 'reversal'] },
+        },
+        select: { batchId: true },
+        distinct: ['batchId'],
+      });
+      const usedBatchIds = new Set(usedBatchIdsResult.map((e) => e.batchId));
+
+      const results = [];
+      const todayStr = new Date().toISOString().substring(0, 10);
+
+      for (const g of grouped) {
+        const b = batchMap.get(g.batchId);
+        if (!b) continue;
+
+        const qtyIn = Number(g._sum.qtyIn || 0);
+        const qtyOut = Number(g._sum.qtyOut || 0);
+        const qtyAvailable = qtyIn - qtyOut;
+
+        if (qtyIn === 0 && qtyOut === 0) continue;
+
+        // Skip batches that were opened and reversed out, but never actually used
+        if (qtyAvailable <= 0 && !usedBatchIds.has(g.batchId)) {
+          continue;
+        }
+
+        const expDate = b.expiryDate ? String(b.expiryDate).split('T')[0] : null;
+        const isExpired = !!(expDate && expDate < todayStr);
+
+        results.push({
+          id: b.id,
+          locationId: g.locationId,
+          locationName: locMap.get(g.locationId) || 'Primary Location',
+          batchReference: b.supplierBatchRef || undefined,
+          manufacturerBatch: b.manufacturerBatch || undefined,
+          manufacturedDate: b.manufacturedDate || undefined,
+          expiryDate: b.expiryDate || undefined,
+          quantityIn: qtyIn,
+          quantityAvailable: qtyAvailable,
+          sellingPrice: b.sellingPrice !== null ? Number(b.sellingPrice) : null,
+          mrp: b.mrp !== null ? Number(b.mrp) : null,
+          isExpired,
+        });
+      }
+      return results;
+    });
+  }
+
   /**
    * Re-declare an item's opening stock.
    *
@@ -1118,6 +1246,20 @@ export class ItemsService {
           valuePerUnit: null,
           userId,
         });
+
+        // Soft delete the batch if it has no other movements
+        const otherMovements = await tx.stockLedgerEntry.count({
+          where: {
+            batchId: position.batchId,
+            movementType: { notIn: ['opening', 'reversal'] },
+          },
+        });
+        if (otherMovements === 0) {
+          await tx.batch.update({
+            where: { id: position.batchId },
+            data: { isDeleted: true, updatedBy: userId ?? null },
+          });
+        }
       }
 
       return this.readOpeningStock(tx, itemId, organizationId);

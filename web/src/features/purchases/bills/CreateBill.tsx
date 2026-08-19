@@ -34,6 +34,8 @@ import {
   updateBillNumberPreference,
   type BillAttachment,
 } from './bills.api';
+import { fetchPurchaseOrderById } from '../purchase-orders/purchase-orders.api';
+import type { PurchaseOrderItem } from '../purchase-orders/purchase-orders.schemas';
 import { fetchPaymentTerms } from '../../sales/customers/payment-terms.api';
 import { fetchVendors } from '../vendors/vendors.api';
 import type { Location } from '../../configuration/locations/locations.api';
@@ -112,11 +114,13 @@ export function CreateBill() {
   const { orgId, id } = useParams<{ orgId: string; id?: string }>();
   const [searchParams] = useSearchParams();
   const cloneFrom = searchParams.get('cloneFrom');
+  const fromPo = searchParams.get('fromPo');
   const queryClient = useQueryClient();
 
   const poIdToFetch = id || cloneFrom;
   const isEdit = Boolean(id);
   const isClone = Boolean(cloneFrom);
+  const isFromPo = Boolean(fromPo);
 
   const [isVendorModalOpen, setIsVendorModalOpen] = useState(false);
   const [itemModalIndex, setItemModalIndex] = useState<number | null>(null);
@@ -134,6 +138,12 @@ export function CreateBill() {
     queryKey: ['bill', orgId, poIdToFetch],
     queryFn: () => fetchBillById(orgId!, poIdToFetch!),
     enabled: Boolean(orgId && poIdToFetch),
+  });
+
+  const { data: sourcePo } = useQuery({
+    queryKey: ['purchaseOrder', orgId, fromPo],
+    queryFn: () => fetchPurchaseOrderById(orgId!, fromPo!),
+    enabled: Boolean(orgId && fromPo),
   });
 
   const { data: vendorsPage } = useQuery({
@@ -208,6 +218,8 @@ export function CreateBill() {
 
       const resetData: CreateBillData = {
         vendor_id: existingPo.vendor_id || '',
+        location_id: existingPo.location_id || '',
+        payment_terms: existingPo.payment_terms || '',
         bill_number: isClone ? '' : existingPo.bill_number || '',
         bill_date: isClone
           ? new Date().toISOString().split('T')[0]
@@ -251,6 +263,61 @@ export function CreateBill() {
       }
     }
   }, [existingPo, isClone, reset]);
+
+  useEffect(() => {
+    if (sourcePo && isFromPo) {
+      const formattedLineItems = (sourcePo.line_items || []).map((item: PurchaseOrderItem) => {
+        const discountVal =
+          item.discountValue !== undefined && item.discountValue !== null
+            ? item.discountValue
+            : item.discount_percentage || 0;
+        return {
+          item_id: item.item_id,
+          item: item.item,
+          quantity: item.quantity || ('' as unknown as number),
+          rate: item.rate || ('' as unknown as number),
+          discountValue: discountVal || ('' as unknown as number),
+          discountType: item.discountType || (item.discount_percentage ? 'percentage' : 'fixed'),
+          amount: item.item_total || 0,
+          from_po: true,
+        };
+      });
+
+      const resetData: CreateBillData = {
+        vendor_id: sourcePo.vendor_id || '',
+        location_id: sourcePo.location_id || '',
+        payment_terms: sourcePo.payment_terms || '',
+        bill_number: '',
+        bill_date: new Date().toISOString().split('T')[0],
+        due_date: sourcePo.delivery_date
+          ? new Date(sourcePo.delivery_date).toISOString().split('T')[0]
+          : '',
+        delivery_type: (sourcePo.delivery_type as 'Location' | 'Customer') || 'Location',
+        delivery_location_id: sourcePo.delivery_location_id || '',
+        delivery_customer_id: sourcePo.delivery_customer_id || '',
+        terms_and_conditions: sourcePo.terms || '',
+        status: 'Draft',
+        custom_fields: sourcePo.custom_fields || {},
+        line_items:
+          formattedLineItems.length > 0
+            ? (formattedLineItems as unknown as BillItem[])
+            : [
+                {
+                  item_id: '',
+                  quantity: '' as unknown as number,
+                  rate: '' as unknown as number,
+                  discountValue: '' as unknown as number,
+                  discountType: 'percentage',
+                  item_total: 0,
+                } as BillItem,
+              ],
+        sub_total: Number(sourcePo.sub_total) || 0,
+        total_amount: Number(sourcePo.total) || 0,
+      };
+
+      reset(resetData);
+    }
+  }, [sourcePo, isFromPo, reset]);
 
   const {
     fields: itemFields,
@@ -343,13 +410,18 @@ export function CreateBill() {
   }, [watchDeliveryLocationId, watchDeliveryCustomerId, watchDeliveryType]);
 
   useEffect(() => {
-    if (locations.length > 0 && !watchDeliveryLocationId && watchDeliveryType === 'Location') {
-      const rootLocation = locations.find((l: Location) => !l.parentId);
-      if (rootLocation) {
-        setValue('delivery_location_id', rootLocation.id);
+    if (locations.length > 0) {
+      const defaultLocation = locations.find((l: Location) => l.isPrimary) || locations.find((l: Location) => !l.parentId);
+      if (defaultLocation) {
+        if (!watchLocationId) {
+          setValue('location_id', defaultLocation.id);
+        }
+        if (!watchDeliveryLocationId && watchDeliveryType === 'Location') {
+          setValue('delivery_location_id', defaultLocation.id);
+        }
       }
     }
-  }, [locations, watchDeliveryLocationId, watchDeliveryType, setValue]);
+  }, [locations, watchLocationId, watchDeliveryLocationId, watchDeliveryType, setValue]);
 
   let computedSubTotal = 0;
   let computedTotalDiscount = 0;
@@ -416,11 +488,15 @@ export function CreateBill() {
       if (id) {
         queryClient.invalidateQueries({ queryKey: ['bill', orgId, id] });
       }
+      if (fromPo) {
+        queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId, fromPo] });
+        queryClient.invalidateQueries({ queryKey: ['purchaseOrders', orgId] });
+      }
       queryClient.invalidateQueries({ queryKey: ['po-number-preference', orgId] });
       navigate(`/organizations/${orgId}/purchases/bills${isEdit && id ? `?id=${id}` : ''}`);
     },
     onError: (error: AxiosError<{ message?: string }>) => {
-      alert(
+      console.error(
         error.response?.data?.message ||
           error.message ||
           `Failed to ${isEdit ? 'update' : 'create'} Bill`,
@@ -452,6 +528,7 @@ export function CreateBill() {
 
     const finalData = {
       ...data,
+      source_po_id: isFromPo ? fromPo : null,
       delivery_customer_id: data.delivery_customer_id || null,
       delivery_location_id: data.delivery_location_id || null,
       due_date: data.due_date || null,
@@ -873,10 +950,30 @@ export function CreateBill() {
                     >
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <ItemComboBox
-                            orgId={orgId!}
-                            value={watchItems?.[index]?.item_id}
-                            initialItem={watchItems?.[index]?.item}
+                          {(curItem as { from_po?: boolean })?.from_po ? (
+                            <div
+                              style={{
+                                width: '100%',
+                                padding: '6px 8px',
+                                fontSize: '13px',
+                                border: '1px solid #d1d5db',
+                                borderRadius: '4px',
+                                background: '#f8fafc',
+                                color: '#475569',
+                                boxSizing: 'border-box',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                              title={selectedItem?.name}
+                            >
+                              {selectedItem?.name || 'Unknown Item'}
+                            </div>
+                          ) : (
+                            <ItemComboBox
+                              orgId={orgId!}
+                              value={watchItems?.[index]?.item_id}
+                              initialItem={watchItems?.[index]?.item}
                             selectedImage={
                               selectedItem ? (
                                 <ItemImage
@@ -931,6 +1028,7 @@ export function CreateBill() {
                               onClick: () => setItemModalIndex(index),
                             }}
                           />
+                          )}
                         </div>
 
                         {/* Description Field - only shown when an item is selected */}
@@ -1020,6 +1118,21 @@ export function CreateBill() {
                           borderRadius: '6px',
                         }}
                       />
+                      {/* Stock Display (above batch button) */}
+                      {selectedItem && (
+                        <div style={{ marginTop: '6px' }}>
+                          <LineItemStockDisplay
+                            orgId={orgId!}
+                            itemId={selectedItem.id}
+                            deliveryLocationId={watchLocationId || watchDeliveryLocationId}
+                            locations={locations}
+                            onClick={(e, rows) =>
+                              setStockPopoverAnchor({ element: e.currentTarget, stockRows: rows })
+                            }
+                          />
+                        </div>
+                      )}
+
                       {selectedItem?.trackInventory &&
                         selectedItem?.inventoryTracking === 'batch' && (
                           <div style={{ marginTop: '6px', textAlign: 'right' }}>
@@ -1042,21 +1155,6 @@ export function CreateBill() {
                             </button>
                           </div>
                         )}
-
-                      {/* Stock Display (below batch button) */}
-                      {selectedItem && (
-                        <div style={{ marginTop: '6px' }}>
-                          <LineItemStockDisplay
-                            orgId={orgId!}
-                            itemId={selectedItem.id}
-                            deliveryLocationId={watchLocationId || watchDeliveryLocationId}
-                            locations={locations}
-                            onClick={(e, rows) =>
-                              setStockPopoverAnchor({ element: e.currentTarget, stockRows: rows })
-                            }
-                          />
-                        </div>
-                      )}
                     </td>
                     <td
                       style={{
@@ -1688,6 +1786,7 @@ export function CreateBill() {
             watchItems[batchModalIndex].item?.stocking_uom?.code ||
             'pcs'
           }
+          locationId={watchLocationId || watchDeliveryLocationId}
           locationName={
             locations.find((l: Location) => l.id === (watchLocationId || watchDeliveryLocationId))?.name ||
             (watchDeliveryType !== 'Location' ? 'Customer Location' : null)

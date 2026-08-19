@@ -657,27 +657,58 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                     const discDisplay = item.discountType === 'fixed' ? `₹${discVal.toFixed(2)}` : `${discVal}%`;
 
                     return (
-                      <tr key={item.id || index} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '14px 12px', fontSize: '13px', color: '#0062ff', fontWeight: 500, verticalAlign: 'top' }}>
-                          {item.item?.name || 'Item'}
-                          {item.description && <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>{item.description}</div>}
-                        </td>
-                        <td style={{ padding: '14px 12px', fontSize: '13px', color: '#1e293b', textAlign: 'center', verticalAlign: 'top' }}>
-                          {item.quantity} PCS
-                        </td>
-                        <td style={{ padding: '14px 12px', fontSize: '13px', color: '#475569', verticalAlign: 'top' }}>
-                          {po.location?.name || 'Head Office'}
-                        </td>
-                        <td style={{ padding: '14px 12px', fontSize: '13px', color: '#1e293b', textAlign: 'right', verticalAlign: 'top' }}>
-                          ₹{Number(item.rate || 0).toFixed(2)}
-                        </td>
-                        <td style={{ padding: '14px 12px', fontSize: '13px', color: '#475569', textAlign: 'right', verticalAlign: 'top' }}>
-                          {discVal > 0 ? discDisplay : '₹0.00'}
-                        </td>
-                        <td style={{ padding: '14px 12px', fontSize: '13px', color: '#0f172a', textAlign: 'right', fontWeight: 600, verticalAlign: 'top' }}>
-                          ₹{Number((item as Record<string, unknown>).item_total || item.amount || 0).toFixed(2)}
-                        </td>
-                      </tr>
+                      <Fragment key={item.id || index}>
+                        <tr style={{ borderBottom: item.batches && item.batches.length > 0 ? 'none' : '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '14px 12px', fontSize: '13px', color: '#0062ff', fontWeight: 500, verticalAlign: 'top' }}>
+                            {item.item?.name || 'Item'}
+                            {item.description && <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>{item.description}</div>}
+                          </td>
+                          <td style={{ padding: '14px 12px', fontSize: '13px', color: '#1e293b', textAlign: 'center', verticalAlign: 'top' }}>
+                            {item.quantity} PCS
+                          </td>
+                          <td style={{ padding: '14px 12px', fontSize: '13px', color: '#475569', verticalAlign: 'top' }}>
+                            {po.location?.name || 'Head Office'}
+                          </td>
+                          <td style={{ padding: '14px 12px', fontSize: '13px', color: '#1e293b', textAlign: 'right', verticalAlign: 'top' }}>
+                            ₹{Number(item.rate || 0).toFixed(2)}
+                          </td>
+                          <td style={{ padding: '14px 12px', fontSize: '13px', color: '#475569', textAlign: 'right', verticalAlign: 'top' }}>
+                            {discVal > 0 ? discDisplay : '₹0.00'}
+                          </td>
+                          <td style={{ padding: '14px 12px', fontSize: '13px', color: '#0f172a', textAlign: 'right', fontWeight: 600, verticalAlign: 'top' }}>
+                            ₹{Number((item as Record<string, unknown>).item_total || item.amount || 0).toFixed(2)}
+                          </td>
+                        </tr>
+                        {item.batches && item.batches.length > 0 && (
+                          <tr style={{ borderBottom: '1px solid #f1f5f9', background: '#fafafa' }}>
+                            <td colSpan={6} style={{ padding: '0px 12px 14px 40px' }}>
+                              <div style={{ fontSize: '10px', fontWeight: 600, color: '#64748b', marginBottom: '6px', textTransform: 'uppercase' }}>BATCH DETAILS</div>
+                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                                <thead style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                                  <tr>
+                                    <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: '#475569' }}>Supplier Batch Ref</th>
+                                    <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: '#475569' }}>Manufacturer Batch#</th>
+                                    <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: '#475569' }}>Mfg. Date</th>
+                                    <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: '#475569' }}>Expiry Date</th>
+                                    <th style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600, color: '#475569' }}>Quantity In</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {item.batches.map((batch, bIndex) => (
+                                    <tr key={bIndex} style={{ borderBottom: bIndex < item.batches!.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                                      <td style={{ padding: '6px 10px', color: '#1e293b' }}>{batch.supplierBatchRef || '-'}</td>
+                                      <td style={{ padding: '6px 10px', color: '#1e293b' }}>{batch.manufacturerBatch || '-'}</td>
+                                      <td style={{ padding: '6px 10px', color: '#475569' }}>{batch.manufacturedDate ? format(new Date(batch.manufacturedDate), 'dd-MMM-yyyy') : '-'}</td>
+                                      <td style={{ padding: '6px 10px', color: '#475569' }}>{batch.expiryDate ? format(new Date(batch.expiryDate), 'dd-MMM-yyyy') : '-'}</td>
+                                      <td style={{ padding: '6px 10px', color: '#1e293b', textAlign: 'right', fontWeight: 500 }}>{batch.quantity}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     );
                   })}
                 </tbody>
@@ -837,25 +868,32 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                     <th style={{ padding: '6px 8px', borderRight: '1px solid #000', textAlign: 'center', width: '85px' }}>Delivery Date</th>
                     <th style={{ padding: '6px 8px', borderRight: '1px solid #000', textAlign: 'center', width: '65px' }}>Qty (UoM)</th>
                     <th style={{ padding: '6px 8px', borderRight: '1px solid #000', textAlign: 'right', width: '85px' }}>Unit Rate (INR)</th>
+                    <th style={{ padding: '6px 8px', borderRight: '1px solid #000', textAlign: 'right', width: '65px' }}>Discount</th>
                     <th style={{ padding: '6px 8px', textAlign: 'right', width: '95px' }}>Total Value</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(po.line_items || []).map((item, index) => (
-                    <tr key={item.id || index} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                      <td style={{ padding: '8px', borderRight: '1px solid #000', textAlign: 'center' }}>{index + 1}</td>
-                      <td style={{ padding: '8px', borderRight: '1px solid #000', fontWeight: 600 }}>
-                        {item.item?.name || 'Item'}
-                        {item.description && <div style={{ fontWeight: 400, color: '#475569', marginTop: '2px' }}>{item.description}</div>}
-                      </td>
-                      <td style={{ padding: '8px', borderRight: '1px solid #000', textAlign: 'center' }}>
-                        {po.due_date ? format(new Date(po.due_date), 'dd-MM-yyyy') : '-'}
-                      </td>
-                      <td style={{ padding: '8px', borderRight: '1px solid #000', textAlign: 'center' }}>{item.quantity}</td>
-                      <td style={{ padding: '8px', borderRight: '1px solid #000', textAlign: 'right' }}>₹{Number(item.rate || 0).toFixed(2)}</td>
-                      <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600 }}>₹{Number(item.amount || 0).toFixed(2)}</td>
-                    </tr>
-                  ))}
+                  {(po.line_items || []).map((item, index) => {
+                    const discVal = Number(item.discountValue !== undefined && item.discountValue !== null ? item.discountValue : item.discount_percentage || item.discount_amount || 0);
+                    const discDisplay = item.discountType === 'fixed' ? `₹${discVal.toFixed(2)}` : `${discVal}%`;
+
+                    return (
+                      <tr key={item.id || index} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                        <td style={{ padding: '8px', borderRight: '1px solid #000', textAlign: 'center' }}>{index + 1}</td>
+                        <td style={{ padding: '8px', borderRight: '1px solid #000', fontWeight: 600 }}>
+                          {item.item?.name || 'Item'}
+                          {item.description && <div style={{ fontWeight: 400, color: '#475569', marginTop: '2px' }}>{item.description}</div>}
+                        </td>
+                        <td style={{ padding: '8px', borderRight: '1px solid #000', textAlign: 'center' }}>
+                          {po.due_date ? format(new Date(po.due_date), 'dd-MM-yyyy') : '-'}
+                        </td>
+                        <td style={{ padding: '8px', borderRight: '1px solid #000', textAlign: 'center' }}>{item.quantity}</td>
+                        <td style={{ padding: '8px', borderRight: '1px solid #000', textAlign: 'right' }}>₹{Number(item.rate || 0).toFixed(2)}</td>
+                        <td style={{ padding: '8px', borderRight: '1px solid #000', textAlign: 'right' }}>{discVal > 0 ? discDisplay : '₹0.00'}</td>
+                        <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600 }}>₹{Number((item as Record<string, unknown>).item_total || item.amount || 0).toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
 
@@ -878,6 +916,12 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                         <span>Sub Total:</span>
                         <strong>₹{Number(po.sub_total || 0).toFixed(2)}</strong>
                       </div>
+                      {Number(po.sub_total || 0) > Number((po as Record<string, unknown>).total || po.total_amount || 0) && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', color: '#16a34a' }}>
+                          <span>Total Discount:</span>
+                          <strong>-₹{(Number(po.sub_total || 0) - Number((po as Record<string, unknown>).total || po.total_amount || 0)).toFixed(2)}</strong>
+                        </div>
+                      )}
                       <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #000', paddingTop: '6px', fontSize: '12px', fontWeight: 700 }}>
                         <span>Total:</span>
                         <strong>₹{Number((po as Record<string, unknown>).total || po.total_amount || 0).toFixed(2)}</strong>

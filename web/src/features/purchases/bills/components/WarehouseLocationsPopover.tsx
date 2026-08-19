@@ -52,23 +52,45 @@ export function WarehouseLocationsPopover({
     };
   }, [isOpen, onClose, anchorEl]);
 
+  const [pos, setPos] = useState({ top: -9999, left: -9999 });
+
+  useEffect(() => {
+    if (!isOpen || !anchorEl) return;
+
+    const updatePosition = () => {
+      const r = anchorEl.getBoundingClientRect();
+      setPos({ top: r.bottom + 8, left: r.left });
+    };
+
+    updatePosition();
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [isOpen, anchorEl]);
+
   if (!isOpen || !anchorEl) return null;
 
-  const rect = anchorEl.getBoundingClientRect();
-  const top = rect.bottom + 8;
-  const left = rect.left;
-
-  const filteredLocations = locations.filter((loc) =>
-    loc.name.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredLocations = [...locations]
+    .sort((a, b) => {
+      if (a.isPrimary && !b.isPrimary) return -1;
+      if (!a.isPrimary && b.isPrimary) return 1;
+      return a.name.localeCompare(b.name);
+    })
+    .filter((loc) =>
+      loc.name.toLowerCase().includes(search.toLowerCase())
+    );
 
   return createPortal(
     <div
       ref={popoverRef}
       style={{
         position: 'fixed',
-        top: `${top}px`,
-        left: `${left}px`,
+        top: `${pos.top}px`,
+        left: `${pos.left}px`,
         zIndex: 1000,
         background: '#fff',
         border: '1px solid #e2e8f0',
@@ -275,7 +297,10 @@ export function WarehouseLocationsPopover({
                         type="radio"
                         name="warehouseLocation"
                         checked={selectedLocationId === loc.id}
-                        onChange={() => onSelectLocation?.(loc.id)}
+                        onChange={() => {
+                          onSelectLocation?.(loc.id);
+                          onClose();
+                        }}
                         disabled={!onSelectLocation}
                         style={{ cursor: onSelectLocation ? 'pointer' : 'default' }}
                       />

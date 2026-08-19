@@ -157,6 +157,7 @@ model PurchaseOrder {
   organization         Organization            @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   updatedByUser        User?                   @relation("PoUpdatedBy", fields: [updated_by], references: [id])
   vendor               Vendor                  @relation(fields: [vendor_id], references: [id])
+  bills                Bill[]                  @relation("PoToBill")
 
   @@unique([organization_id, purchaseorder_number])
   @@map("purchase_orders")
@@ -255,6 +256,8 @@ model Bill {
   organization         Organization            @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   updatedByUser        User?                   @relation("BillUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
   vendor               Vendor                  @relation(fields: [vendor_id], references: [id])
+  source_po_id         String?                 @map("source_po_id") @db.Uuid
+  sourcePo             PurchaseOrder?          @relation("PoToBill", fields: [source_po_id], references: [id])
 
   @@unique([organization_id, bill_number])
   @@map("bills")

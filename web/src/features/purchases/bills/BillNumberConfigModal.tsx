@@ -1,5 +1,5 @@
-import { X } from 'lucide-react';
 import { useState } from 'react';
+import { Modal } from '../../../components/ui/Modal';
 
 interface BillNumberConfigModalProps {
   isOpen: boolean;
@@ -13,68 +13,29 @@ export function BillNumberConfigModal({
   isOpen,
   onClose,
   onSave,
-  initialPrefix = 'PO-',
+  initialPrefix = 'BILL-',
   initialNextNumber = '00001',
 }: BillNumberConfigModalProps) {
   const [prefix, setPrefix] = useState(initialPrefix);
   const [nextNumber, setNextNumber] = useState(initialNextNumber);
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
 
-  // Sync state with props when they change
-  const [prevProps, setPrevProps] = useState({ initialPrefix, initialNextNumber });
-  if (initialPrefix !== prevProps.initialPrefix || initialNextNumber !== prevProps.initialNextNumber) {
-    setPrevProps({ initialPrefix, initialNextNumber });
-    if (initialPrefix) setPrefix(initialPrefix);
-    if (initialNextNumber) setNextNumber(initialNextNumber);
+  if (isOpen !== prevIsOpen) {
+    setPrevIsOpen(isOpen);
+    if (isOpen) {
+      setPrefix(initialPrefix);
+      setNextNumber(initialNextNumber);
+    }
   }
 
-  if (!isOpen) return null;
-
   return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.4)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000 }}>
-      <div style={{ backgroundColor: 'white', borderRadius: '0 0 8px 8px', width: '600px', maxWidth: '90%', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}>
-
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid #eef0f3' }}>
-          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 500, color: '#2b2b2b' }}>Configure Bill Numbers Preferences</h2>
-          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e54d4d', display: 'flex', alignItems: 'center', padding: '4px' }}>
-            <X size={20} />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div style={{ padding: '24px' }}>
-          <p style={{ margin: '0 0 24px 0', color: '#444', fontSize: '14px', lineHeight: '1.5' }}>
-            Bill numbers will be auto-generated based on the preferences below. For each new Bill that is created, the number after the prefix will be incremented by 1.
-          </p>
-
-          <div style={{ display: 'flex', gap: '24px', marginBottom: '24px' }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ display: 'block', fontSize: '13px', color: '#444', marginBottom: '8px' }}>Prefix</label>
-              <input
-                type="text"
-                value={prefix}
-                onChange={(e) => setPrefix(e.target.value)}
-                style={{ width: '100%', padding: '8px 12px', fontSize: '14px', border: '1px solid #d1d5db', borderRadius: '4px', boxSizing: 'border-box' }}
-              />
-            </div>
-            <div style={{ flex: 2 }}>
-              <label style={{ display: 'block', fontSize: '13px', color: '#444', marginBottom: '8px' }}>Next Number</label>
-              <input
-                type="text"
-                value={nextNumber}
-                onChange={(e) => setNextNumber(e.target.value)}
-                style={{ width: '100%', padding: '8px 12px', fontSize: '14px', border: '1px solid #d1d5db', borderRadius: '4px', boxSizing: 'border-box' }}
-              />
-            </div>
-          </div>
-
-          <div style={{ backgroundColor: '#fff9e6', padding: '16px', borderRadius: '6px', color: '#5c4813', fontSize: '13px', lineHeight: '1.5' }}>
-            Note: If you want to change only this Bill's number without affecting the current series, you can edit it directly from the Bill Number field after closing this popup.
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div style={{ padding: '16px 24px', borderTop: '1px solid #eef0f3', display: 'flex', gap: '12px' }}>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Configure Bill Numbers Preferences"
+      width={600}
+      footer={
+        <>
           <button
             type="button"
             onClick={() => onSave(prefix, nextNumber)}
@@ -89,8 +50,37 @@ export function BillNumberConfigModal({
           >
             Cancel
           </button>
+        </>
+      }
+    >
+      <p style={{ margin: '0 0 24px 0', color: '#444', fontSize: '14px', lineHeight: '1.5' }}>
+        Bill numbers will be auto-generated based on the preferences below. For each new Bill that is created, the number after the prefix will be incremented by 1.
+      </p>
+
+      <div style={{ display: 'flex', gap: '24px', marginBottom: '24px' }}>
+        <div style={{ flex: 1 }}>
+          <label style={{ display: 'block', fontSize: '13px', color: '#444', marginBottom: '8px' }}>Prefix</label>
+          <input
+            type="text"
+            value={prefix}
+            onChange={(e) => setPrefix(e.target.value)}
+            style={{ width: '100%', padding: '8px 12px', fontSize: '14px', border: '1px solid #d1d5db', borderRadius: '4px', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div style={{ flex: 2 }}>
+          <label style={{ display: 'block', fontSize: '13px', color: '#444', marginBottom: '8px' }}>Next Number</label>
+          <input
+            type="text"
+            value={nextNumber}
+            onChange={(e) => setNextNumber(e.target.value)}
+            style={{ width: '100%', padding: '8px 12px', fontSize: '14px', border: '1px solid #d1d5db', borderRadius: '4px', boxSizing: 'border-box' }}
+          />
         </div>
       </div>
-    </div>
+
+      <div style={{ backgroundColor: '#fff9e6', padding: '16px', borderRadius: '6px', color: '#5c4813', fontSize: '13px', lineHeight: '1.5' }}>
+        Note: If you want to change only this Bill's number without affecting the current series, you can edit it directly from the Bill Number field after closing this popup.
+      </div>
+    </Modal>
   );
 }

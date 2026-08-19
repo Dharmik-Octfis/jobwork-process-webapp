@@ -58,6 +58,7 @@ export async function getPurchaseOrderById(orgId: string, id: string) {
         vendor: { select: { contactName: true, email: true, phone: true, addresses: true } },
         deliveryLocation: true,
         deliveryCustomer: true,
+        bills: true,
       },
     }),
   );

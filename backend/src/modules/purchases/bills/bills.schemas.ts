@@ -25,6 +25,7 @@ export const billItemSchema = z.object({
   discount_amount: z.coerce.number().optional().nullable(),
   amount: z.coerce.number(),
   batches: z.array(z.object({
+    batchId: emptyToUndefinedUuid,
     supplierBatchRef: z.string().optional(),
     manufacturerBatch: z.string().optional().nullable(),
     manufacturedDate: emptyToNullDate,
@@ -39,6 +40,7 @@ export const billItemSchema = z.object({
 const baseBillSchema = z.object({
   vendor_id: z.string().uuid(),
   location_id: emptyToNullUuid,
+  source_po_id: emptyToNullUuid,
   bill_number: z.string().min(1),
   bill_date: z.coerce.date(),
   due_date: emptyToNullDate,

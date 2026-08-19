@@ -39,7 +39,13 @@ export function LineItemStockDisplay({
   const deliveryLocationName = locations.find((l) => l.id === deliveryLocationId)?.name || 'Unknown Location';
 
   return (
-    <div style={{ marginTop: '6px', display: 'flex', justifyContent: 'flex-end' }}>
+    <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', fontSize: '12px' }}>
+      <div style={{ color: '#1e293b' }}>
+        Stock on Hand:
+      </div>
+      <div style={{ fontWeight: 500, color: '#0f172a' }}>
+        {locationOnHand.toFixed(2)} pcs
+      </div>
       <button
         type="button"
         onClick={(e) => onClick(e, openingStockRows)}
@@ -48,17 +54,25 @@ export function LineItemStockDisplay({
           border: 'none',
           padding: 0,
           margin: 0,
-          fontSize: '11px',
-          color: '#3b82f6',
+          fontSize: '13px',
+          color: '#2563eb',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
           gap: '4px',
-          textAlign: 'right',
         }}
       >
-        <span style={{ fontWeight: 600 }}>{locationOnHand.toFixed(2)} pcs</span>
-        <span style={{ color: '#64748b' }}>{deliveryLocationName}</span>
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 21h18"></path>
+          <path d="M9 8h1"></path>
+          <path d="M9 12h1"></path>
+          <path d="M9 16h1"></path>
+          <path d="M14 8h1"></path>
+          <path d="M14 12h1"></path>
+          <path d="M14 16h1"></path>
+          <path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"></path>
+        </svg>
+        {deliveryLocationName}
       </button>
     </div>
   );

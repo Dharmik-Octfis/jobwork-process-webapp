@@ -19,6 +19,7 @@ interface SearchableSelectProps {
   renderValue?: (option: Option) => React.ReactNode;
   footerAction?: { text: string; icon?: React.ReactNode; onClick: () => void };
   hasError?: boolean;
+  dropdownWidth?: string | number;
 }
 
 export function SearchableSelect({
@@ -33,6 +34,7 @@ export function SearchableSelect({
   renderOption,
   renderValue,
   footerAction,
+  dropdownWidth,
 }: SearchableSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -206,23 +208,46 @@ export function SearchableSelect({
 
       {isOpen && (
         <div
-          style={{
-            position: 'absolute',
-            ...(menuPlacement === 'top'
-              ? { bottom: '100%', marginBottom: 4 }
-              : { top: '100%', marginTop: 4 }),
-            left: 0,
-            right: 0,
-            backgroundColor: 'white',
-            border: '1px solid var(--color-border)',
-            borderRadius: 'var(--radius-md)',
-            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-            zIndex: 1000,
-            maxHeight: 300,
-            display: 'flex',
-            flexDirection: 'column',
-          }}
+          style={
+            dropdownWidth
+              ? {
+                  position: 'absolute',
+                  ...(menuPlacement === 'top' ? { bottom: '100%' } : { top: '100%' }),
+                  left: 0,
+                  width: 0,
+                  height: 0,
+                }
+              : {
+                  position: 'absolute',
+                  ...(menuPlacement === 'top' ? { bottom: '100%' } : { top: '100%' }),
+                  left: 0,
+                  right: 0,
+                }
+          }
         >
+          <div
+            style={{
+              ...(dropdownWidth
+                ? {
+                    position: 'absolute',
+                    ...(menuPlacement === 'top' ? { bottom: 0, marginBottom: 4 } : { top: 0, marginTop: 4 }),
+                    left: 0,
+                    width: dropdownWidth,
+                  }
+                : {
+                    ...(menuPlacement === 'top' ? { marginBottom: 4 } : { marginTop: 4 }),
+                    width: '100%',
+                  }),
+              backgroundColor: 'white',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-md)',
+              boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+              zIndex: 1000,
+              maxHeight: 300,
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
           <div style={{ padding: 8, borderBottom: '1px solid var(--color-border)' }}>
             <div style={{ position: 'relative' }}>
               <Search
@@ -354,6 +379,7 @@ export function SearchableSelect({
               {footerAction.text}
             </div>
           )}
+        </div>
         </div>
       )}
     </div>

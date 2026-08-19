@@ -8,7 +8,7 @@ import '../../users/Users.css'; // For users-tooltip-wrapper classes
 import { AddOpeningStockModal } from './AddOpeningStockModal';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { Select, type SelectOption } from '../../../components/ui/Select';
-import type { ItemOpeningStockLocationRowDto } from '../items.schemas';
+import type { ItemOpeningStockLocationRowDto, ItemBatchDto } from '../items.schemas';
 
 interface ItemBatchDetailsProps {
   orgId: string;
@@ -18,6 +18,7 @@ interface ItemBatchDetailsProps {
 }
 
 type BatchStatusFilter = 'all' | 'active' | 'inactive' | 'empty' | 'expired';
+
 
 interface BatchItem {
   id: string;
@@ -68,7 +69,7 @@ export function ItemBatchDetails({
 }: ItemBatchDetailsProps) {
   const queryClient = useQueryClient();
   const [selectedLocationId, setSelectedLocationId] = useState<string>('all');
-  const [statusFilter, setStatusFilter] = useState<BatchStatusFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<BatchStatusFilter>('active');
   const [searchQuery, setSearchQuery] = useState('');
   const [isOpeningStockModalOpen, setIsOpeningStockModalOpen] = useState(false);
   const [activeMenuBatchId, setActiveMenuBatchId] = useState<string | null>(null);
@@ -109,11 +110,19 @@ export function ItemBatchDetails({
     [locations],
   );
 
-  const { data: openingStockRows = [], isLoading } = useQuery({
+  const { data: openingStockRows = [], isLoading: isOpeningStockLoading } = useQuery({
     queryKey: ['itemOpeningStock', orgId, itemId],
     queryFn: () => itemsApi.getOpeningStock(orgId, itemId),
     enabled: !!orgId && !!itemId,
   });
+
+  const { data: itemBatches = [], isLoading: isBatchesLoading } = useQuery({
+    queryKey: ['itemBatches', orgId, itemId],
+    queryFn: () => itemsApi.getItemBatches(orgId, itemId),
+    enabled: !!orgId && !!itemId,
+  });
+
+  const isLoading = isOpeningStockLoading || isBatchesLoading;
 
   const saveOpeningStockMutation = useMutation({
     mutationFn: (rows: ItemOpeningStockLocationRowDto[]) =>
@@ -122,44 +131,34 @@ export function ItemBatchDetails({
       const nextRows = Array.isArray(savedRows) ? savedRows : [];
       queryClient.setQueryData(['itemOpeningStock', orgId, itemId], nextRows);
       await queryClient.invalidateQueries({ queryKey: ['itemOpeningStock', orgId, itemId] });
+      await queryClient.invalidateQueries({ queryKey: ['itemBatches', orgId, itemId] });
       await queryClient.invalidateQueries({ queryKey: ['item', orgId, itemId] });
     },
   });
 
   const allBatches = useMemo(() => {
-    const list: BatchItem[] = [];
-    const todayStr = new Date().toISOString().split('T')[0];
+    return itemBatches.map((b: ItemBatchDto) => {
+      const batchId = b.id ?? crypto.randomUUID();
+      const isInactive = !!inactiveBatchIds[batchId];
 
-    for (const locRow of openingStockRows) {
-      const loc = locations.find((l) => l.id === locRow.locationId);
-      const locName = loc?.name || 'Primary Location';
-
-      for (const b of locRow.batches || []) {
-        const expDate = b.expiryDate ? String(b.expiryDate).split('T')[0] : null;
-        const isExpired = !!(expDate && expDate < todayStr);
-        const batchId = b.id ?? crypto.randomUUID();
-        const isInactive = !!inactiveBatchIds[batchId];
-
-        list.push({
-          id: batchId,
-          locationId: locRow.locationId,
-          locationName: locName,
-          batchReference: b.batchReference ?? undefined,
-          manufacturerBatch: b.manufacturerBatch ?? undefined,
-          manufacturedDate: b.manufacturedDate ?? undefined,
-          expiryDate: b.expiryDate ?? undefined,
-          quantityIn: Number(b.quantityIn ?? 0),
-          quantityAvailable: Number(b.quantityIn ?? 0),
-          sellingPrice:
-            b.sellingPrice !== null && b.sellingPrice !== undefined ? Number(b.sellingPrice) : null,
-          mrp: b.mrp !== null && b.mrp !== undefined ? Number(b.mrp) : null,
-          isExpired,
-          isInactive,
-        });
-      }
-    }
-    return list;
-  }, [openingStockRows, locations, inactiveBatchIds]);
+      return {
+        id: batchId,
+        locationId: b.locationId,
+        locationName: b.locationName || 'Primary Location',
+        batchReference: b.batchReference ?? undefined,
+        manufacturerBatch: b.manufacturerBatch ?? undefined,
+        manufacturedDate: b.manufacturedDate ?? undefined,
+        expiryDate: b.expiryDate ?? undefined,
+        quantityIn: Number(b.quantityIn ?? 0),
+        quantityAvailable: Number(b.quantityAvailable ?? 0),
+        sellingPrice:
+          b.sellingPrice !== null && b.sellingPrice !== undefined ? Number(b.sellingPrice) : null,
+        mrp: b.mrp !== null && b.mrp !== undefined ? Number(b.mrp) : null,
+        isExpired: !!b.isExpired,
+        isInactive,
+      };
+    });
+  }, [itemBatches, inactiveBatchIds]);
 
   const filteredBatches = useMemo(() => {
     return allBatches.filter((b) => {

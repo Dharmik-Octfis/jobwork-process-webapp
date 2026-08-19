@@ -48,6 +48,7 @@ export const PurchaseOrderSchema = z.object({
   vendor: z.any().optional(),
   deliveryLocation: z.any().optional(),
   deliveryCustomer: z.any().optional(),
+  bills: z.array(z.any()).nullable().optional(),
 });
 
 export const purchaseOrdersPageSchema = paginatedSchema(PurchaseOrderSchema);

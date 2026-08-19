@@ -57,6 +57,33 @@ export interface FilterCondition {
 }
 
 export function evaluateCondition(itemValue: unknown, operator: FilterOperator, filterValue: unknown, dataType: FilterDataType = 'text'): boolean {
+  if (dataType === 'multi_select') {
+    const parseMultiSelect = (val: unknown): string[] => {
+      if (val === null || val === undefined || val === '') return [];
+      if (Array.isArray(val)) return val.map(String).map(s => s.trim()).filter(Boolean);
+      return String(val).split(',').map(s => s.trim()).filter(Boolean);
+    };
+
+    const itemArr = parseMultiSelect(itemValue);
+    
+    if (operator === 'is_empty') return itemArr.length === 0;
+    if (operator === 'is_not_empty') return itemArr.length > 0;
+
+    const filterArr = parseMultiSelect(filterValue);
+    if (filterArr.length === 0) return true; // Empty filter matches all
+
+    switch (operator) {
+      case 'contains_any':
+        return filterArr.some(f => itemArr.includes(f));
+      case 'contains_all':
+        return filterArr.every(f => itemArr.includes(f));
+      case 'not_contains':
+        return !filterArr.some(f => itemArr.includes(f));
+      default:
+        return false;
+    }
+  }
+
   // Common empty checks
   const isValueEmpty = itemValue === null || itemValue === undefined || itemValue === '';
   
@@ -135,23 +162,6 @@ export function evaluateCondition(itemValue: unknown, operator: FilterOperator, 
       case 'on_or_after':
       case 'gte': return valDate >= filterDate;
       default: return false;
-    }
-  }
-
-  // Multi-select evaluation
-  if (dataType === 'multi_select') {
-    const itemArr = Array.isArray(itemValue) ? itemValue.map(String) : String(itemValue || '').split(',').map(s => s.trim());
-    const filterArr = Array.isArray(filterValue) ? filterValue.map(String) : String(filterValue || '').split(',').map(s => s.trim());
-    
-    switch (operator) {
-      case 'contains_any':
-        return filterArr.some(f => itemArr.includes(f));
-      case 'contains_all':
-        return filterArr.every(f => itemArr.includes(f));
-      case 'not_contains':
-        return !filterArr.some(f => itemArr.includes(f));
-      default:
-        return false;
     }
   }
 

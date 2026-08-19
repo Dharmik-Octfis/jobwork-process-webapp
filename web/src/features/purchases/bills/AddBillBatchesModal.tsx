@@ -71,13 +71,14 @@ const toFormRows = (
         ? String(batch.mrp)
         : defaultMrp,
     quantityIn: String(batch.quantity ?? batch.quantityIn ?? ''),
-    isExisting: Boolean(batch.id),
+    isExisting: batch.isExisting !== undefined ? Boolean(batch.isExisting) : Boolean(batch.batchId),
   }));
 };
 
 interface AddBillBatchesModalProps {
   orgId: string;
   itemId?: string;
+  locationId?: string;
   isOpen: boolean;
   onClose: () => void;
   itemName: string;
@@ -94,6 +95,7 @@ interface AddBillBatchesModalProps {
 export function AddBillBatchesModal({
   orgId,
   itemId,
+  locationId,
   isOpen,
   onClose,
   itemName,
@@ -107,8 +109,8 @@ export function AddBillBatchesModal({
   onSave,
 }: AddBillBatchesModalProps) {
   const { data: availableBatches = [] } = useQuery({
-    queryKey: ['availableBatches', orgId, itemId],
-    queryFn: () => fetchAvailableBatches(orgId, { itemId: itemId! }),
+    queryKey: ['availableBatches', orgId, itemId, locationId],
+    queryFn: () => fetchAvailableBatches(orgId, { itemId: itemId!, locationId }),
     enabled: !!orgId && !!itemId,
   });
 
@@ -422,6 +424,7 @@ export function AddBillBatchesModal({
                         }))
                       ]}
                       value={batch.batchId}
+                      dropdownWidth={300}
                       onChange={(val) => {
                         if (val === 'header') return;
                         const b = availableBatches.find(x => x.batchId === val);

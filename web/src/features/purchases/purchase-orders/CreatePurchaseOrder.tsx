@@ -230,6 +230,7 @@ export function CreatePurchaseOrder() {
   const watchDeliveryType = watch('delivery_type');
   const watchDeliveryLocationId = watch('delivery_location_id');
   const watchDeliveryCustomerId = watch('delivery_customer_id');
+  const watchLocationId = watch('location_id');
   const watchPoDate = watch('date');
   const watchPaymentTerms = watch('payment_terms');
 
@@ -306,13 +307,18 @@ export function CreatePurchaseOrder() {
   }, [watchDeliveryLocationId, watchDeliveryCustomerId, watchDeliveryType]);
 
   useEffect(() => {
-    if (locations.length > 0 && !watchDeliveryLocationId && watchDeliveryType === 'Location') {
-      const rootLocation = locations.find((l: Location) => !l.parentId);
-      if (rootLocation) {
-        setValue('delivery_location_id', rootLocation.id);
+    if (locations.length > 0) {
+      const defaultLocation = locations.find((l: Location) => l.isPrimary) || locations.find((l: Location) => !l.parentId);
+      if (defaultLocation) {
+        if (!watchLocationId) {
+          setValue('location_id', defaultLocation.id);
+        }
+        if (!watchDeliveryLocationId && watchDeliveryType === 'Location') {
+          setValue('delivery_location_id', defaultLocation.id);
+        }
       }
     }
-  }, [locations, watchDeliveryLocationId, watchDeliveryType, setValue]);
+  }, [locations, watchLocationId, watchDeliveryLocationId, watchDeliveryType, setValue]);
 
   let computedSubTotal = 0;
   let computedTotalDiscount = 0;

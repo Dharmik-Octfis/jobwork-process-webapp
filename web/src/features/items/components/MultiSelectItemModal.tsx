@@ -17,6 +17,7 @@ import { AdvancedFilter } from '../../../components/ui/AdvancedFilter/AdvancedFi
 import type { FilterField, FilterCondition, FilterDataType, FilterOperator } from '../../../components/ui/AdvancedFilter/filterUtils';
 import { evaluateCondition } from '../../../components/ui/AdvancedFilter/filterUtils';
 import type { ColumnDef } from '../../list-views/listViews.api';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 
 const ITEM_MODAL_CATALOG: ColumnDef[] = [
   { key: 'name', label: 'Product Name', locked: true },
@@ -26,11 +27,25 @@ const ITEM_MODAL_CATALOG: ColumnDef[] = [
   { key: 'category', label: 'Product Category' },
 ];
 
-function renderCell(item: Item, key: string): React.ReactNode {
+import type { CustomFieldDefinition } from '../../custom-fields/customFields.schemas';
+
+function renderCell(item: Item, key: string, customFieldsDef?: CustomFieldDefinition[]): React.ReactNode {
   if (key.startsWith('cf_')) {
     const cfKey = key.replace('cf_', '');
     const val = item.custom_fields?.[cfKey] ?? item.customFields?.[cfKey];
-    return val != null ? String(val) : '-';
+    if (val == null) return '-';
+
+    const def = customFieldsDef?.find((d) => d.key === cfKey);
+    if (def && (def.dataType === 'select' || def.dataType === 'multi_select')) {
+      const options = def.config?.options || [];
+      if (Array.isArray(val)) {
+        return val.map((v) => options.find((o) => o.id === v)?.label || v).join(', ');
+      }
+      return options.find((o) => o.id === val)?.label || String(val);
+    }
+
+    if (Array.isArray(val)) return val.join(', ');
+    return String(val);
   }
 
   switch (key) {
@@ -198,13 +213,25 @@ export function MultiSelectItemModal({
     return Array.from(types).sort();
   }, [itemsPage?.results]);
 
+  const { data: customFieldsDef } = useActiveCustomFields(orgId, 'item');
+
   const filterFields = useMemo<FilterField[]>(() => {
     return fullCatalog.map((c) => {
       let dataType: FilterDataType = 'string';
       let options: { label: string; value: string | number }[] | undefined = undefined;
 
       if (c.key.startsWith('cf_')) {
-        dataType = customFieldTypes.get(c.key.replace('cf_', '')) || 'text';
+        const cfKey = c.key.replace('cf_', '');
+        const def = customFieldsDef?.find((d) => d.key === cfKey);
+        
+        if (def) {
+          dataType = def.dataType as FilterDataType;
+          if (def.dataType === 'select' || def.dataType === 'multi_select') {
+            options = def.config?.options?.map(opt => ({ label: opt.label, value: opt.label })) || [];
+          }
+        } else {
+          dataType = customFieldTypes.get(cfKey) || 'text';
+        }
       } else if (c.key === 'category') {
         dataType = 'select';
         options = categories.map((cat) => ({ label: cat, value: cat }));
@@ -220,7 +247,7 @@ export function MultiSelectItemModal({
         options,
       };
     });
-  }, [fullCatalog, customFieldTypes, categories, productTypes]);
+  }, [fullCatalog, customFieldTypes, categories, productTypes, customFieldsDef]);
 
 
 
@@ -237,7 +264,19 @@ export function MultiSelectItemModal({
           if (key === 'type') return (item.type || item.item_type || '').toLowerCase() === searchVal;
           if (key === 'category') return (item.category || '').toLowerCase() === searchVal;
           const cfKey = key.replace('cf_', '');
-          const val = item.custom_fields?.[cfKey] ?? item.customFields?.[cfKey];
+          const rawVal = item.custom_fields?.[cfKey] ?? item.customFields?.[cfKey];
+          
+          let val = rawVal;
+          const def = customFieldsDef?.find((d) => d.key === cfKey);
+          if (def && (def.dataType === 'select' || def.dataType === 'multi_select')) {
+            const options = def.config?.options || [];
+            if (Array.isArray(rawVal)) {
+              val = rawVal.map((v) => options.find((o) => o.id === v)?.label || v).join(', ');
+            } else {
+              val = options.find((o) => o.id === rawVal)?.label || rawVal;
+            }
+          }
+          
           return val != null && String(val).toLowerCase().includes(searchVal);
         });
       });
@@ -253,7 +292,19 @@ export function MultiSelectItemModal({
           else if (cond.field === 'category') itemValue = item.category;
           else if (cond.field.startsWith('cf_')) {
             const cfKey = cond.field.replace('cf_', '');
-            itemValue = item.custom_fields?.[cfKey] ?? item.customFields?.[cfKey];
+            const rawVal = item.custom_fields?.[cfKey] ?? item.customFields?.[cfKey];
+            
+            const def = customFieldsDef?.find((d) => d.key === cfKey);
+            if (def && (def.dataType === 'select' || def.dataType === 'multi_select')) {
+              const options = def.config?.options || [];
+              if (Array.isArray(rawVal)) {
+                itemValue = rawVal.map((v) => options.find((o) => o.id === v)?.label || v);
+              } else {
+                itemValue = options.find((o) => o.id === rawVal)?.label || rawVal;
+              }
+            } else {
+              itemValue = rawVal;
+            }
           }
 
             const filterFieldDef = filterFields.find(f => f.key === cond.field);
@@ -686,7 +737,7 @@ export function MultiSelectItemModal({
                                 : {}),
                             }}
                           >
-                            {renderCell(item, col.key)}
+                            {renderCell(item, col.key, customFieldsDef)}
                           </td>
                         ))}
                       </tr>

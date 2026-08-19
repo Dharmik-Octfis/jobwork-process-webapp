@@ -249,26 +249,7 @@ export function AdvancedFilter({
           </div>
 
           <div className="filter-footer">
-            <div className="match-type-toggle">
-              <label>
-                <input
-                  type="radio"
-                  name="matchType"
-                  checked={localMatchType === 'any'}
-                  onChange={() => setLocalMatchType('any')}
-                />
-                Any of these
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="matchType"
-                  checked={localMatchType === 'all'}
-                  onChange={() => setLocalMatchType('all')}
-                />
-                All of these
-              </label>
-            </div>
+
             <div className="filter-actions">
               <button type="button" className="btn-cancel" onClick={() => setIsOpen(false)}>
                 Cancel
