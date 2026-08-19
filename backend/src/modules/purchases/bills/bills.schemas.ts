@@ -3,17 +3,17 @@ import { openApiRegistry } from '../../../config/openapi.js';
 
 const emptyToNullUuid = z.preprocess(
   (val) => (val === '' ? null : val),
-  z.string().uuid().optional().nullable()
+  z.string().uuid().optional().nullable(),
 );
 
 const emptyToUndefinedUuid = z.preprocess(
   (val) => (val === '' || val === null ? undefined : val),
-  z.string().uuid().optional()
+  z.string().uuid().optional(),
 );
 
 const emptyToNullDate = z.preprocess(
   (val) => (val === '' ? null : val),
-  z.coerce.date().optional().nullable()
+  z.coerce.date().optional().nullable(),
 );
 
 export const billItemSchema = z.object({
@@ -24,16 +24,20 @@ export const billItemSchema = z.object({
   discount_percentage: z.coerce.number().optional().nullable(),
   discount_amount: z.coerce.number().optional().nullable(),
   amount: z.coerce.number(),
-  batches: z.array(z.object({
-    batchId: emptyToUndefinedUuid,
-    supplierBatchRef: z.string().optional(),
-    manufacturerBatch: z.string().optional().nullable(),
-    manufacturedDate: emptyToNullDate,
-    expiryDate: emptyToNullDate,
-    mrp: z.coerce.number().optional().nullable(),
-    sellingPrice: z.coerce.number().optional().nullable(),
-    quantity: z.coerce.number().min(0.01),
-  })).optional(),
+  batches: z
+    .array(
+      z.object({
+        batchId: emptyToUndefinedUuid,
+        supplierBatchRef: z.string().optional(),
+        manufacturerBatch: z.string().optional().nullable(),
+        manufacturedDate: emptyToNullDate,
+        expiryDate: emptyToNullDate,
+        mrp: z.coerce.number().optional().nullable(),
+        sellingPrice: z.coerce.number().optional().nullable(),
+        quantity: z.coerce.number().min(0.01),
+      }),
+    )
+    .optional(),
   custom_fields: z.record(z.string(), z.unknown()).optional(),
 });
 

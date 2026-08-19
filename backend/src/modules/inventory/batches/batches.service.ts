@@ -2,7 +2,6 @@ import { Prisma } from '../../../../generated/prisma/client.ts';
 import { runAsTenant } from '../../../db/prisma.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
-import { resolveDispatchSite } from '../../settings/configuration/locations/locationSites.ts';
 import {
   getAvailableBatches,
   getBalance,
@@ -135,26 +134,24 @@ export interface AvailabilityQuery {
 export async function getAvailableStock(organizationId: string, query: AvailabilityQuery) {
   return runAsTenant(organizationId, async (tx) => {
     /**
-     * 🔴 THE WHOLE DISPATCH SITE, not the one godown asked for (2026-08-14).
+     * 🔴 EXACTLY THE GODOWN ASKED FOR (2026-08-19) — this replaced the
+     * dispatch-site expansion of 2026-08-14, which resolved the location to the
+     * root of its `parentId` chain and offered every godown sharing it.
      *
-     * One challan may draw from every godown under a site, so offering only the
-     * location the user happened to land on is what made the picker look like it
-     * was hiding stock. Crossing to another site is refused at save — that is a
-     * second address, and a Rule 55 challan carries one.
+     * That expansion offered SIBLINGS the caller never named: ask about Godown A
+     * and Godown B's rolls came back. An issue now goes out of one location and
+     * one only, so the picker must show that location's stock and nothing else —
+     * otherwise it offers rows the save will refuse.
      *
-     * Rows come back per (batch, location) and carry `locationId`, so the picker
-     * can say which godown each one is in.
+     * Rows still come back per (batch, location) and carry `locationId`, because
+     * that pair is what the ledger posts against.
      */
-    const site = query.locationId
-      ? await resolveDispatchSite(tx, organizationId, query.locationId)
-      : null;
-
     const batches = await getAvailableBatches(tx, {
       organizationId,
       itemId: query.itemId,
       // No location asked for means no location filter — an org-wide question,
-      // which some reports ask and the picker never does.
-      locationIds: site?.locationIds,
+      // which the job-order planner asks and the issue picker never does.
+      locationId: query.locationId,
       ownership: query.ownership,
       search: query.search,
       limit: query.limit,
@@ -162,7 +159,7 @@ export async function getAvailableStock(organizationId: string, query: Availabil
     if (batches.length === 0) return [];
 
     // Named so the picker can label each row. Keyed off the rows actually
-    // returned, so it is one read whether the site has two godowns or twenty.
+    // returned, so it stays one read however many locations answered.
     const locations = await tx.location.findMany({
       where: {
         organizationId,
@@ -232,14 +229,28 @@ export async function getAvailableStock(organizationId: string, query: Availabil
  */
 export async function getSourceLocations(
   organizationId: string,
-  query: { itemId: string; ownership?: Ownership },
+  query: { itemIds: readonly string[]; ownership?: Ownership },
 ) {
   return runAsTenant(organizationId, async (tx) => {
+    /**
+     * 🔴 GROUPED BY LOCATION **AND ITEM** (2026-08-19), because one challan goes
+     * out of one location and carries several items.
+     *
+     * A single-item version of this could only answer "where is the fabric",
+     * which is what the Issue dialog used to ask — it then applied that answer to
+     * the thread and the buttons as well, so an item stocked somewhere else got a
+     * picker that was silently empty.
+     *
+     * The per-item breakdown is what lets the dialog say all three things it now
+     * has to: how many of the step's items a location covers, which ones it does
+     * not, and — the part that turns a dead end into a decision — where those
+     * ones actually are.
+     */
     const grouped = await tx.stockLedgerEntry.groupBy({
-      by: ['locationId'],
+      by: ['locationId', 'itemId'],
       where: {
         organizationId,
-        itemId: query.itemId,
+        itemId: { in: [...query.itemIds] },
         ...(query.ownership ? { ownership: query.ownership } : {}),
       },
       _sum: { qtyIn: true, qtyOut: true },
@@ -249,6 +260,7 @@ export async function getSourceLocations(
     const positive = grouped
       .map((row) => ({
         locationId: row.locationId,
+        itemId: row.itemId,
         qty: (row._sum.qtyIn ?? zero).minus(row._sum.qtyOut ?? zero),
       }))
       .filter((row) => row.qty.greaterThan(0));
@@ -276,10 +288,26 @@ export async function getSourceLocations(
     });
     const byId = new Map(locations.map((l) => [l.id, l]));
 
-    return positive
-      .flatMap((row) => {
-        const location = byId.get(row.locationId);
-        return location ? [{ ...location, availableQty: row.qty.toString() }] : [];
+    // One row per location, carrying every item it holds. `availableQty` is kept
+    // as the total across those items ONLY so a caller with a single item reads
+    // exactly as it did before; anything comparing items must use `items`, since
+    // 100 PCS + 5 CONE is 105 of nothing (§6.5).
+    const byLocation = new Map<
+      string,
+      { items: { itemId: string; availableQty: string }[]; total: Prisma.Decimal }
+    >();
+    for (const row of positive) {
+      const entry = byLocation.get(row.locationId) ?? { items: [], total: zero };
+      entry.items.push({ itemId: row.itemId, availableQty: row.qty.toString() });
+      byLocation.set(row.locationId, { items: entry.items, total: entry.total.plus(row.qty) });
+    }
+
+    return [...byLocation.entries()]
+      .flatMap(([locationId, entry]) => {
+        const location = byId.get(locationId);
+        return location
+          ? [{ ...location, items: entry.items, availableQty: entry.total.toString() }]
+          : [];
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   });

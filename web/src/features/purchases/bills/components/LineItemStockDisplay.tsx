@@ -24,28 +24,37 @@ export function LineItemStockDisplay({
   });
 
   if (isLoading) {
-    return <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px' }}>Loading stock...</div>;
+    return (
+      <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px' }}>Loading stock...</div>
+    );
   }
 
   // Find the stock for the current delivery location
   let locationOnHand = 0;
   const locationRow = openingStockRows.find((r) => r.locationId === deliveryLocationId);
-  
+
   if (locationRow) {
-    const batchTotal = locationRow.batches?.reduce((acc, b) => acc + (Number(b.quantityIn) || 0), 0) || 0;
+    const batchTotal =
+      locationRow.batches?.reduce((acc, b) => acc + (Number(b.quantityIn) || 0), 0) || 0;
     locationOnHand = Number(locationRow.stockOnHand ?? locationRow.openingStock ?? batchTotal) || 0;
   }
 
-  const deliveryLocationName = locations.find((l) => l.id === deliveryLocationId)?.name || 'Unknown Location';
+  const deliveryLocationName =
+    locations.find((l) => l.id === deliveryLocationId)?.name || 'Unknown Location';
 
   return (
-    <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', fontSize: '12px' }}>
-      <div style={{ color: '#1e293b' }}>
-        Stock on Hand:
-      </div>
-      <div style={{ fontWeight: 500, color: '#0f172a' }}>
-        {locationOnHand.toFixed(2)} pcs
-      </div>
+    <div
+      style={{
+        marginTop: '12px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-end',
+        gap: '4px',
+        fontSize: '12px',
+      }}
+    >
+      <div style={{ color: '#1e293b' }}>Stock on Hand:</div>
+      <div style={{ fontWeight: 500, color: '#0f172a' }}>{locationOnHand.toFixed(2)} pcs</div>
       <button
         type="button"
         onClick={(e) => onClick(e, openingStockRows)}
@@ -62,7 +71,17 @@ export function LineItemStockDisplay({
           gap: '4px',
         }}
       >
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <path d="M3 21h18"></path>
           <path d="M9 8h1"></path>
           <path d="M9 12h1"></path>

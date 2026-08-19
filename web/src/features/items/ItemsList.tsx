@@ -22,7 +22,11 @@ import type { CustomFieldDefinition } from '../custom-fields/customFields.schema
  * out of the row's `customFields` blob, so a new custom field needs no code here.
  * `type` keeps its pill styling, which is why this returns a node, not a string.
  */
-function renderItemCell(item: Item, key: string, customFieldsDef?: CustomFieldDefinition[]): React.ReactNode {
+function renderItemCell(
+  item: Item,
+  key: string,
+  customFieldsDef?: CustomFieldDefinition[],
+): React.ReactNode {
   if (key.startsWith(CUSTOM_FIELD_PREFIX)) {
     const cfKey = key.slice(CUSTOM_FIELD_PREFIX.length);
     const value = item.customFields?.[cfKey];

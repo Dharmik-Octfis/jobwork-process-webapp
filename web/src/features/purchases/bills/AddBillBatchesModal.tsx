@@ -63,7 +63,9 @@ const toFormRows = (
     manufacturedDate: batch.manufacturedDate ? String(batch.manufacturedDate).split('T')[0] : '',
     expiryDate: batch.expiryDate ? String(batch.expiryDate).split('T')[0] : '',
     sellingPrice:
-      batch.sellingPrice !== null && batch.sellingPrice !== undefined && String(batch.sellingPrice) !== ''
+      batch.sellingPrice !== null &&
+      batch.sellingPrice !== undefined &&
+      String(batch.sellingPrice) !== ''
         ? String(batch.sellingPrice)
         : defaultSellingPrice,
     mrp:
@@ -131,7 +133,10 @@ export function AddBillBatchesModal({
   };
 
   const handleAddExistingBatch = () => {
-    setBatches([...batches, { ...createEmptyBatch(defaultSellingPrice, defaultMrp), isExisting: true }]);
+    setBatches([
+      ...batches,
+      { ...createEmptyBatch(defaultSellingPrice, defaultMrp), isExisting: true },
+    ]);
   };
 
   const handleDeleteBatch = (id: string) => {
@@ -273,7 +278,8 @@ export function AddBillBatchesModal({
 
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: 13, color: '#334155' }}>
-            <span style={{ color: '#64748b' }}>Total Quantity :</span> {formatQty(lineQty)} {uomLabel}
+            <span style={{ color: '#64748b' }}>Total Quantity :</span> {formatQty(lineQty)}{' '}
+            {uomLabel}
             <span style={{ color: '#e2e8f0', margin: '0 10px' }}>|</span>
             <span style={{ color: '#64748b' }}>Quantity to be added :</span>{' '}
             <span style={{ color: matches ? '#15803d' : '#b45309', fontWeight: 600 }}>
@@ -421,26 +427,43 @@ export function AddBillBatchesModal({
                   {batch.isExisting ? (
                     <SearchableSelect
                       options={[
-                        { label: 'Selling Price: ₹' + Number(defaultSellingPrice || 0).toLocaleString('en-IN', {minimumFractionDigits: 2}) + ' | MRP: ₹' + Number(defaultMrp || 0).toLocaleString('en-IN', {minimumFractionDigits: 2}), value: 'header', disabled: true },
-                        ...availableBatches.map(b => ({
+                        {
+                          label:
+                            'Selling Price: ₹' +
+                            Number(defaultSellingPrice || 0).toLocaleString('en-IN', {
+                              minimumFractionDigits: 2,
+                            }) +
+                            ' | MRP: ₹' +
+                            Number(defaultMrp || 0).toLocaleString('en-IN', {
+                              minimumFractionDigits: 2,
+                            }),
+                          value: 'header',
+                          disabled: true,
+                        },
+                        ...availableBatches.map((b) => ({
                           value: b.batchId,
                           label: b.supplierBatchRef || b.manufacturerBatch || 'Stock',
-                          batch: b
-                        }))
+                          batch: b,
+                        })),
                       ]}
                       value={batch.batchId}
                       dropdownWidth={300}
                       onChange={(val) => {
                         if (val === 'header') return;
-                        const b = availableBatches.find(x => x.batchId === val);
+                        const b = availableBatches.find((x) => x.batchId === val);
                         if (b) {
                           updateBatchFields(batch.id, {
                             batchId: b.batchId,
                             supplierBatchRef: b.supplierBatchRef || '',
                             manufacturerBatch: b.manufacturerBatch || '',
-                            manufacturedDate: b.manufacturedDate ? b.manufacturedDate.split('T')[0] : '',
+                            manufacturedDate: b.manufacturedDate
+                              ? b.manufacturedDate.split('T')[0]
+                              : '',
                             expiryDate: b.expiryDate ? b.expiryDate.split('T')[0] : '',
-                            sellingPrice: b.sellingPrice !== null && b.sellingPrice !== undefined ? String(b.sellingPrice) : defaultSellingPrice,
+                            sellingPrice:
+                              b.sellingPrice !== null && b.sellingPrice !== undefined
+                                ? String(b.sellingPrice)
+                                : defaultSellingPrice,
                             mrp: b.mrp !== null && b.mrp !== undefined ? String(b.mrp) : defaultMrp,
                           });
                         }
@@ -448,7 +471,18 @@ export function AddBillBatchesModal({
                       placeholder="Search"
                       renderOption={(opt) => {
                         if (opt.value === 'header') {
-                          return <div style={{ fontSize: '12px', fontWeight: 600, color: '#334155', padding: '4px 0' }}>{opt.label}</div>;
+                          return (
+                            <div
+                              style={{
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                color: '#334155',
+                                padding: '4px 0',
+                              }}
+                            >
+                              {opt.label}
+                            </div>
+                          );
                         }
                         const b = (opt as unknown as { batch: { availableQty: number } }).batch;
                         return (

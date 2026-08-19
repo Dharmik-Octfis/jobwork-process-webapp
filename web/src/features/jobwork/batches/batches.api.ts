@@ -63,6 +63,14 @@ export const stockLocationSchema = z.object({
   /** Set when the location belongs to a vendor — i.e. it is a PROCESSOR’s own
    * place. The Issue dialog uses it to drop the party it is issuing to. */
   vendorId: z.string().nullable().optional(),
+  /**
+   * 🔴 WHICH OF THE ASKED-FOR ITEMS THIS LOCATION ACTUALLY HOLDS, and how much of
+   * each. Only items with a positive balance appear, so the length of this array
+   * IS the coverage count the dropdown shows.
+   */
+  items: z.array(z.object({ itemId: z.string(), availableQty: z.string() })).default([]),
+  /** The total across those items. Display-only, and only meaningful for a
+   * single-item question — quantities never add up across items (§6.5). */
   availableQty: z.string(),
 });
 
@@ -96,12 +104,21 @@ export async function fetchAvailableBatches(
   return z.array(availableBatchSchema).parse(response.data);
 }
 
-/** 🔴 Also a ledger query, not a location list: offering a godown that holds none
- * of this item is how users get stuck on the Issue dialog (§5.1). */
+/**
+ * 🔴 Also a ledger query, not a location list: offering a godown that holds none
+ * of these items is how users get stuck on the Issue dialog (§5.1).
+ *
+ * Asks about EVERY item on the challan at once (2026-08-19). It used to ask about
+ * the principal item alone and apply that answer to the rest, so an item stocked
+ * in a different godown got a picker that was silently empty.
+ */
 export async function fetchStockLocations(
   orgId: string,
-  params: { itemId: string; ownership?: string },
+  params: { itemIds: string[]; ownership?: string },
 ): Promise<StockLocation[]> {
-  const response = await apiClient.get(endpoints.inventory.stockLocations(orgId), { params });
+  if (params.itemIds.length === 0) return [];
+  const response = await apiClient.get(endpoints.inventory.stockLocations(orgId), {
+    params: { itemIds: params.itemIds.join(','), ownership: params.ownership },
+  });
   return z.array(stockLocationSchema).parse(response.data);
 }

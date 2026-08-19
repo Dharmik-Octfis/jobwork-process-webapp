@@ -41,7 +41,7 @@ export type FilterDataType =
   | 'url'
   | 'file'
   | 'string' // Legacy alias
-  | 'time';  // Legacy alias
+  | 'time'; // Legacy alias
 
 export interface FilterField {
   key: string;
@@ -56,16 +56,28 @@ export interface FilterCondition {
   value: unknown;
 }
 
-export function evaluateCondition(itemValue: unknown, operator: FilterOperator, filterValue: unknown, dataType: FilterDataType = 'text'): boolean {
+export function evaluateCondition(
+  itemValue: unknown,
+  operator: FilterOperator,
+  filterValue: unknown,
+  dataType: FilterDataType = 'text',
+): boolean {
   if (dataType === 'multi_select') {
     const parseMultiSelect = (val: unknown): string[] => {
       if (val === null || val === undefined || val === '') return [];
-      if (Array.isArray(val)) return val.map(String).map(s => s.trim()).filter(Boolean);
-      return String(val).split(',').map(s => s.trim()).filter(Boolean);
+      if (Array.isArray(val))
+        return val
+          .map(String)
+          .map((s) => s.trim())
+          .filter(Boolean);
+      return String(val)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
     };
 
     const itemArr = parseMultiSelect(itemValue);
-    
+
     if (operator === 'is_empty') return itemArr.length === 0;
     if (operator === 'is_not_empty') return itemArr.length > 0;
 
@@ -74,11 +86,11 @@ export function evaluateCondition(itemValue: unknown, operator: FilterOperator, 
 
     switch (operator) {
       case 'contains_any':
-        return filterArr.some(f => itemArr.includes(f));
+        return filterArr.some((f) => itemArr.includes(f));
       case 'contains_all':
-        return filterArr.every(f => itemArr.includes(f));
+        return filterArr.every((f) => itemArr.includes(f));
       case 'not_contains':
-        return !filterArr.some(f => itemArr.includes(f));
+        return !filterArr.some((f) => itemArr.includes(f));
       default:
         return false;
     }
@@ -86,7 +98,7 @@ export function evaluateCondition(itemValue: unknown, operator: FilterOperator, 
 
   // Common empty checks
   const isValueEmpty = itemValue === null || itemValue === undefined || itemValue === '';
-  
+
   if (operator === 'is_empty' || operator === 'has_no_file') {
     if (Array.isArray(itemValue)) return itemValue.length === 0;
     return isValueEmpty;
@@ -98,12 +110,14 @@ export function evaluateCondition(itemValue: unknown, operator: FilterOperator, 
 
   // Boolean evaluation
   if (dataType === 'boolean') {
-    const isTrue = operator === 'is_true' || (operator === 'equals' && String(filterValue) === 'true');
-    const isFalse = operator === 'is_false' || (operator === 'equals' && String(filterValue) === 'false');
-    
+    const isTrue =
+      operator === 'is_true' || (operator === 'equals' && String(filterValue) === 'true');
+    const isFalse =
+      operator === 'is_false' || (operator === 'equals' && String(filterValue) === 'false');
+
     if (operator === 'is_true' || isTrue) return itemValue === true;
     if (operator === 'is_false' || isFalse) return itemValue === false;
-    
+
     // For general 'equals' fallback if used directly
     const filterBool = String(filterValue) === 'true';
     if (operator === 'equals') return itemValue === filterBool;
@@ -113,25 +127,32 @@ export function evaluateCondition(itemValue: unknown, operator: FilterOperator, 
   // Number / Currency / Percentage evaluation
   if (['number', 'currency', 'percentage'].includes(dataType)) {
     const val = Number(itemValue);
-    
+
     if (operator === 'between') {
       const from = Number((filterValue as Record<string, unknown>)?.from);
       const to = Number((filterValue as Record<string, unknown>)?.to);
       if (isNaN(from) || isNaN(to)) return false;
       return val >= from && val <= to;
     }
-    
+
     const filterVal = Number(filterValue);
     if (isNaN(filterVal)) return false;
 
     switch (operator) {
-      case 'equals': return val === filterVal;
-      case 'not_equals': return val !== filterVal;
-      case 'gt': return val > filterVal;
-      case 'lt': return val < filterVal;
-      case 'gte': return val >= filterVal;
-      case 'lte': return val <= filterVal;
-      default: return false;
+      case 'equals':
+        return val === filterVal;
+      case 'not_equals':
+        return val !== filterVal;
+      case 'gt':
+        return val > filterVal;
+      case 'lt':
+        return val < filterVal;
+      case 'gte':
+        return val >= filterVal;
+      case 'lte':
+        return val <= filterVal;
+      default:
+        return false;
     }
   }
 
@@ -139,9 +160,11 @@ export function evaluateCondition(itemValue: unknown, operator: FilterOperator, 
   if (['date', 'datetime', 'time'].includes(dataType)) {
     if (!itemValue) return false;
     const valDate = new Date(itemValue as string | number | Date).getTime();
-    
+
     if (operator === 'between') {
-      const from = new Date((filterValue as Record<string, string | number | Date>)?.from).getTime();
+      const from = new Date(
+        (filterValue as Record<string, string | number | Date>)?.from,
+      ).getTime();
       const to = new Date((filterValue as Record<string, string | number | Date>)?.to).getTime();
       if (isNaN(from) || isNaN(to) || isNaN(valDate)) return false;
       return valDate >= from && valDate <= to;
@@ -151,17 +174,24 @@ export function evaluateCondition(itemValue: unknown, operator: FilterOperator, 
     if (isNaN(filterDate) || isNaN(valDate)) return false;
 
     switch (operator) {
-      case 'equals': return valDate === filterDate;
-      case 'not_equals': return valDate !== filterDate;
+      case 'equals':
+        return valDate === filterDate;
+      case 'not_equals':
+        return valDate !== filterDate;
       case 'before':
-      case 'lt': return valDate < filterDate;
+      case 'lt':
+        return valDate < filterDate;
       case 'after':
-      case 'gt': return valDate > filterDate;
+      case 'gt':
+        return valDate > filterDate;
       case 'on_or_before':
-      case 'lte': return valDate <= filterDate;
+      case 'lte':
+        return valDate <= filterDate;
       case 'on_or_after':
-      case 'gte': return valDate >= filterDate;
-      default: return false;
+      case 'gte':
+        return valDate >= filterDate;
+      default:
+        return false;
     }
   }
 
@@ -170,17 +200,26 @@ export function evaluateCondition(itemValue: unknown, operator: FilterOperator, 
   const filterVal = String(filterValue || '').toLowerCase();
 
   switch (operator) {
-    case 'contains': return val.includes(filterVal);
-    case 'not_contains': return !val.includes(filterVal);
-    case 'equals': return val === filterVal;
-    case 'not_equals': return val !== filterVal;
-    case 'starts_with': return val.startsWith(filterVal);
-    case 'ends_with': return val.endsWith(filterVal);
-    default: return true; // If unknown operator, default to true or false? Better true to not filter out if misconfigured.
+    case 'contains':
+      return val.includes(filterVal);
+    case 'not_contains':
+      return !val.includes(filterVal);
+    case 'equals':
+      return val === filterVal;
+    case 'not_equals':
+      return val !== filterVal;
+    case 'starts_with':
+      return val.startsWith(filterVal);
+    case 'ends_with':
+      return val.endsWith(filterVal);
+    default:
+      return true; // If unknown operator, default to true or false? Better true to not filter out if misconfigured.
   }
 }
 
-export const getOperatorsForType = (type: FilterDataType): { value: FilterOperator; label: string }[] => {
+export const getOperatorsForType = (
+  type: FilterDataType,
+): { value: FilterOperator; label: string }[] => {
   switch (type) {
     case 'number':
     case 'currency':

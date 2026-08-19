@@ -36,7 +36,10 @@ export class ItemsController {
   async getItemBills(req: Request, res: Response) {
     const parsed = listQuerySchema.safeParse(req.query);
     if (!parsed.success) throw ApiError.badRequest('Invalid search parameters.');
-    sendSuccess(res, await itemsService.getItemBills(req.params.id as string, req.tenantId!, parsed.data));
+    sendSuccess(
+      res,
+      await itemsService.getItemBills(req.params.id as string, req.tenantId!, parsed.data),
+    );
   }
 
   async createItem(req: Request, res: Response) {

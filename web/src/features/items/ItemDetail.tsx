@@ -77,7 +77,8 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
         const batchTotal = Array.isArray(row.batches)
           ? row.batches.reduce((bAcc, b) => bAcc + (Number(b.quantityIn) || 0), 0)
           : 0;
-        const stockOnHand = Number(row.stockOnHand ?? row.openingStock ?? batchTotal) || batchTotal || 0;
+        const stockOnHand =
+          Number(row.stockOnHand ?? row.openingStock ?? batchTotal) || batchTotal || 0;
         return acc + stockOnHand;
       }, 0);
     }
@@ -510,12 +511,11 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                   <span style={{ fontSize: '14px', color: '#0062ff', fontWeight: 500 }}>
                     Opening Stock
                   </span>
-                  <span title="Total opening stock" style={{ display: 'inline-flex', alignItems: 'center' }}>
-                    <HelpCircle
-                      size={14}
-                      color="#64748b"
-                      style={{ cursor: 'pointer' }}
-                    />
+                  <span
+                    title="Total opening stock"
+                    style={{ display: 'inline-flex', alignItems: 'center' }}
+                  >
+                    <HelpCircle size={14} color="#64748b" style={{ cursor: 'pointer' }} />
                   </span>
                   <span
                     style={{
@@ -549,12 +549,11 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                     >
                       Accounting Stock
                     </h3>
-                    <span title="Accounting stock summary" style={{ display: 'inline-flex', alignItems: 'center' }}>
-                      <HelpCircle
-                        size={14}
-                        color="#64748b"
-                        style={{ cursor: 'pointer' }}
-                      />
+                    <span
+                      title="Accounting stock summary"
+                      style={{ display: 'inline-flex', alignItems: 'center' }}
+                    >
+                      <HelpCircle size={14} color="#64748b" style={{ cursor: 'pointer' }} />
                     </span>
                   </div>
 
@@ -653,12 +652,11 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                     >
                       Physical Stock
                     </h3>
-                    <span title="Physical stock summary" style={{ display: 'inline-flex', alignItems: 'center' }}>
-                      <HelpCircle
-                        size={14}
-                        color="#64748b"
-                        style={{ cursor: 'pointer' }}
-                      />
+                    <span
+                      title="Physical stock summary"
+                      style={{ display: 'inline-flex', alignItems: 'center' }}
+                    >
+                      <HelpCircle size={14} color="#64748b" style={{ cursor: 'pointer' }} />
                     </span>
                   </div>
 

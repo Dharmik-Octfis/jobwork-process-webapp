@@ -489,10 +489,7 @@ export class ItemsService {
             organization_id: organizationId,
             isDeleted: false,
             // Search applied to the bill level
-            ...searchWhere<Prisma.BillWhereInput>(opts.search, [
-              'bill_number',
-              'status',
-            ]),
+            ...searchWhere<Prisma.BillWhereInput>(opts.search, ['bill_number', 'status']),
           },
         },
         orderBy: { bill: { bill_date: 'desc' } },
@@ -508,10 +505,10 @@ export class ItemsService {
       });
 
       const paginated = pageSlice(rows, page, perPage);
-      
+
       return {
         ...paginated,
-        results: paginated.results.map(row => ({
+        results: paginated.results.map((row) => ({
           id: row.id,
           billId: row.bill?.id,
           billDate: row.bill?.bill_date,
@@ -1034,10 +1031,9 @@ export class ItemsService {
         const rows = locRow.batches ?? [];
         for (const b of rows) {
           if (Number(b.quantityIn === '' ? 0 : (b.quantityIn ?? 0)) <= 0) {
-            throw ApiError.badRequest(
-              'Batch quantity must be greater than zero.',
-              { batches: 'All batches must have a quantity greater than zero.' }
-            );
+            throw ApiError.badRequest('Batch quantity must be greater than zero.', {
+              batches: 'All batches must have a quantity greater than zero.',
+            });
           }
         }
         const batchTotal = rows.reduce((sum, b) => sum + Number(b.quantityIn), 0);

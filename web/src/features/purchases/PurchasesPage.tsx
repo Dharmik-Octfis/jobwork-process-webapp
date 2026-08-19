@@ -5,7 +5,7 @@ import { BillsList } from './bills/BillsList';
 export function PurchasesPage() {
   const location = useLocation();
   const isBillsRoute = location.pathname.includes('/bills');
-  
+
   if (isBillsRoute) {
     return <BillsList />;
   }

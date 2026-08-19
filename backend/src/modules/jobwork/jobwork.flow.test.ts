@@ -2044,22 +2044,24 @@ describe('jobwork — FIFO allocation for untracked items', () => {
 });
 
 /**
- * 🔴 THE DISPATCH SITE — what counts as one premises (2026-08-14).
+ * 🔴 ONE CHALLAN, ONE LOCATION (2026-08-19).
  *
- * A Rule 55 job-work challan carries ONE dispatched-from address, so whether two
- * godowns may share a challan is a question about the physical site. Customers
- * differ — a compound with three racks, a company with two branches, plenty with
- * both — and the answer is DERIVED from `Location.parentId` rather than
- * configured, because a setting would put that question to every customer and get
- * answered wrong by most.
+ * This REPLACED the dispatch-site rule of 2026-08-14, which resolved the header's
+ * location to the root of its `Location.parentId` chain and let the challan draw
+ * from every location sharing that root. Two things were wrong with it: picking a
+ * rack handed you its SIBLINGS, which is stock from a place the challan does not
+ * name, and the rule took a paragraph to explain.
  *
- *   dispatch site = the root of a location's ancestor chain
+ * The rule is now the one sentence a user can hold in their head — the batches are
+ * the ones at the location you picked — which is also what Zoho, Tally and Odoo
+ * do, and what `Location` already implies here: every row carries its own address
+ * block, so a Location IS an addressable premises.
  *
- * These pin both halves. If the first fails the picker is back to showing one rack
- * of a compound and calling it everything; if the second fails a challan can carry
- * goods from two addresses, which is paperwork that does not match the lorry.
+ * These pin all three halves of it. Siblings are out of reach; a PARENT does not
+ * reach into its children either (the deliberate choice of exact-match over
+ * picked-plus-descendants); and a flat org, which is most of them, is untouched.
  */
-describe('jobwork — one challan, one dispatch site', () => {
+describe('jobwork — one challan, one location', () => {
   /** A root location with `children` godowns under it — the shape a compound has. */
   const makeSite = async (childCount: number) =>
     runAsTenant(orgId, async (tx) => {
@@ -2117,28 +2119,65 @@ describe('jobwork — one challan, one dispatch site', () => {
     return jobOrder.steps[0]!.id;
   };
 
-  it('draws from every godown under ONE site on a single challan', async () => {
-    const { rootId, children } = await makeSite(2);
+  it('draws ONLY from the location named — a sibling godown is out of reach', async () => {
+    const { children } = await makeSite(2);
     const itemId = await untrackedItem();
     await seedStock(itemId, 30, { locationId: children[0] });
     await seedStock(itemId, 30, { locationId: children[1] });
 
-    // 50 against 30 + 30 sitting in two different racks. Neither rack alone
-    // covers it; the site does.
-    const issue = await createNewJobIssue(orgId, {
-      jobOrderStepId: await stepFor(itemId),
-      sourceLocationId: rootId,
-      lines: [{ itemId, qty: 50 }],
-    });
+    // ONE step for both halves: the refused call writes nothing, so the step is
+    // still clean for the second — and it makes the pair a sharper statement,
+    // since the only thing that differs between them is the quantity.
+    const stepId = await stepFor(itemId);
 
-    const fromRacks = new Set(issue.lines.map((line) => line.sourceLocationId));
-    expect(fromRacks.has(children[0]!)).toBe(true);
-    expect(fromRacks.has(children[1]!)).toBe(true);
-    // 🔴 The header still names ONE dispatch address — that is what prints.
-    expect(issue.sourceLocationId).toBe(rootId);
+    // 50 against 30 + 30 in two racks of one compound. Under the site rule this
+    // SUCCEEDED, spanning both racks. It is now refused: the challan goes out of
+    // rack 0, and rack 0 holds 30.
+    await expect(
+      createNewJobIssue(orgId, {
+        jobOrderStepId: stepId,
+        sourceLocationId: children[0]!,
+        lines: [{ itemId, qty: 50 }],
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+
+    // …and what that one rack does hold goes out of it, naming it on the line.
+    const issue = await createNewJobIssue(orgId, {
+      jobOrderStepId: stepId,
+      sourceLocationId: children[0]!,
+      lines: [{ itemId, qty: 30 }],
+    });
+    expect(issue.lines).toHaveLength(1);
+    expect(issue.lines[0]!.sourceLocationId).toBe(children[0]);
+    expect(issue.sourceLocationId).toBe(children[0]);
   });
 
-  it('refuses stock from a SECOND site — that is a second address', async () => {
+  it('a PARENT does not reach the stock inside its children', async () => {
+    /**
+     * 🔴 THE CHOICE MADE ON 2026-08-19, and the reason this test exists.
+     *
+     * The alternative on the table was "picked location PLUS its descendants", so
+     * that naming Head Office gathered up every rack inside it. Exact match won:
+     * it is the narrower rule, so widening to descendants later stays possible,
+     * and it never puts stock on a challan from a place the user did not name.
+     *
+     * If this test starts failing, that decision has been reversed — which is a
+     * choice to make on purpose, not a bug to fix in passing.
+     */
+    const { rootId, children } = await makeSite(1);
+    const itemId = await untrackedItem();
+    await seedStock(itemId, 25, { locationId: children[0] });
+
+    await expect(
+      createNewJobIssue(orgId, {
+        jobOrderStepId: await stepFor(itemId),
+        sourceLocationId: rootId,
+        lines: [{ itemId, qty: 25 }],
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('refuses stock standing at another location — that is a second address', async () => {
     const siteA = await makeSite(1);
     const siteB = await makeSite(1);
     const itemId = await untrackedItem();
@@ -2156,7 +2195,7 @@ describe('jobwork — one challan, one dispatch site', () => {
     ).rejects.toMatchObject({ status: 400 });
   });
 
-  it('a FLAT setup behaves exactly as it did before sites existed', async () => {
+  it('a FLAT setup is untouched — a location was always its own scope there', async () => {
     // No parents anywhere: every location is its own root, so a location is a
     // site. This is every existing organization, and it must not change meaning.
     const loneA = await runAsTenant(orgId, (tx) =>

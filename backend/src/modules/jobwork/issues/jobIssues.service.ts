@@ -12,7 +12,6 @@ import {
   postMovement,
   type Ownership,
 } from '../../inventory/stock-ledger/stockLedger.service.ts';
-import { resolveDispatchSite } from '../../settings/configuration/locations/locationSites.ts';
 import { assertLocationsBelongToOrg, resolveProcessorName } from '../jobwork.refs.ts';
 import { SOURCE_DOC_TYPES, runAsDocument, type ProcessorType } from '../jobwork.types.ts';
 import { chainNotReady, recomputeStep } from '../job-orders/jobOrders.status.ts';
@@ -294,8 +293,8 @@ interface ResolvedLineItem {
   itemId: string;
   uomId: string | null;
   batchId: string | null;
-  /** The godown the client picked this row from. Null means "the header's
-   * dispatch location", which is what a single-godown site always means. */
+  /** The godown the client picked this row from. Null means the header's, which
+   * since 2026-08-19 is the only location a line may name anyway. */
   sourceLocationId: string | null;
   qty: number;
 }
@@ -304,8 +303,9 @@ interface ResolvedLineItem {
  * batch AND the godown it is coming out of. */
 interface ResolvedIssueLine extends Omit<ResolvedLineItem, 'qty' | 'batchId'> {
   batchId: string;
-  /** 🔴 Where this line physically leaves from — not necessarily the header's
-   * dispatch point, which is only the address on the challan. */
+  /** Where this line physically leaves from. Equal to the header's location under
+   * the one-location rule; kept per line because the ledger posts from here and a
+   * copy that cannot disagree is cheaper than a join that can. */
   sourceLocationId: string;
   qty: Prisma.Decimal;
 }
@@ -366,21 +366,39 @@ async function resolveLines(
   const itemIds = new Set(lines.map((line) => line.itemId));
 
   /**
-   * 🔴 THE WHOLE DISPATCH SITE, not the single location on the header
-   * (2026-08-14).
+   * 🔴 ONE CHALLAN, ONE LOCATION — exactly the one on the header (2026-08-19).
    *
-   * The header's location is the address the challan is dispatched from; the
-   * goods may sit in any godown under that same site. Scoping availability to one
-   * location was what made the picker look like it was hiding stock — it was
-   * showing one rack of a compound and calling it everything.
+   * This REPLACED the dispatch-site rule of 2026-08-14, which resolved the
+   * header's location to the root of its `parentId` chain and let the challan
+   * draw from every location sharing that root. That handed the user stock from
+   * a SIBLING they never named: pick Godown A and Godown B's rolls were on offer.
    *
-   * Crossing to ANOTHER site is still refused below: that is a second address, and
-   * a Rule 55 challan carries one.
+   * The rule is now the simplest one that can be stated in a sentence — the
+   * batches are the ones at the location you picked — and it is what every
+   * comparable product does (Zoho's delivery challan, Tally's godown, Odoo's
+   * source location). It also follows from how `Location` is modelled here:
+   * every row carries its own address block, so a Location is an addressable
+   * premises, and a Rule 55 challan carries one dispatched-from address.
+   *
+   * TWO CONSEQUENCES, BOTH DELIBERATE:
+   *   - Material in a neighbouring godown needs its OWN challan, even inside one
+   *     compound. More documents, but each one describes a real dispatch.
+   *   - FIFO queues within this location only. Older stock next door is out of
+   *     reach — correct, since it is not here — which is why the shortfall
+   *     message below has to NAME the location rather than say "this site".
+   *
+   * Narrowing is the reversible direction: widening back to a subtree is one
+   * line, and every challan raised under the old rule stays valid history.
    */
-  const site = await resolveDispatchSite(tx, organizationId, context.locationId);
+  const location = await tx.location.findFirst({
+    where: { id: context.locationId, organizationId, isDeleted: false },
+    select: { name: true },
+  });
+  const locationName = location?.name ?? 'this location';
 
-  // Keyed by batch AND location: one batch can hold stock in two racks of a site,
-  // and they are two separate offers with two separate balances.
+  // Still keyed by batch AND location. One location now, but `getAvailableBatches`
+  // returns rows per (batch, location) and the ledger posts from exactly that
+  // pair — collapsing the key would only hide a mismatch between the two.
   const availableByKey = new Map<string, AvailableRow>();
   const keyOf = (batchId: string, locationId: string) => `${batchId}@${locationId}`;
 
@@ -388,7 +406,7 @@ async function resolveLines(
     for (const row of await getAvailableBatches(tx, {
       organizationId,
       itemId,
-      locationIds: site.locationIds,
+      locationId: context.locationId,
       ownership: context.ownership,
     })) {
       availableByKey.set(keyOf(row.batchId, row.locationId), row);
@@ -424,9 +442,10 @@ async function resolveLines(
    *
    * `createdAt` remains the tie-break, for a batch with no inward row yet.
    *
-   * 🔴 THE QUEUE SPANS THE WHOLE SITE. That is the point of the site rule: older
-   * material in the next rack is issued before newer material in this one, which
-   * is what FIFO means and what a per-location queue could not see.
+   * 🔴 THE QUEUE IS THIS LOCATION'S ONLY (2026-08-19). Older material in the next
+   * godown is NOT reached, because it is not what this challan is dispatching —
+   * it needs its own. FIFO is a rule about the order stock leaves a place, not a
+   * licence to leave from a different one.
    */
   const fifoByItem = new Map<string, AvailableRow[]>();
   if (availableByKey.size > 0) {
@@ -505,8 +524,8 @@ async function resolveLines(
 
         const take = remaining.lessThan(spare) ? remaining : spare;
         takenByKey.set(key, already.plus(take));
-        // Each slice remembers the godown it came out of — the challan may span
-        // several within the site, and the ledger posts from exactly here.
+        // Each slice still records its godown — one location now, but the ledger
+        // posts from exactly here and it must not have to infer it.
         resolved.push({
           ...line,
           batchId: row.batchId,
@@ -517,43 +536,48 @@ async function resolveLines(
       }
 
       if (remaining.greaterThan(0)) {
-        // Named in the item's own terms and across the whole site, because that is
-        // what was searched. The user never saw a batch here, so an error about
-        // batches would describe machinery they have no view of.
+        // Named in the item's own terms and AT THE LOCATION, because that is the
+        // only place searched — saying "this site" would describe stock the rule
+        // no longer lets this challan touch. The user never saw a batch here, so
+        // an error about batches would describe machinery they have no view of.
         const onHand = queue.reduce((sum, b) => sum.plus(b.availableQty), ZERO);
         throw new ApiError(
           400,
-          `${item?.name ?? 'This item'} has ${onHand.toString()} available at this site, ` +
-            `but ${line.qty} is being issued. Add the stock first.`,
-          { [`lines.${index}.qty`]: `Only ${onHand.toString()} is available here.` },
+          `${item?.name ?? 'This item'} has ${onHand.toString()} available at ${locationName}, ` +
+            `but ${line.qty} is being issued. Issue it from the location holding it, or add the stock first.`,
+          { [`lines.${index}.qty`]: `Only ${onHand.toString()} is available at ${locationName}.` },
         );
       }
       continue;
     }
 
     /**
-     * 🔴 A PICKED BATCH NAMES ITS GODOWN TOO. The picker offers one row per
-     * (batch, location), so the client sends the location back; without it a batch
-     * sitting in two racks of one site would be ambiguous and the ledger would
-     * guess which rack the goods left.
+     * A picked batch names its godown too. It can now only ever be the header's,
+     * so this reads as a formality — but it is what makes the check below able to
+     * SAY the batch is somewhere else, rather than reporting it as missing stock.
      */
     const pickedLocationId = line.sourceLocationId ?? context.locationId;
 
     /**
-     * 🔴 ONE CHALLAN, ONE DISPATCH SITE. A Rule 55 challan carries a single
-     * dispatched-from address, so goods leaving a different premises need their
-     * own document.
+     * 🔴 ONE CHALLAN, ONE LOCATION. A Rule 55 challan carries a single
+     * dispatched-from address, so goods standing anywhere else need their own
+     * document.
+     *
+     * The commonest way to reach this is not a hand-made payload: it is the user
+     * changing the source location with batches already allocated, so the dialog
+     * confirms and clears that selection first. This is the guarantee under it —
+     * the UI is the convenience, the 400 is the rule.
      *
      * Checked explicitly rather than left to fall through the availability lookup
      * below: that would refuse it too, but with "no stock available here", which
      * sends the user hunting for a stock problem that does not exist.
      */
-    if (!site.locationIds.includes(pickedLocationId)) {
+    if (pickedLocationId !== context.locationId) {
       throw new ApiError(
         400,
-        'One of the selected batches is at a different site. A challan carries one ' +
-          'dispatch address, so stock from another site needs its own challan.',
-        { [`lines.${index}.sourceLocationId`]: 'Belongs to a different site.' },
+        `One of the selected batches is not at ${locationName}. A challan goes out of one ` +
+          'location, so stock standing elsewhere needs its own challan.',
+        { [`lines.${index}.sourceLocationId`]: `Not at ${locationName}.` },
       );
     }
 
@@ -826,8 +850,9 @@ export async function createNewJobIssue(
           itemId: line.itemId,
           uomId: line.uomId,
           batchId: line.batchId,
-          // 🔴 The godown this line actually left. The header's is the dispatch
-          // ADDRESS on the challan; within one site the two can differ.
+          // The godown this line actually left — the header's, under the
+          // one-location rule. Written per line because the ledger and every
+          // stock-by-location read join through here, not through the header.
           sourceLocationId: line.sourceLocationId,
           qty: line.qty,
           createdBy: userId ?? null,

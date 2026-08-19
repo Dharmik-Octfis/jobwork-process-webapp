@@ -60,7 +60,10 @@ export const itemsApi = {
   },
 
   fetchItemBills: async (orgId: string, id: string, params: PageParams = {}) => {
-    const response = await apiClient.get(`${endpoints.seedData.items(orgId)}/${id}/transactions/bills`, { params });
+    const response = await apiClient.get(
+      `${endpoints.seedData.items(orgId)}/${id}/transactions/bills`,
+      { params },
+    );
     return response.data;
   },
 

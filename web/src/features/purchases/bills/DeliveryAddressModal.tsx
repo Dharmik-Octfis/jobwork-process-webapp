@@ -85,24 +85,27 @@ export function DeliveryAddressModal({
         </div>
 
         {/* Compact Body */}
-        <div style={{ padding: '12px 16px', overflowY: 'auto', flex: 1, backgroundColor: '#f9fafb' }}>
+        <div
+          style={{ padding: '12px 16px', overflowY: 'auto', flex: 1, backgroundColor: '#f9fafb' }}
+        >
           {deliveryType === 'Location' && (
             <div>
               {locations.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '20px 0', color: '#666', fontSize: '13px' }}>
+                <div
+                  style={{
+                    textAlign: 'center',
+                    padding: '20px 0',
+                    color: '#666',
+                    fontSize: '13px',
+                  }}
+                >
                   No locations available.
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {locations.map((loc) => {
                     const isSelected = selectedLocationId === loc.id;
-                    const addressString = [
-                      loc.street1,
-                      loc.street2,
-                      loc.city,
-                      loc.state,
-                      loc.zip,
-                    ]
+                    const addressString = [loc.street1, loc.street2, loc.city, loc.state, loc.zip]
                       .filter(Boolean)
                       .join(', ');
 
@@ -122,15 +125,30 @@ export function DeliveryAddressModal({
                           transition: 'all 0.15s ease',
                         }}
                       >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '4px',
+                          }}
+                        >
                           <span style={{ fontWeight: 600, fontSize: '13px', color: '#1e293b' }}>
                             {loc.name}
                           </span>
                           {isSelected && <Check size={16} color="#0062ff" />}
                         </div>
                         <div style={{ fontSize: '12px', color: '#64748b', lineHeight: '1.4' }}>
-                          {addressString || <span style={{ fontStyle: 'italic', color: '#94a3b8' }}>No address details</span>}
-                          {loc.phone && <div style={{ marginTop: '2px', color: '#475569' }}>Ph: {loc.phone}</div>}
+                          {addressString || (
+                            <span style={{ fontStyle: 'italic', color: '#94a3b8' }}>
+                              No address details
+                            </span>
+                          )}
+                          {loc.phone && (
+                            <div style={{ marginTop: '2px', color: '#475569' }}>
+                              Ph: {loc.phone}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -143,7 +161,14 @@ export function DeliveryAddressModal({
           {deliveryType === 'Customer' && (
             <div>
               {customers.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '20px 0', color: '#666', fontSize: '13px' }}>
+                <div
+                  style={{
+                    textAlign: 'center',
+                    padding: '20px 0',
+                    color: '#666',
+                    fontSize: '13px',
+                  }}
+                >
                   No customers available.
                 </div>
               ) : (
@@ -176,15 +201,30 @@ export function DeliveryAddressModal({
                           transition: 'all 0.15s ease',
                         }}
                       >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '4px',
+                          }}
+                        >
                           <span style={{ fontWeight: 600, fontSize: '13px', color: '#1e293b' }}>
                             {cust.contactName}
                           </span>
                           {isSelected && <Check size={16} color="#0062ff" />}
                         </div>
                         <div style={{ fontSize: '12px', color: '#64748b', lineHeight: '1.4' }}>
-                          {addressString || <span style={{ fontStyle: 'italic', color: '#94a3b8' }}>No shipping address details</span>}
-                          {cust.shippingPhone && <div style={{ marginTop: '2px', color: '#475569' }}>Ph: {cust.shippingPhone}</div>}
+                          {addressString || (
+                            <span style={{ fontStyle: 'italic', color: '#94a3b8' }}>
+                              No shipping address details
+                            </span>
+                          )}
+                          {cust.shippingPhone && (
+                            <div style={{ marginTop: '2px', color: '#475569' }}>
+                              Ph: {cust.shippingPhone}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );

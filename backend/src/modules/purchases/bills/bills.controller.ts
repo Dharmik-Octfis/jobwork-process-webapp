@@ -92,7 +92,7 @@ export async function uploadAttachments(req: Request, res: Response) {
         size: file.size,
         type: file.mimetype,
       };
-    })
+    }),
   );
 
   sendSuccess(res, results, 'Attachments uploaded successfully.');

@@ -15,11 +15,19 @@ export function BillActivityTimeline({ orgId, poId }: BillActivityTimelineProps)
   });
 
   if (isLoading) {
-    return <div style={{ padding: '24px', color: '#64748b', textAlign: 'center' }}>Loading activity history...</div>;
+    return (
+      <div style={{ padding: '24px', color: '#64748b', textAlign: 'center' }}>
+        Loading activity history...
+      </div>
+    );
   }
 
   if (!activities || activities.length === 0) {
-    return <div style={{ padding: '24px', color: '#64748b', textAlign: 'center' }}>No activity history recorded yet.</div>;
+    return (
+      <div style={{ padding: '24px', color: '#64748b', textAlign: 'center' }}>
+        No activity history recorded yet.
+      </div>
+    );
   }
 
   return (
@@ -58,7 +66,9 @@ export function BillActivityTimeline({ orgId, poId }: BillActivityTimelineProps)
           {activities.map((activity) => {
             const formattedDate = format(new Date(activity.createdAt), 'dd-MM-yyyy hh:mm a');
             const titleText = activity.title || activity.description || 'Activity recorded';
-            const userDisplayName = activity.performedBy ? activity.performedBy.replace(/\s*\(User\)$/i, '') : null;
+            const userDisplayName = activity.performedBy
+              ? activity.performedBy.replace(/\s*\(User\)$/i, '')
+              : null;
 
             return (
               <tr key={activity.id} style={{ borderBottom: '1px solid #eef0f3' }}>
@@ -85,9 +95,10 @@ export function BillActivityTimeline({ orgId, poId }: BillActivityTimelineProps)
                     {titleText.endsWith('.') ? titleText : `${titleText}.`}
                   </span>
                   {activity.performedBy && (
-                  <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
-                    by {activity.performedBy} - <span style={{ color: '#60a5fa', cursor: 'pointer' }}>{userDisplayName}</span>
-                  </div>
+                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
+                      by {activity.performedBy} -{' '}
+                      <span style={{ color: '#60a5fa', cursor: 'pointer' }}>{userDisplayName}</span>
+                    </div>
                   )}
                 </td>
               </tr>
