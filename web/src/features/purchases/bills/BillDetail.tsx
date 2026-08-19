@@ -679,40 +679,14 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                             ₹{Number((item as Record<string, unknown>).item_total || item.amount || 0).toFixed(2)}
                           </td>
                         </tr>
-                        {item.batches && item.batches.length > 0 && (
-                          <tr style={{ borderBottom: '1px solid #f1f5f9', background: '#fafafa' }}>
-                            <td colSpan={6} style={{ padding: '0px 12px 14px 40px' }}>
-                              <div style={{ fontSize: '10px', fontWeight: 600, color: '#64748b', marginBottom: '6px', textTransform: 'uppercase' }}>BATCH DETAILS</div>
-                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
-                                <thead style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                                  <tr>
-                                    <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: '#475569' }}>Supplier Batch Ref</th>
-                                    <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: '#475569' }}>Manufacturer Batch#</th>
-                                    <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: '#475569' }}>Mfg. Date</th>
-                                    <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: '#475569' }}>Expiry Date</th>
-                                    <th style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600, color: '#475569' }}>Quantity In</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {item.batches.map((batch, bIndex) => (
-                                    <tr key={bIndex} style={{ borderBottom: bIndex < item.batches!.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                                      <td style={{ padding: '6px 10px', color: '#1e293b' }}>{batch.supplierBatchRef || '-'}</td>
-                                      <td style={{ padding: '6px 10px', color: '#1e293b' }}>{batch.manufacturerBatch || '-'}</td>
-                                      <td style={{ padding: '6px 10px', color: '#475569' }}>{batch.manufacturedDate ? format(new Date(batch.manufacturedDate), 'dd-MMM-yyyy') : '-'}</td>
-                                      <td style={{ padding: '6px 10px', color: '#475569' }}>{batch.expiryDate ? format(new Date(batch.expiryDate), 'dd-MMM-yyyy') : '-'}</td>
-                                      <td style={{ padding: '6px 10px', color: '#1e293b', textAlign: 'right', fontWeight: 500 }}>{batch.quantity}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </td>
-                          </tr>
-                        )}
+
                       </Fragment>
                     );
                   })}
                 </tbody>
               </table>
+
+
 
               {/* Totals & Notes Section */}
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '32px', borderTop: '1px solid #f1f5f9', paddingTop: '20px' }}>
@@ -765,6 +739,58 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                   </div>
                 </div>
               </div>
+
+              {/* BATCH DETAILS SECTION */}
+              {(po.line_items || []).some(item => item.batches && item.batches.length > 0) && (
+                <div
+                  style={{
+                    borderTop: '1px solid #f1f5f9',
+                    paddingTop: '24px',
+                    marginTop: '24px',
+                  }}
+                >
+                  <h3 style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>BATCH DETAILS</h3>
+                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '6px', overflow: 'hidden' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                          <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', width: '20%' }}>ITEM</th>
+                          <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b' }}>SUPPLIER BATCH REF</th>
+                          <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b' }}>MANUFACTURER BATCH#</th>
+                          <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b' }}>MFG. DATE</th>
+                          <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b' }}>EXPIRY DATE</th>
+                          <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600, color: '#64748b' }}>QUANTITY</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(po.line_items || []).filter(item => item.batches && item.batches.length > 0).map((item, itemIndex, arr) => {
+                          const isLastItem = itemIndex === arr.length - 1;
+                          return item.batches!.map((batch, bIndex) => {
+                            const isFirstBatch = bIndex === 0;
+                            const isLastBatch = bIndex === item.batches!.length - 1;
+                            const needsBottomBorder = !isLastItem || !isLastBatch;
+                            
+                            return (
+                              <tr key={`${item.id}-${bIndex}`} style={{ borderBottom: needsBottomBorder ? '1px solid #f1f5f9' : 'none' }}>
+                                {isFirstBatch && (
+                                  <td rowSpan={item.batches!.length} style={{ padding: '12px 16px', color: '#0f172a', fontWeight: 500, verticalAlign: 'top', borderRight: '1px solid #f1f5f9', background: '#fff' }}>
+                                    {item.item?.name || 'Item'}
+                                  </td>
+                                )}
+                                <td style={{ padding: '12px 16px', color: '#1e293b' }}>{batch.supplierBatchRef || '-'}</td>
+                                <td style={{ padding: '12px 16px', color: '#1e293b' }}>{batch.manufacturerBatch || '-'}</td>
+                                <td style={{ padding: '12px 16px', color: '#475569' }}>{batch.manufacturedDate ? format(new Date(batch.manufacturedDate), 'dd-MMM-yyyy') : '-'}</td>
+                                <td style={{ padding: '12px 16px', color: '#475569' }}>{batch.expiryDate ? format(new Date(batch.expiryDate), 'dd-MMM-yyyy') : '-'}</td>
+                                <td style={{ padding: '12px 16px', color: '#0f172a', textAlign: 'right', fontWeight: 600 }}>{batch.quantity}</td>
+                              </tr>
+                            );
+                          });
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -897,6 +923,8 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                 </tbody>
               </table>
 
+
+
               {/* PDF Totals & Signatures Grid */}
               <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #000', fontSize: '11px' }}>
                 <tbody>
@@ -935,6 +963,46 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                   </tr>
                 </tbody>
               </table>
+
+              {/* PDF Batch Details Section */}
+              {(po.line_items || []).some(item => item.batches && item.batches.length > 0) && (
+                <div style={{ marginTop: '16px', marginBottom: '8px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#000', marginBottom: '6px' }}>BATCH DETAILS</div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #000', fontSize: '10px' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #000' }}>
+                        <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #000', width: '25%' }}>Item</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #000' }}>Supplier Batch Ref</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #000' }}>Manufacturer Batch#</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #000' }}>Mfg. Date</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #000' }}>Expiry Date</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'right' }}>Quantity</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(po.line_items || []).filter(item => item.batches && item.batches.length > 0).map((item) => {
+                        return item.batches!.map((batch, bIndex) => {
+                          const isFirstBatch = bIndex === 0;
+                          return (
+                            <tr key={`${item.id}-${bIndex}`} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                              {isFirstBatch && (
+                                <td rowSpan={item.batches!.length} style={{ padding: '6px 8px', borderRight: '1px solid #000', verticalAlign: 'top', fontWeight: 600 }}>
+                                  {item.item?.name || 'Item'}
+                                </td>
+                              )}
+                              <td style={{ padding: '6px 8px', borderRight: '1px solid #000' }}>{batch.supplierBatchRef || '-'}</td>
+                              <td style={{ padding: '6px 8px', borderRight: '1px solid #000' }}>{batch.manufacturerBatch || '-'}</td>
+                              <td style={{ padding: '6px 8px', borderRight: '1px solid #000' }}>{batch.manufacturedDate ? format(new Date(batch.manufacturedDate), 'dd-MMM-yyyy') : '-'}</td>
+                              <td style={{ padding: '6px 8px', borderRight: '1px solid #000' }}>{batch.expiryDate ? format(new Date(batch.expiryDate), 'dd-MMM-yyyy') : '-'}</td>
+                              <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600 }}>{batch.quantity}</td>
+                            </tr>
+                          );
+                        });
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -154,6 +154,11 @@ export function AddBillBatchesModal({
       return;
     }
 
+    if (!matches && !overwrite) {
+      toast.error(`Please allocate exactly ${formatQty(lineQty)} ${uomLabel} or choose to overwrite the line item quantity.`);
+      return;
+    }
+
     const nextBatches = validBatches.map((b) => ({
       ...b,
       supplierBatchRef: b.supplierBatchRef || undefined,

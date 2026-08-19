@@ -445,7 +445,7 @@ export function CreateBill() {
   }, [computedSubTotal, computedTotalAmount, setValue]);
 
   const { data: preference } = useQuery({
-    queryKey: ['po-number-preference', orgId],
+    queryKey: ['bill-number-preference', orgId],
     queryFn: () => fetchBillNumberPreference(orgId!),
     enabled: !!orgId,
   });
@@ -469,7 +469,7 @@ export function CreateBill() {
     mutationFn: (data: { prefix: string; nextNumber: number }) =>
       updateBillNumberPreference(orgId!, data),
     onSuccess: (data) => {
-      queryClient.setQueryData(['po-number-preference', orgId], data);
+      queryClient.setQueryData(['bill-number-preference', orgId], data);
       setValue('bill_number', `${data.prefix}${data.nextNumber.toString().padStart(5, '0')}`);
       setPoPrefix(data.prefix);
       setIsNumberConfigOpen(false);
@@ -492,7 +492,7 @@ export function CreateBill() {
         queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId, fromPo] });
         queryClient.invalidateQueries({ queryKey: ['purchaseOrders', orgId] });
       }
-      queryClient.invalidateQueries({ queryKey: ['po-number-preference', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['bill-number-preference', orgId] });
       navigate(`/organizations/${orgId}/purchases/bills${isEdit && id ? `?id=${id}` : ''}`);
     },
     onError: (error: AxiosError<{ message?: string }>) => {
@@ -1124,7 +1124,7 @@ export function CreateBill() {
                           <LineItemStockDisplay
                             orgId={orgId!}
                             itemId={selectedItem.id}
-                            deliveryLocationId={watchLocationId || watchDeliveryLocationId}
+                            deliveryLocationId={watchLocationId || watchDeliveryLocationId || ''}
                             locations={locations}
                             onClick={(e, rows) =>
                               setStockPopoverAnchor({ element: e.currentTarget, stockRows: rows })
@@ -1149,8 +1149,8 @@ export function CreateBill() {
                                 padding: '2px 4px',
                               }}
                             >
-                              {curItem.batches?.length
-                                ? `${curItem.batches.length} Batches Added`
+                              {curItem?.batches?.length
+                                ? `${curItem?.batches?.length} Batches Added`
                                 : '+ Add Batches'}
                             </button>
                           </div>
@@ -1786,7 +1786,7 @@ export function CreateBill() {
             watchItems[batchModalIndex].item?.stocking_uom?.code ||
             'pcs'
           }
-          locationId={watchLocationId || watchDeliveryLocationId}
+          locationId={watchLocationId || watchDeliveryLocationId || undefined}
           locationName={
             locations.find((l: Location) => l.id === (watchLocationId || watchDeliveryLocationId))?.name ||
             (watchDeliveryType !== 'Location' ? 'Customer Location' : null)
@@ -1828,7 +1828,7 @@ export function CreateBill() {
         anchorEl={stockPopoverAnchor?.element || null}
         locations={locations}
         stockRows={stockPopoverAnchor?.stockRows || []}
-        selectedLocationId={watchLocationId || watchDeliveryLocationId}
+        selectedLocationId={watchLocationId || watchDeliveryLocationId || undefined}
       />
     </div>
   );
