@@ -48,6 +48,7 @@ export const PurchaseOrderSchema = z.object({
   vendor: z.any().optional(),
   deliveryLocation: z.any().optional(),
   deliveryCustomer: z.any().optional(),
+  bills: z.array(z.any()).nullable().optional(),
 });
 
 export const purchaseOrdersPageSchema = paginatedSchema(PurchaseOrderSchema);
@@ -55,7 +56,10 @@ export type PurchaseOrdersPage = Paginated<PurchaseOrder>;
 
 export type PurchaseOrderItem = z.infer<typeof PurchaseOrderItemSchema>;
 export type PurchaseOrder = z.infer<typeof PurchaseOrderSchema>;
-export type CreatePurchaseOrderData = Omit<PurchaseOrder, 'id' | 'vendor' | 'deliveryLocation' | 'deliveryCustomer'>;
+export type CreatePurchaseOrderData = Omit<
+  PurchaseOrder,
+  'id' | 'vendor' | 'deliveryLocation' | 'deliveryCustomer'
+>;
 export type UpdatePurchaseOrderData = Partial<CreatePurchaseOrderData>;
 
 export const PurchaseOrderActivitySchema = z.object({
@@ -67,4 +71,3 @@ export const PurchaseOrderActivitySchema = z.object({
   createdAt: z.string(),
 });
 export type PurchaseOrderActivity = z.infer<typeof PurchaseOrderActivitySchema>;
-

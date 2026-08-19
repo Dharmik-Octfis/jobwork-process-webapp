@@ -178,7 +178,7 @@ export function Modal({
         display: 'flex',
         alignItems: position === 'right' ? 'center' : 'flex-start',
         justifyContent: position === 'right' ? 'flex-end' : 'center',
-        padding: position === 'right' ? '16px' : '40px 16px',
+        padding: position === 'right' ? '16px' : '0px',
         zIndex: 1100,
       }}
       // Clicking the backdrop closes; clicking inside must not bubble up to it.
@@ -200,7 +200,7 @@ export function Modal({
           boxShadow: '0 12px 40px rgba(15, 23, 42, 0.25)',
           display: 'flex',
           flexDirection: 'column',
-          maxHeight: position === 'right' ? 'calc(100vh - 32px)' : 'calc(100vh - 80px)',
+          maxHeight: position === 'right' ? 'calc(100vh - 32px)' : '100vh',
           height: position === 'right' ? 'calc(100vh - 32px)' : undefined,
           outline: 'none',
           overflow: 'hidden',

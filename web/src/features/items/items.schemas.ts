@@ -177,3 +177,20 @@ export const itemOpeningStockSchema = z.object({
 export type ItemOpeningStockBatchDto = z.infer<typeof itemOpeningStockBatchSchema>;
 export type ItemOpeningStockLocationRowDto = z.infer<typeof itemOpeningStockLocationRowSchema>;
 export type ItemOpeningStockDto = z.infer<typeof itemOpeningStockSchema>;
+
+export const itemBatchSchema = z.object({
+  id: z.string().optional(),
+  locationId: z.string(),
+  locationName: z.string().optional(),
+  batchReference: z.string().optional().nullable(),
+  manufacturerBatch: z.string().optional().nullable(),
+  manufacturedDate: z.string().optional().nullable(),
+  expiryDate: z.string().optional().nullable(),
+  quantityIn: z.union([z.string(), z.number()]).optional().nullable(),
+  quantityAvailable: z.union([z.string(), z.number()]).optional().nullable(),
+  sellingPrice: z.union([z.string(), z.number()]).optional().nullable(),
+  mrp: z.union([z.string(), z.number()]).optional().nullable(),
+  isExpired: z.boolean().optional(),
+});
+
+export type ItemBatchDto = z.infer<typeof itemBatchSchema>;

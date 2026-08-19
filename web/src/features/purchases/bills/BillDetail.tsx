@@ -15,27 +15,20 @@ interface Html2PdfOptions {
   };
 }
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  fetchPurchaseOrderById,
-  getPOSignedUrl,
-  deletePurchaseOrder,
-  type POAttachment,
-} from './purchase-orders.api';
-import { fetchPaymentTerms } from './payment-terms.api';
-import { deleteBill } from '../bills/bills.api';
+import { fetchBillById, getBillSignedUrl, deleteBill, type BillAttachment } from './bills.api';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { useParams, useNavigate } from 'react-router-dom';
 import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer } from 'lucide-react';
 import { useState, useRef, useEffect, Fragment } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
-import { PurchaseOrderComments } from './PurchaseOrderComments';
-import { PurchaseOrderActivityTimeline } from './PurchaseOrderActivityTimeline';
+import { BillComments } from './BillComments';
+import { BillActivityTimeline } from './BillActivityTimeline';
 
-function POAttachmentLink({ orgId, attachment }: { orgId: string; attachment: POAttachment }) {
+function BillAttachmentLink({ orgId, attachment }: { orgId: string; attachment: BillAttachment }) {
   const isDirectUrl = Boolean(attachment.data || attachment.url);
   const { data: signedUrl } = useQuery({
-    queryKey: ['poAttachmentSignedUrl', orgId, attachment.key],
-    queryFn: () => getPOSignedUrl(orgId, attachment.key!),
+    queryKey: ['BillAttachmentSignedUrl', orgId, attachment.key],
+    queryFn: () => getBillSignedUrl(orgId, attachment.key!),
     enabled: Boolean(orgId && attachment.key && !isDirectUrl),
     staleTime: 1000 * 60 * 30,
   });
@@ -59,7 +52,7 @@ function POAttachmentLink({ orgId, attachment }: { orgId: string; attachment: PO
   return <span style={{ fontWeight: 500 }}>{attachment.name || 'Attachment'}</span>;
 }
 
-export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: () => void }) {
+export function BillDetail({ poId, onClose }: { poId: string; onClose: () => void }) {
   const { orgId } = useParams<{ orgId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -84,7 +77,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
             (window as unknown as { html2pdf?: unknown }).html2pdf;
           const opt: Html2PdfOptions = {
             margin: [8, 8, 8, 8],
-            filename: `${po?.purchaseorder_number || 'PO'}.pdf`,
+            filename: `${po?.bill_number || 'Bill'}.pdf`,
             image: { type: 'jpeg', quality: 0.98 },
             html2canvas: { scale: 2, useCORS: true },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
@@ -124,34 +117,18 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
   }, []);
 
   const deleteMutation = useMutation({
-    mutationFn: () => deletePurchaseOrder(orgId!, poId),
+    mutationFn: () => deleteBill(orgId!, poId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['purchaseOrders', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
       setIsConfirmDeleteOpen(false);
       onClose();
     },
   });
 
-  const [billToDelete, setBillToDelete] = useState<string | null>(null);
-
-  const deleteBillMutation = useMutation({
-    mutationFn: (billId: string) => deleteBill(orgId!, billId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId, poId] });
-      setBillToDelete(null);
-    },
-  });
-
   const { data: po, isLoading } = useQuery({
-    queryKey: ['purchaseOrder', orgId, poId],
-    queryFn: () => fetchPurchaseOrderById(orgId!, poId),
+    queryKey: ['bill', orgId, poId],
+    queryFn: () => fetchBillById(orgId!, poId),
     enabled: Boolean(orgId && poId),
-  });
-
-  const { data: paymentTerms } = useQuery({
-    queryKey: ['paymentTerms', orgId],
-    queryFn: () => fetchPaymentTerms(orgId!),
-    enabled: Boolean(orgId),
   });
 
   const { data: orgs } = useQuery({
@@ -161,18 +138,10 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
   });
   const currentOrg = orgs?.find((o) => o.organizationId === orgId);
 
-  const getPaymentTermLabel = (termVal?: string | null) => {
-    if (!termVal) return '-';
-    const found = paymentTerms?.find(
-      (pt) => pt.id.toString() === termVal || pt.termName === termVal,
-    );
-    return found ? found.termName : termVal;
-  };
-
   if (isLoading) {
     return (
       <div style={{ padding: '16px', display: 'flex', justifyContent: 'center', color: '#64748b' }}>
-        Loading purchase order details...
+        Loading bill details...
       </div>
     );
   }
@@ -180,7 +149,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
   if (!po) {
     return (
       <div style={{ padding: '16px', display: 'flex', justifyContent: 'center', color: '#64748b' }}>
-        Purchase Order not found.
+        Bill not found.
       </div>
     );
   }
@@ -222,7 +191,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
-            {po.purchaseorder_number}
+            {po.bill_number}
           </h2>
           <span
             style={{
@@ -241,9 +210,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
-            onClick={() =>
-              navigate(`/organizations/${orgId}/purchases/purchase-orders/${poId}/edit`)
-            }
+            onClick={() => navigate(`/organizations/${orgId}/purchases/bills/${poId}/edit`)}
             style={{
               padding: '6px 12px',
               border: '1px solid #d1d5db',
@@ -299,9 +266,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                 <div
                   onClick={() => {
                     setIsMoreOpen(false);
-                    navigate(
-                      `/organizations/${orgId}/purchases/purchase-orders/new?cloneFrom=${poId}`,
-                    );
+                    navigate(`/organizations/${orgId}/purchases/bills/new?cloneFrom=${poId}`);
                   }}
                   style={{
                     padding: '8px 12px',
@@ -389,56 +354,27 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
         <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />
 
         {/* PDF / Print Dropdown next to Activity tab */}
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div ref={pdfMenuRef}>
-            <button
-              onClick={() => setIsPdfMenuOpen(!isPdfMenuOpen)}
-              style={{
-                padding: '4px 8px',
-                border: 'none',
-                background: 'transparent',
-                borderRadius: '4px',
-                fontSize: '14px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                color: '#475569',
-                fontWeight: 500,
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <FileText size={16} /> PDF/Print <ChevronDown size={14} />
-            </button>
-          </div>
-
-          {(!po.bills || po.bills.length === 0) && (
-            <>
-              <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />
-
-              <button
-                onClick={() =>
-                  navigate(`/organizations/${orgId}/purchases/bills/new?fromPo=${poId}`)
-                }
-                style={{
-                  padding: '6px 16px',
-                  background: '#0062ff',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-              >
-                <FileText size={16} /> Convert to Bill
-              </button>
-            </>
-          )}
+        <div style={{ position: 'relative' }} ref={pdfMenuRef}>
+          <button
+            onClick={() => setIsPdfMenuOpen(!isPdfMenuOpen)}
+            style={{
+              padding: '4px 8px',
+              border: 'none',
+              background: 'transparent',
+              borderRadius: '4px',
+              fontSize: '14px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              color: '#475569',
+              fontWeight: 500,
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          >
+            <FileText size={16} /> PDF/Print <ChevronDown size={14} />
+          </button>
 
           {isPdfMenuOpen && (
             <div
@@ -536,54 +472,12 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   gap: '6px',
                 }}
               >
-                Bills{' '}
-                <span
-                  style={{
-                    background: '#eff6ff',
-                    color: '#0062ff',
-                    padding: '1px 6px',
-                    borderRadius: '10px',
-                    fontSize: '11px',
-                  }}
-                >
-                  {po.bills?.length || 0}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveSubTab('Receives')}
-                style={{
-                  padding: '12px 0',
-                  background: 'none',
-                  border: 'none',
-                  borderBottom:
-                    activeSubTab === 'Receives' ? '2px solid #0062ff' : '2px solid transparent',
-                  color: activeSubTab === 'Receives' ? '#0062ff' : '#475569',
-                  fontWeight: activeSubTab === 'Receives' ? 600 : 500,
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-              >
-                Receives{' '}
-                <span
-                  style={{
-                    background: '#f1f5f9',
-                    color: '#64748b',
-                    padding: '1px 6px',
-                    borderRadius: '10px',
-                    fontSize: '11px',
-                  }}
-                >
-                  0
-                </span>
+                Overview
               </button>
             </div>
           </div>
 
-          {/* Status Bar & PDF View Toggle */}
+          {/* PDF View Toggle */}
           <div
             style={{
               background: '#fff',
@@ -593,24 +487,11 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               padding: '12px 16px',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between',
+              justifyContent: 'flex-end',
               marginBottom: '20px',
               fontSize: '13px',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', color: '#475569' }}>
-              <span>
-                Receive Status : <strong style={{ color: '#64748b' }}>YET TO BE RECEIVED</strong>
-              </span>
-              <span style={{ color: '#cbd5e1' }}>|</span>
-              <span>
-                Bill Status :{' '}
-                <strong style={{ color: po.bills?.length ? '#16a34a' : '#64748b' }}>
-                  {po.bills?.length ? 'BILLED' : 'UNBILLED'}
-                </strong>
-              </span>
-            </div>
-
             {/* Toggle Switch */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span
@@ -662,156 +543,6 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
             </div>
           </div>
 
-          {/* Bills List View */}
-          {!isPdfView && activeSubTab === 'Bills' && po.bills && po.bills.length > 0 && (
-            <div
-              style={{
-                marginBottom: '24px',
-                background: '#fff',
-                border: '1px solid #e2e8f0',
-                borderRadius: '8px',
-                overflow: 'hidden',
-              }}
-            >
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                    <th
-                      style={{
-                        padding: '12px 16px',
-                        textAlign: 'left',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                      }}
-                    >
-                      Bill#
-                    </th>
-                    <th
-                      style={{
-                        padding: '12px 16px',
-                        textAlign: 'left',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                      }}
-                    >
-                      Date
-                    </th>
-                    <th
-                      style={{
-                        padding: '12px 16px',
-                        textAlign: 'left',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                      }}
-                    >
-                      Status
-                    </th>
-                    <th
-                      style={{
-                        padding: '12px 16px',
-                        textAlign: 'left',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                      }}
-                    >
-                      Due Date
-                    </th>
-                    <th
-                      style={{
-                        padding: '12px 16px',
-                        textAlign: 'right',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                      }}
-                    >
-                      Amount
-                    </th>
-                    <th style={{ padding: '12px 16px', width: '40px' }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {po.bills.map((bill: import('../bills/bills.schemas').Bill) => (
-                    <tr
-                      key={bill.id}
-                      style={{ borderBottom: '1px solid #f1f5f9' }}
-                      onMouseEnter={(e) => {
-                        const icon = e.currentTarget.querySelector(
-                          '.delete-bill-icon',
-                        ) as HTMLElement;
-                        if (icon) icon.style.opacity = '1';
-                      }}
-                      onMouseLeave={(e) => {
-                        const icon = e.currentTarget.querySelector(
-                          '.delete-bill-icon',
-                        ) as HTMLElement;
-                        if (icon) icon.style.opacity = '0';
-                      }}
-                    >
-                      <td style={{ padding: '14px 16px', fontSize: '13px' }}>
-                        <span
-                          onClick={() =>
-                            navigate(`/organizations/${orgId}/purchases/bills/${bill.id}`)
-                          }
-                          style={{ color: '#0062ff', cursor: 'pointer', fontWeight: 500 }}
-                        >
-                          {bill.bill_number}
-                        </span>
-                      </td>
-                      <td style={{ padding: '14px 16px', fontSize: '13px', color: '#1e293b' }}>
-                        {bill.bill_date ? format(new Date(bill.bill_date), 'dd-MM-yyyy') : '-'}
-                      </td>
-                      <td
-                        style={{
-                          padding: '14px 16px',
-                          fontSize: '13px',
-                          color: '#64748b',
-                          textTransform: 'uppercase',
-                        }}
-                      >
-                        {bill.status}
-                      </td>
-                      <td style={{ padding: '14px 16px', fontSize: '13px', color: '#1e293b' }}>
-                        {bill.due_date ? format(new Date(bill.due_date), 'dd-MM-yyyy') : '-'}
-                      </td>
-                      <td
-                        style={{
-                          padding: '14px 16px',
-                          fontSize: '13px',
-                          color: '#0f172a',
-                          fontWeight: 500,
-                          textAlign: 'right',
-                        }}
-                      >
-                        ₹{Number(bill.total_amount || 0).toFixed(2)}
-                      </td>
-                      <td style={{ width: '40px', padding: '14px 16px', textAlign: 'right' }}>
-                        <div
-                          className="delete-bill-icon"
-                          style={{
-                            display: 'inline-flex',
-                            cursor: 'pointer',
-                            color: '#ef4444',
-                            opacity: 0,
-                            transition: 'opacity 0.2s',
-                          }}
-                          onClick={() => setBillToDelete(bill.id)}
-                          title="Delete Bill"
-                        >
-                          <Trash2 size={16} />
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
           {/* VIEW MODE 1: Standard Web View (isPdfView === false) */}
           {!isPdfView && (
             <div
@@ -842,11 +573,10 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                       margin: '0 0 4px 0',
                     }}
                   >
-                    PURCHASE ORDER
+                    BILL
                   </h1>
                   <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 500 }}>
-                    Purchase Order#{' '}
-                    <strong style={{ color: '#0f172a' }}>{po.purchaseorder_number}</strong>
+                    BILL# <strong style={{ color: '#0f172a' }}>{po.bill_number}</strong>
                   </div>
                 </div>
 
@@ -899,9 +629,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         marginBottom: '2px',
                       }}
                     >
-                      {po.delivery_type === 'Location'
-                        ? po.deliveryLocation?.name || 'Head Office'
-                        : po.deliveryCustomer?.contactName || '-'}
+                      {po.location?.name || 'Head Office'}
                     </div>
                     <div
                       style={{
@@ -911,7 +639,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         maxWidth: '220px',
                       }}
                     >
-                      {po.delivery_type === 'Location' && po.deliveryLocation?.address}
+                      {po.location?.addressString}
                     </div>
                   </div>
                 </div>
@@ -941,14 +669,13 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '12px', color: '#475569' }}>Order:</span>
                       <span
                         style={{
                           background: po.status === 'draft' ? '#94a3b8' : '#16a34a',
                           color: 'white',
-                          fontSize: '10px',
-                          padding: '1px 6px',
-                          borderRadius: '3px',
+                          fontSize: '11px',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
                           fontWeight: 600,
                           textTransform: 'uppercase',
                         }}
@@ -956,37 +683,31 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         {po.status || 'Draft'}
                       </span>
                     </div>
-                    <div style={{ fontSize: '12px', color: '#475569' }}>
-                      Receive: <span style={{ color: '#64748b' }}>Yet To Be Received</span>
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#475569' }}>
-                      Bill: <span style={{ color: '#16a34a' }}>Unbilled</span>
-                    </div>
                   </div>
                 </div>
 
                 <div>
-                  <div style={labelStyle}>ORDER DATE</div>
+                  <div style={labelStyle}>BILL DATE</div>
                   <div style={valueStyle}>
-                    {po.date ? format(new Date(po.date), 'dd-MM-yyyy') : '-'}
+                    {po.bill_date ? format(new Date(po.bill_date), 'dd-MM-yyyy') : '-'}
                   </div>
 
-                  <div style={{ ...labelStyle, marginTop: '8px' }}>DELIVERY DATE</div>
+                  <div style={{ ...labelStyle, marginTop: '8px' }}>DUE DATE</div>
                   <div style={valueStyle}>
-                    {po.delivery_date ? format(new Date(po.delivery_date), 'dd-MM-yyyy') : '-'}
+                    {po.due_date ? format(new Date(po.due_date), 'dd-MM-yyyy') : '-'}
                   </div>
                 </div>
 
                 <div>
                   <div style={labelStyle}>PAYMENT TERMS</div>
-                  <div style={valueStyle}>{getPaymentTermLabel(po.payment_terms)}</div>
+                  <div style={valueStyle}>-</div>
 
-                  <div style={{ ...labelStyle, marginTop: '8px' }}>DELIVERY TYPE</div>
-                  <div style={valueStyle}>{po.delivery_type || 'Location'}</div>
+                  <div style={{ ...labelStyle, marginTop: '8px' }}>LOCATION</div>
+                  <div style={valueStyle}>{po.location?.name || 'Head Office'}</div>
                 </div>
 
                 <div>
-                  <div style={labelStyle}>PO TYPE</div>
+                  <div style={labelStyle}>Bill TYPE</div>
                   <div style={valueStyle}>Standard</div>
                 </div>
               </div>
@@ -1015,7 +736,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         color: '#64748b',
                       }}
                     >
-                      ORDERED
+                      QUANTITY
                     </th>
                     <th
                       style={{
@@ -1068,88 +789,225 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                     const discVal = Number(
                       item.discountValue !== undefined && item.discountValue !== null
                         ? item.discountValue
-                        : item.discount_percentage || item.discount || 0,
+                        : item.discount_percentage || item.discount_amount || 0,
                     );
                     const discDisplay =
                       item.discountType === 'fixed' ? `₹${discVal.toFixed(2)}` : `${discVal}%`;
 
                     return (
-                      <tr
-                        key={item.id || item.line_item_id || index}
-                        style={{ borderBottom: '1px solid #f1f5f9' }}
-                      >
-                        <td
+                      <Fragment key={item.id || index}>
+                        <tr
                           style={{
-                            padding: '14px 12px',
-                            fontSize: '13px',
-                            color: '#0062ff',
-                            fontWeight: 500,
-                            verticalAlign: 'top',
+                            borderBottom:
+                              item.batches && item.batches.length > 0
+                                ? 'none'
+                                : '1px solid #f1f5f9',
                           }}
                         >
-                          {item.item?.name || 'Item'}
-                          {item.description && (
-                            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                              {item.description}
-                            </div>
-                          )}
-                        </td>
-                        <td
-                          style={{
-                            padding: '14px 12px',
-                            fontSize: '13px',
-                            color: '#1e293b',
-                            textAlign: 'center',
-                            verticalAlign: 'top',
-                          }}
-                        >
-                          {item.quantity} PCS
-                        </td>
-                        <td
-                          style={{
-                            padding: '14px 12px',
-                            fontSize: '13px',
-                            color: '#475569',
-                            verticalAlign: 'top',
-                          }}
-                        >
-                          {po.deliveryLocation?.name || 'Head Office'}
-                        </td>
-                        <td
-                          style={{
-                            padding: '14px 12px',
-                            fontSize: '13px',
-                            color: '#1e293b',
-                            textAlign: 'right',
-                            verticalAlign: 'top',
-                          }}
-                        >
-                          ₹{Number(item.rate || 0).toFixed(2)}
-                        </td>
-                        <td
-                          style={{
-                            padding: '14px 12px',
-                            fontSize: '13px',
-                            color: '#475569',
-                            textAlign: 'right',
-                            verticalAlign: 'top',
-                          }}
-                        >
-                          {discVal > 0 ? discDisplay : '₹0.00'}
-                        </td>
-                        <td
-                          style={{
-                            padding: '14px 12px',
-                            fontSize: '13px',
-                            color: '#0f172a',
-                            textAlign: 'right',
-                            fontWeight: 600,
-                            verticalAlign: 'top',
-                          }}
-                        >
-                          ₹{Number(item.item_total || 0).toFixed(2)}
-                        </td>
-                      </tr>
+                          <td
+                            style={{
+                              padding: '14px 12px',
+                              fontSize: '13px',
+                              color: '#0062ff',
+                              fontWeight: 500,
+                              verticalAlign: 'top',
+                            }}
+                          >
+                            {item.item?.name || 'Item'}
+                            {item.description && (
+                              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                                {item.description}
+                              </div>
+                            )}
+                          </td>
+                          <td
+                            style={{
+                              padding: '14px 12px',
+                              fontSize: '13px',
+                              color: '#1e293b',
+                              textAlign: 'center',
+                              verticalAlign: 'top',
+                            }}
+                          >
+                            {item.quantity} PCS
+                          </td>
+                          <td
+                            style={{
+                              padding: '14px 12px',
+                              fontSize: '13px',
+                              color: '#475569',
+                              verticalAlign: 'top',
+                            }}
+                          >
+                            {po.location?.name || 'Head Office'}
+                          </td>
+                          <td
+                            style={{
+                              padding: '14px 12px',
+                              fontSize: '13px',
+                              color: '#1e293b',
+                              textAlign: 'right',
+                              verticalAlign: 'top',
+                            }}
+                          >
+                            ₹{Number(item.rate || 0).toFixed(2)}
+                          </td>
+                          <td
+                            style={{
+                              padding: '14px 12px',
+                              fontSize: '13px',
+                              color: '#475569',
+                              textAlign: 'right',
+                              verticalAlign: 'top',
+                            }}
+                          >
+                            {discVal > 0 ? discDisplay : '₹0.00'}
+                          </td>
+                          <td
+                            style={{
+                              padding: '14px 12px',
+                              fontSize: '13px',
+                              color: '#0f172a',
+                              textAlign: 'right',
+                              fontWeight: 600,
+                              verticalAlign: 'top',
+                            }}
+                          >
+                            ₹
+                            {Number(
+                              (item as Record<string, unknown>).item_total || item.amount || 0,
+                            ).toFixed(2)}
+                          </td>
+                        </tr>
+                        {item.batches && item.batches.length > 0 && (
+                          <tr style={{ borderBottom: '1px solid #f1f5f9', background: '#fafafa' }}>
+                            <td colSpan={6} style={{ padding: '0px 12px 14px 40px' }}>
+                              <div
+                                style={{
+                                  fontSize: '10px',
+                                  fontWeight: 600,
+                                  color: '#64748b',
+                                  marginBottom: '6px',
+                                  textTransform: 'uppercase',
+                                }}
+                              >
+                                BATCH DETAILS
+                              </div>
+                              <table
+                                style={{
+                                  width: '100%',
+                                  borderCollapse: 'collapse',
+                                  fontSize: '12px',
+                                  background: '#fff',
+                                  border: '1px solid #e2e8f0',
+                                  borderRadius: '4px',
+                                  overflow: 'hidden',
+                                }}
+                              >
+                                <thead
+                                  style={{
+                                    background: '#f8fafc',
+                                    borderBottom: '1px solid #e2e8f0',
+                                  }}
+                                >
+                                  <tr>
+                                    <th
+                                      style={{
+                                        padding: '6px 10px',
+                                        textAlign: 'left',
+                                        fontWeight: 600,
+                                        color: '#475569',
+                                      }}
+                                    >
+                                      Supplier Batch Ref
+                                    </th>
+                                    <th
+                                      style={{
+                                        padding: '6px 10px',
+                                        textAlign: 'left',
+                                        fontWeight: 600,
+                                        color: '#475569',
+                                      }}
+                                    >
+                                      Manufacturer Batch#
+                                    </th>
+                                    <th
+                                      style={{
+                                        padding: '6px 10px',
+                                        textAlign: 'left',
+                                        fontWeight: 600,
+                                        color: '#475569',
+                                      }}
+                                    >
+                                      Mfg. Date
+                                    </th>
+                                    <th
+                                      style={{
+                                        padding: '6px 10px',
+                                        textAlign: 'left',
+                                        fontWeight: 600,
+                                        color: '#475569',
+                                      }}
+                                    >
+                                      Expiry Date
+                                    </th>
+                                    <th
+                                      style={{
+                                        padding: '6px 10px',
+                                        textAlign: 'right',
+                                        fontWeight: 600,
+                                        color: '#475569',
+                                      }}
+                                    >
+                                      Quantity In
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {item.batches.map((batch, bIndex) => (
+                                    <tr
+                                      key={bIndex}
+                                      style={{
+                                        borderBottom:
+                                          bIndex < item.batches!.length - 1
+                                            ? '1px solid #f1f5f9'
+                                            : 'none',
+                                      }}
+                                    >
+                                      <td style={{ padding: '6px 10px', color: '#1e293b' }}>
+                                        {batch.supplierBatchRef || '-'}
+                                      </td>
+                                      <td style={{ padding: '6px 10px', color: '#1e293b' }}>
+                                        {batch.manufacturerBatch || '-'}
+                                      </td>
+                                      <td style={{ padding: '6px 10px', color: '#475569' }}>
+                                        {batch.manufacturedDate
+                                          ? format(new Date(batch.manufacturedDate), 'dd-MMM-yyyy')
+                                          : '-'}
+                                      </td>
+                                      <td style={{ padding: '6px 10px', color: '#475569' }}>
+                                        {batch.expiryDate
+                                          ? format(new Date(batch.expiryDate), 'dd-MMM-yyyy')
+                                          : '-'}
+                                      </td>
+                                      <td
+                                        style={{
+                                          padding: '6px 10px',
+                                          color: '#1e293b',
+                                          textAlign: 'right',
+                                          fontWeight: 500,
+                                        }}
+                                      >
+                                        {batch.quantity}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     );
                   })}
                 </tbody>
@@ -1166,20 +1024,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                 }}
               >
                 <div style={{ flex: 1, fontSize: '13px', color: '#475569' }}>
-                  {po.notes && (
-                    <div style={{ marginBottom: '16px' }}>
-                      <strong
-                        style={{ color: '#1e293b', fontSize: '12px', textTransform: 'uppercase' }}
-                      >
-                        Notes:
-                      </strong>
-                      <div style={{ marginTop: '4px', lineHeight: 1.5, color: '#475569' }}>
-                        {po.notes}
-                      </div>
-                    </div>
-                  )}
-
-                  {po.terms && (
+                  {po.terms_and_conditions && (
                     <div style={{ marginBottom: '16px' }}>
                       <strong
                         style={{ color: '#1e293b', fontSize: '12px', textTransform: 'uppercase' }}
@@ -1187,12 +1032,12 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         Terms & Conditions:
                       </strong>
                       <div style={{ marginTop: '4px', lineHeight: 1.5, color: '#475569' }}>
-                        {po.terms}
+                        {po.terms_and_conditions}
                       </div>
                     </div>
                   )}
 
-                  {po.documents && Array.isArray(po.documents) && po.documents.length > 0 && (
+                  {po.attachments && Array.isArray(po.attachments) && po.attachments.length > 0 && (
                     <div>
                       <strong
                         style={{
@@ -1214,7 +1059,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                           marginTop: '8px',
                         }}
                       >
-                        {po.documents.map((att: POAttachment, index: number) => (
+                        {po.attachments.map((att: BillAttachment, index: number) => (
                           <div
                             key={index}
                             style={{
@@ -1226,7 +1071,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                             }}
                           >
                             <FileText size={14} color="#0062ff" />
-                            <POAttachmentLink orgId={orgId!} attachment={att} />
+                            <BillAttachmentLink orgId={orgId!} attachment={att} />
                             {att.size && (
                               <span style={{ color: '#94a3b8', fontSize: '11px' }}>
                                 ({(att.size / (1024 * 1024)).toFixed(2)} MB)
@@ -1261,7 +1106,8 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                       ₹{Number(po.sub_total || 0).toFixed(2)}
                     </span>
                   </div>
-                  {Number(po.sub_total || 0) > Number(po.total || 0) && (
+                  {Number(po.sub_total || 0) >
+                    Number((po as Record<string, unknown>).total || po.total_amount || 0) && (
                     <div
                       style={{
                         display: 'flex',
@@ -1273,7 +1119,11 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                     >
                       <span>Total Discount</span>
                       <span style={{ fontWeight: 600 }}>
-                        -₹{(Number(po.sub_total) - Number(po.total)).toFixed(2)}
+                        -₹
+                        {(
+                          Number(po.sub_total || 0) -
+                          Number((po as Record<string, unknown>).total || po.total_amount || 0)
+                        ).toFixed(2)}
                       </span>
                     </div>
                   )}
@@ -1290,7 +1140,12 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                     }}
                   >
                     <span>Total</span>
-                    <span>₹{Number(po.total || 0).toFixed(2)}</span>
+                    <span>
+                      ₹
+                      {Number(
+                        (po as Record<string, unknown>).total || po.total_amount || 0,
+                      ).toFixed(2)}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1384,14 +1239,14 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                           letterSpacing: '1px',
                         }}
                       >
-                        PURCHASE ORDER
+                        BILL
                       </h2>
                     </td>
                   </tr>
                 </tbody>
               </table>
 
-              {/* PDF PO Meta Table */}
+              {/* PDF Bill Meta Table */}
               <table
                 style={{
                   width: '100%',
@@ -1406,7 +1261,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                     <td
                       style={{ width: '50%', padding: '6px 10px', borderRight: '1px solid #000' }}
                     >
-                      <strong>PO No.</strong> : <strong>{po.purchaseorder_number}</strong>
+                      <strong>Bill No.</strong> : <strong>{po.bill_number}</strong>
                     </td>
                     <td style={{ width: '50%', padding: '6px 10px' }}>
                       <strong>Place Of Supply</strong> : Gujarat (24)
@@ -1417,10 +1272,10 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                       style={{ width: '50%', padding: '6px 10px', borderRight: '1px solid #000' }}
                     >
                       <strong>Date</strong> :{' '}
-                      {po.date ? format(new Date(po.date), 'dd-MM-yyyy') : '-'}
+                      {po.bill_date ? format(new Date(po.bill_date), 'dd-MM-yyyy') : '-'}
                     </td>
                     <td style={{ width: '50%', padding: '6px 10px' }}>
-                      <strong>Terms</strong> : {getPaymentTermLabel(po.payment_terms)}
+                      <strong>Terms</strong> : -
                     </td>
                   </tr>
                 </tbody>
@@ -1468,12 +1323,8 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                       {po.vendor?.phone && <div>{po.vendor.phone}</div>}
                     </td>
                     <td style={{ padding: '10px', verticalAlign: 'top', lineHeight: 1.5 }}>
-                      <strong>
-                        {po.delivery_type === 'Location'
-                          ? po.deliveryLocation?.name || 'Head Office'
-                          : po.deliveryCustomer?.contactName || '-'}
-                      </strong>
-                      {po.delivery_type === 'Location' && <div>{po.deliveryLocation?.address}</div>}
+                      <strong>{po.location?.name || 'Head Office'}</strong>
+                      <div>{po.location?.addressString}</div>
                     </td>
                   </tr>
                 </tbody>
@@ -1540,65 +1391,97 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                     >
                       Unit Rate (INR)
                     </th>
+                    <th
+                      style={{
+                        padding: '6px 8px',
+                        borderRight: '1px solid #000',
+                        textAlign: 'right',
+                        width: '65px',
+                      }}
+                    >
+                      Discount
+                    </th>
                     <th style={{ padding: '6px 8px', textAlign: 'right', width: '95px' }}>
                       Total Value
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(po.line_items || []).map((item, index) => (
-                    <tr key={item.id || index} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                      <td
-                        style={{
-                          padding: '8px',
-                          borderRight: '1px solid #000',
-                          textAlign: 'center',
-                        }}
-                      >
-                        {index + 1}
-                      </td>
-                      <td
-                        style={{ padding: '8px', borderRight: '1px solid #000', fontWeight: 600 }}
-                      >
-                        {item.item?.name || 'Item'}
-                        {item.description && (
-                          <div style={{ fontWeight: 400, color: '#475569', marginTop: '2px' }}>
-                            {item.description}
-                          </div>
-                        )}
-                      </td>
-                      <td
-                        style={{
-                          padding: '8px',
-                          borderRight: '1px solid #000',
-                          textAlign: 'center',
-                        }}
-                      >
-                        {po.delivery_date ? format(new Date(po.delivery_date), 'dd-MM-yyyy') : '-'}
-                      </td>
-                      <td
-                        style={{
-                          padding: '8px',
-                          borderRight: '1px solid #000',
-                          textAlign: 'center',
-                        }}
-                      >
-                        {item.quantity}
-                      </td>
-                      <td
-                        style={{
-                          padding: '8px',
-                          borderRight: '1px solid #000',
-                          textAlign: 'right',
-                        }}
-                      >
-                        ₹{Number(item.rate || 0).toFixed(2)}
-                      </td>
-                      <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600 }}>
-                        ₹{Number(item.item_total || 0).toFixed(2)}
-                      </td>
-                    </tr>
-                  ))}
+                  {(po.line_items || []).map((item, index) => {
+                    const discVal = Number(
+                      item.discountValue !== undefined && item.discountValue !== null
+                        ? item.discountValue
+                        : item.discount_percentage || item.discount_amount || 0,
+                    );
+                    const discDisplay =
+                      item.discountType === 'fixed' ? `₹${discVal.toFixed(2)}` : `${discVal}%`;
+
+                    return (
+                      <tr key={item.id || index} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                        <td
+                          style={{
+                            padding: '8px',
+                            borderRight: '1px solid #000',
+                            textAlign: 'center',
+                          }}
+                        >
+                          {index + 1}
+                        </td>
+                        <td
+                          style={{ padding: '8px', borderRight: '1px solid #000', fontWeight: 600 }}
+                        >
+                          {item.item?.name || 'Item'}
+                          {item.description && (
+                            <div style={{ fontWeight: 400, color: '#475569', marginTop: '2px' }}>
+                              {item.description}
+                            </div>
+                          )}
+                        </td>
+                        <td
+                          style={{
+                            padding: '8px',
+                            borderRight: '1px solid #000',
+                            textAlign: 'center',
+                          }}
+                        >
+                          {po.due_date ? format(new Date(po.due_date), 'dd-MM-yyyy') : '-'}
+                        </td>
+                        <td
+                          style={{
+                            padding: '8px',
+                            borderRight: '1px solid #000',
+                            textAlign: 'center',
+                          }}
+                        >
+                          {item.quantity}
+                        </td>
+                        <td
+                          style={{
+                            padding: '8px',
+                            borderRight: '1px solid #000',
+                            textAlign: 'right',
+                          }}
+                        >
+                          ₹{Number(item.rate || 0).toFixed(2)}
+                        </td>
+                        <td
+                          style={{
+                            padding: '8px',
+                            borderRight: '1px solid #000',
+                            textAlign: 'right',
+                          }}
+                        >
+                          {discVal > 0 ? discDisplay : '₹0.00'}
+                        </td>
+                        <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600 }}>
+                          ₹
+                          {Number(
+                            (item as Record<string, unknown>).item_total || item.amount || 0,
+                          ).toFixed(2)}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
 
@@ -1621,24 +1504,11 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         borderRight: '1px solid #000',
                       }}
                     >
-                      <div
-                        style={{
-                          marginBottom: '12px',
-                          wordBreak: 'break-word',
-                          whiteSpace: 'pre-wrap',
-                        }}
-                      >
-                        <strong>Notes:</strong>
-                        <br />
-                        {po.notes ||
-                          'With reference to your above quotation, we request you to supply the following materials subject to terms and conditions.'}
-                      </div>
-
-                      {po.terms && (
+                      {po.terms_and_conditions && (
                         <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
                           <strong>Terms & Conditions:</strong>
                           <br />
-                          {po.terms}
+                          {po.terms_and_conditions}
                         </div>
                       )}
                     </td>
@@ -1660,6 +1530,26 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         <span>Sub Total:</span>
                         <strong>₹{Number(po.sub_total || 0).toFixed(2)}</strong>
                       </div>
+                      {Number(po.sub_total || 0) >
+                        Number((po as Record<string, unknown>).total || po.total_amount || 0) && (
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            marginBottom: '8px',
+                            color: '#16a34a',
+                          }}
+                        >
+                          <span>Total Discount:</span>
+                          <strong>
+                            -₹
+                            {(
+                              Number(po.sub_total || 0) -
+                              Number((po as Record<string, unknown>).total || po.total_amount || 0)
+                            ).toFixed(2)}
+                          </strong>
+                        </div>
+                      )}
                       <div
                         style={{
                           display: 'flex',
@@ -1671,7 +1561,12 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         }}
                       >
                         <span>Total:</span>
-                        <strong>₹{Number(po.total || 0).toFixed(2)}</strong>
+                        <strong>
+                          ₹
+                          {Number(
+                            (po as Record<string, unknown>).total || po.total_amount || 0,
+                          ).toFixed(2)}
+                        </strong>
                       </div>
 
                       <div style={{ marginTop: '40px', fontSize: '11px', color: '#333' }}>
@@ -1689,29 +1584,20 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
         </div>
 
         <div style={{ display: activeTab === 'Comments' ? 'block' : 'none', padding: '16px' }}>
-          <PurchaseOrderComments orgId={orgId!} poId={poId} />
+          <BillComments orgId={orgId!} poId={poId} />
         </div>
         <div style={{ display: activeTab === 'Activity' ? 'block' : 'none', padding: '16px' }}>
-          <PurchaseOrderActivityTimeline orgId={orgId!} poId={poId} />
+          <BillActivityTimeline orgId={orgId!} poId={poId} />
         </div>
       </div>
 
       <ConfirmDialog
         isOpen={isConfirmDeleteOpen}
-        title="Delete Purchase Order"
-        message={`Are you sure you want to delete Purchase Order ${po.purchaseorder_number}? This action cannot be undone.`}
+        title="Delete BILL"
+        message={`Are you sure you want to delete BILL ${po.bill_number}? This action cannot be undone.`}
         confirmText={deleteMutation.isPending ? 'Deleting...' : 'Delete'}
         onConfirm={() => deleteMutation.mutate()}
         onCancel={() => setIsConfirmDeleteOpen(false)}
-      />
-
-      <ConfirmDialog
-        isOpen={Boolean(billToDelete)}
-        title="Delete Bill"
-        message="Are you sure you want to delete this bill? This action cannot be undone."
-        confirmText={deleteBillMutation.isPending ? 'Deleting...' : 'Delete'}
-        onConfirm={() => billToDelete && deleteBillMutation.mutate(billToDelete)}
-        onCancel={() => setBillToDelete(null)}
       />
     </div>
   );

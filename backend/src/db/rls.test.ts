@@ -18,6 +18,10 @@ import { aVendorOf, censusByOrg, totalVendors } from './rls.fixtures.ts';
  * The vendor_* children scope through their parent vendor, number_sequences on
  * its own organization_id — see 20260720120100_rename_dial_code_and_enable_vendor_rls. */
 const TENANT_TABLES = [
+  'bills',
+  'bill_items',
+  'bill_activities',
+  'bill_comments',
   'vendors',
   'items',
   'customers',

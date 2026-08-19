@@ -4,6 +4,7 @@ import type {
   ItemFormData,
   ItemOpeningStockDto,
   ItemOpeningStockLocationRowDto,
+  ItemBatchDto,
 } from './items.schemas';
 import type { Paginated, PageParams } from '../../lib/pagination';
 
@@ -58,6 +59,14 @@ export const itemsApi = {
     return response.data;
   },
 
+  fetchItemBills: async (orgId: string, id: string, params: PageParams = {}) => {
+    const response = await apiClient.get(
+      `${endpoints.seedData.items(orgId)}/${id}/transactions/bills`,
+      { params },
+    );
+    return response.data;
+  },
+
   uploadImages: async (orgId: string, id: string, formData: FormData): Promise<Item> => {
     const response = await apiClient.post(
       `${endpoints.seedData.items(orgId)}/${id}/images`,
@@ -86,6 +95,11 @@ export const itemsApi = {
 
   getOpeningStock: async (orgId: string, id: string): Promise<ItemOpeningStockLocationRowDto[]> => {
     const response = await apiClient.get(`${endpoints.seedData.items(orgId)}/${id}/opening-stock`);
+    return response.data;
+  },
+
+  getItemBatches: async (orgId: string, id: string): Promise<ItemBatchDto[]> => {
+    const response = await apiClient.get(`${endpoints.seedData.items(orgId)}/${id}/batches`);
     return response.data;
   },
 

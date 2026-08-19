@@ -180,6 +180,7 @@ router.post(
 router.get('/count', requirePermission('item:read'), itemsController.getItemCount);
 router.get('/:id', requirePermission('item:read'), itemsController.getItem);
 router.get('/:id/activities', requirePermission('item:read'), itemsController.getItemActivities);
+router.get('/:id/transactions/bills', requirePermission('item:read'), itemsController.getItemBills);
 router.get('/:id/signed-url', requirePermission('item:read'), itemsController.getSignedUrl);
 router.put(
   '/:id',
@@ -190,6 +191,7 @@ router.put(
 router.delete('/:id', requirePermission('item:delete'), itemsController.deleteItem);
 
 router.get('/:id/opening-stock', requirePermission('item:read'), itemsController.getOpeningStock);
+router.get('/:id/batches', requirePermission('item:read'), itemsController.getItemBatches);
 router.post(
   '/:id/opening-stock',
   requirePermission('item:update'),

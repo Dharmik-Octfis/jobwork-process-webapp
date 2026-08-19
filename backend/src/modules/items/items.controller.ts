@@ -33,6 +33,15 @@ export class ItemsController {
     sendSuccess(res, await itemsService.getActivities(req.params.id as string, req.tenantId!));
   }
 
+  async getItemBills(req: Request, res: Response) {
+    const parsed = listQuerySchema.safeParse(req.query);
+    if (!parsed.success) throw ApiError.badRequest('Invalid search parameters.');
+    sendSuccess(
+      res,
+      await itemsService.getItemBills(req.params.id as string, req.tenantId!, parsed.data),
+    );
+  }
+
   async createItem(req: Request, res: Response) {
     const item = await itemsService.create(req.tenantId!, req.body as CreateItemDto, req.user?.id);
     sendSuccess(res, item, 'Item created.', 201);
@@ -85,6 +94,10 @@ export class ItemsController {
 
   async getOpeningStock(req: Request, res: Response) {
     sendSuccess(res, await itemsService.getOpeningStock(req.params.id as string, req.tenantId!));
+  }
+
+  async getItemBatches(req: Request, res: Response) {
+    sendSuccess(res, await itemsService.getItemBatches(req.params.id as string, req.tenantId!));
   }
 
   async saveOpeningStock(req: Request, res: Response) {

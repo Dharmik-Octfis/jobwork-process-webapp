@@ -98,6 +98,11 @@ export const CUSTOM_FIELD_MODULES: Array<{
   },
   { entityType: 'item', label: 'Item', description: 'Add fields to the item create & edit form.' },
   {
+    entityType: 'bill',
+    label: 'Bill',
+    description: 'Add fields to the bill create & edit form.',
+  },
+  {
     entityType: 'job_order',
     label: 'Job Order',
     description: 'Add fields to the job order form and its steps.',

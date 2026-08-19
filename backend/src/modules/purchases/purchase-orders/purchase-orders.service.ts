@@ -1,6 +1,9 @@
 import { runAsTenant } from '../../../db/prisma.ts';
 import type { Prisma } from '../../../../generated/prisma/client.ts';
-import type { CreatePurchaseOrderPayload, UpdatePurchaseOrderPayload } from './purchase-orders.schemas.ts';
+import type {
+  CreatePurchaseOrderPayload,
+  UpdatePurchaseOrderPayload,
+} from './purchase-orders.schemas.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
@@ -40,7 +43,10 @@ export async function getPurchaseOrdersList(organizationId: string, opts: ListQu
   });
 }
 
-export async function countPurchaseOrders(organizationId: string, opts: ListQuery): Promise<number> {
+export async function countPurchaseOrders(
+  organizationId: string,
+  opts: ListQuery,
+): Promise<number> {
   return runAsTenant(organizationId, (tx) =>
     tx.purchaseOrder.count({ where: poListWhere(organizationId, opts) }),
   );
@@ -58,12 +64,17 @@ export async function getPurchaseOrderById(orgId: string, id: string) {
         vendor: { select: { contactName: true, email: true, phone: true, addresses: true } },
         deliveryLocation: true,
         deliveryCustomer: true,
+        bills: true,
       },
     }),
   );
 }
 
-export async function createPurchaseOrder(orgId: string, userId: string, data: CreatePurchaseOrderPayload) {
+export async function createPurchaseOrder(
+  orgId: string,
+  userId: string,
+  data: CreatePurchaseOrderPayload,
+) {
   const { line_items: lineItems, ...poData } = data;
   return runAsTenant(orgId, async (tx) => {
     let performedBy = 'System';
@@ -123,7 +134,12 @@ export async function createPurchaseOrder(orgId: string, userId: string, data: C
   });
 }
 
-export async function updatePurchaseOrder(orgId: string, id: string, userId: string, data: UpdatePurchaseOrderPayload) {
+export async function updatePurchaseOrder(
+  orgId: string,
+  id: string,
+  userId: string,
+  data: UpdatePurchaseOrderPayload,
+) {
   const { line_items: lineItems, ...poData } = data;
   return runAsTenant(orgId, async (tx) => {
     let performedBy = 'System';
@@ -140,7 +156,10 @@ export async function updatePurchaseOrder(orgId: string, id: string, userId: str
         data: {
           ...poData,
           updated_by: userId,
-          documents: poData.documents !== undefined ? (poData.documents as Prisma.InputJsonValue) : undefined,
+          documents:
+            poData.documents !== undefined
+              ? (poData.documents as Prisma.InputJsonValue)
+              : undefined,
           custom_fields: (poData.custom_fields ?? {}) as Prisma.InputJsonObject,
         },
       });
@@ -187,7 +206,7 @@ export async function getPurchaseOrderActivities(organizationId: string, id: str
         purchaseOrderId: id,
         isDeleted: false,
         purchaseOrder: {
-          // eslint-disable-next-line @typescript-eslint/naming-convention
+           
           organization_id: organizationId,
           is_deleted: false,
         },
@@ -258,7 +277,7 @@ export async function getPurchaseOrderComments(organizationId: string, id: strin
         purchaseOrderId: id,
         isDeleted: false,
         purchaseOrder: {
-          // eslint-disable-next-line @typescript-eslint/naming-convention
+           
           organization_id: organizationId,
           is_deleted: false,
         },
@@ -303,8 +322,13 @@ export async function deletePurchaseOrderComment(
 ) {
   return runAsTenant(organizationId, async (tx) => {
     const existingComment = await tx.purchaseOrderComment.findFirst({
-      // eslint-disable-next-line @typescript-eslint/naming-convention
-      where: { id: commentId, purchaseOrderId, isDeleted: false, purchaseOrder: { organization_id: organizationId } },
+       
+      where: {
+        id: commentId,
+        purchaseOrderId,
+        isDeleted: false,
+        purchaseOrder: { organization_id: organizationId },
+      },
     });
 
     if (!existingComment) {

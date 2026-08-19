@@ -90,6 +90,14 @@ model User {
   updatedPurchaseOrderItems     PurchaseOrderItem[]     @relation("PoItemUpdatedBy")
   createdPurchaseOrders         PurchaseOrder[]         @relation("PoCreatedBy")
   updatedPurchaseOrders         PurchaseOrder[]         @relation("PoUpdatedBy")
+  createdBills                  Bill[]                  @relation("BillCreatedBy")
+  updatedBills                  Bill[]                  @relation("BillUpdatedBy")
+  createdBillItems              BillItem[]              @relation("BillItemCreatedBy")
+  updatedBillItems              BillItem[]              @relation("BillItemUpdatedBy")
+  createdBillActivities         BillActivity[]          @relation("BillActivityCreatedBy")
+  updatedBillActivities         BillActivity[]          @relation("BillActivityUpdatedBy")
+  createdBillComments           BillComment[]           @relation("BillCommentCreatedBy")
+  updatedBillComments           BillComment[]           @relation("BillCommentUpdatedBy")
   refreshTokens                 RefreshToken[]
   createdRoles                  Role[]                  @relation("RoleCreatedBy")
   updatedRoles                  Role[]                  @relation("RoleUpdatedBy")
@@ -277,6 +285,7 @@ model Organization {
   paymentTerms           PaymentTerm[]
   permissionTemplates    PermissionTemplate[]
   purchaseOrders         PurchaseOrder[]
+  bills                  Bill[]
   roles                  Role[]
   unitsOfMeasurement     UnitOfMeasurement[]
   vendors                Vendor[]
@@ -631,6 +640,7 @@ model Location {
   vendor                   Vendor?                  @relation("LocationVendor", fields: [vendorId], references: [id])
   deliveryPurchaseOrders   PurchaseOrder[]
   sourcePurchaseOrders     PurchaseOrder[]          @relation("PoSourceLocation")
+  bills                    Bill[]                   @relation("BillLocation")
   ledgerEntries            StockLedgerEntry[]       @relation("StockLedgerLocation")
   routeStepWorkCentres     RouteStep[]              @relation("RouteStepWorkCentre")
   jobOrderStepWorkCentres  JobOrderStep[]           @relation("JobOrderStepWorkCentre")

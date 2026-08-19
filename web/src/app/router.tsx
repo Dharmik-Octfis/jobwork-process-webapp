@@ -98,6 +98,7 @@ const CreatePurchaseOrder = lazyPage(
   () => import('../features/purchases/purchase-orders/CreatePurchaseOrder'),
   'CreatePurchaseOrder',
 );
+const CreateBill = lazyPage(() => import('../features/purchases/bills/CreateBill'), 'CreateBill');
 const CustomersList = lazyPage(
   () => import('../features/sales/customers/CustomersList'),
   'CustomersList',
@@ -271,6 +272,14 @@ export const router = createBrowserRouter([
               { path: '/organizations/:orgId/sales/customers/:id/edit', element: <EditCustomer /> },
               { path: '/organizations/:orgId/purchases/po', element: <PurchasesPage /> },
               { path: '/organizations/:orgId/purchases/bills', element: <PurchasesPage /> },
+              {
+                path: '/organizations/:orgId/purchases/bills/new',
+                element: <CreateBill />,
+              },
+              {
+                path: '/organizations/:orgId/purchases/bills/:id/edit',
+                element: <CreateBill />,
+              },
               // Jobwork, Sprints 1–4.
               //
               // 🔴 There is no `issues/new` and no `receipts/new`, deliberately.
