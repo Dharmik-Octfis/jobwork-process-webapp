@@ -1124,7 +1124,7 @@ export function CreateBill() {
                           <LineItemStockDisplay
                             orgId={orgId!}
                             itemId={selectedItem.id}
-                            deliveryLocationId={watchLocationId || watchDeliveryLocationId}
+                            deliveryLocationId={watchLocationId || watchDeliveryLocationId || ''}
                             locations={locations}
                             onClick={(e, rows) =>
                               setStockPopoverAnchor({ element: e.currentTarget, stockRows: rows })
@@ -1149,8 +1149,8 @@ export function CreateBill() {
                                 padding: '2px 4px',
                               }}
                             >
-                              {curItem.batches?.length
-                                ? `${curItem.batches.length} Batches Added`
+                              {curItem?.batches?.length
+                                ? `${curItem?.batches?.length} Batches Added`
                                 : '+ Add Batches'}
                             </button>
                           </div>
@@ -1786,7 +1786,7 @@ export function CreateBill() {
             watchItems[batchModalIndex].item?.stocking_uom?.code ||
             'pcs'
           }
-          locationId={watchLocationId || watchDeliveryLocationId}
+          locationId={watchLocationId || watchDeliveryLocationId || undefined}
           locationName={
             locations.find((l: Location) => l.id === (watchLocationId || watchDeliveryLocationId))?.name ||
             (watchDeliveryType !== 'Location' ? 'Customer Location' : null)
@@ -1828,7 +1828,7 @@ export function CreateBill() {
         anchorEl={stockPopoverAnchor?.element || null}
         locations={locations}
         stockRows={stockPopoverAnchor?.stockRows || []}
-        selectedLocationId={watchLocationId || watchDeliveryLocationId}
+        selectedLocationId={watchLocationId || watchDeliveryLocationId || undefined}
       />
     </div>
   );
