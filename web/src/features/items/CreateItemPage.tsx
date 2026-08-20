@@ -36,10 +36,10 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
     if (itemToClone) {
       return {
         name: itemToClone.name || '',
-        type: (itemToClone.type || 'Goods') as 'Goods' | 'Service',
+        itemType: (itemToClone.itemType || 'goods') as 'goods' | 'service',
         category: itemToClone.category || '',
         hsnCode: itemToClone.hsnCode || '',
-        itemType: 'Single Item',
+        itemStructure: 'single',
         unit: itemToClone.unit || '',
         stockingUomId: itemToClone.stockingUomId ?? null,
         sku: itemToClone.sku || '',
@@ -77,10 +77,10 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
     }
     return {
       name: '',
-      type: 'Goods',
+      itemType: 'goods',
       category: '',
       hsnCode: '',
-      itemType: 'Single Item',
+      itemStructure: 'single',
       unit: '',
       stockingUomId: null,
       sku: '',
@@ -369,10 +369,10 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                   >
                     <input
                       type="radio"
-                      name="type"
-                      value="Goods"
-                      checked={formData.type === 'Goods'}
-                      onChange={() => handleRadioChange('type', 'Goods')}
+                      name="itemType"
+                      value="goods"
+                      checked={formData.itemType === 'goods'}
+                      onChange={() => handleRadioChange('itemType', 'goods')}
                     />{' '}
                     Goods
                   </label>
@@ -387,10 +387,10 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                   >
                     <input
                       type="radio"
-                      name="type"
-                      value="Service"
-                      checked={formData.type === 'Service'}
-                      onChange={() => handleRadioChange('type', 'Service')}
+                      name="itemType"
+                      value="service"
+                      checked={formData.itemType === 'service'}
+                      onChange={() => handleRadioChange('itemType', 'service')}
                     />{' '}
                     Service
                   </label>
@@ -1022,7 +1022,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       />{' '}
                       None
                     </label>
-                    {formData.type !== 'Service' && (
+                    {formData.itemType !== 'service' && (
                       <label
                         style={{
                           display: 'flex',

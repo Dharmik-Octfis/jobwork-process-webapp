@@ -37,7 +37,7 @@ const TENANT_TABLES = [
   'customer_addresses',
   'units_of_measurement',
   'currencies',
-  'paymentTerms',
+  'payment_terms',
   'custom_field_definitions',
   'roles',
   'permission_templates',
@@ -86,7 +86,6 @@ const TENANT_TABLES = [
   'item_assembly_comments',
   'item_assembly_activities',
   'item_opening_stock_rows',
-  'item_location_stocks',
 ] as const;
 
 /**
@@ -204,7 +203,7 @@ describe('row-level security', () => {
       mine.id,
       async (tx) =>
         tx.$queryRaw<{ organizationId: string }[]>`
-        SELECT organizationId AS "organizationId" FROM vendors`,
+        SELECT organization_id AS "organizationId" FROM vendors`,
     );
 
     expect(rows.length, 'saw none of my own rows — RLS is over-filtering').toBe(mine.vendors);

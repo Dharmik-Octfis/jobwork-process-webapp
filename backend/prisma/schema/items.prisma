@@ -2,10 +2,10 @@ model Item {
   id                       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId           String   @map("organization_id") @db.Uuid
   name                     String
-  type                     String   @default("Goods") @db.VarChar(50)
+  itemType                 String   @default("goods") @map("item_type") @db.VarChar(50)
   category                 String?
   hsnCode                  String?  @map("hsn_code")
-  itemType                 String   @default("Single Item") @map("item_type") @db.VarChar(50)
+  itemStructure            String   @default("single") @map("item_structure") @db.VarChar(50)
   unit                     String
   sku                      String
   isSalesInfo              Boolean  @default(false) @map("is_sales_info")

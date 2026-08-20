@@ -31,13 +31,13 @@ export const itemSchema = openApiRegistry.register(
       .min(1, 'Name is required')
       .max(200)
       .openapi({ example: 'Apple MacBook Pro M3' }),
-    type: z.enum(['Goods', 'Service']).optional().openapi({ example: 'Goods' }),
+    itemType: z.enum(['goods', 'service']).optional().openapi({ example: 'goods' }),
     category: z.string().max(100).nullable().optional().openapi({ example: 'Electronics' }),
     hsnCode: z.string().max(50).nullable().optional().openapi({ example: '84713010' }),
-    itemType: z
-      .enum(['Single Item', 'Contains Variants', 'Composite Item'])
-      .default('Single Item')
-      .openapi({ example: 'Single Item' }),
+    itemStructure: z
+      .enum(['single', 'variants', 'composite'])
+      .default('single')
+      .openapi({ example: 'single' }),
     unit: z.string().max(50).optional().default('').openapi({ example: 'pcs' }),
     /**
      * 🔴 THE UNIT THE LEDGER MOVES THIS ITEM IN. One item, one stocking unit

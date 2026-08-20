@@ -223,13 +223,16 @@ describe('a member profile belongs to one organization', () => {
 
     expect(account?.firstName).toBe('Account');
     expect(account?.fullName).toBe('Account Name');
+
+    // Put it back so it doesn't break subsequent tests
+    await updateMember(adminId, orgAId, membershipAId, { firstName: 'Priyanka' });
   });
 
   it('refuses to let an admin edit their own role or access through the admin route', async () => {
     // The route requires `member:update`, so allowing it to address the caller would
     // be a self-promotion for anyone holding that permission.
     await expect(
-      updateMember(adminId, orgAId, adminMembershipAId, { firstName: 'Nope' }),
+      updateMember(adminId, orgAId, adminMembershipAId, { isActive: false }),
     ).rejects.toMatchObject({ status: 403 });
   });
 });

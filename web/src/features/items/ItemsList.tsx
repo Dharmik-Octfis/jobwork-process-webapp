@@ -59,21 +59,21 @@ function renderItemCell(
       <span
         style={{
           padding: '2px 8px',
-          background: item.type === 'Goods' ? '#e0e7ff' : '#dcfce7',
-          color: item.type === 'Goods' ? '#3730a3' : '#166534',
+          background: item.itemType === 'goods' ? '#e0e7ff' : '#dcfce7',
+          color: item.itemType === 'goods' ? '#3730a3' : '#166534',
           borderRadius: 12,
           fontSize: 12,
           fontWeight: 500,
         }}
       >
-        {item.type}
+        {item.itemType}
       </span>
     );
   }
   if (key === 'name') {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-        {item.itemType === 'Composite Item' && <ShoppingBag size={14} color="#64748b" />}
+        {item.itemStructure === 'composite' && <ShoppingBag size={14} color="#64748b" />}
         {item.name}
       </div>
     );
@@ -329,7 +329,7 @@ export function ItemsList() {
                             gap: '6px',
                           }}
                         >
-                          {item.itemType === 'Composite Item' && (
+                          {item.itemStructure === 'composite' && (
                             <ShoppingBag size={14} color="#64748b" />
                           )}
                           <span>{item.name}</span>

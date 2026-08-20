@@ -13,10 +13,10 @@ export type ItemImageAttachment = z.infer<typeof itemImageAttachmentSchema>;
 export const itemSchema = z.object({
   id: z.string(),
   name: z.string().min(1, 'Name is required').max(200),
-  type: z.enum(['Goods', 'Service']).default('Goods'),
+  itemType: z.enum(['goods', 'service']).default('goods'),
   category: z.string().max(100).nullable().optional(),
   hsnCode: z.string().max(50).nullable().optional(),
-  itemType: z.enum(['Single Item', 'Contains Variants', 'Composite Item']).default('Single Item'),
+  itemStructure: z.enum(['single', 'variants', 'composite']).default('single'),
   unit: z.string().default(''),
   sku: z.string().default(''),
   /**
@@ -65,10 +65,10 @@ export const itemSchema = z.object({
 
 export const itemFormSchema = z.object({
   name: z.string().min(1, 'Name is required'),
-  type: z.enum(['Goods', 'Service']).default('Goods'),
+  itemType: z.enum(['goods', 'service']).default('goods'),
   category: z.string().optional().nullable(),
   hsnCode: z.string().optional().nullable(),
-  itemType: z.enum(['Single Item', 'Contains Variants', 'Composite Item']).default('Single Item'),
+  itemStructure: z.enum(['single', 'variants', 'composite']).default('single'),
   unit: z.string().optional().default(''),
   /**
    * 🔴 The unit the STOCK LEDGER moves this item in. One item, one stocking unit

@@ -147,7 +147,7 @@ export const assembliesService = {
     return runAsTenant(orgId, async (tx) => {
       // 1. Validate that the composite item exists and belongs to the org
       const compositeItem = await tx.item.findFirst({
-        where: { id: data.compositeItemId, organizationId: orgId, itemType: 'Composite Item' },
+        where: { id: data.compositeItemId, organizationId: orgId, itemStructure: 'composite' },
       });
 
       if (!compositeItem) {
@@ -187,9 +187,9 @@ export const assembliesService = {
           where: { id: line.itemId, organizationId: orgId, isDeleted: false },
         });
         if (!lineItem) throw ApiError.notFound(`Component item not found.`);
-        if (lineItem.type === 'Goods' && !lineItem.stockingUomId)
+        if (lineItem.itemType === 'goods' && !lineItem.stockingUomId)
           throw ApiError.badRequest(`Component ${lineItem.name} must have a stocking unit.`);
-        if (lineItem.itemType === 'Composite Item')
+        if (lineItem.itemStructure === 'composite')
           throw ApiError.badRequest(`Component ${lineItem.name} cannot be a Composite Item.`);
 
         let batchId = batchCache.get(line.itemId);
@@ -310,7 +310,7 @@ export const assembliesService = {
                 select: {
                   name: true,
                   sku: true,
-                  type: true,
+                  itemType: true,
                   stockingUomId: true,
                   costPrice: true,
                   stockingUom: { select: { unitName: true } },

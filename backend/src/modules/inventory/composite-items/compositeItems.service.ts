@@ -19,8 +19,13 @@ import {
 
 export function toComponentResponse(row: Record<string, unknown> | null | undefined) {
   if (!row) return row;
+  let componentObj = row.component as Record<string, unknown> | undefined;
+  if (componentObj && 'itemType' in componentObj) {
+    componentObj = { ...componentObj, type: componentObj.itemType };
+  }
   return {
     ...row,
+    ...(componentObj ? { component: componentObj } : {}),
     qty_per_unit:
       row.qtyPerUnit !== null && row.qtyPerUnit !== undefined ? Number(row.qtyPerUnit) : null,
     composite_item_id: row.compositeItemId,
@@ -40,7 +45,7 @@ export class CompositeItemsService {
     return {
       organizationId,
       isDeleted: false,
-      itemType: 'Composite Item',
+      itemStructure: 'composite',
       ...filterWhere<Prisma.ItemWhereInput>('item', opts.filter),
       ...searchWhere<Prisma.ItemWhereInput>(opts.search, ['name', 'sku', 'category', 'hsnCode']),
     };
@@ -73,7 +78,7 @@ export class CompositeItemsService {
   async findUniqueItem(id: string, organizationId: string) {
     return runAsTenant(organizationId, async (tx) => {
       const item = await tx.item.findFirst({
-        where: { id, organizationId, itemType: 'Composite Item', isDeleted: false },
+        where: { id, organizationId, itemStructure: 'composite', isDeleted: false },
       });
       if (!item) {
         throw ApiError.notFound('Composite Item not found');
@@ -122,7 +127,7 @@ export class CompositeItemsService {
       const item = await tx.item.create({
         data: {
           ...rest,
-          itemType: 'Composite Item',
+          itemStructure: 'composite',
           customFields,
           frontImage:
             frontImage === null
@@ -164,7 +169,7 @@ export class CompositeItemsService {
             where: { id: comp.componentItemId, organizationId, isDeleted: false },
           });
           if (!cItem) throw ApiError.badRequest(`Component ${comp.componentItemId} not found.`);
-          if (cItem.itemType === 'Composite Item')
+          if (cItem.itemStructure === 'composite')
             throw ApiError.badRequest(`Component ${cItem.name} cannot be a Composite Item.`);
 
           await tx.compositeItemComponent.create({
@@ -210,7 +215,7 @@ export class CompositeItemsService {
     const data = normalizeItemDto(rawData);
     return runAsTenant(organizationId, async (tx) => {
       const existing = await tx.item.findFirst({
-        where: { id, organizationId, itemType: 'Composite Item', isDeleted: false },
+        where: { id, organizationId, itemStructure: 'composite', isDeleted: false },
       });
       if (!existing) throw ApiError.notFound('Composite Item not found');
 
@@ -289,7 +294,7 @@ export class CompositeItemsService {
       const parent = await tx.item.findFirst({
         where: { id: compositeItemId, organizationId, isDeleted: false },
       });
-      if (!parent || parent.itemType !== 'Composite Item') {
+      if (!parent || parent.itemStructure !== 'composite') {
         throw ApiError.notFound('Composite Item not found');
       }
 
@@ -304,7 +309,7 @@ export class CompositeItemsService {
               sku: true,
               unit: true,
               stockingUomId: true,
-              type: true,
+              itemType: true,
               sellingPrice: true,
               costPrice: true,
             },

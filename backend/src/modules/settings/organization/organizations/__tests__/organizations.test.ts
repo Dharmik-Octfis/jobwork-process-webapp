@@ -6,7 +6,7 @@ describe('Organizations Schemas', () => {
     const payload = {
       name: 'Acme Corp',
       portalName: 'acmecorp',
-      industryCode: 'technology',
+      industryType: 'technology',
     };
 
     const result = createOrganizationSchema.safeParse(payload);

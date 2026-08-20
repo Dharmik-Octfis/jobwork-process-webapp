@@ -25,10 +25,10 @@ export function EditItemPage() {
   const [formData, setFormData] = useState<ItemFormData>({
     name: '',
 
-    type: 'Goods',
+    itemType: 'goods',
     category: '',
     hsnCode: '',
-    itemType: 'Single Item',
+    itemStructure: 'single',
     unit: '',
     stockingUomId: null,
     sku: '',
@@ -74,10 +74,10 @@ export function EditItemPage() {
     setInitializedId(id!);
     setFormData({
       name: (rawItem.name as string) || '',
-      type: (rawItem.type || 'Goods') as 'Goods' | 'Service',
+      itemType: (rawItem.itemType || 'goods') as 'goods' | 'service',
       category: (rawItem.category as string) || '',
       hsnCode: rawItem.hsnCode || '',
-      itemType: 'Single Item',
+      itemStructure: 'single',
       unit: rawItem.unit || '',
       stockingUomId: rawItem.stockingUomId ?? null,
       sku: rawItem.sku || '',
@@ -368,10 +368,10 @@ export function EditItemPage() {
                   >
                     <input
                       type="radio"
-                      name="type"
-                      value="Goods"
-                      checked={formData.type === 'Goods'}
-                      onChange={() => handleRadioChange('type', 'Goods')}
+                      name="itemType"
+                      value="goods"
+                      checked={formData.itemType === 'goods'}
+                      onChange={() => handleRadioChange('itemType', 'goods')}
                     />{' '}
                     Goods
                   </label>
@@ -386,10 +386,10 @@ export function EditItemPage() {
                   >
                     <input
                       type="radio"
-                      name="type"
-                      value="Service"
-                      checked={formData.type === 'Service'}
-                      onChange={() => handleRadioChange('type', 'Service')}
+                      name="itemType"
+                      value="service"
+                      checked={formData.itemType === 'service'}
+                      onChange={() => handleRadioChange('itemType', 'service')}
                     />{' '}
                     Service
                   </label>
@@ -1021,7 +1021,7 @@ export function EditItemPage() {
                       />{' '}
                       None
                     </label>
-                    {formData.type !== 'Service' && (
+                    {formData.itemType !== 'service' && (
                       <label
                         style={{
                           display: 'flex',

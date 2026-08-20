@@ -35,10 +35,10 @@ export function EditCompositeItemPage() {
 
   const [formData, setFormData] = useState<ItemFormData>({
     name: '',
-    type: 'Goods',
+    itemType: 'goods',
     category: '',
     hsnCode: '',
-    itemType: 'Composite Item',
+    itemStructure: 'composite',
     unit: '',
     stockingUomId: null,
     sku: '',
@@ -203,11 +203,11 @@ export function EditCompositeItemPage() {
     setInitializedId(id!);
     setFormData({
       name: (rawItem.name as string) || '',
-      type: (rawItem.type || 'Goods') as 'Goods' | 'Service',
+      itemType: (rawItem.itemType || 'goods') as 'goods' | 'service',
       category: (rawItem.category as string) || '',
       hsnCode: rawItem.hsnCode || '',
-      itemType: (rawItem.itemType || rawItem.itemType || 'Composite Item') as
-        'Single Item' | 'Contains Variants',
+      itemStructure: (rawItem.itemStructure || rawItem.itemStructure || 'composite') as
+        'single' | 'variants' | 'composite',
       unit: rawItem.unit || '',
       stockingUomId: rawItem.stockingUomId ?? null,
       sku: rawItem.sku || '',
@@ -1618,7 +1618,7 @@ export function EditCompositeItemPage() {
                       />{' '}
                       None
                     </label>
-                    {formData.type !== 'Service' && (
+                    {formData.itemType !== 'service' && (
                       <label
                         style={{
                           display: 'flex',

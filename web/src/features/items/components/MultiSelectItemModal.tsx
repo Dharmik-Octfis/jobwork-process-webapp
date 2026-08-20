@@ -74,7 +74,7 @@ function renderCell(
     case 'sku':
       return item.sku || '-';
     case 'type':
-      return item.type || item.itemType || '-';
+      return item.itemType || item.itemStructure || '-';
     case 'hsn':
       return item.hsnCode || '-';
     case 'category':
@@ -227,7 +227,7 @@ export function MultiSelectItemModal({
   const productTypes = useMemo(() => {
     const types = new Set<string>();
     (itemsPage?.results || []).forEach((item) => {
-      const t = item.type || item.itemType;
+      const t = item.itemType || item.itemStructure;
       if (t) types.add(t);
     });
     return Array.from(types).sort();
@@ -282,7 +282,7 @@ export function MultiSelectItemModal({
           if (key === 'hsn')
             return (item.hsnCode || '').toLowerCase().includes(searchVal);
           if (key === 'type')
-            return (item.type || item.itemType || '').toLowerCase() === searchVal;
+            return (item.itemType || item.itemStructure || '').toLowerCase() === searchVal;
           if (key === 'category') return (item.category || '').toLowerCase() === searchVal;
           const cfKey = key.replace('cf_', '');
           const rawVal = item.customFields?.[cfKey] ?? item.customFields?.[cfKey];
@@ -309,7 +309,7 @@ export function MultiSelectItemModal({
           if (cond.field === 'name') itemValue = item.name;
           else if (cond.field === 'sku') itemValue = item.sku;
           else if (cond.field === 'hsn') itemValue = item.hsnCode;
-          else if (cond.field === 'type') itemValue = item.type || item.itemType;
+          else if (cond.field === 'type') itemValue = item.itemType || item.itemStructure;
           else if (cond.field === 'category') itemValue = item.category;
           else if (cond.field.startsWith('cf_')) {
             const cfKey = cond.field.replace('cf_', '');

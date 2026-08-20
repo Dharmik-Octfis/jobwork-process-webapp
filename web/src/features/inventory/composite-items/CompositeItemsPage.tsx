@@ -31,14 +31,14 @@ function renderItemCell(item: Item, key: string): React.ReactNode {
       <span
         style={{
           padding: '2px 8px',
-          background: item.type === 'Goods' ? '#e0e7ff' : '#dcfce7',
-          color: item.type === 'Goods' ? '#3730a3' : '#166534',
+          background: item.itemType === 'goods' ? '#e0e7ff' : '#dcfce7',
+          color: item.itemType === 'goods' ? '#3730a3' : '#166534',
           borderRadius: 12,
           fontSize: 12,
           fontWeight: 500,
         }}
       >
-        {item.type}
+        {item.itemType}
       </span>
     );
   }

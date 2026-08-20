@@ -49,13 +49,12 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     return tracking === 'batch';
   }, [item, isInventoryTracked]);
 
-  const isCompositeItem =
-    item?.itemType === 'Composite Item';
+  const showComponentsTab = item?.itemStructure === 'composite';
 
   const effectiveActiveTab =
     (activeTab === 'Locations' && !isInventoryTracked) ||
     (activeTab === 'Batch Details' && !isBatchTracked) ||
-    (activeTab === 'Components' && !isCompositeItem)
+    (activeTab === 'Components' && !showComponentsTab)
       ? 'Overview'
       : activeTab;
 
@@ -172,7 +171,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {(item.itemType === 'Composite Item') && (
+          {(item.itemStructure === 'composite') && (
             <button
               onClick={() =>
                 navigate(`/organizations/${orgId}/inventory/assembly/new?itemId=${item.id}`)
@@ -196,7 +195,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
           )}
           <button
             onClick={() => {
-              if (item.itemType === 'Composite Item') {
+              if (item.itemStructure === 'composite') {
                 navigate(`/organizations/${orgId}/composite-items/${itemId}/edit`);
               } else {
                 navigate(`/organizations/${orgId}/items/${itemId}/edit`);
@@ -331,7 +330,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
           'Transactions',
           'Related Lists',
           'History',
-          ...(isCompositeItem ? ['Components'] : []),
+          ...(showComponentsTab ? ['Components'] : []),
         ].map((tab, idx) => (
           <Fragment key={tab}>
             {idx > 0 && <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />}
@@ -360,7 +359,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
             <ItemActivityHistory activities={activities} isLoading={isLoadingActivities} />
           </div>
         ) : effectiveActiveTab === 'Components' &&
-          (item.itemType === 'Composite Item') ? (
+          (item.itemStructure === 'composite') ? (
           <div style={{ margin: '-24px' }}>
             <CompositeItemsList itemId={itemId} />
           </div>
@@ -419,14 +418,14 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                   <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
                     <div style={{ fontSize: '12px', color: '#64748b' }}>Type</div>
                     <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>
-                      {item.type}
+                      {item.itemType}
                     </div>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
                     <div style={{ fontSize: '12px', color: '#64748b' }}>Item Type</div>
                     <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>
-                      {item.itemType}
+                      {item.itemStructure}
                     </div>
                   </div>
 

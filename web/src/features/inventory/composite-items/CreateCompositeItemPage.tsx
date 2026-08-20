@@ -50,10 +50,10 @@ export function CreateCompositeItemPage({
     if (itemToClone) {
       return {
         name: itemToClone.name || '',
-        type: (itemToClone.type || 'Goods') as 'Goods' | 'Service',
+        itemType: (itemToClone.itemType || 'goods') as 'goods' | 'service',
         category: itemToClone.category || '',
         hsnCode: itemToClone.hsnCode || '',
-        itemType: 'Composite Item',
+        itemStructure: 'composite',
         unit: itemToClone.unit || '',
         stockingUomId: itemToClone.stockingUomId ?? null,
         sku: itemToClone.sku || '',
@@ -91,10 +91,10 @@ export function CreateCompositeItemPage({
     }
     return {
       name: '',
-      type: 'Goods',
+      itemType: 'goods',
       category: '',
       hsnCode: '',
-      itemType: 'Composite Item',
+      itemStructure: 'composite',
       unit: '',
       stockingUomId: null,
       sku: '',

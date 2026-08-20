@@ -37,7 +37,8 @@ ALTER TABLE "users"
   ADD COLUMN "city_id"       UUID,
   ADD COLUMN "state_code"    VARCHAR(6),
   ADD COLUMN "country_code"  VARCHAR(2),
-  ADD COLUMN "zip"           VARCHAR(20);
+  ADD COLUMN "zip"           VARCHAR(20),
+  ADD COLUMN "avatar_url"    TEXT;
 
 -- ────────────────────────────────────────────────────────────────────────────
 -- 2. Copy anything already entered, so the DROP below destroys nothing.
