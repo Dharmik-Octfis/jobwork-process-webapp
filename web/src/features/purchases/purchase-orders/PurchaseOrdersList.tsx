@@ -16,12 +16,12 @@ import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 import type { PurchaseOrder } from './purchase-orders.schemas';
 
 function renderPoCell(po: PurchaseOrder, key: string, paymentTerms: PaymentTerm[] = []): string {
-  if (key === 'payment_terms') {
-    const term = paymentTerms.find((t) => t.id === po.payment_terms);
-    return term ? term.termName : (po.payment_terms || '-');
+  if (key === 'paymentTerms') {
+    const term = paymentTerms.find((t) => t.id === po.paymentTerms);
+    return term ? term.termName : (po.paymentTerms || '-');
   }
   if (key.startsWith(CUSTOM_FIELD_PREFIX)) {
-    const value = po.custom_fields?.[key.slice(CUSTOM_FIELD_PREFIX.length)];
+    const value = po.customFields?.[key.slice(CUSTOM_FIELD_PREFIX.length)];
     if (value === null || value === undefined || value === '') return '-';
     return Array.isArray(value) ? value.join(', ') : String(value);
   }
@@ -29,11 +29,11 @@ function renderPoCell(po: PurchaseOrder, key: string, paymentTerms: PaymentTerm[
     return po.vendor?.contactName || '-';
   }
   if (key === 'total') {
-    return `₹${Number(po.total || 0).toFixed(2)}`;
+    return `₹${Number(po.totalAmount || 0).toFixed(2)}`;
   }
   const value = (po as unknown as Record<string, unknown>)[key];
   if (value === null || value === undefined || value === '') return '-';
-  if (key === 'date' || key === 'delivery_date' || key === 'created_at' || key === 'updated_at') {
+  if (key === 'date' || key === 'deliveryDate' || key === 'createdAt' || key === 'updatedAt') {
     return new Date(String(value)).toLocaleDateString();
   }
   return String(value);
@@ -259,10 +259,10 @@ export function PurchaseOrdersList() {
                         }}
                       >
                         <div style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b', marginBottom: '4px' }}>
-                          {po.purchaseorder_number}
+                          {po.poNumber}
                         </div>
                         <div style={{ fontSize: '12px', color: '#64748b' }}>
-                          {po.vendor?.contactName || '-'} • ₹{po.total}
+                          {po.vendor?.contactName || '-'} • ₹{po.totalAmount}
                         </div>
                       </div>
                     ))}
@@ -298,9 +298,9 @@ export function PurchaseOrdersList() {
                               key={col.key}
                               style={{
                                 padding: '12px 16px',
-                                color: col.key === 'purchaseorder_number' ? '#0062ff' : '#333',
+                                color: col.key === 'poNumber' ? '#0062ff' : '#333',
                                 fontSize: 13,
-                                fontWeight: col.key === 'purchaseorder_number' ? 500 : 400,
+                                fontWeight: col.key === 'poNumber' ? 500 : 400,
                               }}
                             >
                               {renderPoCell(po, col.key, paymentTerms)}

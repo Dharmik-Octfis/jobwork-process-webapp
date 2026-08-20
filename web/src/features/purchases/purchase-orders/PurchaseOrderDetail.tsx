@@ -84,7 +84,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
             (window as unknown as { html2pdf?: unknown }).html2pdf;
           const opt: Html2PdfOptions = {
             margin: [8, 8, 8, 8],
-            filename: `${po?.purchaseorder_number || 'PO'}.pdf`,
+            filename: `${po?.poNumber || 'PO'}.pdf`,
             image: { type: 'jpeg', quality: 0.98 },
             html2canvas: { scale: 2, useCORS: true },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
@@ -222,7 +222,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
-            {po.purchaseorder_number}
+            {po.poNumber}
           </h2>
           <span
             style={{
@@ -759,11 +759,11 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                           }
                           style={{ color: '#0062ff', cursor: 'pointer', fontWeight: 500 }}
                         >
-                          {bill.bill_number}
+                          {bill.billNumber}
                         </span>
                       </td>
                       <td style={{ padding: '14px 16px', fontSize: '13px', color: '#1e293b' }}>
-                        {bill.bill_date ? format(new Date(bill.bill_date), 'dd-MM-yyyy') : '-'}
+                        {bill.billDate ? format(new Date(bill.billDate), 'dd-MM-yyyy') : '-'}
                       </td>
                       <td
                         style={{
@@ -776,7 +776,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         {bill.status}
                       </td>
                       <td style={{ padding: '14px 16px', fontSize: '13px', color: '#1e293b' }}>
-                        {bill.due_date ? format(new Date(bill.due_date), 'dd-MM-yyyy') : '-'}
+                        {bill.dueDate ? format(new Date(bill.dueDate), 'dd-MM-yyyy') : '-'}
                       </td>
                       <td
                         style={{
@@ -787,7 +787,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                           textAlign: 'right',
                         }}
                       >
-                        ₹{Number(bill.total_amount || 0).toFixed(2)}
+                        ₹{Number(bill.totalAmount || 0).toFixed(2)}
                       </td>
                       <td style={{ width: '40px', padding: '14px 16px', textAlign: 'right' }}>
                         <div
@@ -846,7 +846,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   </h1>
                   <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 500 }}>
                     Purchase Order#{' '}
-                    <strong style={{ color: '#0f172a' }}>{po.purchaseorder_number}</strong>
+                    <strong style={{ color: '#0f172a' }}>{po.poNumber}</strong>
                   </div>
                 </div>
 
@@ -899,7 +899,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         marginBottom: '2px',
                       }}
                     >
-                      {po.delivery_type === 'Location'
+                      {po.deliveryType === 'Location'
                         ? po.deliveryLocation?.name || 'Head Office'
                         : po.deliveryCustomer?.contactName || '-'}
                     </div>
@@ -911,7 +911,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         maxWidth: '220px',
                       }}
                     >
-                      {po.delivery_type === 'Location' && po.deliveryLocation?.address}
+                      {po.deliveryType === 'Location' && po.deliveryLocation?.address}
                     </div>
                   </div>
                 </div>
@@ -973,16 +973,16 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
 
                   <div style={{ ...labelStyle, marginTop: '8px' }}>DELIVERY DATE</div>
                   <div style={valueStyle}>
-                    {po.delivery_date ? format(new Date(po.delivery_date), 'dd-MM-yyyy') : '-'}
+                    {po.deliveryDate ? format(new Date(po.deliveryDate), 'dd-MM-yyyy') : '-'}
                   </div>
                 </div>
 
                 <div>
                   <div style={labelStyle}>PAYMENT TERMS</div>
-                  <div style={valueStyle}>{getPaymentTermLabel(po.payment_terms)}</div>
+                  <div style={valueStyle}>{getPaymentTermLabel(po.paymentTerms)}</div>
 
                   <div style={{ ...labelStyle, marginTop: '8px' }}>DELIVERY TYPE</div>
-                  <div style={valueStyle}>{po.delivery_type || 'Location'}</div>
+                  <div style={valueStyle}>{po.deliveryType || 'Location'}</div>
                 </div>
 
                 <div>
@@ -1064,11 +1064,11 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   </tr>
                 </thead>
                 <tbody>
-                  {(po.line_items || []).map((item, index) => {
+                  {(po.lineItems || []).map((item, index) => {
                     const discVal = Number(
                       item.discountValue !== undefined && item.discountValue !== null
                         ? item.discountValue
-                        : item.discount_percentage || item.discount || 0,
+                        : item.discountPercentage || item.discount || 0,
                     );
                     const discDisplay =
                       item.discountType === 'fixed' ? `₹${discVal.toFixed(2)}` : `${discVal}%`;
@@ -1147,7 +1147,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                             verticalAlign: 'top',
                           }}
                         >
-                          ₹{Number(item.item_total || 0).toFixed(2)}
+                          ₹{Number(item.itemTotal || 0).toFixed(2)}
                         </td>
                       </tr>
                     );
@@ -1179,7 +1179,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                     </div>
                   )}
 
-                  {po.terms && (
+                  {po.termsAndConditions && (
                     <div style={{ marginBottom: '16px' }}>
                       <strong
                         style={{ color: '#1e293b', fontSize: '12px', textTransform: 'uppercase' }}
@@ -1187,7 +1187,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         Terms & Conditions:
                       </strong>
                       <div style={{ marginTop: '4px', lineHeight: 1.5, color: '#475569' }}>
-                        {po.terms}
+                        {po.termsAndConditions}
                       </div>
                     </div>
                   )}
@@ -1258,10 +1258,10 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   >
                     <span style={{ color: '#64748b' }}>Sub Total</span>
                     <span style={{ fontWeight: 600, color: '#0f172a' }}>
-                      ₹{Number(po.sub_total || 0).toFixed(2)}
+                      ₹{Number(po.subTotal || 0).toFixed(2)}
                     </span>
                   </div>
-                  {Number(po.sub_total || 0) > Number(po.total || 0) && (
+                  {Number(po.subTotal || 0) > Number(po.totalAmount || 0) && (
                     <div
                       style={{
                         display: 'flex',
@@ -1273,7 +1273,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                     >
                       <span>Total Discount</span>
                       <span style={{ fontWeight: 600 }}>
-                        -₹{(Number(po.sub_total) - Number(po.total)).toFixed(2)}
+                        -₹{(Number(po.subTotal) - Number(po.totalAmount)).toFixed(2)}
                       </span>
                     </div>
                   )}
@@ -1290,7 +1290,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                     }}
                   >
                     <span>Total</span>
-                    <span>₹{Number(po.total || 0).toFixed(2)}</span>
+                    <span>₹{Number(po.totalAmount || 0).toFixed(2)}</span>
                   </div>
                 </div>
               </div>
@@ -1406,7 +1406,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                     <td
                       style={{ width: '50%', padding: '6px 10px', borderRight: '1px solid #000' }}
                     >
-                      <strong>PO No.</strong> : <strong>{po.purchaseorder_number}</strong>
+                      <strong>PO No.</strong> : <strong>{po.poNumber}</strong>
                     </td>
                     <td style={{ width: '50%', padding: '6px 10px' }}>
                       <strong>Place Of Supply</strong> : Gujarat (24)
@@ -1420,7 +1420,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                       {po.date ? format(new Date(po.date), 'dd-MM-yyyy') : '-'}
                     </td>
                     <td style={{ width: '50%', padding: '6px 10px' }}>
-                      <strong>Terms</strong> : {getPaymentTermLabel(po.payment_terms)}
+                      <strong>Terms</strong> : {getPaymentTermLabel(po.paymentTerms)}
                     </td>
                   </tr>
                 </tbody>
@@ -1469,11 +1469,11 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                     </td>
                     <td style={{ padding: '10px', verticalAlign: 'top', lineHeight: 1.5 }}>
                       <strong>
-                        {po.delivery_type === 'Location'
+                        {po.deliveryType === 'Location'
                           ? po.deliveryLocation?.name || 'Head Office'
                           : po.deliveryCustomer?.contactName || '-'}
                       </strong>
-                      {po.delivery_type === 'Location' && <div>{po.deliveryLocation?.address}</div>}
+                      {po.deliveryType === 'Location' && <div>{po.deliveryLocation?.address}</div>}
                     </td>
                   </tr>
                 </tbody>
@@ -1546,7 +1546,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   </tr>
                 </thead>
                 <tbody>
-                  {(po.line_items || []).map((item, index) => (
+                  {(po.lineItems || []).map((item, index) => (
                     <tr key={item.id || index} style={{ borderBottom: '1px solid #e2e8f0' }}>
                       <td
                         style={{
@@ -1574,7 +1574,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                           textAlign: 'center',
                         }}
                       >
-                        {po.delivery_date ? format(new Date(po.delivery_date), 'dd-MM-yyyy') : '-'}
+                        {po.deliveryDate ? format(new Date(po.deliveryDate), 'dd-MM-yyyy') : '-'}
                       </td>
                       <td
                         style={{
@@ -1595,7 +1595,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         ₹{Number(item.rate || 0).toFixed(2)}
                       </td>
                       <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600 }}>
-                        ₹{Number(item.item_total || 0).toFixed(2)}
+                        ₹{Number(item.itemTotal || 0).toFixed(2)}
                       </td>
                     </tr>
                   ))}
@@ -1634,11 +1634,11 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                           'With reference to your above quotation, we request you to supply the following materials subject to terms and conditions.'}
                       </div>
 
-                      {po.terms && (
+                      {po.termsAndConditions && (
                         <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
                           <strong>Terms & Conditions:</strong>
                           <br />
-                          {po.terms}
+                          {po.termsAndConditions}
                         </div>
                       )}
                     </td>
@@ -1658,7 +1658,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         }}
                       >
                         <span>Sub Total:</span>
-                        <strong>₹{Number(po.sub_total || 0).toFixed(2)}</strong>
+                        <strong>₹{Number(po.subTotal || 0).toFixed(2)}</strong>
                       </div>
                       <div
                         style={{
@@ -1671,7 +1671,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         }}
                       >
                         <span>Total:</span>
-                        <strong>₹{Number(po.total || 0).toFixed(2)}</strong>
+                        <strong>₹{Number(po.totalAmount || 0).toFixed(2)}</strong>
                       </div>
 
                       <div style={{ marginTop: '40px', fontSize: '11px', color: '#333' }}>
@@ -1699,7 +1699,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
       <ConfirmDialog
         isOpen={isConfirmDeleteOpen}
         title="Delete Purchase Order"
-        message={`Are you sure you want to delete Purchase Order ${po.purchaseorder_number}? This action cannot be undone.`}
+        message={`Are you sure you want to delete Purchase Order ${po.poNumber}? This action cannot be undone.`}
         confirmText={deleteMutation.isPending ? 'Deleting...' : 'Delete'}
         onConfirm={() => deleteMutation.mutate()}
         onCancel={() => setIsConfirmDeleteOpen(false)}

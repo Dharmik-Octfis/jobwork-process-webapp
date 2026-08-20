@@ -146,7 +146,7 @@ function buildValueSchema(def: FieldDefinition): z.ZodTypeAny {
  * which is the case for permission templates and is not the case here.
  *
  * Staleness, stated plainly: definitions are read to validate a record's
- * `custom_fields` on write, so for up to `DEFS_TTL_MS` after an admin archives a
+ * `customFields` on write, so for up to `DEFS_TTL_MS` after an admin archives a
  * field, instances other than the one that processed the edit may still accept a
  * value for it. That value lands in JSONB and is stripped by the engine on the
  * next read/write, so the blast radius is one stale column value — acceptable at

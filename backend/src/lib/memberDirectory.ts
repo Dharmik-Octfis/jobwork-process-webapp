@@ -4,7 +4,7 @@ import { createMemoryCache } from './memoryCache.ts';
 
 /**
  * One organization's `userId → display name` directory: the single place
- * `created_by` / `updated_by` becomes a name a human can read.
+ * `createdBy` / `updatedBy` becomes a name a human can read.
  *
  * WHY A DIRECTORY AND NOT A JOIN
  * The audit columns are FKs to `users.id`, but since 2026-07-30 the name shown

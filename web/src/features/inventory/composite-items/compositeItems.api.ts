@@ -22,10 +22,10 @@ export interface CompositeComponent {
   uom_id?: string | null;
   seq: number;
   notes?: string | null;
-  custom_fields: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-  is_deleted: boolean;
+  customFields: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  isDeleted: boolean;
   component?: {
     id: string;
     name: string;
@@ -44,7 +44,7 @@ export interface CreateCompositeComponentDto {
   uom_id?: string | null;
   seq?: number;
   notes?: string | null;
-  custom_fields?: Record<string, unknown>;
+  customFields?: Record<string, unknown>;
 }
 
 export type UpdateCompositeComponentDto = Partial<CreateCompositeComponentDto>;

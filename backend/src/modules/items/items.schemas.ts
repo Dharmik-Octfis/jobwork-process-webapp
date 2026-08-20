@@ -27,7 +27,6 @@ export const itemSchema = openApiRegistry.register(
     id: z.string().uuid().openapi({ example: '123e4567-e89b-12d3-a456-426614174000' }),
     product_id: z.string().uuid().optional(),
     organizationId: z.string().uuid().openapi({ example: '123e4567-e89b-12d3-a456-426614174001' }),
-    organization_id: z.string().uuid().optional(),
     name: z
       .string()
       .min(1, 'Name is required')
@@ -39,10 +38,9 @@ export const itemSchema = openApiRegistry.register(
     hsnCode: z.string().max(50).nullable().optional().openapi({ example: '84713010' }),
     hsn_or_sac: z.string().max(50).nullable().optional(),
     itemType: z
-      .enum(['Single Item', 'Contains Variants'])
+      .enum(['Single Item', 'Contains Variants', 'Composite Item'])
       .default('Single Item')
       .openapi({ example: 'Single Item' }),
-    item_type: z.string().optional(),
     unit: z.string().max(50).optional().default('').openapi({ example: 'pcs' }),
     /**
      * 🔴 THE UNIT THE LEDGER MOVES THIS ITEM IN. One item, one stocking unit
@@ -64,43 +62,30 @@ export const itemSchema = openApiRegistry.register(
     sellingPrice: z.number().nullable().optional().openapi({ example: 150000.0 }),
     rate: z.number().nullable().optional(),
     salesDescription: z.string().nullable().optional(),
-    sales_description: z.string().nullable().optional(),
     isPurchaseInfo: z.boolean().default(false).openapi({ example: true }),
     can_be_purchased: z.boolean().optional(),
     costPrice: z.number().nullable().optional().openapi({ example: 120000.0 }),
     purchase_rate: z.number().nullable().optional(),
     purchaseDescription: z.string().nullable().optional(),
-    purchase_description: z.string().nullable().optional(),
     packaging: z.string().max(100).nullable().optional().openapi({ example: 'Box' }),
 
     frontImage: z.union([itemImageAttachmentSchema, z.string()]).nullable().optional(),
-    front_image: z.union([itemImageAttachmentSchema, z.string()]).nullable().optional(),
     rearImage: z.union([itemImageAttachmentSchema, z.string()]).nullable().optional(),
-    rear_image: z.union([itemImageAttachmentSchema, z.string()]).nullable().optional(),
     images: z.array(z.union([itemImageAttachmentSchema, z.string()])).optional(),
 
     trackInventory: z.boolean().optional(),
-    track_inventory: z.boolean().optional(),
     // none | batch. NOT nullable: the column is NOT NULL since the 2026-08-12
     // rename, and an untracked item is the string 'none', never an absent value.
     inventoryTracking: INVENTORY_TRACKING.optional(),
-    inventory_tracking: INVENTORY_TRACKING.optional(),
     openingStock: z.number().nullable().optional(),
     openingStockValuePerUnit: z.number().nullable().optional(),
     customFields: z.record(z.string(), z.unknown()).optional(),
-    custom_fields: z.record(z.string(), z.unknown()).optional(),
     createdAt: z.string().optional(),
-    created_at: z.string().optional(),
     updatedAt: z.string().optional(),
-    updated_at: z.string().optional(),
     createdBy: z.string().nullable().optional(),
-    created_by: z.string().nullable().optional(),
     updatedBy: z.string().nullable().optional(),
-    updated_by: z.string().nullable().optional(),
     isActive: z.boolean().optional().openapi({ example: true }),
-    is_active: z.boolean().optional(),
     isDeleted: z.boolean().optional(),
-    is_deleted: z.boolean().optional(),
   }),
 );
 
@@ -111,21 +96,16 @@ export const createItemSchema = openApiRegistry.register(
       id: true,
       product_id: true,
       organizationId: true,
-      organization_id: true,
       createdAt: true,
-      created_at: true,
       updatedAt: true,
-      updated_at: true,
     })
     .extend({
       sellingPrice: z.number().nullable().optional(),
       rate: z.number().nullable().optional(),
       salesDescription: z.string().nullable().optional(),
-      sales_description: z.string().nullable().optional(),
       costPrice: z.number().nullable().optional(),
       purchase_rate: z.number().nullable().optional(),
       purchaseDescription: z.string().nullable().optional(),
-      purchase_description: z.string().nullable().optional(),
       openingStock: z.number().nullable().optional(),
       openingStockValuePerUnit: z.number().nullable().optional(),
     }),

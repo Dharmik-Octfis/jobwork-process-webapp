@@ -16,23 +16,23 @@ import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 import type { Bill } from './bills.schemas';
 
 function renderBillCell(po: Bill, key: string, _paymentTerms: PaymentTerm[] = []): string {
-  if (key === 'payment_terms') {
+  if (key === 'paymentTerms') {
     return '-';
   }
   if (key.startsWith(CUSTOM_FIELD_PREFIX)) {
-    const value = po.custom_fields?.[key.slice(CUSTOM_FIELD_PREFIX.length)];
+    const value = po.customFields?.[key.slice(CUSTOM_FIELD_PREFIX.length)];
     if (value === null || value === undefined || value === '') return '-';
     return Array.isArray(value) ? value.join(', ') : String(value);
   }
   if (key === 'vendor') {
     return po.vendor?.contactName || '-';
   }
-  if (key === 'total_amount') {
-    return `₹${Number(po.total || po.total_amount || 0).toFixed(2)}`;
+  if (key === 'totalAmount') {
+    return `₹${Number(po.totalAmount || po.totalAmount || 0).toFixed(2)}`;
   }
   const value = (po as Record<string, unknown>)[key];
   if (value === null || value === undefined || value === '') return '-';
-  if (key === 'date' || key === 'due_date' || key === 'created_at' || key === 'updated_at') {
+  if (key === 'date' || key === 'dueDate' || key === 'createdAt' || key === 'updatedAt') {
     return new Date(String(value)).toLocaleDateString();
   }
   return String(value);
@@ -279,10 +279,10 @@ export function BillsList() {
                             marginBottom: '4px',
                           }}
                         >
-                          {po.bill_number}
+                          {po.billNumber}
                         </div>
                         <div style={{ fontSize: '12px', color: '#64748b' }}>
-                          {po.vendor?.contactName || '-'} • ₹{po.total || po.total_amount || 0}
+                          {po.vendor?.contactName || '-'} • ₹{po.totalAmount || po.totalAmount || 0}
                         </div>
                       </div>
                     ))}
@@ -322,9 +322,9 @@ export function BillsList() {
                               key={col.key}
                               style={{
                                 padding: '12px 16px',
-                                color: col.key === 'bill_number' ? '#0062ff' : '#333',
+                                color: col.key === 'billNumber' ? '#0062ff' : '#333',
                                 fontSize: 13,
-                                fontWeight: col.key === 'bill_number' ? 500 : 400,
+                                fontWeight: col.key === 'billNumber' ? 500 : 400,
                               }}
                             >
                               {renderBillCell(po, col.key, paymentTerms)}

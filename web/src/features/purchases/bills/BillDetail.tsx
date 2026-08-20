@@ -77,7 +77,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
             (window as unknown as { html2pdf?: unknown }).html2pdf;
           const opt: Html2PdfOptions = {
             margin: [8, 8, 8, 8],
-            filename: `${po?.bill_number || 'Bill'}.pdf`,
+            filename: `${po?.billNumber || 'Bill'}.pdf`,
             image: { type: 'jpeg', quality: 0.98 },
             html2canvas: { scale: 2, useCORS: true },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
@@ -191,7 +191,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
-            {po.bill_number}
+            {po.billNumber}
           </h2>
           <span
             style={{
@@ -576,7 +576,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                     BILL
                   </h1>
                   <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 500 }}>
-                    BILL# <strong style={{ color: '#0f172a' }}>{po.bill_number}</strong>
+                    BILL# <strong style={{ color: '#0f172a' }}>{po.billNumber}</strong>
                   </div>
                 </div>
 
@@ -689,12 +689,12 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                 <div>
                   <div style={labelStyle}>BILL DATE</div>
                   <div style={valueStyle}>
-                    {po.bill_date ? format(new Date(po.bill_date), 'dd-MM-yyyy') : '-'}
+                    {po.billDate ? format(new Date(po.billDate), 'dd-MM-yyyy') : '-'}
                   </div>
 
                   <div style={{ ...labelStyle, marginTop: '8px' }}>DUE DATE</div>
                   <div style={valueStyle}>
-                    {po.due_date ? format(new Date(po.due_date), 'dd-MM-yyyy') : '-'}
+                    {po.dueDate ? format(new Date(po.dueDate), 'dd-MM-yyyy') : '-'}
                   </div>
                 </div>
 
@@ -785,11 +785,11 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                   </tr>
                 </thead>
                 <tbody>
-                  {(po.line_items || []).map((item, index) => {
+                  {(po.lineItems || []).map((item, index) => {
                     const discVal = Number(
                       item.discountValue !== undefined && item.discountValue !== null
                         ? item.discountValue
-                        : item.discount_percentage || item.discount_amount || 0,
+                        : item.discountPercentage || item.discount_amount || 0,
                     );
                     const discDisplay =
                       item.discountType === 'fixed' ? `₹${discVal.toFixed(2)}` : `${discVal}%`;
@@ -875,7 +875,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                           >
                             ₹
                             {Number(
-                              (item as Record<string, unknown>).item_total || item.amount || 0,
+                              (item as Record<string, unknown>).itemTotal || item.amount || 0,
                             ).toFixed(2)}
                           </td>
                         </tr>
@@ -901,7 +901,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                 }}
               >
                 <div style={{ flex: 1, fontSize: '13px', color: '#475569' }}>
-                  {po.terms_and_conditions && (
+                  {po.termsAndConditions && (
                     <div style={{ marginBottom: '16px' }}>
                       <strong
                         style={{ color: '#1e293b', fontSize: '12px', textTransform: 'uppercase' }}
@@ -909,7 +909,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                         Terms & Conditions:
                       </strong>
                       <div style={{ marginTop: '4px', lineHeight: 1.5, color: '#475569' }}>
-                        {po.terms_and_conditions}
+                        {po.termsAndConditions}
                       </div>
                     </div>
                   )}
@@ -980,11 +980,11 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                   >
                     <span style={{ color: '#64748b' }}>Sub Total</span>
                     <span style={{ fontWeight: 600, color: '#0f172a' }}>
-                      ₹{Number(po.sub_total || 0).toFixed(2)}
+                      ₹{Number(po.subTotal || 0).toFixed(2)}
                     </span>
                   </div>
-                  {Number(po.sub_total || 0) >
-                    Number((po as Record<string, unknown>).total || po.total_amount || 0) && (
+                  {Number(po.subTotal || 0) >
+                    Number((po as Record<string, unknown>).total || po.totalAmount || 0) && (
                     <div
                       style={{
                         display: 'flex',
@@ -998,8 +998,8 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                       <span style={{ fontWeight: 600 }}>
                         -₹
                         {(
-                          Number(po.sub_total || 0) -
-                          Number((po as Record<string, unknown>).total || po.total_amount || 0)
+                          Number(po.subTotal || 0) -
+                          Number((po as Record<string, unknown>).total || po.totalAmount || 0)
                         ).toFixed(2)}
                       </span>
                     </div>
@@ -1020,7 +1020,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                     <span>
                       ₹
                       {Number(
-                        (po as Record<string, unknown>).total || po.total_amount || 0,
+                        (po as Record<string, unknown>).total || po.totalAmount || 0,
                       ).toFixed(2)}
                     </span>
                   </div>
@@ -1028,7 +1028,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
               </div>
 
               {/* BATCH DETAILS SECTION */}
-              {(po.line_items || []).some(item => item.batches && item.batches.length > 0) && (
+              {(po.lineItems || []).some(item => item.batches && item.batches.length > 0) && (
                 <div
                   style={{
                     borderTop: '1px solid #f1f5f9',
@@ -1050,7 +1050,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                         </tr>
                       </thead>
                       <tbody>
-                        {(po.line_items || []).filter(item => item.batches && item.batches.length > 0).map((item, itemIndex, arr) => {
+                        {(po.lineItems || []).filter(item => item.batches && item.batches.length > 0).map((item, itemIndex, arr) => {
                           const isLastItem = itemIndex === arr.length - 1;
                           return item.batches!.map((batch, bIndex) => {
                             const isFirstBatch = bIndex === 0;
@@ -1190,7 +1190,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                     <td
                       style={{ width: '50%', padding: '6px 10px', borderRight: '1px solid #000' }}
                     >
-                      <strong>Bill No.</strong> : <strong>{po.bill_number}</strong>
+                      <strong>Bill No.</strong> : <strong>{po.billNumber}</strong>
                     </td>
                     <td style={{ width: '50%', padding: '6px 10px' }}>
                       <strong>Place Of Supply</strong> : Gujarat (24)
@@ -1201,7 +1201,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                       style={{ width: '50%', padding: '6px 10px', borderRight: '1px solid #000' }}
                     >
                       <strong>Date</strong> :{' '}
-                      {po.bill_date ? format(new Date(po.bill_date), 'dd-MM-yyyy') : '-'}
+                      {po.billDate ? format(new Date(po.billDate), 'dd-MM-yyyy') : '-'}
                     </td>
                     <td style={{ width: '50%', padding: '6px 10px' }}>
                       <strong>Terms</strong> : -
@@ -1336,11 +1336,11 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                   </tr>
                 </thead>
                 <tbody>
-                  {(po.line_items || []).map((item, index) => {
+                  {(po.lineItems || []).map((item, index) => {
                     const discVal = Number(
                       item.discountValue !== undefined && item.discountValue !== null
                         ? item.discountValue
-                        : item.discount_percentage || item.discount_amount || 0,
+                        : item.discountPercentage || item.discount_amount || 0,
                     );
                     const discDisplay =
                       item.discountType === 'fixed' ? `₹${discVal.toFixed(2)}` : `${discVal}%`;
@@ -1373,7 +1373,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                             textAlign: 'center',
                           }}
                         >
-                          {po.due_date ? format(new Date(po.due_date), 'dd-MM-yyyy') : '-'}
+                          {po.dueDate ? format(new Date(po.dueDate), 'dd-MM-yyyy') : '-'}
                         </td>
                         <td
                           style={{
@@ -1405,7 +1405,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                         <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600 }}>
                           ₹
                           {Number(
-                            (item as Record<string, unknown>).item_total || item.amount || 0,
+                            (item as Record<string, unknown>).itemTotal || item.amount || 0,
                           ).toFixed(2)}
                         </td>
                       </tr>
@@ -1435,11 +1435,11 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                         borderRight: '1px solid #000',
                       }}
                     >
-                      {po.terms_and_conditions && (
+                      {po.termsAndConditions && (
                         <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
                           <strong>Terms & Conditions:</strong>
                           <br />
-                          {po.terms_and_conditions}
+                          {po.termsAndConditions}
                         </div>
                       )}
                     </td>
@@ -1459,10 +1459,10 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                         }}
                       >
                         <span>Sub Total:</span>
-                        <strong>₹{Number(po.sub_total || 0).toFixed(2)}</strong>
+                        <strong>₹{Number(po.subTotal || 0).toFixed(2)}</strong>
                       </div>
-                      {Number(po.sub_total || 0) >
-                        Number((po as Record<string, unknown>).total || po.total_amount || 0) && (
+                      {Number(po.subTotal || 0) >
+                        Number((po as Record<string, unknown>).total || po.totalAmount || 0) && (
                         <div
                           style={{
                             display: 'flex',
@@ -1475,8 +1475,8 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                           <strong>
                             -₹
                             {(
-                              Number(po.sub_total || 0) -
-                              Number((po as Record<string, unknown>).total || po.total_amount || 0)
+                              Number(po.subTotal || 0) -
+                              Number((po as Record<string, unknown>).total || po.totalAmount || 0)
                             ).toFixed(2)}
                           </strong>
                         </div>
@@ -1495,7 +1495,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                         <strong>
                           ₹
                           {Number(
-                            (po as Record<string, unknown>).total || po.total_amount || 0,
+                            (po as Record<string, unknown>).total || po.totalAmount || 0,
                           ).toFixed(2)}
                         </strong>
                       </div>
@@ -1512,7 +1512,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
               </table>
 
               {/* PDF Batch Details Section */}
-              {(po.line_items || []).some(item => item.batches && item.batches.length > 0) && (
+              {(po.lineItems || []).some(item => item.batches && item.batches.length > 0) && (
                 <div style={{ marginTop: '16px', marginBottom: '8px' }}>
                   <div style={{ fontSize: '11px', fontWeight: 800, color: '#000', marginBottom: '6px' }}>BATCH DETAILS</div>
                   <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #000', fontSize: '10px' }}>
@@ -1527,7 +1527,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                       </tr>
                     </thead>
                     <tbody>
-                      {(po.line_items || []).filter(item => item.batches && item.batches.length > 0).map((item) => {
+                      {(po.lineItems || []).filter(item => item.batches && item.batches.length > 0).map((item) => {
                         return item.batches!.map((batch, bIndex) => {
                           const isFirstBatch = bIndex === 0;
                           return (
@@ -1565,7 +1565,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
       <ConfirmDialog
         isOpen={isConfirmDeleteOpen}
         title="Delete BILL"
-        message={`Are you sure you want to delete BILL ${po.bill_number}? This action cannot be undone.`}
+        message={`Are you sure you want to delete BILL ${po.billNumber}? This action cannot be undone.`}
         confirmText={deleteMutation.isPending ? 'Deleting...' : 'Delete'}
         onConfirm={() => deleteMutation.mutate()}
         onCancel={() => setIsConfirmDeleteOpen(false)}

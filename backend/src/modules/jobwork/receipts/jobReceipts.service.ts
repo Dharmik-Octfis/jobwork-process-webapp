@@ -969,7 +969,7 @@ export async function createNewJobReceipt(
     }
 
     /**
-     * 🔴 The RETURN side, recorded as rows (§5.7). `custom_fields` is left at its
+     * 🔴 The RETURN side, recorded as rows (§5.7). `customFields` is left at its
      * default — the list is not a registered entity type, so there is nothing an
      * org could have defined to put in it.
      */

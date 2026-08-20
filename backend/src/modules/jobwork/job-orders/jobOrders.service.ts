@@ -966,7 +966,7 @@ async function writeSteps(
         }) as Prisma.InputJsonValue,
         createdBy: userId ?? null,
         updatedBy: userId ?? null,
-        // Written with the step, in its transaction. `custom_fields` is left at
+        // Written with the step, in its transaction. `customFields` is left at
         // its default: the column exists per convention, but neither list is a
         // registered entity type (`customFields.constants.ts`), so there is
         // nothing an org could have defined to put in it.

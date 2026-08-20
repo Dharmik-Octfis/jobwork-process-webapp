@@ -216,7 +216,7 @@ async function getOutputFlows(
  * What went out and what has been accounted for, per item.
  *
  * Issued comes from the challan LINES: the item lives there now (§5.7), and
- * `job_issue_lines.item_id` is nullable only because rows written before Sprint 5
+ * `job_issue_lines.itemId` is nullable only because rows written before Sprint 5
  * were back-filled from the header — hence the fallback, which disappears with
  * Migration B.
  *

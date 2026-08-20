@@ -181,11 +181,11 @@ export function CreateBill() {
   } = useForm<CreateBillData>({
     defaultValues: {
       status: 'Draft',
-      bill_date: new Date().toISOString().split('T')[0],
-      delivery_type: 'Location',
-      line_items: [
+      billDate: new Date().toISOString().split('T')[0],
+      deliveryType: 'Location',
+      lineItems: [
         {
-          item_id: '',
+          itemId: '',
           quantity: '' as unknown as number,
           rate: '' as unknown as number,
           discountValue: '' as unknown as number,
@@ -193,67 +193,67 @@ export function CreateBill() {
           amount: 0,
         } as BillItem,
       ],
-      sub_total: 0,
-      total_amount: 0,
+      subTotal: 0,
+      totalAmount: 0,
     },
   });
 
   useEffect(() => {
     if (existingPo) {
-      const formattedLineItems = (existingPo.line_items || []).map((item) => {
+      const formattedLineItems = (existingPo.lineItems || []).map((item) => {
         const discountVal =
           item.discountValue !== undefined && item.discountValue !== null
             ? item.discountValue
-            : item.discount_percentage || 0;
+            : item.discountPercentage || 0;
         return {
-          item_id: item.item_id,
+          itemId: item.itemId,
           item: item.item,
           quantity: item.quantity || ('' as unknown as number),
           rate: item.rate || ('' as unknown as number),
           discountValue: discountVal || ('' as unknown as number),
-          discountType: item.discountType || (item.discount_percentage ? 'percentage' : 'fixed'),
+          discountType: item.discountType || (item.discountPercentage ? 'percentage' : 'fixed'),
           amount: item.amount || 0,
         };
       });
 
       const resetData: CreateBillData = {
-        vendor_id: existingPo.vendor_id || '',
-        location_id: existingPo.location_id || '',
-        payment_terms: existingPo.payment_terms || '',
-        bill_number: isClone ? '' : existingPo.bill_number || '',
-        bill_date: isClone
+        vendorId: existingPo.vendorId || '',
+        locationId: existingPo.locationId || '',
+        paymentTerms: existingPo.paymentTerms || '',
+        billNumber: isClone ? '' : existingPo.billNumber || '',
+        billDate: isClone
           ? new Date().toISOString().split('T')[0]
-          : existingPo.bill_date
-            ? new Date(existingPo.bill_date).toISOString().split('T')[0]
+          : existingPo.billDate
+            ? new Date(existingPo.billDate).toISOString().split('T')[0]
             : new Date().toISOString().split('T')[0],
-        due_date: existingPo.due_date
-          ? new Date(existingPo.due_date).toISOString().split('T')[0]
+        dueDate: existingPo.dueDate
+          ? new Date(existingPo.dueDate).toISOString().split('T')[0]
           : '',
-        delivery_type: existingPo.delivery_type || 'Location',
-        delivery_location_id: existingPo.delivery_location_id || '',
-        delivery_customer_id: existingPo.delivery_customer_id || '',
-        terms_and_conditions: existingPo.terms_and_conditions || '',
+        deliveryType: existingPo.deliveryType || 'Location',
+        deliveryLocationId: existingPo.deliveryLocationId || '',
+        deliveryCustomerId: existingPo.deliveryCustomerId || '',
+        termsAndConditions: existingPo.termsAndConditions || '',
         status: isClone ? 'Draft' : existingPo.status || 'Draft',
-        custom_fields: existingPo.custom_fields || {},
-        line_items:
+        customFields: existingPo.customFields || null,
+        lineItems:
           formattedLineItems.length > 0
             ? (formattedLineItems as unknown as BillItem[])
             : [
                 {
-                  item_id: '',
+                  itemId: '',
                   quantity: '' as unknown as number,
                   rate: '' as unknown as number,
                   discountValue: '' as unknown as number,
                   discountType: 'percentage',
-                  item_total: 0,
+                  itemTotal: 0,
                 } as BillItem,
               ],
-        sub_total: Number(existingPo.sub_total) || 0,
-        total_amount: Number(existingPo.total_amount) || 0,
+        subTotal: Number(existingPo.subTotal) || 0,
+        totalAmount: Number(existingPo.totalAmount) || 0,
       };
 
-      if (existingPo.bill_number && !isClone) {
-        resetData.bill_number = existingPo.bill_number;
+      if (existingPo.billNumber && !isClone) {
+        resetData.billNumber = existingPo.billNumber;
       }
 
       reset(resetData);
@@ -266,53 +266,53 @@ export function CreateBill() {
 
   useEffect(() => {
     if (sourcePo && isFromPo) {
-      const formattedLineItems = (sourcePo.line_items || []).map((item: PurchaseOrderItem) => {
+      const formattedLineItems = (sourcePo.lineItems || []).map((item: PurchaseOrderItem) => {
         const discountVal =
           item.discountValue !== undefined && item.discountValue !== null
             ? item.discountValue
-            : item.discount_percentage || 0;
+            : item.discountPercentage || 0;
         return {
-          item_id: item.item_id,
+          itemId: item.itemId,
           item: item.item,
           quantity: item.quantity || ('' as unknown as number),
           rate: item.rate || ('' as unknown as number),
           discountValue: discountVal || ('' as unknown as number),
-          discountType: item.discountType || (item.discount_percentage ? 'percentage' : 'fixed'),
-          amount: item.item_total || 0,
+          discountType: item.discountType || (item.discountPercentage ? 'percentage' : 'fixed'),
+          amount: item.itemTotal || 0,
           from_po: true,
         };
       });
 
       const resetData: CreateBillData = {
-        vendor_id: sourcePo.vendor_id || '',
-        location_id: sourcePo.location_id || '',
-        payment_terms: sourcePo.payment_terms || '',
-        bill_number: '',
-        bill_date: new Date().toISOString().split('T')[0],
-        due_date: sourcePo.delivery_date
-          ? new Date(sourcePo.delivery_date).toISOString().split('T')[0]
+        vendorId: sourcePo.vendorId || '',
+        locationId: sourcePo.locationId || '',
+        paymentTerms: sourcePo.paymentTerms || '',
+        billNumber: '',
+        billDate: new Date().toISOString().split('T')[0],
+        dueDate: sourcePo.deliveryDate
+          ? new Date(sourcePo.deliveryDate).toISOString().split('T')[0]
           : '',
-        delivery_type: (sourcePo.delivery_type as 'Location' | 'Customer') || 'Location',
-        delivery_location_id: sourcePo.delivery_location_id || '',
-        delivery_customer_id: sourcePo.delivery_customer_id || '',
-        terms_and_conditions: sourcePo.terms || '',
+        deliveryType: (sourcePo.deliveryType as 'Location' | 'Customer') || 'Location',
+        deliveryLocationId: sourcePo.deliveryLocationId || '',
+        deliveryCustomerId: sourcePo.deliveryCustomerId || '',
+        termsAndConditions: sourcePo.termsAndConditions || '',
         status: 'Draft',
-        custom_fields: sourcePo.custom_fields || {},
-        line_items:
+        customFields: sourcePo.customFields || null,
+        lineItems:
           formattedLineItems.length > 0
             ? (formattedLineItems as unknown as BillItem[])
             : [
                 {
-                  item_id: '',
+                  itemId: '',
                   quantity: '' as unknown as number,
                   rate: '' as unknown as number,
                   discountValue: '' as unknown as number,
                   discountType: 'percentage',
-                  item_total: 0,
+                  itemTotal: 0,
                 } as BillItem,
               ],
-        sub_total: Number(sourcePo.sub_total) || 0,
-        total_amount: Number(sourcePo.total) || 0,
+        subTotal: Number(sourcePo.subTotal) || 0,
+        totalAmount: Number(sourcePo.totalAmount) || 0,
       };
 
       reset(resetData);
@@ -325,16 +325,16 @@ export function CreateBill() {
     remove: removeItem,
   } = useFieldArray({
     control,
-    name: 'line_items',
+    name: 'lineItems',
   });
 
-  const watchItems = useWatch({ control, name: 'line_items' });
-  const watchDeliveryType = watch('delivery_type');
-  const watchDeliveryLocationId = watch('delivery_location_id');
-  const watchDeliveryCustomerId = watch('delivery_customer_id');
-  const watchLocationId = watch('location_id');
-  const watchPoDate = watch('bill_date');
-  const watchPaymentTerms = watch('payment_terms');
+  const watchItems = useWatch({ control, name: 'lineItems' });
+  const watchDeliveryType = watch('deliveryType');
+  const watchDeliveryLocationId = watch('deliveryLocationId');
+  const watchDeliveryCustomerId = watch('deliveryCustomerId');
+  const watchLocationId = watch('locationId');
+  const watchPoDate = watch('billDate');
+  const watchPaymentTerms = watch('paymentTerms');
 
   useEffect(() => {
     if (watchPoDate && watchPaymentTerms && paymentTerms) {
@@ -342,7 +342,7 @@ export function CreateBill() {
       if (term && term.dueAfterDays !== undefined && term.dueAfterDays !== null) {
         const d = new Date(watchPoDate);
         d.setDate(d.getDate() + term.dueAfterDays);
-        setValue('due_date', d.toISOString().split('T')[0], {
+        setValue('dueDate', d.toISOString().split('T')[0], {
           shouldValidate: true,
           shouldDirty: true,
         });
@@ -416,10 +416,10 @@ export function CreateBill() {
         locations.find((l: Location) => !l.parentId);
       if (defaultLocation) {
         if (!watchLocationId) {
-          setValue('location_id', defaultLocation.id);
+          setValue('locationId', defaultLocation.id);
         }
         if (!watchDeliveryLocationId && watchDeliveryType === 'Location') {
-          setValue('delivery_location_id', defaultLocation.id);
+          setValue('deliveryLocationId', defaultLocation.id);
         }
       }
     }
@@ -442,8 +442,8 @@ export function CreateBill() {
   const computedTotalAmount = Math.max(0, computedSubTotal - computedTotalDiscount);
 
   useEffect(() => {
-    setValue('sub_total', computedSubTotal);
-    setValue('total_amount', computedTotalAmount);
+    setValue('subTotal', computedSubTotal);
+    setValue('totalAmount', computedTotalAmount);
   }, [computedSubTotal, computedTotalAmount, setValue]);
 
   const { data: preference } = useQuery({
@@ -457,10 +457,10 @@ export function CreateBill() {
   useEffect(() => {
     if (preference && !isEdit) {
       const generatedNumber = `${preference.prefix}${preference.nextNumber.toString().padStart(5, '0')}`;
-      const currentValue = watch('bill_number');
+      const currentValue = watch('billNumber');
 
       if (!currentValue || currentValue === lastPrefilledNumber) {
-        setValue('bill_number', generatedNumber);
+        setValue('billNumber', generatedNumber);
         setLastPrefilledNumber(generatedNumber);
         setPoPrefix(preference.prefix);
       }
@@ -472,7 +472,7 @@ export function CreateBill() {
       updateBillNumberPreference(orgId!, data),
     onSuccess: (data) => {
       queryClient.setQueryData(['bill-number-preference', orgId], data);
-      setValue('bill_number', `${data.prefix}${data.nextNumber.toString().padStart(5, '0')}`);
+      setValue('billNumber', `${data.prefix}${data.nextNumber.toString().padStart(5, '0')}`);
       setPoPrefix(data.prefix);
       setIsNumberConfigOpen(false);
     },
@@ -507,7 +507,7 @@ export function CreateBill() {
   });
 
   const onSubmit = (data: CreateBillData) => {
-    const finalItems = (data.line_items || []).map((item) => {
+    const finalItems = (data.lineItems || []).map((item) => {
       const qty = isNaN(Number(item?.quantity)) ? 0 : Number(item?.quantity);
       const rate = isNaN(Number(item?.rate)) ? 0 : Number(item?.rate);
       const basePrice = qty * rate;
@@ -515,32 +515,32 @@ export function CreateBill() {
       const discType = item?.discountType || 'percentage';
       const discountAmount =
         discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
-      const item_total = Math.max(0, basePrice - discountAmount);
+      const itemTotal = Math.max(0, basePrice - discountAmount);
       return {
         ...item,
         quantity: qty,
         rate: rate,
-        amount: item_total,
-        item_total: item_total,
+        amount: itemTotal,
+        itemTotal: itemTotal,
         discount: discountAmount,
         discount_amount: discountAmount,
-        discount_percentage: discType === 'percentage' ? discountVal : null,
+        discountPercentage: discType === 'percentage' ? discountVal : null,
       };
     });
 
     const finalData = {
       ...data,
-      source_po_id: isFromPo ? fromPo : null,
-      delivery_customer_id: data.delivery_customer_id || null,
-      delivery_location_id: data.delivery_location_id || null,
-      due_date: data.due_date || null,
-      terms_and_conditions: data.terms_and_conditions || null,
-      line_items: finalItems,
-      sub_total: computedSubTotal,
-      total_amount: computedTotalAmount,
+      sourcePoId: isFromPo ? fromPo : null,
+      deliveryCustomerId: data.deliveryCustomerId || null,
+      deliveryLocationId: data.deliveryLocationId || null,
+      dueDate: data.dueDate || null,
+      termsAndConditions: data.termsAndConditions || null,
+      lineItems: finalItems,
+      subTotal: computedSubTotal,
+      totalAmount: computedTotalAmount,
       attachments: attachedFiles,
-      custom_fields: {
-        ...data.custom_fields,
+      customFields: {
+        ...data.customFields,
         ...(customDeliveryName ? { customDeliveryName } : {}),
       },
     };
@@ -590,7 +590,7 @@ export function CreateBill() {
       <div style={{ padding: '24px 32px' }}>
         <h1 style={{ fontSize: '22px', fontWeight: 400, margin: 0, color: '#000' }}>
           {isEdit
-            ? `Edit Bill (${existingPo?.bill_number || ''})`
+            ? `Edit Bill (${existingPo?.billNumber || ''})`
             : isClone
               ? 'Clone Bill'
               : 'New Bill'}
@@ -626,11 +626,11 @@ export function CreateBill() {
           >
             <label style={{ ...labelStyle, color: '#ef4444' }}>Vendor Name*</label>
             <div>
-              <input type="hidden" {...register('vendor_id', { required: true })} />
+              <input type="hidden" {...register('vendorId', { required: true })} />
               <SearchableSelect
                 options={vendors.map((v) => ({ label: v.contactName, value: v.id }))}
-                value={watch('vendor_id') || undefined}
-                onChange={(val) => setValue('vendor_id', val, { shouldValidate: true })}
+                value={watch('vendorId') || undefined}
+                onChange={(val) => setValue('vendorId', val, { shouldValidate: true })}
                 placeholder="Select a Vendor"
                 renderOption={(option, isSelected) => {
                   const vendor = vendors.find((v) => v.id === option.value);
@@ -696,7 +696,7 @@ export function CreateBill() {
                 }}
                 style={searchableSelectStyle}
               />
-              {errors.vendor_id && (
+              {errors.vendorId && (
                 <div style={{ color: '#e54d4d', fontSize: '12px', marginTop: '4px' }}>
                   Vendor Name is required
                 </div>
@@ -706,8 +706,8 @@ export function CreateBill() {
             <label style={labelStyle}>Location</label>
             <SearchableSelect
               options={locations.map((l: Location) => ({ label: l.name, value: l.id }))}
-              value={watch('location_id') || undefined}
-              onChange={(val) => setValue('location_id', val)}
+              value={watch('locationId') || undefined}
+              onChange={(val) => setValue('locationId', val)}
               placeholder="Select Location"
               footerAction={{
                 text: 'New Location',
@@ -722,7 +722,7 @@ export function CreateBill() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', maxWidth: '440px' }}>
                 <input
                   type="text"
-                  {...register('bill_number', { required: true })}
+                  {...register('billNumber', { required: true })}
                   style={{ ...inputStyle, flex: 1 }}
                 />
                 <button
@@ -740,7 +740,7 @@ export function CreateBill() {
                   <Settings size={18} />
                 </button>
               </div>
-              {errors.bill_number && (
+              {errors.billNumber && (
                 <div style={{ color: '#e54d4d', fontSize: '12px', marginTop: '4px' }}>
                   Bill# is required
                 </div>
@@ -751,11 +751,11 @@ export function CreateBill() {
             <div style={{ position: 'relative', width: '100%', maxWidth: '440px' }}>
               <input
                 type="date"
-                {...register('bill_date', {
+                {...register('billDate', {
                   required: 'Date is required',
                   onChange: () => {
-                    if (watch('due_date')) {
-                      trigger('due_date');
+                    if (watch('dueDate')) {
+                      trigger('dueDate');
                     }
                   },
                 })}
@@ -770,8 +770,8 @@ export function CreateBill() {
               options={
                 paymentTerms?.map((pt) => ({ label: pt.termName, value: pt.id.toString() })) || []
               }
-              value={watch('payment_terms') || undefined}
-              onChange={(val) => setValue('payment_terms', val)}
+              value={watch('paymentTerms') || undefined}
+              onChange={(val) => setValue('paymentTerms', val)}
               placeholder="Select Payment Terms"
               footerAction={{
                 text: 'New Payment Term',
@@ -786,7 +786,7 @@ export function CreateBill() {
               <input
                 type="date"
                 min={watchPoDate}
-                {...register('due_date', {
+                {...register('dueDate', {
                   validate: (val) => {
                     if (!val || !watchPoDate) return true;
                     return val >= watchPoDate || 'Delivery date must be on or after Bill Date';
@@ -796,9 +796,9 @@ export function CreateBill() {
                 onClick={(e) => (e.target as HTMLInputElement).showPicker()}
                 style={{ ...inputStyle, maxWidth: '100%' }}
               />
-              {errors.due_date && (
+              {errors.dueDate && (
                 <div style={{ color: '#e54d4d', fontSize: '12px', marginTop: '4px' }}>
-                  {errors.due_date.message || 'Delivery date must be on or after Bill Date'}
+                  {errors.dueDate.message || 'Delivery date must be on or after Bill Date'}
                 </div>
               )}
             </div>
@@ -974,7 +974,7 @@ export function CreateBill() {
                           ) : (
                             <ItemComboBox
                               orgId={orgId!}
-                              value={watchItems?.[index]?.item_id}
+                              value={watchItems?.[index]?.itemId}
                               initialItem={watchItems?.[index]?.item}
                               selectedImage={
                                 selectedItem ? (
@@ -992,36 +992,36 @@ export function CreateBill() {
                                 setIsMultiSelectItemModalOpen(true);
                               }}
                               onChange={(val) => {
-                                setValue(`line_items.${index}.item_id`, val?.id || '', {
+                                setValue(`lineItems.${index}.itemId`, val?.id || '', {
                                   shouldValidate: true,
                                 });
-                                setValue(`line_items.${index}.item`, val);
+                                setValue(`lineItems.${index}.item`, val);
                                 const selected = val;
                                 if (selected) {
                                   setValue(
-                                    `line_items.${index}.rate`,
+                                    `lineItems.${index}.rate`,
                                     (selected.costPrice ||
                                       selected.sellingPrice ||
                                       '') as unknown as number,
                                   );
-                                  setValue(`line_items.${index}.quantity`, 1 as unknown as number);
+                                  setValue(`lineItems.${index}.quantity`, 1 as unknown as number);
                                   setValue(
-                                    `line_items.${index}.description`,
+                                    `lineItems.${index}.description`,
                                     selected.purchaseDescription ||
-                                      selected.purchase_description ||
+                                      selected.purchaseDescription ||
                                       selected.salesDescription ||
-                                      selected.sales_description ||
+                                      selected.salesDescription ||
                                       '',
                                   );
                                 } else {
-                                  setValue(`line_items.${index}.rate`, '' as unknown as number);
-                                  setValue(`line_items.${index}.quantity`, '' as unknown as number);
+                                  setValue(`lineItems.${index}.rate`, '' as unknown as number);
+                                  setValue(`lineItems.${index}.quantity`, '' as unknown as number);
                                   setValue(
-                                    `line_items.${index}.discountValue`,
+                                    `lineItems.${index}.discountValue`,
                                     '' as unknown as number,
                                   );
-                                  setValue(`line_items.${index}.discountType`, 'percentage');
-                                  setValue(`line_items.${index}.description`, '');
+                                  setValue(`lineItems.${index}.discountType`, 'percentage');
+                                  setValue(`lineItems.${index}.description`, '');
                                 }
                               }}
                               placeholder="Type or click to select an item."
@@ -1036,7 +1036,7 @@ export function CreateBill() {
                         {/* Description Field - only shown when an item is selected */}
                         {selectedItem && (
                           <textarea
-                            {...register(`line_items.${index}.description`)}
+                            {...register(`lineItems.${index}.description`)}
                             placeholder="Add a description to your item"
                             rows={2}
                             style={{
@@ -1105,7 +1105,7 @@ export function CreateBill() {
                         type="number"
                         step="0.01"
                         placeholder="0"
-                        {...register(`line_items.${index}.quantity`, {
+                        {...register(`lineItems.${index}.quantity`, {
                           valueAsNumber: true,
                           required: true,
                           min: 0.01,
@@ -1170,7 +1170,7 @@ export function CreateBill() {
                         type="number"
                         step="0.01"
                         placeholder="0.00"
-                        {...register(`line_items.${index}.rate`, {
+                        {...register(`lineItems.${index}.rate`, {
                           valueAsNumber: true,
                           required: true,
                           min: 0,
@@ -1208,7 +1208,7 @@ export function CreateBill() {
                         <input
                           type="number"
                           step="0.01"
-                          {...register(`line_items.${index}.discountValue`, {
+                          {...register(`lineItems.${index}.discountValue`, {
                             valueAsNumber: true,
                             min: 0,
                           })}
@@ -1231,7 +1231,7 @@ export function CreateBill() {
                           value={watchItems?.[index]?.discountType || 'percentage'}
                           onChange={(val) => {
                             setValue(
-                              `line_items.${index}.discountType`,
+                              `lineItems.${index}.discountType`,
                               val as 'percentage' | 'fixed',
                             );
                           }}
@@ -1325,12 +1325,12 @@ export function CreateBill() {
               onClick={() =>
                 appendItem(
                   {
-                    item_id: '',
+                    itemId: '',
                     quantity: '' as unknown as number,
                     rate: '' as unknown as number,
                     discountValue: '' as unknown as number,
                     discountType: 'percentage',
-                    item_total: 0,
+                    itemTotal: 0,
                   } as BillItem,
                   { shouldFocus: false },
                 )
@@ -1441,7 +1441,7 @@ export function CreateBill() {
               Terms & Conditions
             </label>
             <textarea
-              {...register('terms_and_conditions')}
+              {...register('termsAndConditions')}
               placeholder="Enter terms and conditions..."
               rows={4}
               style={{
@@ -1647,8 +1647,8 @@ export function CreateBill() {
         initialNextNumber={
           preference?.nextNumber !== undefined
             ? preference.nextNumber.toString().padStart(5, '0')
-            : watch('bill_number')
-              ? watch('bill_number').replace(poPrefix, '')
+            : watch('billNumber')
+              ? watch('billNumber').replace(poPrefix, '')
               : '00001'
         }
         onSave={(newPrefix, newNextNumberStr) => {
@@ -1668,14 +1668,14 @@ export function CreateBill() {
         customers={customers}
         selectedLocationId={watchDeliveryLocationId || undefined}
         selectedCustomerId={watchDeliveryCustomerId || undefined}
-        onSelectLocation={(locId) => setValue('delivery_location_id', locId)}
-        onSelectCustomer={(custId) => setValue('delivery_customer_id', custId)}
+        onSelectLocation={(locId) => setValue('deliveryLocationId', locId)}
+        onSelectCustomer={(custId) => setValue('deliveryCustomerId', custId)}
       />
       <CreateVendorModal
         isOpen={isVendorModalOpen}
         onClose={() => setIsVendorModalOpen(false)}
         onSuccess={(vendorId) => {
-          setValue('vendor_id', vendorId, { shouldValidate: true });
+          setValue('vendorId', vendorId, { shouldValidate: true });
         }}
       />
 
@@ -1684,7 +1684,7 @@ export function CreateBill() {
         isOpen={isPaymentTermModalOpen}
         onClose={() => setIsPaymentTermModalOpen(false)}
         onSuccess={(newTerm) => {
-          setValue('payment_terms', newTerm.id, { shouldValidate: true });
+          setValue('paymentTerms', newTerm.id, { shouldValidate: true });
           setIsPaymentTermModalOpen(false);
         }}
       />
@@ -1693,7 +1693,7 @@ export function CreateBill() {
         onClose={() => setItemModalIndex(null)}
         onSuccess={(itemId) => {
           if (itemModalIndex !== null) {
-            setValue(`line_items.${itemModalIndex}.item_id`, itemId, { shouldValidate: true });
+            setValue(`lineItems.${itemModalIndex}.itemId`, itemId, { shouldValidate: true });
 
             // Note: Normally we'd fetch the item's cost here to populate rate.
             // The SearchableSelect's onChange isn't triggered manually by setValue,
@@ -1717,51 +1717,51 @@ export function CreateBill() {
           if (selectedItems.length === 0 || multiSelectTargetIndex === null) return;
 
           const targetIndex = multiSelectTargetIndex;
-          const currentItems = watch('line_items');
+          const currentItems = watch('lineItems');
 
           selectedItems.forEach((item, i) => {
             const isFirst = i === 0;
             const targetRow = currentItems?.[targetIndex];
-            const isEmptyRow = !targetRow?.item_id;
+            const isEmptyRow = !targetRow?.itemId;
 
             const qty = item._quantity ?? 1;
             const rate = item._rate ?? (item.costPrice || item.sellingPrice || '');
             const disc = item._discount ?? '';
 
             if (isFirst && isEmptyRow) {
-              setValue(`line_items.${targetIndex}.item_id`, item.id, { shouldValidate: true });
-              setValue(`line_items.${targetIndex}.item`, item);
-              setValue(`line_items.${targetIndex}.rate`, rate as unknown as number);
-              setValue(`line_items.${targetIndex}.quantity`, qty as unknown as number);
-              setValue(`line_items.${targetIndex}.discountValue`, disc as unknown as number);
+              setValue(`lineItems.${targetIndex}.itemId`, item.id, { shouldValidate: true });
+              setValue(`lineItems.${targetIndex}.item`, item);
+              setValue(`lineItems.${targetIndex}.rate`, rate as unknown as number);
+              setValue(`lineItems.${targetIndex}.quantity`, qty as unknown as number);
+              setValue(`lineItems.${targetIndex}.discountValue`, disc as unknown as number);
               setValue(
-                `line_items.${targetIndex}.discountType`,
+                `lineItems.${targetIndex}.discountType`,
                 item._discountType ?? 'percentage',
               );
               setValue(
-                `line_items.${targetIndex}.description`,
+                `lineItems.${targetIndex}.description`,
                 item.purchaseDescription ||
-                  item.purchase_description ||
+                  item.purchaseDescription ||
                   item.salesDescription ||
-                  item.sales_description ||
+                  item.salesDescription ||
                   '',
               );
             } else {
               appendItem(
                 {
-                  item_id: item.id,
+                  itemId: item.id,
                   item: item,
                   quantity: qty as unknown as number,
                   rate: rate as unknown as number,
                   description:
                     item.purchaseDescription ||
-                    item.purchase_description ||
+                    item.purchaseDescription ||
                     item.salesDescription ||
-                    item.sales_description ||
+                    item.salesDescription ||
                     '',
                   discountValue: disc as unknown as number,
                   discountType: item._discountType ?? 'percentage',
-                  item_total: 0,
+                  itemTotal: 0,
                 } as BillItem,
                 { shouldFocus: false },
               );
@@ -1807,13 +1807,13 @@ export function CreateBill() {
               expiryDate: b.expiryDate ? String(b.expiryDate) : undefined,
             }));
             setValue(
-              `line_items.${batchModalIndex}.batches`,
+              `lineItems.${batchModalIndex}.batches`,
               mappedBatches as BillItem['batches'],
               { shouldValidate: true },
             );
             if (overwriteQty !== null) {
               setValue(
-                `line_items.${batchModalIndex}.quantity`,
+                `lineItems.${batchModalIndex}.quantity`,
                 overwriteQty as unknown as number,
                 { shouldValidate: true },
               );

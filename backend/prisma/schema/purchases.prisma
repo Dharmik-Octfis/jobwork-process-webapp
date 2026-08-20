@@ -124,70 +124,70 @@ model VendorAddress {
 }
 
 model PurchaseOrder {
-  id                   String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organization_id      String                  @map("organization_id") @db.Uuid
-  vendor_id            String                  @map("vendor_id") @db.Uuid
-  delivery_type        String                  @default("Location") @map("delivery_type") @db.VarChar(50)
-  delivery_location_id String?                 @map("delivery_location_id") @db.Uuid
-  delivery_customer_id String?                 @map("delivery_customer_id") @db.Uuid
-  purchaseorder_number String                  @map("po_number") @db.VarChar(100)
-  date                 DateTime                @map("po_date") @db.Date
-  delivery_date        DateTime?               @map("delivery_date") @db.Date
-  payment_terms        String?                 @map("payment_terms") @db.VarChar(100)
-  sub_total            Decimal                 @default(0) @map("sub_total") @db.Decimal(15, 2)
-  total                Decimal                 @default(0) @map("total_amount") @db.Decimal(15, 2)
-  notes                String?
-  status               String                  @default("Draft") @db.VarChar(50)
-  custom_fields        Json                    @default("{}") @map("custom_fields")
-  is_deleted           Boolean                 @default(false) @map("is_deleted")
-  created_by           String?                 @map("created_by") @db.Uuid
-  updated_by           String?                 @map("updated_by") @db.Uuid
-  created_at           DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
-  updated_at           DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  location_id          String?                 @map("location_id") @db.Uuid
-  documents            Json?                   @default("[]") @map("attachments")
-  terms                String?                 @map("terms_and_conditions")
-  activities           PurchaseOrderActivity[]
-  comments             PurchaseOrderComment[]
-  line_items           PurchaseOrderItem[]
-  createdByUser        User?                   @relation("PoCreatedBy", fields: [created_by], references: [id])
-  deliveryCustomer     Customer?               @relation(fields: [delivery_customer_id], references: [id])
-  deliveryLocation     Location?               @relation(fields: [delivery_location_id], references: [id])
-  location             Location?               @relation("PoSourceLocation", fields: [location_id], references: [id])
-  organization         Organization            @relation(fields: [organization_id], references: [id], onDelete: Cascade)
-  updatedByUser        User?                   @relation("PoUpdatedBy", fields: [updated_by], references: [id])
-  vendor               Vendor                  @relation(fields: [vendor_id], references: [id])
-  bills                Bill[]                  @relation("PoToBill")
+  id                 String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String                  @map("organization_id") @db.Uuid
+  vendorId           String                  @map("vendor_id") @db.Uuid
+  deliveryType       String                  @default("Location") @map("delivery_type") @db.VarChar(50)
+  deliveryLocationId String?                 @map("delivery_location_id") @db.Uuid
+  deliveryCustomerId String?                 @map("delivery_customer_id") @db.Uuid
+  poNumber           String                  @map("po_number") @db.VarChar(100)
+  date               DateTime                @map("po_date") @db.Date
+  deliveryDate       DateTime?               @map("delivery_date") @db.Date
+  paymentTerms       String?                 @map("payment_terms") @db.VarChar(100)
+  subTotal           Decimal                 @default(0) @map("sub_total") @db.Decimal(15, 2)
+  totalAmount        Decimal                 @default(0) @map("total_amount") @db.Decimal(15, 2)
+  notes              String?
+  status             String                  @default("Draft") @db.VarChar(50)
+  customFields       Json                    @default("{}") @map("custom_fields")
+  isDeleted          Boolean                 @default(false) @map("is_deleted")
+  createdBy          String?                 @map("created_by") @db.Uuid
+  updatedBy          String?                 @map("updated_by") @db.Uuid
+  createdAt          DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  locationId         String?                 @map("location_id") @db.Uuid
+  documents          Json?                   @default("[]") @map("attachments")
+  termsAndConditions String?                 @map("terms_and_conditions")
+  activities         PurchaseOrderActivity[]
+  comments           PurchaseOrderComment[]
+  lineItems          PurchaseOrderItem[]
+  createdByUser      User?                   @relation("PoCreatedBy", fields: [createdBy], references: [id])
+  deliveryCustomer   Customer?               @relation(fields: [deliveryCustomerId], references: [id])
+  deliveryLocation   Location?               @relation(fields: [deliveryLocationId], references: [id])
+  location           Location?               @relation("PoSourceLocation", fields: [locationId], references: [id])
+  organization       Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedByUser      User?                   @relation("PoUpdatedBy", fields: [updatedBy], references: [id])
+  vendor             Vendor                  @relation(fields: [vendorId], references: [id])
+  bills              Bill[]                  @relation("PoToBill")
 
-  @@unique([organization_id, purchaseorder_number])
+  @@unique([organizationId, poNumber])
   @@map("purchase_orders")
 }
 
 model PurchaseOrderItem {
-  id                    String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  purchaseorder_id      String        @map("purchase_order_id") @db.Uuid
-  item_id               String        @map("item_id") @db.Uuid
-  item_po_status        String?       @map("item_po_status") @db.VarChar(50)
-  linked_sales_order_id String?       @map("linked_sales_order_id") @db.Uuid
-  total_weight          Decimal?      @map("total_weight") @db.Decimal(15, 2)
-  cost_price            Decimal?      @map("cost_price") @db.Decimal(15, 2)
-  quantity              Decimal       @default(1) @db.Decimal(15, 2)
-  rate                  Decimal       @default(0) @db.Decimal(15, 2)
-  discount_percentage   Decimal?      @map("discount_percentage") @db.Decimal(5, 2)
-  discount              Decimal?      @map("discount_amount") @db.Decimal(15, 2)
-  item_total            Decimal       @default(0) @map("amount") @db.Decimal(15, 2)
-  project_id            String?       @map("project_id") @db.Uuid
-  reporting_tags        Json?         @map("reporting_tags")
-  custom_fields         Json          @default("{}") @map("custom_fields")
-  is_deleted            Boolean       @default(false) @map("is_deleted")
-  created_by            String?       @map("created_by") @db.Uuid
-  updated_by            String?       @map("updated_by") @db.Uuid
-  created_at            DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updated_at            DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  createdByUser         User?         @relation("PoItemCreatedBy", fields: [created_by], references: [id])
-  item                  Item          @relation(fields: [item_id], references: [id])
-  purchaseOrder         PurchaseOrder @relation(fields: [purchaseorder_id], references: [id], onDelete: Cascade)
-  updatedByUser         User?         @relation("PoItemUpdatedBy", fields: [updated_by], references: [id])
+  id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  purchaseOrderId    String        @map("purchase_order_id") @db.Uuid
+  itemId             String        @map("item_id") @db.Uuid
+  itemPoStatus       String?       @map("item_po_status") @db.VarChar(50)
+  linkedSalesOrderId String?       @map("linked_sales_order_id") @db.Uuid
+  totalWeight        Decimal?      @map("total_weight") @db.Decimal(15, 2)
+  costPrice          Decimal?      @map("cost_price") @db.Decimal(15, 2)
+  quantity           Decimal       @default(1) @db.Decimal(15, 2)
+  rate               Decimal       @default(0) @db.Decimal(15, 2)
+  discountPercentage Decimal?      @map("discount_percentage") @db.Decimal(5, 2)
+  discount           Decimal?      @map("discount_amount") @db.Decimal(15, 2)
+  itemTotal          Decimal       @default(0) @map("amount") @db.Decimal(15, 2)
+  projectId          String?       @map("project_id") @db.Uuid
+  reportingTags      Json?         @map("reporting_tags")
+  customFields       Json          @default("{}") @map("custom_fields")
+  isDeleted          Boolean       @default(false) @map("is_deleted")
+  createdBy          String?       @map("created_by") @db.Uuid
+  updatedBy          String?       @map("updated_by") @db.Uuid
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdByUser      User?         @relation("PoItemCreatedBy", fields: [createdBy], references: [id])
+  item               Item          @relation(fields: [itemId], references: [id])
+  purchaseOrder      PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  updatedByUser      User?         @relation("PoItemUpdatedBy", fields: [updatedBy], references: [id])
 
   @@map("purchase_order_items")
 }
@@ -228,60 +228,60 @@ model PurchaseOrderComment {
 }
 
 model Bill {
-  id                   String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organization_id      String                  @map("organization_id") @db.Uuid
-  vendor_id            String                  @map("vendor_id") @db.Uuid
-  location_id          String?                 @map("location_id") @db.Uuid
-  bill_number          String                  @map("bill_number") @db.VarChar(100)
-  bill_date            DateTime                @map("bill_date") @db.Date
-  due_date             DateTime?               @map("due_date") @db.Date
-  payment_terms        String?                 @map("payment_terms") @db.VarChar(100)
-  sub_total            Decimal                 @default(0) @map("sub_total") @db.Decimal(15, 2)
-  total                Decimal                 @default(0) @map("total_amount") @db.Decimal(15, 2)
-  notes                String?
-  status               String                  @default("Draft") @db.VarChar(50)
-  customFields         Json                    @default("{}") @map("custom_fields")
-  isDeleted            Boolean                 @default(false) @map("is_deleted")
-  createdBy            String?                 @map("created_by") @db.Uuid
-  updatedBy            String?                 @map("updated_by") @db.Uuid
-  createdAt            DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt            DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  documents            Json?                   @default("[]") @map("attachments")
-  terms                String?                 @map("terms_and_conditions")
-  activities           BillActivity[]
-  comments             BillComment[]
-  line_items           BillItem[]
-  createdByUser        User?                   @relation("BillCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  location             Location?               @relation("BillLocation", fields: [location_id], references: [id])
-  organization         Organization            @relation(fields: [organization_id], references: [id], onDelete: Cascade)
-  updatedByUser        User?                   @relation("BillUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
-  vendor               Vendor                  @relation(fields: [vendor_id], references: [id])
-  source_po_id         String?                 @map("source_po_id") @db.Uuid
-  sourcePo             PurchaseOrder?          @relation("PoToBill", fields: [source_po_id], references: [id])
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String         @map("organization_id") @db.Uuid
+  vendorId       String         @map("vendor_id") @db.Uuid
+  locationId     String?        @map("location_id") @db.Uuid
+  billNumber     String         @map("bill_number") @db.VarChar(100)
+  billDate       DateTime       @map("bill_date") @db.Date
+  dueDate        DateTime?      @map("due_date") @db.Date
+  paymentTerms       String?        @map("payment_terms") @db.VarChar(100)
+  subTotal           Decimal        @default(0) @map("sub_total") @db.Decimal(15, 2)
+  totalAmount        Decimal        @default(0) @map("total_amount") @db.Decimal(15, 2)
+  notes              String?
+  status             String         @default("Draft") @db.VarChar(50)
+  customFields       Json           @default("{}") @map("custom_fields")
+  isDeleted          Boolean        @default(false) @map("is_deleted")
+  createdBy          String?        @map("created_by") @db.Uuid
+  updatedBy          String?        @map("updated_by") @db.Uuid
+  createdAt          DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  documents          Json?          @default("[]") @map("attachments")
+  termsAndConditions String?        @map("terms_and_conditions")
+  activities     BillActivity[]
+  comments       BillComment[]
+  lineItems      BillItem[]
+  createdByUser  User?          @relation("BillCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  location       Location?      @relation("BillLocation", fields: [locationId], references: [id])
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedByUser  User?          @relation("BillUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  vendor         Vendor         @relation(fields: [vendorId], references: [id])
+  sourcePoId     String?        @map("source_po_id") @db.Uuid
+  sourcePo       PurchaseOrder? @relation("PoToBill", fields: [sourcePoId], references: [id])
 
-  @@unique([organization_id, bill_number])
+  @@unique([organizationId, billNumber])
   @@map("bills")
 }
 
 model BillItem {
-  id                    String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  bill_id               String        @map("bill_id") @db.Uuid
-  item_id               String        @map("item_id") @db.Uuid
-  quantity              Decimal       @default(1) @db.Decimal(15, 2)
-  rate                  Decimal       @default(0) @db.Decimal(15, 2)
-  discount_percentage   Decimal?      @map("discount_percentage") @db.Decimal(5, 2)
-  discount              Decimal?      @map("discount_amount") @db.Decimal(15, 2)
-  item_total            Decimal       @default(0) @map("amount") @db.Decimal(15, 2)
-  customFields          Json          @default("{}") @map("custom_fields")
-  isDeleted             Boolean       @default(false) @map("is_deleted")
-  createdBy             String?       @map("created_by") @db.Uuid
-  updatedBy             String?       @map("updated_by") @db.Uuid
-  createdAt             DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt             DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  createdByUser         User?         @relation("BillItemCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  item                  Item          @relation(fields: [item_id], references: [id])
-  bill                  Bill          @relation(fields: [bill_id], references: [id], onDelete: Cascade)
-  updatedByUser         User?         @relation("BillItemUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  billId             String   @map("bill_id") @db.Uuid
+  itemId             String   @map("item_id") @db.Uuid
+  quantity           Decimal  @default(1) @db.Decimal(15, 2)
+  rate               Decimal  @default(0) @db.Decimal(15, 2)
+  discountPercentage Decimal? @map("discount_percentage") @db.Decimal(5, 2)
+  discount           Decimal? @map("discount_amount") @db.Decimal(15, 2)
+  itemTotal          Decimal  @default(0) @map("amount") @db.Decimal(15, 2)
+  customFields       Json     @default("{}") @map("custom_fields")
+  isDeleted          Boolean  @default(false) @map("is_deleted")
+  createdBy          String?  @map("created_by") @db.Uuid
+  updatedBy          String?  @map("updated_by") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdByUser      User?    @relation("BillItemCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  item               Item     @relation(fields: [itemId], references: [id])
+  bill               Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
+  updatedByUser      User?    @relation("BillItemUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   @@map("bill_items")
 }

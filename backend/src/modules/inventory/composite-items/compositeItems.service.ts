@@ -26,12 +26,12 @@ export function toComponentResponse(row: Record<string, unknown> | null | undefi
     composite_item_id: row.compositeItemId,
     component_item_id: row.componentItemId,
     uom_id: row.uomId,
-    custom_fields: row.customFields,
-    created_at: row.createdAt,
-    updated_at: row.updatedAt,
-    created_by: row.createdBy,
-    updated_by: row.updatedBy,
-    is_deleted: row.isDeleted,
+    customFields: row.customFields,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    createdBy: row.createdBy,
+    updatedBy: row.updatedBy,
+    isDeleted: row.isDeleted,
   };
 }
 
@@ -176,8 +176,8 @@ export class CompositeItemsService {
               uomId: comp.uom_id ?? cItem.stockingUomId,
               seq: comp.seq ?? 0,
               notes: comp.notes,
-              customFields: comp.custom_fields
-                ? (comp.custom_fields as Prisma.InputJsonValue)
+              customFields: comp.customFields
+                ? (comp.customFields as Prisma.InputJsonValue)
                 : undefined,
               createdBy: userId ?? null,
               updatedBy: userId ?? null,
@@ -363,12 +363,12 @@ export class CompositeItemsService {
       const defs = await loadActiveDefinitions(tx, organizationId, 'composite_item_component');
       const customFields = validateCustomFields({
         defs,
-        input: rawData.custom_fields,
+        input: rawData.customFields,
         mode: 'create',
       }) as Prisma.InputJsonValue;
 
       const {
-        custom_fields: _customFields,
+        customFields: _customFields,
         qty_per_unit: qtyPerUnit,
         component_item_id: componentItemId,
         uom_id: uomId,
@@ -409,18 +409,18 @@ export class CompositeItemsService {
       if (!row) throw ApiError.notFound('Component not found');
 
       let customFields: Prisma.InputJsonValue | undefined;
-      if (rawData.custom_fields !== undefined) {
+      if (rawData.customFields !== undefined) {
         const defs = await loadActiveDefinitions(tx, organizationId, 'composite_item_component');
         customFields = validateCustomFields({
           defs,
-          input: rawData.custom_fields,
+          input: rawData.customFields,
           mode: 'update',
           existing: row.customFields,
         }) as Prisma.InputJsonValue;
       }
 
       const {
-        custom_fields: _customFields,
+        customFields: _customFields,
         qty_per_unit: qtyPerUnit,
         component_item_id: componentItemId,
         uom_id: uomId,

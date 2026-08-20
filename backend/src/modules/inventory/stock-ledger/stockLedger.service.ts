@@ -326,11 +326,11 @@ export async function getBalances(
     COALESCE(SUM(qty_in - qty_out) FILTER (WHERE stock_effect IN ('both', 'accounting')), 0) AS "accountingQty",
     COALESCE(SUM(value_in - value_out) FILTER (WHERE stock_effect IN ('both', 'accounting')), 0) AS value
     FROM stock_ledger
-    WHERE organization_id = ${orgId}::uuid`;
+    WHERE organizationId = ${orgId}::uuid`;
 
-  if (filter.itemId) q = Prisma.sql`${q} AND item_id = ${filter.itemId}::uuid`;
+  if (filter.itemId) q = Prisma.sql`${q} AND itemId = ${filter.itemId}::uuid`;
   if (filter.batchId) q = Prisma.sql`${q} AND batch_id = ${filter.batchId}::uuid`;
-  if (filter.locationId) q = Prisma.sql`${q} AND location_id = ${filter.locationId}::uuid`;
+  if (filter.locationId) q = Prisma.sql`${q} AND locationId = ${filter.locationId}::uuid`;
   if (filter.ownership) q = Prisma.sql`${q} AND ownership = ${filter.ownership}`;
   if (filter.asOf) q = Prisma.sql`${q} AND posted_at <= ${filter.asOf}::timestamptz`;
 
@@ -664,7 +664,7 @@ interface BatchWriteData {
  *
  * A soft-deleted batch still occupies its number: `@@unique([organizationId,
  * batchNumber])` is a FULL index, and deliberately so — Prisma cannot express
- * `WHERE is_deleted = false`, so a partial one would read as permanent drift
+ * `WHERE isDeleted = false`, so a partial one would read as permanent drift
  * (the same call as `migrations/20260725140000_membership_is_owner_.../
  * migration.sql:55`). Without this the number a mis-entry once held would be
  * refused forever, and a batch number is printed on a tag stuck to a roll.

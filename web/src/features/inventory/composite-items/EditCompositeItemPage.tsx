@@ -209,7 +209,7 @@ export function EditCompositeItemPage() {
       type: (rawItem.type || rawItem.product_type || 'Goods') as 'Goods' | 'Service',
       category: (rawItem.category as string) || '',
       hsnCode: rawItem.hsnCode || rawItem.hsn_or_sac || '',
-      itemType: (rawItem.itemType || rawItem.item_type || 'Composite Item') as
+      itemType: (rawItem.itemType || rawItem.itemType || 'Composite Item') as
         'Single Item' | 'Contains Variants',
       unit: rawItem.unit || '',
       stockingUomId: rawItem.stockingUomId ?? null,
@@ -222,7 +222,7 @@ export function EditCompositeItemPage() {
             ? Number(rawItem.rate)
             : (null as unknown as number),
       salesDescription:
-        (rawItem.salesDescription as string) || (rawItem.sales_description as string) || '',
+        (rawItem.salesDescription as string) || '',
       isPurchaseInfo: true,
       costPrice:
         rawItem.costPrice !== null && rawItem.costPrice !== undefined
@@ -231,10 +231,10 @@ export function EditCompositeItemPage() {
             ? Number(rawItem.purchase_rate)
             : (null as unknown as number),
       purchaseDescription:
-        (rawItem.purchaseDescription as string) || (rawItem.purchase_description as string) || '',
+        (rawItem.purchaseDescription as string) || '',
       packaging: rawItem.packaging || '',
-      frontImage: rawItem.frontImage || rawItem.front_image || null,
-      rearImage: rawItem.rearImage || rawItem.rear_image || null,
+      frontImage: rawItem.frontImage || null,
+      rearImage: rawItem.rearImage || null,
       images: rawItem.images || [],
       trackInventory: true,
       inventoryTracking: (rawItem.inventoryTracking ?? 'none').toLowerCase(),
@@ -247,7 +247,7 @@ export function EditCompositeItemPage() {
           ? Number(rawItem.openingStockValuePerUnit)
           : null,
       customFields:
-        rawItem.customFields || (rawItem.custom_fields as Record<string, unknown>) || {},
+        rawItem.customFields || (rawItem.customFields as unknown as Record<string, unknown>) || null,
     });
   }
 
@@ -1726,7 +1726,7 @@ export function EditCompositeItemPage() {
               <CustomFieldsSection
                 orgId={orgId}
                 entityType="item"
-                values={(formData.customFields as Record<string, unknown>) ?? {}}
+                values={(formData.customFields as unknown as Record<string, unknown>) ?? {}}
                 onChange={(v) => setFormData((prev) => ({ ...prev, customFields: v }))}
                 errors={customFieldErrors}
               />

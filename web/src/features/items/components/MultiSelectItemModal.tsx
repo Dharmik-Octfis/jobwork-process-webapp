@@ -41,7 +41,7 @@ function renderCell(
 ): React.ReactNode {
   if (key.startsWith('cf_')) {
     const cfKey = key.replace('cf_', '');
-    const val = item.custom_fields?.[cfKey] ?? item.customFields?.[cfKey];
+    const val = item.customFields?.[cfKey] ?? item.customFields?.[cfKey];
     if (val == null) return '-';
 
     const def = customFieldsDef?.find((d) => d.key === cfKey);
@@ -74,7 +74,7 @@ function renderCell(
     case 'sku':
       return item.sku || '-';
     case 'type':
-      return item.type || item.item_type || '-';
+      return item.type || item.itemType || '-';
     case 'hsn':
       return item.hsnCode || item.hsn_or_sac || '-';
     case 'category':
@@ -180,7 +180,7 @@ export function MultiSelectItemModal({
     const customKeys = new Set<string>();
 
     (itemsPage?.results || []).forEach((item) => {
-      const fields = item.custom_fields || item.customFields;
+      const fields = item.customFields || item.customFields;
       if (fields) {
         Object.keys(fields).forEach((k) => customKeys.add(k));
       }
@@ -202,7 +202,7 @@ export function MultiSelectItemModal({
   const customFieldTypes = useMemo(() => {
     const types = new Map<string, FilterDataType>();
     (itemsPage?.results || []).forEach((item) => {
-      const fields = item.custom_fields || item.customFields;
+      const fields = item.customFields || item.customFields;
       if (fields) {
         Object.entries(fields).forEach(([k, v]) => {
           if (v !== null && v !== undefined && !types.has(k)) {
@@ -227,7 +227,7 @@ export function MultiSelectItemModal({
   const productTypes = useMemo(() => {
     const types = new Set<string>();
     (itemsPage?.results || []).forEach((item) => {
-      const t = item.type || item.item_type;
+      const t = item.type || item.itemType;
       if (t) types.add(t);
     });
     return Array.from(types).sort();
@@ -282,10 +282,10 @@ export function MultiSelectItemModal({
           if (key === 'hsn')
             return (item.hsnCode || item.hsn_or_sac || '').toLowerCase().includes(searchVal);
           if (key === 'type')
-            return (item.type || item.item_type || '').toLowerCase() === searchVal;
+            return (item.type || item.itemType || '').toLowerCase() === searchVal;
           if (key === 'category') return (item.category || '').toLowerCase() === searchVal;
           const cfKey = key.replace('cf_', '');
-          const rawVal = item.custom_fields?.[cfKey] ?? item.customFields?.[cfKey];
+          const rawVal = item.customFields?.[cfKey] ?? item.customFields?.[cfKey];
 
           let val = rawVal;
           const def = customFieldsDef?.find((d) => d.key === cfKey);
@@ -309,11 +309,11 @@ export function MultiSelectItemModal({
           if (cond.field === 'name') itemValue = item.name;
           else if (cond.field === 'sku') itemValue = item.sku;
           else if (cond.field === 'hsn') itemValue = item.hsnCode || item.hsn_or_sac;
-          else if (cond.field === 'type') itemValue = item.type || item.item_type;
+          else if (cond.field === 'type') itemValue = item.type || item.itemType;
           else if (cond.field === 'category') itemValue = item.category;
           else if (cond.field.startsWith('cf_')) {
             const cfKey = cond.field.replace('cf_', '');
-            const rawVal = item.custom_fields?.[cfKey] ?? item.customFields?.[cfKey];
+            const rawVal = item.customFields?.[cfKey] ?? item.customFields?.[cfKey];
 
             const def = customFieldsDef?.find((d) => d.key === cfKey);
             if (def && (def.dataType === 'select' || def.dataType === 'multi_select')) {

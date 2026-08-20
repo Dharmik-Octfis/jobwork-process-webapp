@@ -252,7 +252,7 @@ export interface SessionMeta {
  *
  * This is the ONLY place a `refresh_tokens` row is created. Since rotation was
  * removed, one row here means exactly one login, for the life of that session —
- * which is what makes `created_at` a login timestamp a report can trust.
+ * which is what makes `createdAt` a login timestamp a report can trust.
  */
 export async function issueTokens(user: PublicUser, meta: SessionMeta = {}): Promise<AuthResult> {
   const refreshToken = signRefreshToken(user.id);

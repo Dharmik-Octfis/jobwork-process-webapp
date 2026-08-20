@@ -12,10 +12,10 @@ const DUPLICATE_NUMBER = 'A bill with this number already exists.';
 
 function billListWhere(organizationId: string, opts: ListQuery): Prisma.BillWhereInput {
   return {
-    organization_id: organizationId,
+    organizationId: organizationId,
     isDeleted: false,
     ...filterWhere<Prisma.BillWhereInput>('bill', opts.filter),
-    ...searchWhere<Prisma.BillWhereInput>(opts.search, ['bill_number', 'notes', 'status']),
+    ...searchWhere<Prisma.BillWhereInput>(opts.search, ['billNumber', 'notes', 'status']),
   };
 }
 
@@ -24,7 +24,7 @@ export async function getBillsList(organizationId: string, opts: ListQuery) {
   return runAsTenant(organizationId, async (tx) => {
     const rows = await tx.bill.findMany({
       where: billListWhere(organizationId, opts),
-      orderBy: { bill_date: 'desc' },
+      orderBy: { billDate: 'desc' },
       skip: (page - 1) * perPage,
       take: takeForPage(perPage),
       include: {
@@ -46,9 +46,9 @@ export async function countBills(organizationId: string, opts: ListQuery): Promi
 export async function getBillById(orgId: string, id: string) {
   return runAsTenant(orgId, async (tx) => {
     const bill = await tx.bill.findFirst({
-      where: { id, organization_id: orgId, isDeleted: false },
+      where: { id, organizationId: orgId, isDeleted: false },
       include: {
-        line_items: {
+        lineItems: {
           where: { isDeleted: false },
           include: { item: true },
         },
@@ -59,7 +59,7 @@ export async function getBillById(orgId: string, id: string) {
 
     if (!bill) return null;
 
-    const lineItemIds = bill.line_items.map((li) => li.id);
+    const lineItemIds = bill.lineItems.map((li) => li.id);
     const movements = await tx.stockLedgerEntry.findMany({
       where: {
         sourceDocId: bill.id,
@@ -82,7 +82,7 @@ export async function getBillById(orgId: string, id: string) {
       {} as Record<string, typeof movements>,
     );
 
-    const lineItemsWithBatches = bill.line_items.map((li) => {
+    const lineItemsWithBatches = bill.lineItems.map((li) => {
       const liMovements = movementsByLineId[li.id] || [];
       const batches = liMovements.map((m) => ({
         batchId: m.batchId,
@@ -102,17 +102,17 @@ export async function getBillById(orgId: string, id: string) {
 
     return {
       ...bill,
-      line_items: lineItemsWithBatches,
+      lineItems: lineItemsWithBatches,
     };
   });
 }
 
 export async function createBill(orgId: string, userId: string, data: CreateBillPayload) {
   const {
-    line_items: lineItems,
-    custom_fields: rawCustomFields,
-    total_amount: totalAmount,
-    terms_and_conditions: termsAndConditions,
+    lineItems: lineItems,
+    customFields: rawCustomFields,
+    totalAmount: totalAmount,
+    termsAndConditions: termsAndConditions,
     attachments,
     notes: _notes,
     ...billData
@@ -132,7 +132,7 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
     });
 
     if (seq) {
-      if (billData.bill_number.startsWith(seq.prefix)) {
+      if (billData.billNumber.startsWith(seq.prefix)) {
         await tx.numberSequence.update({
           where: { id: seq.id },
           data: { nextNumber: seq.nextNumber + 1 },
@@ -151,23 +151,23 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
       tx.bill.create({
         data: {
           ...billData,
-          total: totalAmount,
-          terms: termsAndConditions,
-          organization_id: orgId,
-          source_po_id: billData.source_po_id || null,
+          totalAmount: totalAmount,
+          termsAndConditions: termsAndConditions,
+          organizationId: orgId,
+          sourcePoId: billData.sourcePoId || null,
           createdBy: userId,
           updatedBy: userId,
           documents: (attachments ?? []) as Prisma.InputJsonValue,
           customFields: customFields as Prisma.InputJsonObject,
-          line_items: {
+          lineItems: {
             create: lineItems.map((item: BillItemPayload) => ({
-              item_id: item.item_id,
+              itemId: item.itemId,
               quantity: item.quantity,
               rate: item.rate,
-              discount_percentage: item.discount_percentage,
+              discountPercentage: item.discountPercentage,
               discount: item.discount_amount,
-              item_total: item.amount,
-              customFields: (item.custom_fields ?? {}) as Prisma.InputJsonObject,
+              itemTotal: item.amount,
+              customFields: (item.customFields ?? {}) as Prisma.InputJsonObject,
               createdBy: userId,
               updatedBy: userId,
             })),
@@ -175,7 +175,7 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
           activities: {
             create: {
               title: 'Bill Created',
-              description: `Bill ${billData.bill_number} was created.`,
+              description: `Bill ${billData.billNumber} was created.`,
               performedBy,
               createdBy: userId,
               updatedBy: userId,
@@ -183,14 +183,14 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
           },
         },
         include: {
-          line_items: true,
+          lineItems: true,
           activities: true,
         },
       }),
     );
 
-    if (createdBill.location_id) {
-      const itemIds = lineItems.map((li: BillItemPayload) => li.item_id);
+    if (createdBill.locationId) {
+      const itemIds = lineItems.map((li: BillItemPayload) => li.itemId);
       const items = await tx.item.findMany({
         where: { id: { in: itemIds }, organizationId: orgId },
         select: { id: true, inventoryTracking: true, trackInventory: true },
@@ -200,9 +200,9 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
       for (let i = 0; i < lineItems.length; i++) {
         const payload = lineItems[i];
         if (!payload) continue;
-        const lineRecord = createdBill.line_items[i]; // assuming same order since Prisma returns in create order mostly
+        const lineRecord = createdBill.lineItems[i]; // assuming same order since Prisma returns in create order mostly
         if (!lineRecord) continue;
-        const item = itemsById.get(payload.item_id);
+        const item = itemsById.get(payload.itemId);
 
         if (item?.trackInventory && item.inventoryTracking !== 'none') {
           const batches = payload.batches?.length
@@ -229,7 +229,7 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
             await postMovement(tx, {
               organizationId: orgId,
               batchId: batchId,
-              locationId: createdBill.location_id,
+              locationId: createdBill.locationId,
               movementType: 'receipt',
               qtyIn: b.quantity,
               valueIn: (payload.rate || 0) * b.quantity,
@@ -250,7 +250,7 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
           await postMovement(tx, {
             organizationId: orgId,
             batchId: batch.id,
-            locationId: createdBill.location_id,
+            locationId: createdBill.locationId,
             movementType: 'receipt',
             qtyIn: payload.quantity,
             valueIn: (payload.rate || 0) * payload.quantity,
@@ -274,18 +274,18 @@ export async function updateBill(
   data: UpdateBillPayload,
 ) {
   const {
-    line_items: lineItems,
-    custom_fields: rawCustomFields,
-    total_amount: totalAmount,
-    terms_and_conditions: termsAndConditions,
+    lineItems: lineItems,
+    customFields: rawCustomFields,
+    totalAmount: totalAmount,
+    termsAndConditions: termsAndConditions,
     attachments,
     notes: _notes,
     ...billData
   } = data as UpdateBillPayload & { notes?: string };
   return runAsTenant(orgId, async (tx) => {
     const existing = await tx.bill.findFirst({
-      where: { id, organization_id: orgId, isDeleted: false },
-      include: { line_items: { where: { isDeleted: false } } },
+      where: { id, organizationId: orgId, isDeleted: false },
+      include: { lineItems: { where: { isDeleted: false } } },
     });
 
     if (!existing) throw ApiError.notFound('Bill not found');
@@ -314,8 +314,8 @@ export async function updateBill(
         where: { id },
         data: {
           ...billData,
-          total: totalAmount,
-          terms: termsAndConditions,
+          totalAmount: totalAmount,
+          termsAndConditions: termsAndConditions,
           documents: attachments !== undefined ? (attachments as Prisma.InputJsonValue) : undefined,
           customFields:
             customFields !== undefined ? (customFields as Prisma.InputJsonObject) : undefined,
@@ -323,7 +323,7 @@ export async function updateBill(
           activities: {
             create: {
               title: 'Bill Updated',
-              description: `Bill ${existing.bill_number} was updated.`,
+              description: `Bill ${existing.billNumber} was updated.`,
               performedBy,
               createdBy: userId,
               updatedBy: userId,
@@ -335,20 +335,20 @@ export async function updateBill(
       if (lineItems) {
         // Delete all old lines and create new ones (simplest approach for full replace)
         await tx.billItem.updateMany({
-          where: { bill_id: id },
+          where: { billId: id },
           data: { isDeleted: true, updatedBy: userId },
         });
 
         await tx.billItem.createMany({
           data: lineItems.map((item: BillItemPayload) => ({
-            bill_id: id,
-            item_id: item.item_id,
+            billId: id,
+            itemId: item.itemId,
             quantity: item.quantity,
             rate: item.rate,
-            discount_percentage: item.discount_percentage ?? null,
+            discountPercentage: item.discountPercentage ?? null,
             discount_amount: item.discount_amount ?? null,
-            item_total: item.amount,
-            customFields: (item.custom_fields ?? {}) as Prisma.InputJsonObject,
+            itemTotal: item.amount,
+            customFields: (item.customFields ?? {}) as Prisma.InputJsonObject,
             createdBy: userId,
             updatedBy: userId,
           })),
@@ -361,7 +361,7 @@ export async function updateBill(
 export async function deleteBill(orgId: string, id: string) {
   return runAsTenant(orgId, async (tx) => {
     const existing = await tx.bill.findFirst({
-      where: { id, organization_id: orgId, isDeleted: false },
+      where: { id, organizationId: orgId, isDeleted: false },
     });
     if (!existing) throw ApiError.notFound('Bill not found');
 
@@ -375,7 +375,7 @@ export async function deleteBill(orgId: string, id: string) {
 export async function getBillActivities(orgId: string, billId: string) {
   return runAsTenant(orgId, (tx) =>
     tx.billActivity.findMany({
-      where: { billId, bill: { organization_id: orgId }, isDeleted: false },
+      where: { billId, bill: { organizationId: orgId }, isDeleted: false },
       orderBy: { createdAt: 'desc' },
     }),
   );
@@ -384,7 +384,7 @@ export async function getBillActivities(orgId: string, billId: string) {
 export async function getBillComments(orgId: string, billId: string) {
   return runAsTenant(orgId, (tx) =>
     tx.billComment.findMany({
-      where: { billId, bill: { organization_id: orgId }, isDeleted: false },
+      where: { billId, bill: { organizationId: orgId }, isDeleted: false },
       orderBy: { createdAt: 'desc' },
     }),
   );
@@ -398,7 +398,7 @@ export async function createBillComment(
 ) {
   return runAsTenant(orgId, async (tx) => {
     const existing = await tx.bill.findFirst({
-      where: { id: billId, organization_id: orgId, isDeleted: false },
+      where: { id: billId, organizationId: orgId, isDeleted: false },
     });
     if (!existing) throw ApiError.notFound('Bill not found');
 
@@ -430,7 +430,7 @@ export async function deleteBillComment(
 ) {
   return runAsTenant(orgId, async (tx) => {
     const existing = await tx.billComment.findFirst({
-      where: { id: commentId, billId: billId, bill: { organization_id: orgId }, isDeleted: false },
+      where: { id: commentId, billId: billId, bill: { organizationId: orgId }, isDeleted: false },
     });
     if (!existing) throw ApiError.notFound('Comment not found');
 

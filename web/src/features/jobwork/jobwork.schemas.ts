@@ -355,7 +355,7 @@ export function feedsSteps(
  *
  * One challan moves fabric, thread and buttons; one receipt returns shirts and
  * rejects. A list column that shows the first item alone names one of them and
- * silently hides the rest — which is exactly what the `job_issues.item_id` and
+ * silently hides the rest — which is exactly what the `job_issues.itemId` and
  * `job_receipts.output_item_id` header columns did before they were dropped on
  * 2026-08-12. This says how many are not being shown.
  *

@@ -72,8 +72,8 @@ export function getCurrencyDetails(requestedCode?: string | null, country?: stri
 async function mapToZohoFormat(org: Organization & { industry?: Pick<Industry, 'name'> | null }) {
   const logoUrl = await resolveLogoUrl(org.logoUrl);
   return {
-    organization_id: org.id,
-    // The support code the customer reads to support. Additive — `organization_id`
+    organizationId: org.id,
+    // The support code the customer reads to support. Additive — `organizationId`
     // is still the uuid, and still the only value any client should send back.
     org_code: org.orgCode,
     name: org.name,

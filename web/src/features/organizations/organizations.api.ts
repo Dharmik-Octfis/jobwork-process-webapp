@@ -8,7 +8,7 @@ import type {
 /* eslint-disable @typescript-eslint/naming-convention */
 type RawOrganization = Partial<Organization> & {
   dial_code?: string;
-  organization_id?: string;
+  organizationId?: string;
   org_code?: string;
 
   account_created_date?: string;
@@ -29,7 +29,7 @@ export const organizationsApi = {
             ({
               ...org,
               dialCode: org.dialCode || org.dial_code,
-              organizationId: org.organizationId || org.organization_id,
+              organizationId: org.organizationId || org.organizationId,
 
               orgCode: org.orgCode || org.org_code,
               accountCreatedDate: org.accountCreatedDate || org.account_created_date,
@@ -65,7 +65,7 @@ export const organizationsApi = {
     return {
       ...org,
       dialCode: org.dialCode || org.dial_code,
-      organizationId: org.organizationId || org.organization_id,
+      organizationId: org.organizationId || org.organizationId,
 
       orgCode: org.orgCode || org.org_code,
       accountCreatedDate: org.accountCreatedDate || org.account_created_date,
@@ -99,7 +99,7 @@ export const organizationsApi = {
     return {
       ...org,
       dialCode: org.dialCode || org.dial_code,
-      organizationId: org.organizationId || org.organization_id,
+      organizationId: org.organizationId || org.organizationId,
 
       orgCode: org.orgCode || org.org_code,
       accountCreatedDate: org.accountCreatedDate || org.account_created_date,
@@ -131,7 +131,7 @@ export const organizationsApi = {
     return {
       ...org,
       dialCode: org.dialCode || org.dial_code,
-      organizationId: org.organizationId || org.organization_id,
+      organizationId: org.organizationId || org.organizationId,
 
       logo_url: org.logo_url,
       accountCreatedDate: org.accountCreatedDate || org.account_created_date,
@@ -149,7 +149,7 @@ export const organizationsApi = {
     return {
       ...org,
       dialCode: org.dialCode || org.dial_code,
-      organizationId: org.organizationId || org.organization_id,
+      organizationId: org.organizationId || org.organizationId,
 
       orgCode: org.orgCode || org.org_code,
       logo_url: org.logo_url,

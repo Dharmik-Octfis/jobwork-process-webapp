@@ -523,7 +523,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
 
   /**
    * 🔴 EVERY LINE CARRIES ITS OWN ITEM (§5.7). The server refuses a line naming
-   * an item the step does not consume, and stamps `job_issue_lines.item_id` from
+   * an item the step does not consume, and stamps `job_issue_lines.itemId` from
    * this — which is what every per-item total downstream reads.
    *
    * Built from the SELECTION, not from the query results: what was picked stays

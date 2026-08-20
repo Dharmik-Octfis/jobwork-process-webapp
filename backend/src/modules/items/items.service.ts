@@ -22,7 +22,7 @@ export function toItemResponse(item: Record<string, unknown> | null | undefined)
   return {
     ...item,
     product_id: item.id,
-    organization_id: item.organizationId,
+    organizationId: item.organizationId,
     hsn_or_sac: item.hsnCode,
     item_type: item.itemType,
     can_be_sold: item.isSalesInfo,
@@ -45,15 +45,15 @@ export function toItemResponse(item: Record<string, unknown> | null | undefined)
       item.openingStockValuePerUnit !== null && item.openingStockValuePerUnit !== undefined
         ? Number(item.openingStockValuePerUnit)
         : null,
-    custom_fields: item.customFields,
+    customFields: item.customFields,
     front_image: item.frontImage,
     rear_image: item.rearImage,
-    created_at: item.createdAt,
-    updated_at: item.updatedAt,
-    created_by: item.createdBy,
-    updated_by: item.updatedBy,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    createdBy: item.createdBy,
+    updatedBy: item.updatedBy,
     is_active: item.isActive,
-    is_deleted: item.isDeleted,
+    isDeleted: item.isDeleted,
   };
 }
 
@@ -97,8 +97,6 @@ export function normalizeItemDto<T extends Record<string, unknown>>(rawData: T):
     copy.isPurchaseInfo = copy.can_be_purchased;
   if (copy.track_inventory !== undefined && copy.trackInventory === undefined)
     copy.trackInventory = copy.track_inventory;
-  if (copy.custom_fields !== undefined && copy.customFields === undefined)
-    copy.customFields = copy.custom_fields;
   if (copy.front_image !== undefined && copy.frontImage === undefined)
     copy.frontImage = copy.front_image;
   if (copy.rear_image !== undefined && copy.rearImage === undefined)
@@ -120,7 +118,6 @@ export function normalizeItemDto<T extends Record<string, unknown>>(rawData: T):
   delete copy.can_be_sold;
   delete copy.can_be_purchased;
   delete copy.track_inventory;
-  delete copy.custom_fields;
   delete copy.front_image;
   delete copy.rear_image;
   delete copy.item_type;
@@ -483,16 +480,16 @@ export class ItemsService {
 
       const rows = await tx.billItem.findMany({
         where: {
-          item_id: itemId,
+          itemId: itemId,
           isDeleted: false,
           bill: {
-            organization_id: organizationId,
+            organizationId: organizationId,
             isDeleted: false,
             // Search applied to the bill level
-            ...searchWhere<Prisma.BillWhereInput>(opts.search, ['bill_number', 'status']),
+            ...searchWhere<Prisma.BillWhereInput>(opts.search, ['billNumber', 'status']),
           },
         },
-        orderBy: { bill: { bill_date: 'desc' } },
+        orderBy: { bill: { billDate: 'desc' } },
         skip: (page - 1) * perPage,
         take: takeForPage(perPage),
         include: {
@@ -511,12 +508,12 @@ export class ItemsService {
         results: paginated.results.map((row) => ({
           id: row.id,
           billId: row.bill?.id,
-          billDate: row.bill?.bill_date,
-          billNumber: row.bill?.bill_number,
+          billDate: row.bill?.billDate,
+          billNumber: row.bill?.billNumber,
           vendorName: row.bill?.vendor?.contactName,
           quantity: Number(row.quantity),
           rate: Number(row.rate),
-          amount: Number(row.item_total),
+          amount: Number(row.itemTotal),
           status: row.bill?.status,
         })),
       };

@@ -139,17 +139,14 @@ if (!env.isProduction) {
  * `waiting` requests queued because all `max` are busy. A non-zero `waiting`
  * under light load means the pool — not the network — is the bottleneck.
  */
-export function poolStats(): {
-  total: number;
-  idle: number;
-  waiting: number;
-  max: number;
-} {
+export function poolStats(): { total: number; idle: number; waiting: number; max: number } {
+  // @ts-expect-error Prisma internals
+  const pool = prisma._engine.engine.connectionPool;
   return {
     total: pool.totalCount,
     idle: pool.idleCount,
     waiting: pool.waitingCount,
-    max: poolConfig.max ?? 0,
+    max: pool.maxCount,
   };
 }
 
@@ -201,7 +198,7 @@ export type TenantClient = Omit<
  * Run `fn` with Postgres' row-level security scoped to one organization
  * (architecture §3.10).
  *
- * Every RLS policy compares `organization_id` against `app.current_tenant`, so
+ * Every RLS policy compares `organizationId` against `app.current_tenant`, so
  * inside this callback the database itself refuses to return, update, or delete
  * another organization's rows — even for a query that forgets its `where`. The
  * app-layer `organizationId` filters stay; this is the net under them, not a

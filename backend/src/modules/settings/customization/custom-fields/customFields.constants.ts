@@ -25,7 +25,7 @@ export const ENTITY_TYPES = [
   'bill',
   'member',
   /**
-   * Sprints 2–4. Every one of these tables carries `custom_fields`, which is
+   * Sprints 2–4. Every one of these tables carries `customFields`, which is
    * where the mind map's "extra fields at time of receipt" lands
    * (field-sources §2.6). Those must never become hardcoded columns: one org's
    * cutper is another org's nothing.

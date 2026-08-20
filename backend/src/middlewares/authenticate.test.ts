@@ -282,7 +282,7 @@ describe('session records', () => {
     await authService.refresh(refreshToken);
 
     const afterUse = await prisma.refreshToken.findUniqueOrThrow({ where: { id: atLogin.id } });
-    // This is the property the report depends on: `created_at` is the LOGIN, for
+    // This is the property the report depends on: `createdAt` is the LOGIN, for
     // the life of the session. Under rotation it moved every 15 minutes, so a
     // user signed in since Monday looked like they signed in moments ago.
     expect(afterUse.createdAt.getTime()).toBe(atLogin.createdAt.getTime());

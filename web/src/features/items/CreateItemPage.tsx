@@ -50,7 +50,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
             : itemToClone.rate !== null && itemToClone.rate !== undefined
               ? Number(itemToClone.rate)
               : (null as unknown as number),
-        salesDescription: itemToClone.salesDescription || itemToClone.sales_description || '',
+        salesDescription: itemToClone.salesDescription || itemToClone.salesDescription || '',
         isPurchaseInfo: true,
         costPrice:
           itemToClone.costPrice !== null && itemToClone.costPrice !== undefined
@@ -59,10 +59,10 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
               ? Number(itemToClone.purchase_rate)
               : (null as unknown as number),
         purchaseDescription:
-          itemToClone.purchaseDescription || itemToClone.purchase_description || '',
+          itemToClone.purchaseDescription || itemToClone.purchaseDescription || '',
         packaging: itemToClone.packaging || '',
-        frontImage: itemToClone.frontImage || itemToClone.front_image || null,
-        rearImage: itemToClone.rearImage || itemToClone.rear_image || null,
+        frontImage: itemToClone.frontImage || null,
+        rearImage: itemToClone.rearImage || null,
         images: itemToClone.images || [],
         trackInventory: true,
         inventoryTracking: (itemToClone.inventoryTracking ?? 'none').toLowerCase(),
@@ -76,7 +76,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
             ? Number(itemToClone.openingStockValuePerUnit)
             : null,
         customFields:
-          itemToClone.customFields || (itemToClone.custom_fields as Record<string, unknown>) || {},
+          itemToClone.customFields || (itemToClone.customFields as unknown as Record<string, unknown>) || null,
       };
     }
     return {
@@ -1124,7 +1124,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
               <CustomFieldsSection
                 orgId={orgId}
                 entityType="item"
-                values={(formData.customFields as Record<string, unknown>) ?? {}}
+                values={(formData.customFields as unknown as Record<string, unknown>) ?? {}}
                 onChange={(v) => setFormData((prev) => ({ ...prev, customFields: v }))}
                 errors={customFieldErrors}
                 applyDefaults

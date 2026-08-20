@@ -12,13 +12,13 @@ const DUPLICATE_NUMBER = 'A purchase order with this PO number already exists.';
 
 function poListWhere(organizationId: string, opts: ListQuery): Prisma.PurchaseOrderWhereInput {
   return {
-    organization_id: organizationId,
-    is_deleted: false,
+    organizationId: organizationId,
+    isDeleted: false,
     ...filterWhere<Prisma.PurchaseOrderWhereInput>('purchase_order', opts.filter),
     ...searchWhere<Prisma.PurchaseOrderWhereInput>(opts.search, [
-      'purchaseorder_number',
+      'poNumber',
       'notes',
-      'payment_terms',
+      'paymentTerms',
       'status',
     ]),
   };
@@ -55,10 +55,10 @@ export async function countPurchaseOrders(
 export async function getPurchaseOrderById(orgId: string, id: string) {
   return runAsTenant(orgId, (tx) =>
     tx.purchaseOrder.findFirst({
-      where: { id, organization_id: orgId, is_deleted: false },
+      where: { id, organizationId: orgId, isDeleted: false },
       include: {
-        line_items: {
-          where: { is_deleted: false },
+        lineItems: {
+          where: { isDeleted: false },
           include: { item: true },
         },
         vendor: { select: { contactName: true, email: true, phone: true, addresses: true } },
@@ -75,7 +75,7 @@ export async function createPurchaseOrder(
   userId: string,
   data: CreatePurchaseOrderPayload,
 ) {
-  const { line_items: lineItems, ...poData } = data;
+  const { lineItems: lineItems, ...poData } = data;
   return runAsTenant(orgId, async (tx) => {
     let performedBy = 'System';
     if (userId) {
@@ -91,7 +91,7 @@ export async function createPurchaseOrder(
     });
 
     if (seq) {
-      if (poData.purchaseorder_number.startsWith(seq.prefix)) {
+      if (poData.poNumber.startsWith(seq.prefix)) {
         await tx.numberSequence.update({
           where: { id: seq.id },
           data: { nextNumber: seq.nextNumber + 1 },
@@ -103,24 +103,24 @@ export async function createPurchaseOrder(
       tx.purchaseOrder.create({
         data: {
           ...poData,
-          organization_id: orgId,
-          created_by: userId,
-          updated_by: userId,
+          organizationId: orgId,
+          createdBy: userId,
+          updatedBy: userId,
           documents: (poData.documents ?? []) as Prisma.InputJsonValue,
-          custom_fields: (poData.custom_fields ?? {}) as Prisma.InputJsonObject,
-          line_items: {
+          customFields: (poData.customFields ?? {}) as Prisma.InputJsonObject,
+          lineItems: {
             create: lineItems.map((item) => ({
               ...item,
-              custom_fields: (item.custom_fields ?? {}) as Prisma.InputJsonObject,
-              created_by: userId,
-              updated_by: userId,
+              customFields: (item.customFields ?? {}) as Prisma.InputJsonObject,
+              createdBy: userId,
+              updatedBy: userId,
             })),
           },
           activities: {
             create: [
               {
                 title: 'Purchase Order Created',
-                description: `Purchase order "${poData.purchaseorder_number}" created.`,
+                description: `Purchase order "${poData.poNumber}" created.`,
                 performedBy,
                 createdBy: userId,
                 updatedBy: userId,
@@ -128,7 +128,7 @@ export async function createPurchaseOrder(
             ],
           },
         },
-        include: { line_items: true },
+        include: { lineItems: true },
       }),
     );
   });
@@ -140,7 +140,7 @@ export async function updatePurchaseOrder(
   userId: string,
   data: UpdatePurchaseOrderPayload,
 ) {
-  const { line_items: lineItems, ...poData } = data;
+  const { lineItems: lineItems, ...poData } = data;
   return runAsTenant(orgId, async (tx) => {
     let performedBy = 'System';
     if (userId) {
@@ -152,32 +152,32 @@ export async function updatePurchaseOrder(
 
     return withUniqueViolation(DUPLICATE_NUMBER, async () => {
       const po = await tx.purchaseOrder.updateMany({
-        where: { id, organization_id: orgId, is_deleted: false },
+        where: { id, organizationId: orgId, isDeleted: false },
         data: {
           ...poData,
-          updated_by: userId,
+          updatedBy: userId,
           documents:
             poData.documents !== undefined
               ? (poData.documents as Prisma.InputJsonValue)
               : undefined,
-          custom_fields: (poData.custom_fields ?? {}) as Prisma.InputJsonObject,
+          customFields: (poData.customFields ?? {}) as Prisma.InputJsonObject,
         },
       });
 
       if (lineItems) {
         await tx.purchaseOrderItem.updateMany({
-          where: { purchaseorder_id: id },
-          data: { is_deleted: true, updated_by: userId },
+          where: { purchaseOrderId: id },
+          data: { isDeleted: true, updatedBy: userId },
         });
         for (const item of lineItems) {
           await tx.purchaseOrderItem.create({
             data: {
               ...item,
               id: undefined,
-              purchaseorder_id: id,
-              created_by: userId,
-              updated_by: userId,
-              custom_fields: (item.custom_fields ?? {}) as Prisma.InputJsonObject,
+              purchaseOrderId: id,
+              createdBy: userId,
+              updatedBy: userId,
+              customFields: (item.customFields ?? {}) as Prisma.InputJsonObject,
             },
           });
         }
@@ -187,7 +187,7 @@ export async function updatePurchaseOrder(
         data: {
           purchaseOrderId: id,
           title: 'Purchase Order Updated',
-          description: `Purchase order ${poData.purchaseorder_number || ''} updated.`,
+          description: `Purchase order ${poData.poNumber || ''} updated.`,
           performedBy,
           createdBy: userId,
           updatedBy: userId,
@@ -206,8 +206,8 @@ export async function getPurchaseOrderActivities(organizationId: string, id: str
         purchaseOrderId: id,
         isDeleted: false,
         purchaseOrder: {
-          organization_id: organizationId,
-          is_deleted: false,
+          organizationId: organizationId,
+          isDeleted: false,
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -218,8 +218,8 @@ export async function getPurchaseOrderActivities(organizationId: string, id: str
 export async function deletePurchaseOrder(orgId: string, id: string) {
   return runAsTenant(orgId, (tx) =>
     tx.purchaseOrder.updateMany({
-      where: { id, organization_id: orgId, is_deleted: false },
-      data: { is_deleted: true },
+      where: { id, organizationId: orgId, isDeleted: false },
+      data: { isDeleted: true },
     }),
   );
 }
@@ -276,8 +276,8 @@ export async function getPurchaseOrderComments(organizationId: string, id: strin
         purchaseOrderId: id,
         isDeleted: false,
         purchaseOrder: {
-          organization_id: organizationId,
-          is_deleted: false,
+          organizationId: organizationId,
+          isDeleted: false,
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -324,7 +324,7 @@ export async function deletePurchaseOrderComment(
         id: commentId,
         purchaseOrderId,
         isDeleted: false,
-        purchaseOrder: { organization_id: organizationId },
+        purchaseOrder: { organizationId: organizationId },
       },
     });
 

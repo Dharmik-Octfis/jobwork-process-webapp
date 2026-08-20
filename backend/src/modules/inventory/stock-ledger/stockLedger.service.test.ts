@@ -471,7 +471,7 @@ describe('batches', () => {
 
   /**
    * A soft-deleted batch keeps occupying its number — the unique index is a full
-   * one on purpose (Prisma cannot express `WHERE is_deleted = false`, so a
+   * one on purpose (Prisma cannot express `WHERE isDeleted = false`, so a
    * partial index would read as permanent drift). These three pin the recycling
    * that stands in for it, including the two cases where it must NOT happen.
    */

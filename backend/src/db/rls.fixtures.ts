@@ -10,7 +10,7 @@ import { prisma, runAsTenant } from './prisma.ts';
  *   prisma.organization.findFirst({ where: { vendors: { some: {} } } })   // -> null. always.
  *
  * That subquery reads `vendors`, and `vendors` is RLS-gated. Outside a tenant
- * context the policy compares `organization_id` against a NULL
+ * context the policy compares `organizationId` against a NULL
  * `app.current_tenant`, so no vendor matches, so no organization matches —
  * however much data exists. The lookup returns null, and a test guarded by
  * `if (!org) return` then passes without asserting anything.

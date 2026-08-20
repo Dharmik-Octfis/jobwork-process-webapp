@@ -25,18 +25,18 @@ import {
  * `ENTITY_TYPES` (customFields.constants.ts) used to drive this file too, which
  * silently conflated two different questions: "can this module's list be
  * customised?" and "can an admin add per-org fields to it?". They are not the
- * same. `permission_templates` has no `custom_fields` column — it is not a domain
+ * same. `permission_templates` has no `customFields` column — it is not a domain
  * table (see CLAUDE.md's exclusion list) — so putting it in `ENTITY_TYPES` would
  * have listed it in Settings → Modules and let an admin define a field the write
  * path cannot store.
  *
  * So the two sets are separate and this one is the superset. Add a module here
  * when it needs Customize Columns and nothing else; add it to `ENTITY_TYPES` only
- * when the table actually carries `custom_fields`.
+ * when the table actually carries `customFields`.
  *
  * `process`, `process_route` and `job_issue` are here rather than in
  * `ENTITY_TYPES` for a different reason: all three tables DO carry
- * `custom_fields`, but nothing fills it in any more (all removed 2026-08-10) —
+ * `customFields`, but nothing fills it in any more (all removed 2026-08-10) —
  * the two masters are set up once and rarely revisited, and the Issue dialog lost
  * its "Additional fields" section. The columns stay, with whatever they already
  * hold; the modules are simply no longer offered in Settings → Modules. Their
@@ -90,10 +90,10 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'updatedAt', label: 'Last Modified' },
   ],
   bill: [
-    { key: 'bill_number', label: 'Bill Number', locked: true },
-    { key: 'bill_date', label: 'Bill Date', defaultVisible: true },
-    { key: 'due_date', label: 'Due Date', defaultVisible: true },
-    { key: 'total_amount', label: 'Total', defaultVisible: true },
+    { key: 'billNumber', label: 'Bill Number', locked: true },
+    { key: 'billDate', label: 'Bill Date', defaultVisible: true },
+    { key: 'dueDate', label: 'Due Date', defaultVisible: true },
+    { key: 'total', label: 'Total', defaultVisible: true },
     { key: 'status', label: 'Status', defaultVisible: true },
   ],
   customer: [
@@ -300,15 +300,15 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
   ],
   item_assembly_line: [{ key: 'id', label: 'ID', locked: true }],
   purchase_order: [
-    { key: 'purchaseorder_number', label: 'PO Number', locked: true },
+    { key: 'poNumber', label: 'PO Number', locked: true },
     { key: 'vendor', label: 'Vendor', defaultVisible: true },
     { key: 'date', label: 'Date', defaultVisible: true },
-    { key: 'delivery_date', label: 'Delivery Date', defaultVisible: true },
+    { key: 'deliveryDate', label: 'Delivery Date', defaultVisible: true },
     { key: 'total', label: 'Amount', defaultVisible: true },
     { key: 'status', label: 'Status', defaultVisible: true },
-    { key: 'payment_terms', label: 'Payment Terms' },
-    { key: 'created_at', label: 'Created At' },
-    { key: 'updated_at', label: 'Last Modified' },
+    { key: 'paymentTerms', label: 'Payment Terms' },
+    { key: 'createdAt', label: 'Created At' },
+    { key: 'updatedAt', label: 'Last Modified' },
   ],
 };
 

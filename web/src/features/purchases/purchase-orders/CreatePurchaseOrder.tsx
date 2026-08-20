@@ -161,78 +161,78 @@ export function CreatePurchaseOrder() {
     defaultValues: {
       status: 'Draft',
       date: new Date().toISOString().split('T')[0],
-      delivery_type: 'Location',
-      line_items: [
+      deliveryType: 'Location',
+      lineItems: [
         {
-          item_id: '',
+          itemId: '',
           quantity: '' as unknown as number,
           rate: '' as unknown as number,
           discountValue: '' as unknown as number,
           discountType: 'percentage',
-          item_total: 0,
+          itemTotal: 0,
         } as PurchaseOrderItem,
       ],
-      sub_total: 0,
-      total: 0,
+      subTotal: 0,
+      totalAmount: 0,
     },
   });
 
   useEffect(() => {
     if (existingPo) {
-      const formattedLineItems = (existingPo.line_items || []).map((item) => {
+      const formattedLineItems = (existingPo.lineItems || []).map((item) => {
         const discountVal =
           item.discountValue !== undefined && item.discountValue !== null
             ? item.discountValue
-            : item.discount_percentage || item.discount || 0;
+            : item.discountPercentage || item.discount || 0;
         return {
-          item_id: item.item_id,
+          itemId: item.itemId,
           item: item.item,
           quantity: item.quantity || ('' as unknown as number),
           rate: item.rate || ('' as unknown as number),
           discountValue: discountVal || ('' as unknown as number),
-          discountType: item.discountType || (item.discount_percentage ? 'percentage' : 'fixed'),
-          item_total: item.item_total || 0,
+          discountType: item.discountType || (item.discountPercentage ? 'percentage' : 'fixed'),
+          itemTotal: item.itemTotal || 0,
         };
       });
 
       const resetData: CreatePurchaseOrderData = {
-        vendor_id: existingPo.vendor_id || '',
-        purchaseorder_number: isClone ? '' : existingPo.purchaseorder_number || '',
+        vendorId: existingPo.vendorId || '',
+        poNumber: isClone ? '' : existingPo.poNumber || '',
         date: isClone
           ? new Date().toISOString().split('T')[0]
           : existingPo.date
             ? new Date(existingPo.date).toISOString().split('T')[0]
             : new Date().toISOString().split('T')[0],
-        delivery_date: existingPo.delivery_date
-          ? new Date(existingPo.delivery_date).toISOString().split('T')[0]
+        deliveryDate: existingPo.deliveryDate
+          ? new Date(existingPo.deliveryDate).toISOString().split('T')[0]
           : '',
-        payment_terms: existingPo.payment_terms || '',
-        delivery_type: existingPo.delivery_type || 'Location',
-        delivery_location_id: existingPo.delivery_location_id || '',
-        delivery_customer_id: existingPo.delivery_customer_id || '',
+        paymentTerms: existingPo.paymentTerms || '',
+        deliveryType: existingPo.deliveryType || 'Location',
+        deliveryLocationId: existingPo.deliveryLocationId || '',
+        deliveryCustomerId: existingPo.deliveryCustomerId || '',
         notes: existingPo.notes || '',
-        terms: existingPo.terms || '',
+        termsAndConditions: existingPo.termsAndConditions || '',
         status: isClone ? 'Draft' : existingPo.status || 'Draft',
-        custom_fields: existingPo.custom_fields || {},
-        line_items:
+        customFields: existingPo.customFields || null,
+        lineItems:
           formattedLineItems.length > 0
             ? (formattedLineItems as unknown as PurchaseOrderItem[])
             : [
                 {
-                  item_id: '',
+                  itemId: '',
                   quantity: '' as unknown as number,
                   rate: '' as unknown as number,
                   discountValue: '' as unknown as number,
                   discountType: 'percentage',
-                  item_total: 0,
+                  itemTotal: 0,
                 } as PurchaseOrderItem,
               ],
-        sub_total: Number(existingPo.sub_total) || 0,
-        total: Number(existingPo.total) || 0,
+        subTotal: Number(existingPo.subTotal) || 0,
+        totalAmount: Number(existingPo.totalAmount) || 0,
       };
 
-      if (existingPo.purchaseorder_number && !isClone) {
-        resetData.purchaseorder_number = existingPo.purchaseorder_number;
+      if (existingPo.poNumber && !isClone) {
+        resetData.poNumber = existingPo.poNumber;
       }
 
       reset(resetData);
@@ -249,16 +249,16 @@ export function CreatePurchaseOrder() {
     remove: removeItem,
   } = useFieldArray({
     control,
-    name: 'line_items',
+    name: 'lineItems',
   });
 
-  const watchItems = useWatch({ control, name: 'line_items' });
-  const watchDeliveryType = watch('delivery_type');
-  const watchDeliveryLocationId = watch('delivery_location_id');
-  const watchDeliveryCustomerId = watch('delivery_customer_id');
-  const watchLocationId = watch('location_id');
+  const watchItems = useWatch({ control, name: 'lineItems' });
+  const watchDeliveryType = watch('deliveryType');
+  const watchDeliveryLocationId = watch('deliveryLocationId');
+  const watchDeliveryCustomerId = watch('deliveryCustomerId');
+  const watchLocationId = watch('locationId');
   const watchPoDate = watch('date');
-  const watchPaymentTerms = watch('payment_terms');
+  const watchPaymentTerms = watch('paymentTerms');
 
   useEffect(() => {
     if (watchPoDate && watchPaymentTerms && paymentTerms) {
@@ -266,7 +266,7 @@ export function CreatePurchaseOrder() {
       if (term && term.dueAfterDays !== undefined && term.dueAfterDays !== null) {
         const d = new Date(watchPoDate);
         d.setDate(d.getDate() + term.dueAfterDays);
-        setValue('delivery_date', d.toISOString().split('T')[0], {
+        setValue('deliveryDate', d.toISOString().split('T')[0], {
           shouldValidate: true,
           shouldDirty: true,
         });
@@ -344,10 +344,10 @@ export function CreatePurchaseOrder() {
         locations.find((l: Location) => !l.parentId);
       if (defaultLocation) {
         if (!watchLocationId) {
-          setValue('location_id', defaultLocation.id);
+          setValue('locationId', defaultLocation.id);
         }
         if (!watchDeliveryLocationId && watchDeliveryType === 'Location') {
-          setValue('delivery_location_id', defaultLocation.id);
+          setValue('deliveryLocationId', defaultLocation.id);
         }
       }
     }
@@ -370,8 +370,8 @@ export function CreatePurchaseOrder() {
   const computedTotalAmount = Math.max(0, computedSubTotal - computedTotalDiscount);
 
   useEffect(() => {
-    setValue('sub_total', computedSubTotal);
-    setValue('total', computedTotalAmount);
+    setValue('subTotal', computedSubTotal);
+    setValue('totalAmount', computedTotalAmount);
   }, [computedSubTotal, computedTotalAmount, setValue]);
 
   const { data: preference } = useQuery({
@@ -385,10 +385,10 @@ export function CreatePurchaseOrder() {
   useEffect(() => {
     if (preference && !isEdit) {
       const generatedNumber = `${preference.prefix}${preference.nextNumber.toString().padStart(5, '0')}`;
-      const currentValue = watch('purchaseorder_number');
+      const currentValue = watch('poNumber');
 
       if (!currentValue || currentValue === lastPrefilledNumber) {
-        setValue('purchaseorder_number', generatedNumber);
+        setValue('poNumber', generatedNumber);
         setLastPrefilledNumber(generatedNumber);
         setPoPrefix(preference.prefix);
       }
@@ -401,7 +401,7 @@ export function CreatePurchaseOrder() {
     onSuccess: (data) => {
       queryClient.setQueryData(['po-number-preference', orgId], data);
       setValue(
-        'purchaseorder_number',
+        'poNumber',
         `${data.prefix}${data.nextNumber.toString().padStart(5, '0')}`,
       );
       setPoPrefix(data.prefix);
@@ -436,7 +436,7 @@ export function CreatePurchaseOrder() {
   });
 
   const onSubmit = (data: CreatePurchaseOrderData) => {
-    const finalItems = (data.line_items || []).map((item) => {
+    const finalItems = (data.lineItems || []).map((item) => {
       const qty = isNaN(Number(item?.quantity)) ? 0 : Number(item?.quantity);
       const rate = isNaN(Number(item?.rate)) ? 0 : Number(item?.rate);
       const basePrice = qty * rate;
@@ -444,31 +444,31 @@ export function CreatePurchaseOrder() {
       const discType = item?.discountType || 'percentage';
       const discountAmount =
         discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
-      const item_total = Math.max(0, basePrice - discountAmount);
+      const itemTotal = Math.max(0, basePrice - discountAmount);
       return {
         ...item,
         quantity: qty,
         rate: rate,
-        item_total: item_total,
+        itemTotal: itemTotal,
         discount: discountAmount,
-        discount_percentage: discType === 'percentage' ? discountVal : null,
+        discountPercentage: discType === 'percentage' ? discountVal : null,
       };
     });
 
     const finalData = {
       ...data,
-      delivery_customer_id: data.delivery_customer_id || null,
-      delivery_location_id: data.delivery_location_id || null,
-      delivery_date: data.delivery_date || null,
-      payment_terms: data.payment_terms || null,
+      deliveryCustomerId: data.deliveryCustomerId || null,
+      deliveryLocationId: data.deliveryLocationId || null,
+      deliveryDate: data.deliveryDate || null,
+      paymentTerms: data.paymentTerms || null,
       notes: data.notes || null,
-      terms: data.terms || null,
-      line_items: finalItems,
-      sub_total: computedSubTotal,
-      total: computedTotalAmount,
+      termsAndConditions: data.termsAndConditions || null,
+      lineItems: finalItems,
+      subTotal: computedSubTotal,
+      totalAmount: computedTotalAmount,
       documents: attachedFiles,
-      custom_fields: {
-        ...data.custom_fields,
+      customFields: {
+        ...data.customFields,
         ...(customDeliveryName ? { customDeliveryName } : {}),
       },
     };
@@ -518,7 +518,7 @@ export function CreatePurchaseOrder() {
       <div style={{ padding: '24px 32px' }}>
         <h1 style={{ fontSize: '22px', fontWeight: 400, margin: 0, color: '#000' }}>
           {isEdit
-            ? `Edit Purchase Order (${existingPo?.purchaseorder_number || ''})`
+            ? `Edit Purchase Order (${existingPo?.poNumber || ''})`
             : isClone
               ? 'Clone Purchase Order'
               : 'New Purchase Order'}
@@ -554,11 +554,11 @@ export function CreatePurchaseOrder() {
           >
             <label style={{ ...labelStyle, color: '#ef4444' }}>Vendor Name*</label>
             <div>
-              <input type="hidden" {...register('vendor_id', { required: true })} />
+              <input type="hidden" {...register('vendorId', { required: true })} />
               <SearchableSelect
                 options={vendors.map((v) => ({ label: v.contactName, value: v.id }))}
-                value={watch('vendor_id') || undefined}
-                onChange={(val) => setValue('vendor_id', val, { shouldValidate: true })}
+                value={watch('vendorId') || undefined}
+                onChange={(val) => setValue('vendorId', val, { shouldValidate: true })}
                 placeholder="Select a Vendor"
                 renderOption={(option, isSelected) => {
                   const vendor = vendors.find((v) => v.id === option.value);
@@ -625,7 +625,7 @@ export function CreatePurchaseOrder() {
                 }}
                 style={searchableSelectStyle}
               />
-              {errors.vendor_id && (
+              {errors.vendorId && (
                 <div style={{ color: '#e54d4d', fontSize: '12px', marginTop: '4px' }}>
                   Vendor Name is required
                 </div>
@@ -635,8 +635,8 @@ export function CreatePurchaseOrder() {
             <label style={labelStyle}>Location</label>
             <SearchableSelect
               options={locations.map((l: Location) => ({ label: l.name, value: l.id }))}
-              value={watch('location_id') || undefined}
-              onChange={(val) => setValue('location_id', val)}
+              value={watch('locationId') || undefined}
+              onChange={(val) => setValue('locationId', val)}
               placeholder="Select Location"
               footerAction={{
                 text: 'New Location',
@@ -666,7 +666,7 @@ export function CreatePurchaseOrder() {
                   <input
                     type="radio"
                     value="Location"
-                    {...register('delivery_type')}
+                    {...register('deliveryType')}
                     style={{ margin: 0, cursor: 'pointer' }}
                   />{' '}
                   Locations
@@ -684,7 +684,7 @@ export function CreatePurchaseOrder() {
                   <input
                     type="radio"
                     value="Customer"
-                    {...register('delivery_type')}
+                    {...register('deliveryType')}
                     style={{ margin: 0, cursor: 'pointer' }}
                   />{' '}
                   Customer
@@ -695,8 +695,8 @@ export function CreatePurchaseOrder() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <SearchableSelect
                     options={locations.map((l: Location) => ({ label: l.name, value: l.id }))}
-                    value={watch('delivery_location_id') || undefined}
-                    onChange={(val) => setValue('delivery_location_id', val)}
+                    value={watch('deliveryLocationId') || undefined}
+                    onChange={(val) => setValue('deliveryLocationId', val)}
                     placeholder="Select Location"
                     footerAction={{
                       text: 'New Location',
@@ -810,7 +810,7 @@ export function CreatePurchaseOrder() {
                       value: c.id,
                     }))}
                     value={watchDeliveryCustomerId || undefined}
-                    onChange={(val) => setValue('delivery_customer_id', val)}
+                    onChange={(val) => setValue('deliveryCustomerId', val)}
                     placeholder="Select Customer"
                     footerAction={{
                       text: 'New Customer',
@@ -925,7 +925,7 @@ export function CreatePurchaseOrder() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', maxWidth: '440px' }}>
                 <input
                   type="text"
-                  {...register('purchaseorder_number', { required: true })}
+                  {...register('poNumber', { required: true })}
                   style={{ ...inputStyle, flex: 1 }}
                 />
                 <button
@@ -943,7 +943,7 @@ export function CreatePurchaseOrder() {
                   <Settings size={18} />
                 </button>
               </div>
-              {errors.purchaseorder_number && (
+              {errors.poNumber && (
                 <div style={{ color: '#e54d4d', fontSize: '12px', marginTop: '4px' }}>
                   Purchase Order# is required
                 </div>
@@ -957,8 +957,8 @@ export function CreatePurchaseOrder() {
                 {...register('date', {
                   required: 'Date is required',
                   onChange: () => {
-                    if (watch('delivery_date')) {
-                      trigger('delivery_date');
+                    if (watch('deliveryDate')) {
+                      trigger('deliveryDate');
                     }
                   },
                 })}
@@ -973,7 +973,7 @@ export function CreatePurchaseOrder() {
               <input
                 type="date"
                 min={watchPoDate}
-                {...register('delivery_date', {
+                {...register('deliveryDate', {
                   validate: (val) => {
                     if (!val || !watchPoDate) return true;
                     return val >= watchPoDate || 'Delivery date must be on or after PO date';
@@ -983,9 +983,9 @@ export function CreatePurchaseOrder() {
                 onClick={(e) => (e.target as HTMLInputElement).showPicker()}
                 style={{ ...inputStyle, maxWidth: '100%' }}
               />
-              {errors.delivery_date && (
+              {errors.deliveryDate && (
                 <div style={{ color: '#e54d4d', fontSize: '12px', marginTop: '4px' }}>
-                  {errors.delivery_date.message || 'Delivery date must be on or after PO date'}
+                  {errors.deliveryDate.message || 'Delivery date must be on or after PO date'}
                 </div>
               )}
             </div>
@@ -995,8 +995,8 @@ export function CreatePurchaseOrder() {
               options={
                 paymentTerms?.map((pt) => ({ label: pt.termName, value: pt.id.toString() })) || []
               }
-              value={watch('payment_terms') || undefined}
-              onChange={(val) => setValue('payment_terms', val)}
+              value={watch('paymentTerms') || undefined}
+              onChange={(val) => setValue('paymentTerms', val)}
               placeholder="Select Payment Terms"
               footerAction={{
                 text: 'New Payment Term',
@@ -1157,7 +1157,7 @@ export function CreatePurchaseOrder() {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <ItemComboBox
                             orgId={orgId!}
-                            value={watchItems?.[index]?.item_id}
+                            value={watchItems?.[index]?.itemId}
                             initialItem={watchItems?.[index]?.item}
                             selectedImage={
                               selectedItem ? (
@@ -1175,36 +1175,36 @@ export function CreatePurchaseOrder() {
                               setIsMultiSelectItemModalOpen(true);
                             }}
                             onChange={(val) => {
-                              setValue(`line_items.${index}.item_id`, val?.id || '', {
+                              setValue(`lineItems.${index}.itemId`, val?.id || '', {
                                 shouldValidate: true,
                               });
-                              setValue(`line_items.${index}.item`, val);
+                              setValue(`lineItems.${index}.item`, val);
                               const selected = val;
                               if (selected) {
                                 setValue(
-                                  `line_items.${index}.rate`,
+                                  `lineItems.${index}.rate`,
                                   (selected.costPrice ||
                                     selected.sellingPrice ||
                                     '') as unknown as number,
                                 );
-                                setValue(`line_items.${index}.quantity`, 1 as unknown as number);
+                                setValue(`lineItems.${index}.quantity`, 1 as unknown as number);
                                 setValue(
-                                  `line_items.${index}.description`,
+                                  `lineItems.${index}.description`,
                                   selected.purchaseDescription ||
-                                    selected.purchase_description ||
+                                    selected.purchaseDescription ||
                                     selected.salesDescription ||
-                                    selected.sales_description ||
+                                    selected.salesDescription ||
                                     '',
                                 );
                               } else {
-                                setValue(`line_items.${index}.rate`, '' as unknown as number);
-                                setValue(`line_items.${index}.quantity`, '' as unknown as number);
+                                setValue(`lineItems.${index}.rate`, '' as unknown as number);
+                                setValue(`lineItems.${index}.quantity`, '' as unknown as number);
                                 setValue(
-                                  `line_items.${index}.discountValue`,
+                                  `lineItems.${index}.discountValue`,
                                   '' as unknown as number,
                                 );
-                                setValue(`line_items.${index}.discountType`, 'percentage');
-                                setValue(`line_items.${index}.description`, '');
+                                setValue(`lineItems.${index}.discountType`, 'percentage');
+                                setValue(`lineItems.${index}.description`, '');
                               }
                             }}
                             placeholder="Type or click to select an item."
@@ -1218,7 +1218,7 @@ export function CreatePurchaseOrder() {
                         {/* Description Field - only shown when an item is selected */}
                         {selectedItem && (
                           <textarea
-                            {...register(`line_items.${index}.description`)}
+                            {...register(`lineItems.${index}.description`)}
                             placeholder="Add a description to your item"
                             rows={2}
                             style={{
@@ -1287,7 +1287,7 @@ export function CreatePurchaseOrder() {
                         type="number"
                         step="0.01"
                         placeholder="0"
-                        {...register(`line_items.${index}.quantity`, {
+                        {...register(`lineItems.${index}.quantity`, {
                           valueAsNumber: true,
                           required: true,
                           min: 0.01,
@@ -1315,7 +1315,7 @@ export function CreatePurchaseOrder() {
                         type="number"
                         step="0.01"
                         placeholder="0.00"
-                        {...register(`line_items.${index}.rate`, {
+                        {...register(`lineItems.${index}.rate`, {
                           valueAsNumber: true,
                           required: true,
                           min: 0,
@@ -1353,7 +1353,7 @@ export function CreatePurchaseOrder() {
                         <input
                           type="number"
                           step="0.01"
-                          {...register(`line_items.${index}.discountValue`, {
+                          {...register(`lineItems.${index}.discountValue`, {
                             valueAsNumber: true,
                             min: 0,
                           })}
@@ -1376,7 +1376,7 @@ export function CreatePurchaseOrder() {
                           value={watchItems?.[index]?.discountType || 'percentage'}
                           onChange={(val) => {
                             setValue(
-                              `line_items.${index}.discountType`,
+                              `lineItems.${index}.discountType`,
                               val as 'percentage' | 'fixed',
                             );
                           }}
@@ -1470,12 +1470,12 @@ export function CreatePurchaseOrder() {
               onClick={() =>
                 appendItem(
                   {
-                    item_id: '',
+                    itemId: '',
                     quantity: '' as unknown as number,
                     rate: '' as unknown as number,
                     discountValue: '' as unknown as number,
                     discountType: 'percentage',
-                    item_total: 0,
+                    itemTotal: 0,
                   } as PurchaseOrderItem,
                   { shouldFocus: false },
                 )
@@ -1601,7 +1601,7 @@ export function CreatePurchaseOrder() {
               Terms & Conditions
             </label>
             <textarea
-              {...register('terms')}
+              {...register('termsAndConditions')}
               placeholder="Enter terms and conditions..."
               rows={4}
               style={{
@@ -1807,8 +1807,8 @@ export function CreatePurchaseOrder() {
         initialNextNumber={
           preference?.nextNumber !== undefined
             ? preference.nextNumber.toString().padStart(5, '0')
-            : watch('purchaseorder_number')
-              ? watch('purchaseorder_number').replace(poPrefix, '')
+            : watch('poNumber')
+              ? watch('poNumber').replace(poPrefix, '')
               : '00001'
         }
         onSave={(newPrefix, newNextNumberStr) => {
@@ -1825,7 +1825,7 @@ export function CreatePurchaseOrder() {
         isOpen={isPaymentTermModalOpen}
         onClose={() => setIsPaymentTermModalOpen(false)}
         onSuccess={(newTerm) => {
-          setValue('payment_terms', newTerm.id);
+          setValue('paymentTerms', newTerm.id);
           setIsPaymentTermModalOpen(false);
         }}
       />
@@ -1838,14 +1838,14 @@ export function CreatePurchaseOrder() {
         customers={customers}
         selectedLocationId={watchDeliveryLocationId || undefined}
         selectedCustomerId={watchDeliveryCustomerId || undefined}
-        onSelectLocation={(locId) => setValue('delivery_location_id', locId)}
-        onSelectCustomer={(custId) => setValue('delivery_customer_id', custId)}
+        onSelectLocation={(locId) => setValue('deliveryLocationId', locId)}
+        onSelectCustomer={(custId) => setValue('deliveryCustomerId', custId)}
       />
       <CreateVendorModal
         isOpen={isVendorModalOpen}
         onClose={() => setIsVendorModalOpen(false)}
         onSuccess={(vendorId) => {
-          setValue('vendor_id', vendorId, { shouldValidate: true });
+          setValue('vendorId', vendorId, { shouldValidate: true });
         }}
       />
       <CreateItemModal
@@ -1853,7 +1853,7 @@ export function CreatePurchaseOrder() {
         onClose={() => setItemModalIndex(null)}
         onSuccess={(itemId) => {
           if (itemModalIndex !== null) {
-            setValue(`line_items.${itemModalIndex}.item_id`, itemId, { shouldValidate: true });
+            setValue(`lineItems.${itemModalIndex}.itemId`, itemId, { shouldValidate: true });
 
             // Note: Normally we'd fetch the item's cost here to populate rate.
             // The SearchableSelect's onChange isn't triggered manually by setValue,
@@ -1877,51 +1877,51 @@ export function CreatePurchaseOrder() {
           if (selectedItems.length === 0 || multiSelectTargetIndex === null) return;
 
           const targetIndex = multiSelectTargetIndex;
-          const currentItems = watch('line_items');
+          const currentItems = watch('lineItems');
 
           selectedItems.forEach((item, i) => {
             const isFirst = i === 0;
             const targetRow = currentItems?.[targetIndex];
-            const isEmptyRow = !targetRow?.item_id;
+            const isEmptyRow = !targetRow?.itemId;
 
             const qty = item._quantity ?? 1;
             const rate = item._rate ?? (item.costPrice || item.sellingPrice || '');
             const disc = item._discount ?? '';
 
             if (isFirst && isEmptyRow) {
-              setValue(`line_items.${targetIndex}.item_id`, item.id, { shouldValidate: true });
-              setValue(`line_items.${targetIndex}.item`, item);
-              setValue(`line_items.${targetIndex}.rate`, rate as unknown as number);
-              setValue(`line_items.${targetIndex}.quantity`, qty as unknown as number);
-              setValue(`line_items.${targetIndex}.discountValue`, disc as unknown as number);
+              setValue(`lineItems.${targetIndex}.itemId`, item.id, { shouldValidate: true });
+              setValue(`lineItems.${targetIndex}.item`, item);
+              setValue(`lineItems.${targetIndex}.rate`, rate as unknown as number);
+              setValue(`lineItems.${targetIndex}.quantity`, qty as unknown as number);
+              setValue(`lineItems.${targetIndex}.discountValue`, disc as unknown as number);
               setValue(
-                `line_items.${targetIndex}.discountType`,
+                `lineItems.${targetIndex}.discountType`,
                 item._discountType ?? 'percentage',
               );
               setValue(
-                `line_items.${targetIndex}.description`,
+                `lineItems.${targetIndex}.description`,
                 item.purchaseDescription ||
-                  item.purchase_description ||
+                  item.purchaseDescription ||
                   item.salesDescription ||
-                  item.sales_description ||
+                  item.salesDescription ||
                   '',
               );
             } else {
               appendItem(
                 {
-                  item_id: item.id,
+                  itemId: item.id,
                   item: item,
                   quantity: qty as unknown as number,
                   rate: rate as unknown as number,
                   description:
                     item.purchaseDescription ||
-                    item.purchase_description ||
+                    item.purchaseDescription ||
                     item.salesDescription ||
-                    item.sales_description ||
+                    item.salesDescription ||
                     '',
                   discountValue: disc as unknown as number,
                   discountType: item._discountType ?? 'percentage',
-                  item_total: 0,
+                  itemTotal: 0,
                 } as PurchaseOrderItem,
                 { shouldFocus: false },
               );

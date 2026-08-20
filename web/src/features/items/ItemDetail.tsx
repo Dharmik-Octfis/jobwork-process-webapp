@@ -41,16 +41,16 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     enabled: Boolean(orgId && itemId),
   });
 
-  const isInventoryTracked = item?.trackInventory !== false && item?.track_inventory !== false;
+  const isInventoryTracked = item?.trackInventory !== false;
 
   const isBatchTracked = useMemo(() => {
     if (!item || !isInventoryTracked) return false;
-    const tracking = String(item.inventoryTracking ?? item.inventory_tracking ?? '').toLowerCase();
+    const tracking = String(item.inventoryTracking ?? item.inventoryTracking ?? '').toLowerCase();
     return tracking === 'batch';
   }, [item, isInventoryTracked]);
 
   const isCompositeItem =
-    item?.itemType === 'Composite Item' || item?.item_type === 'Composite Item';
+    item?.itemType === 'Composite Item';
 
   const effectiveActiveTab =
     (activeTab === 'Locations' && !isInventoryTracked) ||
@@ -82,7 +82,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
         return acc + stockOnHand;
       }, 0);
     }
-    return Number(item?.openingStock ?? item?.opening_stock ?? 0);
+    return Number(item?.openingStock ?? 0);
   }, [openingStockRows, item]);
 
   const deleteMutation = useMutation({
@@ -172,7 +172,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {(item.itemType === 'Composite Item' || item.item_type === 'Composite Item') && (
+          {(item.itemType === 'Composite Item') && (
             <button
               onClick={() =>
                 navigate(`/organizations/${orgId}/inventory/assembly/new?itemId=${item.id}`)
@@ -196,7 +196,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
           )}
           <button
             onClick={() => {
-              if (item.itemType === 'Composite Item' || item.item_type === 'Composite Item') {
+              if (item.itemType === 'Composite Item') {
                 navigate(`/organizations/${orgId}/composite-items/${itemId}/edit`);
               } else {
                 navigate(`/organizations/${orgId}/items/${itemId}/edit`);
@@ -360,7 +360,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
             <ItemActivityHistory activities={activities} isLoading={isLoadingActivities} />
           </div>
         ) : effectiveActiveTab === 'Components' &&
-          (item.itemType === 'Composite Item' || item.item_type === 'Composite Item') ? (
+          (item.itemType === 'Composite Item') ? (
           <div style={{ margin: '-24px' }}>
             <CompositeItemsList itemId={itemId} />
           </div>
@@ -781,7 +781,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                     >
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
                         <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
-                          {item.openingStock || item.opening_stock || 0}
+                          {item.openingStock || item.openingStock || 0}
                         </span>
                         <span style={{ fontSize: '10px', color: '#64748b' }}>
                           {item.unit || 'Qty'}
@@ -839,7 +839,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                     >
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
                         <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
-                          {item.openingStock || item.opening_stock || 0}
+                          {item.openingStock || item.openingStock || 0}
                         </span>
                         <span style={{ fontSize: '10px', color: '#64748b' }}>
                           {item.unit || 'Qty'}
@@ -862,7 +862,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
               orgId={orgId!}
               itemId={itemId}
               itemName={item.name}
-              inventoryTracking={item.inventoryTracking || item.inventory_tracking}
+              inventoryTracking={item.inventoryTracking || item.inventoryTracking}
             />
           </div>
         ) : effectiveActiveTab === 'Transactions' ? (

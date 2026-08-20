@@ -73,7 +73,7 @@ function renderItemCell(
   if (key === 'name') {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-        {item.item_type === 'Composite Item' && <ShoppingBag size={14} color="#64748b" />}
+        {item.itemType === 'Composite Item' && <ShoppingBag size={14} color="#64748b" />}
         {item.name}
       </div>
     );
@@ -329,7 +329,7 @@ export function ItemsList() {
                             gap: '6px',
                           }}
                         >
-                          {item.item_type === 'Composite Item' && (
+                          {item.itemType === 'Composite Item' && (
                             <ShoppingBag size={14} color="#64748b" />
                           )}
                           <span>{item.name}</span>

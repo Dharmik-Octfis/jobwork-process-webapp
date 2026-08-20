@@ -12,12 +12,12 @@ export const compositeComponentSchema = z.object({
   uom_id: z.string().uuid().nullable().optional(),
   seq: z.number().int().min(0).default(0),
   notes: z.string().nullable().optional(),
-  custom_fields: z.record(z.string(), z.unknown()).default({}),
-  created_at: z.date(),
-  updated_at: z.date(),
-  created_by: z.string().uuid().nullable(),
-  updated_by: z.string().uuid().nullable(),
-  is_deleted: z.boolean(),
+  customFields: z.record(z.string(), z.unknown()).default({}),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+  createdBy: z.string().uuid().nullable(),
+  updatedBy: z.string().uuid().nullable(),
+  isDeleted: z.boolean(),
 });
 
 export const createCompositeComponentSchema = z.object({
@@ -26,7 +26,7 @@ export const createCompositeComponentSchema = z.object({
   uom_id: z.string().uuid().nullable().optional(),
   seq: z.number().int().min(0).optional(),
   notes: z.string().nullable().optional(),
-  custom_fields: z.record(z.string(), z.unknown()).optional(),
+  customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const updateCompositeComponentSchema = createCompositeComponentSchema.partial();

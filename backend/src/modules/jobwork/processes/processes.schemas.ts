@@ -12,7 +12,7 @@ import { RATE_BASES } from './processes.types.ts';
  *
  * There is no `customFields` here. Processes left `ENTITY_TYPES` on 2026-08-10 —
  * the operation master is a short list of names an org types once, so per-org
- * fields on it were a form section nobody filled in. The `custom_fields` COLUMN
+ * fields on it were a form section nobody filled in. The `customFields` COLUMN
  * stays on the table (CLAUDE.md's default block), it is simply never written.
  */
 

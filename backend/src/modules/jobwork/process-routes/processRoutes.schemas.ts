@@ -17,7 +17,7 @@ import { PROCESSOR_TYPES } from '../jobwork.types.ts';
  *
  * There is no `customFields` here, on the route or on its steps. Routes left
  * `ENTITY_TYPES` on 2026-08-10 for the reason processes did a few hours earlier:
- * the section was on a form nobody filled it in on. The `custom_fields` COLUMNS
+ * the section was on a form nobody filled it in on. The `customFields` COLUMNS
  * stay on the tables (CLAUDE.md's default block) with whatever they already
  * hold — they are simply never read or written again.
  */

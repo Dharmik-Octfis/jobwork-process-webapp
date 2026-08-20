@@ -35,7 +35,7 @@ async function buildCatalog(
   organizationId: string,
   entityType: ListEntityType,
 ): Promise<ColumnDef[]> {
-  // A list-only module (permission templates) has no `custom_fields` column, so
+  // A list-only module (permission templates) has no `customFields` column, so
   // there is nothing to merge and no query worth issuing.
   if (!supportsCustomFields(entityType)) return [...LIST_COLUMNS[entityType]];
 

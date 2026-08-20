@@ -16,7 +16,7 @@ import { aVendorOf, censusByOrg, totalVendors } from './rls.fixtures.ts';
 
 /** Tenant-data tables that MUST carry a policy. See the enable_rls migration.
  * The vendor_* children scope through their parent vendor, number_sequences on
- * its own organization_id — see 20260720120100_rename_dial_code_and_enable_vendor_rls. */
+ * its own organizationId — see 20260720120100_rename_dial_code_and_enable_vendor_rls. */
 const TENANT_TABLES = [
   'bills',
   'bill_items',
@@ -37,7 +37,7 @@ const TENANT_TABLES = [
   'customer_addresses',
   'units_of_measurement',
   'currencies',
-  'payment_terms',
+  'paymentTerms',
   'custom_field_definitions',
   'roles',
   'permission_templates',
@@ -45,14 +45,14 @@ const TENANT_TABLES = [
   // Jobwork / inventory, added in 20260804120247_jobwork_sprint1_foundation.
   // `batches` kept its policy through the 2026-08-12 rename from `lots` — a
   // policy is attached to the table, not to its name, and this one compares
-  // `organization_id` only. `stock_ledger` has no UI at all, which is exactly why
+  // `organizationId` only. `stock_ledger` has no UI at all, which is exactly why
   // it needs to be listed here: nothing else would ever notice its policy going
   // missing.
   'processes',
   'batches',
   'stock_ledger',
   // Sprints 2–4, added in 20260805070926_jobwork_sprints_2_to_4. The LINE tables
-  // each carry their own `organization_id` and their own policy rather than being
+  // each carry their own `organizationId` and their own policy rather than being
   // scoped through their header, so a query that reads one directly is still
   // covered.
   'routes',
@@ -77,7 +77,7 @@ const TENANT_TABLES = [
   // Which batches an org intends to run through which process is the same class of
   // secret as the bill of materials above it, and this table is reachable directly
   // by the issue picker's "planned elsewhere" lookup — so it carries its own
-  // organization_id and its own policy rather than scoping through its parent.
+  // organizationId and its own policy rather than scoping through its parent.
   'job_order_step_input_batches',
   // Composite Items / Assemblies (Phase 1)
   'composite_item_components',
@@ -204,7 +204,7 @@ describe('row-level security', () => {
       mine.id,
       async (tx) =>
         tx.$queryRaw<{ organizationId: string }[]>`
-        SELECT organization_id AS "organizationId" FROM vendors`,
+        SELECT organizationId AS "organizationId" FROM vendors`,
     );
 
     expect(rows.length, 'saw none of my own rows — RLS is over-filtering').toBe(mine.vendors);

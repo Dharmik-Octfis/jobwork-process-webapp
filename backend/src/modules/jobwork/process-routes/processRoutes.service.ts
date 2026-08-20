@@ -369,7 +369,7 @@ async function createSteps(
         routeId,
         createdBy: userId ?? null,
         updatedBy: userId ?? null,
-        // `custom_fields` is left at its default on the step and on both lists.
+        // `customFields` is left at its default on the step and on both lists.
         // Routes are not a registered entity type any more
         // (`customFields.constants.ts`), so there is nothing an org could have
         // defined to put in any of them.

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/naming-convention --
    Object keys here are custom-field *data* keys, not code identifiers. `slugifyKey`
    (customFields.constants.ts) generates them as snake_case ("Truck Number" -> "truck_number"),
-   so these fixtures mirror the exact shape stored in the `custom_fields` JSONB. Same category as
+   so these fixtures mirror the exact shape stored in the `customFields` JSONB. Same category as
    the "keys we don't choose" carve-out in eslint.config.js. */
 import { describe, it, expect } from 'vitest';
 import { validateCustomFields, type FieldDefinition } from './customFields.engine.ts';
