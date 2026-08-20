@@ -45,12 +45,23 @@ function renderCell(
     if (val == null) return '-';
 
     const def = customFieldsDef?.find((d) => d.key === cfKey);
-    if (def && (def.dataType === 'select' || def.dataType === 'multi_select')) {
-      const options = def.config?.options || [];
-      if (Array.isArray(val)) {
-        return val.map((v) => options.find((o) => o.id === v)?.label || v).join(', ');
+    if (def) {
+      if (def.dataType === 'select' || def.dataType === 'multi_select') {
+        const options = def.config?.options || [];
+        if (Array.isArray(val)) {
+          return val.map((v) => options.find((o) => o.id === v)?.label || v).join(', ');
+        }
+        return options.find((o) => o.id === val)?.label || String(val);
       }
-      return options.find((o) => o.id === val)?.label || String(val);
+      
+      if (['date', 'datetime', 'time'].includes(def.dataType)) {
+        if (typeof val === 'string' && !isNaN(Date.parse(val))) {
+          const d = new Date(val);
+          if (def.dataType === 'date') return d.toLocaleDateString();
+          if (def.dataType === 'datetime') return d.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+          if (def.dataType === 'time') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+      }
     }
 
     if (Array.isArray(val)) return val.join(', ');

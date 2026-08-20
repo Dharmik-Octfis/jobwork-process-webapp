@@ -153,7 +153,7 @@ export function AdvancedFilter({
               const getInputType = () => {
                 if (['number', 'currency', 'percentage'].includes(field.dataType)) return 'number';
                 if (field.dataType === 'date') return 'date';
-                if (['time', 'datetime'].includes(field.dataType)) return 'time'; // HTML5 time input or datetime-local
+                if (field.dataType === 'time') return 'time'; 
                 if (field.dataType === 'datetime') return 'datetime-local';
                 return 'text';
               };

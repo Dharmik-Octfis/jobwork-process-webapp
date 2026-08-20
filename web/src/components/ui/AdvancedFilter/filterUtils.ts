@@ -156,8 +156,80 @@ export function evaluateCondition(
     }
   }
 
-  // Date / DateTime / Time evaluation
-  if (['date', 'datetime', 'time'].includes(dataType)) {
+  // Time evaluation
+  if (dataType === 'time') {
+    if (!itemValue) return false;
+
+    const extractMinutes = (val: unknown, useUTC: boolean = false): number | null => {
+      if (!val) return null;
+      const str = String(val).trim();
+
+      const match = str.match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?/i);
+      if (match) {
+        let h = parseInt(match[1], 10);
+        const m = parseInt(match[2], 10);
+        const mod = match[3]?.toUpperCase();
+        if (mod === 'PM' && h < 12) h += 12;
+        if (mod === 'AM' && h === 12) h = 0;
+        return h * 60 + m;
+      }
+
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) {
+        return useUTC
+          ? d.getUTCHours() * 60 + d.getUTCMinutes()
+          : d.getHours() * 60 + d.getMinutes();
+      }
+      
+      // Fallback for raw ISO time parts
+      const isoMatch = str.match(/T(\d{2}):(\d{2})/i);
+      if (isoMatch) {
+        return parseInt(isoMatch[1], 10) * 60 + parseInt(isoMatch[2], 10);
+      }
+      
+      return null;
+    };
+
+    const valMinsLocal = extractMinutes(itemValue, false);
+    const valMinsUTC = extractMinutes(itemValue, true);
+    
+    if (operator === 'between') {
+      const fromMins = extractMinutes((filterValue as Record<string, unknown>)?.from);
+      const toMins = extractMinutes((filterValue as Record<string, unknown>)?.to);
+      if (fromMins === null || toMins === null) return false;
+      
+      const matchLocal = valMinsLocal !== null && valMinsLocal >= fromMins && valMinsLocal <= toMins;
+      const matchUTC = valMinsUTC !== null && valMinsUTC >= fromMins && valMinsUTC <= toMins;
+      return matchLocal || matchUTC;
+    }
+
+    const filterMins = extractMinutes(filterValue);
+    if (filterMins === null) return false;
+    
+    const check = (valMins: number | null) => {
+      if (valMins === null) return false;
+      switch (operator) {
+        case 'equals': return valMins === filterMins;
+        case 'not_equals': return valMins !== filterMins;
+        case 'before':
+        case 'lt': return valMins < filterMins;
+        case 'after':
+        case 'gt': return valMins > filterMins;
+        case 'on_or_before':
+        case 'lte': return valMins <= filterMins;
+        case 'on_or_after':
+        case 'gte': return valMins >= filterMins;
+        default: return false;
+      }
+    };
+
+    const finalResult = check(valMinsLocal) || check(valMinsUTC);
+    console.log(`[TimeFilter Debug] item=${itemValue} | filter=${filterValue} | localMins=${valMinsLocal} | utcMins=${valMinsUTC} | filterMins=${filterMins} | operator=${operator} -> match=${finalResult}`);
+    return finalResult;
+  }
+
+  // Date / DateTime evaluation
+  if (['date', 'datetime'].includes(dataType)) {
     if (!itemValue) return false;
     const valDate = new Date(itemValue as string | number | Date).getTime();
 
