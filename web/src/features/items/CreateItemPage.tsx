@@ -36,9 +36,9 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
     if (itemToClone) {
       return {
         name: itemToClone.name || '',
-        type: (itemToClone.type || itemToClone.product_type || 'Goods') as 'Goods' | 'Service',
+        type: (itemToClone.type || 'Goods') as 'Goods' | 'Service',
         category: itemToClone.category || '',
-        hsnCode: itemToClone.hsnCode || itemToClone.hsn_or_sac || '',
+        hsnCode: itemToClone.hsnCode || '',
         itemType: 'Single Item',
         unit: itemToClone.unit || '',
         stockingUomId: itemToClone.stockingUomId ?? null,
@@ -47,17 +47,13 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
         sellingPrice:
           itemToClone.sellingPrice !== null && itemToClone.sellingPrice !== undefined
             ? Number(itemToClone.sellingPrice)
-            : itemToClone.rate !== null && itemToClone.rate !== undefined
-              ? Number(itemToClone.rate)
-              : (null as unknown as number),
+            : (null as unknown as number),
         salesDescription: itemToClone.salesDescription || itemToClone.salesDescription || '',
         isPurchaseInfo: true,
         costPrice:
           itemToClone.costPrice !== null && itemToClone.costPrice !== undefined
             ? Number(itemToClone.costPrice)
-            : itemToClone.purchase_rate !== null && itemToClone.purchase_rate !== undefined
-              ? Number(itemToClone.purchase_rate)
-              : (null as unknown as number),
+            : (null as unknown as number),
         purchaseDescription:
           itemToClone.purchaseDescription || itemToClone.purchaseDescription || '',
         packaging: itemToClone.packaging || '',

@@ -215,6 +215,8 @@ export function ItemBatchDetails({
           marginBottom: '20px',
           gap: '12px',
           flexWrap: 'wrap',
+          position: 'relative',
+          zIndex: 10,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
@@ -307,6 +309,7 @@ export function ItemBatchDetails({
           borderRadius: '6px',
           overflowX: 'auto',
           background: '#ffffff',
+          minHeight: '400px',
         }}
       >
         <table

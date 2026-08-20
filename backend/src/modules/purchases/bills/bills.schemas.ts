@@ -22,7 +22,7 @@ export const billItemSchema = z.object({
   quantity: z.coerce.number().min(0.01),
   rate: z.coerce.number().min(0),
   discountPercentage: z.coerce.number().optional().nullable(),
-  discount_amount: z.coerce.number().optional().nullable(),
+  discountAmount: z.coerce.number().optional().nullable(),
   amount: z.coerce.number(),
   batches: z
     .array(

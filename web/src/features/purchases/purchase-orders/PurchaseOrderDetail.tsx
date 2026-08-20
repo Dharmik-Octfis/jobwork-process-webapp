@@ -1075,7 +1075,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
 
                     return (
                       <tr
-                        key={item.id || item.line_item_id || index}
+                        key={item.id || item.lineItemId || index}
                         style={{ borderBottom: '1px solid #f1f5f9' }}
                       >
                         <td

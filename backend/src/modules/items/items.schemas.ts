@@ -25,7 +25,6 @@ export const itemSchema = openApiRegistry.register(
   'Item',
   z.object({
     id: z.string().uuid().openapi({ example: '123e4567-e89b-12d3-a456-426614174000' }),
-    product_id: z.string().uuid().optional(),
     organizationId: z.string().uuid().openapi({ example: '123e4567-e89b-12d3-a456-426614174001' }),
     name: z
       .string()
@@ -33,10 +32,8 @@ export const itemSchema = openApiRegistry.register(
       .max(200)
       .openapi({ example: 'Apple MacBook Pro M3' }),
     type: z.enum(['Goods', 'Service']).optional().openapi({ example: 'Goods' }),
-    product_type: z.string().optional(),
     category: z.string().max(100).nullable().optional().openapi({ example: 'Electronics' }),
     hsnCode: z.string().max(50).nullable().optional().openapi({ example: '84713010' }),
-    hsn_or_sac: z.string().max(50).nullable().optional(),
     itemType: z
       .enum(['Single Item', 'Contains Variants', 'Composite Item'])
       .default('Single Item')
@@ -58,14 +55,10 @@ export const itemSchema = openApiRegistry.register(
     stockingUomId: z.string().uuid().nullable().optional(),
     sku: z.string().max(100).optional().default('').openapi({ example: 'SKU-MBP-14-M3' }),
     isSalesInfo: z.boolean().default(false).openapi({ example: true }),
-    can_be_sold: z.boolean().optional(),
     sellingPrice: z.number().nullable().optional().openapi({ example: 150000.0 }),
-    rate: z.number().nullable().optional(),
     salesDescription: z.string().nullable().optional(),
     isPurchaseInfo: z.boolean().default(false).openapi({ example: true }),
-    can_be_purchased: z.boolean().optional(),
     costPrice: z.number().nullable().optional().openapi({ example: 120000.0 }),
-    purchase_rate: z.number().nullable().optional(),
     purchaseDescription: z.string().nullable().optional(),
     packaging: z.string().max(100).nullable().optional().openapi({ example: 'Box' }),
 
@@ -94,17 +87,14 @@ export const createItemSchema = openApiRegistry.register(
   itemSchema
     .omit({
       id: true,
-      product_id: true,
       organizationId: true,
       createdAt: true,
       updatedAt: true,
     })
     .extend({
       sellingPrice: z.number().nullable().optional(),
-      rate: z.number().nullable().optional(),
       salesDescription: z.string().nullable().optional(),
       costPrice: z.number().nullable().optional(),
-      purchase_rate: z.number().nullable().optional(),
       purchaseDescription: z.string().nullable().optional(),
       openingStock: z.number().nullable().optional(),
       openingStockValuePerUnit: z.number().nullable().optional(),

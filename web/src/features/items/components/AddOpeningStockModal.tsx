@@ -130,9 +130,7 @@ export function AddOpeningStockModal({
   const defaultSellingPrice =
     item?.sellingPrice !== undefined && item?.sellingPrice !== null
       ? String(item.sellingPrice)
-      : item?.rate !== undefined && item?.rate !== null
-        ? String(item.rate)
-        : '';
+      : '';
 
   const defaultMrp =
     item?.mrp !== undefined && item?.mrp !== null && String(item.mrp) !== ''
@@ -284,7 +282,9 @@ export function AddOpeningStockModal({
             return;
           }
           if (declared > 0 && loc.batches.length === 0) {
-            toast.error(`Opening stock is declared for "${locName}", but no batch details were entered.`);
+            toast.error(
+              `Opening stock is declared for "${locName}", but no batch details were entered.`,
+            );
             return;
           }
         }
@@ -369,7 +369,7 @@ export function AddOpeningStockModal({
         </div>
       }
     >
-      <div style={{ overflowX: 'auto' }}>
+      <div style={{ overflowX: 'auto', minHeight: '500px' }}>
         {!isBatchTracked ? (
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
             <thead>

@@ -522,8 +522,7 @@ export function CreateBill() {
         rate: rate,
         amount: itemTotal,
         itemTotal: itemTotal,
-        discount: discountAmount,
-        discount_amount: discountAmount,
+        discountAmount: discountAmount,
         discountPercentage: discType === 'percentage' ? discountVal : null,
       };
     });

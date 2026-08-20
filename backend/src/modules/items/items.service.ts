@@ -21,22 +21,6 @@ export function toItemResponse(item: Record<string, unknown> | null | undefined)
   if (!item) return item;
   return {
     ...item,
-    product_id: item.id,
-    organizationId: item.organizationId,
-    hsn_or_sac: item.hsnCode,
-    item_type: item.itemType,
-    can_be_sold: item.isSalesInfo,
-    rate:
-      item.sellingPrice !== null && item.sellingPrice !== undefined
-        ? Number(item.sellingPrice)
-        : null,
-    sales_description: item.salesDescription,
-    can_be_purchased: item.isPurchaseInfo,
-    purchase_rate:
-      item.costPrice !== null && item.costPrice !== undefined ? Number(item.costPrice) : null,
-    purchase_description: item.purchaseDescription,
-    inventory_tracking: item.inventoryTracking,
-    track_inventory: item.trackInventory,
     openingStock:
       item.openingStock !== null && item.openingStock !== undefined
         ? Number(item.openingStock)
@@ -45,15 +29,6 @@ export function toItemResponse(item: Record<string, unknown> | null | undefined)
       item.openingStockValuePerUnit !== null && item.openingStockValuePerUnit !== undefined
         ? Number(item.openingStockValuePerUnit)
         : null,
-    customFields: item.customFields,
-    front_image: item.frontImage,
-    rear_image: item.rearImage,
-    createdAt: item.createdAt,
-    updatedAt: item.updatedAt,
-    createdBy: item.createdBy,
-    updatedBy: item.updatedBy,
-    is_active: item.isActive,
-    isDeleted: item.isDeleted,
   };
 }
 
@@ -82,46 +57,32 @@ export function normalizeItemDto<T extends Record<string, unknown>>(rawData: T):
   if (!rawData) return rawData;
   const copy: Record<string, unknown> = { ...rawData };
 
-  if (copy.product_type !== undefined && copy.type === undefined) copy.type = copy.product_type;
-  if (copy.hsn_or_sac !== undefined && copy.hsnCode === undefined) copy.hsnCode = copy.hsn_or_sac;
-  if (copy.rate !== undefined && copy.sellingPrice === undefined) copy.sellingPrice = copy.rate;
-  if (copy.sales_description !== undefined && copy.salesDescription === undefined)
-    copy.salesDescription = copy.sales_description;
-  if (copy.purchase_rate !== undefined && copy.costPrice === undefined)
-    copy.costPrice = copy.purchase_rate;
-  if (copy.purchase_description !== undefined && copy.purchaseDescription === undefined)
-    copy.purchaseDescription = copy.purchase_description;
-  if (copy.can_be_sold !== undefined && copy.isSalesInfo === undefined)
-    copy.isSalesInfo = copy.can_be_sold;
-  if (copy.can_be_purchased !== undefined && copy.isPurchaseInfo === undefined)
-    copy.isPurchaseInfo = copy.can_be_purchased;
-  if (copy.track_inventory !== undefined && copy.trackInventory === undefined)
-    copy.trackInventory = copy.track_inventory;
-  if (copy.front_image !== undefined && copy.frontImage === undefined)
-    copy.frontImage = copy.front_image;
-  if (copy.rear_image !== undefined && copy.rearImage === undefined)
-    copy.rearImage = copy.rear_image;
-  if (copy.inventory_tracking !== undefined && copy.inventoryTracking === undefined)
-    copy.inventoryTracking = copy.inventory_tracking;
-  if (copy.is_active !== undefined && copy.isActive === undefined) {
-    copy.isActive = copy.is_active;
-  }
+  // Convert snake_case properties to their camelCase equivalents if provided.
+  // This is a safety net during transition. The frontend now sends camelCase.
+  if ('product_type' in copy && copy.type === undefined) copy.type = copy.product_type;
+  if ('hsn_or_sac' in copy && copy.hsnCode === undefined) copy.hsnCode = copy.hsn_or_sac;
+  if ('rate' in copy && copy.sellingPrice === undefined) copy.sellingPrice = copy.rate;
+  if ('sales_description' in copy && copy.salesDescription === undefined) copy.salesDescription = copy.sales_description;
+  if ('purchase_rate' in copy && copy.costPrice === undefined) copy.costPrice = copy.purchase_rate;
+  if ('purchase_description' in copy && copy.purchaseDescription === undefined) copy.purchaseDescription = copy.purchase_description;
+  if ('can_be_sold' in copy && copy.isSalesInfo === undefined) copy.isSalesInfo = copy.can_be_sold;
+  if ('can_be_purchased' in copy && copy.isPurchaseInfo === undefined) copy.isPurchaseInfo = copy.can_be_purchased;
+  if ('track_inventory' in copy && copy.trackInventory === undefined) copy.trackInventory = copy.track_inventory;
+  if ('front_image' in copy && copy.frontImage === undefined) copy.frontImage = copy.front_image;
+  if ('rear_image' in copy && copy.rearImage === undefined) copy.rearImage = copy.rear_image;
+  if ('inventory_tracking' in copy && copy.inventoryTracking === undefined) copy.inventoryTracking = copy.inventory_tracking;
+  if ('is_active' in copy && copy.isActive === undefined) copy.isActive = copy.is_active;
 
-  // Strip unrecognized snake_case keys so Prisma write doesn't reject unknown properties
-  delete copy.product_id;
-  delete copy.product_type;
-  delete copy.hsn_or_sac;
-  delete copy.rate;
-  delete copy.sales_description;
-  delete copy.purchase_rate;
-  delete copy.purchase_description;
-  delete copy.can_be_sold;
-  delete copy.can_be_purchased;
-  delete copy.track_inventory;
-  delete copy.front_image;
-  delete copy.rear_image;
-  delete copy.item_type;
-  delete copy.is_active;
+  // Clean up any remaining snake_case keys so Prisma write doesn't reject unknown properties
+  const snakeCaseKeys = [
+    'product_id', 'product_type', 'hsn_or_sac', 'rate', 'sales_description',
+    'purchase_rate', 'purchase_description', 'can_be_sold', 'can_be_purchased',
+    'track_inventory', 'front_image', 'rear_image', 'item_type', 'is_active',
+    'inventory_tracking',
+  ];
+  for (const key of snakeCaseKeys) {
+    delete copy[key];
+  }
 
   return copy as T;
 }

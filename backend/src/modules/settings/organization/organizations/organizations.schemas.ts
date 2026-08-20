@@ -11,9 +11,9 @@ export const createOrganizationSchema = openApiRegistry.register(
     .openapi({ example: 'Acme Corp' }),
   industryType: z.string().min(1, 'Industry is required').openapi({ example: 'technology' }),
   baseCurrency: z.string().optional().openapi({ example: 'INR' }),
-  tax_id_value: z.string().optional().openapi({ example: '22AAAAA0000A1Z5' }),
+  taxIdValue: z.string().optional().openapi({ example: '22AAAAA0000A1Z5' }),
 
-  dial_code: z.string().optional().openapi({ example: '+91' }),
+  dialCode: z.string().optional().openapi({ example: '+91' }),
   phone: z
     .string()
     .regex(/^\d{10}$/, 'Mobile number must be exactly 10 digits')
@@ -29,7 +29,7 @@ export const createOrganizationSchema = openApiRegistry.register(
 
   address: z.object({
     country: z.string().nullable().optional().openapi({ example: 'IN' }),
-    state_code: z.string().nullable().optional().openapi({ example: 'IN-GJ' }),
+    stateCode: z.string().nullable().optional().openapi({ example: 'IN-GJ' }),
     city: z
       .string()
       .nullable()

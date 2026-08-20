@@ -16,10 +16,10 @@ export type UpdateCompositeItemDto = Partial<CreateCompositeItemDto>;
 /* eslint-disable @typescript-eslint/naming-convention */
 export interface CompositeComponent {
   id: string;
-  composite_item_id: string;
-  component_item_id: string;
-  qty_per_unit: number;
-  uom_id?: string | null;
+  compositeItemId: string;
+  componentItemId: string;
+  qtyPerUnit: number;
+  uomId?: string | null;
   seq: number;
   notes?: string | null;
   customFields: Record<string, unknown>;
@@ -39,9 +39,9 @@ export interface CompositeComponent {
 }
 
 export interface CreateCompositeComponentDto {
-  component_item_id: string;
-  qty_per_unit: number;
-  uom_id?: string | null;
+  componentItemId: string;
+  qtyPerUnit: number;
+  uomId?: string | null;
   seq?: number;
   notes?: string | null;
   customFields?: Record<string, unknown>;

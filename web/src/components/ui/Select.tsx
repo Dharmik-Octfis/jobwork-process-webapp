@@ -39,13 +39,7 @@ export function Select({
 }) {
   const selected = options.find((o) => o.value === value);
 
-  const {
-    isOpen,
-    getToggleButtonProps,
-    getMenuProps,
-    highlightedIndex,
-    getItemProps,
-  } = useSelect({
+  const { isOpen, getToggleButtonProps, getMenuProps, highlightedIndex, getItemProps } = useSelect({
     items: options,
     selectedItem: selected || null,
     itemToString: (item) => (item ? item.label : ''),
@@ -57,7 +51,14 @@ export function Select({
   });
 
   return (
-    <div style={{ position: 'relative', minWidth, width: fullWidth ? '100%' : minWidth, ...containerStyle }}>
+    <div
+      style={{
+        position: 'relative',
+        minWidth,
+        width: fullWidth ? '100%' : minWidth,
+        ...containerStyle,
+      }}
+    >
       <button
         type="button"
         {...getToggleButtonProps({
@@ -81,7 +82,7 @@ export function Select({
             textAlign: 'left',
             transition: 'all 0.2s ease',
             ...buttonStyle,
-          }
+          },
         })}
       >
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -122,7 +123,9 @@ export function Select({
           <>
             <div style={{ overflow: 'hidden auto' }}>
               {options.length === 0 ? (
-                <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--color-text-subtle)' }}>
+                <div
+                  style={{ padding: '10px 12px', fontSize: 13, color: 'var(--color-text-subtle)' }}
+                >
                   No options
                 </div>
               ) : (
@@ -141,7 +144,12 @@ export function Select({
                         textAlign: 'left',
                         padding: '8px 12px',
                         border: 'none',
-                        background: highlightedIndex === index ? 'var(--color-surface-2)' : isSelected ? 'var(--color-primary-soft)' : 'transparent',
+                        background:
+                          highlightedIndex === index
+                            ? 'var(--color-surface-2)'
+                            : isSelected
+                              ? 'var(--color-primary-soft)'
+                              : 'transparent',
                         fontFamily: 'var(--font-sans)',
                         fontSize: 13,
                         color: 'var(--color-text)',

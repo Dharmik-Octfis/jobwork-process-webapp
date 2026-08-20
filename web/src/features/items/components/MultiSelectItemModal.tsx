@@ -76,7 +76,7 @@ function renderCell(
     case 'type':
       return item.type || item.itemType || '-';
     case 'hsn':
-      return item.hsnCode || item.hsn_or_sac || '-';
+      return item.hsnCode || '-';
     case 'category':
       return item.category || '-';
     default:
@@ -280,7 +280,7 @@ export function MultiSelectItemModal({
           if (key === 'name') return item.name.toLowerCase().includes(searchVal);
           if (key === 'sku') return (item.sku || '').toLowerCase().includes(searchVal);
           if (key === 'hsn')
-            return (item.hsnCode || item.hsn_or_sac || '').toLowerCase().includes(searchVal);
+            return (item.hsnCode || '').toLowerCase().includes(searchVal);
           if (key === 'type')
             return (item.type || item.itemType || '').toLowerCase() === searchVal;
           if (key === 'category') return (item.category || '').toLowerCase() === searchVal;
@@ -308,7 +308,7 @@ export function MultiSelectItemModal({
           let itemValue: unknown;
           if (cond.field === 'name') itemValue = item.name;
           else if (cond.field === 'sku') itemValue = item.sku;
-          else if (cond.field === 'hsn') itemValue = item.hsnCode || item.hsn_or_sac;
+          else if (cond.field === 'hsn') itemValue = item.hsnCode;
           else if (cond.field === 'type') itemValue = item.type || item.itemType;
           else if (cond.field === 'category') itemValue = item.category;
           else if (cond.field.startsWith('cf_')) {
@@ -944,7 +944,7 @@ export function MultiSelectItemModal({
                       </td>
                       <td style={{ padding: '12px 20px' }}>{item.sku || '-'}</td>
                       <td style={{ padding: '12px 20px' }}>
-                        {item.hsnCode || item.hsn_or_sac || '-'}
+                        {item.hsnCode || '-'}
                       </td>
                       <td style={{ padding: '8px 20px' }}>
                         <input

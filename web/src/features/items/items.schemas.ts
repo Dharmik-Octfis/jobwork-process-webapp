@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/naming-convention */
+
 import { z } from 'zod';
 
 export const itemImageAttachmentSchema = z.object({
@@ -12,15 +12,10 @@ export type ItemImageAttachment = z.infer<typeof itemImageAttachmentSchema>;
 
 export const itemSchema = z.object({
   id: z.string(),
-  product_id: z.string().optional(),
   name: z.string().min(1, 'Name is required').max(200),
   type: z.enum(['Goods', 'Service']).default('Goods'),
-  product_type: z.string().optional(),
   category: z.string().max(100).nullable().optional(),
   hsnCode: z.string().max(50).nullable().optional(),
-  hsn_or_sac: z.string().max(50).nullable().optional(),
-  taxability_type: z.string().optional(),
-  is_taxable: z.boolean().optional(),
   itemType: z.enum(['Single Item', 'Contains Variants', 'Composite Item']).default('Single Item'),
   unit: z.string().default(''),
   sku: z.string().default(''),
@@ -40,18 +35,13 @@ export const itemSchema = z.object({
   nature: z.string().optional(),
   defaultRouteId: z.string().nullable().optional(),
   isSalesInfo: z.boolean().default(true),
-  can_be_sold: z.boolean().optional(),
   sellingPrice: z
     .number({ message: 'Selling price is required' })
     .min(0, 'Selling price must be positive'),
-  rate: z.number().nullable().optional(),
   mrp: z.union([z.string(), z.number()]).nullable().optional(),
-  account_id: z.string().max(100).nullable().optional(),
   salesDescription: z.string().nullable().optional(),
   isPurchaseInfo: z.boolean().default(true),
-  can_be_purchased: z.boolean().optional(),
   costPrice: z.number({ message: 'Cost price is required' }).min(0, 'Cost price must be positive'),
-  purchase_rate: z.number().nullable().optional(),
   purchaseDescription: z.string().nullable().optional(),
   packaging: z.string().max(100).nullable().optional(),
   deliveryDate: z.string().nullable().optional(),
@@ -61,12 +51,9 @@ export const itemSchema = z.object({
   images: z.array(z.union([itemImageAttachmentSchema, z.string()])).default([]),
 
   trackInventory: z.boolean().default(true),
-  is_storage_location_enabled: z.union([z.boolean(), z.string()]).nullable().optional(),
   inventoryTracking: z.string().nullable().optional(),
   openingStock: z.number().nullable().optional(),
   openingStockValuePerUnit: z.number().nullable().optional(),
-  inventory_account_id: z.string().nullable().optional(),
-  inventory_valuation_method: z.string().nullable().optional(),
   customFields: z.record(z.string(), z.unknown()).optional(),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),

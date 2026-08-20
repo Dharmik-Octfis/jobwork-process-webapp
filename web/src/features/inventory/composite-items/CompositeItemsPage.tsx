@@ -164,7 +164,7 @@ function ExpandableCompositeItemRow({
                         }}
                       />
                       <div style={{ flex: 1 }}>
-                        {comp.component?.name || 'Unknown Item'} ( {comp.qty_per_unit}{' '}
+                        {comp.component?.name || 'Unknown Item'} ( {comp.qtyPerUnit}{' '}
                         {comp.component?.unit || ''} ){' '}
                         {comp.component?.sku ? `| SKU : ${comp.component.sku}` : ''}
                       </div>

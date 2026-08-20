@@ -147,23 +147,23 @@ export class CompositeItemsService {
         const seenComponents = new Set<string>();
         // Create components
         for (const comp of components) {
-          if (seenComponents.has(comp.component_item_id)) {
+          if (seenComponents.has(comp.componentItemId)) {
             throw ApiError.badRequest(
               'Duplicate component selected. A composite item cannot contain the same component multiple times.',
             );
           }
-          seenComponents.add(comp.component_item_id);
+          seenComponents.add(comp.componentItemId);
 
           // Spec V3
-          if (comp.component_item_id === item.id) {
+          if (comp.componentItemId === item.id) {
             throw ApiError.badRequest('Composite item cannot contain itself as a component.');
           }
 
           // Spec V4, V5, V6, V7
           const cItem = await tx.item.findFirst({
-            where: { id: comp.component_item_id, organizationId, isDeleted: false },
+            where: { id: comp.componentItemId, organizationId, isDeleted: false },
           });
-          if (!cItem) throw ApiError.badRequest(`Component ${comp.component_item_id} not found.`);
+          if (!cItem) throw ApiError.badRequest(`Component ${comp.componentItemId} not found.`);
           if (cItem.itemType === 'Composite Item')
             throw ApiError.badRequest(`Component ${cItem.name} cannot be a Composite Item.`);
 
@@ -171,9 +171,9 @@ export class CompositeItemsService {
             data: {
               organizationId,
               compositeItemId: item.id,
-              componentItemId: comp.component_item_id,
-              qtyPerUnit: comp.qty_per_unit,
-              uomId: comp.uom_id ?? cItem.stockingUomId,
+              componentItemId: comp.componentItemId,
+              qtyPerUnit: comp.qtyPerUnit,
+              uomId: comp.uomId ?? cItem.stockingUomId,
               seq: comp.seq ?? 0,
               notes: comp.notes,
               customFields: comp.customFields
@@ -340,18 +340,18 @@ export class CompositeItemsService {
       }
 
       const component = await tx.item.findFirst({
-        where: { id: rawData.component_item_id, organizationId, isDeleted: false },
+        where: { id: rawData.componentItemId, organizationId, isDeleted: false },
       });
       if (!component) throw ApiError.notFound('Component item not found');
 
-      if (compositeItemId === rawData.component_item_id) {
+      if (compositeItemId === rawData.componentItemId) {
         throw ApiError.badRequest('An item cannot be a component of itself.');
       }
 
       const existingComponent = await tx.compositeItemComponent.findFirst({
         where: {
           compositeItemId,
-          componentItemId: rawData.component_item_id,
+          componentItemId: rawData.componentItemId,
           organizationId,
           isDeleted: false,
         },
@@ -369,9 +369,9 @@ export class CompositeItemsService {
 
       const {
         customFields: _customFields,
-        qty_per_unit: qtyPerUnit,
-        component_item_id: componentItemId,
-        uom_id: uomId,
+        qtyPerUnit,
+        componentItemId,
+        uomId,
         ...rest
       } = rawData;
 
@@ -421,9 +421,9 @@ export class CompositeItemsService {
 
       const {
         customFields: _customFields,
-        qty_per_unit: qtyPerUnit,
-        component_item_id: componentItemId,
-        uom_id: uomId,
+        qtyPerUnit,
+        componentItemId,
+        uomId,
         ...rest
       } = rawData;
 

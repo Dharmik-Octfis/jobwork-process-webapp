@@ -7,14 +7,12 @@ import type {
 
 /* eslint-disable @typescript-eslint/naming-convention */
 type RawOrganization = Partial<Organization> & {
-  dial_code?: string;
   organizationId?: string;
   org_code?: string;
 
   account_created_date?: string;
   address?: Organization['address'] & {
     street_address1?: string;
-    state_code?: string;
   };
 };
 /* eslint-enable @typescript-eslint/naming-convention */
@@ -28,7 +26,6 @@ export const organizationsApi = {
           (org: RawOrganization) =>
             ({
               ...org,
-              dialCode: org.dialCode || org.dial_code,
               organizationId: org.organizationId || org.organizationId,
 
               orgCode: org.orgCode || org.org_code,
@@ -37,7 +34,6 @@ export const organizationsApi = {
                 ? {
                     ...org.address,
                     streetAddress1: org.address.streetAddress1 || org.address.street_address1,
-                    stateCode: org.address.stateCode || org.address.state_code,
                   }
                 : undefined,
             }) as Organization,
@@ -49,13 +45,11 @@ export const organizationsApi = {
     /* eslint-disable @typescript-eslint/naming-convention */
     const payload = {
       ...data,
-      dial_code: data.dialCode,
 
       address: data.address
         ? {
             ...data.address,
             street_address1: data.address.streetAddress1,
-            state_code: data.address.stateCode,
           }
         : undefined,
     };
@@ -64,7 +58,6 @@ export const organizationsApi = {
     const org = response.data.organization || response.data;
     return {
       ...org,
-      dialCode: org.dialCode || org.dial_code,
       organizationId: org.organizationId || org.organizationId,
 
       orgCode: org.orgCode || org.org_code,
@@ -73,7 +66,6 @@ export const organizationsApi = {
         ? {
             ...org.address,
             streetAddress1: org.address.streetAddress1 || org.address.street_address1,
-            stateCode: org.address.stateCode || org.address.state_code,
           }
         : undefined,
     };
@@ -83,13 +75,11 @@ export const organizationsApi = {
     /* eslint-disable @typescript-eslint/naming-convention */
     const payload = {
       ...data,
-      dial_code: data.dialCode,
 
       address: data.address
         ? {
             ...data.address,
             street_address1: data.address.streetAddress1,
-            state_code: data.address.stateCode,
           }
         : undefined,
     };
@@ -98,7 +88,6 @@ export const organizationsApi = {
     const org = response.data.organization || response.data;
     return {
       ...org,
-      dialCode: org.dialCode || org.dial_code,
       organizationId: org.organizationId || org.organizationId,
 
       orgCode: org.orgCode || org.org_code,
@@ -107,7 +96,6 @@ export const organizationsApi = {
         ? {
             ...org.address,
             streetAddress1: org.address.streetAddress1 || org.address.street_address1,
-            stateCode: org.address.stateCode || org.address.state_code,
           }
         : undefined,
     };
@@ -130,7 +118,6 @@ export const organizationsApi = {
     const org = response.data.organization || response.data;
     return {
       ...org,
-      dialCode: org.dialCode || org.dial_code,
       organizationId: org.organizationId || org.organizationId,
 
       logo_url: org.logo_url,
@@ -138,7 +125,6 @@ export const organizationsApi = {
       address: org.address ? {
         ...org.address,
         streetAddress1: org.address.streetAddress1 || org.address.street_address1,
-        stateCode: org.address.stateCode || org.address.state_code,
       } : undefined,
     };
   },

@@ -89,12 +89,9 @@ export function EditCompositeItemPage() {
       const svcs: ComponentRow[] = [];
       fetchedComponents.forEach((comp: CompositeComponent) => {
         const row: ComponentRow = {
-          componentItemId:
-            comp.component_item_id ||
-            (comp as unknown as { componentItemId?: string }).componentItemId ||
-            '',
+          componentItemId: comp.componentItemId || '',
           qtyPerUnit:
-            comp.qty_per_unit || (comp as unknown as { qtyPerUnit?: number }).qtyPerUnit || 1,
+            comp.qtyPerUnit || (comp as unknown as { qtyPerUnit?: number }).qtyPerUnit || 1,
           itemDetails: comp.component as unknown as Item,
         };
         if (comp.component?.type === 'Service') {
@@ -170,11 +167,11 @@ export function EditCompositeItemPage() {
   const handleCopySellingPriceFromTotal = () => {
     let total = 0;
     components.forEach((c) => {
-      const price = Number(c.itemDetails?.sellingPrice || c.itemDetails?.rate || 0);
+      const price = Number(c.itemDetails?.sellingPrice || 0);
       total += price * (c.qtyPerUnit || 1);
     });
     services.forEach((s) => {
-      const price = Number(s.itemDetails?.sellingPrice || s.itemDetails?.rate || 0);
+      const price = Number(s.itemDetails?.sellingPrice || 0);
       total += price * (s.qtyPerUnit || 1);
     });
     setFormData((prev) => ({ ...prev, sellingPrice: total }));
@@ -183,11 +180,11 @@ export function EditCompositeItemPage() {
   const handleCopyCostPriceFromTotal = () => {
     let total = 0;
     components.forEach((c) => {
-      const price = Number(c.itemDetails?.costPrice || c.itemDetails?.purchase_rate || 0);
+      const price = Number(c.itemDetails?.costPrice || 0);
       total += price * (c.qtyPerUnit || 1);
     });
     services.forEach((s) => {
-      const price = Number(s.itemDetails?.costPrice || s.itemDetails?.purchase_rate || 0);
+      const price = Number(s.itemDetails?.costPrice || 0);
       total += price * (s.qtyPerUnit || 1);
     });
     setFormData((prev) => ({ ...prev, costPrice: total }));
@@ -206,9 +203,9 @@ export function EditCompositeItemPage() {
     setInitializedId(id!);
     setFormData({
       name: (rawItem.name as string) || '',
-      type: (rawItem.type || rawItem.product_type || 'Goods') as 'Goods' | 'Service',
+      type: (rawItem.type || 'Goods') as 'Goods' | 'Service',
       category: (rawItem.category as string) || '',
-      hsnCode: rawItem.hsnCode || rawItem.hsn_or_sac || '',
+      hsnCode: rawItem.hsnCode || '',
       itemType: (rawItem.itemType || rawItem.itemType || 'Composite Item') as
         'Single Item' | 'Contains Variants',
       unit: rawItem.unit || '',
@@ -218,18 +215,14 @@ export function EditCompositeItemPage() {
       sellingPrice:
         rawItem.sellingPrice !== null && rawItem.sellingPrice !== undefined
           ? Number(rawItem.sellingPrice)
-          : rawItem.rate !== null && rawItem.rate !== undefined
-            ? Number(rawItem.rate)
-            : (null as unknown as number),
+          : (null as unknown as number),
       salesDescription:
         (rawItem.salesDescription as string) || '',
       isPurchaseInfo: true,
       costPrice:
         rawItem.costPrice !== null && rawItem.costPrice !== undefined
           ? Number(rawItem.costPrice)
-          : rawItem.purchase_rate !== null && rawItem.purchase_rate !== undefined
-            ? Number(rawItem.purchase_rate)
-            : (null as unknown as number),
+          : (null as unknown as number),
       purchaseDescription:
         (rawItem.purchaseDescription as string) || '',
       packaging: rawItem.packaging || '',
@@ -261,10 +254,9 @@ export function EditCompositeItemPage() {
           components: [...components, ...services]
             .filter((c) => c.componentItemId && c.componentItemId.trim() !== '')
             .map((c) => ({
+              componentItemId: c.componentItemId,
               // eslint-disable-next-line @typescript-eslint/naming-convention
-              component_item_id: c.componentItemId,
-              // eslint-disable-next-line @typescript-eslint/naming-convention
-              qty_per_unit: c.qtyPerUnit,
+              qtyPerUnit: c.qtyPerUnit,
             })),
         } as UpdateCompositeItemDto,
       }),
@@ -869,7 +861,7 @@ export function EditCompositeItemPage() {
                         >
                           ₹
                           {Number(
-                            comp.itemDetails?.sellingPrice ?? comp.itemDetails?.rate ?? 0,
+                            comp.itemDetails?.sellingPrice ?? 0,
                           ).toFixed(2)}{' '}
                           per unit
                         </div>
@@ -883,7 +875,7 @@ export function EditCompositeItemPage() {
                         }}
                       >
                         {(
-                          Number(comp.itemDetails?.sellingPrice ?? comp.itemDetails?.rate ?? 0) *
+                          Number(comp.itemDetails?.sellingPrice ?? 0) *
                           (comp.qtyPerUnit || 0)
                         ).toFixed(2)}
                       </td>
@@ -898,7 +890,7 @@ export function EditCompositeItemPage() {
                       >
                         {(
                           Number(
-                            comp.itemDetails?.costPrice ?? comp.itemDetails?.purchase_rate ?? 0,
+                            comp.itemDetails?.costPrice ?? 0,
                           ) * (comp.qtyPerUnit || 0)
                         ).toFixed(2)}
                         <button
@@ -953,7 +945,7 @@ export function EditCompositeItemPage() {
                         .reduce(
                           (sum, c) =>
                             sum +
-                            Number(c.itemDetails?.sellingPrice ?? c.itemDetails?.rate ?? 0) *
+                            Number(c.itemDetails?.sellingPrice ?? 0) *
                               (c.qtyPerUnit || 0),
                           0,
                         )
@@ -966,7 +958,7 @@ export function EditCompositeItemPage() {
                         .reduce(
                           (sum, c) =>
                             sum +
-                            Number(c.itemDetails?.costPrice ?? c.itemDetails?.purchase_rate ?? 0) *
+                            Number(c.itemDetails?.costPrice ?? 0) *
                               (c.qtyPerUnit || 0),
                           0,
                         )
@@ -1158,7 +1150,7 @@ export function EditCompositeItemPage() {
                           >
                             ₹
                             {Number(
-                              svc.itemDetails?.sellingPrice ?? svc.itemDetails?.rate ?? 0,
+                              svc.itemDetails?.sellingPrice ?? 0,
                             ).toFixed(2)}{' '}
                             per unit
                           </div>
@@ -1172,7 +1164,7 @@ export function EditCompositeItemPage() {
                           }}
                         >
                           {(
-                            Number(svc.itemDetails?.sellingPrice ?? svc.itemDetails?.rate ?? 0) *
+                            Number(svc.itemDetails?.sellingPrice ?? 0) *
                             (svc.qtyPerUnit || 0)
                           ).toFixed(2)}
                         </td>
@@ -1187,7 +1179,7 @@ export function EditCompositeItemPage() {
                         >
                           {(
                             Number(
-                              svc.itemDetails?.costPrice ?? svc.itemDetails?.purchase_rate ?? 0,
+                              svc.itemDetails?.costPrice ?? 0,
                             ) * (svc.qtyPerUnit || 0)
                           ).toFixed(2)}
                           <button
@@ -1247,7 +1239,7 @@ export function EditCompositeItemPage() {
                           .reduce(
                             (sum, svc) =>
                               sum +
-                              Number(svc.itemDetails?.sellingPrice ?? svc.itemDetails?.rate ?? 0) *
+                              Number(svc.itemDetails?.sellingPrice ?? 0) *
                                 (svc.qtyPerUnit || 0),
                             0,
                           )
@@ -1266,7 +1258,7 @@ export function EditCompositeItemPage() {
                             (sum, svc) =>
                               sum +
                               Number(
-                                svc.itemDetails?.costPrice ?? svc.itemDetails?.purchase_rate ?? 0,
+                                svc.itemDetails?.costPrice ?? 0,
                               ) *
                                 (svc.qtyPerUnit || 0),
                             0,

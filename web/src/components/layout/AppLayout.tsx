@@ -747,7 +747,7 @@ function ModuleNavGroup({
 
 function TopBarAvatar({ user, size }: { user: User; size: number }) {
   const [imgFailed, setImgFailed] = useState(false);
-  const url = !imgFailed ? user.avatar_url : null;
+  const url = !imgFailed ? user.avatarUrl : null;
   const iconSize = size === 32 ? 18 : 28;
 
   return (

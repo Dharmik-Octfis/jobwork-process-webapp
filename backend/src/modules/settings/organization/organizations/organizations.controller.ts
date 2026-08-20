@@ -80,11 +80,11 @@ async function mapToZohoFormat(org: Organization & { industry?: Pick<Industry, '
     industryType: org.industryCode,
     email: org.email,
     phone: org.phone,
-    dial_code: org.dialCode,
+    dialCode: org.dialCode,
     address: {
       street_address1: org.orgAddress,
       country: org.countryCode,
-      state_code: org.stateCode,
+      stateCode: org.stateCode,
       city: org.cityId,
       zip: org.zip,
     },
@@ -125,10 +125,10 @@ export async function createOrganization(req: Request, res: Response, next: Next
             industryCode: data.industryType,
             email: data.email,
             phone: data.phone,
-            dialCode: data.dial_code,
+            dialCode: data.dialCode,
             orgAddress: data.address?.street_address1 || null,
             countryCode: data.address?.country || null,
-            stateCode: data.address?.state_code || null,
+            stateCode: data.address?.stateCode || null,
             cityId: data.address?.city || null,
             zip: data.address?.zip || null,
             createdBy: userId,
@@ -254,15 +254,15 @@ export async function updateOrganization(req: Request, res: Response, next: Next
     if (data.industryType !== undefined) updateData.industryCode = data.industryType;
     if (data.email !== undefined) updateData.email = data.email;
     if (data.phone !== undefined) updateData.phone = data.phone;
-    if (data.dial_code !== undefined) updateData.dialCode = data.dial_code;
+    if (data.dialCode !== undefined) updateData.dialCode = data.dialCode;
     if (data.website !== undefined) updateData.website = data.website;
 
     if (data.address !== undefined) {
       if (data.address.street_address1 !== undefined)
         updateData.orgAddress = data.address.street_address1;
       if (data.address.country !== undefined) updateData.countryCode = data.address.country;
-      if (data.address.state_code !== undefined)
-        updateData.stateCode = data.address.state_code === '' ? null : data.address.state_code;
+      if (data.address.stateCode !== undefined)
+        updateData.stateCode = data.address.stateCode === '' ? null : data.address.stateCode;
       if (data.address.city !== undefined)
         updateData.cityId = data.address.city === '' ? null : data.address.city;
       if (data.address.zip !== undefined) updateData.zip = data.address.zip;

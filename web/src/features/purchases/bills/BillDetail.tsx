@@ -789,7 +789,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                     const discVal = Number(
                       item.discountValue !== undefined && item.discountValue !== null
                         ? item.discountValue
-                        : item.discountPercentage || item.discount_amount || 0,
+                        : item.discountPercentage || item.discountAmount || 0,
                     );
                     const discDisplay =
                       item.discountType === 'fixed' ? `₹${discVal.toFixed(2)}` : `${discVal}%`;
@@ -1340,7 +1340,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                     const discVal = Number(
                       item.discountValue !== undefined && item.discountValue !== null
                         ? item.discountValue
-                        : item.discountPercentage || item.discount_amount || 0,
+                        : item.discountPercentage || item.discountAmount || 0,
                     );
                     const discDisplay =
                       item.discountType === 'fixed' ? `₹${discVal.toFixed(2)}` : `${discVal}%`;

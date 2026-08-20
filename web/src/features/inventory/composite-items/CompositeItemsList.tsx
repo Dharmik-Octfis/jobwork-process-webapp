@@ -30,10 +30,8 @@ export function CompositeItemsList({ itemId }: CompositeItemsListProps) {
   const createMutation = useMutation({
     mutationFn: () =>
       compositeItemsApi.createComponent(orgId!, itemId, {
-        // eslint-disable-next-line @typescript-eslint/naming-convention
-        component_item_id: componentItem!.id,
-        // eslint-disable-next-line @typescript-eslint/naming-convention
-        qty_per_unit: Number(qtyPerUnit),
+        componentItemId: componentItem!.id,
+        qtyPerUnit: Number(qtyPerUnit),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['compositeComponents', orgId, itemId] });
@@ -49,10 +47,8 @@ export function CompositeItemsList({ itemId }: CompositeItemsListProps) {
   const updateMutation = useMutation({
     mutationFn: () =>
       compositeItemsApi.updateComponent(orgId!, itemId, editingId!, {
-        // eslint-disable-next-line @typescript-eslint/naming-convention
-        component_item_id: componentItem!.id,
-        // eslint-disable-next-line @typescript-eslint/naming-convention
-        qty_per_unit: Number(qtyPerUnit),
+        componentItemId: componentItem!.id,
+        qtyPerUnit: Number(qtyPerUnit),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['compositeComponents', orgId, itemId] });
@@ -84,10 +80,9 @@ export function CompositeItemsList({ itemId }: CompositeItemsListProps) {
   const handleEdit = (comp: CompositeComponent) => {
     setEditingId(comp.id);
     setIsAdding(false);
+    setComponentItem({ id: comp.componentItemId, name: comp.component?.name || '' } as unknown as Item);
     // eslint-disable-next-line @typescript-eslint/naming-convention
-    setComponentItem({ id: comp.component_item_id, name: comp.component?.name || '' } as unknown as Item);
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    setQtyPerUnit(comp.qty_per_unit.toString());
+    setQtyPerUnit(comp.qtyPerUnit.toString());
   };
 
   const handleSave = () => {
@@ -163,7 +158,7 @@ export function CompositeItemsList({ itemId }: CompositeItemsListProps) {
                       style={{ width: '100%', padding: '6px', border: '1px solid #d1d5db', borderRadius: '4px' }}
                     />
                   ) : (
-                    comp.qty_per_unit
+                    comp.qtyPerUnit
                   )}
                 </td>
                 <td style={{ padding: '12px', fontSize: '13px', color: '#64748b' }}>

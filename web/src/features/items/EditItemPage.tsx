@@ -74,9 +74,9 @@ export function EditItemPage() {
     setInitializedId(id!);
     setFormData({
       name: (rawItem.name as string) || '',
-      type: (rawItem.type || rawItem.product_type || 'Goods') as 'Goods' | 'Service',
+      type: (rawItem.type || 'Goods') as 'Goods' | 'Service',
       category: (rawItem.category as string) || '',
-      hsnCode: rawItem.hsnCode || rawItem.hsn_or_sac || '',
+      hsnCode: rawItem.hsnCode || '',
       itemType: 'Single Item',
       unit: rawItem.unit || '',
       stockingUomId: rawItem.stockingUomId ?? null,
@@ -85,18 +85,14 @@ export function EditItemPage() {
       sellingPrice:
         rawItem.sellingPrice !== null && rawItem.sellingPrice !== undefined
           ? Number(rawItem.sellingPrice)
-          : rawItem.rate !== null && rawItem.rate !== undefined
-            ? Number(rawItem.rate)
-            : (null as unknown as number),
+          : (null as unknown as number),
       salesDescription:
         (rawItem.salesDescription as string) || '',
       isPurchaseInfo: true,
       costPrice:
         rawItem.costPrice !== null && rawItem.costPrice !== undefined
           ? Number(rawItem.costPrice)
-          : rawItem.purchase_rate !== null && rawItem.purchase_rate !== undefined
-            ? Number(rawItem.purchase_rate)
-            : (null as unknown as number),
+          : (null as unknown as number),
       purchaseDescription:
         (rawItem.purchaseDescription as string) || '',
       packaging: rawItem.packaging || '',

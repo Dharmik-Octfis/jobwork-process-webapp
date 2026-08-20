@@ -6,10 +6,10 @@ extendZodWithOpenApi(z);
 
 export const compositeComponentSchema = z.object({
   id: z.string().uuid(),
-  composite_item_id: z.string().uuid(),
-  component_item_id: z.string().uuid(),
-  qty_per_unit: z.number(),
-  uom_id: z.string().uuid().nullable().optional(),
+  compositeItemId: z.string().uuid(),
+  componentItemId: z.string().uuid(),
+  qtyPerUnit: z.number(),
+  uomId: z.string().uuid().nullable().optional(),
   seq: z.number().int().min(0).default(0),
   notes: z.string().nullable().optional(),
   customFields: z.record(z.string(), z.unknown()).default({}),
@@ -21,9 +21,9 @@ export const compositeComponentSchema = z.object({
 });
 
 export const createCompositeComponentSchema = z.object({
-  component_item_id: z.string().uuid(),
-  qty_per_unit: z.number().min(0.000001),
-  uom_id: z.string().uuid().nullable().optional(),
+  componentItemId: z.string().uuid(),
+  qtyPerUnit: z.number().min(0.000001),
+  uomId: z.string().uuid().nullable().optional(),
   seq: z.number().int().min(0).optional(),
   notes: z.string().nullable().optional(),
   customFields: z.record(z.string(), z.unknown()).optional(),

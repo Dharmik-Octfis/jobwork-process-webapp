@@ -20,7 +20,7 @@ export function ProfilePage() {
   // Profile details state
   const [firstName, setFirstName] = useState(user?.firstName || '');
   const [lastName, setLastName] = useState(user?.lastName || '');
-  const [logoPreview, setLogoPreview] = useState<string | null>(user?.avatar_url || null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(user?.avatarUrl || null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -36,8 +36,8 @@ export function ProfilePage() {
       setLogoPreview(url);
       uploadAvatarMutation.mutate(file, {
         onSuccess: (data) => {
-          if (data.user.avatar_url) {
-            setLogoPreview(data.user.avatar_url);
+          if (data.user.avatarUrl) {
+            setLogoPreview(data.user.avatarUrl);
           }
         },
         onError: (err) => {

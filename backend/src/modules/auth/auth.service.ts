@@ -68,7 +68,7 @@ export async function formatPublicUser(user: {
     lastName: user.lastName,
     fullName: user.fullName,
     email: user.email,
-    avatar_url: signedAvatarUrl,
+    avatarUrl: signedAvatarUrl,
     userAgent: user.userAgent ?? 'unknown',
   };
 }

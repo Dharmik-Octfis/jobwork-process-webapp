@@ -11,7 +11,7 @@ export interface PublicUser {
   lastName: string;
   fullName: string;
   email: string;
-  avatar_url?: string | null;
+  avatarUrl?: string | null;
   userAgent: string;
 }
 

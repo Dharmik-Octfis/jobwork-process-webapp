@@ -4,7 +4,7 @@ import { paginatedSchema, type Paginated } from '../../../lib/pagination';
 
 export const PurchaseOrderItemSchema = z.object({
   id: z.string().optional(),
-  line_item_id: z.string().optional(),
+  lineItemId: z.string().optional(),
   itemId: z.string().min(1, 'Item is required'),
   itemPoStatus: z.string().nullable().optional(),
   linkedSalesOrderId: z.string().nullable().optional(),

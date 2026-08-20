@@ -9,7 +9,7 @@ export const billItemSchema = z.object({
   quantity: z.number().or(z.string()).optional(),
   rate: z.number().or(z.string()).optional(),
   discountPercentage: z.number().or(z.string()).nullable().optional(),
-  discount_amount: z.number().or(z.string()).nullable().optional(),
+  discountAmount: z.number().or(z.string()).nullable().optional(),
   amount: z.number().or(z.string()).optional(),
   itemTotal: z.number().or(z.string()).nullable().optional(),
   customFields: z.record(z.string(), z.any()).nullable().optional(),

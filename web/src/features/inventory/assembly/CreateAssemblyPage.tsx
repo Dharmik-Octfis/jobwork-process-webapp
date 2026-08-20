@@ -179,8 +179,8 @@ export function CreateAssemblyPage() {
   const onSubmit = (data: CreateAssemblyDto) => {
     // Generate lines dynamically from fetched components
     const lines = (components || []).map((comp) => ({
-      itemId: comp.component_item_id,
-      qtyRequired: Number(comp.qty_per_unit) * Number(data.qty),
+      itemId: comp.componentItemId,
+      qtyRequired: Number(comp.qtyPerUnit) * Number(data.qty),
     }));
 
     const validServices = services.filter((s) => s.itemId);
@@ -536,7 +536,7 @@ export function CreateAssemblyPage() {
                     </tr>
                   ) : (
                     goodsComponents.map((comp) => {
-                      const requiredPerUnit = Number(comp.qty_per_unit);
+                      const requiredPerUnit = Number(comp.qtyPerUnit);
                       const totalRequired = requiredPerUnit * (Number(qty) || 0);
 
                       return (
@@ -837,7 +837,7 @@ export function CreateAssemblyPage() {
                   </thead>
                   <tbody>
                     {serviceComponents.map((comp) => {
-                      const requiredPerUnit = Number(comp.qty_per_unit);
+                      const requiredPerUnit = Number(comp.qtyPerUnit);
                       const totalRequired = requiredPerUnit * (Number(qty) || 0);
                       return (
                         <React.Fragment key={comp.id}>
