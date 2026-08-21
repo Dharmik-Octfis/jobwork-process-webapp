@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
+import { DateInput } from '../../../components/ui/DateInput';
 import { Modal } from '../../../components/ui/Modal';
 import { Select } from '../../../components/ui/Select';
 import { fetchLocations } from '../../configuration/locations/locations.api';
@@ -888,12 +889,12 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                   <label style={labelStyle} htmlFor="receipt-date">
                     Date
                   </label>
-                  <input
+                  <DateInput
                     id="receipt-date"
-                    type="date"
                     value={receiptDate}
-                    onChange={(e) => setReceiptDate(e.target.value)}
+                    onChange={setReceiptDate}
                     style={inputStyle}
+                    portal
                   />
                 </div>
 

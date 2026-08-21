@@ -218,20 +218,6 @@ a:hover {
   scrollbar-color: #cbd5e1 transparent;
 }
 
-/* Hide calendar icon and make it clickable anywhere */
-.date-input-no-icon::-webkit-calendar-picker-indicator {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  width: auto;
-  height: auto;
-  color: transparent;
-  background: transparent;
-  cursor: pointer;
-}
-
 /* Hide spin buttons / arrows on number inputs globally */
 input[type='number']::-webkit-outer-spin-button,
 input[type='number']::-webkit-inner-spin-button {

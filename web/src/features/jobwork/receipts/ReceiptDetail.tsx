@@ -4,7 +4,9 @@ import { useParams } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
+import { formatDate } from '../../../lib/formatDate';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
 import { formatQty, toNumber } from '../jobwork.schemas';
 import { cancelJobReceipt, fetchJobReceiptById } from './jobReceipts.api';
 
@@ -186,8 +188,7 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
             </span>
           </div>
           <span style={{ fontSize: 12, color: '#64748b' }}>
-            {new Date(receipt.receiptDate).toLocaleDateString()} ·{' '}
-            {receipt.processorNameSnapshot ?? 'in-house'}
+            {formatDate(receipt.receiptDate)} · {receipt.processorNameSnapshot ?? 'in-house'}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -361,21 +362,14 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
                 <td style={{ ...rowValue, whiteSpace: 'pre-wrap' }}>{receipt.remarks}</td>
               </tr>
             )}
-            {customFieldDefs.map((def) => {
-              const value = receipt.customFields?.[def.key];
-              return (
-                <tr key={def.id}>
-                  <td style={rowLabel}>{def.label}</td>
-                  <td style={rowValue}>
-                    {value === null || value === undefined || value === ''
-                      ? '-'
-                      : Array.isArray(value)
-                        ? value.join(', ')
-                        : String(value)}
-                  </td>
-                </tr>
-              );
-            })}
+            {customFieldDefs.map((def) => (
+              <tr key={def.id}>
+                <td style={rowLabel}>{def.label}</td>
+                <td style={rowValue}>
+                  {formatCustomFieldValue(receipt.customFields?.[def.key], def)}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
 

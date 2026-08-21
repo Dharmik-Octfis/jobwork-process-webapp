@@ -217,6 +217,9 @@ export function AddStepsDialog({
         seqOffset={startSeq - 1}
         priorProducers={priorProducers}
         priorSpare={priorSpare}
+        /* Inside a Modal — the item picker's menu is clipped by the dialog's
+           scrolling body without this (CLAUDE.md). */
+        portalMenus
       />
 
       <div style={{ marginTop: 16 }}>

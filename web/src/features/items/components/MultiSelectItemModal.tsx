@@ -32,6 +32,7 @@ const ITEM_MODAL_CATALOG: ColumnDef[] = [
   { key: 'category', label: 'Product Category' },
 ];
 
+import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
 import type { CustomFieldDefinition } from '../../custom-fields/customFields.schemas';
 
 function renderCell(
@@ -41,31 +42,10 @@ function renderCell(
 ): React.ReactNode {
   if (key.startsWith('cf_')) {
     const cfKey = key.replace('cf_', '');
-    const val = item.customFields?.[cfKey] ?? item.customFields?.[cfKey];
-    if (val == null) return '-';
-
-    const def = customFieldsDef?.find((d) => d.key === cfKey);
-    if (def) {
-      if (def.dataType === 'select' || def.dataType === 'multi_select') {
-        const options = def.config?.options || [];
-        if (Array.isArray(val)) {
-          return val.map((v) => options.find((o) => o.id === v)?.label || v).join(', ');
-        }
-        return options.find((o) => o.id === val)?.label || String(val);
-      }
-      
-      if (['date', 'datetime', 'time'].includes(def.dataType)) {
-        if (typeof val === 'string' && !isNaN(Date.parse(val))) {
-          const d = new Date(val);
-          if (def.dataType === 'date') return d.toLocaleDateString();
-          if (def.dataType === 'datetime') return d.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-          if (def.dataType === 'time') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        }
-      }
-    }
-
-    if (Array.isArray(val)) return val.join(', ');
-    return String(val);
+    return formatCustomFieldValue(
+      item.customFields?.[cfKey],
+      customFieldsDef?.find((d) => d.key === cfKey),
+    );
   }
 
   switch (key) {
@@ -279,8 +259,7 @@ export function MultiSelectItemModal({
         filtered = filtered.filter((item) => {
           if (key === 'name') return item.name.toLowerCase().includes(searchVal);
           if (key === 'sku') return (item.sku || '').toLowerCase().includes(searchVal);
-          if (key === 'hsn')
-            return (item.hsnCode || '').toLowerCase().includes(searchVal);
+          if (key === 'hsn') return (item.hsnCode || '').toLowerCase().includes(searchVal);
           if (key === 'type')
             return (item.itemType || item.itemStructure || '').toLowerCase() === searchVal;
           if (key === 'category') return (item.category || '').toLowerCase() === searchVal;
@@ -943,9 +922,7 @@ export function MultiSelectItemModal({
                         <span style={{ color: '#2563eb' }}>{item.name}</span>
                       </td>
                       <td style={{ padding: '12px 20px' }}>{item.sku || '-'}</td>
-                      <td style={{ padding: '12px 20px' }}>
-                        {item.hsnCode || '-'}
-                      </td>
+                      <td style={{ padding: '12px 20px' }}>{item.hsnCode || '-'}</td>
                       <td style={{ padding: '8px 20px' }}>
                         <input
                           type="number"

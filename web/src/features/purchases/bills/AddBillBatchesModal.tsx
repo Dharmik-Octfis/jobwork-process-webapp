@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { toast } from 'react-hot-toast';
+import { DateInput } from '../../../components/ui/DateInput';
 import { Modal } from '../../../components/ui/Modal';
 import { Trash2, Plus, Warehouse } from 'lucide-react';
 import { formatQty } from '../../jobwork/jobwork.schemas';
@@ -160,7 +161,9 @@ export function AddBillBatchesModal({
     }
 
     if (!matches && !overwrite) {
-      toast.error(`Please allocate exactly ${formatQty(lineQty)} ${uomLabel} or choose to overwrite the line item quantity.`);
+      toast.error(
+        `Please allocate exactly ${formatQty(lineQty)} ${uomLabel} or choose to overwrite the line item quantity.`,
+      );
       return;
     }
 
@@ -192,6 +195,11 @@ export function AddBillBatchesModal({
   };
 
   const rightAlignStyle = { ...inputStyle, textAlign: 'right' as const };
+
+  const dateCellStyle = (isExisting: boolean | undefined): React.CSSProperties => ({
+    ...inputStyle,
+    ...(isExisting ? { background: '#f8fafc', color: '#64748b', cursor: 'not-allowed' } : {}),
+  });
 
   return (
     <Modal
@@ -524,36 +532,26 @@ export function AddBillBatchesModal({
                     onBlur={(e) => !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')}
                   />
                 </td>
+                {/* `portal` — this grid is inside a Modal, which clips an
+                    absolutely-positioned calendar to the row. */}
                 <td style={{ padding: '8px' }}>
-                  <input
-                    type="date"
+                  <DateInput
                     value={batch.manufacturedDate}
                     disabled={batch.isExisting}
-                    onChange={(e) => updateBatch(batch.id, 'manufacturedDate', e.target.value)}
-                    style={{
-                      ...inputStyle,
-                      ...(batch.isExisting
-                        ? { background: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }
-                        : {}),
-                    }}
-                    onFocus={(e) => !batch.isExisting && (e.target.style.borderColor = '#0062ff')}
-                    onBlur={(e) => !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')}
+                    onChange={(next) => updateBatch(batch.id, 'manufacturedDate', next)}
+                    ariaLabel="Manufactured date"
+                    style={dateCellStyle(batch.isExisting)}
+                    portal
                   />
                 </td>
                 <td style={{ padding: '8px' }}>
-                  <input
-                    type="date"
+                  <DateInput
                     value={batch.expiryDate}
                     disabled={batch.isExisting}
-                    onChange={(e) => updateBatch(batch.id, 'expiryDate', e.target.value)}
-                    style={{
-                      ...inputStyle,
-                      ...(batch.isExisting
-                        ? { background: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }
-                        : {}),
-                    }}
-                    onFocus={(e) => !batch.isExisting && (e.target.style.borderColor = '#0062ff')}
-                    onBlur={(e) => !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')}
+                    onChange={(next) => updateBatch(batch.id, 'expiryDate', next)}
+                    ariaLabel="Expiry date"
+                    style={dateCellStyle(batch.isExisting)}
+                    portal
                   />
                 </td>
                 <td style={{ padding: '8px' }}>

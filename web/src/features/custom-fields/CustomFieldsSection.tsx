@@ -12,6 +12,16 @@ interface Props {
   errors?: Record<string, string>;
   /** On a NEW record, pre-fill fields that have a configured default value. */
   applyDefaults?: boolean;
+  /**
+   * `rows` (default) is the two-column label/control list the tabbed record forms
+   * use, where the section owns a whole tab and has the room.
+   *
+   * `grid` is for a section sharing a scrolling page with others: the caption goes
+   * ABOVE its control and the fields wrap into as many columns as fit, so four
+   * fields cost one row instead of four. It matches the surrounding sections
+   * rather than the tab, which is the point — see `JobOrderForm`.
+   */
+  layout?: 'rows' | 'grid';
 }
 
 const labelStyle: React.CSSProperties = {
@@ -20,6 +30,14 @@ const labelStyle: React.CSSProperties = {
   gap: '6px',
   color: '#111',
   fontSize: 13,
+};
+
+/** Caption above its control, matching the surrounding page's field captions. */
+const stackedLabelStyle: React.CSSProperties = {
+  display: 'block',
+  fontSize: 12,
+  color: '#64748b',
+  marginBottom: 4,
 };
 
 /**
@@ -34,6 +52,7 @@ export function CustomFieldsSection({
   onChange,
   errors,
   applyDefaults,
+  layout = 'rows',
 }: Props) {
   const { data: fields = [], isLoading } = useActiveCustomFields(orgId, entityType);
 
@@ -71,6 +90,39 @@ export function CustomFieldsSection({
   const setField = (key: string, value: unknown) => {
     onChange({ ...values, [key]: value });
   };
+
+  if (layout === 'grid') {
+    return (
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: 16,
+          fontSize: '13px',
+          alignItems: 'start',
+        }}
+      >
+        {fields.map((def) => (
+          <div key={def.id}>
+            <label
+              style={
+                def.isRequired ? { ...stackedLabelStyle, color: '#ef4444' } : stackedLabelStyle
+              }
+            >
+              {def.label}
+              {def.isRequired && '*'}
+            </label>
+            <CustomFieldInput
+              def={def}
+              value={values[def.key]}
+              onChange={(v) => setField(def.key, v)}
+              error={errors?.[`customFields.${def.key}`]}
+            />
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div

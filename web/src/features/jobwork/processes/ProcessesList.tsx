@@ -9,6 +9,7 @@ import { Pagination } from '../../../components/ui/Pagination';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { useListCount } from '../../../hooks/useListCount';
 import { useListSearch } from '../../../hooks/useListSearch';
+import { formatDate } from '../../../lib/formatDate';
 import { deleteProcess, fetchProcessCount, fetchProcesses } from './processes.api';
 import { ProcessDetail } from './ProcessDetail';
 import { rateBasisLabel, type Process } from './processes.schemas';
@@ -33,7 +34,7 @@ function renderProcessCell(process: Process, key: string): string {
       return process.defaultTolerancePct === null ? '-' : `${process.defaultTolerancePct}%`;
     case 'createdAt':
     case 'updatedAt':
-      return new Date(process[key]).toLocaleDateString();
+      return formatDate(process[key]);
     default: {
       const value = (process as unknown as Record<string, unknown>)[key];
       if (value === null || value === undefined || value === '') return '-';

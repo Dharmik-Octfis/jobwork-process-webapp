@@ -9,6 +9,7 @@ import { Pagination } from '../../../components/ui/Pagination';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { useListCount } from '../../../hooks/useListCount';
 import { useListSearch } from '../../../hooks/useListSearch';
+import { formatDate } from '../../../lib/formatDate';
 import { deleteRoute, fetchRouteCount, fetchRoutes } from './processRoutes.api';
 import { RouteDetail } from './RouteDetail';
 import { stepSummary, type Route } from './processRoutes.schemas';
@@ -29,7 +30,7 @@ function renderRouteCell(route: Route, key: string): string {
       return stepSummary(route);
     case 'createdAt':
     case 'updatedAt':
-      return new Date(route[key]).toLocaleDateString();
+      return formatDate(route[key]);
     default: {
       const value = (route as unknown as Record<string, unknown>)[key];
       if (value === null || value === undefined || value === '') return '-';

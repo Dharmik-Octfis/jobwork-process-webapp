@@ -5,6 +5,7 @@ import { ArrowLeft, ChevronDown, Pencil } from 'lucide-react';
 import type { AxiosError } from 'axios';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
+import { formatDate } from '../../../lib/formatDate';
 import { IssueDialog } from '../issues/IssueDialog';
 import { ReceiveDialog } from '../receipts/ReceiveDialog';
 import { JOB_ORDER_STATUS_META, formatQty, statusMeta } from '../jobwork.schemas';
@@ -400,10 +401,10 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                 )}
               </div>
               <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 5 }}>
-                <span style={metaItem}>{new Date(jobOrder.orderDate).toLocaleDateString()}</span>
+                <span style={metaItem}>{formatDate(jobOrder.orderDate)}</span>
                 {jobOrder.targetDate && (
                   <span style={{ ...metaItem, color: isLate ? '#b91c1c' : '#64748b' }}>
-                    Due {new Date(jobOrder.targetDate).toLocaleDateString()}
+                    Due {formatDate(jobOrder.targetDate)}
                     {isLate ? ' · overdue' : ''}
                   </span>
                 )}

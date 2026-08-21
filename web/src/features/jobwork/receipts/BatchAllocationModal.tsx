@@ -2,8 +2,10 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createPortal } from 'react-dom';
 import { useCombobox } from 'downshift';
 import { AlertTriangle, ChevronDown, Plus, Search, Truck, X } from 'lucide-react';
+import { DateInput } from '../../../components/ui/DateInput';
 import { Modal } from '../../../components/ui/Modal';
 import { blurOnWheel } from '../../../components/ui/blurOnWheel';
+import { formatDate } from '../../../lib/formatDate';
 import { formatQty, toNumber } from '../jobwork.schemas';
 import type { ReceiptBatchOption } from './jobReceipts.schemas';
 
@@ -72,7 +74,8 @@ export interface BatchAllocation {
    * the difference.
    */
   manufacturerBatch: string;
-  /** `yyyy-mm-dd`, straight off `<input type="date">`. */
+  /** `yyyy-mm-dd`, straight off `DateInput` — which types `dd-MM-yyyy` but emits
+   * this, exactly as the native date input it replaced did. */
   manufacturedDate: string;
   expiryDate: string;
   sellingPrice: string;
@@ -818,26 +821,38 @@ function AttributeCell({
       <td style={{ ...td, color: '#64748b', textAlign: isMoney ? 'right' : 'left' }}>{children}</td>
     );
   }
+  const cellStyle: React.CSSProperties = {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '7px 10px',
+    fontSize: 13,
+    textAlign: isMoney ? 'right' : 'left',
+    border: '1px solid #d1d5db',
+    borderRadius: 4,
+    minHeight: 34,
+  };
   return (
     <td style={td}>
-      <input
-        type={type === 'date' ? 'date' : isMoney ? 'number' : 'text'}
-        {...(isMoney ? { step: '0.0001', min: '0', onWheel: blurOnWheel } : {})}
-        value={row[field]}
-        onChange={(e) => onChange(row.id, { [field]: e.target.value })}
-        placeholder={type === 'text' ? 'Enter MFR Batch#' : isMoney ? '0.00' : undefined}
-        aria-label={ATTRIBUTE_LABELS[field]}
-        style={{
-          width: '100%',
-          boxSizing: 'border-box',
-          padding: '7px 10px',
-          fontSize: 13,
-          textAlign: isMoney ? 'right' : 'left',
-          border: '1px solid #d1d5db',
-          borderRadius: 4,
-          minHeight: 34,
-        }}
-      />
+      {type === 'date' ? (
+        // `portal` because this grid lives in a Modal and the row is clipped by it.
+        <DateInput
+          value={row[field]}
+          onChange={(next) => onChange(row.id, { [field]: next })}
+          ariaLabel={ATTRIBUTE_LABELS[field]}
+          style={cellStyle}
+          portal
+        />
+      ) : (
+        <input
+          type={isMoney ? 'number' : 'text'}
+          {...(isMoney ? { step: '0.0001', min: '0', onWheel: blurOnWheel } : {})}
+          value={row[field]}
+          onChange={(e) => onChange(row.id, { [field]: e.target.value })}
+          placeholder={type === 'text' ? 'Enter MFR Batch#' : '0.00'}
+          aria-label={ATTRIBUTE_LABELS[field]}
+          style={cellStyle}
+        />
+      )}
     </td>
   );
 }
@@ -892,9 +907,7 @@ const MENU_MIN_HEIGHT = 190;
  * fallback (2026-08-14); a batch with no reference gets a dated placeholder. */
 function optionLabel(option: ReceiptBatchOption): string {
   const date = new Date(option.createdAt);
-  const stamp = Number.isNaN(date.getTime())
-    ? '—'
-    : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  const stamp = Number.isNaN(date.getTime()) ? '—' : formatDate(date);
   return option.supplierBatchRef?.trim() || `Batch of ${stamp}`;
 }
 

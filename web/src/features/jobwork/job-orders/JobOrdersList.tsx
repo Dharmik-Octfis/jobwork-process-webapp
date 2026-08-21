@@ -8,6 +8,10 @@ import { Pagination } from '../../../components/ui/Pagination';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { useListCount } from '../../../hooks/useListCount';
 import { useListSearch } from '../../../hooks/useListSearch';
+import { formatDate } from '../../../lib/formatDate';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
+import type { CustomFieldDefinition } from '../../custom-fields/customFields.schemas';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 import { JOB_ORDER_STATUS_META, formatQty, statusMeta } from '../jobwork.schemas';
 import { fetchJobOrderCount, fetchJobOrders } from './jobOrders.api';
@@ -43,11 +47,17 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
-function renderCell(order: JobOrder, key: string): React.ReactNode {
+function renderCell(
+  order: JobOrder,
+  key: string,
+  customFieldDefs: CustomFieldDefinition[],
+): React.ReactNode {
   if (key.startsWith(CUSTOM_FIELD_PREFIX)) {
-    const value = order.customFields?.[key.slice(CUSTOM_FIELD_PREFIX.length)];
-    if (value === null || value === undefined || value === '') return '-';
-    return Array.isArray(value) ? value.join(', ') : String(value);
+    const cfKey = key.slice(CUSTOM_FIELD_PREFIX.length);
+    return formatCustomFieldValue(
+      order.customFields?.[cfKey],
+      customFieldDefs.find((d) => d.key === cfKey),
+    );
   }
 
   switch (key) {
@@ -66,10 +76,8 @@ function renderCell(order: JobOrder, key: string): React.ReactNode {
     case 'orderDate':
     case 'targetDate':
     case 'createdAt':
-    case 'updatedAt': {
-      const value = order[key];
-      return value ? new Date(value).toLocaleDateString() : '-';
-    }
+    case 'updatedAt':
+      return formatDate(order[key]);
     default: {
       const value = (order as unknown as Record<string, unknown>)[key];
       if (value === null || value === undefined || value === '') return '-';
@@ -110,6 +118,10 @@ export function JobOrdersList() {
     save: saveColumns,
   } = useListColumns(orgId, 'job_order');
   const [isColumnsOpen, setIsColumnsOpen] = useState(false);
+
+  // The `cf:` columns carry no type in the catalog, so the definitions are what
+  // turn a stored option id or `YYYY-MM-DD` into something readable.
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId, 'job_order');
 
   const newPath = `/organizations/${orgId}/jobwork/job-orders/new`;
 
@@ -378,10 +390,10 @@ export function JobOrdersList() {
                                 textAlign: 'left',
                               }}
                             >
-                              {renderCell(order, col.key)}
+                              {renderCell(order, col.key, customFieldDefs)}
                             </button>
                           ) : (
-                            renderCell(order, col.key)
+                            renderCell(order, col.key, customFieldDefs)
                           )}
                         </td>
                       ))}

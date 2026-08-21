@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Printer, X } from 'lucide-react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
+import { formatDate } from '../../../lib/formatDate';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { ISSUE_STATUS_META, formatQty, sharedUnit, statusMeta, toNumber } from '../jobwork.schemas';
 import { cancelJobIssue, fetchJobIssueById } from './jobIssues.api';
@@ -135,8 +136,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
             )}
           </div>
           <span style={{ fontSize: 12, color: '#64748b' }}>
-            {new Date(issue.issueDate).toLocaleDateString()} ·{' '}
-            {issue.processorNameSnapshot ?? 'in-house'}
+            {formatDate(issue.issueDate)} · {issue.processorNameSnapshot ?? 'in-house'}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>

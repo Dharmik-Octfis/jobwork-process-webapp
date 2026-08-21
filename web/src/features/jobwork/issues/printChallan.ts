@@ -1,3 +1,4 @@
+import { formatDate } from '../../../lib/formatDate';
 import { formatQty } from '../jobwork.schemas';
 import type { JobIssue } from './jobIssues.schemas';
 
@@ -121,7 +122,7 @@ export function buildChallanHtml(issue: JobIssue, orgName: string): string {
     </div>
     <div class="box">
       <h2>Details</h2>
-      <p>Date: ${new Date(issue.issueDate).toLocaleDateString()}</p>
+      <p>Date: ${formatDate(issue.issueDate)}</p>
       <p>Job order: ${escapeHtml(issue.jobOrder?.jobOrderNumber ?? '')}</p>
       <p>Process: ${escapeHtml(issue.step?.processNameSnapshot ?? '')}</p>
       <p>From: ${escapeHtml(issue.sourceLocation?.name ?? '')}</p>

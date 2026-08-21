@@ -8,6 +8,10 @@ import { Pagination } from '../../../components/ui/Pagination';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { useListCount } from '../../../hooks/useListCount';
 import { useListSearch } from '../../../hooks/useListSearch';
+import { formatDate } from '../../../lib/formatDate';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
+import type { CustomFieldDefinition } from '../../custom-fields/customFields.schemas';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 import { formatQty, itemSummary } from '../jobwork.schemas';
 import { fetchJobReceiptCount, fetchJobReceipts, fetchReceiptsForStep } from './jobReceipts.api';
@@ -22,11 +26,17 @@ const headerStyle: React.CSSProperties = {
   textTransform: 'uppercase',
 };
 
-function renderCell(receipt: JobReceipt, key: string): React.ReactNode {
+function renderCell(
+  receipt: JobReceipt,
+  key: string,
+  customFieldDefs: CustomFieldDefinition[],
+): React.ReactNode {
   if (key.startsWith(CUSTOM_FIELD_PREFIX)) {
-    const value = receipt.customFields?.[key.slice(CUSTOM_FIELD_PREFIX.length)];
-    if (value === null || value === undefined || value === '') return '-';
-    return Array.isArray(value) ? value.join(', ') : String(value);
+    const cfKey = key.slice(CUSTOM_FIELD_PREFIX.length);
+    return formatCustomFieldValue(
+      receipt.customFields?.[cfKey],
+      customFieldDefs.find((d) => d.key === cfKey),
+    );
   }
 
   /* 🔴 The six totals are the PRIMARY output's, in its own unit — so the unit
@@ -52,7 +62,7 @@ function renderCell(receipt: JobReceipt, key: string): React.ReactNode {
       return `${formatQty(receipt[key])} ${unit}`.trim();
     case 'receiptDate':
     case 'createdAt':
-      return new Date(receipt[key] as string).toLocaleDateString();
+      return formatDate(receipt[key] as string);
     default: {
       const value = (receipt as unknown as Record<string, unknown>)[key];
       if (value === null || value === undefined || value === '') return '-';
@@ -102,6 +112,10 @@ export function ReceiptsList() {
     save: saveColumns,
   } = useListColumns(orgId, 'job_receipt');
   const [isColumnsOpen, setIsColumnsOpen] = useState(false);
+
+  // The `cf:` columns carry no type in the catalog, so the definitions are what
+  // turn a stored option id or `YYYY-MM-DD` into something readable.
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId, 'job_receipt');
 
   const openDetail = (id: string) => {
     const next = new URLSearchParams(searchParams);
@@ -323,10 +337,10 @@ export function ReceiptsList() {
                                 textAlign: 'left',
                               }}
                             >
-                              {renderCell(receipt, col.key)}
+                              {renderCell(receipt, col.key, customFieldDefs)}
                             </button>
                           ) : (
-                            renderCell(receipt, col.key)
+                            renderCell(receipt, col.key, customFieldDefs)
                           )}
                         </td>
                       ))}

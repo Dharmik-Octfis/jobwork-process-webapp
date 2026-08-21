@@ -392,7 +392,14 @@ export function FieldForm({
         {dataType !== 'attachment' && (
           <div style={rowStyle}>
             <label style={labelCol}>Default Value</label>
-            <CustomFieldInput def={draftDef} value={defaultValue} onChange={setDefaultValue} />
+            {/* Portalled: this preview sits in the page's `overflow: auto` pane,
+                which clips an absolutely-positioned calendar. */}
+            <CustomFieldInput
+              def={draftDef}
+              value={defaultValue}
+              onChange={setDefaultValue}
+              portal
+            />
           </div>
         )}
 

@@ -1,9 +1,16 @@
 import { Check, Archive, X, Loader2 } from 'lucide-react';
 import { useCombobox } from 'downshift';
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useId, useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { itemsApi } from '../../features/items/items.api';
 import type { Item } from '../../features/items/items.schemas';
+
+/** Above `Modal`'s overlay (1100) — a portalled menu is a sibling of it. */
+const PORTAL_Z_INDEX = 1200;
+const MENU_MAX_HEIGHT = 260;
+/** Below this much room under the anchor, the menu opens upwards instead. */
+const MENU_MIN_HEIGHT = 160;
 
 interface ItemComboBoxProps {
   orgId: string;
@@ -13,6 +20,10 @@ interface ItemComboBoxProps {
   placeholder?: string;
   excludeItemId?: string;
   hasError?: boolean;
+  disabled?: boolean;
+  /** The control has no `<label>` of its own on a grid — without this a screen
+   * reader announces it as "edit text" and nothing more. */
+  ariaLabel?: string;
   style?: React.CSSProperties;
   onBlur?: () => void;
   name?: string;
@@ -23,6 +34,13 @@ interface ItemComboBoxProps {
     onClick: () => void;
   };
   filter?: string;
+  /**
+   * 🔴 REQUIRED WHENEVER THIS SITS INSIDE A `Modal` (CLAUDE.md) — same prop, same
+   * reason, and the same implementation as `ui/Select.tsx`'s. The dialog body is
+   * an `overflow-y: auto` scroll container, so the default `position: absolute`
+   * menu is clipped by it on both axes and most of the list is unreachable.
+   */
+  portal?: boolean;
 }
 
 export function ItemComboBox({
@@ -33,6 +51,8 @@ export function ItemComboBox({
   placeholder,
   excludeItemId,
   hasError,
+  disabled = false,
+  ariaLabel,
   style,
   onBlur,
   name,
@@ -40,7 +60,15 @@ export function ItemComboBox({
   onOpenMultiSelect,
   footerAction,
   filter,
+  portal = false,
 }: ItemComboBoxProps) {
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const [menuPosition, setMenuPosition] = useState<React.CSSProperties>({ visibility: 'hidden' });
+  /** Downshift's own id rather than a ref: Escape has to put focus back on the
+   * input programmatically, and reading a ref through a prop getter during
+   * render is what `react-hooks/refs` forbids. */
+  const inputId = `${useId()}-item-combobox`;
+
   const [inputValue, setInputValue] = useState(() => {
     if (initialItem && initialItem.id === value) return initialItem.name;
     return '';
@@ -109,13 +137,14 @@ export function ItemComboBox({
 
   const {
     isOpen,
-    getToggleButtonProps,
     getMenuProps,
     getInputProps,
     highlightedIndex,
     getItemProps,
     openMenu,
+    closeMenu,
   } = useCombobox({
+    inputId,
     stateReducer: (_state, actionAndChanges) => {
       const { type, changes } = actionAndChanges;
       switch (type) {
@@ -150,13 +179,62 @@ export function ItemComboBox({
     },
   });
 
+  /** `window` is ahead of `document` in the capture path, which is what lets this
+   * stop Escape before the dialog behind it ever sees it — otherwise one Escape
+   * over an open list closes the whole dialog. */
+  useEffect(() => {
+    if (!portal || !isOpen) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      closeMenu();
+      document.getElementById(inputId)?.focus();
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [portal, isOpen, closeMenu, inputId]);
+
+  /** Re-measured on scroll in the CAPTURE phase: the scrollers are the dialog
+   * body and any grid inside it, and `scroll` does not bubble — a listener on
+   * `window` never hears either and the menu hangs in mid-air. */
+  useLayoutEffect(() => {
+    if (!portal || !isOpen) return undefined;
+    const place = () => {
+      const anchor = anchorRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const width = Math.min(rect.width, window.innerWidth - 16);
+      const below = window.innerHeight - rect.bottom - 12;
+      const above = rect.top - 12;
+      // Flip up only when below is genuinely too tight AND above is roomier —
+      // otherwise a menu near the bottom of a tall dialog flaps between the two.
+      const openUp = below < MENU_MIN_HEIGHT && above > below;
+      setMenuPosition({
+        left: Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8)),
+        width,
+        maxHeight: Math.min(MENU_MAX_HEIGHT, Math.max(openUp ? above : below, MENU_MIN_HEIGHT)),
+        ...(openUp ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
+      });
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [portal, isOpen]);
+
   return (
-    <div style={{ position: 'relative', width: '100%', ...style }}>
+    <div ref={anchorRef} style={{ position: 'relative', width: '100%', ...style }}>
       <div style={{ position: 'relative', width: '100%' }}>
         <input
           {...getInputProps({
             name,
             placeholder,
+            disabled,
+            'aria-label': ariaLabel,
             onBlur: () => {
               if (onBlur) onBlur();
             },
@@ -177,13 +255,16 @@ export function ItemComboBox({
             },
             style: {
               width: '100%',
-              padding: `6px 48px 6px ${selectedImage ? '36px' : '8px'}`,
+              // Right padding reserves the icon strip — two slots where the bulk
+              // picker's box icon is drawn, one where only the clear/spinner is.
+              padding: `6px ${onOpenMultiSelect ? '48px' : '28px'} 6px ${selectedImage ? '36px' : '8px'}`,
               fontSize: '13px',
               border: `1px solid ${hasError ? 'var(--color-danger, #ef4444)' : 'var(--color-border, #d1d5db)'}`,
               borderRadius: '4px',
               boxSizing: 'border-box',
               outline: 'none',
-              background: '#fff',
+              background: disabled ? 'var(--color-bg, #f4f5f7)' : '#fff',
+              cursor: disabled ? 'not-allowed' : 'text',
             },
           })}
           onBlurCapture={(e: React.FocusEvent<HTMLInputElement>) => {
@@ -246,7 +327,7 @@ export function ItemComboBox({
               />
             </div>
           )}
-          {selectedItem && (
+          {selectedItem && !disabled && (
             <div
               onClick={(e) => {
                 e.stopPropagation();
@@ -266,124 +347,146 @@ export function ItemComboBox({
               <X size={12} color="#475569" />
             </div>
           )}
-          <div
-            {...(onOpenMultiSelect ? {} : getToggleButtonProps())}
-            onClick={(e) => {
-              if (onOpenMultiSelect) {
+          {/* The box icon OPENS THE BULK PICKER, and that is the only reason it is
+              here. As a plain menu toggle it was decoration — clicking or focusing
+              the input already opens the list — so it is drawn only where there is
+              a bulk picker behind it (bills, purchase orders, composite items).
+              The steps grid passes no `onOpenMultiSelect` and gets a clean box. */}
+          {onOpenMultiSelect && (
+            <div
+              onClick={(e) => {
+                if (disabled) return;
                 e.preventDefault();
                 e.stopPropagation();
                 onOpenMultiSelect();
-              }
-            }}
-            style={{
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--color-text-muted, #9ca3af)',
-              padding: '4px',
-            }}
-          >
-            <Archive size={14} color="#333" />
-          </div>
-        </div>
-      </div>
-
-      <div
-        {...getMenuProps()}
-        style={{
-          position: 'absolute',
-          top: 'calc(100% + 4px)',
-          left: 0,
-          right: 0,
-          backgroundColor: '#fff',
-          border: isOpen ? '1px solid var(--color-border, #e5e7eb)' : 'none',
-          borderRadius: '4px',
-          boxShadow: isOpen
-            ? '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)'
-            : 'none',
-          zIndex: 1000,
-          maxHeight: '260px',
-          display: isOpen ? 'flex' : 'none',
-          flexDirection: 'column',
-        }}
-      >
-        <div
-          style={{ overflowY: 'auto', flex: 1, maxHeight: '220px' }}
-          onScroll={(e) => {
-            const target = e.currentTarget;
-            if (target.scrollHeight - target.scrollTop <= target.clientHeight + 10) {
-              if (hasNextPage && !isFetchingNextPage) {
-                fetchNextPage();
-              }
-            }
-          }}
-        >
-          {isOpen && fetchedOptions.length === 0 && (
-            <div
-              style={{ padding: '8px 12px', fontSize: '13px', color: 'var(--color-text-muted)' }}
+              }}
+              style={{
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--color-text-muted, #9ca3af)',
+                padding: '4px',
+              }}
             >
-              No matching items.
+              <Archive size={14} color="#333" />
             </div>
           )}
-          {isOpen &&
-            fetchedOptions.map((opt, index) => (
-              <div
-                {...getItemProps({ item: opt, index })}
-                key={opt.id}
-                style={{
-                  padding: '8px 12px',
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  backgroundColor:
-                    highlightedIndex === index
-                      ? 'var(--color-surface-2, #f3f4f6)'
-                      : selectedItem?.id === opt.id
-                        ? 'var(--color-primary-soft)'
-                        : 'transparent',
-                  color: 'var(--color-text)',
-                }}
-              >
-                <span
-                  style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                >
-                  {opt.name} {opt.sku ? `(${opt.sku})` : ''}
-                </span>
-                {selectedItem?.id === opt.id && <Check size={14} color="var(--color-primary)" />}
-              </div>
-            ))}
         </div>
-
-        {/* Footer Action */}
-        {isOpen && footerAction && (
-          <div
-            onClick={(e) => {
-              e.preventDefault();
-              footerAction.onClick();
-            }}
-            style={{
-              padding: '10px 12px',
-              fontSize: '13px',
-              color: '#3b82f6', // primary blue
-              borderTop: '1px solid var(--color-border, #e5e7eb)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              backgroundColor: '#fff',
-            }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.backgroundColor = 'var(--color-surface-2, #f3f4f6)')
-            }
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#fff')}
-          >
-            {footerAction.text}
-          </div>
-        )}
       </div>
+
+      {/* 🔴 Kept mounted while closed in BOTH modes — downshift needs
+          `getMenuProps`' ref on a live element to tell a click inside its own
+          menu from one outside it. */}
+      {renderInPortal(
+        portal,
+        <div
+          {...getMenuProps()}
+          style={{
+            ...(portal
+              ? { position: 'fixed', zIndex: PORTAL_Z_INDEX, ...menuPosition }
+              : {
+                  position: 'absolute',
+                  top: 'calc(100% + 4px)',
+                  left: 0,
+                  right: 0,
+                  zIndex: 1000,
+                  maxHeight: MENU_MAX_HEIGHT,
+                }),
+            backgroundColor: '#fff',
+            border: isOpen && !disabled ? '1px solid var(--color-border, #e5e7eb)' : 'none',
+            borderRadius: '4px',
+            boxShadow:
+              isOpen && !disabled
+                ? '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)'
+                : 'none',
+            display: isOpen && !disabled ? 'flex' : 'none',
+            flexDirection: 'column',
+          }}
+        >
+          <div
+            style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}
+            onScroll={(e) => {
+              const target = e.currentTarget;
+              if (target.scrollHeight - target.scrollTop <= target.clientHeight + 10) {
+                if (hasNextPage && !isFetchingNextPage) {
+                  fetchNextPage();
+                }
+              }
+            }}
+          >
+            {isOpen && fetchedOptions.length === 0 && (
+              <div
+                style={{ padding: '8px 12px', fontSize: '13px', color: 'var(--color-text-muted)' }}
+              >
+                No matching items.
+              </div>
+            )}
+            {isOpen &&
+              fetchedOptions.map((opt, index) => (
+                <div
+                  {...getItemProps({ item: opt, index })}
+                  key={opt.id}
+                  style={{
+                    padding: '8px 12px',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    backgroundColor:
+                      highlightedIndex === index
+                        ? 'var(--color-surface-2, #f3f4f6)'
+                        : selectedItem?.id === opt.id
+                          ? 'var(--color-primary-soft)'
+                          : 'transparent',
+                    color: 'var(--color-text)',
+                  }}
+                >
+                  <span
+                    style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  >
+                    {opt.name} {opt.sku ? `(${opt.sku})` : ''}
+                  </span>
+                  {selectedItem?.id === opt.id && <Check size={14} color="var(--color-primary)" />}
+                </div>
+              ))}
+          </div>
+
+          {/* Footer Action */}
+          {isOpen && footerAction && (
+            <div
+              onClick={(e) => {
+                e.preventDefault();
+                footerAction.onClick();
+              }}
+              style={{
+                padding: '10px 12px',
+                fontSize: '13px',
+                color: '#3b82f6', // primary blue
+                borderTop: '1px solid var(--color-border, #e5e7eb)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                backgroundColor: '#fff',
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.backgroundColor = 'var(--color-surface-2, #f3f4f6)')
+              }
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#fff')}
+            >
+              {footerAction.text}
+            </div>
+          )}
+        </div>,
+      )}
     </div>
   );
+}
+
+/** One call site, two homes: `document.body` when the menu has to escape a
+ * dialog's clipping, the anchor itself otherwise. */
+function renderInPortal(portal: boolean, menu: React.ReactElement) {
+  return portal ? createPortal(menu, document.body) : menu;
 }

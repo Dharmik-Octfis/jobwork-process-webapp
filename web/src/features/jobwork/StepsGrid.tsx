@@ -6,9 +6,11 @@ import { useParams } from 'react-router-dom';
 import { fetchAvailableBatches } from './batches/batches.api';
 import { AddBatchesModal } from './issues/AddBatchesModal';
 import { rowKey } from './issues/batchSelection';
+import { ItemComboBox } from '../../components/ui/ItemComboBox';
 import { Select } from '../../components/ui/Select';
 import { useUoms } from '../inventory/uom/uom.api';
 import { itemsApi } from '../items/items.api';
+import type { Item } from '../items/items.schemas';
 import { fetchVendors } from '../purchases/vendors/vendors.api';
 import { fetchLocations } from '../configuration/locations/locations.api';
 import { ProcessSelect } from './processes/ProcessSelect';
@@ -32,8 +34,8 @@ import {
  *
  * This is the one place the route/job-order duplication is NOT worth keeping.
  * The two are separate in the database and separate in the API for a real reason
- * (a job order step is a snapshot, not a reference, Â§2.4), but on screen they are
- * the same twelve controls in the same order â and two copies of a grid this size
+ * (a job order step is a snapshot, not a reference, §2.4), but on screen they are
+ * the same twelve controls in the same order — and two copies of a grid this size
  * means every accessibility fix has to be made twice, which is how one of them
  * quietly stops being keyboard-correct.
  *
@@ -60,8 +62,8 @@ interface Props<T extends StepGridRow> {
    */
   showPlannedQty?: boolean;
   /**
-   * Routes: a quantity on CONSUMES ALONE â the amount this org usually runs,
-   * which the job order copies once and then owns (Â§2.4).
+   * Routes: a quantity on CONSUMES ALONE — the amount this org usually runs,
+   * which the job order copies once and then owns (§2.4).
    *
    * Not on PRODUCES, and not the tolerance box. What comes back and how far over
    * a step may run are per-run answers a template cannot know, and pre-filling
@@ -69,41 +71,41 @@ interface Props<T extends StepGridRow> {
    */
   showInputQty?: boolean;
   /**
-   * ð´ Job orders only. Lets the planner note WHICH batches a batch-tracked input
+   * 🔴 Job orders only. Lets the planner note WHICH batches a batch-tracked input
    * is meant to come out of (`JobOrderStepInputBatch`).
    *
    * Never on a route: a template is reused across runs, and a batch is a specific
-   * roll that will be gone by the next one â a route that named batches would be
+   * roll that will be gone by the next one — a route that named batches would be
    * wrong the second time it was used, and silently.
    */
   allowPlannedBatches?: boolean;
-  /** own | customer. Decides which batches may even be offered â one customer's
-   * goods must never be planned into another's order (Â§5.3). */
+  /** own | customer. Decides which batches may even be offered — one customer's
+   * goods must never be planned into another's order (§5.3). */
   ownership?: string;
   /**
    * How many steps already exist above these. The grid captions positions, and on
-   * the append dialog position 1 of the array is step 4 of the order â a block
+   * the append dialog position 1 of the array is step 4 of the order — a block
    * headed "Step 1" there would name a step that already exists and has challans
    * against it. Error keys stay on the ARRAY index, which is what the server
    * numbers its `details` by.
    */
   seqOffset?: number;
   /**
-   * Items produced by steps above these, `itemId â seq`. Only the append dialog
+   * Items produced by steps above these, `itemId → seq`. Only the append dialog
    * passes it: the chain badge can otherwise only see the steps in this array, so
-   * an input fed by an existing step would be labelled "From stock" â the exact
+   * an input fed by an existing step would be labelled "From stock" — the exact
    * mistake the badge exists to catch.
    */
   priorProducers?: ReadonlyMap<string, number>;
   /**
-   * How much of each item those earlier steps have LEFT â outputs they expect,
+   * How much of each item those earlier steps have LEFT — outputs they expect,
    * less what they already plan to consume. Append dialog only, and only for the
    * over-plan note: without it a step fed by an existing step has no ceiling to
    * be measured against and simply says nothing.
    */
   priorSpare?: ReadonlyMap<string, number>;
   /**
-   * ð´ How many steps from the top are FROZEN â the work front (Â§6.6). Challans
+   * 🔴 How many steps from the top are FROZEN — the work front (§6.6). Challans
    * point at those rows by id and print their `seq`, so they cannot be edited,
    * moved, or removed, and nothing below may be moved up into them.
    *
@@ -112,6 +114,12 @@ interface Props<T extends StepGridRow> {
    * started steps after it.
    */
   lockedCount?: number;
+  /**
+   * 🔴 True wherever this grid is rendered inside a `Modal` — today, the append
+   * dialog. The item picker's menu is otherwise clipped by the dialog's scrolling
+   * body on both axes and most of the list is unreachable (CLAUDE.md).
+   */
+  portalMenus?: boolean;
 }
 
 const cellInput: React.CSSProperties = {
@@ -126,7 +134,7 @@ const cellInput: React.CSSProperties = {
 
 /** A value the server owns. Same box as `cellInput` so the row does not jump, but
  * flat and grey so it reads as a stated fact rather than an empty control. Not
- * focusable on purpose â there is nothing here to change. */
+ * focusable on purpose — there is nothing here to change. */
 const cellReadOnly: React.CSSProperties = {
   ...cellInput,
   display: 'flex',
@@ -137,7 +145,7 @@ const cellReadOnly: React.CSSProperties = {
 };
 
 /** One field's caption. A `<span>`, not a `<label>`: most of these controls are
- * `Select`, which renders a button with no id to point `htmlFor` at â the control
+ * `Select`, which renders a button with no id to point `htmlFor` at — the control
  * carries its own `ariaLabel` instead. The native inputs do get real labels. */
 const fieldLabel: React.CSSProperties = {
   display: 'block',
@@ -188,19 +196,31 @@ interface ItemListProps {
   side: 'inputs' | 'outputs';
   rows: StepItemRow[];
   onChange: (rows: StepItemRow[]) => void;
-  items: { id: string; name: string; stockingUomId?: string | null }[];
-  /** The unit the item is configured to move in â id to carry, label to print.
+  orgId: string;
+  /** Every item this grid can already name — the ones it preloaded plus the ones
+   * picked since. Only used to caption a row that already has an item; the
+   * picker fetches its own page at a time. */
+  itemById: ReadonlyMap<string, Item>;
+  /** An item chosen from the picker, which the grid may never have preloaded.
+   * Registering it is what lets its unit, tracking mode and name resolve. */
+  onItemPicked: (item: Item) => void;
+  /** The unit the item is configured to move in — id to carry, label to print.
    * `null` when the item has no stocking unit and the row must ask. */
   itemUnit: (itemId: string | null | undefined) => { uomId: string; label: string } | null;
+  /** Same answer read straight off a just-picked item, before it has been
+   * registered — the row's unit has to be written in the same update. */
+  unitOfItem: (item: Item) => string | null;
   uomOptions: { value: string; label: string }[];
+  /** 🔴 True wherever this grid sits inside a `Modal` — see `ItemComboBox`. */
+  portalMenus?: boolean;
   showQty?: boolean;
-  /** The per-item over-issue box. Job orders only â separate from `showQty`
+  /** The per-item over-issue box. Job orders only — separate from `showQty`
    * because a route carries a default quantity but no tolerance. */
   showTolerance?: boolean;
   /**
-   * ð´ The STEP's tolerance, shown greyed inside each blank row's box.
+   * 🔴 The STEP's tolerance, shown greyed inside each blank row's box.
    *
-   * Blank on a row does not mean "no tolerance" â it means "use the step's"
+   * Blank on a row does not mean "no tolerance" — it means "use the step's"
    * (`jobIssues.service.ts` resolves `row.tolerancePct ?? step.tolerancePct`), and
    * an empty box reads as exactly the opposite. A placeholder rather than a value
    * written into the row: a copy freezes at the moment it is made, so changing the
@@ -209,36 +229,36 @@ interface ItemListProps {
    */
   stepTolerancePct?: number | null;
   /**
-   * â¦and the same trick on the quantity box: what the server will store if this
+   * …and the same trick on the quantity box: what the server will store if this
    * row is left blank, or `null` when it will store nothing and the box is really
    * asking. Only the PRODUCES side passes it today (`derivedExpectedQty`).
    */
   qtyPlaceholderFor?: (row: StepItemRow, rowIndex: number) => number | null;
   disabled?: boolean;
-  /** Array position â error keys and control ids. */
+  /** Array position — error keys and control ids. */
   stepIndex: number;
-  /** Position in the ORDER â what a human is told. The two differ when appending. */
+  /** Position in the ORDER — what a human is told. The two differ when appending. */
   stepNumber: number;
   errors?: Record<string, string>;
   badgeFor: (
     row: StepItemRow,
     rowIndex: number,
   ) => { text: string; tone: 'chain' | 'stock' } | null;
-  /** An advisory note under the row â today, only the over-plan one (Â§6.4.0).
+  /** An advisory note under the row — today, only the over-plan one (§6.4.0).
    * Returns null when there is nothing to say, which is the usual answer. */
   warningFor?: (row: StepItemRow) => string | null;
   /** Shown when the list is empty. Says what an empty list MEANS, never what the
-   * server might invent â it invents nothing now. */
+   * server might invent — it invents nothing now. */
   emptyHint: string;
   /**
-   * Outputs only â the CONSUMES rows this list can be copied from. A process
+   * Outputs only — the CONSUMES rows this list can be copied from. A process
    * that does not change the item returns exactly what it took, which is one
    * tick instead of retyping every row.
    */
   mirrorSource?: StepItemRow[];
   /**
    * Inputs, job orders only. Opens the planner's batch grid for one row. Absent
-   * means the whole affordance is off â see `allowPlannedBatches`.
+   * means the whole affordance is off — see `allowPlannedBatches`.
    */
   onPlanBatches?: (rowIndex: number) => void;
   /** Whether this item's batches are the user's to pick. Untracked items have
@@ -247,23 +267,23 @@ interface ItemListProps {
 }
 
 /**
- * ð´ ONE SIDE OF A STEP'S BILL OF MATERIALS â the control this whole screen was
- * missing (Â§5.7).
+ * 🔴 ONE SIDE OF A STEP'S BILL OF MATERIALS — the control this whole screen was
+ * missing (§5.7).
  *
  * Before this, a step had one issue item and one receive item, so stitching could
  * not say it takes panels AND thread AND buttons, and cutting could not say it
  * returns panels AND offcuts. Both are the normal case, not an edge case.
  *
  * THE BADGE IS THE POINT, not decoration. On the input side it says whether the
- * item is fed by an earlier step or drawn from stock â the classification the
- * server stores as `fromStock` (Â§6.4) â and on the output side, which later steps
+ * item is fed by an earlier step or drawn from stock — the classification the
+ * server stores as `fromStock` (§6.4) — and on the output side, which later steps
  * take it. "Ends here" is a perfectly good answer: finished goods and offcuts
  * both stop at the godown. What it makes visible is the other case, an item
  * somebody MEANT to feed onward and mistyped, which is otherwise invisible until
  * the next step's batch picker turns up empty days later.
  *
  * Every control is a native `<input>`, a `<button>`, or `Select` (a button-based
- * combobox), so the whole list is reachable and operable from the keyboard â
+ * combobox), so the whole list is reachable and operable from the keyboard —
  * including Remove, which as a `<div onClick>` would be unreachable and nothing
  * would report it (CLAUDE.md).
  */
@@ -271,9 +291,13 @@ function ItemList({
   side,
   rows,
   onChange,
-  items,
+  orgId,
+  itemById,
+  onItemPicked,
   itemUnit,
+  unitOfItem,
   uomOptions,
+  portalMenus,
   showQty,
   showTolerance,
   stepTolerancePct,
@@ -294,14 +318,14 @@ function ItemList({
     onChange(rows.map((row, i) => (i === rowIndex ? { ...row, ...patch } : row)));
 
   /**
-   * ð´ SAME AS CONSUMED â a copy, not a live mirror.
+   * 🔴 SAME AS CONSUMED — a copy, not a live mirror.
    *
    * Ticking writes the CONSUMES rows into PRODUCES as ordinary rows: every one
    * of them stays editable, deletable, and free to carry a different expected
    * quantity, because "returns what it took" is where a step STARTS, not what it
    * is bound to. A live mirror would have to fight every one of those edits.
    *
-   * The box is therefore not state of its own â it is checked when PRODUCES
+   * The box is therefore not state of its own — it is checked when PRODUCES
    * already lists exactly the items CONSUMES does, in the same order. Change an
    * item and it unticks itself, which is the truth; change a quantity and it
    * stays ticked, because the same items still come back.
@@ -320,7 +344,7 @@ function ItemList({
             ...emptyStepItem(),
             itemId: row.itemId,
             uomId: row.uomId ?? null,
-            // What went in is what is expected back â the starting number, not a
+            // What went in is what is expected back — the starting number, not a
             // rule. Only on a job order: a route has no quantities at all.
             expectedQty: showQty ? (row.plannedQty ?? null) : null,
           })),
@@ -343,7 +367,7 @@ function ItemList({
         </span>
 
         {/* A native checkbox inside its label: focusable, toggled with Space,
-            and disabled-aware for free â none of which a styled div would be. */}
+            and disabled-aware for free — none of which a styled div would be. */}
         {!isInput && mirrorSource && (
           <label
             style={{
@@ -375,8 +399,8 @@ function ItemList({
       </div>
 
       <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {/* ð´ An empty list means an empty list. Nothing is added behind your
-            back â what these rows say is exactly what is written. */}
+        {/* 🔴 An empty list means an empty list. Nothing is added behind your
+            back — what these rows say is exactly what is written. */}
         {rows.length === 0 && (
           <p style={{ fontSize: 11, color: '#94a3b8', margin: 0, lineHeight: 1.5 }}>{emptyHint}</p>
         )}
@@ -386,7 +410,7 @@ function ItemList({
           const unit = itemUnit(row.itemId);
           const badge = badgeFor(row, rowIndex);
           // Advisory, so it never blocks the button and never colours the box the
-          // way `rowError` does â this is a remark, not a rejection (Â§6.4.0).
+          // way `rowError` does — this is a remark, not a rejection (§6.4.0).
           const warning = warningFor?.(row) ?? null;
           // What the server stores if the box is left blank. `null` means it
           // stores nothing either, and the box is genuinely asking.
@@ -395,34 +419,46 @@ function ItemList({
           return (
             <div key={rowIndex} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {/* 🔴 A SEARCHING PICKER, not a dropdown of every item in the org.
+                    A plain `Select` had to be handed the whole catalogue up front,
+                    which is one long request before the form is usable and an
+                    unscrollable list once an org passes a few hundred items. This
+                    fetches ten at a time, appends the next ten as the list is
+                    scrolled, and searches the server from the third character —
+                    below that there is nothing to narrow and every item matches. */}
                 <div style={{ flex: '2 1 150px', minWidth: 0 }}>
-                  <Select
-                    value={row.itemId || ''}
-                    /* ð´ The unit comes WITH the item (Â§5.1). Picking one carries
+                  <ItemComboBox
+                    orgId={orgId}
+                    value={row.itemId || null}
+                    initialItem={row.itemId ? (itemById.get(row.itemId) ?? null) : null}
+                    /* 🔴 The unit comes WITH the item (§5.1). Picking one carries
                        its stocking unit onto the row, so what is saved is what the
                        box shows instead of a null the server fills in later; an
                        item with no stocking unit clears it back to the dropdown,
                        because the previous item's unit is not this item's. */
-                    onChange={(value) =>
-                      update(rowIndex, { itemId: value, uomId: itemUnit(value)?.uomId ?? null })
-                    }
-                    options={[
-                      { value: '', label: 'Select an itemâ¦' },
-                      ...items.map((i) => ({ value: i.id, label: i.name })),
-                    ]}
+                    onChange={(item) => {
+                      if (item) onItemPicked(item);
+                      update(rowIndex, {
+                        itemId: item?.id ?? '',
+                        uomId: item ? unitOfItem(item) : null,
+                      });
+                    }}
+                    placeholder="Select an item…"
+                    hasError={Boolean(rowError)}
                     disabled={disabled}
+                    portal={portalMenus}
+                    name={`step-${stepIndex}-${side}-${rowIndex}-item`}
                     ariaLabel={`Step ${stepNumber} ${isInput ? 'input' : 'output'} ${rowIndex + 1} item`}
-                    minWidth={0}
                   />
                 </div>
 
-                {/* One item, one stocking unit (Â§5.1) â so this is a fact, not a
+                {/* One item, one stocking unit (§5.1) — so this is a fact, not a
                     choice, wherever the item can answer. */}
                 <div style={{ flex: '0 0 62px' }}>
                   {unit ? (
                     <div
                       style={{ ...cellReadOnly, justifyContent: 'center' }}
-                      title="The itemâs stocking unit"
+                      title="The item’s stocking unit"
                     >
                       {unit.label}
                     </div>
@@ -434,13 +470,14 @@ function ItemList({
                       disabled={disabled}
                       ariaLabel={`Step ${stepNumber} ${isInput ? 'input' : 'output'} ${rowIndex + 1} unit`}
                       minWidth={0}
+                      portal={portalMenus}
                     />
                   )}
                 </div>
 
-                {/* ð´ THE PER-ITEM QUANTITY. 2,910 PCS of panels, 12 CONE of
-                    thread, 8,700 PCS of buttons â three numbers, because their
-                    sum is 11,622 of nothing (Â§6.5). */}
+                {/* 🔴 THE PER-ITEM QUANTITY. 2,910 PCS of panels, 12 CONE of
+                    thread, 8,700 PCS of buttons — three numbers, because their
+                    sum is 11,622 of nothing (§6.5). */}
                 {showQty && (
                   <div style={{ flex: '0 0 84px' }}>
                     <label htmlFor={qtyId} style={srOnly}>
@@ -458,11 +495,11 @@ function ItemList({
                         update(rowIndex, isInput ? { plannedQty: value } : { expectedQty: value });
                       }}
                       disabled={disabled}
-                      /* ð´ Grey, never written into the row. It says what the
+                      /* 🔴 Grey, never written into the row. It says what the
                          server will store if this is left blank, so an empty box
                          stops reading as "expect nothing". No placeholder means
                          the server stores nothing either and the box is genuinely
-                         asking â see `derivedExpectedQty`. */
+                         asking — see `derivedExpectedQty`. */
                       placeholder={
                         derivedQty !== null ? formatQty(derivedQty) : isInput ? 'qty' : 'expected'
                       }
@@ -470,15 +507,15 @@ function ItemList({
                         isInput
                           ? 'How much of this item the step consumes'
                           : derivedQty !== null
-                            ? `How much of this item is expected back. Left blank it plans ${formatQty(derivedQty)} â the quantity that goes in.`
-                            : 'How much of this item is expected back. It returns in a different unit from what goes in, so nothing can be assumed â state it, or the next step has no quantity to plan from.'
+                            ? `How much of this item is expected back. Left blank it plans ${formatQty(derivedQty)} — the quantity that goes in.`
+                            : 'How much of this item is expected back. It returns in a different unit from what goes in, so nothing can be assumed — state it, or the next step has no quantity to plan from.'
                       }
                       style={cellInput}
                     />
                   </div>
                 )}
 
-                {/* Blank means "use the step's" â fabric at 3% beside thread at
+                {/* Blank means "use the step's" — fabric at 3% beside thread at
                     25%, because small quantities vary more. */}
                 {showTolerance && isInput && (
                   <div style={{ flex: '0 0 66px' }}>
@@ -500,21 +537,21 @@ function ItemList({
                       }
                       disabled={disabled}
                       /* The step's own figure, greyed. Blank here means "use the
-                         step's", and an empty box reads as "no tolerance" â the
+                         step's", and an empty box reads as "no tolerance" — the
                          opposite of what it does. */
                       placeholder={stepTolerancePct != null ? String(stepTolerancePct) : 'tol %'}
                       title={
                         stepTolerancePct != null
-                          ? `Over-issue allowance for this item. Left blank it uses the stepâs ${stepTolerancePct}%.`
-                          : 'Over-issue allowance for this item. Blank uses the stepâs, and the step has none set.'
+                          ? `Over-issue allowance for this item. Left blank it uses the step’s ${stepTolerancePct}%.`
+                          : 'Over-issue allowance for this item. Blank uses the step’s, and the step has none set.'
                       }
                       style={cellInput}
                     />
                   </div>
                 )}
 
-                {/* ð´ No "Main" radio. One output absorbs the step's cost
-                    (Â§9.2.1) and it is the FIRST row â the server's own fallback
+                {/* 🔴 No "Main" radio. One output absorbs the step's cost
+                    (§9.2.1) and it is the FIRST row — the server's own fallback
                     (`flagPrimaryOutput`), mirrored client-side by
                     `primaryOutputIndex` so the chain badge says the same thing.
                     Asking decided nothing in the common case, one item back, and
@@ -553,8 +590,8 @@ function ItemList({
                 )}
 
                 {/*
-                  ð´ THE PLANNER'S BATCH NOTE. Only for a batch-tracked item, and
-                  only once a quantity exists â there is nothing to allocate against
+                  🔴 THE PLANNER'S BATCH NOTE. Only for a batch-tracked item, and
+                  only once a quantity exists — there is nothing to allocate against
                   a blank, and the grid pre-fills each batch from it.
 
                   A note, not a hold: nothing is reserved, so this never claims the
@@ -569,7 +606,7 @@ function ItemList({
                     title={
                       row.plannedQty && row.plannedQty > 0
                         ? 'Note which batches this is planned to come out of. Nothing is reserved.'
-                        : 'Enter a quantity first â batches are planned against it.'
+                        : 'Enter a quantity first — batches are planned against it.'
                     }
                     style={{
                       padding: 0,
@@ -630,25 +667,25 @@ function ItemList({
 /**
  * The sequence of operations, as an editable list.
  *
- * ð´ ONE STEP IS A BLOCK ON THE PAGE, NOT A ROW IN A TABLE. Thirteen controls in
+ * 🔴 ONE STEP IS A BLOCK ON THE PAGE, NOT A ROW IN A TABLE. Thirteen controls in
  * one table row need ~1,120px, so the grid used to live in a horizontal scroller:
  * everything past "Issue item" was off-screen, and a field you cannot see is a
  * field nobody fills in. Laid out as a wrapping block per step, the same thirteen
  * controls fit whatever width the window is, and every one of them carries its
  * caption right above it instead of in a header row that scrolls away.
  *
- * ð´ REORDERING IS BUTTONS, NOT DRAG-AND-DROP, AND THAT IS DELIBERATE.
+ * 🔴 REORDERING IS BUTTONS, NOT DRAG-AND-DROP, AND THAT IS DELIBERATE.
  *
  * The plan asks for a drag-orderable grid. A drag handle is a `<div>` with mouse
  * handlers: Tab walks straight past it, so on a keyboard the order simply cannot
- * be changed â and neither `tsc -b` nor a screenshot says a word (CLAUDE.md).
+ * be changed — and neither `tsc -b` nor a screenshot says a word (CLAUDE.md).
  * Two `<button>`s per row give the same capability to everyone, cost one click
  * instead of one drag, and work on a phone. If drag is added later it must be an
  * ADDITION to these, never a replacement.
  *
- * ð´ DOM ORDER IS TAB ORDER, and it is why the fields are ONE flat `auto-fit`
+ * 🔴 DOM ORDER IS TAB ORDER, and it is why the fields are ONE flat `auto-fit`
  * grid per step rather than columns of stacked fields. `auto-fit` fills
- * left-to-right, row by row â the order someone reads and fills them in. A
+ * left-to-right, row by row — the order someone reads and fills them in. A
  * multi-column layout that assigns fields per column looks identical and tabs
  * top-to-bottom down each column instead, which nothing detects.
  */
@@ -665,10 +702,18 @@ export function StepsGrid<T extends StepGridRow>({
   priorProducers,
   priorSpare,
   lockedCount = 0,
+  portalMenus,
 }: Props<T>) {
   const { orgId } = useParams<{ orgId: string }>();
   const { data: uoms = [] } = useUoms(orgId!);
 
+  /**
+   * The items the rows ALREADY name, so a step loaded from the server can print
+   * its item's name, unit and tracking mode before anybody opens a picker.
+   *
+   * Not the picker's source any more — that fetches ten at a time and searches
+   * the server, so this no longer has to be every item in the org.
+   */
   const { data: itemsPage } = useQuery({
     queryKey: ['items', orgId, 'step-grid'],
     queryFn: () => itemsApi.getItems(orgId!, { perPage: 500 }),
@@ -676,16 +721,47 @@ export function StepsGrid<T extends StepGridRow>({
   });
   const items = itemsPage?.results ?? [];
 
+  /** Items chosen from a picker that this preload never covered. Without them a
+   * freshly picked item has no unit and no tracking mode until a refetch. */
+  const [pickedItems, setPickedItems] = useState<Record<string, Item>>({});
+  const registerItem = (item: Item) =>
+    setPickedItems((current) => (current[item.id] ? current : { ...current, [item.id]: item }));
+
+  /** Every item this grid can name — preloaded or picked. */
+  const itemById = new Map<string, Item>([
+    ...items.map((i) => [i.id, i] as const),
+    ...Object.entries(pickedItems),
+  ]);
+  const uomById = new Map(uoms.map((u) => [u.id, u]));
+
+  /**
+   * An item's stocking unit — the id a row carries and the label it prints.
+   * `null` means the item cannot answer (no stocking uom yet), and the caller
+   * then shows the dropdown, which is exactly what the server does
+   * (`applyRowUnits` leaves such a row's unit null too).
+   */
+  const unitOfItem = (item: Item): { uomId: string; label: string } | null => {
+    if (!item.stockingUomId) return null;
+    const uom = uomById.get(item.stockingUomId);
+    return uom ? { uomId: uom.id, label: uom.symbol || uom.unitName } : null;
+  };
+
+  const itemUnit = (itemId: string | null | undefined): { uomId: string; label: string } | null => {
+    if (!itemId) return null;
+    const item = itemById.get(itemId);
+    return item ? unitOfItem(item) : null;
+  };
+
   const { data: vendorsPage } = useQuery({
     queryKey: ['vendors', orgId, 'processors'],
     queryFn: () => fetchVendors(orgId!, { perPage: 500 }),
     enabled: Boolean(orgId),
   });
   /**
-   * ð´ Job workers only. An unfiltered vendor dropdown offers transporters as
+   * 🔴 Job workers only. An unfiltered vendor dropdown offers transporters as
    * processors, which is the single most common defect on this kind of screen
-   * (Â§10). `vendorTypes` is empty on every row created before that column
-   * existed, so those are shown too rather than hiding a vendor somebody needs â
+   * (§10). `vendorTypes` is empty on every row created before that column
+   * existed, so those are shown too rather than hiding a vendor somebody needs —
    * "not yet classified" is not "not a jobworker".
    */
   const processors = (vendorsPage?.results ?? []).filter(
@@ -705,7 +781,7 @@ export function StepsGrid<T extends StepGridRow>({
   /**
    * Which input row has the planner's batch grid open. Null when it is closed.
    * Held HERE rather than in `ItemList` because saving writes back through
-   * `update(stepIndex, â¦)`, which only this component owns.
+   * `update(stepIndex, …)`, which only this component owns.
    */
   const [planning, setPlanning] = useState<{ stepIndex: number; rowIndex: number } | null>(null);
   const [planSearch, setPlanSearch] = useState('');
@@ -719,20 +795,20 @@ export function StepsGrid<T extends StepGridRow>({
   const planningRow = planning
     ? ((steps[planning.stepIndex]?.inputs ?? [])[planning.rowIndex] ?? null)
     : null;
-  const planningItem = items.find((i) => i.id === planningRow?.itemId) ?? null;
+  const planningItem = planningRow?.itemId ? (itemById.get(planningRow.itemId) ?? null) : null;
 
-  /** Only a batch-tracked item gets the affordance â an untracked item's batches
+  /** Only a batch-tracked item gets the affordance — an untracked item's batches
    * carry no reference and are not meant to be identified (2026-08-14). */
   const isBatchTracked = (itemId: string | null | undefined) =>
-    Boolean(itemId) && items.find((i) => i.id === itemId)?.inventoryTracking === 'batch';
+    Boolean(itemId) && itemById.get(itemId!)?.inventoryTracking === 'batch';
 
   /**
-   * ð´ NO LOCATION FILTER, unlike the Issue dialog's identical query.
+   * 🔴 NO LOCATION FILTER, unlike the Issue dialog's identical query.
    *
-   * A job order has no source godown â nothing is going anywhere yet â so the plan
+   * A job order has no source godown — nothing is going anywhere yet — so the plan
    * may name a batch in any of them, and each row records the godown it chose
    * (`JobOrderStepInputBatch.locationId`). `ownership` stays mandatory: one
-   * customer's goods must never be planned into another's order (Â§5.2).
+   * customer's goods must never be planned into another's order (§5.2).
    */
   const { data: planningBatches = [], isLoading: planningBatchesLoading } = useQuery({
     queryKey: [
@@ -766,34 +842,17 @@ export function StepsGrid<T extends StepGridRow>({
   };
 
   const uomOptions = [
-    { value: '', label: 'â' },
+    { value: '', label: '—' },
     ...uoms.map((u) => ({ value: u.id, label: u.symbol || u.unitName })),
   ];
-
-  const itemById = new Map(items.map((i) => [i.id, i]));
-  const uomById = new Map(uoms.map((u) => [u.id, u]));
-
-  /**
-   * An item's stocking unit â the id a row carries and the label it prints.
-   * `null` means the item cannot answer (no stocking uom yet), and the caller
-   * then shows the dropdown, which is exactly what the server does
-   * (`applyRowUnits` leaves such a row's unit null too).
-   */
-  const itemUnit = (itemId: string | null | undefined): { uomId: string; label: string } | null => {
-    if (!itemId) return null;
-    const stockingUomId = itemById.get(itemId)?.stockingUomId;
-    if (!stockingUomId) return null;
-    const uom = uomById.get(stockingUomId);
-    return uom ? { uomId: uom.id, label: uom.symbol || uom.unitName } : null;
-  };
 
   return (
     <div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {steps.map((step, index) => {
           /**
-           * A server error on either list is keyed to the row it landed on â
-           * over-planned quantity (Â§6.4), a repeated item, two primary outputs.
+           * A server error on either list is keyed to the row it landed on —
+           * over-planned quantity (§6.4), a repeated item, two primary outputs.
            * Anything on this step turns the whole block red, so the step is
            * findable before the row is.
            */
@@ -802,15 +861,15 @@ export function StepsGrid<T extends StepGridRow>({
               key.startsWith(`steps.${index}.inputs`) || key.startsWith(`steps.${index}.outputs`),
           )?.[1];
           const field = (id: string) => `step-${index}-${id}`;
-          // Position in the order, not in this array â they differ when appending.
+          // Position in the order, not in this array — they differ when appending.
           const stepNo = index + 1 + seqOffset;
-          // Frozen: work has already gone out at or after this position (Â§6.6).
+          // Frozen: work has already gone out at or after this position (§6.6).
           const locked = index < lockedCount;
           const readOnly = disabled || locked;
 
           /**
            * A step that lists no inputs of its own takes what the step above
-           * produces â the server's own fallback (`resolveStepRows`). Shown as a
+           * produces — the server's own fallback (`resolveStepRows`). Shown as a
            * stated fact rather than a pre-filled row, so that adding a row is a
            * deliberate act of overriding it.
            */
@@ -848,7 +907,7 @@ export function StepsGrid<T extends StepGridRow>({
                       with no explanation, reads as a bug in the form. */}
                   {locked && (
                     <span style={{ ...chipStyle, background: '#f1f5f9', color: '#475569' }}>
-                      Already sent out â locked
+                      Already sent out — locked
                     </span>
                   )}
                 </span>
@@ -861,7 +920,7 @@ export function StepsGrid<T extends StepGridRow>({
                     onClick={() => move(index, -1)}
                     disabled={disabled || index === 0 || index <= lockedCount}
                     title={
-                      index <= lockedCount && index > 0 ? 'Locked â already sent out' : 'Move up'
+                      index <= lockedCount && index > 0 ? 'Locked — already sent out' : 'Move up'
                     }
                     aria-label={`Move step ${stepNo} up`}
                     style={{
@@ -875,7 +934,7 @@ export function StepsGrid<T extends StepGridRow>({
                     type="button"
                     onClick={() => move(index, 1)}
                     disabled={readOnly || index === steps.length - 1}
-                    title={locked ? 'Locked â already sent out' : 'Move down'}
+                    title={locked ? 'Locked — already sent out' : 'Move down'}
                     aria-label={`Move step ${stepNo} down`}
                     style={{
                       ...iconButton,
@@ -888,7 +947,7 @@ export function StepsGrid<T extends StepGridRow>({
                     type="button"
                     onClick={() => onChange(steps.filter((_, i) => i !== index))}
                     disabled={readOnly || steps.length === 1}
-                    title={locked ? 'Locked â already sent out' : 'Remove step'}
+                    title={locked ? 'Locked — already sent out' : 'Remove step'}
                     aria-label={`Remove step ${stepNo}`}
                     style={{ ...iconButton, opacity: locked || steps.length === 1 ? 0.4 : 1 }}
                   >
@@ -913,9 +972,9 @@ export function StepsGrid<T extends StepGridRow>({
                       update(index, {
                         processId,
                         /**
-                         * ð´ Seeded HERE, visibly, rather than mirrored by the
+                         * 🔴 Seeded HERE, visibly, rather than mirrored by the
                          * server at save. A process that does not change the item
-                         * returns what it took â so the row is put in where
+                         * returns what it took — so the row is put in where
                          * somebody can see it, change it, or delete it. Only when
                          * PRODUCES is still empty: an existing list is the user's
                          * and is never rewritten by a process change.
@@ -933,7 +992,7 @@ export function StepsGrid<T extends StepGridRow>({
                               ]
                             : step.outputs,
                         // The process master is the first link of the default
-                        // chain (Â§2.5). Only blanks are filled â anything the
+                        // chain (§2.5). Only blanks are filled — anything the
                         // user already typed stays.
                         rateBasis: step.rateBasis ?? process.rateBasis,
                         tolerancePct:
@@ -943,7 +1002,7 @@ export function StepsGrid<T extends StepGridRow>({
                             : Number(process.defaultTolerancePct)),
                         // The process's default units are NOT copied down any
                         // more: each row takes its own item's stocking unit
-                        // (Â§5.1), and an org-wide "issue in KG" is a statement
+                        // (§5.1), and an org-wide "issue in KG" is a statement
                         // about the thing being processed, not about the thread
                         // and buttons going out beside it. The server applies it
                         // to the principal row alone, where the item cannot
@@ -953,6 +1012,7 @@ export function StepsGrid<T extends StepGridRow>({
                     disabled={readOnly}
                     ariaLabel={`Step ${stepNo} process`}
                     minWidth="100%"
+                    portal={portalMenus}
                   />
                 </div>
 
@@ -976,6 +1036,7 @@ export function StepsGrid<T extends StepGridRow>({
                     disabled={readOnly}
                     ariaLabel={`Step ${stepNo} performed by`}
                     minWidth={0}
+                    portal={portalMenus}
                   />
                 </div>
 
@@ -988,12 +1049,13 @@ export function StepsGrid<T extends StepGridRow>({
                       value={step.workCentreLocationId ?? ''}
                       onChange={(value) => update(index, { workCentreLocationId: value || null })}
                       options={[
-                        { value: '', label: 'Select a work centreâ¦' },
+                        { value: '', label: 'Select a work centre…' },
                         ...workCentres.map((l) => ({ value: l.id, label: l.name })),
                       ]}
                       disabled={readOnly}
                       ariaLabel={`Step ${stepNo} work centre`}
                       minWidth={0}
+                      portal={portalMenus}
                     />
                   ) : (
                     <Select
@@ -1009,14 +1071,15 @@ export function StepsGrid<T extends StepGridRow>({
                       disabled={readOnly}
                       ariaLabel={`Step ${stepNo} processor`}
                       minWidth={0}
+                      portal={portalMenus}
                     />
                   )}
                 </div>
 
-                {/* ð´ No step-level "Planned qty" and no "Yield".
-                    Planned quantity is per item now â it lives on each row of
+                {/* 🔴 No step-level "Planned qty" and no "Yield".
+                    Planned quantity is per item now — it lives on each row of
                     CONSUMES below, because one number cannot cover metres, cones
-                    and pieces at once (Â§5.7). Yield is gone with it: one ratio
+                    and pieces at once (§5.7). Yield is gone with it: one ratio
                     cannot relate three inputs to two outputs, and every output
                     already carries the quantity it is expected to return, which
                     says the same thing without implying a conversion. */}
@@ -1049,12 +1112,13 @@ export function StepsGrid<T extends StepGridRow>({
                     disabled={readOnly}
                     ariaLabel={`Step ${stepNo} rate basis`}
                     minWidth={0}
+                    portal={portalMenus}
                   />
                 </div>
 
                 <div>
                   <label style={fieldLabel} htmlFor={field('tolerance')}>
-                    Tolerance % â all items
+                    Tolerance % — all items
                   </label>
                   <input
                     id={field('tolerance')}
@@ -1077,12 +1141,12 @@ export function StepsGrid<T extends StepGridRow>({
               </div>
 
               {/*
-                ð´ THE TWO LISTS (Â§5.7). A step consumes a SET and produces a
+                🔴 THE TWO LISTS (§5.7). A step consumes a SET and produces a
                 SET, and the two are independent: seven items in and one out is
                 as normal as one in and ten out. They are laid out one above the
                 other rather than side by side because each row is itself three
                 or four controls wide, and columns would put half of them into a
-                horizontal scroller â where a field nobody can see is a field
+                horizontal scroller — where a field nobody can see is a field
                 nobody fills in.
               */}
               <div
@@ -1103,9 +1167,13 @@ export function StepsGrid<T extends StepGridRow>({
                       : undefined
                   }
                   isBatchTracked={isBatchTracked}
-                  items={items}
+                  orgId={orgId!}
+                  itemById={itemById}
+                  onItemPicked={registerItem}
                   itemUnit={itemUnit}
+                  unitOfItem={(item) => unitOfItem(item)?.uomId ?? null}
                   uomOptions={uomOptions}
+                  portalMenus={portalMenus}
                   showQty={showPlannedQty || showInputQty}
                   showTolerance={showPlannedQty}
                   stepTolerancePct={step.tolerancePct ?? null}
@@ -1114,15 +1182,15 @@ export function StepsGrid<T extends StepGridRow>({
                   stepNumber={stepNo}
                   errors={errors}
                   /* Step 1's row for the order's item is a REAL row, locked to
-                     that item but carrying its own quantity â see `lockedItemId`.
+                     that item but carrying its own quantity — see `lockedItemId`.
                      The only thing still shown as a bare fact is a later step
                      that lists nothing and simply takes what the step above
                      produces, where there is no quantity to type: the server
                      plans it from that step's expected output. */
                   emptyHint={
                     previousPrimaryLabel
-                      ? `Nothing listed â this step will consume nothing. Add ${previousPrimaryLabel} if it carries on from step ${stepNo - 1}.`
-                      : 'Nothing listed â this step will consume nothing.'
+                      ? `Nothing listed — this step will consume nothing. Add ${previousPrimaryLabel} if it carries on from step ${stepNo - 1}.`
+                      : 'Nothing listed — this step will consume nothing.'
                   }
                   /* Job orders only. A route holds quantities on the consumed
                      side alone, so there is no expected output above to measure
@@ -1135,7 +1203,7 @@ export function StepsGrid<T extends StepGridRow>({
                   badgeFor={(row) => {
                     if (!row.itemId) return null;
                     // Steps in this array first, then the ones already on the
-                    // order â otherwise appending labels a chain-fed input "From
+                    // order — otherwise appending labels a chain-fed input "From
                     // stock", which is the mistake the badge exists to catch.
                     const within = producedByStep(steps, index, row.itemId);
                     const from = within === null ? null : within + seqOffset;
@@ -1150,9 +1218,13 @@ export function StepsGrid<T extends StepGridRow>({
                   side="outputs"
                   rows={step.outputs ?? []}
                   onChange={(rows) => update(index, { outputs: rows })}
-                  items={items}
+                  orgId={orgId!}
+                  itemById={itemById}
+                  onItemPicked={registerItem}
                   itemUnit={itemUnit}
+                  unitOfItem={(item) => unitOfItem(item)?.uomId ?? null}
                   uomOptions={uomOptions}
+                  portalMenus={portalMenus}
                   mirrorSource={step.inputs ?? []}
                   showQty={showPlannedQty}
                   /* Job orders only. A route holds no output quantities at all,
@@ -1167,10 +1239,10 @@ export function StepsGrid<T extends StepGridRow>({
                   stepIndex={index}
                   stepNumber={stepNo}
                   errors={errors}
-                  emptyHint="Nothing listed â this step will produce nothing, and nothing can be received against it. Add what comes back, even if it is the same item that went in."
+                  emptyHint="Nothing listed — this step will produce nothing, and nothing can be received against it. Add what comes back, even if it is the same item that went in."
                   badgeFor={(row, rowIndex) => {
                     if (!row.itemId) return null;
-                    // Which row is the main output is derived now, not ticked â
+                    // Which row is the main output is derived now, not ticked —
                     // read it the way the server will, or the badge tells the
                     // next step's inputs a different story than the save does.
                     const outputs = step.outputs ?? [];
@@ -1193,7 +1265,7 @@ export function StepsGrid<T extends StepGridRow>({
 
       {/*
         Mounted only while open and keyed on the row, because `AddBatchesModal`
-        seeds its grid once on mount â a shared instance would show one row's
+        seeds its grid once on mount — a shared instance would show one row's
         allocation against another row's item.
       */}
       {planning && planningRow?.itemId && (
@@ -1202,14 +1274,14 @@ export function StepsGrid<T extends StepGridRow>({
           isOpen
           onClose={() => {
             setPlanning(null);
-            // The search is a parameter of the availability query â left behind it
+            // The search is a parameter of the availability query — left behind it
             // would narrow the next row's grid to whatever was last typed.
             setPlanSearch('');
           }}
           itemName={planningItem?.name ?? 'Item'}
           sku={planningItem?.sku ?? null}
           uomLabel={itemUnit(planningRow.itemId)?.label ?? ''}
-          /* ð´ Null â a plan has no source godown, so the grid spans every one and
+          /* 🔴 Null — a plan has no source godown, so the grid spans every one and
              names each batch's own. See the prop's note. */
           locationName={null}
           plannedQty={planningRow.plannedQty ?? null}
@@ -1220,7 +1292,7 @@ export function StepsGrid<T extends StepGridRow>({
                 (b) => b.batchId === planned.batchId && b.locationId === planned.locationId,
               );
               // A batch that has since been consumed is no longer offered, so there
-              // is nothing to render or check a quantity against â the row drops
+              // is nothing to render or check a quantity against — the row drops
               // and the user re-picks. Silently keeping it would show a plan
               // against stock that no longer exists.
               return batch ? [[rowKey(batch), { batch, qty: planned.qty }] as const] : [];
@@ -1250,9 +1322,9 @@ export function StepsGrid<T extends StepGridRow>({
       )}
 
       {/*
-        ð´ The new step is SEEDED, not inferred. Carrying on from the step above
-        is the normal case, so its main output is put in as a real row â visible,
-        editable, and deletable â rather than left to the server to add on save.
+        🔴 The new step is SEEDED, not inferred. Carrying on from the step above
+        is the normal case, so its main output is put in as a real row — visible,
+        editable, and deletable — rather than left to the server to add on save.
         Nothing about the row is special once it is there.
       */}
       <button

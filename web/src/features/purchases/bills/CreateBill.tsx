@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { useEffect, useState } from 'react';
-import { useForm, useFieldArray, useWatch } from 'react-hook-form';
+import { useForm, useFieldArray, useWatch, Controller } from 'react-hook-form';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AxiosError } from 'axios';
 import {
@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MultiSelectItemModal } from '../../items/components/MultiSelectItemModal';
+import { DateInput } from '../../../components/ui/DateInput';
 import { ItemComboBox } from '../../../components/ui/ItemComboBox';
 import { Select } from '../../../components/ui/Select';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
@@ -226,9 +227,7 @@ export function CreateBill() {
           : existingPo.billDate
             ? new Date(existingPo.billDate).toISOString().split('T')[0]
             : new Date().toISOString().split('T')[0],
-        dueDate: existingPo.dueDate
-          ? new Date(existingPo.dueDate).toISOString().split('T')[0]
-          : '',
+        dueDate: existingPo.dueDate ? new Date(existingPo.dueDate).toISOString().split('T')[0] : '',
         deliveryType: existingPo.deliveryType || 'Location',
         deliveryLocationId: existingPo.deliveryLocationId || '',
         deliveryCustomerId: existingPo.deliveryCustomerId || '',
@@ -748,19 +747,23 @@ export function CreateBill() {
 
             <label style={{ ...labelStyle, color: '#ef4444' }}>Date*</label>
             <div style={{ position: 'relative', width: '100%', maxWidth: '440px' }}>
-              <input
-                type="date"
-                {...register('billDate', {
-                  required: 'Date is required',
-                  onChange: () => {
-                    if (watch('dueDate')) {
-                      trigger('dueDate');
-                    }
-                  },
-                })}
-                className="date-input-no-icon"
-                onClick={(e) => (e.target as HTMLInputElement).showPicker()}
-                style={{ ...inputStyle, maxWidth: '100%' }}
+              <Controller
+                name="billDate"
+                control={control}
+                rules={{ required: 'Date is required' }}
+                render={({ field }) => (
+                  <DateInput
+                    value={field.value ?? ''}
+                    onChange={(next) => {
+                      field.onChange(next);
+                      // Delivery date is validated against this one, so it has to
+                      // be re-checked whenever this moves.
+                      if (watch('dueDate')) trigger('dueDate');
+                    }}
+                    ariaLabel="Bill date"
+                    style={{ ...inputStyle, maxWidth: '100%' }}
+                  />
+                )}
               />
             </div>
 
@@ -782,18 +785,24 @@ export function CreateBill() {
 
             <label style={labelStyle}>Delivery Date</label>
             <div style={{ position: 'relative', width: '100%', maxWidth: '440px' }}>
-              <input
-                type="date"
-                min={watchPoDate}
-                {...register('dueDate', {
+              <Controller
+                name="dueDate"
+                control={control}
+                rules={{
                   validate: (val) => {
                     if (!val || !watchPoDate) return true;
                     return val >= watchPoDate || 'Delivery date must be on or after Bill Date';
                   },
-                })}
-                className="date-input-no-icon"
-                onClick={(e) => (e.target as HTMLInputElement).showPicker()}
-                style={{ ...inputStyle, maxWidth: '100%' }}
+                }}
+                render={({ field }) => (
+                  <DateInput
+                    value={field.value ?? ''}
+                    onChange={field.onChange}
+                    min={watchPoDate}
+                    ariaLabel="Delivery date"
+                    style={{ ...inputStyle, maxWidth: '100%' }}
+                  />
+                )}
               />
               {errors.dueDate && (
                 <div style={{ color: '#e54d4d', fontSize: '12px', marginTop: '4px' }}>
@@ -1733,10 +1742,7 @@ export function CreateBill() {
               setValue(`lineItems.${targetIndex}.rate`, rate as unknown as number);
               setValue(`lineItems.${targetIndex}.quantity`, qty as unknown as number);
               setValue(`lineItems.${targetIndex}.discountValue`, disc as unknown as number);
-              setValue(
-                `lineItems.${targetIndex}.discountType`,
-                item._discountType ?? 'percentage',
-              );
+              setValue(`lineItems.${targetIndex}.discountType`, item._discountType ?? 'percentage');
               setValue(
                 `lineItems.${targetIndex}.description`,
                 item.purchaseDescription ||
@@ -1805,17 +1811,13 @@ export function CreateBill() {
               manufacturedDate: b.manufacturedDate ? String(b.manufacturedDate) : undefined,
               expiryDate: b.expiryDate ? String(b.expiryDate) : undefined,
             }));
-            setValue(
-              `lineItems.${batchModalIndex}.batches`,
-              mappedBatches as BillItem['batches'],
-              { shouldValidate: true },
-            );
+            setValue(`lineItems.${batchModalIndex}.batches`, mappedBatches as BillItem['batches'], {
+              shouldValidate: true,
+            });
             if (overwriteQty !== null) {
-              setValue(
-                `lineItems.${batchModalIndex}.quantity`,
-                overwriteQty as unknown as number,
-                { shouldValidate: true },
-              );
+              setValue(`lineItems.${batchModalIndex}.quantity`, overwriteQty as unknown as number, {
+                shouldValidate: true,
+              });
             }
           }}
         />

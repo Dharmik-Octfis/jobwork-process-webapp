@@ -1,4 +1,5 @@
 import type { CustomFieldDefinition } from './customFields.schemas';
+import { DateInput } from '../../components/ui/DateInput';
 import { Select } from '../../components/ui/Select';
 
 const inputStyle: React.CSSProperties = {
@@ -30,10 +31,13 @@ interface Props {
   value: unknown;
   onChange: (value: unknown) => void;
   error?: string;
+  /** Portal the date calendar out — see `DateInput`. Needed when this renders
+   * inside a `Modal` or any other clipping scroll container. */
+  portal?: boolean;
 }
 
 /** Renders exactly one control for a custom field, driven by its dataType. */
-export function CustomFieldInput({ def, value, onChange, error }: Props) {
+export function CustomFieldInput({ def, value, onChange, error, portal = false }: Props) {
   const options = def.config?.options ?? [];
 
   let control: React.ReactNode;
@@ -75,11 +79,13 @@ export function CustomFieldInput({ def, value, onChange, error }: Props) {
 
     case 'date':
       control = (
-        <input
-          type="date"
+        <DateInput
           value={(value as string) ?? ''}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={onChange}
+          ariaLabel={def.label}
           style={inputStyle}
+          containerStyle={{ maxWidth: 440 }}
+          portal={portal}
         />
       );
       break;

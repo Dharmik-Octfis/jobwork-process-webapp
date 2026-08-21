@@ -12,6 +12,10 @@ interface Props {
   disabled?: boolean;
   ariaLabel?: string;
   minWidth?: number | string;
+  /** Forwarded to `Select` — required wherever this sits inside a `Modal`, or the
+   * menu is clipped by the dialog's scrolling body. The create row is unaffected:
+   * it renders below the select, in the page, not inside the menu. */
+  portal?: boolean;
 }
 
 /**
@@ -43,7 +47,14 @@ interface Props {
  * Nothing in Sprint 1 uses this — routes and job orders, which consume it, ship
  * in Sprint 2.
  */
-export function ProcessSelect({ value, onChange, disabled, ariaLabel, minWidth = 260 }: Props) {
+export function ProcessSelect({
+  value,
+  onChange,
+  disabled,
+  ariaLabel,
+  minWidth = 260,
+  portal,
+}: Props) {
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
   const [isCreating, setIsCreating] = useState(false);
@@ -100,6 +111,7 @@ export function ProcessSelect({ value, onChange, disabled, ariaLabel, minWidth =
           disabled={disabled}
           ariaLabel={ariaLabel ?? 'Process'}
           minWidth={minWidth}
+          portal={portal}
           actionItem={
             <button
               type="button"

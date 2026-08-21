@@ -6,6 +6,7 @@ import { useForm, Controller, useWatch, type FieldErrors } from 'react-hook-form
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'react-hot-toast';
 
+import { DateInput } from '../../../components/ui/DateInput';
 import { Input } from '../../../components/ui/Input';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import { Select } from '../../../components/ui/Select';
@@ -376,12 +377,23 @@ export function CreateAssemblyPage() {
                 Assembled Date*
               </div>
               <div style={{ maxWidth: '400px' }}>
-                <Input
-                  type="date"
-                  label=""
-                  error={errors.assemblyDate?.message}
-                  {...form.register('assemblyDate')}
+                <Controller
+                  name="assemblyDate"
+                  control={control}
+                  render={({ field }) => (
+                    <DateInput
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      ariaLabel="Assembled date"
+                      hasError={Boolean(errors.assemblyDate)}
+                    />
+                  )}
                 />
+                {errors.assemblyDate && (
+                  <div style={{ color: '#e54d4d', fontSize: '12px', marginTop: '4px' }}>
+                    {errors.assemblyDate.message}
+                  </div>
+                )}
               </div>
 
               <div
@@ -553,7 +565,7 @@ export function CreateAssemblyPage() {
                     goodsComponents.map((comp) => {
                       const override = overrides[comp.id];
                       const baseQty = Number(qty) || 1;
-                      
+
                       let requiredPerUnitStr: string | number = Number(comp.qtyPerUnit);
                       let totalRequiredStr: string | number = requiredPerUnitStr * baseQty;
 
@@ -624,16 +636,23 @@ export function CreateAssemblyPage() {
                                 verticalAlign: 'top',
                               }}
                             >
-                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'flex-end',
+                                  gap: '4px',
+                                }}
+                              >
                                 <input
                                   type="number"
                                   step="any"
                                   min="0"
                                   value={requiredPerUnitStr}
                                   onChange={(e) => {
-                                    setOverrides(prev => ({
+                                    setOverrides((prev) => ({
                                       ...prev,
-                                      [comp.id]: { type: 'perUnit', value: e.target.value }
+                                      [comp.id]: { type: 'perUnit', value: e.target.value },
                                     }));
                                   }}
                                   style={{
@@ -642,7 +661,7 @@ export function CreateAssemblyPage() {
                                     border: '1px solid #cbd5e1',
                                     borderRadius: '4px',
                                     outline: 'none',
-                                    textAlign: 'right'
+                                    textAlign: 'right',
                                   }}
                                 />
                                 <div style={{ fontSize: '11px', color: '#64748b' }}>
@@ -658,16 +677,22 @@ export function CreateAssemblyPage() {
                                 verticalAlign: 'top',
                               }}
                             >
-                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'flex-end',
+                                }}
+                              >
                                 <input
                                   type="number"
                                   step="any"
                                   min="0"
                                   value={totalRequiredStr}
                                   onChange={(e) => {
-                                    setOverrides(prev => ({
+                                    setOverrides((prev) => ({
                                       ...prev,
-                                      [comp.id]: { type: 'total', value: e.target.value }
+                                      [comp.id]: { type: 'total', value: e.target.value },
                                     }));
                                   }}
                                   style={{
@@ -691,17 +716,21 @@ export function CreateAssemblyPage() {
                                       justifyContent: 'center',
                                       width: '90px', // aligns with input width
                                       position: 'relative',
-                                      cursor: 'pointer'
+                                      cursor: 'pointer',
                                     }}
                                     onMouseEnter={(e) => {
-                                      const tooltip = e.currentTarget.querySelector('.warning-tooltip') as HTMLElement;
+                                      const tooltip = e.currentTarget.querySelector(
+                                        '.warning-tooltip',
+                                      ) as HTMLElement;
                                       if (tooltip) {
                                         tooltip.style.visibility = 'visible';
                                         tooltip.style.opacity = '1';
                                       }
                                     }}
                                     onMouseLeave={(e) => {
-                                      const tooltip = e.currentTarget.querySelector('.warning-tooltip') as HTMLElement;
+                                      const tooltip = e.currentTarget.querySelector(
+                                        '.warning-tooltip',
+                                      ) as HTMLElement;
                                       if (tooltip) {
                                         tooltip.style.visibility = 'hidden';
                                         tooltip.style.opacity = '0';
@@ -730,11 +759,13 @@ export function CreateAssemblyPage() {
                                         fontSize: '12px',
                                         fontWeight: 400,
                                         zIndex: 50,
-                                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-                                        lineHeight: 1.4
+                                        boxShadow:
+                                          '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+                                        lineHeight: 1.4,
                                       }}
                                     >
-                                      The available stock for this item is less than the total quantity required for this assembly.
+                                      The available stock for this item is less than the total
+                                      quantity required for this assembly.
                                       <div
                                         style={{
                                           content: '""',
@@ -744,7 +775,8 @@ export function CreateAssemblyPage() {
                                           marginLeft: '-5px',
                                           borderWidth: '5px',
                                           borderStyle: 'solid',
-                                          borderColor: '#1e293b transparent transparent transparent',
+                                          borderColor:
+                                            '#1e293b transparent transparent transparent',
                                         }}
                                       />
                                     </div>

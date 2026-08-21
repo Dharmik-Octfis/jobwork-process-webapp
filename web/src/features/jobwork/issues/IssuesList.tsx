@@ -8,6 +8,7 @@ import { Pagination } from '../../../components/ui/Pagination';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { useListCount } from '../../../hooks/useListCount';
 import { useListSearch } from '../../../hooks/useListSearch';
+import { formatDate } from '../../../lib/formatDate';
 import {
   ISSUE_STATUS_META,
   formatQty,
@@ -73,7 +74,7 @@ function renderCell(issue: JobIssue, key: string): React.ReactNode {
       return issue.isRework ? `Rework #${issue.attemptNo}` : 'No';
     case 'issueDate':
     case 'createdAt':
-      return new Date(issue[key] as string).toLocaleDateString();
+      return formatDate(issue[key] as string);
     default: {
       const value = (issue as unknown as Record<string, unknown>)[key];
       if (value === null || value === undefined || value === '') return '-';

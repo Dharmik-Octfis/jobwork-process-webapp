@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
+import { DateInput } from '../../../components/ui/DateInput';
 import { Modal } from '../../../components/ui/Modal';
 import { Select } from '../../../components/ui/Select';
 import { blurOnWheel } from '../../../components/ui/blurOnWheel';
@@ -74,6 +75,19 @@ const lineTd: React.CSSProperties = {
   whiteSpace: 'nowrap',
   verticalAlign: 'top',
 };
+
+/* The Quantity cell holds a 32px-tall input; every other cell holds a ~19px line box,
+   and `verticalAlign: 'top'` lands the two at different heights — the input reads as
+   sitting below its own row. So each cell's FIRST line gets the input's height and
+   centres in it, giving the row one baseline across all six columns. Anything the
+   cell stacks underneath (badges, warnings) still flows below that band. */
+const lineCell: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  minHeight: 32,
+};
+
+const lineCellRight: React.CSSProperties = { ...lineCell, justifyContent: 'flex-end' };
 
 /** How many batches one picker asks for. The server caps at this too; the picker
  * says so when it hits the ceiling rather than showing a slice as if it were all. */
@@ -974,12 +988,12 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
             <label style={labelStyle} htmlFor="issue-date">
               Date
             </label>
-            <input
+            <DateInput
               id="issue-date"
-              type="date"
               value={issueDate}
-              onChange={(e) => setIssueDate(e.target.value)}
+              onChange={setIssueDate}
               style={inputStyle}
+              portal
             />
           </div>
 
@@ -1149,7 +1163,9 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                 return (
                   <tr key={input.itemId} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ ...lineTd, whiteSpace: 'normal' }}>
-                      <div style={{ fontWeight: 600, color: '#111' }}>{input.name}</div>
+                      <div style={{ ...lineCell, fontWeight: 600, color: '#111' }}>
+                        {input.name}
+                      </div>
                       <div
                         style={{
                           display: 'flex',
@@ -1262,7 +1278,9 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                     </td>
 
                     <td style={{ ...lineTd, textAlign: 'right', color: '#64748b' }}>
-                      {input.plannedQty === null ? '—' : formatQty(input.plannedQty)}
+                      <div style={lineCellRight}>
+                        {input.plannedQty === null ? '—' : formatQty(input.plannedQty)}
+                      </div>
                     </td>
 
                     <td
@@ -1272,7 +1290,9 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                         color: isEmptyHere ? '#b45309' : '#334155',
                       }}
                     >
-                      {query?.isLoading ? '…' : formatQty(available)}
+                      <div style={lineCellRight}>
+                        {query?.isLoading ? '…' : formatQty(available)}
+                      </div>
                     </td>
 
                     <td style={{ ...lineTd, textAlign: 'right' }}>
@@ -1345,36 +1365,42 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                       )}
                     </td>
 
-                    <td style={{ ...lineTd, color: '#64748b' }}>{input.uomLabel || '—'}</td>
+                    <td style={{ ...lineTd, color: '#64748b' }}>
+                      <div style={lineCell}>{input.uomLabel || '—'}</div>
+                    </td>
 
                     <td style={lineTd}>
                       {showUnstockedInput ? (
                         /* Untracked stock is allocated FIFO by the server, so there
                            is nothing to pick — saying so keeps the column meaningful
                            on every row rather than blank on half of them. */
-                        <span style={{ fontSize: 12, color: '#94a3b8' }}>Oldest stock first</span>
+                        <div style={{ ...lineCell, fontSize: 12, color: '#94a3b8' }}>
+                          Oldest stock first
+                        </div>
                       ) : (
                         <>
-                          <button
-                            type="button"
-                            onClick={() => openAddBatches(input.itemId)}
-                            disabled={isEmptyHere}
-                            style={{
-                              padding: 0,
-                              border: 'none',
-                              background: 'none',
-                              fontSize: 12.5,
-                              fontWeight: 500,
-                              textAlign: 'left',
-                              cursor: isEmptyHere ? 'not-allowed' : 'pointer',
-                              color: isEmptyHere ? '#cbd5e1' : '#0062ff',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {pickedBatchCount === 0
-                              ? 'Add Batches'
-                              : `${pickedBatchCount} ${pickedBatchCount === 1 ? 'batch' : 'batches'}`}
-                          </button>
+                          <div style={lineCell}>
+                            <button
+                              type="button"
+                              onClick={() => openAddBatches(input.itemId)}
+                              disabled={isEmptyHere}
+                              style={{
+                                padding: 0,
+                                border: 'none',
+                                background: 'none',
+                                fontSize: 12.5,
+                                fontWeight: 500,
+                                textAlign: 'left',
+                                cursor: isEmptyHere ? 'not-allowed' : 'pointer',
+                                color: isEmptyHere ? '#cbd5e1' : '#0062ff',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {pickedBatchCount === 0
+                                ? 'Add Batches'
+                                : `${pickedBatchCount} ${pickedBatchCount === 1 ? 'batch' : 'batches'}`}
+                            </button>
+                          </div>
 
                           {/* Why this line is holding the challan up, next to the
                               control that fixes it. Blocking silently and greying

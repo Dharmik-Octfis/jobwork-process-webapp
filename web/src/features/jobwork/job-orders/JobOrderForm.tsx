@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { Settings } from 'lucide-react';
+import { DateInput } from '../../../components/ui/DateInput';
 import { Select } from '../../../components/ui/Select';
 import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import type { CustomFieldValues } from '../../custom-fields/customFields.schemas';
 import { fetchCustomers } from '../../sales/customers/customers.api';
 import { StepsGrid } from '../StepsGrid';
@@ -207,6 +209,11 @@ export function JobOrderForm({
   const [customFields, setCustomFields] = useState<CustomFieldValues>(
     (initialData?.customFields as CustomFieldValues) ?? {},
   );
+  /** Read here, not just inside the section, so the HEADING goes with it. An org
+   * that has defined no job order fields otherwise gets a "Custom Fields" title
+   * over a centred paragraph about Settings → Modules — a screenful of a feature
+   * they did not ask about, in the middle of the form. */
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId, 'job_order');
   const [localError, setLocalError] = useState<string | null>(null);
 
   /**
@@ -449,24 +456,17 @@ export function JobOrderForm({
             <label style={labelStyle} htmlFor="jo-date">
               Date
             </label>
-            <input
-              id="jo-date"
-              type="date"
-              value={orderDate}
-              onChange={(e) => setOrderDate(e.target.value)}
-              style={inputStyle}
-            />
+            <DateInput id="jo-date" value={orderDate} onChange={setOrderDate} style={inputStyle} />
           </div>
 
           <div>
             <label style={labelStyle} htmlFor="jo-target">
               Target date
             </label>
-            <input
+            <DateInput
               id="jo-target"
-              type="date"
               value={targetDate}
-              onChange={(e) => setTargetDate(e.target.value)}
+              onChange={setTargetDate}
               style={inputStyle}
             />
           </div>
@@ -552,17 +552,22 @@ export function JobOrderForm({
         />
       </section>
 
-      <section style={{ maxWidth: 640, marginBottom: 32 }}>
-        <h2 style={sectionHeading}>Custom Fields</h2>
-        <CustomFieldsSection
-          orgId={orgId!}
-          entityType="job_order"
-          values={customFields}
-          onChange={setCustomFields}
-          errors={fieldErrors}
-          applyDefaults={!isEdit}
-        />
-      </section>
+      {customFieldDefs.length > 0 && (
+        <section style={{ maxWidth: 900, marginBottom: 32 }}>
+          <h2 style={sectionHeading}>Custom Fields</h2>
+          {/* Same wrapping grid as the Order section above, so custom fields read
+              as more fields on this form rather than a panel bolted to the end. */}
+          <CustomFieldsSection
+            orgId={orgId!}
+            entityType="job_order"
+            values={customFields}
+            onChange={setCustomFields}
+            errors={fieldErrors}
+            applyDefaults={!isEdit}
+            layout="grid"
+          />
+        </section>
+      )}
 
       <div
         style={{

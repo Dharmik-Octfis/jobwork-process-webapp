@@ -1,6 +1,6 @@
-/* eslint-disable @typescript-eslint/naming-convention */
+ 
 import { useEffect, useState } from 'react';
-import { useForm, useFieldArray, useWatch } from 'react-hook-form';
+import { useForm, useFieldArray, useWatch, Controller } from 'react-hook-form';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AxiosError } from 'axios';
 import {
@@ -21,6 +21,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchPaymentTerms } from './payment-terms.api';
 import { MultiSelectItemModal } from '../../items/components/MultiSelectItemModal';
+import { DateInput } from '../../../components/ui/DateInput';
 import { ItemComboBox } from '../../../components/ui/ItemComboBox';
 import { Select } from '../../../components/ui/Select';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
@@ -400,10 +401,7 @@ export function CreatePurchaseOrder() {
       updatePONumberPreference(orgId!, data),
     onSuccess: (data) => {
       queryClient.setQueryData(['po-number-preference', orgId], data);
-      setValue(
-        'poNumber',
-        `${data.prefix}${data.nextNumber.toString().padStart(5, '0')}`,
-      );
+      setValue('poNumber', `${data.prefix}${data.nextNumber.toString().padStart(5, '0')}`);
       setPoPrefix(data.prefix);
       setIsNumberConfigOpen(false);
     },
@@ -952,36 +950,46 @@ export function CreatePurchaseOrder() {
 
             <label style={{ ...labelStyle, color: '#ef4444' }}>Date*</label>
             <div style={{ position: 'relative', width: '100%', maxWidth: '440px' }}>
-              <input
-                type="date"
-                {...register('date', {
-                  required: 'Date is required',
-                  onChange: () => {
-                    if (watch('deliveryDate')) {
-                      trigger('deliveryDate');
-                    }
-                  },
-                })}
-                className="date-input-no-icon"
-                onClick={(e) => (e.target as HTMLInputElement).showPicker()}
-                style={{ ...inputStyle, maxWidth: '100%' }}
+              <Controller
+                name="date"
+                control={control}
+                rules={{ required: 'Date is required' }}
+                render={({ field }) => (
+                  <DateInput
+                    value={field.value ?? ''}
+                    onChange={(next) => {
+                      field.onChange(next);
+                      // Delivery date is validated against this one, so it has to
+                      // be re-checked whenever this moves.
+                      if (watch('deliveryDate')) trigger('deliveryDate');
+                    }}
+                    ariaLabel="Purchase order date"
+                    style={{ ...inputStyle, maxWidth: '100%' }}
+                  />
+                )}
               />
             </div>
 
             <label style={labelStyle}>Delivery Date</label>
             <div style={{ position: 'relative', width: '100%', maxWidth: '440px' }}>
-              <input
-                type="date"
-                min={watchPoDate}
-                {...register('deliveryDate', {
+              <Controller
+                name="deliveryDate"
+                control={control}
+                rules={{
                   validate: (val) => {
                     if (!val || !watchPoDate) return true;
                     return val >= watchPoDate || 'Delivery date must be on or after PO date';
                   },
-                })}
-                className="date-input-no-icon"
-                onClick={(e) => (e.target as HTMLInputElement).showPicker()}
-                style={{ ...inputStyle, maxWidth: '100%' }}
+                }}
+                render={({ field }) => (
+                  <DateInput
+                    value={field.value ?? ''}
+                    onChange={field.onChange}
+                    min={watchPoDate}
+                    ariaLabel="Delivery date"
+                    style={{ ...inputStyle, maxWidth: '100%' }}
+                  />
+                )}
               />
               {errors.deliveryDate && (
                 <div style={{ color: '#e54d4d', fontSize: '12px', marginTop: '4px' }}>
@@ -1894,10 +1902,7 @@ export function CreatePurchaseOrder() {
               setValue(`lineItems.${targetIndex}.rate`, rate as unknown as number);
               setValue(`lineItems.${targetIndex}.quantity`, qty as unknown as number);
               setValue(`lineItems.${targetIndex}.discountValue`, disc as unknown as number);
-              setValue(
-                `lineItems.${targetIndex}.discountType`,
-                item._discountType ?? 'percentage',
-              );
+              setValue(`lineItems.${targetIndex}.discountType`, item._discountType ?? 'percentage');
               setValue(
                 `lineItems.${targetIndex}.description`,
                 item.purchaseDescription ||

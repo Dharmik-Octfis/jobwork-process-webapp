@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Mail, Pencil, Trash2, UserCheck, UserX, X } from 'lucide-react';
 import { toApiErrorMessage } from '../../api/client';
+import { DateInput } from '../../components/ui/DateInput';
 import { Select } from '../../components/ui/Select';
 import { SearchableSelect } from '../../components/ui/SearchableSelect';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -568,9 +569,7 @@ export function UserDetailPanel({
                       />
                     )}
                   />
-                  {errors.roleId && (
-                    <p className="users-error-msg">{errors.roleId.message}</p>
-                  )}
+                  {errors.roleId && <p className="users-error-msg">{errors.roleId.message}</p>}
                 </>
               ) : (
                 <div className={`users-field-value ${member.roleName ? '' : 'is-empty'}`}>
@@ -673,11 +672,17 @@ export function UserDetailPanel({
                   <label className="users-field-label" htmlFor="ud-dob">
                     Date of birth
                   </label>
-                  <input
-                    id="ud-dob"
-                    type="date"
-                    className={`users-input ${errors.dateOfBirth ? 'error' : ''}`}
-                    {...register('dateOfBirth')}
+                  <Controller
+                    name="dateOfBirth"
+                    control={control}
+                    render={({ field }) => (
+                      <DateInput
+                        id="ud-dob"
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        className={`users-input ${errors.dateOfBirth ? 'error' : ''}`}
+                      />
+                    )}
                   />
                   {errors.dateOfBirth && (
                     <p className="users-error-msg">{errors.dateOfBirth.message}</p>

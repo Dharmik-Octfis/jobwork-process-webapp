@@ -1,3 +1,4 @@
+import { formatDate } from '../../../lib/formatDate';
 import type { AvailableBatch } from '../batches/batches.api';
 
 /**
@@ -45,8 +46,6 @@ export interface BatchSelection {
  */
 export function batchLabel(batch: AvailableBatch): string {
   const date = new Date(batch.createdAt);
-  const stamp = Number.isNaN(date.getTime())
-    ? '—'
-    : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  const stamp = Number.isNaN(date.getTime()) ? '—' : formatDate(date);
   return batch.supplierBatchRef?.trim() || `Stock of ${stamp}`;
 }
