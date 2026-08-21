@@ -196,7 +196,7 @@ export function CreateCompositeItemPage({
           .filter((c) => c.componentItemId && c.componentItemId.trim() !== '')
           .map((c) => ({
             componentItemId: c.componentItemId,
-            qtyPerUnit: c.qtyPerUnit,
+            qtyPerUnit: Number(c.qtyPerUnit) || 1,
           })),
       } as CreateCompositeItemDto),
     onSuccess: async (createdItem) => {

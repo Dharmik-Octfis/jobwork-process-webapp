@@ -171,7 +171,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {(item.itemStructure === 'composite') && (
+          {item.itemStructure === 'composite' && (
             <button
               onClick={() =>
                 navigate(`/organizations/${orgId}/inventory/assembly/new?itemId=${item.id}`)
@@ -358,8 +358,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
           <div style={{ margin: '-24px' }}>
             <ItemActivityHistory activities={activities} isLoading={isLoadingActivities} />
           </div>
-        ) : effectiveActiveTab === 'Components' &&
-          (item.itemStructure === 'composite') ? (
+        ) : effectiveActiveTab === 'Components' && item.itemStructure === 'composite' ? (
           <div style={{ margin: '-24px' }}>
             <CompositeItemsList itemId={itemId} />
           </div>

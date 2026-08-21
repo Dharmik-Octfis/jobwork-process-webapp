@@ -256,7 +256,7 @@ export function EditCompositeItemPage() {
             .map((c) => ({
               componentItemId: c.componentItemId,
               // eslint-disable-next-line @typescript-eslint/naming-convention
-              qtyPerUnit: c.qtyPerUnit,
+              qtyPerUnit: Number(c.qtyPerUnit) || 1,
             })),
         } as UpdateCompositeItemDto,
       }),

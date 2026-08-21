@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { Item } from '../items.schemas';
 import { Button } from '../../../components/ui/Button';
+import { Select } from '../../../components/ui/Select';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { AdvancedFilter } from '../../../components/ui/AdvancedFilter/AdvancedFilter';
 import type {
@@ -53,7 +54,7 @@ function renderCell(
         }
         return options.find((o) => o.id === val)?.label || String(val);
       }
-      
+
       if (['date', 'datetime', 'time'].includes(def.dataType)) {
         if (typeof val === 'string' && !isNaN(Date.parse(val))) {
           const d = new Date(val);
@@ -131,13 +132,40 @@ export function MultiSelectItemModal({
 
   const [page, setPage] = useState(1);
 
-  const [debouncedQuery, setDebouncedQuery] = useState(query);
+  const { data: customFieldsDef } = useActiveCustomFields(orgId, 'item');
+
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   useEffect(() => {
     const handler = setTimeout(() => {
-      setDebouncedQuery(query.length >= 3 ? query : '');
+      const parts: string[] = [];
+      if (query.length >= 3) parts.push(query);
+
+      Object.entries(columnFilters).forEach(([k, v]) => {
+        if (!v) return;
+        let isText = true;
+        if (k === 'category' || k === 'type') isText = false;
+        if (k.startsWith('cf_')) {
+          const cfKey = k.replace('cf_', '');
+          const def = customFieldsDef?.find((d) => d.key === cfKey);
+          if (
+            def &&
+            (def.dataType === 'select' ||
+              def.dataType === 'multi_select' ||
+              def.dataType === 'checkbox')
+          ) {
+            isText = false;
+          }
+        }
+
+        if (isText) {
+          if (v.length >= 3) parts.push(v);
+        }
+      });
+
+      setDebouncedQuery(parts.join(' '));
     }, 300);
     return () => clearTimeout(handler);
-  }, [query]);
+  }, [query, columnFilters, customFieldsDef]);
 
   const { data: itemsPage } = useQuery({
     queryKey: ['items-modal', orgId, debouncedQuery, page, filter],
@@ -233,8 +261,6 @@ export function MultiSelectItemModal({
     return Array.from(types).sort();
   }, [itemsPage?.results]);
 
-  const { data: customFieldsDef } = useActiveCustomFields(orgId, 'item');
-
   const filterFields = useMemo<FilterField[]>(() => {
     return fullCatalog.map((c) => {
       let dataType: FilterDataType = 'string';
@@ -275,7 +301,22 @@ export function MultiSelectItemModal({
     if (isFilterOpen) {
       Object.entries(columnFilters).forEach(([key, value]) => {
         if (!value) return;
-        const searchVal = value.toLowerCase();
+        const searchVal = value.toLowerCase().trim();
+
+        let isText = true;
+        if (key === 'category' || key === 'type') isText = false;
+        if (key.startsWith('cf_')) {
+          const cfKey = key.replace('cf_', '');
+          const def = customFieldsDef?.find((d) => d.key === cfKey);
+          if (def && (def.dataType === 'select' || def.dataType === 'multi_select' || def.dataType === 'checkbox')) {
+            isText = false;
+          }
+        }
+
+        if (isText && searchVal.length < 3) {
+          return;
+        }
+
         filtered = filtered.filter((item) => {
           if (key === 'name') return item.name.toLowerCase().includes(searchVal);
           if (key === 'sku') return (item.sku || '').toLowerCase().includes(searchVal);
@@ -296,6 +337,8 @@ export function MultiSelectItemModal({
             } else {
               val = options.find((o) => o.id === rawVal)?.label || rawVal;
             }
+          } else if (def && def.dataType === 'checkbox') {
+            val = Boolean(rawVal);
           }
 
           return val != null && String(val).toLowerCase().includes(searchVal);
@@ -668,6 +711,10 @@ export function MultiSelectItemModal({
                           setColumnFilters((prev) => ({ ...prev, [col.key]: e.target.value }));
                           setPage(1);
                         };
+                        const onSelectChange = (value: string) => {
+                          setColumnFilters((prev) => ({ ...prev, [col.key]: value }));
+                          setPage(1);
+                        };
                         const inputStyle = {
                           width: '100%',
                           padding: '4px 8px',
@@ -676,6 +723,74 @@ export function MultiSelectItemModal({
                           borderRadius: 4,
                           outline: 'none',
                         };
+
+                        let filterInput = (
+                          <input
+                            type="text"
+                            value={val}
+                            onChange={onChange}
+                            placeholder={`Filter ${col.label}...`}
+                            style={inputStyle}
+                          />
+                        );
+
+                        if (col.key === 'category') {
+                          filterInput = (
+                            <Select
+                              value={val}
+                              onChange={onSelectChange}
+                              options={[{ label: '- None -', value: '' }, ...categories.map(c => ({ label: c, value: c }))]}
+                              placeholder="- None -"
+                              containerStyle={{ minWidth: '100px' }}
+                              buttonStyle={{ height: 26, padding: '0 8px', fontSize: 12, fontWeight: 400, borderRadius: 4, border: '1px solid #cbd5e1' }}
+                            />
+                          );
+                        } else if (col.key === 'type') {
+                          filterInput = (
+                            <Select
+                              value={val}
+                              onChange={onSelectChange}
+                              options={[{ label: '- None -', value: '' }, ...productTypes.map(t => ({ label: t, value: t }))]}
+                              placeholder="- None -"
+                              containerStyle={{ minWidth: '100px' }}
+                              buttonStyle={{ height: 26, padding: '0 8px', fontSize: 12, fontWeight: 400, borderRadius: 4, border: '1px solid #cbd5e1' }}
+                            />
+                          );
+                        } else if (col.key.startsWith('cf_')) {
+                          const cfKey = col.key.replace('cf_', '');
+                          const def = customFieldsDef?.find((d) => d.key === cfKey);
+
+                          if (def) {
+                            if (def.dataType === 'select' || def.dataType === 'multi_select') {
+                              const options = def.config?.options || [];
+                              filterInput = (
+                                <Select
+                                  value={val}
+                                  onChange={onSelectChange}
+                                  options={[{ label: '- None -', value: '' }, ...options.map(opt => ({ label: opt.label, value: opt.label }))]}
+                                  placeholder="- None -"
+                                  containerStyle={{ minWidth: '100px' }}
+                                  buttonStyle={{ height: 26, padding: '0 8px', fontSize: 12, fontWeight: 400, borderRadius: 4, border: '1px solid #cbd5e1' }}
+                                />
+                              );
+                            } else if (def.dataType === 'checkbox') {
+                              filterInput = (
+                                <Select
+                                  value={val}
+                                  onChange={onSelectChange}
+                                  options={[
+                                    { label: '- None -', value: '' },
+                                    { label: 'Yes', value: 'true' },
+                                    { label: 'No', value: 'false' },
+                                  ]}
+                                  placeholder="- None -"
+                                  containerStyle={{ minWidth: '100px' }}
+                                  buttonStyle={{ height: 26, padding: '0 8px', fontSize: 12, fontWeight: 400, borderRadius: 4, border: '1px solid #cbd5e1' }}
+                                />
+                              );
+                            }
+                          }
+                        }
 
                         return (
                           <th
@@ -694,24 +809,7 @@ export function MultiSelectItemModal({
                                 : {}),
                             }}
                           >
-                            {col.key === 'category' ? (
-                              <select value={val} onChange={onChange} style={inputStyle}>
-                                <option value="">- None -</option>
-                                {categories.map((c) => (
-                                  <option key={c} value={c}>
-                                    {c}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <input
-                                type="text"
-                                value={val}
-                                onChange={onChange}
-                                placeholder={`Filter ${col.label}...`}
-                                style={inputStyle}
-                              />
-                            )}
+                            {filterInput}
                           </th>
                         );
                       })}
