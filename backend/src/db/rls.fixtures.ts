@@ -60,7 +60,9 @@ export async function censusByOrg(): Promise<OrgCensus[]> {
       // `where` for the app filter. The `where` also keeps this count honest if
       // it ever runs as a role that bypasses RLS, where the bare count would
       // silently return every tenant's rows. `isDeleted: false` mirrors the list
-      // endpoints, so this count equals what a list read returns.
+      // endpoints, but this is NOT what a default list read returns: a module whose
+      // first LIST_FILTERS preset narrows (items default to "Active Items") answers
+      // with fewer rows. Compare against such a list only with the matching `?filter=`.
       tx.vendor.count({ where: { organizationId: org.id, isDeleted: false } }),
     );
     const customers = await runAsTenant(org.id, (tx) =>

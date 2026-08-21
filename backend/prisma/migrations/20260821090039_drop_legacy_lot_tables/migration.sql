@@ -1,0 +1,43 @@
+-- drop_legacy_lot_tables
+--
+-- `lots` and `lot_packages` were superseded by `batches` in the 2026-08-12
+-- lot→batch rename. That migration (20260812180000) carried
+-- `DROP TABLE IF EXISTS "lot_packages"` and left `lots` standing entirely, and
+-- in this database neither drop took — so both tables have sat here since,
+-- empty, with a tenant_isolation policy each and nothing on either side of the
+-- app aware they exist. A table nobody reads still shows up in every schema
+-- dump, every drift report, and every `migrate diff`, which is how it keeps
+-- being mistaken for something in use.
+--
+-- @destructive-ok: both tables hold 0 rows and nothing outside them references
+-- them — no FK points in (only lot_packages→lots and its own self-FK), no view,
+-- no trigger, no sequence, and no Prisma model, service, or migration since
+-- 20260812180000. Verified against the dev database before writing this file.
+--
+-- 🔴 EDITED BY HAND. `migrate diff` also emitted, from PRE-EXISTING drift with
+-- nothing to do with this change:
+--
+--   · DROP TABLE "job_receipt_output_batches" — applied to this database at
+--     12:28 today, then dropped from the schema files when that work was rolled
+--     back. Whether the table follows the code out is a decision for whoever
+--     owns that feature, not a side effect of a lot cleanup.
+--   · DROP INDEX on the permission_templates / roles unique keys — the full-vs-
+--     partial unique index drift. Dropping those changes soft-delete behaviour.
+--
+-- Both were removed. A migration should contain the change it is named after
+-- and nothing else, or the next person cannot tell which statement was the
+-- point.
+--
+-- The 16 DropForeignKey statements the draft emitted are gone too: DROP TABLE
+-- takes a table's own constraints, indexes, and RLS policy with it, and the one
+-- FK that crosses between the two (lot_packages.lot_id → lots) disappears with
+-- lot_packages. Hence the order below — children first.
+--
+-- Idempotent: a migration is not transactional here, so a statement that fails
+-- leaves the ones before it applied and the file has to be re-runnable.
+
+-- DropTable
+DROP TABLE IF EXISTS "lot_packages";
+
+-- DropTable
+DROP TABLE IF EXISTS "lots";

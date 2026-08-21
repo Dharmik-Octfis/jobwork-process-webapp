@@ -17,8 +17,7 @@ import {
   validateCustomFields,
 } from '../../settings/customization/custom-fields/customFields.engine.ts';
 
-export function toComponentResponse(row: Record<string, unknown> | null | undefined) {
-  if (!row) return row;
+export function toComponentResponse(row: Record<string, unknown>) {
   let componentObj = row.component as Record<string, unknown> | undefined;
   if (componentObj && 'itemType' in componentObj) {
     componentObj = { ...componentObj, type: componentObj.itemType };
@@ -234,8 +233,8 @@ export class CompositeItemsService {
           where: { compositeItemId: id, organizationId, isDeleted: false },
         });
 
-        const newComponentIds = new Set(_components.map((c: any) => c.componentItemId).filter(Boolean));
-        
+        const newComponentIds = new Set(_components.map((c) => c.componentItemId).filter(Boolean));
+
         // Soft delete components that are missing from the payload
         for (const ec of existingComponents) {
           if (!newComponentIds.has(ec.componentItemId)) {
@@ -247,10 +246,12 @@ export class CompositeItemsService {
         }
 
         const seenComponents = new Set<string>();
-        for (const comp of _components as any[]) {
+        for (const comp of _components) {
           if (!comp.componentItemId) continue;
           if (seenComponents.has(comp.componentItemId)) {
-            throw ApiError.badRequest('Duplicate component selected. A composite item cannot contain the same component multiple times.');
+            throw ApiError.badRequest(
+              'Duplicate component selected. A composite item cannot contain the same component multiple times.',
+            );
           }
           seenComponents.add(comp.componentItemId);
 
@@ -258,8 +259,10 @@ export class CompositeItemsService {
             throw ApiError.badRequest('Composite item cannot contain itself as a component.');
           }
 
-          const existingComp = existingComponents.find(ec => ec.componentItemId === comp.componentItemId);
-          
+          const existingComp = existingComponents.find(
+            (ec) => ec.componentItemId === comp.componentItemId,
+          );
+
           if (existingComp) {
             await tx.compositeItemComponent.update({
               where: { id: existingComp.id },
@@ -267,7 +270,7 @@ export class CompositeItemsService {
                 qtyPerUnit: comp.qtyPerUnit,
                 seq: comp.seq ?? existingComp.seq,
                 updatedBy: userId ?? null,
-              }
+              },
             });
           } else {
             const cItem = await tx.item.findFirst({
@@ -286,7 +289,9 @@ export class CompositeItemsService {
                 uomId: comp.uomId ?? cItem.stockingUomId,
                 seq: comp.seq ?? 0,
                 notes: comp.notes,
-                customFields: comp.customFields ? (comp.customFields as Prisma.InputJsonValue) : undefined,
+                customFields: comp.customFields
+                  ? (comp.customFields as Prisma.InputJsonValue)
+                  : undefined,
                 createdBy: userId ?? null,
                 updatedBy: userId ?? null,
               },
@@ -387,9 +392,10 @@ export class CompositeItemsService {
       });
 
       const componentIds = rows.map((r) => r.componentItemId);
-      let balances: any[] = [];
+      type ComponentBalance = { itemId: string; qty: Prisma.Decimal | null };
+      let balances: ComponentBalance[] = [];
       if (componentIds.length > 0) {
-        balances = await tx.$queryRaw`
+        balances = await tx.$queryRaw<ComponentBalance[]>`
           SELECT item_id as "itemId", SUM(qty_in - qty_out) as qty
           FROM stock_ledger
           WHERE item_id IN (${Prisma.join(componentIds)})
@@ -399,15 +405,17 @@ export class CompositeItemsService {
       }
 
       return rows.map((row) => {
-        const res = toComponentResponse(row);
+        // No ledger row at all means the item predates the ledger, so opening stock is
+        // the only figure there is — which is not the same as a ledger that nets to zero.
         const bal = balances.find((b) => b.itemId === row.componentItemId);
-        if (res.component) {
-          const ledgerQty = bal?.qty ? Number(bal.qty) : 0;
-          const openingQty = (row.component as any).openingStock ? Number((row.component as any).openingStock) : 0;
-          (res.component as any).stockOnHand = bal !== undefined ? ledgerQty : openingQty;
-          (res.component as any).unit = (row.component as any)?.stockingUom?.unitName || (row.component as any)?.unit || '';
-        }
-        return res;
+        return toComponentResponse({
+          ...row,
+          component: {
+            ...row.component,
+            stockOnHand: bal ? Number(bal.qty ?? 0) : Number(row.component.openingStock ?? 0),
+            unit: row.component.stockingUom?.unitName || row.component.unit || '',
+          },
+        });
       });
     });
   }
@@ -464,13 +472,7 @@ export class CompositeItemsService {
         mode: 'create',
       }) as Prisma.InputJsonValue;
 
-      const {
-        customFields: _customFields,
-        qtyPerUnit,
-        componentItemId,
-        uomId,
-        ...rest
-      } = rawData;
+      const { customFields: _customFields, qtyPerUnit, componentItemId, uomId, ...rest } = rawData;
 
       return withUniqueViolation('This item is already a component of this composite item.', () =>
         tx.compositeItemComponent
@@ -516,13 +518,7 @@ export class CompositeItemsService {
         }) as Prisma.InputJsonValue;
       }
 
-      const {
-        customFields: _customFields,
-        qtyPerUnit,
-        componentItemId,
-        uomId,
-        ...rest
-      } = rawData;
+      const { customFields: _customFields, qtyPerUnit, componentItemId, uomId, ...rest } = rawData;
 
       if (componentItemId) {
         if (componentItemId === compositeItemId) {
