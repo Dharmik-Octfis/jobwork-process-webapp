@@ -15,6 +15,7 @@ import { CUSTOM_FIELD_PREFIX } from '../list-views/listViews.api';
 import type { Item } from './items.schemas.ts';
 import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import type { CustomFieldDefinition } from '../custom-fields/customFields.schemas';
+import { formatDate } from '../../lib/formatDate';
 
 /**
  * How each selectable column renders. Keys match the backend catalog
@@ -45,8 +46,8 @@ function renderItemCell(
       if (['date', 'datetime', 'time'].includes(def.dataType)) {
         if (typeof value === 'string' && !isNaN(Date.parse(value))) {
           const d = new Date(value);
-          if (def.dataType === 'date') return d.toLocaleDateString();
-          if (def.dataType === 'datetime') return d.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+          if (def.dataType === 'date') return formatDate(value);
+          if (def.dataType === 'datetime') return `${formatDate(value)}, ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
           if (def.dataType === 'time') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         }
       }
@@ -81,7 +82,7 @@ function renderItemCell(
   const value = (item as unknown as Record<string, unknown>)[key];
   if (value === null || value === undefined || value === '') return '-';
   if (key === 'createdAt' || key === 'updatedAt')
-    return new Date(String(value)).toLocaleDateString();
+    return formatDate(String(value));
   return String(value);
 }
 

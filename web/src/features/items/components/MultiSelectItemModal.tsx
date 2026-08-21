@@ -159,8 +159,6 @@ export function MultiSelectItemModal({
 
         if (isText) {
           if (v.length >= 3) parts.push(v);
-        } else {
-          parts.push(v);
         }
       });
 
