@@ -1,0 +1,1 @@
+import { PrismaClient } from "./generated/prisma/client/index.js"; import * as fs from "fs"; const prisma = new PrismaClient(); prisma.item.findMany({ select: { name: true, itemStructure: true, isDeleted: true, isActive: true } }).then(items => { fs.writeFileSync("items.json", JSON.stringify(items, null, 2)); console.log("ITEMS_DUMPED"); }).catch(console.error);

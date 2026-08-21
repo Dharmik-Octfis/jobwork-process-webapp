@@ -522,6 +522,8 @@ export class ItemsService {
       const item = await tx.item.create({
         data: {
           ...rest,
+          unit: rest.unit ?? '',
+          sku: rest.sku ?? '',
           customFields,
           frontImage: frontImage === null ? Prisma.DbNull : (frontImage as Prisma.InputJsonValue),
           rearImage: rearImage === null ? Prisma.DbNull : (rearImage as Prisma.InputJsonValue),
