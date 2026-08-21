@@ -95,6 +95,22 @@ export const jobReceiptSchema = z.object({
           .object({ id: z.string(), supplierBatchRef: z.string().nullable() })
           .nullable()
           .optional(),
+        /** 🔴 The complete list. `outputBatch` / `reworkBatch` above name only the
+         * FIRST of each kind, which is all there was before a row could land in
+         * several batches — render these. */
+        batches: z
+          .array(
+            z.object({
+              id: z.string(),
+              kind: z.enum(['accepted', 'rework']),
+              qty: decimalString,
+              /** False when this receipt added to a batch that already existed —
+               * the second half of a split delivery, not a new lot. */
+              isNewBatch: z.boolean(),
+              batch: z.object({ id: z.string(), supplierBatchRef: z.string().nullable() }),
+            }),
+          )
+          .default([]),
       }),
     )
     .default([]),
@@ -237,6 +253,21 @@ export interface JobReceiptOutputData {
   batchReference?: string | null;
   /** The rework batch is a separate batch, so it needs its own label. */
   reworkBatchReference?: string | null;
+  /**
+   * 🔴 WHERE THE ACCEPTED GOODS LAND — one entry per batch. Omitted, the server
+   * falls back to `batchReference` and one batch takes the whole quantity, which
+   * is what this payload meant before 2026-08-21.
+   */
+  batches?: JobReceiptBatchAllocationData[];
+  /** The same for rework, always a different set of batches. */
+  reworkBatches?: JobReceiptBatchAllocationData[];
+}
+
+/** Either an existing batch to add to, or a label for a new one — never both. */
+export interface JobReceiptBatchAllocationData {
+  batchId?: string | null;
+  batchReference?: string | null;
+  qty: number;
 }
 
 export interface CreateJobReceiptData {
@@ -262,3 +293,57 @@ export interface CreateJobReceiptData {
 
 export const jobReceiptsPageSchema = paginatedSchema(jobReceiptSchema);
 export type JobReceiptsPage = Paginated<JobReceipt>;
+
+/**
+ * WHERE ONE BATCH IS, one row per location that still holds any of it.
+ *
+ * 🔴 `isExternal` is computed on the server, not inferred from the name here.
+ * Goods at a processor are our stock at their location, so they arrive as a
+ * balance like any other — and a total that silently includes them reads as
+ * stock on hand when it is material still out at a vendor.
+ */
+export const batchLocationBalanceSchema = z.object({
+  locationId: z.string(),
+  locationName: z.string().nullable(),
+  locationType: z.string().nullable(),
+  isExternal: z.boolean(),
+  qty: decimalString,
+});
+
+export type BatchLocationBalance = z.infer<typeof batchLocationBalanceSchema>;
+
+export const receiptBatchOptionSchema = z.object({
+  batchId: z.string(),
+  supplierBatchRef: z.string().nullable(),
+  manufacturerBatch: z.string().nullable(),
+  createdAt: z.string(),
+  manufacturedDate: z.string().nullable(),
+  expiryDate: z.string().nullable(),
+  uomId: z.string().nullable(),
+  source: z.enum(['this_job_order', 'other']),
+  /** Across every location, internal and external. Always shown broken down. */
+  totalQty: decimalString,
+  internalQty: decimalString,
+  externalQty: decimalString,
+  byLocation: z.array(batchLocationBalanceSchema).default([]),
+});
+
+export type ReceiptBatchOption = z.infer<typeof receiptBatchOptionSchema>;
+
+/**
+ * The Receive dialog's batch picker.
+ *
+ * 🔴 Two groups, and the split is the whole design. `jobOrderBatches` is what
+ * this job order already produced — listed always, whatever the balance and
+ * wherever it sits, because the batch a follow-up delivery continues is often
+ * one that has already been issued onward. `otherBatches` answers a search only,
+ * so merging into an unrelated batch is deliberate rather than a mis-click.
+ */
+export const receiptBatchOptionsSchema = z.object({
+  inventoryTracking: z.string(),
+  jobOrderBatches: z.array(receiptBatchOptionSchema).default([]),
+  otherBatches: z.array(receiptBatchOptionSchema).default([]),
+  isOtherCapped: z.boolean().default(false),
+});
+
+export type ReceiptBatchOptions = z.infer<typeof receiptBatchOptionsSchema>;

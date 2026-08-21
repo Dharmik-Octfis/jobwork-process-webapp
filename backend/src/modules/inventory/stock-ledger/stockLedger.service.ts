@@ -306,6 +306,44 @@ export async function getBalanceByLocation(
   );
 }
 
+/**
+ * WHERE EACH OF SEVERAL BATCHES IS, in ONE query — keyed `batchId` → `locationId`.
+ *
+ * 🔴 One grouped query, never `getBalance` per batch. The picker this feeds shows
+ * a dozen batches each sitting in a handful of places; asked row by row that is
+ * fifty round trips, which is nothing at three batches and is the entire response
+ * at three hundred — the same trap `getAvailableStock` documents.
+ *
+ * Locations with a zero net balance still come back, and that is the point here:
+ * a batch that was received into a godown and then wholly issued onward is
+ * exactly the batch a second delivery wants to continue. Filtering it out is how
+ * the right answer disappears the moment the stock moves.
+ */
+export async function getBalancesByBatchAndLocation(
+  tx: TenantClient,
+  filter: Omit<BalanceFilter, 'batchId' | 'locationId' | 'locationIds'> & {
+    batchIds: readonly string[];
+  },
+): Promise<Map<string, Map<string, Prisma.Decimal>>> {
+  if (filter.batchIds.length === 0) return new Map();
+
+  const grouped = await tx.stockLedgerEntry.groupBy({
+    by: ['batchId', 'locationId'],
+    where: { ...balanceWhere(filter), batchId: { in: [...filter.batchIds] } },
+    _sum: { qtyIn: true, qtyOut: true },
+  });
+
+  const zero = new Prisma.Decimal(0);
+  const byBatch = new Map<string, Map<string, Prisma.Decimal>>();
+  for (const row of grouped) {
+    const qty = (row._sum.qtyIn ?? zero).minus(row._sum.qtyOut ?? zero);
+    const byLocation = byBatch.get(row.batchId) ?? new Map<string, Prisma.Decimal>();
+    byLocation.set(row.locationId, qty);
+    byBatch.set(row.batchId, byLocation);
+  }
+  return byBatch;
+}
+
 export interface MultiAxisBalance {
   physicalQty: Prisma.Decimal;
   accountingQty: Prisma.Decimal;

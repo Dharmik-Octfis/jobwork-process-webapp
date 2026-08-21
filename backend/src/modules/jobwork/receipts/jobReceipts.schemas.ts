@@ -74,6 +74,59 @@ export const jobReceiptLineSchema = z
 export type JobReceiptLineInput = z.infer<typeof jobReceiptLineSchema>;
 
 /**
+ * 🔴 ONE BATCH THE RETURNED GOODS LAND IN, and there may be several per row.
+ *
+ * A row is EITHER an existing batch (`batchId`) or a new one to be created under
+ * a label (`batchReference`), never both and never neither. The two are not
+ * variations of the same thing:
+ *
+ *   · a NEW batch is the normal case — a processor returns a physically new
+ *     thing with no number of its own, so somebody has to name it;
+ *   · an EXISTING batch is the second half of a split delivery. 500 m of dye lot
+ *     23 arrives today and 500 m tomorrow; without this the second delivery can
+ *     only become a second batch carrying a duplicate label, and a recall on lot
+ *     23 then finds half the stock.
+ *
+ * Which existing batches may be named is decided by the SERVICE, not here — it
+ * needs the item, the ownership pair and the job order to answer, and none of
+ * them are visible to zod.
+ */
+const outputBatchAllocationSchema = z
+  .object({
+    /** An existing batch to add to. */
+    batchId: z.string().uuid().nullable().optional(),
+    /** The label for a batch to create. Required for a batch-tracked item, which
+     * `createBatch` enforces — whether it is needed depends on the ITEM. */
+    batchReference: z.string().trim().max(100).nullable().optional(),
+    qty: z.coerce.number().positive('Every batch row needs a quantity greater than zero.'),
+  })
+  .refine((row) => Boolean(row.batchId) !== Boolean(row.batchReference?.trim()), {
+    message: 'A batch row is either an existing batch or a new one, not both and not neither.',
+    path: ['batchId'],
+  });
+
+export type JobReceiptOutputBatchInput = z.infer<typeof outputBatchAllocationSchema>;
+
+/** Allocated total, at the columns' own precision. */
+function allocated(rows: readonly JobReceiptOutputBatchInput[] | undefined): number {
+  return (rows ?? []).reduce((sum, row) => sum + row.qty, 0);
+}
+
+/** The same batch twice in one place is either a typo or two rows that should
+ * have been one — both are better refused than silently summed. */
+function hasDuplicateBatch(...groups: (readonly JobReceiptOutputBatchInput[] | undefined)[]) {
+  const seen = new Set<string>();
+  for (const group of groups) {
+    for (const row of group ?? []) {
+      if (!row.batchId) continue;
+      if (seen.has(row.batchId)) return true;
+      seen.add(row.batchId);
+    }
+  }
+  return false;
+}
+
+/**
  * 🔴 ONE ITEM THAT CAME BACK (domain §5.7).
  *
  * The receipt has TWO child lists and they are different lengths: what was
@@ -135,6 +188,21 @@ export const jobReceiptOutputSchema = z
      * life, so it cannot share the accepted batch's label. */
     reworkBatchReference: z.string().trim().max(100).nullable().optional(),
 
+    /**
+     * 🔴 WHERE THE ACCEPTED GOODS ACTUALLY LAND, and there may be more than one
+     * place (2026-08-21). A dyer returning three dye lots in one consignment is
+     * three batches, not one; forcing them into one label loses the separation
+     * the lots were kept in.
+     *
+     * Omitted, the two scalars above still apply and one batch takes the whole
+     * accepted quantity — which is exactly what every pre-2026-08-21 client
+     * sends, so the old dialog keeps working unchanged.
+     */
+    batches: z.array(outputBatchAllocationSchema).optional(),
+    /** The same for rework. 🔴 A DIFFERENT set of batches, always: rework keeps
+     * its own so the re-issue can send back only the pieces that failed. */
+    reworkBatches: z.array(outputBatchAllocationSchema).optional(),
+
     reasonId: z.string().uuid().nullable().optional(),
     responsibility: z.enum(RESPONSIBILITIES).nullable().optional(),
     remarks: z.string().trim().max(2000).nullable().optional(),
@@ -153,7 +221,56 @@ export const jobReceiptOutputSchema = z
         'Accepted + rework + scrap + returned must equal the received quantity on every returned item.',
       path: ['receivedQty'],
     },
-  );
+  )
+  /**
+   * 🔴 THE ALLOCATION MUST ACCOUNT FOR THE WHOLE QUANTITY.
+   *
+   * Under-allocating posts less stock than the receipt claims came back;
+   * over-allocating posts stock nobody received. Neither is recoverable from the
+   * document afterwards, because the ledger would be right about itself and
+   * wrong about the paperwork.
+   *
+   * Compared at four decimals, the columns' own precision — an exact float test
+   * would reject 3 × 33.3333 for being a billionth off.
+   */
+  .refine(
+    (row) =>
+      !row.batches?.length || Math.abs(allocated(row.batches) - (row.acceptedQty ?? 0)) < 0.00005,
+    {
+      message: 'The batches must add up to the accepted quantity.',
+      path: ['batches'],
+    },
+  )
+  .refine(
+    (row) =>
+      !row.reworkBatches?.length ||
+      Math.abs(allocated(row.reworkBatches) - (row.reworkQty ?? 0)) < 0.00005,
+    {
+      message: 'The rework batches must add up to the rework quantity.',
+      path: ['reworkBatches'],
+    },
+  )
+  /** Scrap and returned goods never get a batch — scrap's cost stays inside the
+   * batch that survived (§5.5) and returned goods never entered stock at all
+   * (§6.4). A row that allocates batches while claiming neither accepted nor
+   * rework quantity is asking for stock to be created out of nothing. */
+  .refine((row) => (row.acceptedQty ?? 0) > 0 || !row.batches?.length, {
+    message: 'A returned item with no accepted quantity cannot name accepted batches.',
+    path: ['batches'],
+  })
+  .refine((row) => (row.reworkQty ?? 0) > 0 || !row.reworkBatches?.length, {
+    message: 'A returned item with no rework quantity cannot name rework batches.',
+    path: ['reworkBatches'],
+  })
+  /** 🔴 One batch may not appear twice, and the accepted and rework sides may
+   * never share one. Rework merged into the accepted batch loses the piece count
+   * it has to be measured by, and the re-issue would have no way to send back
+   * only what failed. */
+  .refine((row) => !hasDuplicateBatch(row.batches, row.reworkBatches), {
+    message:
+      'The same batch is named more than once. Accepted and rework goods must go to different batches.',
+    path: ['batches'],
+  });
 
 export type JobReceiptOutputInput = z.infer<typeof jobReceiptOutputSchema>;
 

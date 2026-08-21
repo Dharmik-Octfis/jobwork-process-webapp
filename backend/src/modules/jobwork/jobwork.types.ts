@@ -93,6 +93,26 @@ export const RESPONSIBILITIES = ['ours', 'theirs'] as const;
 export type Responsibility = (typeof RESPONSIBILITIES)[number];
 
 /**
+ * 🔴 LOCATION TYPES THAT ARE NOT OUR PREMISES.
+ *
+ * Goods at a processor are OUR stock at THEIR location (§5.4) — one axis, not a
+ * location plus a separate "with processor" state. That is what makes "stock
+ * lying with processors" a plain ledger query, and it is also why a balance
+ * summed across every location reads as stock on hand when part of it is
+ * material still out at a vendor.
+ *
+ * Any screen showing a per-location breakdown has to draw this line, so it is
+ * drawn ONCE. `web/.../ReceiveDialog.tsx` picked the same two types
+ * independently for its godown dropdown; a second copy of a rule is a second
+ * chance for the two to disagree about what "in stock" means.
+ */
+export const EXTERNAL_LOCATION_TYPES = ['processor', 'in_transit', 'customer_site'] as const;
+
+export function isExternalLocation(type: string | null | undefined): boolean {
+  return EXTERNAL_LOCATION_TYPES.includes(type as (typeof EXTERNAL_LOCATION_TYPES)[number]);
+}
+
+/**
  * `sourceDocType` values this domain writes onto batches and ledger rows. They are
  * strings on purpose (`stock_ledger.source_doc_type` is not an FK — the table it
  * points at differs per value), which is exactly why they need one list: a

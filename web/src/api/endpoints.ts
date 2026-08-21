@@ -115,6 +115,16 @@ export const endpoints = {
     receipts: (orgId: string) => `/organizations/${orgId}/jobwork/receipts`,
     /** The Receive dialog's opening state: mode, open challans, per-taka rows. */
     receiptPrefill: (orgId: string) => `/organizations/${orgId}/jobwork/receipts/prefill`,
+    /**
+     * Existing batches the Receive dialog may add to, with where each one sits.
+     *
+     * 🔴 NOT `inventory/batches/available`. That answers "is there any of it
+     * here", which is the ISSUE picker's question — at receive it hides the batch
+     * you emptied yesterday and offers every unrelated batch in the godown. This
+     * one is scoped by provenance and returns the location breakdown as data.
+     */
+    receiptBatchOptions: (orgId: string) =>
+      `/organizations/${orgId}/jobwork/receipts/batch-options`,
     rejectionReasons: (orgId: string) => `/organizations/${orgId}/jobwork/rejection-reasons`,
   },
   /**

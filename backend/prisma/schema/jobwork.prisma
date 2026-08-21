@@ -839,9 +839,15 @@ model JobReceipt {
   /// Where the goods landed — ours again, so a godown.
   locationId String @map("location_id") @db.Uuid
 
-  /// The batches this receipt created. 🔴 `Batch.parentBatchIds` is what carries
-  /// genealogy; these two are the shortcut back the other way, so the receipt
-  /// screen does not have to search batches by source document.
+  /// ⚠️ REDEFINED 2026-08-21: the FIRST accepted / rework batch of the PRIMARY
+  /// output, not "the" batch. An output row may now land in several batches, and
+  /// `job_receipt_output_batches` is the complete list.
+  ///
+  /// Kept because the receipt screen and the rework re-issue read them as a
+  /// shortcut, and because dropping a column costs a destructive migration for no
+  /// gain. 🔴 Never iterate these two to answer "which batches did this receipt
+  /// touch" — that question skipped every by-product's batch for as long as they
+  /// were the only answer available. Read the child table.
   outputBatchId String? @map("output_batch_id") @db.Uuid
   /// A SEPARATE batch for the rework pieces, always. Merging them into the accepted
   /// batch loses the piece count rework has to be measured by (plan §7).
@@ -882,8 +888,9 @@ model JobReceipt {
   createdByUser User?        @relation("JobReceiptCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User?        @relation("JobReceiptUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
-  lines   JobReceiptLine[]
-  outputs JobReceiptOutput[]
+  lines        JobReceiptLine[]
+  outputs      JobReceiptOutput[]
+  outputBatches JobReceiptOutputBatch[]
 
   @@unique([organizationId, receiptNumber])
   @@index([organizationId, jobOrderStepId])
@@ -933,8 +940,9 @@ model JobReceiptOutput {
   /// surviving primary should carry the cost of the whole operation.
   valueShare Decimal? @map("value_share") @db.Decimal(18, 4)
 
-  /// The batches this row created. `Batch.parentBatchIds` carries genealogy; these
-  /// are the shortcut back the other way.
+  /// ⚠️ REDEFINED 2026-08-21: the FIRST batch of each kind on this row. `batches`
+  /// below is the complete list — a row may land in several, and a row may top up
+  /// a batch an earlier receipt created rather than create one.
   outputBatchId String? @map("output_batch_id") @db.Uuid
   reworkBatchId String? @map("rework_batch_id") @db.Uuid
 
@@ -961,8 +969,77 @@ model JobReceiptOutput {
   createdByUser User?              @relation("JobReceiptOutputCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User?              @relation("JobReceiptOutputUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
+  batches JobReceiptOutputBatch[]
+
   @@index([organizationId, jobReceiptId])
   @@map("job_receipt_outputs")
+}
+
+/// 🔴 THE BATCHES ONE RETURNED ITEM LANDED IN. One row per (output, batch).
+///
+/// Until 2026-08-21 an output row created exactly ONE accepted batch and one
+/// rework batch, which forced two lies on anyone whose delivery did not match
+/// that shape: a dyer returning three dye lots in one consignment had to file
+/// three receipts or merge three lots under one label, and a second delivery of
+/// the SAME lot could only ever become a second batch with a duplicate reference.
+///
+/// A row is one of two things, and `isNewBatch` is what tells them apart:
+///   · a batch this receipt CREATED — the normal case, a physically new thing
+///     coming back from a processor with no number of its own;
+///   · a top-up of a batch that already existed — the second half of a split
+///     delivery, continuing the lot rather than cloning its label.
+///
+/// 🔴 There is no `value` column and there must not be. Batch value is derived
+/// from the ledger (inventory.prisma, decision 1); the `produce` row this row
+/// corresponds to carries it, and a copy here could only ever disagree.
+model JobReceiptOutputBatch {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  /// Denormalised from the parent. Cancellation has to find EVERY batch a
+  /// receipt touched in one read — the guard it feeds used to look at the
+  /// header's two columns only, which silently skipped every by-product's batch.
+  jobReceiptId       String @map("job_receipt_id") @db.Uuid
+  jobReceiptOutputId String @map("job_receipt_output_id") @db.Uuid
+
+  seq Int
+
+  /// accepted | rework
+  ///
+  /// 🔴 The two NEVER share a batch. Rework keeps its own batch so the re-issue
+  /// can send back only the pieces that failed, and merging it into the accepted
+  /// batch loses the piece count rework is measured by (plan §7).
+  kind String @db.VarChar(20)
+
+  batchId String  @map("batch_id") @db.Uuid
+  qty     Decimal @db.Decimal(18, 4)
+
+  /// Did THIS receipt create the batch, or add to one that already existed?
+  ///
+  /// 🔴 Cancellation needs the difference. Reversing a batch you created undoes a
+  /// birth; reversing a top-up undoes a deposit into something that outlives the
+  /// receipt. The ledger reversal is the same either way — it replays by
+  /// `sourceDocId` — but the "has this moved on" guard is not.
+  isNewBatch Boolean @default(true) @map("is_new_batch")
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jobReceipt       JobReceipt       @relation(fields: [jobReceiptId], references: [id], onDelete: Cascade)
+  jobReceiptOutput JobReceiptOutput @relation(fields: [jobReceiptOutputId], references: [id], onDelete: Cascade)
+  batch            Batch            @relation("JobReceiptOutputBatchBatch", fields: [batchId], references: [id])
+  createdByUser    User?            @relation("JobReceiptOutputBatchCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser    User?            @relation("JobReceiptOutputBatchUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, jobReceiptId])
+  @@index([organizationId, batchId])
+  @@index([organizationId, jobReceiptOutputId])
+  @@map("job_receipt_output_batches")
 }
 
 /// What this receipt consumed — one row per issue line it closes.

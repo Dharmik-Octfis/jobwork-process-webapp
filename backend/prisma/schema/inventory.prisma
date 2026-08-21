@@ -80,7 +80,15 @@ model Batch {
 
   /// Genealogy. Zero, one, or MANY parents — grey from two POs dyed together comes
   /// back as one batch. A plain uuid array rather than a join table: it is read
-  /// whole, never joined against, and a batch's parents never change after creation.
+  /// whole and never joined against.
+  ///
+  /// ⚠️ APPEND-ONLY SINCE 2026-08-21, where it used to be write-once. A receipt may
+  /// now add quantity to a batch an earlier receipt created (the second half of a
+  /// split delivery), and that second delivery can have consumed different input
+  /// batches. The alternative was a genealogy that silently omits them, and an
+  /// incomplete trace is worse than a mutable one — this array is the ONLY record
+  /// of where a batch came from (§11.3). Parents are appended, deduped, and never
+  /// removed; a batch is never its own parent.
   ///
   /// 🔴 This is what makes the output of a jobwork step traceable at all. The
   /// processor returns a physically NEW thing with no number of its own, so the
@@ -145,6 +153,10 @@ model Batch {
   /// creating its own batch. The two above are the single-output header columns.
   receiptOutputRows       JobReceiptOutput[] @relation("JobReceiptOutputRowBatch")
   receiptOutputReworkRows JobReceiptOutput[] @relation("JobReceiptOutputRowReworkBatch")
+
+  /// Every allocation that put quantity INTO this batch. More than one row here
+  /// means the batch was continued across deliveries rather than cloned.
+  receiptOutputBatchRows  JobReceiptOutputBatch[] @relation("JobReceiptOutputBatchBatch")
 
   assembliesAsComposite ItemAssembly[]     @relation("ItemAssemblyCompositeBatch")
   assemblyLines         ItemAssemblyLine[] @relation("ItemAssemblyLineBatch")

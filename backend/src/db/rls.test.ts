@@ -73,6 +73,7 @@ const TENANT_TABLES = [
   'job_order_step_inputs',
   'job_order_step_outputs',
   'job_receipt_outputs',
+  'job_receipt_output_batches',
   // Planned batch allocation, added in 20260817110021_add_job_order_step_input_batches.
   // Which batches an org intends to run through which process is the same class of
   // secret as the bill of materials above it, and this table is reachable directly

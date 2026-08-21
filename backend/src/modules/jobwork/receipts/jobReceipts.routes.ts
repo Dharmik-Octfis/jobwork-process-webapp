@@ -7,6 +7,7 @@ import { cancelJobReceiptSchema, createJobReceiptSchema } from './jobReceipts.sc
 import {
   cancelReceipt,
   createJobReceipt,
+  getBatchOptions,
   getJobReceipt,
   getJobReceiptCount,
   getJobReceipts,
@@ -35,6 +36,9 @@ router.post(
 // Both before '/:id'.
 router.get('/count', requirePermission('job_receipt:read'), getJobReceiptCount);
 router.get('/prefill', requirePermission('job_receipt:create'), getPrefill);
+// Gated on `create`, like the prefill beside it: it exists only to fill in a
+// receipt being written, and it reads batch data that `batch:read` also covers.
+router.get('/batch-options', requirePermission('job_receipt:create'), getBatchOptions);
 
 router.get('/:id', requirePermission('job_receipt:read'), getJobReceipt);
 router.post(

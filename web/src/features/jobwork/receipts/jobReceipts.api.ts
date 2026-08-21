@@ -5,10 +5,12 @@ import type { PageParams } from '../../../lib/pagination';
 import {
   jobReceiptSchema,
   jobReceiptsPageSchema,
+  receiptBatchOptionsSchema,
   receivePrefillSchema,
   type CreateJobReceiptData,
   type JobReceipt,
   type JobReceiptsPage,
+  type ReceiptBatchOptions,
   type ReceivePrefill,
 } from './jobReceipts.schemas';
 
@@ -45,6 +47,21 @@ export async function fetchReceivePrefill(orgId: string, stepId: string): Promis
     params: { stepId },
   });
   return receivePrefillSchema.parse(response.data);
+}
+
+/**
+ * The batches this receipt may add to, and where each one currently sits.
+ *
+ * `search` only widens the second group — this job order's own batches are
+ * always returned in full, so an empty search is a complete answer rather than
+ * an empty one.
+ */
+export async function fetchReceiptBatchOptions(
+  orgId: string,
+  params: { stepId: string; itemId: string; search?: string },
+): Promise<ReceiptBatchOptions> {
+  const response = await apiClient.get(endpoints.jobwork.receiptBatchOptions(orgId), { params });
+  return receiptBatchOptionsSchema.parse(response.data);
 }
 
 export async function createJobReceipt(

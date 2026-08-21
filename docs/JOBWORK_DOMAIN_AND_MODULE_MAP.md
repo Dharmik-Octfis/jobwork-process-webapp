@@ -545,6 +545,26 @@ guesswork.
 **Scrap** is a ledger write-off, not a deletion: `−qty`, reason `scrap`, and the cost stays absorbed
 in the job order so the surviving good pieces carry the true cost of the failures.
 
+🔴 **A receipt may write into SEVERAL batches per returned row, and may add to one that already
+exists** (2026-08-21). Both follow from the same observation as decision 3: a batch is a claim about
+what material is, so the document has to be able to say what the floor actually did.
+
+- **Several** — a dyer returning three dye lots in one consignment is three batches. One label
+  across all three loses a separation that physically exists, and no report can get it back.
+- **Add to an existing one** — 500 m of dye lot 23 today and 500 m tomorrow is _one lot_. Forced to
+  create a second batch, the operator retypes the label (`supplier_batch_ref` is deliberately not
+  unique), and a recall on lot 23 then finds half the stock.
+
+The line that keeps this honest is not location and not the job order — it is **item, unit, and the
+ownership pair**, each checked before anything posts. Whether the batch came from _this_ job order
+is a **warning, not a block**: two orders dyed in one bath is real, and a rule that is wrong once a
+month gets worked around by inventing a new label, which is the failure it was meant to prevent.
+
+Because a batch can now be continued, `parentBatchIds` became **append-only** where it used to be
+write-once. The second delivery may have consumed inputs the first did not, and an incomplete
+genealogy is worse than a mutable one — that array is the only record of where a batch came from
+(§11.3).
+
 ### 5.6 Balances are derived, never stored
 
 The stock ledger is **append-only**. There is no `stock_balance` table that gets `UPDATE`d.
@@ -1078,6 +1098,19 @@ being blank on every row.
    added**. The plan says what was expected; the receipt says what actually came back, and only the
    receipt is a fact. Each row: item, unit (read-only, the item's stocking unit), quantity, the
    disposition split, and a **primary** radio — exactly one row carries it (§9.2.1).
+   3a. **Add Batches, per returned row** (2026-08-21) — mirrors the Issue dialog's grid in look and
+   keyboard behaviour, and answers a different question. The issue grid asks _"which existing stock
+   am I taking, and is there enough"_ and is bounded by a balance; this one asks _"what shall this
+   new stock be called"_ and has no ceiling at all, because the receipt **creates** the quantity.
+   Accepted and rework allocate separately and may never share a batch. A row is either a new batch
+   under a typed label or an existing batch to add to — the second half of a split delivery.
+   🔴 **The existing-batch list is scoped by PROVENANCE, not by location.** "What is in this godown"
+   is the issue picker's filter and it fails both ways here: it _hides_ the batch you emptied
+   yesterday, which is exactly the one a follow-up delivery continues, and it _offers_ every
+   unrelated batch of that item the godown happens to hold. So the list is this job order's own
+   batches (any balance, any location) plus a search over the rest, warned; and where each batch
+   sits comes back as **information on the row**, with our godowns shown apart from stock still out
+   at a processor (§5.4).
 4. **Yield strip** — shown against the primary output: `4,850 MTR → 2,910 PCS · 0.600 PCS/MTR ·
 expected 0.620 ⚠ −3.2%`. An observation, never a conversion factor.
 5. **Disposition split, per output row** — accepted / rework / scrap / return-to-processor. Rework

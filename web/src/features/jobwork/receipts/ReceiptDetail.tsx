@@ -40,7 +40,21 @@ const td: React.CSSProperties = { padding: '8px 10px', fontSize: 13, color: '#33
  * Green is stock you can issue onward; amber is rework, kept in its own batch so
  * the pieces stay countable.
  */
-function BatchChip({ batch, tone }: { batch: string; tone: 'good' | 'rework' }) {
+function BatchChip({
+  batch,
+  tone,
+  qty,
+  isTopUp = false,
+}: {
+  batch: string;
+  tone: 'good' | 'rework';
+  /** How much this receipt put in. Load-bearing once a row can land in several
+   * batches: without it three chips say which batches, but not the split. */
+  qty?: string;
+  /** This receipt ADDED to a batch that already existed — the second half of a
+   * split delivery, not a new lot. */
+  isTopUp?: boolean;
+}) {
   return (
     <span
       style={{
@@ -57,13 +71,16 @@ function BatchChip({ batch, tone }: { batch: string; tone: 'good' | 'rework' }) 
         border: `1px solid ${tone === 'good' ? '#bbf7d0' : '#fde68a'}`,
       }}
       title={
-        tone === 'good'
-          ? 'Batch created — ready to issue onward'
-          : 'Rework batch — re-issue to this same step'
+        (tone === 'good'
+          ? 'Batch ready to issue onward'
+          : 'Rework batch — re-issue to this same step') +
+        (isTopUp ? ' · added to a batch that already existed' : ' · created by this receipt')
       }
     >
       {tone === 'rework' && <span style={{ fontFamily: 'inherit', opacity: 0.8 }}>↻</span>}
+      {isTopUp && <span style={{ fontFamily: 'inherit', opacity: 0.8 }}>+</span>}
       {batch}
+      {qty && <span style={{ opacity: 0.7, fontWeight: 500 }}>· {qty}</span>}
     </span>
   );
 }
@@ -409,22 +426,29 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
                 <tr key={row.id} style={{ borderBottom: '1px solid #eef0f3' }}>
                   <td style={{ ...td, fontWeight: 500, color: '#111' }}>
                     {row.item?.name ?? '-'}
-                    {/* 🔴 The batches this row CREATED, as chips rather than grey
-                        text — they are identifiers somebody reads off a tag and
-                        types into a search box, not a footnote. Green is the
+                    {/* 🔴 EVERY batch this row wrote into, as chips rather than
+                        grey text — they are identifiers somebody reads off a tag
+                        and types into a search box, not a footnote. Green is the
                         stock you can issue onward; amber is the rework, kept in
-                        its own batch so the pieces stay countable. */}
-                    {(row.outputBatch || row.reworkBatch) && (
+                        its own batch so the pieces stay countable.
+
+                        Read from `batches`, not from `outputBatch`/`reworkBatch`:
+                        since 2026-08-21 those two name only the FIRST of each
+                        kind, so a split delivery rendered from them shows one
+                        batch and hides the rest. */}
+                    {row.batches.length > 0 && (
                       <span style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-                        {row.outputBatch && (
-                          <BatchChip batch={row.outputBatch.supplierBatchRef ?? '—'} tone="good" />
-                        )}
-                        {row.reworkBatch && (
+                        {row.batches.map((allocation) => (
                           <BatchChip
-                            batch={row.reworkBatch.supplierBatchRef ?? '—'}
-                            tone="rework"
+                            key={allocation.id}
+                            batch={allocation.batch.supplierBatchRef ?? '—'}
+                            qty={formatQty(allocation.qty)}
+                            tone={allocation.kind === 'rework' ? 'rework' : 'good'}
+                            /* Worth saying: this delivery continued a batch that
+                               already existed rather than starting a new lot. */
+                            isTopUp={!allocation.isNewBatch}
                           />
-                        )}
+                        ))}
                       </span>
                     )}
                   </td>

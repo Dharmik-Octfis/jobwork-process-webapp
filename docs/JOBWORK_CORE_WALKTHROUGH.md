@@ -308,32 +308,82 @@ itself.
 
 ### 6.2 Header — `job_receipts`
 
-| Field                                                                                         | Role                                                                                               |
-| --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `receiptNumber`, `receiptDate`                                                                | Allocated on save; when the goods arrived                                                          |
+| Field                                                                                         | Role                                                                                                                                        |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `receiptNumber`, `receiptDate`                                                                | Allocated on save; when the goods arrived                                                                                                   |
 | `bulk` — copied from the process at save, so a later edit cannot retell what this receipt did |
-| `outputItemId`, `outputUomId`                                                                 | What came back. A **different item** from what went out whenever the process says so               |
-| `locationId`                                                                                  | Where the goods landed — ours again, so a godown                                                   |
-| `outputBatchId`, `reworkBatchId`                                                              | The batches this receipt created. Shortcuts back; `Batch.parentBatchIds` is what carries genealogy |
-| `totalIssuedQty` … `totalReturnedQty`                                                         | The six summed totals. Refused unless the split adds up                                            |
-| `status`                                                                                      | `posted` \| `cancelled`. A cancellation posts **reversing** rows; it never deletes anything        |
+| `outputItemId`, `outputUomId`                                                                 | What came back. A **different item** from what went out whenever the process says so                                                        |
+| `locationId`                                                                                  | Where the goods landed — ours again, so a godown                                                                                            |
+| `outputBatchId`, `reworkBatchId`                                                              | ⚠️ The **first** accepted / rework batch of the primary output — see §6.4. Shortcuts back; `Batch.parentBatchIds` is what carries genealogy |
+| `totalIssuedQty` … `totalReturnedQty`                                                         | The six summed totals. Refused unless the split adds up                                                                                     |
+| `status`                                                                                      | `posted` \| `cancelled`. A cancellation posts **reversing** rows; it never deletes anything                                                 |
 
-### 6.3 Two child tables, different lengths
+### 6.3 Three child tables, different lengths
 
-| Table                 | Answers                                                        | Notable fields                                                                                                      |
-| --------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `job_receipt_lines`   | What was **consumed** — closes the challan lines that went out | `jobIssueId`, `jobIssueLineId`, `issuedQty`, `receivedQty`, the four buckets                                        |
-| `job_receipt_outputs` | What **returned** — one row per item that came back            | `itemId`, `receivedQty`, the four buckets, `isPrimary`, `valueShare`, `outputBatchId`, `reasonId`, `responsibility` |
+| Table                        | Answers                                                        | Notable fields                                                                                                      |
+| ---------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `job_receipt_lines`          | What was **consumed** — closes the challan lines that went out | `jobIssueId`, `jobIssueLineId`, `issuedQty`, `receivedQty`, the four buckets                                        |
+| `job_receipt_outputs`        | What **returned** — one row per item that came back            | `itemId`, `receivedQty`, the four buckets, `isPrimary`, `valueShare`, `outputBatchId`, `reasonId`, `responsibility` |
+| `job_receipt_output_batches` | **Which batches** each returned row landed in — §6.4           | `kind` (`accepted` \| `rework`), `batchId`, `qty`, `isNewBatch`                                                     |
 
-They are separate because they are genuinely different lengths. Cutting consumes one fabric and
-returns panels, offcuts and waste; stitching consumes three items and returns two. One table holding
-both would leave half its columns null on every row, and neither sum check could then add up its own
-rows.
+The first two are separate because they are genuinely different lengths. Cutting consumes one fabric
+and returns panels, offcuts and waste; stitching consumes three items and returns two. One table
+holding both would leave half its columns null on every row, and neither sum check could then add up
+its own rows.
 
 **Two fields worth calling out:**
 
 - `responsibility` — `ours` \| `theirs`. Decides whether rework is re-charged to the vendor or
   absorbed, and feeds the vendor scorecard later.
+
+### 6.4 One returned row, several batches (2026-08-21)
+
+Until this date a returned row created **exactly one** accepted batch and one rework batch. Two
+ordinary things were therefore impossible:
+
+- a dyer returning **three dye lots** in one consignment — one label across all three loses the
+  separation the lots were physically kept in;
+- the **second half of a split delivery** — 500 m of dye lot 23 today and 500 m tomorrow could only
+  become two batches carrying the same label, so a recall on lot 23 finds half the stock.
+
+So `outputs[].batches` and `outputs[].reworkBatches` each carry a list, and every entry is one of two
+things:
+
+| Entry            | Means                                             | `isNewBatch` |
+| ---------------- | ------------------------------------------------- | ------------ |
+| `batchReference` | Create a batch under this label — the normal case | `true`       |
+| `batchId`        | **Add to** a batch that already exists            | `false`      |
+
+**The rules, and why each exists:**
+
+- The batches must **add up** to their side's quantity, checked in the schema _and_ beside the write.
+  Under-allocating posts less stock than the receipt claims came back; over-allocating posts stock
+  nobody received, and neither is recoverable from the document afterwards.
+- Accepted and rework **never share a batch**. Merged, the piece count rework has to be measured by
+  is gone and the re-issue cannot send back only the pieces that failed.
+- Scrap and returned goods get **no batch at all** — scrap's cost stays inside the batch that
+  survived (§5.5) and returned goods never entered stock (§6.4 of the domain map).
+- An existing batch must match on **item, unit, and the ownership pair**. The third is the dangerous
+  one: merging customer-owned inward jobwork into own stock silently converts somebody else's goods
+  into our asset.
+- Its `parentBatchIds` are **appended**, deduped, never self. The second delivery may have consumed
+  input batches the first did not, and an incomplete trace cannot be rebuilt.
+- Its `sourceDocType` / `sourceDocId` are **not** rewritten — they say what _bore_ the batch, which
+  stays true. Later deposits live on the ledger, keyed to the receipt that made them.
+
+**The picker** (`GET …/jobwork/receipts/batch-options`) is scoped by **provenance, not location**:
+this job order's own batches always, plus anything else only in answer to a search. The reason is the
+day-two case above — 500 m received Monday and issued onward Wednesday sits at **zero**, so a
+"what's in this godown" list hides exactly the batch Friday's delivery wants to continue, and offers
+every unrelated batch that happens to be sitting there instead. Where each batch _is_ comes back as
+data on the row (`byLocation`, split into `internalQty` / `externalQty`, since goods at a processor
+are our stock at their location and must never be summed into "on hand").
+
+**Cancellation** reads `job_receipt_output_batches` for every batch the receipt touched — including
+by-products, which the header's two columns never named — and refuses when anything **other than
+this receipt** has taken quantity **out** of one. Quantity somebody else put _in_ is harmless, and
+must stay so: a batch created by an earlier receipt and topped up by this one carries that earlier
+`produce` forever.
 
 ---
 
@@ -432,18 +482,28 @@ there is physically nothing to cut.
 
 Of which 4,900 accepted, 30 rework, 20 scrap.
 
-| Table                 | Rows | Contents                                                                                |
-| --------------------- | ---- | --------------------------------------------------------------------------------------- |
-| `job_receipts`        | 1    | `RC-0019` · received 4,950 · accepted 4,900 · rework 30 · scrap 20                      |
-| `job_receipt_lines`   | 1    | Closes issue line from `JI-0031` · `issuedQty` 5,000                                    |
-| `job_receipt_outputs` | 1    | Dyed Fabric · `isPrimary` · the four buckets                                            |
-| `batches`             | 2    | `BATCH-0091` accepted · `BATCH-0092` rework — both with `parentBatchIds = [BATCH-0088]` |
+The 4,900 accepted metres came back as **two dye lots**, kept apart, so the operator allocates them
+to two batches in the Add Batches grid: 3,000 to `DY-23` and 1,900 to `DY-24`.
+
+| Table                        | Rows | Contents                                                                                 |
+| ---------------------------- | ---- | ---------------------------------------------------------------------------------------- |
+| `job_receipts`               | 1    | `RC-0019` · received 4,950 · accepted 4,900 · rework 30 · scrap 20                       |
+| `job_receipt_lines`          | 1    | Closes issue line from `JI-0031` · `issuedQty` 5,000                                     |
+| `job_receipt_outputs`        | 1    | Dyed Fabric · `isPrimary` · the four buckets                                             |
+| `job_receipt_output_batches` | 3    | accepted → `DY-23` 3,000, `DY-24` 1,900 · rework → `DY-23/RW` 30 — all `isNewBatch` true |
+| `batches`                    | 3    | All three, each with `parentBatchIds = [BATCH-0088]`                                     |
 
 | Movement  | Batch        | Location      |    Qty | Note                  |
 | --------- | ------------ | ------------- | -----: | --------------------- |
 | `consume` | `BATCH-0088` | Sunrise Dyers | −5,000 | The grey is used up   |
-| `produce` | `BATCH-0091` | Main Godown   | +4,900 | Accepted dyed fabric  |
-| `produce` | `BATCH-0092` | Main Godown   |    +30 | Rework, kept separate |
+| `produce` | `DY-23`      | Main Godown   | +3,000 | Accepted, first lot   |
+| `produce` | `DY-24`      | Main Godown   | +1,900 | Accepted, second lot  |
+| `produce` | `DY-23/RW`   | Main Godown   |    +30 | Rework, kept separate |
+
+The pot — ₹250,000 consumed plus the process charge — is split across the four surviving metres by
+quantity, and the **last batch takes the remainder** rather than its own rounded share, so the total
+posted equals the pot exactly. Scrap takes none of it: the 20 scrapped metres' cost stays inside the
+batches that survived, which is what makes 4,900 good metres carry what 5,000 cost.
 
 The missing 50 metres never appear as a row — they are **issued minus received**, which is exactly
 how wastage is reported. Step 1 becomes `completed`; step 2 unblocks; the order moves to
@@ -453,8 +513,22 @@ how wastage is reported. Step 1 becomes `completed`; step 2 unblocks; the order 
 
 ```
 Grey Fabric @ Main Godown      0
-Dyed Fabric @ Main Godown  4,930   (4,900 good + 30 rework)
+Dyed Fabric @ Main Godown  4,930   (3,000 DY-23 + 1,900 DY-24 + 30 rework)
 ```
+
+### Day 12 — the dyer sends the rest of DY-23
+
+A further 400 metres of the **same dye lot** turns up. It is not a new lot, so the operator picks
+`DY-23` in the grid instead of typing a label — even though Day 10's 3,000 metres have already gone
+to the cutter and `DY-23` sits at zero in the godown.
+
+| Table                        | Rows | Contents                                                   |
+| ---------------------------- | ---- | ---------------------------------------------------------- |
+| `job_receipt_output_batches` | 1    | accepted → `DY-23` 400, `isNewBatch` **false**             |
+| `batches`                    | 0    | 🔴 None created. One physical lot stays under one batch id |
+
+`DY-23`'s `parentBatchIds` gains whatever this delivery consumed that Day 9 did not; its
+`sourceDocId` still points at `RC-0019`, because that is what bore it.
 
 ---
 

@@ -157,6 +157,8 @@ model User {
   updatedJobOrderStepOutputs      JobOrderStepOutput[]     @relation("JobOrderStepOutputUpdatedBy")
   createdJobReceiptOutputs        JobReceiptOutput[]       @relation("JobReceiptOutputCreatedBy")
   updatedJobReceiptOutputs        JobReceiptOutput[]       @relation("JobReceiptOutputUpdatedBy")
+  createdJobReceiptOutputBatches  JobReceiptOutputBatch[]  @relation("JobReceiptOutputBatchCreatedBy")
+  updatedJobReceiptOutputBatches  JobReceiptOutputBatch[]  @relation("JobReceiptOutputBatchUpdatedBy")
   createdRejectionReasons         RejectionReason[]        @relation("RejectionReasonCreatedBy")
   updatedRejectionReasons         RejectionReason[]        @relation("RejectionReasonUpdatedBy")
   createdCompositeComponents      CompositeItemComponent[] @relation("CompositeComponentCreatedBy")
@@ -313,6 +315,7 @@ model Organization {
   jobOrderStepInputBatches JobOrderStepInputBatch[]
   jobOrderStepOutputs      JobOrderStepOutput[]
   jobReceiptOutputs        JobReceiptOutput[]
+  jobReceiptOutputBatches  JobReceiptOutputBatch[]
   compositeItemComponents  CompositeItemComponent[]
   itemAssemblies           ItemAssembly[]
   itemAssemblyLines        ItemAssemblyLine[]

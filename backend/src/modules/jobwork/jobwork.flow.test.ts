@@ -196,6 +196,7 @@ afterAll(async () => {
   // locations, so letting the organization cascade would hit those constraints in
   // whatever order Postgres chose.
   await runAsTenant(orgId, async (tx) => {
+    await tx.jobReceiptOutputBatch.deleteMany({ where: { organizationId: orgId } });
     await tx.jobReceiptLine.deleteMany({ where: { organizationId: orgId } });
     await tx.jobReceiptOutput.deleteMany({ where: { organizationId: orgId } });
     await tx.jobReceipt.deleteMany({ where: { organizationId: orgId } });
