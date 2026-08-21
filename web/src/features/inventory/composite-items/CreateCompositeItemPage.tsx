@@ -86,7 +86,9 @@ export function CreateCompositeItemPage({
             ? Number(itemToClone.openingStockValuePerUnit)
             : null,
         customFields:
-          itemToClone.customFields || (itemToClone.customFields as unknown as Record<string, unknown>) || null,
+          itemToClone.customFields ||
+          (itemToClone.customFields as unknown as Record<string, unknown>) ||
+          null,
       };
     }
     return {
@@ -196,7 +198,7 @@ export function CreateCompositeItemPage({
           .filter((c) => c.componentItemId && c.componentItemId.trim() !== '')
           .map((c) => ({
             componentItemId: c.componentItemId,
-            qtyPerUnit: c.qtyPerUnit,
+            qtyPerUnit: Number(c.qtyPerUnit) || 1,
           })),
       } as CreateCompositeItemDto),
     onSuccess: async (createdItem) => {
@@ -865,11 +867,7 @@ export function CreateCompositeItemPage({
                             textAlign: 'right',
                           }}
                         >
-                          ₹
-                          {Number(
-                            comp.itemDetails?.sellingPrice ?? 0,
-                          ).toFixed(2)}{' '}
-                          per unit
+                          ₹{Number(comp.itemDetails?.sellingPrice ?? 0).toFixed(2)} per unit
                         </div>
                       </td>
                       <td
@@ -881,8 +879,7 @@ export function CreateCompositeItemPage({
                         }}
                       >
                         {(
-                          Number(comp.itemDetails?.sellingPrice ?? 0) *
-                          (comp.qtyPerUnit || 0)
+                          Number(comp.itemDetails?.sellingPrice ?? 0) * (comp.qtyPerUnit || 0)
                         ).toFixed(2)}
                       </td>
                       <td
@@ -895,9 +892,7 @@ export function CreateCompositeItemPage({
                         }}
                       >
                         {(
-                          Number(
-                            comp.itemDetails?.costPrice ?? 0,
-                          ) * (comp.qtyPerUnit || 0)
+                          Number(comp.itemDetails?.costPrice ?? 0) * (comp.qtyPerUnit || 0)
                         ).toFixed(2)}
                         <button
                           type="button"
@@ -950,9 +945,7 @@ export function CreateCompositeItemPage({
                       {components
                         .reduce(
                           (sum, c) =>
-                            sum +
-                            Number(c.itemDetails?.sellingPrice ?? 0) *
-                              (c.qtyPerUnit || 0),
+                            sum + Number(c.itemDetails?.sellingPrice ?? 0) * (c.qtyPerUnit || 0),
                           0,
                         )
                         .toFixed(2)}
@@ -963,9 +956,7 @@ export function CreateCompositeItemPage({
                       {components
                         .reduce(
                           (sum, c) =>
-                            sum +
-                            Number(c.itemDetails?.costPrice ?? 0) *
-                              (c.qtyPerUnit || 0),
+                            sum + Number(c.itemDetails?.costPrice ?? 0) * (c.qtyPerUnit || 0),
                           0,
                         )
                         .toFixed(2)}
@@ -1154,11 +1145,7 @@ export function CreateCompositeItemPage({
                               textAlign: 'right',
                             }}
                           >
-                            ₹
-                            {Number(
-                              svc.itemDetails?.sellingPrice ?? 0,
-                            ).toFixed(2)}{' '}
-                            per unit
+                            ₹{Number(svc.itemDetails?.sellingPrice ?? 0).toFixed(2)} per unit
                           </div>
                         </td>
                         <td
@@ -1170,8 +1157,7 @@ export function CreateCompositeItemPage({
                           }}
                         >
                           {(
-                            Number(svc.itemDetails?.sellingPrice ?? 0) *
-                            (svc.qtyPerUnit || 0)
+                            Number(svc.itemDetails?.sellingPrice ?? 0) * (svc.qtyPerUnit || 0)
                           ).toFixed(2)}
                         </td>
                         <td
@@ -1184,9 +1170,7 @@ export function CreateCompositeItemPage({
                           }}
                         >
                           {(
-                            Number(
-                              svc.itemDetails?.costPrice ?? 0,
-                            ) * (svc.qtyPerUnit || 0)
+                            Number(svc.itemDetails?.costPrice ?? 0) * (svc.qtyPerUnit || 0)
                           ).toFixed(2)}
                           <button
                             type="button"
@@ -1245,8 +1229,7 @@ export function CreateCompositeItemPage({
                           .reduce(
                             (sum, svc) =>
                               sum +
-                              Number(svc.itemDetails?.sellingPrice ?? 0) *
-                                (svc.qtyPerUnit || 0),
+                              Number(svc.itemDetails?.sellingPrice ?? 0) * (svc.qtyPerUnit || 0),
                             0,
                           )
                           .toFixed(2)}
@@ -1262,11 +1245,7 @@ export function CreateCompositeItemPage({
                         {services
                           .reduce(
                             (sum, svc) =>
-                              sum +
-                              Number(
-                                svc.itemDetails?.costPrice ?? 0,
-                              ) *
-                                (svc.qtyPerUnit || 0),
+                              sum + Number(svc.itemDetails?.costPrice ?? 0) * (svc.qtyPerUnit || 0),
                             0,
                           )
                           .toFixed(2)}

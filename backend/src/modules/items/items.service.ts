@@ -62,22 +62,38 @@ export function normalizeItemDto<T extends Record<string, unknown>>(rawData: T):
   if ('product_type' in copy && copy.type === undefined) copy.type = copy.product_type;
   if ('hsn_or_sac' in copy && copy.hsnCode === undefined) copy.hsnCode = copy.hsn_or_sac;
   if ('rate' in copy && copy.sellingPrice === undefined) copy.sellingPrice = copy.rate;
-  if ('sales_description' in copy && copy.salesDescription === undefined) copy.salesDescription = copy.sales_description;
+  if ('sales_description' in copy && copy.salesDescription === undefined)
+    copy.salesDescription = copy.sales_description;
   if ('purchase_rate' in copy && copy.costPrice === undefined) copy.costPrice = copy.purchase_rate;
-  if ('purchase_description' in copy && copy.purchaseDescription === undefined) copy.purchaseDescription = copy.purchase_description;
+  if ('purchase_description' in copy && copy.purchaseDescription === undefined)
+    copy.purchaseDescription = copy.purchase_description;
   if ('can_be_sold' in copy && copy.isSalesInfo === undefined) copy.isSalesInfo = copy.can_be_sold;
-  if ('can_be_purchased' in copy && copy.isPurchaseInfo === undefined) copy.isPurchaseInfo = copy.can_be_purchased;
-  if ('track_inventory' in copy && copy.trackInventory === undefined) copy.trackInventory = copy.track_inventory;
+  if ('can_be_purchased' in copy && copy.isPurchaseInfo === undefined)
+    copy.isPurchaseInfo = copy.can_be_purchased;
+  if ('track_inventory' in copy && copy.trackInventory === undefined)
+    copy.trackInventory = copy.track_inventory;
   if ('front_image' in copy && copy.frontImage === undefined) copy.frontImage = copy.front_image;
   if ('rear_image' in copy && copy.rearImage === undefined) copy.rearImage = copy.rear_image;
-  if ('inventory_tracking' in copy && copy.inventoryTracking === undefined) copy.inventoryTracking = copy.inventory_tracking;
+  if ('inventory_tracking' in copy && copy.inventoryTracking === undefined)
+    copy.inventoryTracking = copy.inventory_tracking;
   if ('is_active' in copy && copy.isActive === undefined) copy.isActive = copy.is_active;
 
   // Clean up any remaining snake_case keys so Prisma write doesn't reject unknown properties
   const snakeCaseKeys = [
-    'product_id', 'product_type', 'hsn_or_sac', 'rate', 'sales_description',
-    'purchase_rate', 'purchase_description', 'can_be_sold', 'can_be_purchased',
-    'track_inventory', 'front_image', 'rear_image', 'item_type', 'is_active',
+    'product_id',
+    'product_type',
+    'hsn_or_sac',
+    'rate',
+    'sales_description',
+    'purchase_rate',
+    'purchase_description',
+    'can_be_sold',
+    'can_be_purchased',
+    'track_inventory',
+    'front_image',
+    'rear_image',
+    'item_type',
+    'is_active',
     'inventory_tracking',
   ];
   for (const key of snakeCaseKeys) {
@@ -506,6 +522,8 @@ export class ItemsService {
       const item = await tx.item.create({
         data: {
           ...rest,
+          unit: rest.unit ?? '',
+          sku: rest.sku ?? '',
           customFields,
           frontImage: frontImage === null ? Prisma.DbNull : (frontImage as Prisma.InputJsonValue),
           rearImage: rearImage === null ? Prisma.DbNull : (rearImage as Prisma.InputJsonValue),

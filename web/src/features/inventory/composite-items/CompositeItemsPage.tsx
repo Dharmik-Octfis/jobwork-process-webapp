@@ -13,6 +13,9 @@ import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsMo
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 import type { Item } from '../../items/items.schemas';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import type { CustomFieldDefinition } from '../../custom-fields/customFields.schemas';
+import { formatDate } from '../../../lib/formatDate';
 
 /**
  * How each selectable column renders. Keys match the backend catalog
@@ -20,10 +23,38 @@ import type { Item } from '../../items/items.schemas';
  * out of the row's `customFields` blob, so a new custom field needs no code here.
  * `type` keeps its pill styling, which is why this returns a node, not a string.
  */
-function renderItemCell(item: Item, key: string): React.ReactNode {
+function renderItemCell(
+  item: Item,
+  key: string,
+  customFieldsDef?: CustomFieldDefinition[],
+): React.ReactNode {
   if (key.startsWith(CUSTOM_FIELD_PREFIX)) {
-    const value = item.customFields?.[key.slice(CUSTOM_FIELD_PREFIX.length)];
+    const cfKey = key.slice(CUSTOM_FIELD_PREFIX.length);
+    const value = item.customFields?.[cfKey];
     if (value === null || value === undefined || value === '') return '-';
+
+    const def = customFieldsDef?.find((d) => d.key === cfKey);
+    if (def) {
+      if (def.dataType === 'select' || def.dataType === 'multi_select') {
+        const options = def.config?.options || [];
+        if (Array.isArray(value)) {
+          return value.map((v) => options.find((o) => o.id === v)?.label || v).join(', ');
+        }
+        return options.find((o) => o.id === value)?.label || String(value);
+      }
+
+      if (['date', 'datetime', 'time'].includes(def.dataType)) {
+        if (typeof value === 'string' && !isNaN(Date.parse(value))) {
+          const d = new Date(value);
+          if (def.dataType === 'date') return formatDate(value);
+          if (def.dataType === 'datetime')
+            return `${formatDate(value)}, ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+          if (def.dataType === 'time')
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+      }
+    }
+
     return Array.isArray(value) ? value.join(', ') : String(value);
   }
   if (key === 'type') {
@@ -44,8 +75,7 @@ function renderItemCell(item: Item, key: string): React.ReactNode {
   }
   const value = (item as unknown as Record<string, unknown>)[key];
   if (value === null || value === undefined || value === '') return '-';
-  if (key === 'createdAt' || key === 'updatedAt')
-    return new Date(String(value)).toLocaleDateString();
+  if (key === 'createdAt' || key === 'updatedAt') return formatDate(String(value));
   return String(value);
 }
 
@@ -54,11 +84,13 @@ function ExpandableCompositeItemRow({
   columns,
   setSearchParams,
   orgId,
+  customFieldsDef,
 }: {
   item: Item;
   columns: { key: string; label: string; locked?: boolean }[];
   setSearchParams: (params: Record<string, string>) => void;
   orgId: string;
+  customFieldsDef?: CustomFieldDefinition[];
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -114,10 +146,10 @@ function ExpandableCompositeItemRow({
                 >
                   {isExpanded ? <FolderOpen size={16} /> : <Folder size={16} />}
                 </button>
-                {renderItemCell(item, col.key)}
+                {renderItemCell(item, col.key, customFieldsDef)}
               </div>
             ) : (
-              renderItemCell(item, col.key)
+              renderItemCell(item, col.key, customFieldsDef)
             )}
           </td>
         ))}
@@ -219,6 +251,8 @@ export function CompositeItemsPage() {
 
   const queryClient = useQueryClient();
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+
+  const { data: customFieldsDef } = useActiveCustomFields(orgId, 'item');
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => compositeItemsApi.deleteItem(orgId!, id),
@@ -454,6 +488,7 @@ export function CompositeItemsPage() {
                           columns={columns}
                           setSearchParams={setSearchParams}
                           orgId={orgId!}
+                          customFieldsDef={customFieldsDef}
                         />
                       ))}
                     </tbody>

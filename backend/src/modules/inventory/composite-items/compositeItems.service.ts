@@ -95,15 +95,20 @@ export class CompositeItemsService {
         rearImage,
         images,
         components,
+        unit,
         ...rest
       } = data;
 
+      let resolvedUnit = unit;
       if (rest.stockingUomId) {
         const uom = await tx.unitOfMeasurement.findFirst({
           where: { id: rest.stockingUomId, organizationId, isDeleted: false },
-          select: { id: true },
+          select: { id: true, unitName: true },
         });
         if (!uom) throw ApiError.badRequest('Unknown unit of measurement.');
+        if (!resolvedUnit) {
+          resolvedUnit = uom.unitName;
+        }
       } else {
         throw ApiError.badRequest('Composite Item must have stockingUomId set');
       }
@@ -126,6 +131,8 @@ export class CompositeItemsService {
       const item = await tx.item.create({
         data: {
           ...rest,
+          sku: rest.sku ?? '',
+          unit: resolvedUnit as string,
           itemStructure: 'composite',
           customFields,
           frontImage:

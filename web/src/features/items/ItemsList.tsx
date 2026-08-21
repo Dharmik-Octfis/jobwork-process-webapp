@@ -14,7 +14,6 @@ import { ListFilterDropdown } from '../../components/ui/ListFilterDropdown';
 import { CUSTOM_FIELD_PREFIX } from '../list-views/listViews.api';
 import type { Item } from './items.schemas.ts';
 import { useActiveCustomFields } from '../custom-fields/customFields.api';
-import { formatCustomFieldValue } from '../custom-fields/formatCustomFieldValue';
 import { formatDate } from '../../lib/formatDate';
 import type { CustomFieldDefinition } from '../custom-fields/customFields.schemas';
 
@@ -31,10 +30,32 @@ function renderItemCell(
 ): React.ReactNode {
   if (key.startsWith(CUSTOM_FIELD_PREFIX)) {
     const cfKey = key.slice(CUSTOM_FIELD_PREFIX.length);
-    return formatCustomFieldValue(
-      item.customFields?.[cfKey],
-      customFieldsDef?.find((d) => d.key === cfKey),
-    );
+    const value = item.customFields?.[cfKey];
+    if (value === null || value === undefined || value === '') return '-';
+
+    const def = customFieldsDef?.find((d) => d.key === cfKey);
+    if (def) {
+      if (def.dataType === 'select' || def.dataType === 'multi_select') {
+        const options = def.config?.options || [];
+        if (Array.isArray(value)) {
+          return value.map((v) => options.find((o) => o.id === v)?.label || v).join(', ');
+        }
+        return options.find((o) => o.id === value)?.label || String(value);
+      }
+
+      if (['date', 'datetime', 'time'].includes(def.dataType)) {
+        if (typeof value === 'string' && !isNaN(Date.parse(value))) {
+          const d = new Date(value);
+          if (def.dataType === 'date') return formatDate(value);
+          if (def.dataType === 'datetime')
+            return `${formatDate(value)}, ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+          if (def.dataType === 'time')
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+      }
+    }
+
+    return Array.isArray(value) ? value.join(', ') : String(value);
   }
   if (key === 'type') {
     return (

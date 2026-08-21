@@ -216,15 +216,13 @@ export function EditCompositeItemPage() {
         rawItem.sellingPrice !== null && rawItem.sellingPrice !== undefined
           ? Number(rawItem.sellingPrice)
           : (null as unknown as number),
-      salesDescription:
-        (rawItem.salesDescription as string) || '',
+      salesDescription: (rawItem.salesDescription as string) || '',
       isPurchaseInfo: true,
       costPrice:
         rawItem.costPrice !== null && rawItem.costPrice !== undefined
           ? Number(rawItem.costPrice)
           : (null as unknown as number),
-      purchaseDescription:
-        (rawItem.purchaseDescription as string) || '',
+      purchaseDescription: (rawItem.purchaseDescription as string) || '',
       packaging: rawItem.packaging || '',
       frontImage: rawItem.frontImage || null,
       rearImage: rawItem.rearImage || null,
@@ -240,7 +238,9 @@ export function EditCompositeItemPage() {
           ? Number(rawItem.openingStockValuePerUnit)
           : null,
       customFields:
-        rawItem.customFields || (rawItem.customFields as unknown as Record<string, unknown>) || null,
+        rawItem.customFields ||
+        (rawItem.customFields as unknown as Record<string, unknown>) ||
+        null,
     });
   }
 
@@ -255,8 +255,8 @@ export function EditCompositeItemPage() {
             .filter((c) => c.componentItemId && c.componentItemId.trim() !== '')
             .map((c) => ({
               componentItemId: c.componentItemId,
-              // eslint-disable-next-line @typescript-eslint/naming-convention
-              qtyPerUnit: c.qtyPerUnit,
+               
+              qtyPerUnit: Number(c.qtyPerUnit) || 1,
             })),
         } as UpdateCompositeItemDto,
       }),
@@ -859,11 +859,7 @@ export function EditCompositeItemPage() {
                             textAlign: 'right',
                           }}
                         >
-                          ₹
-                          {Number(
-                            comp.itemDetails?.sellingPrice ?? 0,
-                          ).toFixed(2)}{' '}
-                          per unit
+                          ₹{Number(comp.itemDetails?.sellingPrice ?? 0).toFixed(2)} per unit
                         </div>
                       </td>
                       <td
@@ -875,8 +871,7 @@ export function EditCompositeItemPage() {
                         }}
                       >
                         {(
-                          Number(comp.itemDetails?.sellingPrice ?? 0) *
-                          (comp.qtyPerUnit || 0)
+                          Number(comp.itemDetails?.sellingPrice ?? 0) * (comp.qtyPerUnit || 0)
                         ).toFixed(2)}
                       </td>
                       <td
@@ -889,9 +884,7 @@ export function EditCompositeItemPage() {
                         }}
                       >
                         {(
-                          Number(
-                            comp.itemDetails?.costPrice ?? 0,
-                          ) * (comp.qtyPerUnit || 0)
+                          Number(comp.itemDetails?.costPrice ?? 0) * (comp.qtyPerUnit || 0)
                         ).toFixed(2)}
                         <button
                           type="button"
@@ -944,9 +937,7 @@ export function EditCompositeItemPage() {
                       {components
                         .reduce(
                           (sum, c) =>
-                            sum +
-                            Number(c.itemDetails?.sellingPrice ?? 0) *
-                              (c.qtyPerUnit || 0),
+                            sum + Number(c.itemDetails?.sellingPrice ?? 0) * (c.qtyPerUnit || 0),
                           0,
                         )
                         .toFixed(2)}
@@ -957,9 +948,7 @@ export function EditCompositeItemPage() {
                       {components
                         .reduce(
                           (sum, c) =>
-                            sum +
-                            Number(c.itemDetails?.costPrice ?? 0) *
-                              (c.qtyPerUnit || 0),
+                            sum + Number(c.itemDetails?.costPrice ?? 0) * (c.qtyPerUnit || 0),
                           0,
                         )
                         .toFixed(2)}
@@ -1148,11 +1137,7 @@ export function EditCompositeItemPage() {
                               textAlign: 'right',
                             }}
                           >
-                            ₹
-                            {Number(
-                              svc.itemDetails?.sellingPrice ?? 0,
-                            ).toFixed(2)}{' '}
-                            per unit
+                            ₹{Number(svc.itemDetails?.sellingPrice ?? 0).toFixed(2)} per unit
                           </div>
                         </td>
                         <td
@@ -1164,8 +1149,7 @@ export function EditCompositeItemPage() {
                           }}
                         >
                           {(
-                            Number(svc.itemDetails?.sellingPrice ?? 0) *
-                            (svc.qtyPerUnit || 0)
+                            Number(svc.itemDetails?.sellingPrice ?? 0) * (svc.qtyPerUnit || 0)
                           ).toFixed(2)}
                         </td>
                         <td
@@ -1178,9 +1162,7 @@ export function EditCompositeItemPage() {
                           }}
                         >
                           {(
-                            Number(
-                              svc.itemDetails?.costPrice ?? 0,
-                            ) * (svc.qtyPerUnit || 0)
+                            Number(svc.itemDetails?.costPrice ?? 0) * (svc.qtyPerUnit || 0)
                           ).toFixed(2)}
                           <button
                             type="button"
@@ -1239,8 +1221,7 @@ export function EditCompositeItemPage() {
                           .reduce(
                             (sum, svc) =>
                               sum +
-                              Number(svc.itemDetails?.sellingPrice ?? 0) *
-                                (svc.qtyPerUnit || 0),
+                              Number(svc.itemDetails?.sellingPrice ?? 0) * (svc.qtyPerUnit || 0),
                             0,
                           )
                           .toFixed(2)}
@@ -1256,11 +1237,7 @@ export function EditCompositeItemPage() {
                         {services
                           .reduce(
                             (sum, svc) =>
-                              sum +
-                              Number(
-                                svc.itemDetails?.costPrice ?? 0,
-                              ) *
-                                (svc.qtyPerUnit || 0),
+                              sum + Number(svc.itemDetails?.costPrice ?? 0) * (svc.qtyPerUnit || 0),
                             0,
                           )
                           .toFixed(2)}

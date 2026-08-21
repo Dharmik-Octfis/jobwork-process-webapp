@@ -36,9 +36,9 @@ export const itemSchema = openApiRegistry.register(
     hsnCode: z.string().max(50).nullable().optional().openapi({ example: '84713010' }),
     itemStructure: z
       .enum(['single', 'variants', 'composite'])
-      .default('single')
+      .optional()
       .openapi({ example: 'single' }),
-    unit: z.string().max(50).optional().default('').openapi({ example: 'pcs' }),
+    unit: z.string().max(50).optional().openapi({ example: 'pcs' }),
     /**
      * 🔴 THE UNIT THE LEDGER MOVES THIS ITEM IN. One item, one stocking unit
      * (jobwork domain §5.1) — every batch, every challan line and every balance is
@@ -53,11 +53,11 @@ export const itemSchema = openApiRegistry.register(
      * value invented for every unmatched row (spec I-2).
      */
     stockingUomId: z.string().uuid().nullable().optional(),
-    sku: z.string().max(100).optional().default('').openapi({ example: 'SKU-MBP-14-M3' }),
-    isSalesInfo: z.boolean().default(false).openapi({ example: true }),
+    sku: z.string().max(100).optional().openapi({ example: 'SKU-MBP-14-M3' }),
+    isSalesInfo: z.boolean().optional().openapi({ example: true }),
     sellingPrice: z.number().nullable().optional().openapi({ example: 150000.0 }),
     salesDescription: z.string().nullable().optional(),
-    isPurchaseInfo: z.boolean().default(false).openapi({ example: true }),
+    isPurchaseInfo: z.boolean().optional().openapi({ example: true }),
     costPrice: z.number().nullable().optional().openapi({ example: 120000.0 }),
     purchaseDescription: z.string().nullable().optional(),
     packaging: z.string().max(100).nullable().optional().openapi({ example: 'Box' }),
