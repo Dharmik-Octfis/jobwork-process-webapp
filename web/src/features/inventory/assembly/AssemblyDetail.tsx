@@ -119,8 +119,8 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
     );
   }
 
-  const goodsItems = assembly.lines.filter((line) => line.item.type !== 'Service');
-  const serviceItems = assembly.lines.filter((line) => line.item.type === 'Service');
+  const goodsItems = assembly.lines.filter((line) => line.item.type?.toLowerCase() !== 'service');
+  const serviceItems = assembly.lines.filter((line) => line.item.type?.toLowerCase() === 'service');
 
   const formatMoney = (value: number) =>
     new Intl.NumberFormat('en-IN', {

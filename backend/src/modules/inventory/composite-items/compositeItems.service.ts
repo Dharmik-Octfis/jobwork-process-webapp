@@ -228,6 +228,73 @@ export class CompositeItemsService {
         ...rest
       } = data;
 
+      if (_components && Array.isArray(_components)) {
+        // Fetch existing components to compare
+        const existingComponents = await tx.compositeItemComponent.findMany({
+          where: { compositeItemId: id, organizationId, isDeleted: false },
+        });
+
+        const newComponentIds = new Set(_components.map((c: any) => c.componentItemId).filter(Boolean));
+        
+        // Soft delete components that are missing from the payload
+        for (const ec of existingComponents) {
+          if (!newComponentIds.has(ec.componentItemId)) {
+            await tx.compositeItemComponent.update({
+              where: { id: ec.id },
+              data: { isDeleted: true, updatedBy: userId ?? null },
+            });
+          }
+        }
+
+        const seenComponents = new Set<string>();
+        for (const comp of _components as any[]) {
+          if (!comp.componentItemId) continue;
+          if (seenComponents.has(comp.componentItemId)) {
+            throw ApiError.badRequest('Duplicate component selected. A composite item cannot contain the same component multiple times.');
+          }
+          seenComponents.add(comp.componentItemId);
+
+          if (comp.componentItemId === existing.id) {
+            throw ApiError.badRequest('Composite item cannot contain itself as a component.');
+          }
+
+          const existingComp = existingComponents.find(ec => ec.componentItemId === comp.componentItemId);
+          
+          if (existingComp) {
+            await tx.compositeItemComponent.update({
+              where: { id: existingComp.id },
+              data: {
+                qtyPerUnit: comp.qtyPerUnit,
+                seq: comp.seq ?? existingComp.seq,
+                updatedBy: userId ?? null,
+              }
+            });
+          } else {
+            const cItem = await tx.item.findFirst({
+              where: { id: comp.componentItemId, organizationId, isDeleted: false },
+            });
+            if (!cItem) throw ApiError.badRequest(`Component ${comp.componentItemId} not found.`);
+            if (cItem.itemStructure === 'composite')
+              throw ApiError.badRequest(`Component ${cItem.name} cannot be a Composite Item.`);
+
+            await tx.compositeItemComponent.create({
+              data: {
+                organizationId,
+                compositeItemId: existing.id,
+                componentItemId: comp.componentItemId,
+                qtyPerUnit: comp.qtyPerUnit,
+                uomId: comp.uomId ?? cItem.stockingUomId,
+                seq: comp.seq ?? 0,
+                notes: comp.notes,
+                customFields: comp.customFields ? (comp.customFields as Prisma.InputJsonValue) : undefined,
+                createdBy: userId ?? null,
+                updatedBy: userId ?? null,
+              },
+            });
+          }
+        }
+      }
+
       if (rest.stockingUomId && rest.stockingUomId !== existing.stockingUomId) {
         const uom = await tx.unitOfMeasurement.findFirst({
           where: { id: rest.stockingUomId, organizationId, isDeleted: false },
@@ -312,11 +379,36 @@ export class CompositeItemsService {
               itemType: true,
               sellingPrice: true,
               costPrice: true,
+              openingStock: true,
+              stockingUom: { select: { unitName: true } },
             },
           },
         },
       });
-      return rows.map(toComponentResponse);
+
+      const componentIds = rows.map((r) => r.componentItemId);
+      let balances: any[] = [];
+      if (componentIds.length > 0) {
+        balances = await tx.$queryRaw`
+          SELECT item_id as "itemId", SUM(qty_in - qty_out) as qty
+          FROM stock_ledger
+          WHERE item_id IN (${Prisma.join(componentIds)})
+            AND organization_id = ${organizationId}::uuid
+          GROUP BY item_id
+        `;
+      }
+
+      return rows.map((row) => {
+        const res = toComponentResponse(row);
+        const bal = balances.find((b) => b.itemId === row.componentItemId);
+        if (res.component) {
+          const ledgerQty = bal?.qty ? Number(bal.qty) : 0;
+          const openingQty = (row.component as any).openingStock ? Number((row.component as any).openingStock) : 0;
+          (res.component as any).stockOnHand = bal !== undefined ? ledgerQty : openingQty;
+          (res.component as any).unit = (row.component as any)?.stockingUom?.unitName || (row.component as any)?.unit || '';
+        }
+        return res;
+      });
     });
   }
 

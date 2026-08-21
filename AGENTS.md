@@ -9,6 +9,11 @@ expensive when you do.
 
 ---
 
+### 🔴 CRITICAL COMMAND RESTRICTION
+**NEVER RUN `npx prisma db push --force-reset`**. Do not use this command under any circumstances. It is strictly forbidden.
+
+---
+
 ## 🔴 Tenant isolation — read before writing any query
 
 **Two layers. Both are required. They catch different mistakes.**

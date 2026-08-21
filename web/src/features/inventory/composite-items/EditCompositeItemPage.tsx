@@ -94,7 +94,7 @@ export function EditCompositeItemPage() {
             comp.qtyPerUnit || (comp as unknown as { qtyPerUnit?: number }).qtyPerUnit || 1,
           itemDetails: comp.component as unknown as Item,
         };
-        if (comp.component?.type === 'Service') {
+        if (comp.component?.type?.toLowerCase() === 'service') {
           svcs.push(row);
         } else {
           goods.push(row);

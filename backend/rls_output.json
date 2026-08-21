@@ -1,0 +1,10 @@
+[
+  {
+    "tablename": "composite_item_components",
+    "policyname": "tenant_isolation",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "(organization_id = (current_setting('app.current_tenant_id'::text, true))::uuid)",
+    "with_check": null
+  }
+]

@@ -40,8 +40,8 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
     { key: 'all', label: 'Active Items', where: { isActive: true } },
     { key: 'all_items', label: 'All Items', where: {} },
     { key: 'inactive', label: 'Inactive Items', where: { isActive: false } },
-    { key: 'goods', label: 'Goods', where: { type: 'Goods' } },
-    { key: 'services', label: 'Services', where: { type: 'Service' } },
+    { key: 'goods', label: 'Goods', where: { itemType: 'goods' } },
+    { key: 'services', label: 'Services', where: { itemType: 'service' } },
   ],
   /**
    * Users. The first entry is the default, so an admin opening Settings → Users

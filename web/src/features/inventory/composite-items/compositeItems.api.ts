@@ -35,6 +35,7 @@ export interface CompositeComponent {
     type: string;
     sellingPrice?: number | null;
     costPrice?: number | null;
+    stockOnHand?: number;
   };
 }
 

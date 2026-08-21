@@ -107,13 +107,16 @@ export function CreateAssemblyPage() {
   const [extraItems, setExtraItems] = useState<
     { itemId: string; qtyRequired: number; costPrice?: number }[]
   >([]);
+  const [overrides, setOverrides] = useState<
+    Record<string, { type: 'perUnit' | 'total'; value: string }>
+  >({});
 
   const goodsComponents = useMemo(() => {
-    return components?.filter((c) => c.component?.type !== 'Service') || [];
+    return components?.filter((c) => c.component?.type?.toLowerCase() !== 'service') || [];
   }, [components]);
 
   const serviceComponents = useMemo(() => {
-    return components?.filter((c) => c.component?.type === 'Service') || [];
+    return components?.filter((c) => c.component?.type?.toLowerCase() === 'service') || [];
   }, [components]);
 
   const handleAddExtraItem = () => {
@@ -178,10 +181,22 @@ export function CreateAssemblyPage() {
 
   const onSubmit = (data: CreateAssemblyDto) => {
     // Generate lines dynamically from fetched components
-    const lines = (components || []).map((comp) => ({
-      itemId: comp.componentItemId,
-      qtyRequired: Number(comp.qtyPerUnit) * Number(data.qty),
-    }));
+    const lines = (components || []).map((comp) => {
+      const override = overrides[comp.id];
+      let finalQtyRequired = Number(comp.qtyPerUnit) * Number(data.qty);
+      if (override) {
+        if (override.type === 'total') {
+          finalQtyRequired = parseFloat(override.value) || 0;
+        } else {
+          finalQtyRequired = (parseFloat(override.value) || 0) * Number(data.qty);
+        }
+      }
+
+      return {
+        itemId: comp.componentItemId,
+        qtyRequired: finalQtyRequired,
+      };
+    });
 
     const validServices = services.filter((s) => s.itemId);
     const validExtraItems = extraItems.filter((i) => i.itemId);
@@ -536,8 +551,23 @@ export function CreateAssemblyPage() {
                     </tr>
                   ) : (
                     goodsComponents.map((comp) => {
-                      const requiredPerUnit = Number(comp.qtyPerUnit);
-                      const totalRequired = requiredPerUnit * (Number(qty) || 0);
+                      const override = overrides[comp.id];
+                      const baseQty = Number(qty) || 1;
+                      
+                      let requiredPerUnitStr: string | number = Number(comp.qtyPerUnit);
+                      let totalRequiredStr: string | number = requiredPerUnitStr * baseQty;
+
+                      if (override) {
+                        if (override.type === 'perUnit') {
+                          requiredPerUnitStr = override.value;
+                          totalRequiredStr = (parseFloat(override.value) || 0) * baseQty;
+                        } else {
+                          totalRequiredStr = override.value;
+                          // Optional: recalculate perUnit based on total, or just let it be.
+                          // It's usually better to just show the recalculated value.
+                          requiredPerUnitStr = (parseFloat(override.value) || 0) / baseQty;
+                        }
+                      }
 
                       return (
                         <React.Fragment key={comp.id}>
@@ -594,11 +624,30 @@ export function CreateAssemblyPage() {
                                 verticalAlign: 'top',
                               }}
                             >
-                              <div style={{ fontWeight: 500, color: '#1e293b' }}>
-                                {requiredPerUnit}
-                              </div>
-                              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
-                                x 1 assemblies
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                                <input
+                                  type="number"
+                                  step="any"
+                                  min="0"
+                                  value={requiredPerUnitStr}
+                                  onChange={(e) => {
+                                    setOverrides(prev => ({
+                                      ...prev,
+                                      [comp.id]: { type: 'perUnit', value: e.target.value }
+                                    }));
+                                  }}
+                                  style={{
+                                    width: '80px',
+                                    padding: '6px',
+                                    border: '1px solid #cbd5e1',
+                                    borderRadius: '4px',
+                                    outline: 'none',
+                                    textAlign: 'right'
+                                  }}
+                                />
+                                <div style={{ fontSize: '11px', color: '#64748b' }}>
+                                  x {qty || 1} assemblies
+                                </div>
                               </div>
                             </td>
                             <td
@@ -607,11 +656,101 @@ export function CreateAssemblyPage() {
                                 textAlign: 'right',
                                 borderRight: '1px solid #eef0f3',
                                 verticalAlign: 'top',
-                                fontWeight: 500,
-                                color: '#1e293b',
                               }}
                             >
-                              {totalRequired}
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                                <input
+                                  type="number"
+                                  step="any"
+                                  min="0"
+                                  value={totalRequiredStr}
+                                  onChange={(e) => {
+                                    setOverrides(prev => ({
+                                      ...prev,
+                                      [comp.id]: { type: 'total', value: e.target.value }
+                                    }));
+                                  }}
+                                  style={{
+                                    width: '90px',
+                                    padding: '6px',
+                                    border: '1px solid #cbd5e1',
+                                    borderRadius: '4px',
+                                    outline: 'none',
+                                    textAlign: 'right',
+                                    fontWeight: 500,
+                                    color: '#1e293b',
+                                  }}
+                                />
+                                {Number(totalRequiredStr) > (comp.component?.stockOnHand || 0) && (
+                                  <div
+                                    style={{
+                                      marginTop: '6px',
+                                      color: '#ef4444',
+                                      fontSize: '14px',
+                                      display: 'flex',
+                                      justifyContent: 'center',
+                                      width: '90px', // aligns with input width
+                                      position: 'relative',
+                                      cursor: 'pointer'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      const tooltip = e.currentTarget.querySelector('.warning-tooltip') as HTMLElement;
+                                      if (tooltip) {
+                                        tooltip.style.visibility = 'visible';
+                                        tooltip.style.opacity = '1';
+                                      }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      const tooltip = e.currentTarget.querySelector('.warning-tooltip') as HTMLElement;
+                                      if (tooltip) {
+                                        tooltip.style.visibility = 'hidden';
+                                        tooltip.style.opacity = '0';
+                                      }
+                                    }}
+                                  >
+                                    ⚠️
+                                    <div
+                                      className="warning-tooltip"
+                                      style={{
+                                        visibility: 'hidden',
+                                        opacity: 0,
+                                        transition: 'opacity 0.2s, visibility 0.2s',
+                                        position: 'absolute',
+                                        bottom: '100%',
+                                        left: '50%',
+                                        transform: 'translateX(-50%)',
+                                        marginBottom: '8px',
+                                        width: 'max-content',
+                                        maxWidth: '250px',
+                                        backgroundColor: '#1e293b',
+                                        color: '#fff',
+                                        textAlign: 'center',
+                                        padding: '8px 12px',
+                                        borderRadius: '6px',
+                                        fontSize: '12px',
+                                        fontWeight: 400,
+                                        zIndex: 50,
+                                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+                                        lineHeight: 1.4
+                                      }}
+                                    >
+                                      The available stock for this item is less than the total quantity required for this assembly.
+                                      <div
+                                        style={{
+                                          content: '""',
+                                          position: 'absolute',
+                                          top: '100%',
+                                          left: '50%',
+                                          marginLeft: '-5px',
+                                          borderWidth: '5px',
+                                          borderStyle: 'solid',
+                                          borderColor: '#1e293b transparent transparent transparent',
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                             </td>
                             <td
                               style={{
@@ -619,10 +758,11 @@ export function CreateAssemblyPage() {
                                 textAlign: 'right',
                                 borderRight: '1px solid #eef0f3',
                                 verticalAlign: 'top',
-                                color: '#64748b',
                               }}
                             >
-                              * not applicable
+                              <div style={{ fontSize: '13px', color: '#1e293b' }}>
+                                {comp.component?.stockOnHand || 0} {comp.component?.unit || ''}
+                              </div>
                             </td>
                             <td
                               style={{
