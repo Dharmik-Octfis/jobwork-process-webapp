@@ -85,7 +85,10 @@ export const jobReceiptSchema = z.object({
         isPrimary: z.boolean(),
         item: itemRefSchema.nullable().optional(),
         uom: uomRefSchema.nullable().optional(),
+        /** Older receipts only — the gate types free text now, which lands in
+         * `remarks`. Both are rendered under one Reason column. */
         reason: z.object({ id: z.string(), name: z.string() }).nullable().optional(),
+        remarks: z.string().nullable().optional(),
         responsibility: z.string().nullable().optional(),
         outputBatch: z
           .object({ id: z.string(), supplierBatchRef: z.string().nullable() })
@@ -268,6 +271,21 @@ export interface JobReceiptBatchAllocationData {
   batchId?: string | null;
   batchReference?: string | null;
   qty: number;
+  /**
+   * 🔴 THE NEW BATCH'S OWN ATTRIBUTES — sent only beside `batchReference`, and
+   * refused by the server beside a `batchId`. Receipt time is the only moment
+   * anybody knows what the maker's tag says or when the dye lot was made; a batch
+   * that already exists is added to, never restamped from inside a receipt.
+   *
+   * Omitted means "not stated", which is a different fact from zero — hence
+   * `null` rather than 0 on the two prices.
+   */
+  manufacturerBatch?: string | null;
+  /** `yyyy-mm-dd`. */
+  manufacturedDate?: string | null;
+  expiryDate?: string | null;
+  sellingPrice?: number | null;
+  mrp?: number | null;
 }
 
 export interface CreateJobReceiptData {
@@ -319,6 +337,10 @@ export const receiptBatchOptionSchema = z.object({
   createdAt: z.string(),
   manufacturedDate: z.string().nullable(),
   expiryDate: z.string().nullable(),
+  /** Batch-wise pricing. Shown on an existing-batch row so the person topping it
+   * up can see what the batch already carries — never restated from here. */
+  sellingPrice: decimalString,
+  mrp: decimalString,
   uomId: z.string().nullable(),
   source: z.enum(['this_job_order', 'other']),
   /** Across every location, internal and external. Always shown broken down. */

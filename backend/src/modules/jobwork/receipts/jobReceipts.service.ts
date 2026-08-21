@@ -25,6 +25,7 @@ import { recomputeStep } from '../job-orders/jobOrders.status.ts';
 import type {
   CreateJobReceiptInput,
   JobReceiptLineInput,
+  JobReceiptOutputBatchInput,
   JobReceiptOutputInput,
 } from './jobReceipts.schemas.ts';
 
@@ -473,6 +474,10 @@ export async function getOutputBatchOptions(
         createdAt: batch.createdAt.toISOString(),
         manufacturedDate: batch.manufacturedDate?.toISOString().slice(0, 10) ?? null,
         expiryDate: batch.expiryDate?.toISOString().slice(0, 10) ?? null,
+        // What the batch already carries, so a top-up row can show it rather than
+        // invite somebody to restate it.
+        sellingPrice: batch.sellingPrice?.toString() ?? null,
+        mrp: batch.mrp?.toString() ?? null,
         uomId: batch.uomId,
         source,
         totalQty: total.toString(),
@@ -500,6 +505,8 @@ const BATCH_OPTION_SELECT = {
   createdAt: true,
   manufacturedDate: true,
   expiryDate: true,
+  sellingPrice: true,
+  mrp: true,
   uomId: true,
 } satisfies Prisma.BatchSelect;
 
@@ -530,6 +537,38 @@ interface OutputBatchPlan {
   batchId: string | null;
   batchReference: string | null;
   qty: Prisma.Decimal;
+  /** 🔴 Only ever set on a `batchReference` row — the schema refuses these beside
+   * a `batchId`, because a batch that already exists is added to and never
+   * restamped from inside a receipt. */
+  attributes: OutputBatchAttributes;
+}
+
+/** What a NEW batch is stamped with at the gate. Every field means "not stated"
+ * when null, which is a different fact from zero on the two prices. */
+interface OutputBatchAttributes {
+  manufacturerBatch: string | null;
+  manufacturedDate: Date | null;
+  expiryDate: Date | null;
+  sellingPrice: number | null;
+  mrp: number | null;
+}
+
+const NO_BATCH_ATTRIBUTES: OutputBatchAttributes = {
+  manufacturerBatch: null,
+  manufacturedDate: null,
+  expiryDate: null,
+  sellingPrice: null,
+  mrp: null,
+};
+
+function batchAttributes(row: JobReceiptOutputBatchInput): OutputBatchAttributes {
+  return {
+    manufacturerBatch: row.manufacturerBatch?.trim() || null,
+    manufacturedDate: row.manufacturedDate ?? null,
+    expiryDate: row.expiryDate ?? null,
+    sellingPrice: row.sellingPrice ?? null,
+    mrp: row.mrp ?? null,
+  };
 }
 
 interface ResolvedOutput {
@@ -706,6 +745,7 @@ function resolveOutputs(
             batchId: batch.batchId ?? null,
             batchReference: batch.batchReference?.trim() || null,
             qty: new Prisma.Decimal(batch.qty),
+            attributes: batchAttributes(batch),
           }))
         : singleBatchPlan(
             row.batchReference?.trim() || null,
@@ -716,6 +756,7 @@ function resolveOutputs(
             batchId: batch.batchId ?? null,
             batchReference: batch.batchReference?.trim() || null,
             qty: new Prisma.Decimal(batch.qty),
+            attributes: batchAttributes(batch),
           }))
         : singleBatchPlan(
             row.reworkBatchReference?.trim() || null,
@@ -729,7 +770,8 @@ function resolveOutputs(
  * quantity. Empty when there is no quantity — an all-scrap row creates nothing. */
 function singleBatchPlan(batchReference: string | null, qty: Prisma.Decimal): OutputBatchPlan[] {
   if (qty.lessThanOrEqualTo(0)) return [];
-  return [{ batchId: null, batchReference, qty }];
+  // No attributes: the older shape had nowhere to state them.
+  return [{ batchId: null, batchReference, qty, attributes: NO_BATCH_ATTRIBUTES }];
 }
 
 /**
@@ -1457,6 +1499,8 @@ export async function createNewJobReceipt(
             // the panels did.
             parentBatchIds: [...parentBatchIds],
             supplierBatchRef: plan.batchReference,
+            // Stated at the gate or never — see `OutputBatchPlan`.
+            ...plan.attributes,
             sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
             sourceDocId: receipt.id,
             userId,

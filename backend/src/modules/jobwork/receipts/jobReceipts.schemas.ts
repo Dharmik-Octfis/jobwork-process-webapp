@@ -99,11 +99,46 @@ const outputBatchAllocationSchema = z
      * `createBatch` enforces — whether it is needed depends on the ITEM. */
     batchReference: z.string().trim().max(100).nullable().optional(),
     qty: z.coerce.number().positive('Every batch row needs a quantity greater than zero.'),
+
+    /**
+     * 🔴 THE NEW BATCH'S OWN ATTRIBUTES, and receipt time is the only moment they
+     * can be stated. What a processor hands back is physically new, and the
+     * person standing at the delivery is the only one who knows what the maker's
+     * tag says or when the dye lot was made. Left to the batch's own screen
+     * afterwards they were never filled in — and "which batches expire in 30
+     * days" is the entire reason a factory records an expiry.
+     *
+     * Refused beside a `batchId` (see the refine below): an existing batch is
+     * added to and never restamped from inside a receipt. Silently ignoring them
+     * there would be worse — somebody would type an expiry onto the second half
+     * of a split delivery and believe it had been recorded.
+     */
+    manufacturerBatch: z.string().trim().max(100).nullable().optional(),
+    manufacturedDate: z.coerce.date().nullable().optional(),
+    expiryDate: z.coerce.date().nullable().optional(),
+    /** Nullable rather than defaulted: most batches carry neither, and a zero
+     * would read as "free" instead of "not stated". */
+    sellingPrice: z.coerce.number().min(0).nullable().optional(),
+    mrp: z.coerce.number().min(0).nullable().optional(),
   })
   .refine((row) => Boolean(row.batchId) !== Boolean(row.batchReference?.trim()), {
     message: 'A batch row is either an existing batch or a new one, not both and not neither.',
     path: ['batchId'],
-  });
+  })
+  .refine(
+    (row) =>
+      !row.batchId ||
+      (row.manufacturerBatch == null &&
+        row.manufacturedDate == null &&
+        row.expiryDate == null &&
+        row.sellingPrice == null &&
+        row.mrp == null),
+    {
+      message:
+        'A batch that already exists cannot be restamped here — clear its details, or name a new batch instead.',
+      path: ['manufacturerBatch'],
+    },
+  );
 
 export type JobReceiptOutputBatchInput = z.infer<typeof outputBatchAllocationSchema>;
 

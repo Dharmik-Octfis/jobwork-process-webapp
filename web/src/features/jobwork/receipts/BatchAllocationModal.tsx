@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useCombobox } from 'downshift';
-import { AlertTriangle, ChevronDown, ChevronRight, Plus, Search, Truck, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Plus, Search, Truck, X } from 'lucide-react';
 import { Modal } from '../../../components/ui/Modal';
 import { blurOnWheel } from '../../../components/ui/blurOnWheel';
 import { formatQty, toNumber } from '../jobwork.schemas';
@@ -10,12 +10,13 @@ import type { ReceiptBatchOption } from './jobReceipts.schemas';
 /**
  * ADD BATCHES (RECEIVE) — which batches the goods coming back land in.
  *
- * 🔴 THIS IS NOT THE ISSUE DIALOG'S GRID, and the difference is the whole point.
- * `issues/AddBatchesModal.tsx` asks "which existing stock am I taking, and is
- * there enough" — every row is bounded by a balance at one godown. This one asks
- * "what shall this new stock be called", and there is no ceiling at all: the
- * receipt CREATES the quantity. Sharing one component is precisely how the
- * availability logic leaks into a screen that has no availability.
+ * 🔴 THIS IS NOT `issues/AddBatchesModal.tsx`, and the difference is the whole
+ * point. The issue grid asks "which existing stock am I taking, and is there
+ * enough": every row is bounded by a balance at one godown, and every column on
+ * it describes a batch that already exists. This one asks "what shall this new
+ * stock be called", and there is no ceiling at all, because the receipt CREATES
+ * the quantity. Sharing one component is precisely how the availability logic
+ * leaks into a screen that has no availability.
  *
  * A row is one of two things:
  *
@@ -39,7 +40,7 @@ import type { ReceiptBatchOption } from './jobReceipts.schemas';
 const MAX_ROWS = 100;
 
 /** Blank rows the grid opens with, so allocating three batches is type-Tab-type
- * and never a trip back to "+ Add row" between each one. */
+ * and never a trip back to "+ New Batch" between each one. */
 const DEFAULT_BLANK_ROWS = 3;
 
 export interface BatchAllocation {
@@ -52,29 +53,89 @@ export interface BatchAllocation {
    * result and a chosen batch can drop out of it on the next keystroke, leaving
    * the row with nothing to render. */
   option: ReceiptBatchOption | null;
+
+  /**
+   * 🔴 THE NEW BATCH'S OWN ATTRIBUTES — typed on a `new` row and nowhere else.
+   *
+   * This is the only moment they can be stated. What a processor hands back is
+   * physically new, and the person standing at the delivery is the only one who
+   * knows what the maker's tag says or when the dye lot was made. Left to the
+   * batch's own screen afterwards they were never filled in — and "which batches
+   * expire in 30 days" is the entire reason a factory records an expiry.
+   *
+   * On an `existing` row they stay empty and the picked batch's own values are
+   * shown instead: the server REFUSES attributes beside a `batchId`, because a
+   * batch is added to and never restamped from inside a receipt.
+   *
+   * All five held as STRINGS — exactly what the inputs produce. Empty means "not
+   * stated", which is a different fact from zero, and a number type cannot carry
+   * the difference.
+   */
+  manufacturerBatch: string;
+  /** `yyyy-mm-dd`, straight off `<input type="date">`. */
+  manufacturedDate: string;
+  expiryDate: string;
+  sellingPrice: string;
+  mrp: string;
 }
+
+/**
+ * 🔴 THE ROW SAYS WHICH OF THE TWO IT IS, and the control follows from it — a
+ * typed box for a new batch, a dropdown for an existing one.
+ *
+ * One combined cell (type here, or press Select) carried both answers in one
+ * control, and a control that does two things says neither: nothing on the row
+ * distinguished "I am naming a new lot" from "I have not picked one yet", and
+ * the picked-then-read-only input read as a text box that had stopped working.
+ * The mode is chosen when the row is added, from the two links under the grid.
+ */
+type RowMode = 'new' | 'existing';
 
 interface DraftRow extends BatchAllocation {
   id: string;
+  mode: RowMode;
 }
 
-let rowSeq = 0;
-const blankRow = (): DraftRow => ({
-  id: `alloc-${rowSeq++}`,
+/** Everything a row forgets when it is cleared, and everything a blank one starts
+ * with. Named once so `blankRow` and `clearOrRemoveRow` cannot drift — a field
+ * added to one and not the other is an attribute that survives a clear and gets
+ * posted against a batch nobody meant to give it to. */
+const EMPTY_ROW = {
   batchId: null,
   batchReference: '',
   qty: 0,
   option: null,
+  manufacturerBatch: '',
+  manufacturedDate: '',
+  expiryDate: '',
+  sellingPrice: '',
+  mrp: '',
+} satisfies Omit<DraftRow, 'id' | 'mode'>;
+
+let rowSeq = 0;
+const blankRow = (mode: RowMode): DraftRow => ({
+  id: `alloc-${rowSeq++}`,
+  mode,
+  ...EMPTY_ROW,
 });
 
 function seedRows(existing: readonly BatchAllocation[]): DraftRow[] {
-  const rows = existing.map((row) => ({ ...row, id: `alloc-${rowSeq++}` }));
+  // A saved row already says which it is: it points at a batch, or it carries a
+  // label of its own.
+  const rows = existing.map((row) => ({
+    ...row,
+    id: `alloc-${rowSeq++}`,
+    mode: (row.batchId ? 'existing' : 'new') as RowMode,
+  }));
   const blanks = Math.max(DEFAULT_BLANK_ROWS - rows.length, rows.length > 0 ? 1 : 0);
-  return [...rows, ...Array.from({ length: blanks }, blankRow)];
+  // New is the ordinary case — what a processor hands back is physically new —
+  // so the rows the grid opens with are blank labels, not empty dropdowns.
+  return [...rows, ...Array.from({ length: blanks }, () => blankRow('new'))];
 }
 
-/** A row counts once it has a label — either typed or inherited from a pick. */
-const isFilled = (row: DraftRow) => row.batchReference.trim().length > 0 || row.batchId !== null;
+/** A row counts once it has been answered: a label typed, or a batch picked. */
+const isFilled = (row: DraftRow) =>
+  row.mode === 'existing' ? row.batchId !== null : row.batchReference.trim().length > 0;
 
 interface Props {
   isOpen: boolean;
@@ -145,7 +206,6 @@ export function BatchAllocationModal({
   /** Seeded once, on mount — so the caller mounts this only while open and keys
    * it on the row, the same contract the issue grid carries. */
   const [rows, setRows] = useState<DraftRow[]>(() => seedRows(initialRows));
-  const [expanded, setExpanded] = useState<string | null>(null);
 
   const allocated = useMemo(
     () => rows.reduce((sum, row) => (isFilled(row) ? sum + row.qty : sum), 0),
@@ -175,17 +235,33 @@ export function BatchAllocationModal({
    * Measured against the OTHER rows, so re-picking a row that already held 200
    * offers the full outstanding amount again rather than subtracting itself.
    */
+  /** What the row should open at: everything the other rows have not taken. */
+  const fillFor = (prev: readonly DraftRow[], id: string) =>
+    Math.max(
+      0,
+      Number(
+        (
+          targetQty -
+          prev.reduce((sum, row) => (row.id !== id && isFilled(row) ? sum + row.qty : sum), 0)
+        ).toFixed(4),
+      ),
+    );
+
+  /** Picking flips the row to `existing` as well as filling it — the lookalike
+   * prompt converts a typed row this way, and re-picking has to leave the mode
+   * where the pick put it. */
   const pickBatch = (id: string, option: ReceiptBatchOption) =>
     setRows((prev) => {
-      const elsewhere = prev.reduce(
-        (sum, row) => (row.id !== id && isFilled(row) ? sum + row.qty : sum),
-        0,
-      );
-      const fill = Math.max(0, Number((targetQty - elsewhere).toFixed(4)));
+      const fill = fillFor(prev, id);
       return prev.map((row) =>
         row.id === id
           ? {
               ...row,
+              ...EMPTY_ROW,
+              /* 🔴 Cleared, not carried over. The lookalike prompt converts a row
+                 somebody had already typed dates into, and the server refuses
+                 attributes beside a `batchId` — the batch already has its own. */
+              mode: 'existing' as RowMode,
               batchId: option.batchId,
               batchReference: option.supplierBatchRef ?? '',
               option,
@@ -195,59 +271,44 @@ export function BatchAllocationModal({
       );
     });
 
-  /** Typing a label makes the row a NEW batch, which means dropping any batch it
-   * was pointing at — the two are alternatives, never a label ON an existing
-   * batch (that would be renaming somebody else's batch from inside a receipt). */
+  /** A typed label is only ever a NEW batch — never a label ON an existing one,
+   * which would be renaming somebody else's batch from inside a receipt. */
   const typeReference = (id: string, batchReference: string) =>
     setRows((prev) =>
       prev.map((row) =>
         row.id === id
-          ? {
-              ...row,
-              batchReference,
-              batchId: null,
-              option: null,
-              qty:
-                row.qty > 0
-                  ? row.qty
-                  : Math.max(
-                      0,
-                      Number(
-                        (
-                          targetQty -
-                          prev.reduce(
-                            (sum, other) =>
-                              other.id !== id && isFilled(other) ? sum + other.qty : sum,
-                            0,
-                          )
-                        ).toFixed(4),
-                      ),
-                    ),
-            }
+          ? { ...row, batchReference, qty: row.qty > 0 ? row.qty : fillFor(prev, id) }
           : row,
       ),
     );
 
   /** Clear, don't delete — a control that yanks a row out from under the cursor
    * moves every row below it mid-entry. An already-blank row has nothing to
-   * clear, so there the same control drops it. */
+   * clear, so there the same control drops it. Clearing keeps the row's mode:
+   * the slot stays the kind of row it was added as. */
   const clearOrRemoveRow = (id: string) =>
     setRows((prev) => {
       const row = prev.find((r) => r.id === id);
       if (row && isFilled(row)) {
-        return prev.map((r) =>
-          r.id === id ? { ...r, batchId: null, batchReference: '', option: null, qty: 0 } : r,
-        );
+        return prev.map((r) => (r.id === id ? { ...r, ...EMPTY_ROW } : r));
       }
       const next = prev.filter((r) => r.id !== id);
-      return next.length > 0 ? next : [blankRow()];
+      return next.length > 0 ? next : [blankRow(row?.mode ?? 'new')];
     });
 
   const filledRows = rows.filter(isFilled);
 
-  /** Rows a batch-tracked item cannot save: a quantity against no label at all. */
+  /**
+   * Rows a batch-tracked item cannot save: a quantity against no label at all.
+   *
+   * 🔴 An EXISTING row that was picked is never one of these, even when the batch
+   * carries no reference of its own — it is identified by `batchId`, which is
+   * what the server writes against. Checking the label alone refused a legitimate
+   * pick of an unlabelled batch with a message about typing a reference into a
+   * box that is not there.
+   */
   const unlabelled = requiresReference
-    ? rows.filter((row) => row.qty > 0 && !row.batchReference.trim())
+    ? rows.filter((row) => row.qty > 0 && row.batchId === null && !row.batchReference.trim())
     : [];
 
   /** The same batch twice, or one already taken by the other disposition. */
@@ -278,7 +339,7 @@ export function BatchAllocationModal({
     }
     const hits = new Map<string, ReceiptBatchOption>();
     for (const row of rows) {
-      if (row.batchId) continue;
+      if (row.mode !== 'new' || row.batchId) continue;
       const match = byRef.get(row.batchReference.trim().toLowerCase());
       if (match) hits.set(row.id, match);
     }
@@ -292,11 +353,11 @@ export function BatchAllocationModal({
     onSave(
       filledRows
         .filter((row) => row.qty > 0)
-        .map(({ batchId, batchReference, qty, option }) => ({
-          batchId,
-          batchReference: batchReference.trim(),
-          qty,
-          option,
+        // `id` and `mode` are the grid's own bookkeeping and stop here; everything
+        // else is the allocation the dialog holds.
+        .map(({ id: _id, mode: _mode, ...allocation }) => ({
+          ...allocation,
+          batchReference: allocation.batchReference.trim(),
         })),
     );
     onClose();
@@ -309,7 +370,7 @@ export function BatchAllocationModal({
       isOpen={isOpen}
       onClose={onClose}
       title={kind === 'accepted' ? 'Add Batches' : 'Add Rework Batches'}
-      width={1040}
+      width={1240}
       footer={
         <>
           <button
@@ -426,28 +487,56 @@ export function BatchAllocationModal({
         </div>
       </div>
 
-      <div style={{ marginTop: 14 }}>
-        {/* No minWidth and no overflow: the columns below are percentages that add
-            up to 100%, so the grid fits the dialog at every size instead of
-            growing a horizontal scrollbar inside it. */}
-        <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+      {/* 🔴 NINE COLUMNS, so this one scrolls sideways INSIDE its own box rather
+          than making the dialog do it. Fixed pixel widths, not percentages: five
+          of these hold date and money inputs that have a floor below which they
+          are unusable, and a percentage grid squeezes them past it on a laptop. */}
+      <div style={{ overflowX: 'auto', marginTop: 14 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1180 }}>
           <colgroup>
-            <col style={{ width: '32%' }} />
-            <col style={{ width: '12%' }} />
-            <col style={{ width: '32%' }} />
-            <col style={{ width: '18%' }} />
-            <col style={{ width: '6%' }} />
+            <col style={{ width: 210 }} />
+            <col style={{ width: 150 }} />
+            <col style={{ width: 145 }} />
+            <col style={{ width: 145 }} />
+            <col style={{ width: 130 }} />
+            <col style={{ width: 130 }} />
+            <col style={{ width: 130 }} />
+            <col style={{ width: 120 }} />
+            <col style={{ width: 40 }} />
           </colgroup>
           <thead>
             <tr style={{ borderBottom: '1px solid #eef0f3' }}>
               <th style={{ ...th, ...(requiresReference ? { color: '#b91c1c' } : {}) }} scope="col">
                 Batch Reference{requiresReference ? '*' : ''}
               </th>
+              {/* 🔴 THE FIVE ATTRIBUTES OF THE BATCH BEING BORN. Editable on a
+                  `new` row, read-only facts about the picked batch on an
+                  `existing` one — see the note on `BatchAllocation`.
+
+                  They are NOT on the issue grid, and should not be: there every
+                  row is existing stock, so all five could only ever be grey text
+                  restating the batch master. Here they are the only chance
+                  anybody gets to state them. */}
               <th style={th} scope="col">
-                Type
+                Manufacturer Batch#
               </th>
               <th style={th} scope="col">
-                Where it is now
+                Manufactured Date
+              </th>
+              <th style={th} scope="col">
+                Expiry Date
+              </th>
+              <th style={{ ...th, textAlign: 'right' }} scope="col">
+                Selling Price (₹)
+              </th>
+              <th style={{ ...th, textAlign: 'right' }} scope="col">
+                MRP (₹)
+              </th>
+              {/* No "Type" column: the control in the first cell is the answer, a
+                  box to type in or a dropdown to pick from, and a badge repeating
+                  that was a column spent saying what was already on screen. */}
+              <th style={{ ...th, textAlign: 'right' }} scope="col">
+                Balance
               </th>
               <th style={{ ...th, textAlign: 'right', color: '#b91c1c' }} scope="col">
                 Quantity*
@@ -463,35 +552,57 @@ export function BatchAllocationModal({
               return (
                 <tr key={row.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                   <td style={{ ...td, padding: '8px 10px 8px 0' }}>
-                    <BatchCell
-                      row={row}
-                      onPick={(option) => pickBatch(row.id, option)}
-                      onType={(value) => typeReference(row.id, value)}
-                      focusAfterPickId={`alloc-qty-${row.id}`}
-                      options={options.filter(
-                        (option) =>
-                          !blockedBatchIds.includes(option.batchId) &&
-                          !rows.some(
-                            (other) => other.id !== row.id && other.batchId === option.batchId,
-                          ),
-                      )}
-                      otherOptions={otherOptions.filter(
-                        (option) =>
-                          !blockedBatchIds.includes(option.batchId) &&
-                          !rows.some(
-                            (other) => other.id !== row.id && other.batchId === option.batchId,
-                          ),
-                      )}
-                      isOtherCapped={isOtherCapped}
-                      uomLabel={uomLabel}
-                      search={search}
-                      onSearchChange={onSearchChange}
-                      isLoading={isLoading}
-                      isInvalid={
-                        duplicateIds.has(row.id) ||
-                        (requiresReference && row.qty > 0 && !row.batchReference.trim())
-                      }
-                    />
+                    {row.mode === 'new' ? (
+                      /* A plain input — native, focusable, and nothing else to
+                         learn. `downshift` earns its place on the dropdown beside
+                         it, not on a text box (CLAUDE.md). */
+                      <input
+                        type="text"
+                        value={row.batchReference}
+                        onChange={(e) => typeReference(row.id, e.target.value)}
+                        placeholder="Enter Batch#"
+                        aria-label="New batch reference"
+                        style={{
+                          width: '100%',
+                          padding: '7px 10px',
+                          fontSize: 13,
+                          border: `1px solid ${
+                            requiresReference && row.qty > 0 && !row.batchReference.trim()
+                              ? '#fca5a5'
+                              : '#d1d5db'
+                          }`,
+                          borderRadius: 4,
+                          minHeight: 34,
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    ) : (
+                      <ExistingBatchCell
+                        row={row}
+                        onPick={(option) => pickBatch(row.id, option)}
+                        focusAfterPickId={`alloc-qty-${row.id}`}
+                        options={options.filter(
+                          (option) =>
+                            !blockedBatchIds.includes(option.batchId) &&
+                            !rows.some(
+                              (other) => other.id !== row.id && other.batchId === option.batchId,
+                            ),
+                        )}
+                        otherOptions={otherOptions.filter(
+                          (option) =>
+                            !blockedBatchIds.includes(option.batchId) &&
+                            !rows.some(
+                              (other) => other.id !== row.id && other.batchId === option.batchId,
+                            ),
+                        )}
+                        isOtherCapped={isOtherCapped}
+                        uomLabel={uomLabel}
+                        search={search}
+                        onSearchChange={onSearchChange}
+                        isLoading={isLoading}
+                        isInvalid={duplicateIds.has(row.id)}
+                      />
+                    )}
                     {lookalike && (
                       <button
                         type="button"
@@ -517,38 +628,51 @@ export function BatchAllocationModal({
                     )}
                   </td>
 
-                  <td style={td}>
-                    {!isFilled(row) ? (
-                      <span style={{ color: '#94a3b8' }}>—</span>
-                    ) : (
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          padding: '2px 8px',
-                          fontSize: 11,
-                          fontWeight: 600,
-                          borderRadius: 999,
-                          background: row.batchId ? '#eff6ff' : '#f0fdf4',
-                          color: row.batchId ? '#1d4ed8' : '#15803d',
-                        }}
-                      >
-                        {row.batchId ? 'Existing' : 'New'}
-                      </span>
-                    )}
-                  </td>
+                  {/* 🔴 EDITABLE ONLY WHERE THE ANSWER IS THIS DOCUMENT'S TO
+                      GIVE. A `new` row is naming a batch that does not exist yet;
+                      an `existing` row is looking at one that does, and its dates
+                      and prices belong to it, not to this delivery. Flat text
+                      rather than a disabled input: a greyed-out box invites a
+                      click and then refuses it. */}
+                  <AttributeCell row={row} field="manufacturerBatch" onChange={setRow}>
+                    {row.option?.manufacturerBatch?.trim() || '—'}
+                  </AttributeCell>
+                  <AttributeCell row={row} field="manufacturedDate" type="date" onChange={setRow}>
+                    {displayDate(row.option?.manufacturedDate ?? null)}
+                  </AttributeCell>
+                  <AttributeCell row={row} field="expiryDate" type="date" onChange={setRow}>
+                    {displayDate(row.option?.expiryDate ?? null)}
+                  </AttributeCell>
+                  <AttributeCell row={row} field="sellingPrice" type="money" onChange={setRow}>
+                    {money(row.option?.sellingPrice ?? null)}
+                  </AttributeCell>
+                  <AttributeCell row={row} field="mrp" type="money" onChange={setRow}>
+                    {money(row.option?.mrp ?? null)}
+                  </AttributeCell>
 
-                  <td style={td}>
+                  {/* 🔴 What the picked batch ALREADY holds — the issue grid's
+                      Balance column, answering the receive side's version of the
+                      question: is this the lot I think it is. On hand and with a
+                      processor stay apart, never one total: goods at a dyer are
+                      our stock at their location (§5.4), and "700" that is really
+                      500 here and 200 there reads as stock on hand when it is not.
+                      A new batch holds nothing yet, and says so. */}
+                  <td style={{ ...td, textAlign: 'right', color: '#64748b' }}>
                     {row.option ? (
-                      <LocationBreakdown
-                        option={row.option}
-                        uomLabel={uomLabel}
-                        isExpanded={expanded === row.id}
-                        onToggle={() => setExpanded(expanded === row.id ? null : row.id)}
-                      />
+                      <>
+                        <div>
+                          {formatQty(row.option.internalQty)} {uomLabel}
+                        </div>
+                        {toNumber(row.option.externalQty) > 0 && (
+                          <div style={{ fontSize: 11.5, color: '#b45309' }}>
+                            +{formatQty(row.option.externalQty)} with a processor
+                          </div>
+                        )}
+                      </>
+                    ) : row.mode === 'new' && isFilled(row) ? (
+                      <span style={{ color: '#94a3b8' }}>New batch</span>
                     ) : (
-                      <span style={{ color: '#94a3b8' }}>
-                        {isFilled(row) ? 'New batch — nothing yet' : '—'}
-                      </span>
+                      '—'
                     )}
                   </td>
 
@@ -568,7 +692,8 @@ export function BatchAllocationModal({
                           : 'Quantity — name or pick a batch first'
                       }
                       style={{
-                        width: 130,
+                        width: '100%',
+                        boxSizing: 'border-box',
                         padding: '6px 8px',
                         fontSize: 13,
                         textAlign: 'right',
@@ -619,126 +744,141 @@ export function BatchAllocationModal({
           marginTop: 16,
         }}
       >
-        <button
-          type="button"
-          onClick={() => setRows((prev) => [...prev, blankRow()])}
-          disabled={rows.length >= MAX_ROWS}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '4px 2px',
-            fontSize: 13,
-            fontWeight: 500,
-            color: rows.length >= MAX_ROWS ? '#94a3b8' : '#0062ff',
-            background: 'none',
-            border: 'none',
-            cursor: rows.length >= MAX_ROWS ? 'not-allowed' : 'pointer',
-          }}
-        >
-          <Plus size={14} /> Add another batch
-        </button>
+        {/* 🔴 TWO LINKS, because there are two kinds of row and the kind is
+            decided when the row is added — see `RowMode`. The issue grid has one
+            of these on purpose (it cannot invent stock); this one has both,
+            because a receipt creates the quantity it is naming. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <AddRowLink
+            label="New Batch"
+            onClick={() => setRows((prev) => [...prev, blankRow('new')])}
+            disabled={rows.length >= MAX_ROWS}
+          />
+          <span style={{ color: '#e2e8f0' }}>|</span>
+          <AddRowLink
+            label="Existing Batch"
+            onClick={() => setRows((prev) => [...prev, blankRow('existing')])}
+            disabled={rows.length >= MAX_ROWS}
+          />
+        </div>
         <span style={{ fontSize: 12, color: '#64748b' }}>
-          Batches: {filledRows.length}/{MAX_ROWS}
+          Batches added: {filledRows.length}/{MAX_ROWS}
         </span>
       </div>
     </Modal>
   );
 }
 
-/**
- * WHERE A BATCH IS, collapsed to one line with the detail behind a real button.
- *
- * 🔴 Internal and external are shown apart, never as one total. Goods at a
- * processor are our stock at their location (§5.4), so they arrive here as a
- * balance like any other — and "700 m" that is really 500 in the godown and 200
- * still at the dyer's reads as stock on hand when it is not.
- *
- * A `<button>` rather than a hover tooltip: a control you cannot reach with Tab
- * is not done, and nothing in `tsc -b` or a screenshot would say so.
- */
-function LocationBreakdown({
-  option,
-  uomLabel,
-  isExpanded,
-  onToggle,
-}: {
-  option: ReceiptBatchOption;
-  uomLabel: string;
-  isExpanded: boolean;
-  onToggle: () => void;
-}) {
-  const rows = option.byLocation;
-  const external = toNumber(option.externalQty);
+/** `yyyy-mm-dd` → `dd-MM-yyyy`. Split rather than parsed: these are date-only
+ * columns, and `new Date('2026-08-12')` is UTC midnight, which renders as the
+ * 11th anywhere behind UTC. */
+function displayDate(value: string | null): string {
+  if (!value) return '—';
+  const [y, m, d] = value.slice(0, 10).split('-');
+  return y && m && d ? `${d}-${m}-${y}` : '—';
+}
 
-  if (rows.length === 0) {
+/** `string | number` because a decimal crosses the wire as a string and zod's
+ * `decimalString` accepts either. Null and '' are "not stated", NOT zero. */
+function money(value: string | number | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '—';
+  const n = Number(value);
+  return Number.isFinite(n) ? `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—';
+}
+
+/** The five attribute fields, held as strings — see the note on `BatchAllocation`. */
+type AttributeField =
+  'manufacturerBatch' | 'manufacturedDate' | 'expiryDate' | 'sellingPrice' | 'mrp';
+
+/**
+ * One attribute cell: an input on a `new` row, the picked batch's own value as
+ * flat text on an `existing` one.
+ *
+ * Five near-identical cells written out five times is five places for the two
+ * halves to drift — and the half that matters (which rows may be typed into) is
+ * the one the server enforces.
+ */
+function AttributeCell({
+  row,
+  field,
+  type = 'text',
+  onChange,
+  children,
+}: {
+  row: DraftRow;
+  field: AttributeField;
+  type?: 'text' | 'date' | 'money';
+  onChange: (id: string, patch: Partial<DraftRow>) => void;
+  /** What to show when the row points at an existing batch. */
+  children: React.ReactNode;
+}) {
+  const isMoney = type === 'money';
+  if (row.mode === 'existing') {
     return (
-      <span style={{ fontSize: 12.5, color: '#94a3b8' }}>
-        Nothing on hand — issued onward, and continuing here
-      </span>
+      <td style={{ ...td, color: '#64748b', textAlign: isMoney ? 'right' : 'left' }}>{children}</td>
     );
   }
-
-  const first = rows[0]!;
-
   return (
-    <div>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={isExpanded}
+    <td style={td}>
+      <input
+        type={type === 'date' ? 'date' : isMoney ? 'number' : 'text'}
+        {...(isMoney ? { step: '0.0001', min: '0', onWheel: blurOnWheel } : {})}
+        value={row[field]}
+        onChange={(e) => onChange(row.id, { [field]: e.target.value })}
+        placeholder={type === 'text' ? 'Enter MFR Batch#' : isMoney ? '0.00' : undefined}
+        aria-label={ATTRIBUTE_LABELS[field]}
         style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 4,
-          padding: '2px 4px 2px 0',
-          fontSize: 12.5,
-          color: '#334155',
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          textAlign: 'left',
+          width: '100%',
+          boxSizing: 'border-box',
+          padding: '7px 10px',
+          fontSize: 13,
+          textAlign: isMoney ? 'right' : 'left',
+          border: '1px solid #d1d5db',
+          borderRadius: 4,
+          minHeight: 34,
         }}
-      >
-        {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        <span>
-          {formatQty(first.qty)} {uomLabel} in {first.locationName ?? 'a location'}
-          {rows.length > 1 ? ` +${rows.length - 1}` : ''}
-        </span>
-      </button>
+      />
+    </td>
+  );
+}
 
-      {external > 0 && !isExpanded && (
-        <div style={{ fontSize: 11.5, color: '#b45309', marginTop: 2 }}>
-          {formatQty(external)} {uomLabel} still out with a processor
-        </div>
-      )}
+const ATTRIBUTE_LABELS: Record<AttributeField, string> = {
+  manufacturerBatch: 'Manufacturer batch number',
+  manufacturedDate: 'Manufactured date',
+  expiryDate: 'Expiry date',
+  sellingPrice: 'Selling price',
+  mrp: 'MRP',
+};
 
-      {isExpanded && (
-        <ul style={{ margin: '4px 0 0', padding: 0, listStyle: 'none' }}>
-          {rows.map((location) => (
-            <li
-              key={location.locationId}
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                gap: 12,
-                fontSize: 12,
-                color: location.isExternal ? '#b45309' : '#475569',
-                padding: '2px 0',
-              }}
-            >
-              <span>
-                {location.locationName ?? '—'}
-                {location.isExternal ? ' (with processor)' : ''}
-              </span>
-              <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-                {formatQty(location.qty)} {uomLabel}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+function AddRowLink({
+  label,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '4px 6px',
+        fontSize: 13,
+        fontWeight: 500,
+        color: disabled ? '#94a3b8' : '#0062ff',
+        background: 'none',
+        border: 'none',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+      }}
+    >
+      <Plus size={14} /> {label}
+    </button>
   );
 }
 
@@ -759,21 +899,20 @@ function optionLabel(option: ReceiptBatchOption): string {
 }
 
 /**
- * THE ONE CELL THAT DOES BOTH JOBS: type a label to create a batch, or open the
- * list and pick one to add to.
+ * THE "SELECT BATCH" CELL — an existing-batch row, and only that. A new-batch row
+ * is a plain text input rendered in the grid; the two are separate controls
+ * because they are separate answers (see `RowMode`).
  *
- * A combobox rather than two separate controls, because the two answers are
- * alternatives to the same question and a New/Existing toggle would make the
- * common case (type a name, move on) two interactions instead of one. Typing is
- * always allowed; the list is advice, and picking from it converts the row.
+ * A trigger button with the search box inside the panel, exactly like the issue
+ * grid's — the two dialogs are the same job from opposite ends and an operator
+ * does both all day.
  *
  * `useCombobox` earns its place here exactly as CLAUDE.md describes — ↑↓, Enter,
  * Esc, active-option tracking and open/close state would otherwise be hand-written.
  */
-function BatchCell({
+function ExistingBatchCell({
   row,
   onPick,
-  onType,
   focusAfterPickId,
   options,
   otherOptions,
@@ -786,7 +925,6 @@ function BatchCell({
 }: {
   row: DraftRow;
   onPick: (option: ReceiptBatchOption) => void;
-  onType: (value: string) => void;
   focusAfterPickId: string;
   options: ReceiptBatchOption[];
   otherOptions: ReceiptBatchOption[];
@@ -942,63 +1080,47 @@ function BatchCell({
   };
 
   return (
-    <div ref={anchorRef} style={{ position: 'relative', width: 290, maxWidth: '100%' }}>
-      <div style={{ display: 'flex', alignItems: 'stretch' }}>
-        {/* Typing is the primary path — most batches are new — so the input, not
-            the button, carries the focus and the tab stop. */}
-        <input
-          type="text"
-          value={row.batchReference}
-          onChange={(e) => onType(e.target.value)}
-          readOnly={row.batchId !== null}
-          placeholder="Enter a new reference, or select"
-          aria-label="Batch reference"
-          title={
-            row.batchId
-              ? 'This row adds to an existing batch. Clear the row to name a new one instead.'
-              : undefined
-          }
-          style={{
-            flex: 1,
-            minWidth: 0,
-            padding: '7px 10px',
-            fontSize: 13,
-            border: `1px solid ${isInvalid ? '#fca5a5' : '#d1d5db'}`,
-            borderRight: 'none',
-            borderRadius: '4px 0 0 4px',
-            minHeight: 34,
-            boxSizing: 'border-box',
-            background: row.batchId ? '#f8fafc' : '#fff',
-            color: row.batchId ? '#475569' : '#111',
-          }}
-        />
-        <button
-          /**
-           * 🔴 `tabIndex: 0` is load-bearing — downshift returns -1 here, because
-           * `useCombobox` assumes the input beside it is the anchor. That is right
-           * for `ui/ComboBox.tsx`; here the input is a free-text field that does
-           * NOT open the list, so the button is the only way in and the default
-           * would make it unreachable by Tab with nothing to say so.
-           */
-          {...getToggleButtonProps({ tabIndex: 0, 'aria-label': 'Select an existing batch' })}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            padding: '0 8px',
-            fontSize: 12,
-            border: `1px solid ${isOpen ? '#0062ff' : isInvalid ? '#fca5a5' : '#d1d5db'}`,
-            borderRadius: '0 4px 4px 0',
-            background: '#f8fafc',
-            color: '#475569',
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
+    <div ref={anchorRef} style={{ position: 'relative', width: '100%' }}>
+      <button
+        /**
+         * 🔴 `tabIndex: 0` is load-bearing — downshift returns -1 here, because
+         * `useCombobox` assumes an INPUT beside it is the anchor and the toggle is
+         * a secondary chevron. That is right for `ui/ComboBox.tsx`; here the
+         * button IS the control and the search box lives inside the panel, so the
+         * default would make every dropdown in the grid unreachable by Tab with
+         * nothing in `tsc` or a screenshot to say so.
+         */
+        {...getToggleButtonProps({ tabIndex: 0 })}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 8,
+          width: '100%',
+          padding: '7px 10px',
+          fontSize: 13,
+          textAlign: 'left',
+          border: `1px solid ${isOpen ? '#0062ff' : isInvalid ? '#fca5a5' : '#d1d5db'}`,
+          borderRadius: 4,
+          background: '#fff',
+          color: row.option ? '#111' : '#94a3b8',
+          cursor: 'pointer',
+          minHeight: 34,
+          boxSizing: 'border-box',
+        }}
+      >
+        <span
+          style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          title={row.option ? optionLabel(row.option) : undefined}
         >
-          Select
-          <ChevronDown size={13} style={{ transform: isOpen ? 'rotate(180deg)' : 'none' }} />
-        </button>
-      </div>
+          {row.option ? optionLabel(row.option) : 'Select Batch'}
+        </span>
+        <ChevronDown
+          size={14}
+          color="#94a3b8"
+          style={{ flexShrink: 0, transform: isOpen ? 'rotate(180deg)' : 'none' }}
+        />
+      </button>
 
       {/* Kept mounted while closed: downshift needs `getMenuProps`' ref on a live
           element to tell a click inside its own menu from one outside it. */}

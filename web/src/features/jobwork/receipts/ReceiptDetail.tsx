@@ -461,8 +461,10 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
                   <td style={td}>{formatQty(row.acceptedQty)}</td>
                   <td style={td}>{formatQty(row.reworkQty)}</td>
                   <td style={td}>{formatQty(row.scrapQty)}</td>
-                  <td style={td}>
-                    {row.reason?.name ?? '-'}
+                  <td style={{ ...td, whiteSpace: 'pre-wrap' }}>
+                    {/* Free text since 2026-08-21; `reason` is what receipts
+                        posted before that carry. */}
+                    {row.remarks || row.reason?.name || '-'}
                     {row.responsibility && (
                       <span style={{ display: 'block', fontSize: 11, color: '#94a3b8' }}>
                         {row.responsibility === 'ours' ? 'Our fault' : 'Their fault'}

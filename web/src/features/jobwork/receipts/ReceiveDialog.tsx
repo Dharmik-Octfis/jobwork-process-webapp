@@ -9,10 +9,9 @@ import { fetchLocations } from '../../configuration/locations/locations.api';
 import { fetchStockLocations } from '../batches/batches.api';
 import { itemsApi } from '../../items/items.api';
 import { formatQty, toNumber } from '../jobwork.schemas';
-import { fetchRejectionReasons } from '../rejection-reasons/rejectionReasons.api';
 import type { JobOrder, OverviewStep } from '../job-orders/jobOrders.schemas';
 import { createJobReceipt, fetchReceiptBatchOptions, fetchReceivePrefill } from './jobReceipts.api';
-import type { JobReceiptLineData } from './jobReceipts.schemas';
+import type { JobReceiptBatchAllocationData, JobReceiptLineData } from './jobReceipts.schemas';
 import { BatchAllocationModal, type BatchAllocation } from './BatchAllocationModal';
 
 interface Props {
@@ -59,21 +58,17 @@ interface Row {
  * stitching produces shirts AND rejects. The list has nothing to do with the
  * consumed list in length or in unit, so it is typed independently.
  *
- * 🔴 THE SET COMES FROM THE STEP, never from a free item picker. An arbitrary
- * item received here is stock with no plan behind it and a yield measured against
- * something that was never expected. What the set contains is the step's Produces
- * list plus anything actually SENT to this step — see `returnedRows`.
+ * 🔴 THE SET IS THE STEP'S PRODUCES LIST, never a free item picker and never
+ * what happened to go out on a challan. An item received here that the step was
+ * never planned to produce is stock with no plan behind it and a yield measured
+ * against something that was never expected — see `returnedRows`.
  */
 interface ReturnedRow {
   key: string;
   itemId: string;
-  /** From the step's plan, or from a challan — either way this row's item is
-   * fixed and cannot be changed here. */
+  /** From the step's plan — this row's item is fixed and cannot be changed here. */
   itemName: string;
   unit: string;
-  /** False for a row offered because it was SENT to this step but never named
-   * under Produces. Receivable, and flagged on screen so the step gets fixed. */
-  isPlanned: boolean;
   receivedQty: number;
   /** Derived: received less rework. Never typed. */
   acceptedQty: number;
@@ -81,7 +76,18 @@ interface ReturnedRow {
   returnedQty: number;
   /** By-products only. The FIRST row takes whatever is left of the pot. */
   valueShare: number | null;
-  reasonId: string | null;
+  /**
+   * 🔴 FREE TEXT, not the rejection-reason list (2026-08-21) — it posts as the
+   * row's `remarks`.
+   *
+   * The dropdown was a separate module behind a separate permission that nothing
+   * seeds, so on a fresh org it was an empty list beside a rework quantity
+   * somebody had to explain, with no way to explain it. And it only appeared once
+   * rework was typed, which made the commonest note — something about the
+   * delivery itself — impossible to record at all. What the gate has to say is a
+   * sentence; a sentence needs a box.
+   */
+  remarks: string;
   /**
    * 🔴 WHERE THE ACCEPTED GOODS LAND — one entry per batch (2026-08-21).
    *
@@ -114,12 +120,6 @@ const inputStyle: React.CSSProperties = {
   borderRadius: 4,
   background: '#fff',
   minHeight: 32,
-};
-
-const readOnlyStyle: React.CSSProperties = {
-  ...inputStyle,
-  background: '#f8fafc',
-  color: '#64748b',
 };
 
 const th: React.CSSProperties = {
@@ -181,30 +181,12 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
    * stops a re-fetch from silently re-ticking something the user un-ticked.
    */
   const [pickedIssueIds, setPickedIssueIds] = useState<string[] | null>(null);
-  /**
-   * 🔴 EDITS ONLY, keyed by row. The rows themselves are DERIVED from the
-   * prefill and the ticked challans (see `rows` below) — they are generated, not
-   * entered (§6.2), so holding them in state means holding a copy that has to be
-   * re-synced every time the selection changes. That sync was an effect, and the
-   * effect was the bug: un-ticking a challan left its typed quantities behind in
-   * a row that no longer existed.
-   */
-  const [edits, setEdits] = useState<Record<string, Partial<Row>>>({});
   /** `null` until somebody touches the returned grid, so a late prefill cannot
    * wipe typed rows and re-seeding cannot fight the user. */
   const [returnedEdits, setReturnedEdits] = useState<ReturnedRow[] | null>(null);
   const [receiptDate, setReceiptDate] = useState(new Date().toISOString().slice(0, 10));
   const [locationId, setLocationId] = useState('');
   const [remarks, setRemarks] = useState('');
-  /**
-   * 🔴 Does this receipt finish the step, or is more still coming?
-   *
-   * Default ON, because one delivery closing the challan is the ordinary case.
-   * It is the single control that used to be a whole grid of numbers: what was
-   * sent and did not come back is either lost in the process or still at the
-   * processor, and only a person knows which.
-   */
-  const [closesChallans, setClosesChallans] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   /** Which returned row's batches are being allocated, and for which side. Null
@@ -286,13 +268,6 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
   });
   const items = itemsPage?.results ?? [];
 
-  const { data: reasonsPage } = useQuery({
-    queryKey: ['rejection-reasons', orgId],
-    queryFn: () => fetchRejectionReasons(orgId!, { perPage: 200 }),
-    enabled: isOpen && Boolean(orgId),
-  });
-  const reasons = reasonsPage?.results ?? [];
-
   /* Both units come off the step's two LISTS — primary output and principal
      input. The scalars that mirrored them went with Migration B (2026-08-12). */
   const plannedPrimaryOut =
@@ -346,17 +321,14 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
   }, [prefill, selectedIssueIds]);
 
   /**
-   * 🔴 WHAT CAME BACK — the step's Produces list, PLUS anything actually sent to
-   * this step that the plan never named as an output.
+   * 🔴 WHAT CAME BACK — the step's Produces list, and nothing else (2026-08-21).
    *
-   * The arbitrary item picker is gone: you cannot type in a row for something
-   * unrelated to this step. But the set is not the Produces list alone either,
-   * and that is deliberate. A step with no transformation — washing, checking,
-   * packing — is routinely set up with only its main item under Produces while
-   * two or three items go out on the challan, and the goods physically come back.
-   * Blocking that would leave material stuck at the processor with no way to
-   * book it in, so the second group is offered and LABELLED instead: a warning,
-   * not a block. A row nobody uses stays at zero and posts nothing.
+   * Items that were merely SENT to this step used to be offered here too, marked
+   * as unplanned. They filled the grid with rows nobody ever typed into on the
+   * ordinary step, where everything issued comes back under the output's own
+   * name. If something genuinely comes back that the step never planned to
+   * produce, the fix is to name it under Produces — which is where the rest of
+   * the app already reads the answer from.
    *
    * Rows are seeded with NO quantities: what came back is measured at the gate,
    * and pre-filling the expectation is how an expectation gets recorded as a
@@ -371,19 +343,6 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
     // step whose main output happened to be typed second would put the cost on a
     // by-product.
     const planned = [...prefill.outputs].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
-    const plannedIds = new Set(planned.map((output) => output.itemId));
-
-    // Issued into this step and not planned as an output — deduped, in the order
-    // the challans list them.
-    const sentIn = new Map<string, { itemId: string; itemName: string; unit: string }>();
-    for (const line of prefill.lines) {
-      if (!line.itemId || plannedIds.has(line.itemId) || sentIn.has(line.itemId)) continue;
-      sentIn.set(line.itemId, {
-        itemId: line.itemId,
-        itemName: line.itemName ?? 'Item',
-        unit: line.uomSymbol ?? '',
-      });
-    }
 
     const blank = {
       receivedQty: 0,
@@ -391,28 +350,17 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
       reworkQty: 0,
       returnedQty: 0,
       valueShare: null,
-      reasonId: null,
+      remarks: '',
       batches: [] as BatchAllocation[],
       reworkBatches: [] as BatchAllocation[],
     };
-    return [
-      ...planned.map((output) => ({
-        key: output.itemId,
-        itemId: output.itemId,
-        itemName: output.itemName,
-        unit: output.uomSymbol ?? '',
-        isPlanned: true,
-        ...blank,
-      })),
-      ...[...sentIn.values()].map((row) => ({
-        key: row.itemId,
-        itemId: row.itemId,
-        itemName: row.itemName,
-        unit: row.unit,
-        isPlanned: false,
-        ...blank,
-      })),
-    ];
+    return planned.map((output) => ({
+      key: output.itemId,
+      itemId: output.itemId,
+      itemName: output.itemName,
+      unit: output.uomSymbol ?? '',
+      ...blank,
+    }));
   }, [returnedEdits, prefill]);
 
   // What came back is typed on the returned rows, full stop. Under unit_wise the
@@ -430,65 +378,15 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
    * consumes IS what came back, and typing it again is a second chance to get it
    * wrong.
    *
-   * 🔴 It cannot be derived when the step TRANSFORMS. Fabric goes out and shirts
-   * come back; how many metres 300 shirts used is not knowable from 300, and
-   * inferring it from the yield would be using an observation as a conversion
-   * factor — which invents or destroys stock (§6.3). Those rows, and only those,
-   * still have to be typed, so the grid survives for exactly them.
-   *
-   * `closesChallans` settles the shortfall on a derivable row: what was sent and
-   * did not come back is either lost in the process or still at the processor,
-   * and nothing in the documents can tell those apart. Ticked, the remainder is
-   * consumed and shows as process loss; clear, it stays outstanding for the next
-   * delivery.
+   * 🔴 A receipt settles the challans it names, in full — what was sent and did
+   * not come back is process loss (see `lossByItem`). The alternative, leaving
+   * the remainder outstanding at the processor, was a checkbox, and on a
+   * transforming step it pulled a second grid of quantities onto a dialog that
+   * already carries three. Splitting one delivery over two receipts is done by
+   * un-ticking the challan that is not settled yet, which the section above
+   * already offers.
    */
-  const receivedByItem = useMemo(() => {
-    const byItem = new Map<string, number>();
-    for (const row of effectiveReturned) {
-      byItem.set(row.itemId, (byItem.get(row.itemId) ?? 0) + row.receivedQty);
-    }
-    return byItem;
-  }, [effectiveReturned]);
-
-  /**
-   * 🔴 DID THIS ITEM COME BACK AS ITSELF? Not "is there a row for it" — a row
-   * exists for every item sent to the step, sitting at zero until somebody types
-   * into it. Only a POSITIVE received quantity means the same material returned,
-   * and that is the test that separates washing from cutting.
-   *
-   * Getting this wrong reads a cutting step's whole fabric issue as process loss,
-   * because none of the fabric "came back".
-   */
-  const cameBackAsItself = (row: Row) =>
-    Boolean(row.itemId) && (receivedByItem.get(row.itemId!) ?? 0) > 0;
-
-  const rows: Row[] = useMemo(
-    () =>
-      outstandingRows.map((row) => {
-        // Closing the step consumes everything still out, whatever the step does
-        // to it — so nothing has to be typed and no grid is shown.
-        if (closesChallans) return row;
-        // Same material back: this receipt consumes exactly what returned, and
-        // the rest stays at the processor.
-        if (cameBackAsItself(row)) {
-          return {
-            ...row,
-            issuedQty: Math.min(receivedByItem.get(row.itemId!) ?? 0, row.issuedQty),
-          };
-        }
-        // Transformed, and not closing — the only case nothing can work out.
-        return { ...row, ...edits[row.key] };
-      }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [outstandingRows, receivedByItem, edits, closesChallans],
-  );
-
-  /**
-   * Rows the dialog has to ask about: a partial receipt on a step that returns
-   * something other than what it was given. Empty whenever the step is being
-   * closed, and empty on every same-item step — which is to say, nearly always.
-   */
-  const typedConsumptionRows = closesChallans ? [] : rows.filter((row) => !cameBackAsItself(row));
+  const rows: Row[] = outstandingRows;
 
   const totals = useMemo(
     () => ({
@@ -624,20 +522,13 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
           ...row,
           qty: Number((row.qty - (receivedByItem.get(row.itemId) ?? 0)).toFixed(4)),
         }))
-        // 🔴 A POSITIVE received quantity, not merely a row — see `cameBackAsItself`.
+        /* 🔴 A POSITIVE received quantity, not merely a row: a row exists for
+           every item sent to the step, sitting at zero until somebody types into
+           it, and reading those as loss turns a cutting step's whole fabric
+           issue into process loss because none of the fabric "came back". */
         .filter((row) => (receivedByItem.get(row.itemId) ?? 0) > 0 && row.qty > 0.00005)
     );
   }, [consumedByItem, effectiveReturned]);
-
-  const actualYield = totals.issued > 0 ? totals.received / totals.issued : null;
-  const expectedYield =
-    prefill?.step.expectedYield === null || prefill?.step.expectedYield === undefined
-      ? null
-      : toNumber(prefill.step.expectedYield);
-
-  const update = (key: string, patch: Partial<Row>) => {
-    setEdits((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
-  };
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -690,19 +581,9 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
              * allocates nothing and the server creates its single silent batch,
              * which is the pre-2026-08-21 path and the reason it still works.
              */
-            batches: row.batches.length
-              ? row.batches.map((batch) => ({
-                  batchId: batch.batchId,
-                  batchReference: batch.batchId ? null : batch.batchReference || null,
-                  qty: batch.qty,
-                }))
-              : undefined,
+            batches: row.batches.length ? row.batches.map(toBatchPayload) : undefined,
             reworkBatches: row.reworkBatches.length
-              ? row.reworkBatches.map((batch) => ({
-                  batchId: batch.batchId,
-                  batchReference: batch.batchId ? null : batch.batchReference || null,
-                  qty: batch.qty,
-                }))
+              ? row.reworkBatches.map(toBatchPayload)
               : undefined,
             // 🔴 Position, not a control. The first returned item carries the
             // cost of the operation; every other row takes the value typed for
@@ -720,12 +601,13 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
              * only earns its place once by-products are actually being sold.
              */
             valueShare: index === 0 ? null : 0,
-            reasonId: row.reasonId,
+            // The gate's own words. `reasonId` is not sent at all any more — see
+            // the note on `ReturnedRow.remarks`.
+            remarks: row.remarks.trim() || null,
             // ⚠️ "Whose fault" is not asked for. Nothing read it — no report, no
-            // costing, no debit note — and the rejection reason already carries a
-            // `defaultResponsibility`, so the dialog was asking for a fact that
-            // was recorded elsewhere and consumed nowhere. When a debit note
-            // exists, take it from the reason.
+            // costing, no debit note — so the dialog was asking for a fact that
+            // was consumed nowhere. When a debit note exists, it can be asked for
+            // then.
             responsibility: null,
           })),
         remarks: remarks.trim() || null,
@@ -789,11 +671,10 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
          */
         if (next.acceptedQty <= 0) next.batches = [];
         if (next.reworkQty <= 0) next.reworkBatches = [];
-        // Same reasoning for the disposition pair: the two dropdowns are hidden
-        // once nothing was rejected, so a reason left behind by an edit would be
-        // posted against a row that came back entirely good, with no control on
-        // screen to clear it.
-        if (next.reworkQty <= 0) next.reasonId = null;
+        // 🔴 The note is NOT cleared with the rework. It is free text on the row
+        // and stays on screen whatever the quantities do, so nothing can be left
+        // behind where nobody can reach it — which is why the old reason had to
+        // be wiped here.
         return next;
       }),
     );
@@ -838,6 +719,16 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
       isOpen={isOpen}
       onClose={onClose}
       title={`Receive goods — step ${step.seq}, ${step.processNameSnapshot}`}
+      /* Who it came back from is a FACT, not a field — it is the step's
+         processor and nothing on this dialog can change it. It sat in the header
+         grid as a read-only box, which reads as an input that has stopped
+         working; the issue dialog puts the same kind of context here. */
+      subtitle={
+        <>
+          {jobOrder.jobOrderNumber} · from{' '}
+          {step.processorNameSnapshot ?? step.workCentre?.name ?? 'the processor'}
+        </>
+      }
       width={1100}
       footer={
         <>
@@ -1016,6 +907,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                     disabled={godowns.length === 0}
                     ariaLabel="Received into location"
                     fullWidth
+                    portal
                   />
                   {/* 🔴 SAY WHY IT IS EMPTY. A dropdown with nothing in it and no
                       note beside it is indistinguishable from a broken screen, and
@@ -1035,17 +927,23 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
 
                 {/* No single "Output item" here any more — a step can return
                     any number of items, and they are listed in the Returned
-                    grid below with their own quantities (§5.7). */}
+                    grid below with their own quantities (§5.7). No "From"
+                    either: it is in the subtitle, where a read-only fact belongs. */}
+
+                {/* Beside the other header facts, exactly where the issue dialog
+                    puts it. It is the one free-text note on the document, not a
+                    footnote to the grids — sitting under three tables it read as
+                    a comment on the last of them. */}
                 <div>
-                  <label style={labelStyle} htmlFor="receive-processor">
-                    From
+                  <label style={labelStyle} htmlFor="receipt-remarks">
+                    Remarks
                   </label>
                   <input
-                    id="receive-processor"
+                    id="receipt-remarks"
                     type="text"
-                    value={step.processorNameSnapshot ?? step.workCentre?.name ?? '—'}
-                    readOnly
-                    style={readOnlyStyle}
+                    value={remarks}
+                    onChange={(e) => setRemarks(e.target.value)}
+                    style={inputStyle}
                   />
                 </div>
               </div>
@@ -1110,9 +1008,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
             <section style={{ marginBottom: 20 }}>
               <h3 style={sectionHeading}>What came back</h3>
               <p style={{ fontSize: 12, color: '#64748b', margin: '-4px 0 10px 0' }}>
-                Enter what arrived and how much of it goes back for rework — Good is worked out for
-                you, and anything that never came back shows as process loss below. Batch-tracked
-                items then need their batches named.
+                Type what arrived and what goes back for rework. Everything else is worked out.
               </p>
               <div style={{ border: '1px solid #eef0f3', borderRadius: 4 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
@@ -1149,7 +1045,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                           to sit on the consumed rows, per taka; with packages gone the
                           returned row is the only place that says how much was
                           rejected, so it has to be the place that says why. */}
-                      <th style={th} scope="col">
+                      <th style={{ ...th, minWidth: 200 }} scope="col">
                         Reason
                       </th>
                     </tr>
@@ -1188,11 +1084,6 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                           />
                         </td>
                       );
-                      /* 🔴 Only asked when there is something to explain. A reason
-                         against a row that came back entirely good is a question
-                         with no answer, and two dead dropdowns on every row is most
-                         of the width this grid was spending. */
-                      const hasReject = row.reworkQty > 0;
                       const tracked = batchRefRequired(row);
                       return (
                         <tr key={row.key} style={{ borderBottom: '1px solid #f4f5f7' }}>
@@ -1228,21 +1119,6 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                                 </span>
                               )}
                             </div>
-                            {/* A warning, not a block — see `returnedRows`. Named
-                                where the row is, so the step gets corrected rather
-                                than the receipt abandoned. */}
-                            {!row.isPlanned && (
-                              <div
-                                style={{
-                                  marginTop: 4,
-                                  fontSize: 11,
-                                  color: '#b45309',
-                                  lineHeight: 1.4,
-                                }}
-                              >
-                                Sent to this step but not on its Produces list.
-                              </div>
-                            )}
                           </td>
                           {cell('receivedQty', 'Received')}
                           {cell('reworkQty', 'Rework')}
@@ -1280,23 +1156,22 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                               </div>
                             )}
                           </td>
+                          {/* 🔴 ALWAYS TYPEABLE, and free text. It used to be a
+                              dropdown that appeared only once rework was typed —
+                              so a note about the delivery itself had nowhere to
+                              go, and on an org with no rejection reasons set up
+                              there was nothing to pick even when there was
+                              something to explain. */}
                           <td style={td}>
-                            {hasReject ? (
-                              <Select
-                                value={row.reasonId ?? ''}
-                                onChange={(value) =>
-                                  updateReturned(row.key, { reasonId: value || null })
-                                }
-                                options={[
-                                  { value: '', label: 'Select a reason…' },
-                                  ...reasons.map((r) => ({ value: r.id, label: r.name })),
-                                ]}
-                                ariaLabel="Rejection reason"
-                                minWidth={0}
-                              />
-                            ) : (
-                              <span style={{ color: '#cbd5e1' }}>—</span>
-                            )}
+                            <input
+                              type="text"
+                              aria-label={`Reason for ${row.itemName}`}
+                              value={row.remarks}
+                              placeholder="Reason"
+                              maxLength={2000}
+                              onChange={(e) => updateReturned(row.key, { remarks: e.target.value })}
+                              style={{ ...numberCell, textAlign: 'left' }}
+                            />
                           </td>
                         </tr>
                       );
@@ -1319,145 +1194,41 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                     : `${unallocatedRows.length} batch-tracked items still need their batches named — use Add Batches on those rows.`}
                 </p>
               )}
-              {/* 🔴 Say what is missing. Preview is disabled until something has
-                  actually come back, and a dead button with nothing beside it is
-                  how somebody concludes the screen is broken. */}
-              {brokenRows.length === 0 && totals.received <= 0 && (
-                <p style={{ fontSize: 12, color: '#b45309', margin: '8px 0 0 0' }}>
-                  Enter how much came back to continue.
-                </p>
-              )}
             </section>
 
             {/*
-              🔴 WHAT THIS RECEIPT CONSUMES.
+              🔴 WHAT THIS RECEIPT CONSUMES — nothing here asks for it.
 
-              There is no section for it any more. On the ordinary step — the item
-              that went out is the item that comes back — the answer IS what came
-              back, so a grid asking for it was a screen full of numbers the
-              dialog already had, and the job order overview already shows Issued
-              against Received.
+              On the ordinary step the item that went out is the item that comes
+              back, so the answer IS what came back and a grid for it was a screen
+              full of numbers the dialog already had.
 
-              Two things survive, because neither can be derived:
-
-              1. The shortfall question below. What was sent and did not come back
-                 is either lost in the process or still at the processor, and no
-                 document knows which.
-              2. The grid, for a TRANSFORMING step only. How many metres 300 shirts
-                 used is not knowable from 300 (§6.3).
+              🔴 And the "nothing more is coming back for this step" checkbox went
+              with it (2026-08-21). A receipt settles the challans it names in
+              full; the shortfall is process loss, which the strip below states as
+              a consequence of the two figures above it rather than asking for it
+              as a third. A delivery that only settles part of what is out is two
+              receipts, each naming its own challan — which the section above
+              already offers. The typed consumption grid for a TRANSFORMING step
+              only ever appeared behind that checkbox, so it went too.
             */}
-            <section style={{ marginBottom: 20 }}>
-              <label
-                style={{
-                  display: 'flex',
-                  gap: 10,
-                  alignItems: 'flex-start',
-                  padding: '10px 14px',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={closesChallans}
-                  onChange={(e) => setClosesChallans(e.target.checked)}
-                  style={{ marginTop: 2 }}
-                />
-                <span>
-                  <span style={{ fontSize: 13, color: '#111', fontWeight: 500 }}>
-                    Nothing more is coming back for this step
-                  </span>
-                  <span
-                    style={{
-                      display: 'block',
-                      fontSize: 11.5,
-                      color: '#64748b',
-                      marginTop: 3,
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    {closesChallans
-                      ? 'The challans close in full, and anything that did not come back is recorded as process loss.'
-                      : 'Only what came back is accounted for — the rest stays outstanding at the processor for a later delivery.'}
-                  </span>
-                </span>
-              </label>
+            {/* 🔴 PROCESS LOSS ONLY — where the Scrap box went. Stated as a
+                consequence of the two typed numbers rather than as a question, so
+                it can never disagree with them.
 
-              {/* Transforming step only — see the note above. */}
-              {typedConsumptionRows.length > 0 && (
-                <div style={{ marginTop: 14 }}>
-                  <h3 style={sectionHeading}>How much of the input this used</h3>
-                  <p style={{ fontSize: 12, color: '#64748b', margin: '-4px 0 10px 0' }}>
-                    This step returns something other than what it was given, so how much it
-                    consumed cannot be worked out from what came back.
-                  </p>
-
-                  <div style={{ border: '1px solid #eef0f3', borderRadius: 4 }}>
-                    <table
-                      style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}
-                    >
-                      <colgroup>
-                        <col style={{ width: '75%' }} />
-                        <col style={{ width: '25%' }} />
-                      </colgroup>
-                      <thead>
-                        <tr style={{ background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
-                          <th style={th} scope="col">
-                            Item
-                          </th>
-                          <th style={th} scope="col">
-                            Used
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {typedConsumptionRows.map((row) => (
-                          <tr key={row.key} style={{ borderBottom: '1px solid #eef0f3' }}>
-                            <td style={{ ...td, fontWeight: 500, color: '#111' }}>{row.label}</td>
-                            <td style={td}>
-                              {/* Typed, because nothing can derive it. Opens at
-                                  the full outstanding quantity, which is right
-                                  whenever one receipt closes the challan. */}
-                              <input
-                                type="number"
-                                onWheel={blurOnWheel}
-                                step="0.0001"
-                                min="0"
-                                value={row.issuedQty || ''}
-                                onChange={(e) =>
-                                  update(row.key, { issuedQty: Number(e.target.value) || 0 })
-                                }
-                                aria-label={`${row.label} quantity used`}
-                                style={numberCell}
-                              />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr style={{ background: '#f9f9fb', fontWeight: 600 }}>
-                          <td style={td}>Total</td>
-                          <td style={td}>
-                            {formatQty(
-                              typedConsumptionRows.reduce((sum, r) => sum + r.issuedQty, 0),
-                            )}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* Yield strip. 🔴 An OBSERVATION, never a conversion factor — using
-                  it as one would invent or destroy stock (§6.3). */}
+                🔴 Actual yield / Expected / Variance went with the checkbox
+                (2026-08-21). They changed no decision at the gate — nobody
+                refuses a delivery because the yield is 2% off — and yield is a
+                report, measured over a step's whole life, not over the one
+                consignment standing in front of the operator. It is on the job
+                order overview, where it can be read against every receipt. */}
+            {lossByItem.length > 0 && (
               <div
                 style={{
                   display: 'flex',
                   gap: 20,
                   flexWrap: 'wrap',
-                  marginTop: 12,
+                  marginBottom: 20,
                   padding: '10px 14px',
                   background: '#f8fafc',
                   borderRadius: 4,
@@ -1465,9 +1236,6 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                   color: '#475569',
                 }}
               >
-                {/* 🔴 Where the scrap box went. Stated as a consequence of the two
-                    numbers above it rather than as a question, so it cannot
-                    disagree with them. */}
                 {lossByItem.map((row) => (
                   <span key={`loss-strip-${row.itemId}`}>
                     Process loss ({row.name}):{' '}
@@ -1476,52 +1244,15 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                     </strong>
                   </span>
                 ))}
-                <span>
-                  Actual yield:{' '}
-                  <strong>
-                    {actualYield === null ? '—' : actualYield.toFixed(4)}{' '}
-                    {outUnit && inUnit ? `${outUnit}/${inUnit}` : ''}
-                  </strong>
-                </span>
-                <span>
-                  Expected:{' '}
-                  <strong>{expectedYield === null ? '—' : formatQty(expectedYield)}</strong>
-                </span>
-                {actualYield !== null && expectedYield !== null && expectedYield > 0 && (
-                  <span
-                    style={{
-                      color:
-                        Math.abs(actualYield - expectedYield) / expectedYield > 0.05
-                          ? '#b45309'
-                          : '#475569',
-                    }}
-                  >
-                    Variance:{' '}
-                    <strong>
-                      {(((actualYield - expectedYield) / expectedYield) * 100).toFixed(2)}%
-                    </strong>
-                  </span>
-                )}
               </div>
-            </section>
+            )}
 
             {/* No "Additional fields" block here. The gate is the wrong place for
-                per-org custom fields: this dialog is already three grids deep and
+                per-org custom fields: this dialog is already two grids deep and
                 the operator is standing at a delivery. `job_receipt` keeps its
                 `custom_fields` column and its definitions — they belong on the
-                receipt's detail screen, not between the goods and the ledger. */}
-            <section>
-              <label style={labelStyle} htmlFor="receipt-remarks">
-                Remarks
-              </label>
-              <input
-                id="receipt-remarks"
-                type="text"
-                value={remarks}
-                onChange={(e) => setRemarks(e.target.value)}
-                style={inputStyle}
-              />
-            </section>
+                receipt's detail screen, not between the goods and the ledger.
+                Remarks is a header field and sits with the other header facts. */}
           </>
         )
       )}
@@ -1574,6 +1305,37 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
 }
 
 /**
+ * 🔴 ONE ALLOCATION ROW, ON THE WIRE. Either an existing batch or a new one,
+ * never both — and the five attributes ride ONLY with a new one.
+ *
+ * The server refuses them beside a `batchId` (a 400, deliberately, not a silent
+ * drop): a receipt adds to an existing batch, it never restamps the dates or the
+ * prices of one an earlier delivery created and that may already have been issued
+ * onward. Sending them anyway would turn a legitimate split delivery into a
+ * rejected save.
+ *
+ * 🔴 An empty box is `null`, NOT zero. The columns are nullable exactly so "no
+ * price stated" and "free" can be told apart, and `Number('')` is 0 — so the
+ * emptiness is tested before the conversion, never after.
+ */
+function toBatchPayload(batch: BatchAllocation): JobReceiptBatchAllocationData {
+  if (batch.batchId) {
+    return { batchId: batch.batchId, batchReference: null, qty: batch.qty };
+  }
+  const price = (value: string) => (value.trim() === '' ? null : Number(value));
+  return {
+    batchId: null,
+    batchReference: batch.batchReference || null,
+    qty: batch.qty,
+    manufacturerBatch: batch.manufacturerBatch.trim() || null,
+    manufacturedDate: batch.manufacturedDate || null,
+    expiryDate: batch.expiryDate || null,
+    sellingPrice: price(batch.sellingPrice),
+    mrp: price(batch.mrp),
+  };
+}
+
+/**
  * The link that opens the allocation grid, and says at a glance whether the side
  * is settled.
  *
@@ -1589,9 +1351,12 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
  * like Add Batches on the issue side.
  *
  * A `<button>`, not a styled div: Tab reaches it, Enter opens it, and `disabled`
- * means something. A quantity with nowhere to go is the one state worth
- * colouring — it is what blocks the save, and the operator needs to see which
- * row it is.
+ * means something.
+ *
+ * 🔴 ALWAYS BLUE, like the issue dialog's. It used to turn red on a shortfall,
+ * which made the same control read as two different things on two screens an
+ * operator does back to back. The shortfall is said in words underneath, where
+ * the issue dialog says its own.
  */
 function AllocationButton({
   label,
@@ -1634,7 +1399,7 @@ function AllocationButton({
           fontWeight: 500,
           textAlign: 'left',
           cursor: 'pointer',
-          color: short > 0.00005 ? '#b91c1c' : '#0062ff',
+          color: '#0062ff',
         }}
       >
         {rows.length === 0 ? label : `${rows.length} ${rows.length === 1 ? 'batch' : 'batches'}`}
