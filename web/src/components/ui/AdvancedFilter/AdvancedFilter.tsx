@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Filter, Check, ChevronDown } from 'lucide-react';
 import { Select } from '../Select';
 import './AdvancedFilter.css';
@@ -71,8 +71,20 @@ export function AdvancedFilter({
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Intentionally removed handleClickOutside so the filter
-  // only closes when explicitly closed via Cancel/Find/Reset.
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
 
   const handleApply = () => {
     const active = localConditions.filter(hasValidValue);

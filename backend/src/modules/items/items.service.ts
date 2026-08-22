@@ -375,6 +375,40 @@ export class ItemsService {
    */
   /** The one `where` both the list and the count are built from — see vendors. */
   private listWhere(organizationId: string, opts: ListQuery): Prisma.ItemWhereInput {
+    const customFieldsWhere: Prisma.ItemWhereInput[] = [];
+    const directFilters: Prisma.ItemWhereInput = {};
+
+    if (opts.fieldFilters) {
+      try {
+        const filters = JSON.parse(opts.fieldFilters) as Record<string, string>;
+        Object.entries(filters).forEach(([key, value]) => {
+          if (!value) return;
+          
+          if (key.startsWith('cf_')) {
+            const cfKey = key.replace('cf_', '');
+            customFieldsWhere.push({
+              customFields: { path: [cfKey], equals: value }
+            });
+          } else if (key === 'type') {
+             directFilters.OR = [
+               { itemType: value as any },
+               { itemStructure: value as any }
+             ];
+          } else if (key === 'name') {
+            directFilters.name = { contains: value, mode: 'insensitive' };
+          } else if (key === 'sku') {
+            directFilters.sku = { contains: value, mode: 'insensitive' };
+          } else if (key === 'hsn') {
+            directFilters.hsnCode = { contains: value, mode: 'insensitive' };
+          } else if (key === 'category') {
+            directFilters.category = value;
+          }
+        });
+      } catch (e) {
+        // Ignore invalid JSON
+      }
+    }
+
     return {
       // The `where` is what the query *means*; RLS is the net under it. Both stay.
       organizationId,
@@ -383,6 +417,8 @@ export class ItemsService {
       // Preset view ("Goods"), spread in so it narrows rather than replaces.
       ...filterWhere<Prisma.ItemWhereInput>('item', opts.filter),
       ...searchWhere<Prisma.ItemWhereInput>(opts.search, ['name', 'sku', 'category', 'hsnCode']),
+      ...directFilters,
+      ...(customFieldsWhere.length > 0 ? { AND: customFieldsWhere } : {}),
     };
   }
 
