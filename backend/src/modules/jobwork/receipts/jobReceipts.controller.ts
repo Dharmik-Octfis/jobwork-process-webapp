@@ -83,9 +83,10 @@ export const getPrefill = async (req: Request, res: Response) => {
 const batchOptionsQuerySchema = z.object({
   stepId: z.string().uuid(),
   itemId: z.string().uuid(),
-  /** Empty means "list this job order's batches only". `otherBatches` is
-   * deliberately search-only — see the service. */
+  /** Narrows BOTH groups. Empty lists everything, first page first. */
   search: z.string().trim().max(200).optional(),
+  /** `otherNextCursor` from the previous page. Page one omits it. */
+  cursor: z.string().max(200).optional(),
 });
 
 openApiRegistry.registerPath({

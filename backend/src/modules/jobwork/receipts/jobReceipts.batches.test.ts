@@ -843,7 +843,7 @@ describe('receipt — cancellation', { timeout: 60_000 }, () => {
 });
 
 describe('receipt — the batch picker', { timeout: 60_000 }, () => {
-  it('lists this job order’s batches and, only on a search, other batches', async () => {
+  it('splits this job order’s batches from every other batch of the item', async () => {
     const { step, issue } = await aStepReadyToReceive(500, 25000);
     const receipt = await createNewJobReceipt(orgId, {
       jobOrderStepId: step.id,
@@ -867,9 +867,10 @@ describe('receipt — the batch picker', { timeout: 60_000 }, () => {
       itemId: dyedId,
     });
     expect(plain.jobOrderBatches.map((row) => row.batchId)).toContain(mine);
-    // 🔴 Search-only, so merging into an unrelated batch is deliberate rather
-    // than a mis-click on a list dominated by other job orders' batches.
-    expect(plain.otherBatches).toHaveLength(0);
+    // 🔴 And never in both. The second group is "everything that is NOT one of
+    // these", so a batch appearing twice would let one delivery be allocated to
+    // the same batch on two rows of the grid.
+    expect(plain.otherBatches.map((row) => row.batchId)).not.toContain(mine);
 
     // A batch of the same item from a DIFFERENT job order.
     const elsewhere = await aStepReadyToReceive(200, 10000);
@@ -890,6 +891,18 @@ describe('receipt — the batch picker', { timeout: 60_000 }, () => {
     });
     const stranger = (await batchRowsOf(otherReceipt.id))[0]!.batchId;
 
+    /**
+     * 🔴 ON OFFER WITH NOTHING TYPED (2026-08-22). It used to take a search, and
+     * the cost was that a FIRST receipt — no prior batches of its own — opened
+     * the picker on two empty sections and read as a broken screen.
+     */
+    const listed = await getOutputBatchOptions(orgId, {
+      jobOrderStepId: step.id,
+      itemId: dyedId,
+    });
+    expect(listed.otherBatches.map((row) => row.batchId)).toContain(stranger);
+    expect(listed.otherBatches.every((row) => row.source === 'other')).toBe(true);
+
     const searched = await getOutputBatchOptions(orgId, {
       jobOrderStepId: step.id,
       itemId: dyedId,
@@ -897,6 +910,74 @@ describe('receipt — the batch picker', { timeout: 60_000 }, () => {
     });
     expect(searched.otherBatches.map((row) => row.batchId)).toContain(stranger);
     expect(searched.otherBatches.every((row) => row.source === 'other')).toBe(true);
+
+    // 🔴 The search narrows BOTH groups. Filtering only the second put an
+    // unfiltered group above a filtered one, which reads as the search failing.
+    expect(searched.jobOrderBatches).toHaveLength(0);
+  });
+
+  /**
+   * 🔴 KEYSET PAGING OVER THE SECOND GROUP. The picker walks it on scroll, so
+   * what matters is that the pages TILE — every batch exactly once, none skipped
+   * and none repeated. Offset paging is what fails this the moment a batch is
+   * created mid-scroll, which is ordinary on a shared dev system.
+   */
+  it('pages the other-batches group without repeating or dropping a row', async () => {
+    const { step, issue } = await aStepReadyToReceive(200, 10000);
+    await createNewJobReceipt(orgId, {
+      jobOrderStepId: step.id,
+      issueIds: [issue.id],
+      locationId: godownId,
+      lines: [{ itemId: greyId, issuedQty: 200, receivedQty: 0 }],
+      outputs: [
+        {
+          itemId: dyedId,
+          isPrimary: true,
+          receivedQty: 200,
+          acceptedQty: 200,
+          batchReference: 'OWN',
+        },
+      ],
+    });
+
+    // A tag shared by all of them, so one search reaches exactly this set and
+    // nothing another suite is doing in parallel can join it.
+    const tag = `PAGE-${unique()}`;
+    const made: string[] = [];
+    for (let n = 0; n < 30; n += 1) {
+      const batch = await runAsDocument(orgId, (tx) =>
+        createBatch(tx, {
+          organizationId: orgId,
+          itemId: dyedId,
+          ownership: 'own',
+          supplierBatchRef: `${tag}-${n}`,
+          sourceDocType: SOURCE_DOC_TYPES.jobOrderMaterialIn,
+        }),
+      );
+      made.push(batch.id);
+    }
+
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    let pages = 0;
+    do {
+      const page = await getOutputBatchOptions(orgId, {
+        jobOrderStepId: step.id,
+        itemId: dyedId,
+        search: tag,
+        cursor,
+      });
+      // Only page one carries the first group; the rest would be a balance query
+      // per page for rows the client already holds.
+      if (pages > 0) expect(page.jobOrderBatches).toHaveLength(0);
+      seen.push(...page.otherBatches.map((row) => row.batchId));
+      cursor = page.otherNextCursor ?? undefined;
+      pages += 1;
+    } while (cursor && pages < 10);
+
+    expect(pages).toBe(2); // 30 rows at 25 a page
+    expect(new Set(seen).size).toBe(seen.length); // nothing twice
+    expect([...seen].sort()).toEqual([...made].sort()); // nothing missed
   });
 
   it('reports where a batch is, splitting our godowns from the processor', async () => {

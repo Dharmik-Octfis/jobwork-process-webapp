@@ -35,6 +35,17 @@ import type { ReceiptBatchOption } from './jobReceipts.schemas';
  * every unrelated batch of the item that happens to be sitting there. Where each
  * batch IS shows on the row instead, which is the fact the location filter was
  * reaching for, without it ever removing the right answer.
+ *
+ * 🔴 THE TWO GROUPS IN THE DROPDOWN ARE THE GUARD RAIL, not decoration, and they
+ * are why this is one sectioned list rather than two tabs or one flat list.
+ * Continuing this job order's own batch is almost always right; merging into an
+ * unrelated one blends cost into a weighted average and makes a recall span two
+ * provenances. A heading is a hard separator you cannot pick past without
+ * reading it — an icon on an interleaved row is not, and a tab hides half the
+ * answer to the question the operator is actually asking ("is it already in this
+ * job order, or do I have to look wider?"). Since 2026-08-22 the first group is
+ * capped at three rows with an expander and the second pages in on scroll, so
+ * neither can bury the other.
  */
 
 /** Same ceiling as the issue grid — a hundred allocation rows on one line is
@@ -163,9 +174,14 @@ interface Props {
   blockedBatchIds: readonly string[];
   options: ReceiptBatchOption[];
   otherOptions: ReceiptBatchOption[];
-  isOtherCapped: boolean;
+  /** Another page of `otherOptions` exists. */
+  hasMore: boolean;
+  onLoadMore: () => void;
+  isLoadingMore: boolean;
   search: string;
   onSearchChange: (search: string) => void;
+  /** The FIRST page is still in flight. Paging in the next one is `isLoadingMore`
+   * — treating them alike blanked the list on every scroll. */
   isLoading: boolean;
 }
 
@@ -201,7 +217,9 @@ export function BatchAllocationModal({
   blockedBatchIds,
   options,
   otherOptions,
-  isOtherCapped,
+  hasMore,
+  onLoadMore,
+  isLoadingMore,
   search,
   onSearchChange,
   isLoading,
@@ -598,7 +616,9 @@ export function BatchAllocationModal({
                               (other) => other.id !== row.id && other.batchId === option.batchId,
                             ),
                         )}
-                        isOtherCapped={isOtherCapped}
+                        hasMore={hasMore}
+                        onLoadMore={onLoadMore}
+                        isLoadingMore={isLoadingMore}
                         uomLabel={uomLabel}
                         search={search}
                         onSearchChange={onSearchChange}
@@ -898,10 +918,31 @@ function AddRowLink({
 }
 
 const MENU_WIDTH = 420;
-const MENU_MAX_HEIGHT = 320;
+/** 320 before 2026-08-22, which put the second heading exactly at the fold once
+ * the first group was capped — see `COLLAPSED_JOB_ORDER_ROWS`. */
+const MENU_MAX_HEIGHT = 380;
 /** Above `Modal`'s overlay (1100) — the menu is a sibling of it on `document.body`. */
 const MENU_Z_INDEX = 1200;
 const MENU_MIN_HEIGHT = 190;
+
+/**
+ * 🔴 HOW MANY OF THIS JOB ORDER'S BATCHES SHOW BEFORE "+ N more".
+ *
+ * A DISPLAY cap, not a fetch one — the server sends the group whole (it is
+ * bounded by construction), so expanding costs nothing and shows instantly.
+ *
+ * The number is geometry, not taste. The list gets `MENU_MAX_HEIGHT` less the
+ * search box (~48px); a heading is ~25px and an option ~49px. At four rows the
+ * second heading lands past the fold on a laptop, which is the whole thing this
+ * cap exists to prevent: a job order with a long delivery history used to bury
+ * "Other batches of this item" under a scroll nobody knew to make.
+ */
+const COLLAPSED_JOB_ORDER_ROWS = 3;
+
+/** How close to the bottom of the list a scroll gets before the next page is
+ * asked for. Roughly one row, so the fetch is already in flight by the time the
+ * last row is read. */
+const LOAD_MORE_SLACK = 80;
 
 /** What a batch is called on screen. `batchNumber` is internal and never a
  * fallback (2026-08-14); a batch with no reference gets a dated placeholder. */
@@ -929,7 +970,9 @@ function ExistingBatchCell({
   focusAfterPickId,
   options,
   otherOptions,
-  isOtherCapped,
+  hasMore,
+  onLoadMore,
+  isLoadingMore,
   uomLabel,
   search,
   onSearchChange,
@@ -941,7 +984,9 @@ function ExistingBatchCell({
   focusAfterPickId: string;
   options: ReceiptBatchOption[];
   otherOptions: ReceiptBatchOption[];
-  isOtherCapped: boolean;
+  hasMore: boolean;
+  onLoadMore: () => void;
+  isLoadingMore: boolean;
   uomLabel: string;
   search: string;
   onSearchChange: (search: string) => void;
@@ -950,14 +995,29 @@ function ExistingBatchCell({
 }) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState<React.CSSProperties>({ visibility: 'hidden' });
+  /** Collapsed per cell, not per grid: each row's dropdown is its own question. */
+  const [showAllJobOrder, setShowAllJobOrder] = useState(false);
   const uid = useId();
   const inputId = `${uid}-alloc-batch`;
   const toggleButtonId = `${uid}-alloc-toggle`;
 
-  /** One flat list for downshift's index maths; the headings are rendered around
+  const visibleOptions =
+    showAllJobOrder || options.length <= COLLAPSED_JOB_ORDER_ROWS
+      ? options
+      : options.slice(0, COLLAPSED_JOB_ORDER_ROWS);
+  const hiddenCount = options.length - visibleOptions.length;
+
+  /**
+   * One flat list for downshift's index maths; the headings are rendered around
    * it. Two `<ul>`s would need the indices offset by hand, which is the kind of
-   * arithmetic that silently highlights the wrong row. */
-  const flat = useMemo(() => [...options, ...otherOptions], [options, otherOptions]);
+   * arithmetic that silently highlights the wrong row.
+   *
+   * 🔴 VISIBLE options only. Downshift moves `highlightedIndex` through this
+   * array, so a collapsed row left in it is a row ↑↓ stops on and Enter selects
+   * with nothing on screen to show what was picked. For the same reason the
+   * "+ N more" control below is NOT a member — it is a button, not an option.
+   */
+  const flat = useMemo(() => [...visibleOptions, ...otherOptions], [visibleOptions, otherOptions]);
 
   const {
     isOpen,
@@ -979,6 +1039,30 @@ function ExistingBatchCell({
       if (!selectedItem) return;
       onPick(selectedItem);
       requestAnimationFrame(() => document.getElementById(focusAfterPickId)?.focus());
+    },
+    /**
+     * 🔴 THE KEYBOARD'S WAY PAST THE CAP, and it is not optional (CLAUDE.md's Tab
+     * rule). "+ N more" is a button in the portal, which sits OUTSIDE the
+     * dialog's focus trap, and the search box deliberately swallows Tab so focus
+     * cannot walk out there — so Tab can never reach it. Arrowing onto the last
+     * visible row of the capped group expands it instead, and ↓ carries straight
+     * on into the rows that were hidden. The cap is then a rendering economy for
+     * the mouse and never a wall for the keyboard.
+     *
+     * Gated on the two ARROW types on purpose: downshift also moves the
+     * highlight on `ItemMouseMove`, and expanding a group because the pointer
+     * drifted over a row would shove everything below it out from under the
+     * cursor.
+     */
+    onHighlightedIndexChange: ({ highlightedIndex: next, type }) => {
+      if (
+        type !== useCombobox.stateChangeTypes.InputKeyDownArrowDown &&
+        type !== useCombobox.stateChangeTypes.InputKeyDownArrowUp
+      ) {
+        return;
+      }
+      if (showAllJobOrder || hiddenCount === 0) return;
+      if (next === visibleOptions.length - 1) setShowAllJobOrder(true);
     },
     stateReducer: (state, { type, changes }) => {
       switch (type) {
@@ -1031,6 +1115,14 @@ function ExistingBatchCell({
    */
   useLayoutEffect(() => {
     if (!isOpen) return undefined;
+    /**
+     * 🔴 Coalesced to one measurement per frame. The listener is on `window` in
+     * the capture phase, so it also hears the option list scrolling inside
+     * itself — which moves nothing, but since 2026-08-22 that list scrolls for
+     * pages of results and every event was a `getBoundingClientRect` plus a
+     * fresh style object, so React re-rendered the menu on every scroll tick.
+     */
+    let frame = 0;
     const place = () => {
       const anchor = anchorRef.current;
       if (!anchor) return;
@@ -1046,12 +1138,21 @@ function ExistingBatchCell({
         ...(openUp ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
       });
     };
+    const schedule = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        place();
+      });
+    };
+
     place();
-    window.addEventListener('resize', place);
-    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', schedule);
+    window.addEventListener('scroll', schedule, true);
     return () => {
-      window.removeEventListener('resize', place);
-      window.removeEventListener('scroll', place, true);
+      if (frame) cancelAnimationFrame(frame);
+      window.removeEventListener('resize', schedule);
+      window.removeEventListener('scroll', schedule, true);
     };
   }, [isOpen]);
 
@@ -1184,7 +1285,17 @@ function ExistingBatchCell({
           </div>
 
           <ul
-            {...getMenuProps()}
+            {...getMenuProps({
+              /* The next page is asked for a row before the bottom, so it is
+                 already in flight by the time the last one is read. */
+              onScroll: (event: React.UIEvent<HTMLUListElement>) => {
+                if (!hasMore || isLoadingMore) return;
+                const el = event.currentTarget;
+                if (el.scrollHeight - el.scrollTop - el.clientHeight < LOAD_MORE_SLACK) {
+                  onLoadMore();
+                }
+              },
+            })}
             style={{
               margin: 0,
               padding: 0,
@@ -1196,7 +1307,13 @@ function ExistingBatchCell({
           >
             {isOpen && (
               <>
-                <li style={sectionHeadingStyle}>From this job order</li>
+                {/* 🔴 Sticky, so the group a row belongs to never leaves the
+                    screen. Which of the two a batch is in decides whether picking
+                    it continues this job order's own lot or blends an unrelated
+                    one — that is not a fact to lose to a scroll. */}
+                <li style={sectionHeadingStyle}>
+                  From this job order{options.length > 0 ? ` (${options.length})` : ''}
+                </li>
                 {options.length === 0 ? (
                   <li style={{ padding: '8px 12px', fontSize: 12, color: '#64748b' }}>
                     {isLoading
@@ -1204,23 +1321,53 @@ function ExistingBatchCell({
                       : 'This job order has not produced any batch of this item yet.'}
                   </li>
                 ) : (
-                  options.map((option, index) => renderOption(option, index))
+                  visibleOptions.map((option, index) => renderOption(option, index))
+                )}
+                {hiddenCount > 0 && (
+                  /* The MOUSE's way past the cap; the keyboard's is arrowing onto
+                     the row above it (see `onHighlightedIndexChange`). Not a
+                     downshift option — see the note on `flat`. `onMouseDown` is
+                     prevented so the click never blurs the search input, which
+                     downshift reads as "clicked away" and closes the menu on. */
+                  <li>
+                    <button
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => setShowAllJobOrder(true)}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        padding: '6px 12px',
+                        fontSize: 12,
+                        fontWeight: 500,
+                        textAlign: 'left',
+                        color: '#0062ff',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      + {hiddenCount} more from this job order
+                    </button>
+                  </li>
                 )}
 
                 <li style={sectionHeadingStyle}>Other batches of this item</li>
                 {otherOptions.length === 0 ? (
                   <li style={{ padding: '8px 12px', fontSize: 12, color: '#64748b' }}>
-                    {search
-                      ? 'Nothing else matches that.'
-                      : 'Type above to search every batch of this item.'}
+                    {isLoading
+                      ? 'Looking…'
+                      : search
+                        ? 'Nothing else matches that.'
+                        : 'This item has no other batches yet.'}
                   </li>
                 ) : (
-                  otherOptions.map((option, index) => renderOption(option, options.length + index))
+                  otherOptions.map((option, index) =>
+                    renderOption(option, visibleOptions.length + index),
+                  )
                 )}
-                {isOtherCapped && (
-                  <li style={{ padding: '8px 12px', fontSize: 11, color: '#92400e' }}>
-                    Only the first {otherOptions.length} matches are listed — type to narrow.
-                  </li>
+                {isLoadingMore && (
+                  <li style={{ padding: '8px 12px', fontSize: 12, color: '#64748b' }}>Loading…</li>
                 )}
               </>
             )}
@@ -1233,11 +1380,16 @@ function ExistingBatchCell({
 }
 
 const sectionHeadingStyle: React.CSSProperties = {
+  position: 'sticky',
+  top: 0,
+  // Above the rows it pins over; below the menu's own shadow.
+  zIndex: 1,
   padding: '8px 12px 4px',
   fontSize: 10.5,
   fontWeight: 700,
   letterSpacing: 0.4,
   textTransform: 'uppercase',
   color: '#94a3b8',
+  // Opaque, not translucent — rows scroll underneath it.
   background: '#f8fafc',
 };
