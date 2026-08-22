@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchCustomers, fetchCustomerCount, deleteCustomer } from './customers.api';
+import { fetchCustomers, fetchCustomerCount, deleteCustomer, updateCustomer } from './customers.api';
 import { Plus, Building2, SlidersHorizontal } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
@@ -11,6 +11,7 @@ import { useListCount } from '../../../hooks/useListCount';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
+import { BulkActionBar } from '../../../components/ui/BulkActionBar';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 import type { Customer } from './customers.schemas';
 
@@ -74,6 +75,9 @@ export function CustomersList() {
 
   const queryClient = useQueryClient();
   const [customerToDelete, setCustomerToDelete] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteCustomer(orgId!, id),
@@ -82,6 +86,74 @@ export function CustomersList() {
       setCustomerToDelete(null);
     },
   });
+
+  const handleDeleteSelected = async () => {
+    setIsBulkDeleteDialogOpen(true);
+  };
+
+  const handleMarkActive = async () => {
+    setIsProcessing(true);
+    try {
+      await Promise.allSettled(
+        selectedIds.map((id) => {
+          const customer = customers.find((c) => c.id === id);
+          if (!customer) return Promise.resolve();
+          return updateCustomer({
+            orgId: orgId!,
+            id,
+            data: {
+              ...customer,
+              customerType: customer.customerType as 'business' | 'individual',
+              status: 'active',
+            },
+          });
+        })
+      );
+      queryClient.invalidateQueries({ queryKey: ['customers', orgId] });
+      setSelectedIds([]);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleMarkInactive = async () => {
+    setIsProcessing(true);
+    try {
+      await Promise.allSettled(
+        selectedIds.map((id) => {
+          const customer = customers.find((c) => c.id === id);
+          if (!customer) return Promise.resolve();
+          return updateCustomer({
+            orgId: orgId!,
+            id,
+            data: {
+              ...customer,
+              customerType: customer.customerType as 'business' | 'individual',
+              status: 'inactive',
+            },
+          });
+        })
+      );
+      queryClient.invalidateQueries({ queryKey: ['customers', orgId] });
+      setSelectedIds([]);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.length === customers.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(customers.map((i) => i.id));
+    }
+  };
 
   const headerStyle = {
     padding: '12px 16px',
@@ -112,67 +184,77 @@ export function CustomersList() {
             background: '#fff',
           }}
         >
-          {/* Page Header */}
-          <header
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '16px 24px',
-              background: '#fff',
-              borderBottom: '1px solid #eef0f3',
-            }}
-          >
-            <ListFilterDropdown
-              filters={filters}
-              value={filter}
-              onChange={setFilter}
-              fallbackLabel="All Customers"
+          {!selectedCustomerId && selectedIds.length > 0 ? (
+            <BulkActionBar
+              selectedCount={selectedIds.length}
+              onClearSelection={() => setSelectedIds([])}
+              onMarkActive={handleMarkActive}
+              onMarkInactive={handleMarkInactive}
+              onDelete={handleDeleteSelected}
+              isProcessing={isProcessing}
             />
+          ) : (
+            <header
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '16px 24px',
+                background: '#fff',
+                borderBottom: '1px solid #eef0f3',
+              }}
+            >
+              <ListFilterDropdown
+                filters={filters}
+                value={filter}
+                onChange={setFilter}
+                fallbackLabel="All Customers"
+              />
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              {!selectedCustomerId && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                {!selectedCustomerId && (
+                  <button
+                    onClick={() => setIsColumnsOpen(true)}
+                    title="Customize Columns"
+                    aria-label="Customize Columns"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 30,
+                      height: 30,
+                      borderRadius: 4,
+                      border: '1px solid #e2e8f0',
+                      background: '#fff',
+                      cursor: 'pointer',
+                      color: '#64748b',
+                    }}
+                  >
+                    <SlidersHorizontal size={15} />
+                  </button>
+                )}
                 <button
-                  onClick={() => setIsColumnsOpen(true)}
-                  title="Customize Columns"
-                  aria-label="Customize Columns"
+                  onClick={() => navigate(`/organizations/${orgId}/sales/customers/new`)}
                   style={{
+                    background: '#186337',
+                    color: 'white',
+                    border: 'none',
+                    padding: '6px 12px',
+                    borderRadius: '4px',
+                    fontWeight: 500,
+                    fontSize: '13px',
+                    cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    width: 30,
-                    height: 30,
-                    borderRadius: 4,
-                    border: '1px solid #e2e8f0',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    color: '#64748b',
+                    gap: 4,
+                    whiteSpace: 'nowrap',
                   }}
                 >
-                  <SlidersHorizontal size={15} />
+                  <Plus size={16} /> New
                 </button>
-              )}
-              <button
-                onClick={() => navigate(`/organizations/${orgId}/sales/customers/new`)}
-                style={{
-                  background: '#186337',
-                  color: 'white',
-                  border: 'none',
-                  padding: '6px 12px',
-                  borderRadius: '4px',
-                  fontWeight: 500,
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                <Plus size={16} /> New
-              </button>
-            </div>
-          </header>
+              </div>
+            </header>
+          )}
 
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {isLoading ? (
@@ -297,6 +379,14 @@ export function CustomersList() {
                           borderBottom: '1px solid #eef0f3',
                         }}
                       >
+                        <th style={{ width: 48, ...headerStyle, paddingRight: 0, textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={customers.length > 0 && selectedIds.length === customers.length}
+                            onChange={toggleAll}
+                            style={{ cursor: 'pointer' }}
+                          />
+                        </th>
                         {columns.map((col) => (
                           <th key={col.key} style={headerStyle}>
                             {col.label}
@@ -313,10 +403,22 @@ export function CustomersList() {
                             borderBottom: '1px solid #eef0f3',
                             transition: 'background 0.1s',
                             cursor: 'pointer',
+                            background: selectedIds.includes(customer.id) ? '#f8fafc' : 'transparent',
                           }}
                           onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                          onMouseLeave={(e) => {
+                            if (!selectedIds.includes(customer.id))
+                              e.currentTarget.style.background = 'transparent';
+                          }}
                         >
+                          <td style={{ width: 48, padding: '12px 16px', paddingRight: 0, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.includes(customer.id)}
+                              onChange={() => toggleSelection(customer.id)}
+                              style={{ cursor: 'pointer' }}
+                            />
+                          </td>
                           {columns.map((col) => (
                             <td
                               key={col.key}
@@ -383,6 +485,27 @@ export function CustomersList() {
           }
         }}
         onCancel={() => setCustomerToDelete(null)}
+      />
+
+      <ConfirmDialog
+        isOpen={isBulkDeleteDialogOpen}
+        title="Delete Selected Customers"
+        message={`Are you sure you want to delete ${selectedIds.length} customer(s)? This action cannot be undone.`}
+        confirmText={isProcessing ? 'Deleting...' : 'Delete'}
+        onConfirm={async () => {
+          setIsProcessing(true);
+          try {
+            await Promise.allSettled(
+              selectedIds.map(id => deleteCustomer(orgId!, id))
+            );
+            queryClient.invalidateQueries({ queryKey: ['customers', orgId] });
+            setSelectedIds([]);
+          } finally {
+            setIsProcessing(false);
+            setIsBulkDeleteDialogOpen(false);
+          }
+        }}
+        onCancel={() => setIsBulkDeleteDialogOpen(false)}
       />
     </div>
   );

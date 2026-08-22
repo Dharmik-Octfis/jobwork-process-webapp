@@ -11,6 +11,8 @@ import { useListColumns } from '../../../hooks/useListColumns';
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { Pagination } from '../../../components/ui/Pagination';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
+import { BulkActionBar } from '../../../components/ui/BulkActionBar';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { formatDate } from '../../../lib/formatDate';
 
 function renderAssemblyCell(assembly: ItemAssembly, colKey: string) {
@@ -96,11 +98,14 @@ export function AssemblyList() {
   const {
     catalog,
     visible,
-    filters,
     columns,
+    filters,
     save: saveColumns,
   } = useListColumns(orgId, 'item_assembly');
   const [isColumnsOpen, setIsColumnsOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
 
   const headerStyle = {
     padding: '12px 16px',
@@ -108,6 +113,24 @@ export function AssemblyList() {
     fontSize: 11,
     color: '#64748b',
     textTransform: 'uppercase' as const,
+  };
+
+  const handleDeleteSelected = async () => {
+    setIsBulkDeleteDialogOpen(true);
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.length === assemblies.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(assemblies.map((i) => i.id));
+    }
   };
 
   return (
@@ -130,68 +153,77 @@ export function AssemblyList() {
             background: '#fff',
           }}
         >
-          <header
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '16px 24px',
-              background: '#fff',
-              borderBottom: '1px solid #eef0f3',
-            }}
-          >
-            <ListFilterDropdown
-              filters={filters}
-              value={filter}
-              onChange={setFilter}
-              fallbackLabel="All Assemblies"
+          {!selectedId && selectedIds.length > 0 ? (
+            <BulkActionBar
+              selectedCount={selectedIds.length}
+              onClearSelection={() => setSelectedIds([])}
+              onDelete={handleDeleteSelected}
+              isProcessing={isProcessing}
             />
+          ) : (
+            <header
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '16px 24px',
+                background: '#fff',
+                borderBottom: '1px solid #eef0f3',
+              }}
+            >
+              <ListFilterDropdown
+                filters={filters}
+                value={filter}
+                onChange={setFilter}
+                fallbackLabel="All Assemblies"
+              />
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              {!selectedId && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                {!selectedId && (
+                  <button
+                    type="button"
+                    onClick={() => setIsColumnsOpen(true)}
+                    title="Customize Columns"
+                    aria-label="Customize Columns"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 30,
+                      height: 30,
+                      borderRadius: 4,
+                      border: '1px solid #e2e8f0',
+                      background: '#fff',
+                      cursor: 'pointer',
+                      color: '#64748b',
+                    }}
+                  >
+                    <SlidersHorizontal size={15} />
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => setIsColumnsOpen(true)}
-                  title="Customize Columns"
-                  aria-label="Customize Columns"
+                  onClick={() => navigate(`/organizations/${orgId}/inventory/assembly/new`)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    width: 30,
-                    height: 30,
-                    borderRadius: 4,
-                    border: '1px solid #e2e8f0',
-                    background: '#fff',
+                    gap: 8,
+                    padding: '6px 12px',
+                    background: '#0062ff',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 6,
+                    fontSize: 13,
+                    fontWeight: 500,
                     cursor: 'pointer',
-                    color: '#64748b',
                   }}
                 >
-                  <SlidersHorizontal size={15} />
+                  <Plus size={16} />
+                  <span>New</span>
                 </button>
-              )}
-              <button
-                type="button"
-                onClick={() => navigate(`/organizations/${orgId}/inventory/assembly/new`)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '6px 12px',
-                  background: '#0062ff',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: 6,
-                  fontSize: 13,
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                }}
-              >
-                <Plus size={16} />
-                <span>New</span>
-              </button>
-            </div>
-          </header>
+              </div>
+            </header>
+          )}
 
           <div style={{ flex: 1, overflow: 'auto' }}>
             {selectedId ? (
@@ -236,14 +268,14 @@ export function AssemblyList() {
                           e.currentTarget.style.background = 'transparent';
                       }}
                     >
-                      <div
-                        style={{
-                          fontSize: '13px',
-                          fontWeight: 500,
-                          color: '#1e293b',
-                          marginBottom: '4px',
-                        }}
-                      >
+                        <div
+                          style={{
+                            fontSize: '13px',
+                            fontWeight: 500,
+                            color: '#1e293b',
+                            marginBottom: '4px',
+                          }}
+                        >
                         {item.assemblyNumber}
                       </div>
                       <div style={{ fontSize: '13px', color: '#334155', marginBottom: '8px' }}>
@@ -285,7 +317,7 @@ export function AssemblyList() {
                           {formatDate(item.assemblyDate)}
                         </span>
                       </div>
-                    </div>
+                  </div>
                   ))
                 )}
               </div>
@@ -293,6 +325,14 @@ export function AssemblyList() {
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
                   <tr>
+                    <th style={{ width: 48, ...headerStyle, paddingRight: 0, textAlign: 'center', borderBottom: '1px solid #eef0f3' }}>
+                      <input
+                        type="checkbox"
+                        checked={assemblies.length > 0 && selectedIds.length === assemblies.length}
+                        onChange={toggleAll}
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </th>
                     {columns.map((col) => (
                       <th
                         key={col.key}
@@ -340,17 +380,25 @@ export function AssemblyList() {
                         style={{
                           borderBottom: '1px solid #eef0f3',
                           cursor: 'pointer',
-                          background: selectedId === item.id ? '#f8fafc' : 'transparent',
+                          background: selectedIds.includes(item.id) ? '#f8fafc' : 'transparent',
                           transition: 'background 0.1s',
                         }}
                         onMouseEnter={(e) => {
-                          if (selectedId !== item.id) e.currentTarget.style.background = '#f8fafc';
+                          e.currentTarget.style.background = '#f8fafc';
                         }}
                         onMouseLeave={(e) => {
-                          if (selectedId !== item.id)
+                          if (!selectedIds.includes(item.id))
                             e.currentTarget.style.background = 'transparent';
                         }}
                       >
+                        <td style={{ width: 48, padding: '12px 16px', paddingRight: 0, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(item.id)}
+                            onChange={() => toggleSelection(item.id)}
+                            style={{ cursor: 'pointer' }}
+                          />
+                        </td>
                         {columns.map((col) => (
                           <td
                             key={col.key}
@@ -414,6 +462,27 @@ export function AssemblyList() {
         visible={visible}
         onSave={saveColumns.mutate}
         isSaving={saveColumns.isPending}
+      />
+
+      <ConfirmDialog
+        isOpen={isBulkDeleteDialogOpen}
+        title="Delete Selected Assemblies"
+        message={`Are you sure you want to delete ${selectedIds.length} assembly(s)? This action cannot be undone.`}
+        confirmText={isProcessing ? 'Deleting...' : 'Delete'}
+        onConfirm={async () => {
+          setIsProcessing(true);
+          try {
+            await Promise.allSettled(
+              selectedIds.map(id => assembliesApi.deleteAssembly(orgId!, id))
+            );
+            setSelectedIds([]);
+            window.location.reload();
+          } finally {
+            setIsProcessing(false);
+            setIsBulkDeleteDialogOpen(false);
+          }
+        }}
+        onCancel={() => setIsBulkDeleteDialogOpen(false)}
       />
     </div>
   );
