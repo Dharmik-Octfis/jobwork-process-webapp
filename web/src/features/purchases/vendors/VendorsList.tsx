@@ -96,65 +96,14 @@ export function VendorsList() {
     },
   });
 
-  const handleDeleteSelected = async () => {
-    setIsBulkDeleteDialogOpen(true);
-  };
 
-  const handleMarkActive = async () => {
-    setIsProcessing(true);
-    try {
-      await Promise.allSettled(
-        selectedIds.map((id) => {
-          const vendor = vendors.find((v) => v.id === id);
-          if (!vendor) return Promise.resolve();
-          return updateVendor({
-            orgId: orgId!,
-            id,
-            data: { ...vendor, status: 'active' },
-          });
-        })
-      );
-      queryClient.invalidateQueries({ queryKey: ['vendors', orgId] });
-      setSelectedIds([]);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
 
-  const handleMarkInactive = async () => {
-    setIsProcessing(true);
-    try {
-      await Promise.allSettled(
-        selectedIds.map((id) => {
-          const vendor = vendors.find((v) => v.id === id);
-          if (!vendor) return Promise.resolve();
-          return updateVendor({
-            orgId: orgId!,
-            id,
-            data: { ...vendor, status: 'inactive' },
-          });
-        })
-      );
-      queryClient.invalidateQueries({ queryKey: ['vendors', orgId] });
-      setSelectedIds([]);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
 
-  const toggleSelection = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
-    );
-  };
 
-  const toggleAll = () => {
-    if (selectedIds.length === vendors.length) {
-      setSelectedIds([]);
-    } else {
-      setSelectedIds(vendors.map((i) => i.id));
-    }
-  };
+
+
+
+
 
   const headerStyle = {
     padding: '12px 16px',

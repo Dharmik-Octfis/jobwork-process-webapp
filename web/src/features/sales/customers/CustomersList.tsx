@@ -13,7 +13,7 @@ import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsMo
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { BulkActionBar } from '../../../components/ui/BulkActionBar';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
-import type { Customer } from './customers.schemas';
+import type { Customer} from './customers.schemas';
 
 /**
  * How each selectable column renders. Keys match the backend catalog
@@ -87,73 +87,9 @@ export function CustomersList() {
     },
   });
 
-  const handleDeleteSelected = async () => {
-    setIsBulkDeleteDialogOpen(true);
-  };
 
-  const handleMarkActive = async () => {
-    setIsProcessing(true);
-    try {
-      await Promise.allSettled(
-        selectedIds.map((id) => {
-          const customer = customers.find((c) => c.id === id);
-          if (!customer) return Promise.resolve();
-          return updateCustomer({
-            orgId: orgId!,
-            id,
-            data: {
-              ...customer,
-              customerType: customer.customerType as 'business' | 'individual',
-              status: 'active',
-            },
-          });
-        })
-      );
-      queryClient.invalidateQueries({ queryKey: ['customers', orgId] });
-      setSelectedIds([]);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
 
-  const handleMarkInactive = async () => {
-    setIsProcessing(true);
-    try {
-      await Promise.allSettled(
-        selectedIds.map((id) => {
-          const customer = customers.find((c) => c.id === id);
-          if (!customer) return Promise.resolve();
-          return updateCustomer({
-            orgId: orgId!,
-            id,
-            data: {
-              ...customer,
-              customerType: customer.customerType as 'business' | 'individual',
-              status: 'inactive',
-            },
-          });
-        })
-      );
-      queryClient.invalidateQueries({ queryKey: ['customers', orgId] });
-      setSelectedIds([]);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
 
-  const toggleSelection = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
-    );
-  };
-
-  const toggleAll = () => {
-    if (selectedIds.length === customers.length) {
-      setSelectedIds([]);
-    } else {
-      setSelectedIds(customers.map((i) => i.id));
-    }
-  };
 
   const headerStyle = {
     padding: '12px 16px',
