@@ -183,7 +183,7 @@ function ExpandableCompositeItemRow({
                       key={comp.id}
                       style={{
                         position: 'relative',
-                        padding: '8px 16px 8px 48px',
+                        padding: '8px 16px 8px 96px',
                         fontSize: 13,
                         color: '#475569',
                         display: 'flex',
@@ -193,7 +193,7 @@ function ExpandableCompositeItemRow({
                       <div
                         style={{
                           position: 'absolute',
-                          left: 23,
+                          left: 72,
                           top: 0,
                           bottom: isLast ? '50%' : 0,
                           borderLeft: '1px solid #cbd5e1',
@@ -202,7 +202,7 @@ function ExpandableCompositeItemRow({
                       <div
                         style={{
                           position: 'absolute',
-                          left: 23,
+                          left: 72,
                           top: '50%',
                           width: 16,
                           borderTop: '1px solid #cbd5e1',
