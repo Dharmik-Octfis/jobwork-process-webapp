@@ -1,1 +1,8 @@
+# Skip on a merge commit: lint-staged backs up .git/MERGE_HEAD, stashes, then writes the buffer
+# back (gitWorkflow.js backupMergeStatus/restoreMergeStatus). An interrupted run restores it after
+# git concluded the merge, leaving a 0-byte MERGE_HEAD that pins `git status` to "you are still
+# merging" forever. Conflict resolutions therefore go unlinted -- run prettier by hand if a merge
+# needed real hand-editing. .husky/post-commit cleans up if one slips through anyway.
+git rev-parse --verify --quiet MERGE_HEAD >/dev/null 2>&1 && exit 0
+
 npx --no-install lint-staged
