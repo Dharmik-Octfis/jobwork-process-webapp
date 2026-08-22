@@ -93,7 +93,8 @@ openApiRegistry.registerPath({
   method: 'get',
   path: '/organizations/{orgId}/jobwork/job-orders/{id}/overview',
   tags: ['Job Orders'],
-  summary: 'The Overview page: stepper, per-step totals and live stock balance',
+  summary:
+    'The Overview page: stepper, per-step totals, live stock balance and the order’s issue/receipt history',
   request: { params: orgParam.extend({ id: z.string() }) },
   responses: { 200: { description: 'Overview' }, 404: { description: 'Not found' } },
 });

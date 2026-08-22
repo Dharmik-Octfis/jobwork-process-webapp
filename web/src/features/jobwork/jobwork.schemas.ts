@@ -25,6 +25,51 @@ export function formatQty(value: string | number | null | undefined): string {
   return Number.isFinite(n) ? String(Number(n.toFixed(4))) : '0';
 }
 
+/**
+ * "100 m", or just "100" when the item has no unit to name.
+ *
+ * A unit is genuinely optional — an untracked item may have none — and the
+ * template that reads `${qty} ${unit}` renders a double space for it, which looks
+ * like a rendering fault on every screen that shows a quantity.
+ */
+export function qtyWithUnit(
+  value: string | number | null | undefined,
+  unit: string | null | undefined,
+): string {
+  return unit ? `${formatQty(value)} ${unit}` : formatQty(value);
+}
+
+/**
+ * What one step costs to have done.
+ *
+ * 🔴 Mirrors `processCharge` in `jobReceipts.service.ts` — keep the two in step,
+ * or the page previews a figure the receipt does not bill. It lives here rather
+ * than beside either screen because the Overview now shows the order's total as
+ * well as the step's, and two copies of a money calculation is one too many.
+ *
+ * `null` means no rate was agreed, which is a different fact from zero.
+ */
+export function stepCharge(input: {
+  rate: string | number | null;
+  rateBasis: string | null;
+  issuedQty: string | number | null;
+  receivedQty: string | number | null;
+}): number | null {
+  if (input.rate === null || input.rate === '') return null;
+  const qty =
+    input.rateBasis === 'per_received_unit'
+      ? toNumber(input.receivedQty)
+      : toNumber(input.issuedQty);
+  return toNumber(input.rate) * qty;
+}
+
+/** Whole days between a past date and now, floored. Negative dates read as 0. */
+export function daysSince(date: string | Date | null | undefined): number | null {
+  if (!date) return null;
+  const ms = Date.now() - new Date(date).getTime();
+  return ms < 0 ? 0 : Math.floor(ms / 86_400_000);
+}
+
 export const PROCESSOR_TYPE_OPTIONS = [
   { value: 'vendor', label: 'Vendor (jobworker)' },
   { value: 'customer', label: 'Customer' },

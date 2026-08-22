@@ -1,0 +1,7 @@
+# Same guard as post-commit -- covers the merge path, where lint-staged is most likely to
+# leave a 0-byte MERGE_HEAD behind. See .husky/post-commit for the why.
+git_dir=$(git rev-parse --git-dir) || exit 0
+if [ -f "$git_dir/MERGE_HEAD" ] && ! git rev-parse --verify --quiet MERGE_HEAD >/dev/null 2>&1; then
+  rm -f "$git_dir/MERGE_HEAD" "$git_dir/MERGE_MODE"
+fi
+exit 0

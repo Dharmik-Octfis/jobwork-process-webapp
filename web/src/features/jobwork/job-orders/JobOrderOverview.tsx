@@ -1,19 +1,38 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ChevronDown, Pencil } from 'lucide-react';
+import {
+  ArrowLeft,
+  CheckCircle2,
+  ChevronDown,
+  CircleSlash,
+  Clock,
+  Pencil,
+  RotateCcw,
+  Send,
+  Truck,
+} from 'lucide-react';
 import type { AxiosError } from 'axios';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
 import { formatDate } from '../../../lib/formatDate';
 import { IssueDialog } from '../issues/IssueDialog';
 import { ReceiveDialog } from '../receipts/ReceiveDialog';
-import { JOB_ORDER_STATUS_META, formatQty, statusMeta } from '../jobwork.schemas';
+import {
+  JOB_ORDER_STATUS_META,
+  daysSince,
+  formatQty,
+  qtyWithUnit,
+  statusMeta,
+  stepCharge,
+  toNumber,
+} from '../jobwork.schemas';
 import { deleteJobOrder, fetchJobOrderOverview, shortCloseJobOrder } from './jobOrders.api';
 import { AddStepsDialog } from './AddStepsDialog';
+import { ActivityTimeline } from './ActivityTimeline';
 import { JobOrderFlow } from './JobOrderFlow';
 import { JobOrderStepDetail } from './JobOrderStepDetail';
-import type { OverviewStep } from './jobOrders.schemas';
+import type { ActivityEvent, JobOrderOverviewData, OverviewStep } from './jobOrders.schemas';
 
 const metaItem: React.CSSProperties = { fontSize: 12, color: '#64748b' };
 
@@ -23,7 +42,7 @@ const sectionLabel: React.CSSProperties = {
   color: '#94a3b8',
   textTransform: 'uppercase',
   letterSpacing: 0.4,
-  margin: '0 0 8px 0',
+  margin: 0,
 };
 
 interface MenuAction {
@@ -185,9 +204,19 @@ function ActionsMenu({ actions, label }: { actions: MenuAction[]; label: string 
 }
 
 /** One number on the strip. */
-function Tile({ label, value, unit }: { label: string; value: string; unit?: string }) {
+function Tile({
+  label,
+  value,
+  unit,
+  note,
+}: {
+  label: string;
+  value: string;
+  unit?: string;
+  note?: string | null;
+}) {
   return (
-    <div style={{ padding: '2px 18px 2px 0', minWidth: 120 }}>
+    <div style={{ minWidth: 92 }}>
       <span
         style={{
           fontSize: 10,
@@ -200,26 +229,169 @@ function Tile({ label, value, unit }: { label: string; value: string; unit?: str
       >
         {label}
       </span>
-      <span style={{ fontSize: 17, fontWeight: 600, color: '#111', lineHeight: 1.4 }}>
+      <span style={{ fontSize: 16, fontWeight: 600, color: '#111', lineHeight: 1.4 }}>
         {value}
         {unit && <span style={{ fontSize: 11, color: '#64748b', marginLeft: 3 }}>{unit}</span>}
       </span>
+      {note && (
+        <span style={{ display: 'block', fontSize: 10, color: '#94a3b8', lineHeight: 1.4 }}>
+          {note}
+        </span>
+      )}
     </div>
   );
 }
 
 /**
+ * 🔴 WHERE THE ORDER IS, RIGHT NOW — one sentence, at the top, before any number.
+ *
+ * This is the question every person opening the page came to answer, and until
+ * this existed they answered it by reading five tiles and a rail of six boxes and
+ * inferring it. A derived sentence cannot disagree with the tiles beneath it: it
+ * is built from the same steps and the same documents, in the same request.
+ *
+ * The FRONT is the first step not yet settled, which is where the material
+ * physically is. A finished or abandoned order has no front and says so instead.
+ */
+interface Position {
+  icon: React.ReactNode;
+  headline: string;
+  detail: string | null;
+  tint: string;
+  border: string;
+  /** The step the sentence is about, so the page can open on it. */
+  step: OverviewStep | null;
+}
+
+function currentPosition(data: JobOrderOverviewData, steps: OverviewStep[]): Position {
+  const { jobOrder } = data;
+  const done = steps.filter((s) => s.status === 'completed' || s.status === 'short_closed').length;
+
+  if (jobOrder.status === 'cancelled') {
+    return {
+      icon: <CircleSlash size={18} color="#b91c1c" />,
+      headline: 'Cancelled',
+      detail: 'Nothing further will move on this order.',
+      tint: '#fef2f2',
+      border: '#fecaca',
+      step: null,
+    };
+  }
+  if (jobOrder.status === 'short_closed') {
+    return {
+      icon: <CircleSlash size={18} color="#b45309" />,
+      headline: 'Closed short',
+      detail: `Ended after ${done} of ${steps.length} steps — the numbers were accepted as they stood.`,
+      tint: '#fffbeb',
+      border: '#fde68a',
+      step: null,
+    };
+  }
+  if (jobOrder.status === 'completed') {
+    return {
+      icon: <CheckCircle2 size={18} color="#15803d" />,
+      headline: 'Complete',
+      detail: `All ${steps.length} step${steps.length === 1 ? '' : 's'} finished.`,
+      tint: '#f0fdf4',
+      border: '#bbf7d0',
+      step: steps[steps.length - 1] ?? null,
+    };
+  }
+  if (steps.length === 0) {
+    return {
+      icon: <Clock size={18} color="#64748b" />,
+      headline: 'No work planned yet',
+      detail: 'Edit this order to add the steps the material runs through.',
+      tint: '#f8fafc',
+      border: '#e2e8f0',
+      step: null,
+    };
+  }
+
+  const front =
+    steps.find((s) => s.status !== 'completed' && s.status !== 'short_closed') ??
+    steps[steps.length - 1]!;
+  const where = `Step ${front.seq} of ${steps.length} · ${front.processNameSnapshot}`;
+  const party = front.processorNameSnapshot ?? front.workCentre?.name ?? 'the processor';
+  const unit = front.inputs[0]?.uom
+    ? (front.inputs[0].uom.symbol ?? front.inputs[0].uom.unitName)
+    : '';
+  const outstanding = toNumber(front.totals.outstandingQty);
+  const rework = toNumber(front.totals.reworkQty);
+
+  // When it went out, off the step's own last issue — "out since" is the fact
+  // people chase a processor with, and it is not derivable from a total.
+  const lastIssue = [...data.activity]
+    .reverse()
+    .find((event) => event.kind === 'issue' && event.stepId === front.id);
+
+  if (outstanding > 0) {
+    // 🔴 HOW LONG it has been out, not just when it went. "Sent on the 12th" is
+    // a date somebody then has to subtract from today; "out 9 days" is the fact
+    // they were going to work out anyway, and it is what a processor gets
+    // chased on.
+    const days = lastIssue ? daysSince(lastIssue.date) : null;
+    const age =
+      days === null ? null : days === 0 ? 'sent today' : `out ${days} day${days === 1 ? '' : 's'}`;
+    return {
+      icon: <Truck size={18} color="#1d4ed8" />,
+      headline: `${qtyWithUnit(outstanding, unit)} out at ${party}`,
+      detail: lastIssue
+        ? `${where} · ${age}, last sent ${formatDate(lastIssue.date)} on ${lastIssue.number}`
+        : where,
+      tint: '#eff6ff',
+      border: '#bfdbfe',
+      step: front,
+    };
+  }
+  if (rework > 0) {
+    return {
+      icon: <RotateCcw size={18} color="#b45309" />,
+      headline: `${formatQty(rework)} waiting to be run again`,
+      detail: `${where} · issue the rework batch back to this step`,
+      tint: '#fffbeb',
+      border: '#fde68a',
+      step: front,
+    };
+  }
+  if (front.blockedReason) {
+    return {
+      icon: <Clock size={18} color="#64748b" />,
+      headline: 'Waiting on the step before it',
+      detail: `${where} · ${front.blockedReason}`,
+      tint: '#f8fafc',
+      border: '#e2e8f0',
+      step: front,
+    };
+  }
+  return {
+    icon: <Send size={18} color="#1d4ed8" />,
+    headline: `Ready to issue to ${party}`,
+    detail: `${where} · nothing has gone out yet`,
+    tint: '#eff6ff',
+    border: '#bfdbfe',
+    step: front,
+  };
+}
+
+/**
  * The Job Order Overview — the page the module exists for.
  *
- * 🔴 EVERY NUMBER ON IT IS DERIVED. The tiles come from the ledger and the child
- * documents, not from stored totals, and that is deliberate rather than lazy: a
- * stored balance is a balance that can disagree with its own history (§5.6), and
- * this is the page people are meant to believe. It is one request, so all of it
- * describes the same moment — four separate fetches would render four.
+ * 🔴 IT ANSWERS THREE QUESTIONS, IN THIS ORDER, AND NOTHING ELSE.
+ *
+ *   1. Where is this order right now?  → the state bar, one sentence.
+ *   2. How far has it got?             → the rail, one box per step.
+ *   3. What actually happened?         → the timeline, one row per document.
+ *
+ * Every number is DERIVED — from the ledger and the child documents, never from
+ * stored totals, because a stored balance is a balance that can disagree with its
+ * own history (§5.6) and this is the page people are meant to believe. It is one
+ * request, so all of it describes the same moment; four fetches would render
+ * four.
  *
  * 🔴 THE ROUTE IS THE PAGE. It reads as a rail of steps left to right, and only
  * the step you pick opens in full underneath. Every step expanded at once was the
- * previous shape: six screens of tables, no way to see where the material had
+ * shape before that: six screens of tables, no way to see where the material had
  * got to, and the one step needing action buried three scrolls down.
  */
 interface Props {
@@ -242,6 +414,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   const [issueStep, setIssueStep] = useState<OverviewStep | null>(null);
   const [receiveStep, setReceiveStep] = useState<OverviewStep | null>(null);
   const [pickedStepId, setPickedStepId] = useState<string | null>(null);
+  const [view, setView] = useState<'step' | 'history'>('step');
   const [addStepsOpen, setAddStepsOpen] = useState(false);
   const [shortCloseOpen, setShortCloseOpen] = useState(false);
   const [shortCloseReason, setShortCloseReason] = useState('');
@@ -255,21 +428,32 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   });
 
   const steps = useMemo(() => data?.steps ?? [], [data]);
+  const activity = useMemo(() => data?.activity ?? [], [data]);
+
+  const position = useMemo(() => (data ? currentPosition(data, steps) : null), [data, steps]);
 
   /**
-   * The step the order is actually sitting on — the first one not yet settled.
-   * Opening on step 1 of a five-step order that finished it a week ago wastes
-   * the click everybody makes next. A step the user picked always wins.
+   * The step the order is actually sitting on — the one the state bar just named.
+   * Opening on step 1 of a five-step order that finished it a week ago wastes the
+   * click everybody makes next. A step the user picked always wins.
    */
   const selectedStep = useMemo(() => {
     if (steps.length === 0) return null;
     const picked = steps.find((step) => step.id === pickedStepId);
     if (picked) return picked;
-    return (
-      steps.find((step) => step.status !== 'completed' && step.status !== 'short_closed') ??
-      steps[steps.length - 1]
-    );
-  }, [steps, pickedStepId]);
+    return position?.step ?? steps[steps.length - 1]!;
+  }, [steps, pickedStepId, position]);
+
+  const stepActivity = useMemo(
+    () => activity.filter((event) => event.stepId === selectedStep?.id),
+    [activity, selectedStep],
+  );
+
+  /** `stepId → "2 · Dyeing"`, for the whole-order timeline, which interleaves them. */
+  const stepLabels = useMemo(
+    () => new Map(steps.map((step) => [step.id, `${step.seq} · ${step.processNameSnapshot}`])),
+    [steps],
+  );
 
   const shortClose = useMutation({
     mutationFn: () => shortCloseJobOrder(orgId!, id!, shortCloseReason),
@@ -310,11 +494,11 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
     );
   }
 
-  if (!data) {
+  if (!data || !position) {
     return <div style={{ padding: 32, color: '#64748b', fontSize: 13 }}>Job order not found.</div>;
   }
 
-  const { jobOrder, summary, batches } = data;
+  const { jobOrder, summary } = data;
   const status = statusMeta(JOB_ORDER_STATUS_META, jobOrder.status);
   const unit = jobOrder.inputUom ? (jobOrder.inputUom.symbol ?? jobOrder.inputUom.unitName) : '';
   const listPath = `/organizations/${orgId}/jobwork/job-orders`;
@@ -325,6 +509,26 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   ).length;
   const donePct = steps.length > 0 ? Math.round((doneSteps / steps.length) * 100) : 0;
 
+  /**
+   * What the whole order costs to have made — the per-step charges added up.
+   *
+   * Money is the one figure on this page that CAN be summed across steps: every
+   * step bills in the same currency, unlike the quantities, which are metres and
+   * pieces and cones and must never be added (§6.5). `null` when no step has a
+   * rate at all, which is different from a total of zero.
+   */
+  const charges = steps
+    .map((step) =>
+      stepCharge({
+        rate: step.rate,
+        rateBasis: step.rateBasis,
+        issuedQty: step.totals.issuedQty,
+        receivedQty: step.totals.receivedQty,
+      }),
+    )
+    .filter((amount): amount is number => amount !== null);
+  const totalCharge = charges.length > 0 ? charges.reduce((sum, n) => sum + n, 0) : null;
+
   // Late only while there is still work to do — a finished order is not overdue,
   // it is finished.
   const isLate =
@@ -333,11 +537,16 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
     jobOrder.status !== 'completed' &&
     !isClosed;
 
+  /** A document is a real thing with its own page; reading its number and wanting
+   * to open it is the same impulse. */
+  const openDocument = (event: ActivityEvent) => {
+    const module = event.kind === 'issue' ? 'issues' : 'receipts';
+    navigate(`/organizations/${orgId}/jobwork/${module}?id=${event.id}`);
+  };
+
   return (
     <div style={{ background: '#f8fafc', minHeight: '100%' }}>
-      <header
-        style={{ background: '#fff', borderBottom: '1px solid #eef0f3', padding: '14px 24px' }}
-      >
+      <header style={{ background: '#fff', borderBottom: '1px solid #eef0f3' }}>
         <div
           style={{
             display: 'flex',
@@ -345,6 +554,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
             justifyContent: 'space-between',
             gap: 16,
             flexWrap: 'wrap',
+            padding: '14px 24px',
           }}
         >
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
@@ -369,7 +579,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
               <ArrowLeft size={15} />
             </button>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <h1 style={{ fontSize: 18, fontWeight: 600, color: '#000', margin: 0 }}>
                   {jobOrder.jobOrderNumber}
                 </h1>
@@ -401,13 +611,6 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                 )}
               </div>
               <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 5 }}>
-                <span style={metaItem}>{formatDate(jobOrder.orderDate)}</span>
-                {jobOrder.targetDate && (
-                  <span style={{ ...metaItem, color: isLate ? '#b91c1c' : '#64748b' }}>
-                    Due {formatDate(jobOrder.targetDate)}
-                    {isLate ? ' · overdue' : ''}
-                  </span>
-                )}
                 <span style={metaItem}>
                   {jobOrder.inputItem?.name ?? 'No item yet'}
                   {jobOrder.inputQty !== null && ` · ${formatQty(jobOrder.inputQty)} ${unit}`}
@@ -415,6 +618,13 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                 {/* The frozen name, not a join — the route may have been renamed
                     or deleted since this order was raised. */}
                 <span style={metaItem}>{jobOrder.routeNameSnapshot ?? 'No route'}</span>
+                <span style={metaItem}>Raised {formatDate(jobOrder.orderDate)}</span>
+                {jobOrder.targetDate && (
+                  <span style={{ ...metaItem, color: isLate ? '#b91c1c' : '#64748b' }}>
+                    Due {formatDate(jobOrder.targetDate)}
+                    {isLate ? ' · overdue' : ''}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -479,67 +689,107 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
           </div>
         </div>
 
-        {/* Five numbers, and they are the five the order is judged on: how far
-            along, what went in, what is still ours, what was lost, what it cost.
-            Anything else belongs to a step, not to the order. */}
+        {/* 🔴 THE ANSWER FIRST. The sentence on the left is what the page is for;
+            the four numbers on the right are what somebody checks once they have
+            read it. Putting the tiles above this was the old order, and it made
+            every reader derive the sentence themselves. */}
         <div
           style={{
             display: 'flex',
-            gap: 4,
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 24,
             flexWrap: 'wrap',
-            marginTop: 14,
-            paddingTop: 12,
-            borderTop: '1px solid #f1f5f9',
+            padding: '12px 24px',
+            background: position.tint,
+            borderTop: `1px solid ${position.border}`,
           }}
         >
-          <div style={{ minWidth: 150, paddingRight: 18 }}>
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 600,
-                color: '#94a3b8',
-                textTransform: 'uppercase',
-                letterSpacing: 0.4,
-                display: 'block',
-              }}
-            >
-              Progress
-            </span>
-            <span style={{ fontSize: 17, fontWeight: 600, color: '#111', lineHeight: 1.4 }}>
-              {doneSteps}
-              <span style={{ fontSize: 12, color: '#64748b' }}> / {steps.length} steps</span>
-            </span>
-            <div
-              style={{
-                height: 4,
-                borderRadius: 2,
-                background: '#eef0f3',
-                marginTop: 5,
-                overflow: 'hidden',
-              }}
-            >
-              <div style={{ width: `${donePct}%`, height: '100%', background: status.color }} />
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', minWidth: 260 }}>
+            <span style={{ marginTop: 1, flexShrink: 0 }}>{position.icon}</span>
+            <div>
+              <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#111' }}>
+                {position.headline}
+              </p>
+              {position.detail && (
+                <p style={{ margin: '2px 0 0 0', fontSize: 12, color: '#475569' }}>
+                  {position.detail}
+                </p>
+              )}
             </div>
           </div>
-          <Tile label="Issued" value={formatQty(summary.issuedQty)} unit={unit} />
-          <Tile label="In hand" value={formatQty(summary.inHandQty)} />
-          <Tile
-            label="Wastage"
-            value={summary.wastagePct === null ? '—' : `${summary.wastagePct}%`}
-          />
-          <Tile
-            label="Cost / unit"
-            value={summary.costPerUnit === null ? '—' : formatQty(summary.costPerUnit)}
-          />
+
+          <div style={{ display: 'flex', gap: 26, flexWrap: 'wrap' }}>
+            <Tile label="Issued" value={formatQty(summary.issuedQty)} unit={unit} />
+            <Tile
+              label="In hand"
+              value={formatQty(summary.inHandQty)}
+              note={
+                summary.costPerUnit === null ? null : `${formatQty(summary.costPerUnit)} per unit`
+              }
+            />
+            <Tile
+              label="Wastage"
+              value={summary.wastagePct === null ? '—' : `${summary.wastagePct}%`}
+              note="across closed steps"
+            />
+            <Tile
+              label="Charges"
+              value={totalCharge === null ? '—' : formatQty(totalCharge)}
+              note={
+                totalCharge === null
+                  ? 'no rates agreed'
+                  : `${charges.length} of ${steps.length} steps rated`
+              }
+            />
+          </div>
         </div>
       </header>
 
       <div style={{ padding: '18px 24px' }}>
-        <h2 style={sectionLabel}>Route</h2>
+        {/* 🔴 The scale and the position, ALWAYS visible. A twelve-step route
+            scrolls, so on any given screenful the rail alone cannot say how many
+            steps there are or which one you are looking at. This line can, and
+            it costs one row. */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            marginBottom: 10,
+            flexWrap: 'wrap',
+          }}
+        >
+          <h2 style={sectionLabel}>Route</h2>
+          <div
+            aria-hidden
+            style={{
+              width: 132,
+              height: 4,
+              borderRadius: 2,
+              background: '#e6e9ee',
+              overflow: 'hidden',
+            }}
+          >
+            <div style={{ width: `${donePct}%`, height: '100%', background: '#15803d' }} />
+          </div>
+          <span style={{ fontSize: 11, color: '#64748b' }}>
+            {doneSteps} of {steps.length} step{steps.length === 1 ? '' : 's'} done
+            {position.step && !isClosed && jobOrder.status !== 'completed' && (
+              <span style={{ color: '#94a3b8' }}> · now at step {position.step.seq}</span>
+            )}
+          </span>
+        </div>
         <JobOrderFlow
           steps={steps}
-          selectedId={selectedStep?.id ?? null}
-          onSelect={(step) => setPickedStepId(step.id)}
+          selectedId={view === 'step' ? (selectedStep?.id ?? null) : null}
+          currentId={position.step?.id ?? null}
+          onSelect={(step) => {
+            setPickedStepId(step.id);
+            // Picking a step is a request to read that step — staying on the
+            // whole-order timeline would make the click do nothing visible.
+            setView('step');
+          }}
           /* Offered whatever the steps are doing — appending renumbers nothing,
              so a step at a processor is no reason to withhold it. A closed order
              is: the server refuses those, and a button that only ever 409s is
@@ -547,43 +797,67 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
           onAppend={isClosed ? undefined : () => setAddStepsOpen(true)}
         />
 
-        {selectedStep && (
-          <div style={{ marginTop: 16 }}>
-            <JobOrderStepDetail
-              step={selectedStep}
-              onIssue={setIssueStep}
-              onReceive={setReceiveStep}
-              onViewIssues={(step) =>
-                navigate(`/organizations/${orgId}/jobwork/issues?stepId=${step.id}`)
-              }
-              onViewReceipts={(step) =>
-                navigate(`/organizations/${orgId}/jobwork/receipts?stepId=${step.id}`)
-              }
-            />
-          </div>
-        )}
-
-        {batches.length > 0 && (
-          <div style={{ marginTop: 20 }}>
-            <h2 style={sectionLabel}>Batches on this order</h2>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {batches.map((batch) => (
-                <span
-                  key={batch.id}
-                  style={{
-                    padding: '4px 10px',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 4,
-                    fontSize: 12,
-                    color: '#334155',
-                    background: '#fff',
-                  }}
-                >
-                  {batch.supplierBatchRef ?? 'Untracked stock'}
-                </span>
-              ))}
+        {steps.length > 0 && (
+          <>
+            <div
+              style={{
+                display: 'inline-flex',
+                gap: 2,
+                margin: '20px 0 10px 0',
+                padding: 3,
+                background: '#eef1f5',
+                borderRadius: 999,
+                maxWidth: '100%',
+              }}
+            >
+              <ViewTab
+                isActive={view === 'step'}
+                onClick={() => setView('step')}
+                label={
+                  selectedStep
+                    ? `Step ${selectedStep.seq} · ${selectedStep.processNameSnapshot}`
+                    : 'Step'
+                }
+              />
+              <ViewTab
+                isActive={view === 'history'}
+                onClick={() => setView('history')}
+                label={`Full history (${activity.length})`}
+              />
             </div>
-          </div>
+
+            {view === 'step' && selectedStep && (
+              <JobOrderStepDetail
+                step={selectedStep}
+                activity={stepActivity}
+                onIssue={setIssueStep}
+                onReceive={setReceiveStep}
+                onOpenDocument={openDocument}
+              />
+            )}
+
+            {view === 'history' && (
+              <div
+                style={{
+                  border: '1px solid #eef0f3',
+                  borderRadius: 10,
+                  background: '#fff',
+                  padding: '14px 16px',
+                }}
+              >
+                {/* 🔴 Every step, in one column, oldest first. The per-step view
+                    above answers "what is happening here"; this answers "what has
+                    this order been through" — and the two orders of the same
+                    documents are genuinely different readings. */}
+                <ActivityTimeline
+                  events={activity}
+                  stepLabels={stepLabels}
+                  onOpen={openDocument}
+                  empty="Nothing has moved on this order yet. Issue material to the first step, and every challan and receipt across every step will be listed here in the order it happened."
+                />
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -686,5 +960,48 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
         }}
       />
     </div>
+  );
+}
+
+/**
+ * One of the two readings of the same documents. Plain buttons with
+ * `aria-pressed` rather than a tablist: nothing here is a tab panel that hides
+ * content — both views render the same feed, filtered or not — and a real
+ * `role="tablist"` would then owe arrow-key navigation for two controls Tab
+ * already reaches in order.
+ */
+function ViewTab({
+  label,
+  isActive,
+  onClick,
+}: {
+  label: string;
+  isActive: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={isActive}
+      style={{
+        padding: '5px 14px',
+        fontSize: 12,
+        fontWeight: isActive ? 600 : 500,
+        color: isActive ? '#111' : '#64748b',
+        background: isActive ? '#fff' : 'transparent',
+        border: 'none',
+        borderRadius: 999,
+        boxShadow: isActive ? '0 1px 2px rgba(15,23,42,0.10)' : 'none',
+        cursor: 'pointer',
+        fontFamily: 'inherit',
+        maxWidth: 280,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {label}
+    </button>
   );
 }

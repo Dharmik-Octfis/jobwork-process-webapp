@@ -145,8 +145,100 @@ export const overviewStepSchema = jobOrderStepSchema.extend({
 
 export type OverviewStep = z.infer<typeof overviewStepSchema>;
 
+/**
+ * 🔴 WHAT HAPPENED, document by document — the Overview's activity feed.
+ *
+ * The per-step totals say how much; these say how. One `issued 4,800 / received
+ * 4,650` is silent about whether that was one delivery or four, which batches it
+ * left in, who signed it out, and that 100 of the shortfall came back as rework
+ * on the Thursday. Every field here is a fact printed on a document that already
+ * exists — nothing is recomputed on the client.
+ */
+const activityBaseShape = {
+  id: z.string(),
+  stepId: z.string(),
+  number: z.string(),
+  date: z.string(),
+  status: z.string(),
+  remarks: z.string().nullable(),
+  partyName: z.string().nullable(),
+  /** Who recorded it, resolved through the org's own member directory. */
+  actorName: z.string(),
+};
+
+export const activityIssueSchema = z.object({
+  ...activityBaseShape,
+  kind: z.literal('issue'),
+  isRework: z.boolean(),
+  attemptNo: z.number(),
+  totalQty: decimalString,
+  lines: z
+    .array(
+      z.object({
+        /** 🔴 One challan may carry the same item out of the same batch twice —
+         * two takas of one lot. The line id is the only stable key. */
+        id: z.string(),
+        itemId: z.string(),
+        itemName: z.string(),
+        uomSymbol: z.string().nullable(),
+        qty: decimalString,
+        /** Null for untracked stock, which has no label to show. */
+        batchRef: z.string().nullable(),
+      }),
+    )
+    .default([]),
+});
+
+export const activityReceiptSchema = z.object({
+  ...activityBaseShape,
+  kind: z.literal('receipt'),
+  locationName: z.string().nullable(),
+  consumedQty: decimalString,
+  /** Sent straight back to the processor — it never entered our stock, so it has
+   * no batch and no ledger row. Only worth a line when it is non-zero. */
+  returnedQty: decimalString,
+  againstChallans: z.array(z.string()).default([]),
+  outputs: z
+    .array(
+      z.object({
+        id: z.string(),
+        itemId: z.string(),
+        itemName: z.string(),
+        uomSymbol: z.string().nullable(),
+        isPrimary: z.boolean(),
+        receivedQty: decimalString,
+        acceptedQty: decimalString,
+        reworkQty: decimalString,
+        scrapQty: decimalString,
+        reason: z.string().nullable(),
+        batches: z
+          .array(
+            z.object({
+              kind: z.string(),
+              qty: decimalString,
+              isNewBatch: z.boolean(),
+              batchRef: z.string().nullable(),
+            }),
+          )
+          .default([]),
+      }),
+    )
+    .default([]),
+});
+
+export const activityEventSchema = z.discriminatedUnion('kind', [
+  activityIssueSchema,
+  activityReceiptSchema,
+]);
+
+export type ActivityEvent = z.infer<typeof activityEventSchema>;
+export type ActivityIssue = z.infer<typeof activityIssueSchema>;
+export type ActivityReceipt = z.infer<typeof activityReceiptSchema>;
+
 export const jobOrderOverviewSchema = z.object({
   jobOrder: jobOrderSchema,
+  /** Oldest first, across every step — the client filters by `stepId`. */
+  activity: z.array(activityEventSchema).default([]),
   batches: z.array(
     z.object({
       id: z.string(),

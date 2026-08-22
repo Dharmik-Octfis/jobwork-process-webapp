@@ -7,6 +7,7 @@ import {
   reserveSuppliedNumber,
   setNumberPreference,
 } from '../../../lib/numberSequence.ts';
+import { getMemberDirectory, type MemberDirectory } from '../../../lib/memberDirectory.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import {
@@ -1389,6 +1390,11 @@ export async function shortCloseJobOrder(
  * after the last metre of it has left (§10).
  */
 export async function getJobOrderOverview(organizationId: string, id: string) {
+  // Outside the transaction, and before it — `memberships` has no RLS policy, so
+  // this is a plain probe, and taking it here keeps it off a second pooled
+  // connection held open by the tenant tx (`lib/memberDirectory.ts`).
+  const directory = await getMemberDirectory(organizationId);
+
   return runAsTenant(organizationId, async (tx) => {
     const order = await tx.jobOrder.findFirst({
       where: { id, organizationId, isDeleted: false },
@@ -1536,6 +1542,7 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
     return {
       jobOrder: order,
       batches,
+      activity: await buildActivity(tx, organizationId, id, directory),
       summary: {
         issuedQty: firstTotals ? firstTotals.issuedQty.toString() : '0',
         inHandQty: inHandQty.toString(),
@@ -1665,6 +1672,202 @@ async function buildItemTotals(
   ];
 
   return { inputs, outputs };
+}
+
+/**
+ * 🔴 WHAT ACTUALLY HAPPENED — every challan out and every receipt back, in the
+ * order it happened, with the rows each document carried.
+ *
+ * The totals above answer "how much"; this answers "how". They are different
+ * questions and the page needs both: a step reading `issued 4,800 / received
+ * 4,650` says nothing about whether that was one delivery or four, which batches
+ * it went out of, who signed for it, or that 100 of the shortfall came back as
+ * rework three days later. Until this existed the only way to learn any of that
+ * was to leave the page for the Issues list and lose the order's context.
+ *
+ * TWO QUERIES FOR THE WHOLE ORDER, not two per step. A six-step order was
+ * otherwise twelve round trips on a page that already makes one `getBalance` call
+ * per batch — and the client groups by `stepId` for free.
+ *
+ * Cancelled documents are INCLUDED, labelled by their own status. A challan that
+ * went out on the 3rd and was cancelled on the 5th is a thing that happened, and
+ * the ledger carries its reversal either way (§10); hiding it leaves a gap
+ * between two numbers that no longer explain each other.
+ */
+async function buildActivity(
+  tx: TenantClient,
+  organizationId: string,
+  jobOrderId: string,
+  directory: MemberDirectory,
+) {
+  const unitOf = (uom: { symbol: string | null; unitName: string } | null | undefined) =>
+    uom ? (uom.symbol ?? uom.unitName) : null;
+
+  const [issues, receipts] = await Promise.all([
+    tx.jobIssue.findMany({
+      where: { organizationId, jobOrderId, isDeleted: false },
+      select: {
+        id: true,
+        jobOrderStepId: true,
+        challanNumber: true,
+        issueDate: true,
+        status: true,
+        remarks: true,
+        isRework: true,
+        attemptNo: true,
+        totalQty: true,
+        processorNameSnapshot: true,
+        createdBy: true,
+        createdAt: true,
+        destination: { select: { name: true } },
+        lines: {
+          where: { isDeleted: false },
+          select: {
+            id: true,
+            itemId: true,
+            qty: true,
+            item: { select: { name: true } },
+            uom: { select: { symbol: true, unitName: true } },
+            // 🔴 The LABEL, never `batchNumber` (2026-08-14) — internal key.
+            batch: { select: { supplierBatchRef: true } },
+          },
+        },
+      },
+    }),
+    tx.jobReceipt.findMany({
+      where: { organizationId, jobOrderId, isDeleted: false },
+      select: {
+        id: true,
+        jobOrderStepId: true,
+        receiptNumber: true,
+        receiptDate: true,
+        status: true,
+        remarks: true,
+        totalIssuedQty: true,
+        totalReturnedQty: true,
+        processorNameSnapshot: true,
+        createdBy: true,
+        createdAt: true,
+        location: { select: { name: true } },
+        // Only the challan each line closes — the per-line quantities are the
+        // consumption side and the disposition lives on `outputs`, so carrying
+        // the whole line here would be a second copy of neither.
+        lines: {
+          where: { isDeleted: false },
+          select: { jobIssue: { select: { challanNumber: true } } },
+        },
+        outputs: {
+          where: { isDeleted: false },
+          orderBy: { seq: 'asc' },
+          select: {
+            id: true,
+            itemId: true,
+            receivedQty: true,
+            acceptedQty: true,
+            reworkQty: true,
+            scrapQty: true,
+            isPrimary: true,
+            remarks: true,
+            item: { select: { name: true } },
+            uom: { select: { symbol: true, unitName: true } },
+            reason: { select: { name: true } },
+            // 🔴 The child table, not `outputBatch`/`reworkBatch` — those name
+            // only the FIRST of each kind, and a split delivery has more.
+            batches: {
+              where: { isDeleted: false },
+              orderBy: [{ kind: 'asc' }, { seq: 'asc' }],
+              select: {
+                kind: true,
+                qty: true,
+                isNewBatch: true,
+                batch: { select: { supplierBatchRef: true } },
+              },
+            },
+          },
+        },
+      },
+    }),
+  ]);
+
+  const issueEvents = issues.map((issue) => ({
+    kind: 'issue' as const,
+    id: issue.id,
+    stepId: issue.jobOrderStepId,
+    number: issue.challanNumber,
+    date: issue.issueDate.toISOString(),
+    status: issue.status,
+    remarks: issue.remarks,
+    partyName: issue.processorNameSnapshot ?? issue.destination?.name ?? null,
+    actorName: directory.actorName(issue.createdBy),
+    isRework: issue.isRework,
+    attemptNo: issue.attemptNo,
+    totalQty: issue.totalQty.toString(),
+    lines: issue.lines.map((line) => ({
+      id: line.id,
+      itemId: line.itemId,
+      itemName: line.item?.name ?? 'Item',
+      uomSymbol: unitOf(line.uom),
+      qty: line.qty.toString(),
+      batchRef: line.batch?.supplierBatchRef ?? null,
+    })),
+    at: issue.issueDate.getTime(),
+    recordedAt: issue.createdAt.getTime(),
+  }));
+
+  const receiptEvents = receipts.map((receipt) => ({
+    kind: 'receipt' as const,
+    id: receipt.id,
+    stepId: receipt.jobOrderStepId,
+    number: receipt.receiptNumber,
+    date: receipt.receiptDate.toISOString(),
+    status: receipt.status,
+    remarks: receipt.remarks,
+    partyName: receipt.processorNameSnapshot ?? null,
+    actorName: directory.actorName(receipt.createdBy),
+    locationName: receipt.location?.name ?? null,
+    consumedQty: receipt.totalIssuedQty.toString(),
+    // Never entered our stock, so it has no batch and no ledger row (§6.4) —
+    // which is exactly why it has to be said in words here.
+    returnedQty: receipt.totalReturnedQty.toString(),
+    againstChallans: [
+      ...new Set(
+        receipt.lines.map((line) => line.jobIssue?.challanNumber).filter(Boolean) as string[],
+      ),
+    ].sort(),
+    outputs: receipt.outputs.map((output) => ({
+      id: output.id,
+      itemId: output.itemId,
+      itemName: output.item?.name ?? 'Item',
+      uomSymbol: unitOf(output.uom),
+      isPrimary: output.isPrimary,
+      receivedQty: output.receivedQty.toString(),
+      acceptedQty: output.acceptedQty.toString(),
+      reworkQty: output.reworkQty.toString(),
+      scrapQty: output.scrapQty.toString(),
+      // The gate types free text now; older rows carry a reason row. One field
+      // out, because the screen shows them under one heading either way.
+      reason: output.reason?.name ?? output.remarks ?? null,
+      batches: output.batches.map((row) => ({
+        kind: row.kind,
+        qty: row.qty.toString(),
+        isNewBatch: row.isNewBatch,
+        batchRef: row.batch?.supplierBatchRef ?? null,
+      })),
+    })),
+    at: receipt.receiptDate.getTime(),
+    recordedAt: receipt.createdAt.getTime(),
+  }));
+
+  /**
+   * Oldest first — this is a story, and a story is read forwards.
+   *
+   * `createdAt` breaks the tie because the document dates are DATES: everything
+   * raised on one day would otherwise sort arbitrarily, and a receipt printed
+   * above the challan it closes reads as a receipt of goods that never left.
+   */
+  return [...issueEvents, ...receiptEvents]
+    .sort((a, b) => a.at - b.at || a.recordedAt - b.recordedAt)
+    .map(({ at: _at, recordedAt: _recordedAt, ...event }) => event);
 }
 
 /** Re-derive an order's status after something downstream changed it. */
