@@ -278,9 +278,36 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
   });
 }
 
-/** How many "other batches" a search may return. A picker is for identifying a
- * batch you already have in mind, not for browsing an item's whole history. */
-const OTHER_BATCH_LIMIT = 25;
+/**
+ * How many "other batches" one page carries. Sized to the picker's own geometry:
+ * each option renders two or three lines, so a smaller page would fire a fetch on
+ * almost every scroll gesture — and a page is not one query, it also costs the
+ * balance and location lookups below.
+ */
+const OTHER_BATCH_PAGE = 25;
+
+/**
+ * The keyset one page resumes from — `<createdAt>|<id>`, matching
+ * `ORDER BY created_at DESC, id DESC`.
+ *
+ * 🔴 Keyset, not `OFFSET`. Offset makes Postgres walk and discard every row of
+ * every earlier page, and — worse for a picker — a batch created while somebody
+ * is scrolling shifts the whole tail by one, so rows silently duplicate or go
+ * missing. `created_at` alone is not unique enough to page on; the id breaks ties.
+ */
+function encodeCursor(row: { createdAt: Date; id: string }): string {
+  return `${row.createdAt.toISOString()}|${row.id}`;
+}
+
+function decodeCursor(raw: string | undefined): { createdAt: Date; id: string } | null {
+  if (!raw) return null;
+  const at = raw.indexOf('|');
+  if (at === -1) return null;
+  const createdAt = new Date(raw.slice(0, at));
+  const id = raw.slice(at + 1);
+  // A hand-edited cursor reads as "start from the beginning" rather than a 500.
+  return Number.isNaN(createdAt.getTime()) || !id ? null : { createdAt, id };
+}
 
 /**
  * 🔴 WHICH EXISTING BATCHES THE RECEIVE DIALOG MAY OFFER, and why it is not a
@@ -304,17 +331,24 @@ const OTHER_BATCH_LIMIT = 25;
  *
  *   `jobOrderBatches` — produced by an earlier receipt against this job order,
  *     plus (for a step whose output item is also one of its inputs) the batches
- *     its own challans sent out. Listed by default, whatever their balance and
+ *     its own challans sent out. Returned whole, whatever their balance and
  *     wherever they sit.
- *   `otherBatches` — anything else of that item, only in answer to a search, so
- *     that merging into an unrelated batch is a deliberate act rather than a
- *     mis-click. The client warns on these; the SERVICE does not refuse them,
- *     because two job orders dyed in one bath is real (see
- *     `loadExistingOutputBatches`).
+ *   `otherBatches` — anything else of that item, one keyset page at a time. The
+ *     client warns on these; the SERVICE does not refuse them, because two job
+ *     orders dyed in one bath is real (see `loadExistingOutputBatches`).
+ *
+ * 🔴 THE SECOND GROUP USED TO ANSWER A SEARCH ONLY, and stopped on 2026-08-22.
+ * The intent was that merging into an unrelated batch should be a deliberate act
+ * — which still holds, and is why the two groups remain separate and separately
+ * labelled. But it made a FIRST receipt open the picker on two empty sections:
+ * this job order has produced nothing yet, and everything else sat behind a
+ * search box with nothing to say it held anything at all. An empty dropdown is
+ * indistinguishable from a broken screen. Deliberateness is carried by the
+ * labelling and the per-row warning now, not by hiding the rows.
  */
 export async function getOutputBatchOptions(
   organizationId: string,
-  query: { jobOrderStepId: string; itemId: string; search?: string },
+  query: { jobOrderStepId: string; itemId: string; search?: string; cursor?: string },
 ) {
   return runAsTenant(organizationId, async (tx) => {
     const step = await tx.jobOrderStep.findFirst({
@@ -362,11 +396,14 @@ export async function getOutputBatchOptions(
       select: { batchId: true },
     });
 
-    const provenanceWhere: Prisma.BatchWhereInput = {
+    const base: Prisma.BatchWhereInput = {
       organizationId,
       itemId: query.itemId,
       isDeleted: false,
       ...ownershipWhere,
+    };
+
+    const provenanceOr: Prisma.BatchWhereInput = {
       OR: [
         {
           sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
@@ -376,39 +413,80 @@ export async function getOutputBatchOptions(
       ],
     };
 
-    const jobOrderBatches = await tx.batch.findMany({
-      where: provenanceWhere,
-      orderBy: { createdAt: 'desc' },
-      select: BATCH_OPTION_SELECT,
-    });
-
     /**
      * 🔴 `batchNumber` is NOT searchable and must not become so (2026-08-14). It
      * is an internal key nobody can be typing, so matching on it only pollutes
      * results — a search for `42` would hit numbers that have nothing to do with
      * the batch in mind. What people type is what is on the physical tag.
+     *
+     * 🔴 It narrows BOTH groups. It used to filter the second only, which was
+     * invisible while that group was search-gated and the first was always shown
+     * whole. Now that both are listed, an unfiltered group sitting above a
+     * filtered one reads as the search having failed.
      */
     const search = query.search?.trim();
-    const otherBatches = search
-      ? await tx.batch.findMany({
-          where: {
-            organizationId,
-            itemId: query.itemId,
-            isDeleted: false,
-            ...ownershipWhere,
-            NOT: { id: { in: jobOrderBatches.map((row) => row.id) } },
+    const searchWhere: Prisma.BatchWhereInput[] = search
+      ? [
+          {
             OR: [
               { supplierBatchRef: { contains: search, mode: 'insensitive' } },
               { manufacturerBatch: { contains: search, mode: 'insensitive' } },
             ],
           },
-          orderBy: { createdAt: 'desc' },
-          take: OTHER_BATCH_LIMIT,
-          select: BATCH_OPTION_SELECT,
-        })
+        ]
       : [];
 
-    const all = [...jobOrderBatches, ...otherBatches];
+    /**
+     * 🔴 NOT paged, and the second group's exclusion is why: `otherBatches` is
+     * "everything of this item that is NOT one of these", expressed as an id
+     * list, so a partial list here would let the same batch appear in both
+     * groups. Fetching it whole is safe because the set is bounded by
+     * construction — roughly one batch per prior delivery. The 3-row cap in the
+     * picker is a rendering decision taken on top of this, not a data one.
+     */
+    const jobOrderBatches = await tx.batch.findMany({
+      where: { ...base, AND: [provenanceOr, ...searchWhere] },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: BATCH_OPTION_SELECT,
+    });
+
+    const cursor = decodeCursor(query.cursor);
+    const otherRows = await tx.batch.findMany({
+      where: {
+        ...base,
+        NOT: { id: { in: jobOrderBatches.map((row) => row.id) } },
+        AND: [
+          ...searchWhere,
+          // The keyset. Prisma has no row-value comparison, so `(created_at, id)
+          // < (?, ?)` is spelled out as the two cases it expands to.
+          ...(cursor
+            ? [
+                {
+                  OR: [
+                    { createdAt: { lt: cursor.createdAt } },
+                    { createdAt: cursor.createdAt, id: { lt: cursor.id } },
+                  ],
+                },
+              ]
+            : []),
+        ],
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      // One more than the page, so "is there another page" costs a row rather
+      // than a COUNT over an unbounded set.
+      take: OTHER_BATCH_PAGE + 1,
+      select: BATCH_OPTION_SELECT,
+    });
+    const hasMore = otherRows.length > OTHER_BATCH_PAGE;
+    const otherBatches = hasMore ? otherRows.slice(0, OTHER_BATCH_PAGE) : otherRows;
+
+    /**
+     * Only page one carries the first group. Every later page is a scroll
+     * through the second, and re-shaping the first would spend a balance query
+     * and a location query per page on rows the client is already holding.
+     */
+    const isFirstPage = cursor === null;
+    const all = isFirstPage ? [...jobOrderBatches, ...otherBatches] : otherBatches;
 
     /**
      * WHERE each one is — one grouped query for every batch on the list, never
@@ -487,13 +565,16 @@ export async function getOutputBatchOptions(
       };
     };
 
+    const last = otherBatches[otherBatches.length - 1];
+
     return {
       inventoryTracking: item.inventoryTracking,
-      jobOrderBatches: jobOrderBatches.map((row) => shape(row, 'this_job_order')),
+      jobOrderBatches: isFirstPage
+        ? jobOrderBatches.map((row) => shape(row, 'this_job_order'))
+        : [],
       otherBatches: otherBatches.map((row) => shape(row, 'other')),
-      /** True once the search filled its page: more exist than are shown, and the
-       * only way to reach them is a narrower search. */
-      isOtherCapped: otherBatches.length === OTHER_BATCH_LIMIT,
+      /** Where the next page resumes, or null at the end of the list. */
+      otherNextCursor: hasMore && last ? encodeCursor(last) : null,
     };
   });
 }

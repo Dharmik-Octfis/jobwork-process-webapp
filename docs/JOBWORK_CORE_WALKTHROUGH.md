@@ -372,12 +372,24 @@ things:
   stays true. Later deposits live on the ledger, keyed to the receipt that made them.
 
 **The picker** (`GET …/jobwork/receipts/batch-options`) is scoped by **provenance, not location**:
-this job order's own batches always, plus anything else only in answer to a search. The reason is the
-day-two case above — 500 m received Monday and issued onward Wednesday sits at **zero**, so a
+this job order's own batches in one group, every other batch of the item in a second. The reason is
+the day-two case above — 500 m received Monday and issued onward Wednesday sits at **zero**, so a
 "what's in this godown" list hides exactly the batch Friday's delivery wants to continue, and offers
 every unrelated batch that happens to be sitting there instead. Where each batch _is_ comes back as
 data on the row (`byLocation`, split into `internalQty` / `externalQty`, since goods at a processor
 are our stock at their location and must never be summed into "on hand").
+
+The second group **answered a search only until 2026-08-22**. The intent — make merging into an
+unrelated batch a deliberate act — still holds, but the price was that a _first_ receipt opened the
+picker on two empty sections and read as a broken screen. Both groups are now listed, and
+deliberateness is carried where it belongs: by the two headings (a heading is a hard separator; an
+icon on an interleaved row is not) and by the per-row warning on group two. What changed with it:
+
+|               |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Group one** | Returned **whole** — bounded by construction, ~one batch per prior delivery. Not paged, because group two excludes it by id list and a partial list would let a batch appear in both. Capped at **3 rows in the UI** with a `+ N more` expander, so a long delivery history cannot bury group two's heading below the fold. Arrowing onto the last visible row expands it — the `+ N more` button lives in the portal, outside the dialog's focus trap, so Tab can never reach it. |
+| **Group two** | One **keyset** page of 25 (`otherNextCursor`, `(created_at, id) DESC`), fetched on scroll. Not `OFFSET`: a batch created mid-scroll shifts the tail and rows duplicate or vanish. A cursor page carries `jobOrderBatches: []` — re-shaping group one per page would cost a balance query for rows the client already holds.                                                                                                                                                        |
+| **Search**    | Narrows **both** groups. Filtering only the second left an unfiltered group sitting above a filtered one, which reads as the search having failed. Debounced 300ms; `batch_number` stays unsearchable (2026-08-14). Backed by GIN/`pg_trgm` indexes on `supplier_batch_ref` and `manufacturer_batch` — the match is infix `ILIKE '%…%'`, which no b-tree serves, and it now runs on every plain open of the dropdown rather than only once somebody has typed.                     |
 
 **Cancellation** reads `job_receipt_output_batches` for every batch the receipt touched — including
 by-products, which the header's two columns never named — and refuses when anything **other than

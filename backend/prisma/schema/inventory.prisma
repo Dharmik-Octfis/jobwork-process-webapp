@@ -167,6 +167,15 @@ model Batch {
   /// JSONB. Partial: a batch with no expiry date is never an answer to "what
   /// expires soon", and most batches have none.
   @@index([organizationId, expiryDate])
+  /// 🔴 TRIGRAM, because every batch search here is an infix `ILIKE '%term%'` and
+  /// no b-tree can serve one — the two columns people actually type are what is
+  /// printed on the physical tag, and they type the middle of it. Added
+  /// 2026-08-22 with the Receive picker: that query used to run only once
+  /// somebody had typed, and now runs on every plain open of the dropdown, per
+  /// returned row. A sequential scan is invisible at a few hundred batches and
+  /// is the whole response time at a hundred thousand.
+  @@index([supplierBatchRef(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([manufacturerBatch(ops: raw("gin_trgm_ops"))], type: Gin)
   @@map("batches")
 }
 

@@ -1,6 +1,6 @@
 import { blurOnWheel } from '../../../components/ui/blurOnWheel';
-import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { DateInput } from '../../../components/ui/DateInput';
@@ -199,6 +199,19 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
   /** The picker's search box. Server-backed, so it lives out here with the query
    * rather than inside the modal that is remounted per row. */
   const [batchSearch, setBatchSearch] = useState('');
+  /**
+   * 🔴 Debounced before it reaches the query key, at the same 300ms the issue
+   * dialog uses. The term goes into a `contains … insensitive` — an `ILIKE
+   * '%…%'` no b-tree can serve — and since 2026-08-22 that query also runs on
+   * every plain open of the dropdown, not only once somebody has typed. Keyed on
+   * the raw value it was a request per keystroke; `staleTime` does not help,
+   * because a term nobody has typed before is never in the cache.
+   */
+  const [debouncedBatchSearch, setDebouncedBatchSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedBatchSearch(batchSearch), 300);
+    return () => clearTimeout(timer);
+  }, [batchSearch]);
 
   const { data: prefill, isLoading } = useQuery({
     queryKey: ['receive-prefill', orgId, step.id],
@@ -412,19 +425,42 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
    * the previous tenant's batches, and `batchSearch` because the second group of
    * the answer is search-driven.
    */
-  const { data: batchOptions, isFetching: isLoadingBatches } = useQuery({
-    queryKey: ['receipt-batch-options', orgId, step.id, allocatingRow?.itemId, batchSearch],
-    queryFn: () =>
+  const {
+    data: batchPages,
+    isLoading: isLoadingBatches,
+    fetchNextPage: fetchMoreBatches,
+    hasNextPage: hasMoreBatches,
+    isFetchingNextPage: isLoadingMoreBatches,
+  } = useInfiniteQuery({
+    queryKey: [
+      'receipt-batch-options',
+      orgId,
+      step.id,
+      allocatingRow?.itemId,
+      debouncedBatchSearch,
+    ],
+    queryFn: ({ pageParam }) =>
       fetchReceiptBatchOptions(orgId!, {
         stepId: step.id,
         itemId: allocatingRow!.itemId,
-        search: batchSearch || undefined,
+        search: debouncedBatchSearch || undefined,
+        cursor: pageParam ?? undefined,
       }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.otherNextCursor,
     enabled: Boolean(orgId) && Boolean(allocatingRow?.itemId),
     // A picker, not a report: a few seconds of staleness beats a spinner between
     // every keystroke.
     staleTime: 15_000,
   });
+
+  /* Only page one carries the first group — the server sends `[]` on the rest
+     rather than re-costing a balance query for rows already on screen. */
+  const jobOrderBatchOptions = batchPages?.pages[0]?.jobOrderBatches ?? [];
+  const otherBatchOptions = useMemo(
+    () => batchPages?.pages.flatMap((page) => page.otherBatches) ?? [],
+    [batchPages],
+  );
 
   /**
    * 🔴 Rows sending back more for rework than came back at all.
@@ -1271,7 +1307,10 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
           isOpen
           onClose={() => {
             setAllocating(null);
+            // Both, or the next row opens on the previous row's results for the
+            // 300ms it takes the debounce to catch up.
             setBatchSearch('');
+            setDebouncedBatchSearch('');
           }}
           kind={allocating.kind}
           itemName={items.find((i) => i.id === allocatingRow.itemId)?.name ?? 'Item'}
@@ -1292,9 +1331,11 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
           )
             .map((row) => row.batchId)
             .filter((id): id is string => id !== null)}
-          options={batchOptions?.jobOrderBatches ?? []}
-          otherOptions={batchOptions?.otherBatches ?? []}
-          isOtherCapped={batchOptions?.isOtherCapped ?? false}
+          options={jobOrderBatchOptions}
+          otherOptions={otherBatchOptions}
+          hasMore={hasMoreBatches}
+          onLoadMore={() => void fetchMoreBatches()}
+          isLoadingMore={isLoadingMoreBatches}
           search={batchSearch}
           onSearchChange={setBatchSearch}
           isLoading={isLoadingBatches}

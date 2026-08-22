@@ -52,13 +52,12 @@ export async function fetchReceivePrefill(orgId: string, stepId: string): Promis
 /**
  * The batches this receipt may add to, and where each one currently sits.
  *
- * `search` only widens the second group — this job order's own batches are
- * always returned in full, so an empty search is a complete answer rather than
- * an empty one.
+ * `search` narrows both groups. `cursor` pages the second one — omit it for page
+ * one, then feed back the previous page's `otherNextCursor`.
  */
 export async function fetchReceiptBatchOptions(
   orgId: string,
-  params: { stepId: string; itemId: string; search?: string },
+  params: { stepId: string; itemId: string; search?: string; cursor?: string },
 ): Promise<ReceiptBatchOptions> {
   const response = await apiClient.get(endpoints.jobwork.receiptBatchOptions(orgId), { params });
   return receiptBatchOptionsSchema.parse(response.data);
