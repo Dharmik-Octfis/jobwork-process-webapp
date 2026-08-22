@@ -356,16 +356,20 @@ export type ReceiptBatchOption = z.infer<typeof receiptBatchOptionSchema>;
  * The Receive dialog's batch picker.
  *
  * 🔴 Two groups, and the split is the whole design. `jobOrderBatches` is what
- * this job order already produced — listed always, whatever the balance and
- * wherever it sits, because the batch a follow-up delivery continues is often
- * one that has already been issued onward. `otherBatches` answers a search only,
- * so merging into an unrelated batch is deliberate rather than a mis-click.
+ * this job order already produced — returned whole on page one, whatever the
+ * balance and wherever it sits, because the batch a follow-up delivery continues
+ * is often one that has already been issued onward. `otherBatches` is everything
+ * else, one keyset page at a time; picking from it blends cost and provenance,
+ * which is why it keeps its own heading and its own per-row warning.
+ *
+ * A cursor page carries `jobOrderBatches: []` — the client already holds them.
  */
 export const receiptBatchOptionsSchema = z.object({
   inventoryTracking: z.string(),
   jobOrderBatches: z.array(receiptBatchOptionSchema).default([]),
   otherBatches: z.array(receiptBatchOptionSchema).default([]),
-  isOtherCapped: z.boolean().default(false),
+  /** Feed back as `cursor` for the next page; null at the end of the list. */
+  otherNextCursor: z.string().nullable().default(null),
 });
 
 export type ReceiptBatchOptions = z.infer<typeof receiptBatchOptionsSchema>;
