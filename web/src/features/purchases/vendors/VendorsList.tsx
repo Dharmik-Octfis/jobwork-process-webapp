@@ -96,14 +96,44 @@ export function VendorsList() {
     },
   });
 
+  const handleDeleteSelected = () => {
+    setIsBulkDeleteDialogOpen(true);
+  };
 
+  // The PUT validates the whole create body, so the row is sent back as-is with
+  // only `status` changed. `email` is nullable on the row but not on the update
+  // input; `?? undefined` leaves the stored value untouched.
+  const setStatusForSelected = async (status: 'active' | 'inactive') => {
+    setIsProcessing(true);
+    try {
+      await Promise.allSettled(
+        selectedIds.map((id) => {
+          const vendor = vendors.find((v) => v.id === id);
+          if (!vendor) return Promise.resolve();
+          return updateVendor({
+            orgId: orgId!,
+            id,
+            data: { ...vendor, email: vendor.email ?? undefined, status },
+          });
+        }),
+      );
+      queryClient.invalidateQueries({ queryKey: ['vendors', orgId] });
+      setSelectedIds([]);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
+  const handleMarkActive = () => setStatusForSelected('active');
+  const handleMarkInactive = () => setStatusForSelected('inactive');
 
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
+  };
 
-
-
-
-
+  const toggleAll = () => {
+    setSelectedIds(selectedIds.length === vendors.length ? [] : vendors.map((v) => v.id));
+  };
 
   const headerStyle = {
     padding: '12px 16px',
@@ -201,7 +231,8 @@ export function VendorsList() {
                   }}
                 >
                   <Plus size={16} /> New
-                </button></div>
+                </button>
+              </div>
             </header>
           )}
 
@@ -327,7 +358,14 @@ export function VendorsList() {
                           borderBottom: '1px solid #eef0f3',
                         }}
                       >
-                        <th style={{ width: 48, ...headerStyle, paddingRight: 0, textAlign: 'center' }}>
+                        <th
+                          style={{
+                            width: 48,
+                            ...headerStyle,
+                            paddingRight: 0,
+                            textAlign: 'center',
+                          }}
+                        >
                           <input
                             type="checkbox"
                             checked={vendors.length > 0 && selectedIds.length === vendors.length}
@@ -359,7 +397,15 @@ export function VendorsList() {
                               e.currentTarget.style.background = 'transparent';
                           }}
                         >
-                          <td style={{ width: 48, padding: '12px 16px', paddingRight: 0, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                          <td
+                            style={{
+                              width: 48,
+                              padding: '12px 16px',
+                              paddingRight: 0,
+                              textAlign: 'center',
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <input
                               type="checkbox"
                               checked={selectedIds.includes(vendor.id)}
@@ -443,9 +489,7 @@ export function VendorsList() {
         onConfirm={async () => {
           setIsProcessing(true);
           try {
-            await Promise.allSettled(
-              selectedIds.map(id => deleteVendor(orgId!, id))
-            );
+            await Promise.allSettled(selectedIds.map((id) => deleteVendor(orgId!, id)));
             queryClient.invalidateQueries({ queryKey: ['vendors', orgId] });
             setSelectedIds([]);
           } finally {

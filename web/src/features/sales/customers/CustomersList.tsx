@@ -1,5 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchCustomers, fetchCustomerCount, deleteCustomer, updateCustomer } from './customers.api';
+import {
+  fetchCustomers,
+  fetchCustomerCount,
+  deleteCustomer,
+  updateCustomer,
+} from './customers.api';
 import { Plus, Building2, SlidersHorizontal } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
@@ -13,7 +18,7 @@ import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsMo
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { BulkActionBar } from '../../../components/ui/BulkActionBar';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
-import type { Customer} from './customers.schemas';
+import type { Customer } from './customers.schemas';
 
 /**
  * How each selectable column renders. Keys match the backend catalog
@@ -87,9 +92,49 @@ export function CustomersList() {
     },
   });
 
+  const handleDeleteSelected = () => {
+    setIsBulkDeleteDialogOpen(true);
+  };
 
+  // The PUT validates the whole create body, so the row is sent back as-is with
+  // only `status` changed. `email` is nullable on the row but not on the update
+  // input; `?? undefined` leaves the stored value untouched.
+  const setStatusForSelected = async (status: 'active' | 'inactive') => {
+    setIsProcessing(true);
+    try {
+      await Promise.allSettled(
+        selectedIds.map((id) => {
+          const customer = customers.find((c) => c.id === id);
+          if (!customer) return Promise.resolve();
+          return updateCustomer({
+            orgId: orgId!,
+            id,
+            data: {
+              ...customer,
+              customerType: customer.customerType as 'business' | 'individual',
+              email: customer.email ?? undefined,
+              status,
+            },
+          });
+        }),
+      );
+      queryClient.invalidateQueries({ queryKey: ['customers', orgId] });
+      setSelectedIds([]);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
+  const handleMarkActive = () => setStatusForSelected('active');
+  const handleMarkInactive = () => setStatusForSelected('inactive');
 
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
+  };
+
+  const toggleAll = () => {
+    setSelectedIds(selectedIds.length === customers.length ? [] : customers.map((c) => c.id));
+  };
 
   const headerStyle = {
     padding: '12px 16px',
@@ -315,10 +360,19 @@ export function CustomersList() {
                           borderBottom: '1px solid #eef0f3',
                         }}
                       >
-                        <th style={{ width: 48, ...headerStyle, paddingRight: 0, textAlign: 'center' }}>
+                        <th
+                          style={{
+                            width: 48,
+                            ...headerStyle,
+                            paddingRight: 0,
+                            textAlign: 'center',
+                          }}
+                        >
                           <input
                             type="checkbox"
-                            checked={customers.length > 0 && selectedIds.length === customers.length}
+                            checked={
+                              customers.length > 0 && selectedIds.length === customers.length
+                            }
                             onChange={toggleAll}
                             style={{ cursor: 'pointer' }}
                           />
@@ -339,7 +393,9 @@ export function CustomersList() {
                             borderBottom: '1px solid #eef0f3',
                             transition: 'background 0.1s',
                             cursor: 'pointer',
-                            background: selectedIds.includes(customer.id) ? '#f8fafc' : 'transparent',
+                            background: selectedIds.includes(customer.id)
+                              ? '#f8fafc'
+                              : 'transparent',
                           }}
                           onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
                           onMouseLeave={(e) => {
@@ -347,7 +403,15 @@ export function CustomersList() {
                               e.currentTarget.style.background = 'transparent';
                           }}
                         >
-                          <td style={{ width: 48, padding: '12px 16px', paddingRight: 0, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                          <td
+                            style={{
+                              width: 48,
+                              padding: '12px 16px',
+                              paddingRight: 0,
+                              textAlign: 'center',
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <input
                               type="checkbox"
                               checked={selectedIds.includes(customer.id)}
@@ -431,9 +495,7 @@ export function CustomersList() {
         onConfirm={async () => {
           setIsProcessing(true);
           try {
-            await Promise.allSettled(
-              selectedIds.map(id => deleteCustomer(orgId!, id))
-            );
+            await Promise.allSettled(selectedIds.map((id) => deleteCustomer(orgId!, id)));
             queryClient.invalidateQueries({ queryKey: ['customers', orgId] });
             setSelectedIds([]);
           } finally {
