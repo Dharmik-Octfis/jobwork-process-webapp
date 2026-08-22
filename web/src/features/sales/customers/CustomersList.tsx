@@ -12,7 +12,7 @@ import { useListColumns } from '../../../hooks/useListColumns';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
-import type { Customer } from './customers.schemas';
+import type { Customer} from './customers.schemas';
 
 /**
  * How each selectable column renders. Keys match the backend catalog
@@ -82,6 +82,10 @@ export function CustomersList() {
       setCustomerToDelete(null);
     },
   });
+
+
+
+
 
   const headerStyle = {
     padding: '12px 16px',
