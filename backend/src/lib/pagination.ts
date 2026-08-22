@@ -17,6 +17,8 @@ export const listQuerySchema = z.object({
   search: z.string().trim().min(1).max(100).optional(),
   /** Preset view key — see listFilters.catalog.ts. Omitted means "all". */
   filter: z.string().trim().min(1).max(50).optional(),
+  /** JSON stringified dictionary of field-specific filters (e.g. custom fields, exact column matches) */
+  fieldFilters: z.string().optional(),
   page: z.coerce.number().int().positive().default(1),
   // Cap mirrors the client's largest page-size option (500). It exists so a
   // hand-edited URL can't ask for the whole table in one query.

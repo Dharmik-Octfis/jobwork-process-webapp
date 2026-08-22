@@ -33,6 +33,7 @@ export interface PageParams {
   search?: string;
   /** Preset view key ("active", "goods", …). Omitted means "all". */
   filter?: string;
+  fieldFilters?: string;
   page?: number;
   perPage?: number;
 }

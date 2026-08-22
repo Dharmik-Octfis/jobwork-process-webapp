@@ -12,6 +12,7 @@ import { useListCount } from '../../../hooks/useListCount';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
+import { BulkActionBar } from '../../../components/ui/BulkActionBar';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 import type { PurchaseOrder } from './purchase-orders.schemas';
 
@@ -76,6 +77,9 @@ export function PurchaseOrdersList() {
 
   const queryClient = useQueryClient();
   const [poToDelete, setPoToDelete] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deletePurchaseOrder(orgId!, id),
@@ -84,6 +88,24 @@ export function PurchaseOrdersList() {
       setPoToDelete(null);
     },
   });
+
+  const handleDeleteSelected = async () => {
+    setIsBulkDeleteDialogOpen(true);
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.length === purchaseOrders.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(purchaseOrders.map((i) => i.id));
+    }
+  };
 
   const headerStyle = {
     padding: '12px 16px',
@@ -113,70 +135,79 @@ export function PurchaseOrdersList() {
             background: '#fff',
           }}
         >
-          <header
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: selectedPoId ? '12px 16px' : '16px 24px',
-              background: '#fff',
-              borderBottom: '1px solid #eef0f3',
-              gap: 8,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
-              <ListFilterDropdown
-                filters={filters}
-                value={filter}
-                onChange={setFilter}
-                fallbackLabel="All Purchase Orders"
-              />
-            </div>
+          {!selectedPoId && selectedIds.length > 0 ? (
+            <BulkActionBar
+              selectedCount={selectedIds.length}
+              onClearSelection={() => setSelectedIds([])}
+              onDelete={handleDeleteSelected}
+              isProcessing={isProcessing}
+            />
+          ) : (
+            <header
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: selectedPoId ? '12px 16px' : '16px 24px',
+                background: '#fff',
+                borderBottom: '1px solid #eef0f3',
+                gap: 8,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+                <ListFilterDropdown
+                  filters={filters}
+                  value={filter}
+                  onChange={setFilter}
+                  fallbackLabel="All Purchase Orders"
+                />
+              </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-              {!selectedPoId && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                {!selectedPoId && (
+                  <button
+                    onClick={() => setIsColumnsOpen(true)}
+                    title="Customize Columns"
+                    style={{
+                      background: '#f1f5f9',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '4px',
+                      padding: '6px 10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      cursor: 'pointer',
+                      color: '#475569',
+                      fontSize: '13px',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <SlidersHorizontal size={15} />
+                  </button>
+                )}
+
                 <button
-                  onClick={() => setIsColumnsOpen(true)}
-                  title="Customize Columns"
+                  onClick={() => navigate(`/organizations/${orgId}/purchases/purchase-orders/new`)}
                   style={{
-                    background: '#f1f5f9',
-                    border: '1px solid #cbd5e1',
+                    background: '#186337',
+                    color: 'white',
+                    border: 'none',
+                    padding: '6px 12px',
                     borderRadius: '4px',
-                    padding: '6px 10px',
+                    fontWeight: 500,
+                    fontSize: '13px',
+                    cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 6,
-                    cursor: 'pointer',
-                    color: '#475569',
-                    fontSize: '13px',
+                    gap: 4,
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  <SlidersHorizontal size={15} />
+                  <Plus size={16} /> New
                 </button>
-              )}
-
-              <button
-                onClick={() => navigate(`/organizations/${orgId}/purchases/purchase-orders/new`)}
-                style={{
-                  background: '#186337',
-                  color: 'white',
-                  border: 'none',
-                  padding: '6px 12px',
-                  borderRadius: '4px',
-                  fontWeight: 500,
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                <Plus size={16} /> New
-              </button>
-            </div>
-          </header>
+              </div>
+            </header>
+          )}
 
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {isLoading ? (
@@ -277,6 +308,14 @@ export function PurchaseOrdersList() {
                           borderBottom: '1px solid #eef0f3',
                         }}
                       >
+                        <th style={{ width: 48, ...headerStyle, paddingRight: 0, textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={purchaseOrders.length > 0 && selectedIds.length === purchaseOrders.length}
+                            onChange={toggleAll}
+                            style={{ cursor: 'pointer' }}
+                          />
+                        </th>
                         {columns.map((col) => (
                           <th key={col.key} style={headerStyle}>
                             {col.label}
@@ -289,10 +328,26 @@ export function PurchaseOrdersList() {
                         <tr
                           key={po.id}
                           onClick={() => setSearchParams({ id: po.id })}
-                          style={{ borderBottom: '1px solid #eef0f3', transition: 'background 0.1s', cursor: 'pointer' }}
+                          style={{
+                            borderBottom: '1px solid #eef0f3',
+                            transition: 'background 0.1s',
+                            cursor: 'pointer',
+                            background: selectedIds.includes(po.id) ? '#f8fafc' : 'transparent',
+                          }}
                           onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                          onMouseLeave={(e) => {
+                            if (!selectedIds.includes(po.id))
+                              e.currentTarget.style.background = 'transparent';
+                          }}
                         >
+                          <td style={{ width: 48, padding: '12px 16px', paddingRight: 0, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.includes(po.id)}
+                              onChange={() => toggleSelection(po.id)}
+                              style={{ cursor: 'pointer' }}
+                            />
+                          </td>
                           {columns.map((col) => (
                             <td
                               key={col.key}
@@ -361,6 +416,27 @@ export function PurchaseOrdersList() {
           }
         }}
         onCancel={() => setPoToDelete(null)}
+      />
+
+      <ConfirmDialog
+        isOpen={isBulkDeleteDialogOpen}
+        title="Delete Selected Purchase Orders"
+        message={`Are you sure you want to delete ${selectedIds.length} purchase order(s)? This action cannot be undone.`}
+        confirmText={isProcessing ? 'Deleting...' : 'Delete'}
+        onConfirm={async () => {
+          setIsProcessing(true);
+          try {
+            await Promise.allSettled(
+              selectedIds.map(id => deletePurchaseOrder(orgId!, id))
+            );
+            queryClient.invalidateQueries({ queryKey: ['purchaseOrders', orgId] });
+            setSelectedIds([]);
+          } finally {
+            setIsProcessing(false);
+            setIsBulkDeleteDialogOpen(false);
+          }
+        }}
+        onCancel={() => setIsBulkDeleteDialogOpen(false)}
       />
     </div>
   );

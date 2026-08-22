@@ -11,6 +11,7 @@ import { useListCount } from '../../../hooks/useListCount';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
+import { BulkActionBar } from '../../../components/ui/BulkActionBar';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 import type { Item } from '../../items/items.schemas';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
@@ -85,12 +86,16 @@ function ExpandableCompositeItemRow({
   setSearchParams,
   orgId,
   customFieldsDef,
+  isSelected,
+  onToggle,
 }: {
   item: Item;
   columns: { key: string; label: string; locked?: boolean }[];
   setSearchParams: (params: Record<string, string>) => void;
   orgId: string;
   customFieldsDef?: CustomFieldDefinition[];
+  isSelected: boolean;
+  onToggle: () => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -108,13 +113,21 @@ function ExpandableCompositeItemRow({
           borderBottom: '1px solid #eef0f3',
           transition: 'background 0.1s',
           cursor: 'pointer',
-          background: isExpanded ? '#fafafa' : 'transparent',
+          background: isExpanded || isSelected ? '#fafafa' : 'transparent',
         }}
         onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
         onMouseLeave={(e) =>
-          (e.currentTarget.style.background = isExpanded ? '#fafafa' : 'transparent')
+          (e.currentTarget.style.background = isExpanded || isSelected ? '#fafafa' : 'transparent')
         }
       >
+        <td style={{ width: 48, padding: '12px 16px', paddingRight: 0, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={onToggle}
+            style={{ cursor: 'pointer' }}
+          />
+        </td>
         {columns.map((col, idx) => (
           <td
             key={col.key}
@@ -156,7 +169,7 @@ function ExpandableCompositeItemRow({
       </tr>
       {isExpanded && (
         <tr style={{ background: '#fafafa', borderBottom: '1px solid #eef0f3' }}>
-          <td colSpan={columns.length} style={{ padding: 0 }}>
+          <td colSpan={columns.length + 1} style={{ padding: 0 }}>
             {isLoading ? (
               <div style={{ padding: '16px', color: '#64748b', fontSize: 13, paddingLeft: 48 }}>
                 Loading components...
@@ -170,7 +183,7 @@ function ExpandableCompositeItemRow({
                       key={comp.id}
                       style={{
                         position: 'relative',
-                        padding: '8px 16px 8px 48px',
+                        padding: '8px 16px 8px 96px',
                         fontSize: 13,
                         color: '#475569',
                         display: 'flex',
@@ -180,7 +193,7 @@ function ExpandableCompositeItemRow({
                       <div
                         style={{
                           position: 'absolute',
-                          left: 23,
+                          left: 72,
                           top: 0,
                           bottom: isLast ? '50%' : 0,
                           borderLeft: '1px solid #cbd5e1',
@@ -189,7 +202,7 @@ function ExpandableCompositeItemRow({
                       <div
                         style={{
                           position: 'absolute',
-                          left: 23,
+                          left: 72,
                           top: '50%',
                           width: 16,
                           borderTop: '1px solid #cbd5e1',
@@ -251,8 +264,55 @@ export function CompositeItemsPage() {
 
   const queryClient = useQueryClient();
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
 
   const { data: customFieldsDef } = useActiveCustomFields(orgId, 'item');
+
+  const handleMarkActive = async () => {
+    setIsProcessing(true);
+    try {
+      await Promise.allSettled(
+        selectedIds.map((id) => compositeItemsApi.updateItem({ orgId: orgId!, id, data: { isActive: true } }))
+      );
+      queryClient.invalidateQueries({ queryKey: ['compositeItems', orgId] });
+      setSelectedIds([]);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleMarkInactive = async () => {
+    setIsProcessing(true);
+    try {
+      await Promise.allSettled(
+        selectedIds.map((id) => compositeItemsApi.updateItem({ orgId: orgId!, id, data: { isActive: false } }))
+      );
+      queryClient.invalidateQueries({ queryKey: ['compositeItems', orgId] });
+      setSelectedIds([]);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    setIsBulkDeleteDialogOpen(true);
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.length === items.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(items.map((i) => i.id));
+    }
+  };
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => compositeItemsApi.deleteItem(orgId!, id),
@@ -292,6 +352,16 @@ export function CompositeItemsPage() {
           }}
         >
           {/* Page Header */}
+          {!selectedItemId && selectedIds.length > 0 ? (
+            <BulkActionBar
+              selectedCount={selectedIds.length}
+              onClearSelection={() => setSelectedIds([])}
+              onMarkActive={handleMarkActive}
+              onMarkInactive={handleMarkInactive}
+              onDelete={handleDeleteSelected}
+              isProcessing={isProcessing}
+            />
+          ) : (
           <header
             style={{
               display: 'flex',
@@ -350,8 +420,9 @@ export function CompositeItemsPage() {
               >
                 <Plus size={16} /> New
               </button>
-            </div>
-          </header>
+              </div>
+            </header>
+          )}
 
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {isLoading ? (
@@ -473,6 +544,14 @@ export function CompositeItemsPage() {
                           borderBottom: '1px solid #eef0f3',
                         }}
                       >
+                        <th style={{ width: 48, ...headerStyle, paddingRight: 0, textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={items.length > 0 && selectedIds.length === items.length}
+                            onChange={toggleAll}
+                            style={{ cursor: 'pointer' }}
+                          />
+                        </th>
                         {columns.map((col) => (
                           <th key={col.key} style={headerStyle}>
                             {col.label}
@@ -489,6 +568,8 @@ export function CompositeItemsPage() {
                           setSearchParams={setSearchParams}
                           orgId={orgId!}
                           customFieldsDef={customFieldsDef}
+                          isSelected={selectedIds.includes(item.id)}
+                          onToggle={() => toggleSelection(item.id)}
                         />
                       ))}
                     </tbody>
@@ -541,6 +622,27 @@ export function CompositeItemsPage() {
           }
         }}
         onCancel={() => setItemToDelete(null)}
+      />
+
+      <ConfirmDialog
+        isOpen={isBulkDeleteDialogOpen}
+        title="Delete Selected Items"
+        message={`Are you sure you want to delete ${selectedIds.length} item(s)? This action cannot be undone.`}
+        confirmText={isProcessing ? 'Deleting...' : 'Delete'}
+        onConfirm={async () => {
+          setIsProcessing(true);
+          try {
+            await Promise.allSettled(
+              selectedIds.map(id => compositeItemsApi.deleteItem(orgId!, id))
+            );
+            queryClient.invalidateQueries({ queryKey: ['compositeItems', orgId] });
+            setSelectedIds([]);
+          } finally {
+            setIsProcessing(false);
+            setIsBulkDeleteDialogOpen(false);
+          }
+        }}
+        onCancel={() => setIsBulkDeleteDialogOpen(false)}
       />
     </div>
   );
