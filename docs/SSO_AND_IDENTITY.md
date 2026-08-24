@@ -751,9 +751,14 @@ Order matters. Each step is independently deployable and reversible.
 2. **Seed identities** — the union of every app's users, deduped by email (`@db.Citext` already, so
    case is handled). Where one email has different password hashes in two apps, keep the most
    recently used and tell those users at cutover. Do not guess silently.
-3. **Add `identityUserId` to each app's `users`**, plus `idpSessionId` / `idpSubject` on
+3. ✅ **Add `identityUserId` to each app's `users`**, plus `idpSessionId` / `idpSubject` on
    `refresh_tokens`, all nullable. `npm run db:draft` → edit → `db:promote` → `db:apply`. Nullable
    columns on existing tables, no backfill, no destructive SQL.
+   **Done in jobwork 2026-08-24** — `20260824064102_add_sso_identity_columns`. Every row is null,
+   nothing reads or writes them, and no code path changed; `identity_user_id` carries a UNIQUE index,
+   which is safe on an all-NULL column because Postgres treats NULLs as distinct. Still to do in the
+   second app. Note this step was deliberately taken **out of order**, ahead of step 1 — it is
+   independently deployable and reversible, so it de-risks the cutover without waiting on accounts.
 4. **Cut jobwork over** behind a feature flag, keeping local password login as the rollback path for
    one release. Existing users link on first SSO sign-in via the email branch in §9.2.
 5. **Watch the link rate.** When effectively every active user has a non-null `identityUserId`, the

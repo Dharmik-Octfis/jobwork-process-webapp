@@ -4,7 +4,8 @@
 > tokens are, where they live, and how every flow (login, refresh, logout, multi-device, password
 > reset) behaves. Design context lives in `docs/ARCHITECTURE_AND_TECH_STACK.md` (§3.8).
 
-_Last updated: 2026-07-31 — rotation removed, session rows retained for reporting (§3, §4.4)._
+_Last updated: 2026-08-24 — the three nullable SSO link columns exist but are unused (§3). Behaviour
+last changed 2026-07-31: rotation removed, session rows retained for reporting (§3, §4.4)._
 
 > **This describes the single-app model, which is what runs today.**
 > `docs/SSO_AND_IDENTITY.md` is the design for one login across several apps. Almost everything
@@ -69,6 +70,17 @@ Each login (each device) creates **one row** in the `refresh_tokens` table:
 | `revokedAt`     | Null while live. Set when the session ends — the row is **not** deleted.        |
 | `revokedReason` | `logout` / `expired` / `password_reset` / `account_disabled` / `token_mismatch` |
 | `userAgent`     | The device, captured at login.                                                  |
+| `idpSessionId`  | **Unused today.** Which SSO session created this one — see below.               |
+| `idpSubject`    | **Unused today.** The central identity behind this session — see below.         |
+
+> ℹ️ **`idpSessionId` / `idpSubject` are nullable and nothing writes them yet.** They were added
+> 2026-08-24 (`20260824064102_add_sso_identity_columns`) ahead of the accounts service, along with
+> `users.identity_user_id` — `docs/SSO_AND_IDENTITY.md` §13 step 3. Every row is null, and every flow
+> below behaves exactly as described.
+>
+> 🔴 **`idpSessionId` is not the `sid` in our access token.** Our `sid` is this row's `id` (see the
+> glossary). `idpSessionId` will hold the _IdP's_ session id. Two different ids, one word — conflating
+> them in a revoke path fails open, which is why the column is not called `sid`.
 
 Key idea: **one row = one logged-in device, for the whole life of that session.** The same user on a
 laptop and a phone has two rows with the same `userId`. A session is identified by its `id` (the

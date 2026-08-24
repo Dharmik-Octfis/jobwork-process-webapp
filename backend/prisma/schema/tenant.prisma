@@ -14,6 +14,15 @@ model User {
   id                            String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email                         String                  @unique @db.Citext
   passwordHash                  String?                 @map("password_hash")
+  /// The `sub` from the accounts service (docs/SSO_AND_IDENTITY.md §9). Set ONCE,
+  /// at first sign-in after the cutover, then never rewritten — people change
+  /// emails, `sub` is forever. 🔴 `id` remains the FK target for every membership,
+  /// createdBy and updatedBy in this database; repointing those at the identity id
+  /// would rewrite nine schema files for no benefit.
+  ///
+  /// Nullable until §13 step 5: every row is null today, and the email-matching
+  /// branch is what lets an existing user link on their first SSO sign-in.
+  identityUserId                String?                 @unique @map("identity_user_id") @db.Uuid
   firstName                     String                  @default("") @map("first_name") @db.VarChar(40)
   lastName                      String                  @default("") @map("last_name") @db.VarChar(40)
   fullName                      String                  @default("") @map("full_name") @db.VarChar(80)
@@ -208,6 +217,13 @@ model RefreshToken {
   revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(6)
   /// logout | expired | password_reset | account_disabled | superseded
   revokedReason String?   @map("revoked_reason") @db.VarChar(32)
+  /// `sid` from the ID token — which SSO session created this app session.
+  /// 🔴 NOT the same thing as the `sid` claim in our own access token, which is
+  /// this row's `id`. Two different ids, one word; conflating them in the revoke
+  /// path fails open. Never rename this column `sid`.
+  idpSessionId  String?   @map("idp_session_id") @db.Uuid
+  /// `sub` — for "disable this account everywhere", which has no single sid.
+  idpSubject    String?   @map("idp_subject") @db.Uuid
   /// Captured at login so a report can say WHICH device, rather than showing the
   /// user's single most recent agent — `users.user_agent` is overwritten on every
   /// login and cannot answer that.
@@ -226,6 +242,10 @@ model RefreshToken {
   /// The live-session lookup on every refresh, and the per-user session history
   /// a report reads.
   @@index([userId, revokedAt])
+  /// Back-channel logout arrives naming a `sid`, and "disable everywhere" names a
+  /// `sub` — both have to find every affected session without scanning the table.
+  @@index([idpSessionId])
+  @@index([idpSubject])
   @@map("refresh_tokens")
 }
 
