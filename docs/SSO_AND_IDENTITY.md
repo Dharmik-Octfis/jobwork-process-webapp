@@ -7,8 +7,12 @@
 > Today's single-app model is `docs/AUTHENTICATION.md` — read that first if you have not. This
 > document does not replace it. **Almost everything in it survives**, one layer down.
 
-_Status: **design, not yet built.** Nothing described here exists in the codebase._
-_Last updated: 2026-08-18._
+_Status: **design, with the groundwork built.** The accounts service does **not** exist. What does:
+§13 step 3's nullable link columns in jobwork (`20260824064102_add_sso_identity_columns`), and a
+deploy path that can ship a second AppSail independently, with `accounts` registered in
+`deploy/services.json` but not yet deployable (§15). Every flow, schema and handler below is still
+design._
+_Last updated: 2026-08-24 — §13 step 3 done, §15 deployment + the Public Suffix List correction._
 
 ---
 
@@ -855,9 +859,44 @@ and would otherwise push every entry in that array. What is committed today:
 - **Verify once in the console:** that two mapped domains in one project can point at two _different_
   AppSail services. If mapping turns out to be project-wide, put accounts in its own Catalyst project
   — no design change, just another `catalystrc` and a per-service override pointing at it.
-- **Staging must mirror the domain topology.** Testing on the default `*.catalystserverless.com`
-  hostnames would not be same-site (that domain is very likely on the Public Suffix List), §11 would
-  fail, and it would look like the design is broken when it is not.
+- **Staging must mirror the domain topology** — but not for the reason first written here.
+
+  _Corrected 2026-08-24._ The original claim was that the default Catalyst hostnames "would not be
+  same-site (that domain is very likely on the Public Suffix List)". A check of
+  `publicsuffix.org/list/public_suffix_list.dat` found **no entry** for `catalyst*`, `zoho` or
+  `appsail`. Treat that as probable, not certain — the list is ~250KB and the fetch may have been
+  summarised — but do not plan around the PSL claim as written.
+
+  The conclusion survives the correction, because both branches are bad:
+
+  | If `catalystappsail.com` is… | Then staging…                                                                                                                                                                                                                      |
+  | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | **not** on the PSL (likely)  | is same-site — and so is **every other Zoho customer's app**, because they share the registrable domain. `SameSite=Lax` stops treating other Catalyst tenants as cross-site. Production under `octfis.com` has no such neighbours. |
+  | on the PSL                   | is cross-site, §11 fails there while working in production, and it looks like the design is broken when it is not.                                                                                                                 |
+
+  Either way staging exercises a topology production does not have, which is the whole point of
+  having a staging environment for this.
+
+  🔴 **Be accurate about what a Catalyst hostname actually breaks**, or this reads as scaremongering
+  and gets ignored. The phase-1 login flow **works** cross-site: Authorization Code + PKCE is
+  top-level redirects, `SameSite=Lax` sends the cookie on a top-level GET navigation, `__Host-` works
+  on any HTTPS host, and back-channel logout is server-to-server. What you lose is (a) §11's silent
+  `prompt=none` iframe, which is third-party cookie territory and is deferred out of phase 1 — so it
+  bites later, in production; (b) an issuer on a host we do not own, which §14 rule 1 says is baked
+  into every token; and (c) any rehearsal of the thing that actually misbehaves when domains are wrong.
+
+  **Also practical:** a default AppSail hostname is `<app>-<zaid>.<env>.catalystappsail.com`, so
+  `accounts-staging.catalystappsail.com` is not a name that can simply be chosen — getting a clean
+  hostname means mapping a domain, at which point map one we own. ⚠️ Note that
+  `backend/.env.staging` currently has `APP_URL=https://jobwork.development.catalystappsail.com`,
+  which has no ZAID and does not match that pattern — either something is already mapped there or
+  that value is stale. Confirm before planning around it.
+
+  **The recommendation:** map `accounts-staging.octfis.com` **and** `jobwork-staging.octfis.com`.
+  We already own `octfis.com`, group SSL is free, and the limit is 5 mapped domains per app — two
+  DNS records against the cost of finding cookie problems in production. Production already has
+  `jobwork.octfis.com`, so only `accounts.octfis.com` is outstanding there.
+
 - Domain mapping targets the **production** URL of a project, so the Development environment and
   localhost have no mapped domain. Local development needs `mkcert` and hosts entries to reproduce
   the same-site relationship — do this early, because the cookie and iframe behaviour is exactly what
