@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, Suspense } from 'react';
+import { useState, useRef, useEffect, Suspense} from 'react';
+import { createPortal } from 'react-dom';
 import {
   NavLink,
   Outlet,
@@ -27,6 +28,7 @@ import {
   Send,
   PackageCheck,
   ChevronRight,
+  Plus,
   Copy,
   Check,
 } from 'lucide-react';
@@ -414,6 +416,8 @@ export function AppLayout() {
 
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
 
+  const isSidebarCollapsed = location.pathname.endsWith('/opening-stock');
+
   // Remember it only so `/` can send the user back here next visit (OrgRedirect).
   // Not an authorization input: the server re-checks membership on every request.
   useEffect(() => {
@@ -457,7 +461,8 @@ export function AppLayout() {
       {/* Sidebar */}
       <aside
         style={{
-          width: 220,
+          width: isSidebarCollapsed ? 72 : 220,
+          transition: 'width 0.3s ease',
           background: 'var(--navy-900)',
           color: 'white',
           display: 'flex',
@@ -483,12 +488,13 @@ export function AppLayout() {
               src={activeOrg.logo_url}
               alt={activeOrg.name}
               style={{
-                maxWidth: 190,
+                maxWidth: isSidebarCollapsed ? 40 : 190,
                 maxHeight: 40,
                 width: 'auto',
                 height: 'auto',
                 objectFit: 'contain',
                 display: 'block',
+                transition: 'max-width 0.3s ease',
               }}
             />
           ) : activeOrg?.name ? (
@@ -500,9 +506,10 @@ export function AppLayout() {
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
+                display: isSidebarCollapsed ? 'none' : 'block',
               }}
             >
-              {activeOrg.name}
+              {isSidebarCollapsed ? activeOrg.name.charAt(0) : activeOrg.name}
             </span>
           ) : null}
         </div>
@@ -523,6 +530,7 @@ export function AppLayout() {
               module={module}
               expandedId={expandedModuleId}
               onToggle={(id) => setExpandedModuleId((prev) => (prev === id ? null : id))}
+              isSidebarCollapsed={isSidebarCollapsed}
             />
           ))}
         </nav>
@@ -530,12 +538,13 @@ export function AppLayout() {
         {effectiveOrgId && (
           <div
             style={{
-              height: '44px',
+              height: isSidebarCollapsed ? '50px' : '44px',
               boxSizing: 'border-box',
-              padding: '0 var(--space-3)',
+              padding: isSidebarCollapsed ? '0 8px' : '0 var(--space-3)',
               borderTop: '1px solid rgba(255,255,255,0.1)',
               display: 'flex',
               alignItems: 'center',
+              justifyContent: isSidebarCollapsed ? 'center' : 'flex-start'
             }}
           >
             <NavLink
@@ -543,9 +552,11 @@ export function AppLayout() {
               style={({ isActive }) => ({
                 width: '100%',
                 display: 'flex',
+                flexDirection: isSidebarCollapsed ? 'column' : 'row',
                 alignItems: 'center',
-                gap: 'var(--space-3)',
-                padding: '6px 14px',
+                justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
+                gap: isSidebarCollapsed ? '4px' : 'var(--space-3)',
+                padding: isSidebarCollapsed ? '8px 4px' : '6px 14px',
                 borderRadius: 'var(--radius-md)',
                 textDecoration: 'none',
                 color: isActive ? 'white' : 'rgba(255,255,255,0.7)',
@@ -554,8 +565,8 @@ export function AppLayout() {
                 transition: 'all 0.2s ease',
               })}
             >
-              <Settings size={18} />
-              <span style={{ fontSize: 13 }}>Settings</span>
+              <Settings size={isSidebarCollapsed ? 22 : 18} />
+              {!isSidebarCollapsed && <span style={{ fontSize: 13 }}>Settings</span>}
             </NavLink>
           </div>
         )}
@@ -616,11 +627,13 @@ function ModuleNavGroup({
   depth = 0,
   expandedId,
   onToggle,
+  isSidebarCollapsed,
 }: {
   module: AppModule;
   depth?: number;
   expandedId?: string | null;
   onToggle?: (id: string) => void;
+  isSidebarCollapsed?: boolean;
 }) {
   const Icon = module.icon && ICON_MAP[module.icon] ? ICON_MAP[module.icon] : FileText;
   const { orgId } = useParams<{ orgId: string }>();
@@ -628,10 +641,10 @@ function ModuleNavGroup({
   const to = navPath(module.code, effectiveOrgId);
 
   const isParent = module.children && module.children.length > 0;
+
+  // States for old accordion
   const [localExpanded, setLocalExpanded] = useState(false);
   const [expandedChildId, setExpandedChildId] = useState<string | null>(null);
-  const [isHovered, setIsHovered] = useState(false);
-
   const isExpanded = onToggle ? expandedId === module.id : localExpanded;
 
   const handleToggle = () => {
@@ -639,109 +652,214 @@ function ModuleNavGroup({
     else setLocalExpanded(!localExpanded);
   };
 
-  if (isParent) {
-    return (
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 'var(--space-1)',
-        }}
-      >
-        <button
-          onClick={handleToggle}
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => setIsHovered(false)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            padding: '8px 14px',
-            paddingLeft: 14 + depth * 12,
-            borderRadius: 'var(--radius-md)',
-            background: isHovered ? 'rgba(255,255,255,0.08)' : 'transparent',
-            border: 'none',
-            color: 'rgba(255,255,255,0.7)',
-            fontWeight: 500,
-            cursor: 'pointer',
-            width: '100%',
-            textAlign: 'left',
-          }}
-        >
-          <div
-            style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', width: '100%' }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 16,
-                transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-                transition: 'transform 0.2s ease',
-              }}
-            >
-              <ChevronRight size={14} />
-            </div>
-            {depth === 0 && <Icon size={16} />}
-            <span style={{ fontSize: 13, marginLeft: 4 }}>{module.name}</span>
-          </div>
-        </button>
+  // States for new flyout
+  const [isHovered, setIsHovered] = useState(false);
+  const [rect, setRect] = useState<DOMRect | null>(null);
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateRows: isExpanded ? '1fr' : '0fr',
-            transition: 'grid-template-rows 0.2s ease',
-          }}
-        >
-          <div
+  const handleMouseEnter = (e: React.MouseEvent) => {
+    setIsHovered(true);
+    setRect(e.currentTarget.getBoundingClientRect());
+  };
+  const handleMouseLeave = () => {
+    setIsHovered(false);
+  };
+
+  if (!isSidebarCollapsed) {
+    // --- OLD ACCORDION STYLE ---
+    if (isParent) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+          <button
+            onClick={handleToggle}
+            className="sidebar-nav-link"
             style={{
-              overflow: 'hidden',
               display: 'flex',
-              flexDirection: 'column',
-              gap: 'var(--space-1)',
+              alignItems: 'center',
+              padding: '8px 14px',
+              paddingLeft: 14 + depth * 12,
+              borderRadius: 'var(--radius-md)',
+              background: 'transparent',
+              border: 'none',
+              color: 'rgba(255,255,255,0.7)',
+              fontWeight: 500,
+              cursor: 'pointer',
+              width: '100%',
+              textAlign: 'left',
+              transition: 'background-color 0.2s ease',
             }}
           >
-            {module.children?.map((child) => (
-              <ModuleNavGroup
-                key={child.id}
-                module={child}
-                depth={depth + 1}
-                expandedId={expandedChildId}
-                onToggle={(id) => setExpandedChildId((prev) => (prev === id ? null : id))}
-              />
-            ))}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', width: '100%' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 16,
+                  transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.2s ease',
+                }}
+              >
+                <ChevronRight size={14} />
+              </div>
+              {depth === 0 && <Icon size={16} />}
+              <span style={{ fontSize: 13, marginLeft: 4 }}>{module.name}</span>
+            </div>
+          </button>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateRows: isExpanded ? '1fr' : '0fr',
+              transition: 'grid-template-rows 0.2s ease',
+            }}
+          >
+            <div style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+              {module.children?.map((child) => (
+                <ModuleNavGroup
+                  key={child.id}
+                  module={child}
+                  depth={depth + 1}
+                  expandedId={expandedChildId}
+                  onToggle={(id) => setExpandedChildId((prev) => (prev === id ? null : id))}
+                  isSidebarCollapsed={false}
+                />
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      );
+    }
+
+    return (
+      <NavLink
+        to={to}
+        end={module.code === 'DASHBOARD'}
+        className="sidebar-nav-link"
+        style={({ isActive }) => ({
+          display: 'flex',
+          alignItems: 'center',
+          padding: '8px 14px',
+          paddingLeft: 14 + depth * 12,
+          justifyContent: 'flex-start',
+          borderRadius: 'var(--radius-md)',
+          textDecoration: 'none',
+          color: isActive ? 'white' : 'rgba(255,255,255,0.7)',
+          background: isActive ? '#186337' : 'transparent',
+          fontWeight: isActive ? 600 : 500,
+          transition: 'all 0.2s ease',
+        })}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', width: '100%', justifyContent: 'flex-start' }}>
+          <div style={{ width: 16 }}></div>
+          {depth === 0 && <Icon size={16} />}
+          <span style={{ fontSize: 13, marginLeft: 4 }}>{module.name}</span>
+        </div>
+      </NavLink>
+    );
+  }
+
+  // --- NEW ZOHO-STYLE COMPACT FLYOUT (when isSidebarCollapsed is true) ---
+  if (depth > 0) {
+    return (
+      <NavLink
+        to={to}
+        end={module.code === 'DASHBOARD'}
+        style={({ isActive }) => ({
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '10px 16px',
+          textDecoration: 'none',
+          color: isActive ? '#fff' : '#cbd5e1',
+          background: isActive ? '#186337' : 'transparent',
+          fontSize: '13px',
+          fontWeight: 500,
+          transition: 'all 0.2s ease',
+          borderRadius: '4px',
+          margin: '0 8px 4px 8px',
+        })}
+        onMouseEnter={(e) => {
+          if (e.currentTarget.style.background !== '#186337') {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (e.currentTarget.style.background !== '#186337') {
+            e.currentTarget.style.background = 'transparent';
+          }
+        }}
+      >
+        {({ isActive }) => (
+          <>
+            <span>{module.name}</span>
+            {isActive && <Plus size={14} color="#fff" />}
+          </>
+        )}
+      </NavLink>
     );
   }
 
   return (
-    <NavLink
-      to={to}
-      end={module.code === 'DASHBOARD'}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      style={({ isActive }) => ({
-        display: 'flex',
-        alignItems: 'center',
-        padding: '8px 14px',
-        paddingLeft: 14 + depth * 12,
-        borderRadius: 'var(--radius-md)',
-        textDecoration: 'none',
-        color: isActive ? 'white' : 'rgba(255,255,255,0.7)',
-        background: isActive ? '#186337' : isHovered ? 'rgba(255,255,255,0.08)' : 'transparent',
-        fontWeight: isActive ? 600 : 500,
-        transition: 'all 0.2s ease',
-      })}
+    <div
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      style={{ position: 'relative' }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', width: '100%' }}>
-        <div style={{ width: 16 }}></div>
-        {depth === 0 && <Icon size={16} />}
-        <span style={{ fontSize: 13, marginLeft: 4 }}>{module.name}</span>
-      </div>
-    </NavLink>
+      <NavLink
+        to={isParent ? '#' : to}
+        end={module.code === 'DASHBOARD'}
+        onClick={(e) => {
+           if (isParent) e.preventDefault();
+        }}
+        style={({ isActive }) => ({
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '10px 4px',
+          gap: '4px',
+          borderRadius: 'var(--radius-md)',
+          textDecoration: 'none',
+          color: (isActive && !isParent) || isHovered ? 'white' : 'rgba(255,255,255,0.7)',
+          background: (isActive && !isParent) ? '#186337' : isHovered ? 'rgba(255,255,255,0.08)' : 'transparent',
+          transition: 'all 0.2s ease',
+        })}
+      >
+        <Icon size={20} />
+        <span style={{ fontSize: '11px', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>
+          {module.name}
+        </span>
+      </NavLink>
+
+      {isParent && isHovered && rect && createPortal(
+        <div
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={handleMouseLeave}
+          style={{
+            position: 'fixed',
+            top: Math.max(10, Math.min(rect.top, window.innerHeight - (module.children!.length * 40 + 40))),
+            left: rect.right + 8,
+            width: '200px',
+            background: '#1e293b',
+            borderRadius: '6px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+            padding: '8px 0',
+            zIndex: 9999,
+            display: 'flex',
+            flexDirection: 'column',
+            border: '1px solid rgba(255,255,255,0.1)',
+          }}
+        >
+          <div style={{ padding: '4px 16px 8px', fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+            {module.name}
+          </div>
+          {module.children!.map((child) => (
+            <ModuleNavGroup key={child.id} module={child} depth={depth + 1} isSidebarCollapsed={true} />
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
   );
 }
 
