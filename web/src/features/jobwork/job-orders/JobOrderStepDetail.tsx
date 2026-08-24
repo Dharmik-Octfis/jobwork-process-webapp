@@ -207,7 +207,7 @@ export function JobOrderStepDetail({
                 border: '1px solid #2563eb',
               }}
             >
-              <Check size={14} /> Complete
+              <Check size={14} /> Mark as complete
             </button>
           )}
         </div>
