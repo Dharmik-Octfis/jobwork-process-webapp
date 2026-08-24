@@ -1,0 +1,50 @@
+{
+  "$comment": [
+    "What this repo can deploy. One entry per AppSail; `node scripts/deploy.mjs <target>",
+    "<service>` reads this alongside deploy/targets.json.",
+    "",
+    "The two files answer different questions. targets.json says WHERE a deploy lands —",
+    "which Zoho account, project and environment. This one says WHAT is deployed:",
+    "  source        the folder uploaded as the AppSail. `build_path` is `.` relative to",
+    "                it, so EVERYTHING in this folder is zipped — which is exactly why",
+    "                `localEnv` below has to be parked out of the way during upload.",
+    "  appsail       default AppSail name. A target may override it — see below.",
+    "  appConfigBase committed template. No secrets.",
+    "  appConfigOut  generated per deploy from the target's envFile. Gitignored, because",
+    "                its env_variables carry real secrets.",
+    "  localEnv      the developer's own .env inside `source`.",
+    "  build         root package.json script names, run in order. A service with no",
+    "                frontend simply lists fewer.",
+    "  requiredEnv   keys whose absence makes the deployed app refuse to boot. Checked",
+    "                before anything is built or uploaded — otherwise the failure surfaces",
+    "                at the next cold start instead of at deploy time.",
+    "",
+    "catalyst.json is GENERATED from this file at deploy time, holding only the one service",
+    "being deployed. That is what makes `catalyst deploy --only appsail` push one AppSail",
+    "rather than every entry. It is gitignored; do not commit it.",
+    "",
+    "Per-target names: `appsail` here is the default, and a target's services block may",
+    "override it. That is how one service can be a genuinely different AppSail in each Zoho",
+    "account — which the accounts service needs, since staging and production are separate",
+    "accounts in separate data centres. This is only safe because catalyst.json is",
+    "generated; while it was committed, one name had to serve both projects (guide §1.5).",
+    "",
+    "Adding a service: add an entry here, give every target in targets.json its own",
+    "services.<name>.envFile, and add its npm scripts to the root package.json."
+  ],
+  "api": {
+    "source": "backend",
+    "appsail": "jobwork-api",
+    "appConfigBase": "backend/app-config.base.json",
+    "appConfigOut": "backend/app-config.json",
+    "localEnv": "backend/.env",
+    "build": ["build:web", "build:backend"],
+    "requiredEnv": [
+      "DATABASE_URL",
+      "JWT_ACCESS_SECRET",
+      "JWT_REFRESH_SECRET",
+      "SMTP_USER",
+      "SMTP_PASS"
+    ]
+  }
+}

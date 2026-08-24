@@ -305,10 +305,28 @@ that point, and switching is cheap as long as §14 is respected.
 | **Its own database**    | If identity sits in jobwork's DB, every other app needs a connection string to jobwork's DB — coupling two apps at the storage layer, the exact thing being escaped.                         |
 | **Blast radius**        | It holds password hashes and signing keys and should hold nothing else — no vendors, no job orders, no batches.                                                                              |
 
-**Same git repo, though — for now.** A new top-level `accounts/` folder beside `backend/` and `web/`.
-During migration both sides change together constantly, and cross-repo PRs for one logical change is
-pure friction. Split it out with `git filter-repo` once a second app exists and the service has
-stopped changing weekly. Splitting later is cheap; merging back is not.
+**Same git repo — settled 2026-08-24, and no longer "for now."** A new top-level `accounts/` folder
+beside `backend/` and `web/`. Separate database, separate code, separate deploy; shared repo.
+
+The original note here said to split it out with `git filter-repo` "once a second app exists." The
+second app now exists, and the answer went the other way on three counts:
+
+- **Separation in-repo is nearly free.** Every per-folder command — `db:draft` / `db:promote` /
+  `db:apply` / `db:check-drift`, `typecheck`, `lint`, `vitest` — lives in `backend/package.json` and
+  runs relative to `backend/`. An `accounts/package.json` with its own copies and its own
+  `prisma/schema` gets a genuinely separate database with **zero** shared-script surgery.
+- **Same repo does not mean coupled deploy.** That was the real objection, and it was true of the
+  script rather than the repo: `catalyst deploy --only appsail` pushes every entry in
+  `catalyst.json`. Generating that file per deploy with one entry fixed it — §15. `deploy.mjs` now
+  takes `<target> <service>` and neither is defaulted.
+- **A separate repo would not have removed the cross-repo friction anyway.** App 2 lives in its own
+  repo either way, so wiring it to accounts spans two repos regardless. The boundary between an app
+  and accounts is **OIDC** — a versioned protocol, not an internal API — which is precisely the kind
+  of contract that tolerates a repo boundary, and equally the kind that does not need one.
+
+The cost of a separate repo was concrete: duplicating `deploy.mjs`, `lib/targets.mjs`,
+`lib/cliLogin.mjs`, `build-app-config.mjs` and the db-sync scripts — ~600 lines of guardrail that
+would drift. Splitting later is still cheap if this changes.
 
 ### 7.3 Schema
 
@@ -786,22 +804,42 @@ not exportable — so there is no way back out.
 Catalyst allows **up to 5 mapped domains per application**, with group SSL certificates provisioned
 free, and the domain must already be hosted live. Two are needed.
 
-```json
-// catalyst.json — the appsail key is already an array
-{
-  "appsail": [
-    { "source": "backend", "name": "jobwork-api" },
-    { "source": "accounts", "name": "jobwork-accounts" }
-  ]
+**The deploy path is ready for this** (done 2026-08-24, before the service exists). `catalyst.json`
+is no longer committed: `scripts/deploy.mjs` generates it per deploy with only the service being
+deployed, because `catalyst deploy --only appsail` is resource targeting and would otherwise push
+every entry in that array. Registering accounts is now manifest-only:
+
+```jsonc
+// deploy/services.json — committed; what each service IS
+"accounts": {
+  "source": "accounts",
+  "appsail": "jobwork-accounts",       // default; overridable per target
+  "appConfigBase": "accounts/app-config.base.json",
+  "appConfigOut": "accounts/app-config.json",
+  "localEnv": "accounts/.env",
+  "build": ["build:accounts"],
+  "requiredEnv": ["DATABASE_URL", "OIDC_ISSUER", "..."]
 }
+
+// deploy/targets.json — committed; WHERE it lands, per target
+"staging":    { "services": { "accounts": { "envFile": "accounts/.env.staging",
+                                            "appsail": "<staging name>" } } }
+"production": { "services": { "accounts": { "envFile": "accounts/.env.production",
+                                            "appsail": "<production name>" } } }
 ```
 
-- `deploy/targets.json` gains a service dimension — each target currently names one `envFile`
-  (`backend/.env.staging`), and accounts needs its own env file and its own generated
-  `app-config.json`.
+- 🔴 **Accounts is a different AppSail in each target.** Staging and production are different Zoho
+  accounts in different data centres, so each target names its own via the `appsail` override. The
+  `api` service keeps one name for both; only accounts diverges. The banner printed by
+  `npm run deploy:<target>:accounts` is the authority on which name a create-flow prompt wants.
+- 🔴 **`accounts/.env` is parked out of the upload** like `backend/.env`. `build_path` is `.` relative
+  to each source folder, so anything left there is zipped — `deploy.mjs` parks the deployed service's
+  local env to `.env.deploy-backup-<service>`.
+- A service entry may also override `catalystrc`. That is the escape hatch for the next item without
+  reshaping anything.
 - **Verify once in the console:** that two mapped domains in one project can point at two _different_
   AppSail services. If mapping turns out to be project-wide, put accounts in its own Catalyst project
-  — no design change, just another `catalystrc` and another target entry.
+  — no design change, just another `catalystrc` and a per-service override pointing at it.
 - **Staging must mirror the domain topology.** Testing on the default `*.catalystserverless.com`
   hostnames would not be same-site (that domain is very likely on the Public Suffix List), §11 would
   fail, and it would look like the design is broken when it is not.

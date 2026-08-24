@@ -409,15 +409,22 @@ npm run db:deploy        # prisma migrate deploy — every other environment, ne
 npm run db:check-drift   # exit 0 = in sync, 2 = drift. Run in CI.
 npx vitest run
 
-# Deploy — staging and production are DIFFERENT Zoho accounts, so a deploy must name its target.
-npm run deploy:staging       # scripts/deploy.mjs — see docs/CATALYST_DEPLOYMENT_GUIDE.md §1.5b
-npm run deploy:production
+# Deploy — a deploy must name BOTH its target and its service. Neither is ever defaulted:
+# staging and production are DIFFERENT Zoho accounts, and this repo holds more than one AppSail.
+npm run deploy:staging:api        # scripts/deploy.mjs — see docs/CATALYST_DEPLOYMENT_GUIDE.md §1.5b
+npm run deploy:production:api     # `deploy:staging` / `deploy:production` alias the :api pair
 # 🔴 The logged-in Zoho account is machine-wide (%APPDATA%\zcatalyst-cli-nodejs\), NOT a repo file,
 # so it is the one thing the repo cannot get right for you. deploy.mjs reads the CLI's login and
 # refuses to run on a mismatch — never bypass it with a bare `catalyst deploy`, which skips that
 # check plus the env/project cross-check and the `.env`-parking that keeps dev secrets out of the
-# upload. `.catalystrc` and `backend/app-config.json` are GENERATED per target; the committed
-# sources are deploy/targets.json + deploy/<target>.catalystrc.json + backend/.env.<target>.
+# upload. `.catalystrc`, `catalyst.json` and `<service>/app-config.json` are GENERATED per deploy;
+# the committed sources are deploy/services.json + deploy/targets.json +
+# deploy/<target>.catalystrc.json + <service>/.env.<target>.
+# 🔴 `catalyst deploy --only appsail` is RESOURCE targeting, not service targeting — it pushes every
+# entry in catalyst.json. deploy.mjs generates that file with exactly ONE entry, which is the only
+# thing keeping a deploy of one service from deploying all of them. Never commit catalyst.json.
+# A service may be a different AppSail per target (deploy/targets.json → services.<name>.appsail);
+# the deploy banner's `AppSail :` line is the authority on the resolved name.
 
 # web/
 npx tsc -b               # ⚠️ THE typecheck. `tsc --noEmit` checks ZERO files

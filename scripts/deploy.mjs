@@ -1,5 +1,5 @@
 /**
- * Target-aware deploy: `node scripts/deploy.mjs <target> [flags]`
+ * Target-aware deploy: `node scripts/deploy.mjs <target> <service> [flags]`
  *
  * Staging and production live under DIFFERENT Zoho accounts. Three of the four
  * things that decide where a deploy lands are repo files this script writes; the
@@ -7,6 +7,9 @@
  * outside the repo entirely (guide §1.5). That one cannot be set from here, so
  * this script's main job is to *refuse to run* when it is wrong, rather than let
  * a correct-looking `.catalystrc` deploy as the wrong user.
+ *
+ * The service is required and never defaulted, for the same reason the target is:
+ * this repo holds more than one AppSail, and a default is a deploy of the wrong one.
  *
  * Order matters: every check runs BEFORE anything is written or built, so a
  * rejected deploy leaves the working tree exactly as it found it.
@@ -20,15 +23,28 @@ import { existsSync, renameSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { resolve } from 'node:path';
-import { DeployError, PLACEHOLDER, ROOT, fail, readJson, resolveTarget, targetNames } from './lib/targets.mjs';
+import {
+  DeployError,
+  PLACEHOLDER,
+  ROOT,
+  fail,
+  readJson,
+  resolveService,
+  resolveTarget,
+  serviceNames,
+  targetNames,
+} from './lib/targets.mjs';
 import { readCliLogin } from './lib/cliLogin.mjs';
 import { buildAppConfig, readTargetEnv } from './build-app-config.mjs';
 
-const LIVE_ENV = resolve(ROOT, 'backend/.env');
-// Parked at the repo ROOT, not inside backend/ — `build_path` is `.` relative to
-// backend/, so anything left in that folder gets zipped and uploaded. Moving the
-// file "aside" into the same directory would upload it under a new name.
-const PARKED_ENV = resolve(ROOT, '.env.deploy-backup');
+const CATALYST_JSON = resolve(ROOT, 'catalyst.json');
+
+// Parked at the repo ROOT, not inside the service folder — `build_path` is `.`
+// relative to it, so anything left there gets zipped and uploaded. Moving the file
+// "aside" within the same directory would upload it under a new name. The name
+// carries the service so a died-mid-deploy recovery can never restore one
+// service's .env over another's.
+const parkedEnvFor = (service) => resolve(ROOT, `.env.deploy-backup-${service.name}`);
 
 const say = (msg = '') => console.log(msg);
 
@@ -51,12 +67,12 @@ function activeSelection(rc, label) {
  * agree, so a copied-and-half-edited env file will happily deploy staging's
  * credentials into the production project. Compare them.
  */
-function assertConfigsAgree(vars, project, env, target) {
+function assertConfigsAgree(vars, project, env, service) {
   const mismatches = [];
 
   if (vars.ZC_PROJECT_ID && vars.ZC_PROJECT_ID !== project.id) {
     mismatches.push(
-      `ZC_PROJECT_ID is ${vars.ZC_PROJECT_ID} but ${target.catalystrcRelative} deploys to project ${project.id} (${project.name})`,
+      `ZC_PROJECT_ID is ${vars.ZC_PROJECT_ID} but ${service.catalystrcRelative} deploys to project ${project.id} (${project.name})`,
     );
   }
   if (vars.ZC_PROJECT_KEY && project.domain?.id && vars.ZC_PROJECT_KEY !== project.domain.id) {
@@ -72,7 +88,7 @@ function assertConfigsAgree(vars, project, env, target) {
 
   if (mismatches.length) {
     fail(
-      `${target.envFileRelative} and ${target.catalystrcRelative} disagree about the destination:\n` +
+      `${service.envFileRelative} and ${service.catalystrcRelative} disagree about the destination:\n` +
         mismatches.map((m) => `      • ${m}`).join('\n') +
         `\n\n    The app would run in one project while its Stratus/Cache credentials point at another.`,
     );
@@ -106,28 +122,34 @@ function run(command, args) {
 
 // ── The local .env must not ride along in the upload ─────────────────────────
 
-function parkLocalEnv() {
-  if (existsSync(PARKED_ENV) && existsSync(LIVE_ENV)) {
+function parkLocalEnv(service) {
+  const live = service.localEnvFile;
+  const parked = parkedEnvFor(service);
+  const parkedName = `.env.deploy-backup-${service.name}`;
+
+  if (existsSync(parked) && existsSync(live)) {
     fail(
-      `both backend/.env and .env.deploy-backup exist.\n` +
+      `both ${service.localEnvRelative} and ${parkedName} exist.\n` +
         `    A previous deploy died before restoring. Work out which is current,\n` +
-        `    keep it as backend/.env, delete .env.deploy-backup, and re-run.`,
+        `    keep it as ${service.localEnvRelative}, delete ${parkedName}, and re-run.`,
     );
   }
   // Only the backup exists: a previous run died mid-deploy. Unambiguous — put it back.
-  if (existsSync(PARKED_ENV)) {
-    renameSync(PARKED_ENV, LIVE_ENV);
-    say('  note: recovered backend/.env from an interrupted previous deploy.');
+  if (existsSync(parked)) {
+    renameSync(parked, live);
+    say(`  note: recovered ${service.localEnvRelative} from an interrupted previous deploy.`);
   }
-  if (!existsSync(LIVE_ENV)) return false;
+  if (!existsSync(live)) return false;
 
-  renameSync(LIVE_ENV, PARKED_ENV);
+  renameSync(live, parked);
   return true;
 }
 
-function restoreLocalEnv(parked) {
+function restoreLocalEnv(service, parked) {
   if (!parked) return;
-  if (existsSync(PARKED_ENV) && !existsSync(LIVE_ENV)) renameSync(PARKED_ENV, LIVE_ENV);
+  const live = service.localEnvFile;
+  const backup = parkedEnvFor(service);
+  if (existsSync(backup) && !existsSync(live)) renameSync(backup, live);
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────
@@ -141,14 +163,20 @@ async function main() {
     (f) => !['--yes', '--skip-build', '--skip-account-check'].includes(f),
   );
   if (unknown.length) fail(`unknown flag(s): ${unknown.join(', ')}`);
+  // A flag typed without its dashes would otherwise land here and be ignored silently,
+  // so `deploy staging api skip-build` would deploy a stale build believing it built.
+  if (positional.length > 2) {
+    fail(`too many arguments: ${positional.slice(2).join(', ')}\n    Expected <target> <service> only.`);
+  }
 
   const target = resolveTarget(positional[0]);
+  const service = resolveService(target, positional[1]);
 
   // ---- 1. Read and validate everything before touching the working tree ----
-  const rc = readJson(target.catalystrcFile);
+  const rc = readJson(service.catalystrcFile);
   if (PLACEHOLDER.test(JSON.stringify(rc))) {
     fail(
-      `${target.catalystrcRelative} still contains REPLACE_ME.\n` +
+      `${service.catalystrcRelative} still contains REPLACE_ME.\n` +
         `    The "${target.name}" Catalyst project has not been set up yet —\n` +
         `    the file's $comment explains how to fill it in.`,
     );
@@ -160,9 +188,9 @@ async function main() {
     );
   }
 
-  const { project, env } = activeSelection(rc, target.catalystrcRelative);
-  const vars = readTargetEnv(target);
-  assertConfigsAgree(vars, project, env, target);
+  const { project, env } = activeSelection(rc, service.catalystrcRelative);
+  const vars = readTargetEnv(target, service);
+  assertConfigsAgree(vars, project, env, service);
 
   // ---- 2. The account — the one thing outside the repo --------------------
   let login = { email: '(unverified)', dc: '(unverified)' };
@@ -183,18 +211,23 @@ async function main() {
   }
 
   // ---- 3. Show the resolved destination, then ask ------------------------
-  const appsail = readJson(resolve(ROOT, 'catalyst.json')).appsail?.[0] ?? {};
+  // The AppSail name comes from the resolver, never from re-reading catalyst.json:
+  // that file is generated below, and a service may be named differently per target,
+  // so this line is the only thing that shows which AppSail is about to be overwritten.
   say();
   say(`  ┌─ Deploy target: ${target.name.toUpperCase()}`);
   say(`  │  Zoho account : ${login.email}  (dc: ${login.dc})`);
   say(`  │  Project      : ${project.name}  [${project.id}]`);
   say(`  │  Environment  : ${env.name}`);
-  say(`  │  AppSail      : ${appsail.name} ← ${appsail.source}/`);
-  say(`  │  Env file     : ${target.envFileRelative}  (${Object.keys(vars).length} variables)`);
+  say(`  │  Service      : ${service.name}`);
+  say(`  │  AppSail      : ${service.appsail} ← ${service.source}/`);
+  say(`  │  Env file     : ${service.envFileRelative}  (${Object.keys(vars).length} variables)`);
   say(`  │  Database     : ${describeDatabase(vars.DATABASE_URL)}`);
   say(`  │  NODE_ENV     : ${vars.NODE_ENV ?? '(unset)'}`);
   say(`  │  CORS_ORIGINS : ${vars.CORS_ORIGINS ?? '(unset)'}`);
-  say(`  └─ Build        : ${flags.has('--skip-build') ? 'SKIPPED (reusing dist/ + public/)' : 'web + backend'}`);
+  say(
+    `  └─ Build        : ${flags.has('--skip-build') ? 'SKIPPED (reusing dist/ + public/)' : service.build.join(' + ')}`,
+  );
   say();
 
   if (!flags.has('--yes')) {
@@ -212,26 +245,39 @@ async function main() {
   // ---- 4. Commit to the target -------------------------------------------
   const { $comment, ...payload } = rc; // $comment documents the file; the CLI must not see it
   writeFileSync(resolve(ROOT, '.catalystrc'), `${JSON.stringify(payload, null, 2)}\n`);
-  say(`\n  .catalystrc ← ${target.catalystrcRelative}`);
+  say(`\n  .catalystrc ← ${service.catalystrcRelative}`);
 
-  const { count } = buildAppConfig(target, vars);
-  say(`  backend/app-config.json ← ${target.envFileRelative} (${count} env variables)`);
+  // Generated, not committed, and holding exactly ONE entry — that is what makes
+  // `--only appsail` below deploy this service instead of every service in the repo.
+  // It also means the CLI's create-flow rewrite is discarded rather than persisted
+  // into the other target's deploy.
+  writeFileSync(
+    CATALYST_JSON,
+    `${JSON.stringify({ appsail: [{ source: service.source, name: service.appsail }] }, null, 2)}\n`,
+  );
+  say(`  catalyst.json ← deploy/services.json (${service.appsail} only)`);
+
+  const { count } = buildAppConfig(target, service, vars);
+  say(`  ${service.appConfigOutRelative} ← ${service.envFileRelative} (${count} env variables)`);
 
   if (!flags.has('--skip-build')) {
-    run('npm', ['run', 'build:web']);
-    run('npm', ['run', 'build:backend']);
+    for (const script of service.build) run('npm', ['run', script]);
   }
 
   // ---- 5. Upload, with the local .env held out of the zip -----------------
   let parked = false;
-  const restore = () => restoreLocalEnv(parked);
+  const restore = () => restoreLocalEnv(service, parked);
   process.once('SIGINT', () => {
     restore();
     process.exit(130);
   });
   try {
-    parked = parkLocalEnv();
-    if (parked) say('\n  backend/.env parked at .env.deploy-backup (it would otherwise be uploaded).');
+    parked = parkLocalEnv(service);
+    if (parked) {
+      say(
+        `\n  ${service.localEnvRelative} parked at .env.deploy-backup-${service.name} (it would otherwise be uploaded).`,
+      );
+    }
     // `--only appsail`, NOT the `appsail` subcommand. Both deploy just the AppSail,
     // but `catalyst deploy appsail` is a config-COLLECTING command: --name,
     // --build-path, --stack and --command are its options and it PROMPTS for each
@@ -239,18 +285,26 @@ async function main() {
     // scripted deploy interactive and invites answers that overwrite the committed
     // manifest. `--only` is pure targeting: declarative, and still excludes any
     // future function/client resource that bare `catalyst deploy` would push.
+    //
+    // `--only appsail` is resource targeting, not service targeting — it deploys
+    // EVERY entry in catalyst.json. Generating that file with one entry above is
+    // what narrows it to this service.
     run('catalyst', ['deploy', '--only', 'appsail']);
   } finally {
     restore();
-    if (parked) say('  backend/.env restored.');
+    if (parked) say(`  ${service.localEnvRelative} restored.`);
   }
 
-  say(`\n  ✅ Deployed to ${target.name} — ${project.name} / ${env.name}\n`);
+  say(
+    `\n  ✅ Deployed ${service.appsail} to ${target.name} — ${project.name} / ${env.name}\n`,
+  );
 }
 
 main().catch((err) => {
   if (!(err instanceof DeployError)) throw err;
   console.error(`\n  deploy: ${err.message}\n`);
-  console.error(`  Targets: ${targetNames().join(', ')}\n`);
+  console.error(`  Usage: node scripts/deploy.mjs <target> <service>`);
+  console.error(`  Targets: ${targetNames().join(', ')}`);
+  console.error(`  Services: ${serviceNames().join(', ')}\n`);
   process.exit(1);
 });

@@ -1,8 +1,0 @@
-{
-  "appsail": [
-    {
-      "source": "backend",
-      "name": "jobwork-api"
-    }
-  ]
-}
