@@ -93,7 +93,7 @@ export async function updateLocation(
   longitude: number | null | undefined,
 ): Promise<void> {
   if (latitude == null || longitude == null) return;
-  
+
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { latitude: true },
@@ -244,6 +244,15 @@ export interface SessionMeta {
   ipAddress?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  /**
+   * Set only by the SSO callback (§9.1). `idpSessionId` is the IdP's `sid` — a
+   * 43-character nanoid, and OURS alone: the same browser session hands a different
+   * sid to every app, so it identifies this app's slice of it and nothing wider.
+   * 🔴 Not the same thing as this row's `id`, which is our own access token's `sid`.
+   */
+  idpSessionId?: string | null;
+  /** The IdP's `sub` — for "disable this account everywhere", which has no sid. */
+  idpSubject?: string | null;
 }
 
 /**
@@ -269,6 +278,8 @@ export async function issueTokens(user: PublicUser, meta: SessionMeta = {}): Pro
       ipAddress: meta.ipAddress ?? null,
       latitude: meta.latitude ?? null,
       longitude: meta.longitude ?? null,
+      idpSessionId: meta.idpSessionId ?? null,
+      idpSubject: meta.idpSubject ?? null,
     },
     select: { id: true },
   });

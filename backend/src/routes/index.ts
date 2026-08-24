@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authRouter } from '../modules/auth/auth.routes.ts';
+import { ssoRouter } from '../modules/auth/sso/sso.routes.ts';
 import { organizationsRouter } from '../modules/settings/organization/organizations/organizations.routes.ts';
 import {
   invitationsRouter,
@@ -53,6 +54,9 @@ if (env.diagnosticsToken) {
   apiRouter.use('/diagnostics', diagnosticsRouter);
 }
 
+// Before `/auth`, so `/auth/sso/*` is matched by its own router rather than falling
+// through to the password-login routes.
+apiRouter.use('/auth/sso', ssoRouter);
 apiRouter.use('/auth', authRouter);
 
 // Tenant-scoped modules nest under `/organizations/:orgId/…` so the organization

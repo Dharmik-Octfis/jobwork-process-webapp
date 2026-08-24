@@ -106,6 +106,29 @@ const envSchema = z.object({
     .string()
     .min(32, 'DIAGNOSTICS_TOKEN must be at least 32 characters')
     .optional(),
+
+  /**
+   * SSO — docs/SSO_AND_IDENTITY.md §13 step 4.
+   *
+   * 🔴 The feature flag is the rollback path, not a nicety. Cutting an app over to
+   * a central identity provider is the change that can lock every user out at once,
+   * so local password login stays working for one release and this switches between
+   * them. Off unless explicitly enabled.
+   */
+  SSO_ENABLED: z
+    .string()
+    .optional()
+    .transform((value) => value === 'true'),
+  /** Must match the IdP's `iss` exactly, trailing slash included (there is none). */
+  SSO_ISSUER: z.string().url().optional(),
+  SSO_CLIENT_ID: z.string().optional(),
+  SSO_CLIENT_SECRET: z.string().optional(),
+  /**
+   * 🔴 Matched by the IdP with EXACT string equality — §12. It must be byte-identical
+   * to the row in `oidc_clients.redirect_uris`, including scheme, port and any
+   * trailing slash.
+   */
+  SSO_REDIRECT_URI: z.string().url().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -118,6 +141,22 @@ if (!parsed.success) {
 }
 
 const raw = parsed.data;
+
+/**
+ * 🔴 Enabling SSO without its settings must not boot. A half-configured cutover is
+ * the shape where `/auth/sso/login` 500s while local login has already been hidden
+ * from the UI — nobody gets in, and the cause is four env vars rather than anything
+ * in the code. Fail here instead.
+ */
+if (raw.SSO_ENABLED) {
+  const missing = (
+    ['SSO_ISSUER', 'SSO_CLIENT_ID', 'SSO_CLIENT_SECRET', 'SSO_REDIRECT_URI'] as const
+  ).filter((key) => !raw[key]);
+
+  if (missing.length > 0) {
+    throw new Error(`SSO_ENABLED is true but these are unset: ${missing.join(', ')}`);
+  }
+}
 
 export const env = {
   nodeEnv: raw.NODE_ENV,
@@ -134,6 +173,14 @@ export const env = {
   appUrl: raw.APP_URL.replace(/\/+$/, ''), // no trailing slash, so link building is predictable
   /** Absent → `/api/diagnostics/*` is never mounted. See the schema comment. */
   diagnosticsToken: raw.DIAGNOSTICS_TOKEN,
+  sso: {
+    /** False → the SSO routes are not mounted and local password login is the only way in. */
+    enabled: raw.SSO_ENABLED,
+    issuer: raw.SSO_ISSUER,
+    clientId: raw.SSO_CLIENT_ID,
+    clientSecret: raw.SSO_CLIENT_SECRET,
+    redirectUri: raw.SSO_REDIRECT_URI,
+  },
   corsOrigins: raw.CORS_ORIGINS.split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),

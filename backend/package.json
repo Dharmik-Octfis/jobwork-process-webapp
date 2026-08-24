@@ -41,6 +41,7 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "nodemailer": "^9.0.3",
+    "openid-client": "^6.8.7",
     "swagger-ui-express": "^5.0.1",
     "zcatalyst-sdk-node": "^3.4.0",
     "zeptomail": "^8.0.1",
