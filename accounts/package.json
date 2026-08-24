@@ -22,7 +22,8 @@
     "db:studio": "prisma studio",
     "db:check-drift": "prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code",
     "db:push": "tsx scripts/db-sync.ts blocked push",
-    "db:migrate": "tsx scripts/db-sync.ts blocked \"migrate dev\""
+    "db:migrate": "tsx scripts/db-sync.ts blocked \"migrate dev\"",
+    "test": "vitest run"
   },
   "license": "ISC",
   "dependencies": {
