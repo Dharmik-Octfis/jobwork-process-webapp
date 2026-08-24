@@ -1,0 +1,157 @@
+/// Identity only. docs/SSO_AND_IDENTITY.md §7.3.
+///
+/// 🔴 TWO HOUSE RULES FROM CLAUDE.md DELIBERATELY DO NOT APPLY HERE. This note is
+/// why, so nobody "fixes" it later:
+///
+///   • No `custom_fields` column on anything. Per-org dynamic fields are a tenant
+///     concept, and this database has no tenants.
+///   • No RLS policies. RLS scopes rows to an `organizationId`; there is no
+///     organization to scope to, every row is global, and `runAsTenant` does not
+///     exist in this service.
+///
+/// Nor do the five audit columns: there is no acting user to record. A person acts
+/// on their own identity, and an administrative action against an account belongs
+/// in an audit log, not in `updated_by`.
+///
+/// What DOES carry over from `backend/prisma/schema/tenant.prisma`:
+/// `gen_random_uuid()` PKs, `@db.Timestamptz(6)`, `@db.VarChar(n)` + a comment
+/// instead of a Prisma enum, `@@map("snake_case")`, and `@db.Citext` for email.
+
+/// The one identity. This row is what `sub` refers to in every ID token, forever —
+/// which is why nothing else may be used as the join key. People change emails.
+model User {
+  id            String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String  @unique @db.Citext
+  emailVerified Boolean @default(false) @map("email_verified")
+  passwordHash  String? @map("password_hash")
+  firstName     String  @default("") @map("first_name") @db.VarChar(40)
+  lastName      String  @default("") @map("last_name") @db.VarChar(40)
+  avatarUrl     String? @map("avatar_url")
+
+  /// Same predicate as ACTIVE_USER in the app: `isActive && !isDeleted`.
+  /// 🔴 Flipping either MUST revoke every SSO session in the same transaction and
+  /// fire back-channel logout (§10). Otherwise deactivation takes effect only at
+  /// each app's own refresh boundary, which is up to seven days away.
+  isActive  Boolean @default(true) @map("is_active")
+  isDeleted Boolean @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  sessions SsoSession[]
+
+  @@map("users")
+}
+
+/// One row per browser holding an SSO cookie. `id` is the `sid` claim — the key
+/// every app stores as `idp_session_id` and every back-channel logout names.
+model SsoSession {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(6)
+
+  /// Null = live. Set = ended, and the row stays — same rule as `refresh_tokens`
+  /// in the app, and the same consequence: every live-session read MUST filter
+  /// `revokedAt: null`, or a logged-out session keeps working.
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  /// logout | expired | password_reset | account_disabled | admin_revoked
+  revokedReason String? @map("revoked_reason") @db.VarChar(32)
+  userAgent     String? @map("user_agent")
+
+  /// Which clients this session actually signed in to. Without it, logout has to
+  /// notify every registered app on every logout instead of only the ones with a
+  /// live session — noisy, and it leaks which apps exist to any app that listens.
+  grants SessionGrant[]
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sso_sessions")
+}
+
+model SessionGrant {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId String   @map("session_id") @db.Uuid
+  clientId  String   @map("client_id") @db.VarChar(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  session SsoSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, clientId])
+  @@map("session_grants")
+}
+
+/// The client registry — every app allowed to use this IdP. §8.
+model OidcClient {
+  id         String @id @db.VarChar(64) // 'jobwork', 'reports'
+  name       String @db.VarChar(80)
+  secretHash String @map("secret_hash") // argon2, never plaintext
+
+  /// 🔴 EXACT string match only. No wildcards, no prefixes, no "same origin is
+  /// close enough" — §12 calls a loose redirect_uri the #1 hole in hand-rolled
+  /// IdPs, because it turns the authorization code into something an attacker can
+  /// have delivered to a host they control.
+  redirectUris         String[] @map("redirect_uris")
+  postLogoutUris       String[] @map("post_logout_redirect_uris")
+  backchannelLogoutUri String?  @map("backchannel_logout_uri")
+
+  isActive  Boolean  @default(true) @map("is_active")
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("oidc_clients")
+}
+
+/// Signing keys, in OUR database — not a cloud KMS. §14 rule 3: if the keys move
+/// with us, every token issued before a host migration stays valid after it and
+/// nobody is logged out by the move.
+model SigningKey {
+  kid        String @id @db.VarChar(64)
+  algorithm  String @map("algorithm") @db.VarChar(16) // EdDSA | RS256
+  publicJwk  Json   @map("public_jwk")
+  /// 🔴 Encrypted at rest with a key that is NOT in this database — otherwise a
+  /// dump of it is a licence to mint tokens for anyone, for any app, forever.
+  privateJwk Json   @map("private_jwk")
+
+  /// Newest active key signs; older active keys stay published so tokens they
+  /// signed still verify. Retire only after the longest token lifetime has passed.
+  retiredAt DateTime? @map("retired_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("signing_keys")
+}
+
+/// Everything `oidc-provider` persists through its adapter interface: authorization
+/// codes, access tokens, refresh tokens, device codes, interaction state, and the
+/// `Session` it keeps of its own. One table, keyed by (model kind, id).
+///
+/// Ephemeral protocol storage, so — like `refresh_tokens` in the app — no audit
+/// columns and no soft delete. These rows are genuinely deleted.
+///
+/// 🔴 `expiresAt` needs a sweep. Nothing removes an expired row on its own, and an
+/// authorization code table that only grows is both a disk problem and a pile of
+/// spent credentials nobody meant to keep.
+model OidcPayload {
+  id        String   @db.VarChar(255)
+  /// The library's model name: 'AuthorizationCode', 'Session', 'Grant', ...
+  type      String   @db.VarChar(40)
+  payload   Json
+  grantId   String?  @map("grant_id") @db.VarChar(255)
+  userCode  String?  @map("user_code") @db.VarChar(64)
+  uid       String?  @db.VarChar(255)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  /// `oidc-provider` addresses a payload by (model, id); the same id can exist
+  /// under two models, so neither column is unique on its own.
+  @@id([type, id])
+  /// `revokeByGrantId` walks this, and consent revocation is the one hot path
+  /// that does not know an id.
+  @@index([grantId])
+  @@index([uid])
+  @@index([userCode])
+  @@index([expiresAt])
+  @@map("oidc_payloads")
+}

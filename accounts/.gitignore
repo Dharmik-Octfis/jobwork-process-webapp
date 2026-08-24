@@ -1,0 +1,10 @@
+node_modules
+# Keep environment variables out of version control
+.env
+
+/generated/prisma
+
+# pg_dump output from `npm run db:apply` / `db:backup`. This database's dumps hold
+# password hashes and signing keys — the two things in the estate worth stealing.
+# Keep them on the machine that made them.
+/backups

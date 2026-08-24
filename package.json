@@ -12,6 +12,7 @@
     "git:fix-merge": "sh scripts/clear-stale-merge-head.sh",
     "build:web": "cd web && npm install && npm run build",
     "build:backend": "cd backend && npm install && npm run build",
+    "build:accounts": "cd accounts && npm install && npm run build",
     "config:appsail": "node scripts/build-app-config.mjs",
     "deploy": "node scripts/deploy.mjs",
     "deploy:staging": "node scripts/deploy.mjs staging api",
