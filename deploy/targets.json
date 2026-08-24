@@ -31,7 +31,11 @@
     "dc": "com",
     "catalystrc": "deploy/staging.catalystrc.json",
     "services": {
-      "api": { "envFile": "backend/.env.staging" }
+      "api": { "envFile": "backend/.env.staging" },
+      "accounts": {
+        "envFile": "accounts/.env.staging",
+        "appsail": "octfis-accounts-staging"
+      }
     }
   },
   "production": {
@@ -39,7 +43,8 @@
     "dc": "in",
     "catalystrc": "deploy/production.catalystrc.json",
     "services": {
-      "api": { "envFile": "backend/.env.production" }
+      "api": { "envFile": "backend/.env.production" },
+      "accounts": { "envFile": "accounts/.env.production" }
     }
   }
 }

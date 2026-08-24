@@ -804,34 +804,44 @@ not exportable — so there is no way back out.
 Catalyst allows **up to 5 mapped domains per application**, with group SSL certificates provisioned
 free, and the domain must already be hosted live. Two are needed.
 
-**The deploy path is ready for this** (done 2026-08-24, before the service exists). `catalyst.json`
-is no longer committed: `scripts/deploy.mjs` generates it per deploy with only the service being
-deployed, because `catalyst deploy --only appsail` is resource targeting and would otherwise push
-every entry in that array. Registering accounts is now manifest-only:
+**The deploy path is ready for this, and accounts is already registered** (2026-08-24, before the
+service exists). `catalyst.json` is no longer committed: `scripts/deploy.mjs` generates it per deploy
+with only the service being deployed, because `catalyst deploy --only appsail` is resource targeting
+and would otherwise push every entry in that array. What is committed today:
 
 ```jsonc
-// deploy/services.json — committed; what each service IS
+// deploy/services.json — what each service IS
 "accounts": {
   "source": "accounts",
-  "appsail": "jobwork-accounts",       // default; overridable per target
+  "appsail": "octfis-accounts",        // default; overridden per target
   "appConfigBase": "accounts/app-config.base.json",
   "appConfigOut": "accounts/app-config.json",
   "localEnv": "accounts/.env",
   "build": ["build:accounts"],
-  "requiredEnv": ["DATABASE_URL", "OIDC_ISSUER", "..."]
+  "requiredEnv": ["DATABASE_URL", "OIDC_ISSUER"]
 }
 
-// deploy/targets.json — committed; WHERE it lands, per target
-"staging":    { "services": { "accounts": { "envFile": "accounts/.env.staging",
-                                            "appsail": "<staging name>" } } }
-"production": { "services": { "accounts": { "envFile": "accounts/.env.production",
-                                            "appsail": "<production name>" } } }
+// deploy/targets.json — WHERE it lands, per target
+"staging":    { "accounts": { "envFile": "accounts/.env.staging",
+                              "appsail": "octfis-accounts-staging" } }
+"production": { "accounts": { "envFile": "accounts/.env.production" } }  // default name
 ```
 
+- ⚠️ **Registered but not yet deployable.** `accounts/`, its `app-config.base.json` and the
+  `build:accounts` script do not exist, so a deploy of it fails on the missing env file — clearly,
+  and before writing anything. Deploying `api` is unaffected.
+- 🔴 **Not named `jobwork-accounts`.** Accounts is estate-wide shared infrastructure with its own
+  domain (§14), and jobwork is only its first client; naming it after one client would bake that
+  inversion into the console and the URLs.
 - 🔴 **Accounts is a different AppSail in each target.** Staging and production are different Zoho
-  accounts in different data centres, so each target names its own via the `appsail` override. The
-  `api` service keeps one name for both; only accounts diverges. The banner printed by
-  `npm run deploy:<target>:accounts` is the authority on which name a create-flow prompt wants.
+  accounts in different data centres, so staging overrides the name and production takes the default.
+  The `api` service keeps one name for both; only accounts diverges. The banner printed by
+  `node scripts/deploy.mjs <target> accounts` is the authority on which name a create-flow prompt
+  wants.
+- `requiredEnv` is the minimum the design already fixes — `DATABASE_URL` because all state lives in
+  our Postgres (§14 rule 2), `OIDC_ISSUER` because the issuer is baked into every token and cannot
+  change later (§14 rule 1). Signing keys are **not** env vars: §7.3 keeps them in `signing_keys`.
+  Grow the list as the service is built.
 - 🔴 **`accounts/.env` is parked out of the upload** like `backend/.env`. `build_path` is `.` relative
   to each source folder, so anything left there is zipped — `deploy.mjs` parks the deployed service's
   local env to `.env.deploy-backup-<service>`.
