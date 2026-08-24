@@ -142,25 +142,30 @@ export async function callback(req: Request, res: Response): Promise<void> {
    * same session shape as a password login and every downstream flow — refresh,
    * logout, the session report — works unchanged.
    */
-  const { accessToken, refreshToken, refreshTokenExpiresAt } = await issueTokens(
-    await formatPublicUser(user),
-    {
-      userAgent: req.get('user-agent') ?? null,
-      idpSessionId: claims.sid ?? null,
-      idpSubject: claims.sub,
-    },
-  );
+  const { refreshToken, refreshTokenExpiresAt } = await issueTokens(await formatPublicUser(user), {
+    userAgent: req.get('user-agent') ?? null,
+    idpSessionId: claims.sid ?? null,
+    idpSubject: claims.sub,
+  });
 
   setRefreshTokenAsCookie(res, refreshToken, refreshTokenExpiresAt);
 
   /**
-   * The access token goes to the SPA in the URL fragment, not the query string: a
-   * fragment is never sent to the server, so it stays out of access logs and out of
-   * the `Referer` header. The app reads it once on load and keeps it in memory,
-   * exactly as it does after a password login.
+   * 🔴 The access token is deliberately NOT passed to the SPA — not in the query
+   * string, and not in the fragment either.
+   *
+   * A fragment is better than a query string (it never reaches the server, so it
+   * stays out of access logs and the `Referer` header), but it is still a bearer
+   * token sitting in the address bar: it lands in browser history, in anything the
+   * user copies, and in every extension that can read a URL.
+   *
+   * It is also unnecessary. The refresh cookie is set above, and `AuthProvider`
+   * already exchanges it for an access token on every load — that is how a page
+   * reload restores a password login too. Reusing that path costs one request that
+   * was going to happen anyway and keeps exactly one way in.
    */
   const landing = await landingPathFor(user.id, flow.returnTo);
-  res.redirect(`${env.appUrl}${landing}#access_token=${encodeURIComponent(accessToken)}`);
+  res.redirect(`${env.appUrl}${landing}`);
 }
 
 /**

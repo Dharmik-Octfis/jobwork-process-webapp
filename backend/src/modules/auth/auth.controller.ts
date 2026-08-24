@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { ApiError } from '../../lib/apiError.ts';
 import { sendSuccess } from '../../lib/apiResponse.ts';
+import { env } from '../../config/env.ts';
 import { clearTokenCookies, setRefreshTokenAsCookie } from '../../lib/cookies.ts';
 import { readSessionId } from '../../lib/jwt.ts';
 import type {
@@ -181,4 +182,23 @@ export async function forgotPassword(req: Request, res: Response): Promise<void>
 export async function resetPassword(req: Request, res: Response): Promise<void> {
   await authService.resetPassword(req.body as ResetPasswordInput);
   sendSuccess(res, null, 'Your password has been successfully reset.');
+}
+
+/**
+ * GET /auth/config — what the sign-in screen needs to know, before anyone is
+ * signed in. Public by necessity.
+ *
+ * 🔴 Runtime, not build time. `SSO_ENABLED` is the rollback path for the cutover
+ * (docs/SSO_AND_IDENTITY.md §13 step 4), and a flag compiled into the frontend
+ * bundle is not a rollback — flipping it would need a rebuild and a redeploy of the
+ * web app too, at exactly the moment nobody can sign in. One env var on the API and
+ * one restart instead.
+ *
+ * Says only whether SSO is on. Never the issuer, the client id or any URL: the
+ * browser does not need them (it is redirected to /auth/sso/login and the server
+ * builds the rest), so publishing them would only widen what an unauthenticated
+ * caller learns about the estate.
+ */
+export function authConfig(_req: Request, res: Response): void {
+  sendSuccess(res, { ssoEnabled: env.sso.enabled });
 }

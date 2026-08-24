@@ -11,6 +11,7 @@ import { FormErrorBanner } from './FormErrorBanner';
 import { loginSchema } from './auth.schemas';
 import type { LoginInput } from './auth.schemas';
 import { useLogin } from './useLogin';
+import { startSsoLogin, useAuthConfig } from './useAuthConfig';
 import { updateLocation } from './auth.api';
 
 import styles from './Auth.module.css';
@@ -43,6 +44,7 @@ export function LoginPage() {
   });
 
   const loginMutation = useLogin(redirectTo);
+  const authConfig = useAuthConfig();
 
   const onSubmit = handleSubmit((values) => {
     loginMutation.mutate(values, {
@@ -56,7 +58,7 @@ export function LoginPage() {
               }).catch(() => {});
             },
             (error) => console.warn('Geolocation background error:', error.message),
-            { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+            { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 },
           );
         }
       },
@@ -66,17 +68,31 @@ export function LoginPage() {
   return (
     <AuthShell
       title="Sign in"
-      subtitle={invitedEmail ? 'Sign in with the invited email to continue' : 'to access your workspace'}
+      subtitle={
+        invitedEmail ? 'Sign in with the invited email to continue' : 'to access your workspace'
+      }
     >
-      <form
-        className={layoutStyles.formGrid}
-        onSubmit={onSubmit}
-        noValidate
-      >
+      {authConfig.data?.ssoEnabled && (
+        <div className={styles.ssoBlock}>
+          <Button type="button" fullWidth onClick={() => startSsoLogin(redirectTo)}>
+            Continue with Octfis Accounts
+          </Button>
+
+          {/*
+            The password form stays visible below, deliberately. §13 step 4 keeps
+            local login working for one release as the rollback path, so hiding it
+            the moment SSO is enabled would remove the only way back in if the
+            identity provider is the thing that is broken.
+          */}
+          <div className={styles.ssoDivider}>
+            <span>or sign in with a password</span>
+          </div>
+        </div>
+      )}
+
+      <form className={layoutStyles.formGrid} onSubmit={onSubmit} noValidate>
         {loginMutation.isError && (
-          <FormErrorBanner
-            message={toApiErrorMessage(loginMutation.error)}
-          />
+          <FormErrorBanner message={toApiErrorMessage(loginMutation.error)} />
         )}
 
         <div className={layoutStyles.formGroup}>
@@ -103,9 +119,7 @@ export function LoginPage() {
         </div>
 
         <div className={styles.forgot}>
-          <Link to="/forgot-password">
-            Forgot password?
-          </Link>
+          <Link to="/forgot-password">Forgot password?</Link>
         </div>
 
         <Button
@@ -119,10 +133,7 @@ export function LoginPage() {
       </form>
 
       <p className={styles.switch}>
-        Don't have an account?{' '}
-        <Link to="/signup">
-          Create Account
-        </Link>
+        Don't have an account? <Link to="/signup">Create Account</Link>
       </p>
     </AuthShell>
   );

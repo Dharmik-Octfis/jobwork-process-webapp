@@ -56,6 +56,8 @@ const upload = multer({
 
 export const authRouter = Router();
 
+authRouter.get('/config', authController.authConfig);
+
 authRouter.post('/signup', validateBody(signupSchema), authController.signup);
 authRouter.post('/login', validateBody(loginSchema), authController.login);
 authRouter.post('/refresh-token', authController.refresh);
@@ -68,7 +70,12 @@ authRouter.put(
   validateBody(updateProfileSchema),
   authController.updateProfile,
 );
-authRouter.post('/me/location', authenticate, validateBody(updateLocationSchema), authController.updateLocation);
+authRouter.post(
+  '/me/location',
+  authenticate,
+  validateBody(updateLocationSchema),
+  authController.updateLocation,
+);
 authRouter.post('/me/avatar', authenticate, upload.single('avatar'), authController.uploadAvatar);
 authRouter.delete('/me/avatar', authenticate, authController.deleteAvatar);
 

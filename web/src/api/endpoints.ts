@@ -11,6 +11,8 @@ export const endpoints = {
     forgotPassword: '/auth/forgot-password',
     resetPassword: '/auth/reset-password',
     changePassword: '/auth/change-password',
+    /** Public: what the sign-in screen needs before anyone is signed in. */
+    config: '/auth/config',
   },
   invitations: {
     /** Public: look up an invite by its raw token (for the accept page). */
