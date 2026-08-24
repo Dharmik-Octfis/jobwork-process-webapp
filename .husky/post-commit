@@ -1,10 +1,1 @@
-# lint-staged backs up .git/MERGE_HEAD and writes it back after its stash (gitWorkflow.js
-# backupMergeStatus/restoreMergeStatus). An interrupted run restores it after git has already
-# concluded the merge, leaving a 0-byte MERGE_HEAD -- which pins `git status` to "you are still
-# merging" and pins VS Code's Commit button to "Continue". Only the invalid case is removed;
-# a genuine in-progress merge has a valid MERGE_HEAD and is left alone.
-git_dir=$(git rev-parse --git-dir) || exit 0
-if [ -f "$git_dir/MERGE_HEAD" ] && ! git rev-parse --verify --quiet MERGE_HEAD >/dev/null 2>&1; then
-  rm -f "$git_dir/MERGE_HEAD" "$git_dir/MERGE_MODE"
-fi
-exit 0
+sh scripts/clear-stale-merge-head.sh

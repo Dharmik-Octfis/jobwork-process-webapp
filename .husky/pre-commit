@@ -1,8 +1,12 @@
-# Skip on a merge commit: lint-staged backs up .git/MERGE_HEAD, stashes, then writes the buffer
-# back (gitWorkflow.js backupMergeStatus/restoreMergeStatus). An interrupted run restores it after
-# git concluded the merge, leaving a 0-byte MERGE_HEAD that pins `git status` to "you are still
-# merging" forever. Conflict resolutions therefore go unlinted -- run prettier by hand if a merge
-# needed real hand-editing. .husky/post-commit cleans up if one slips through anyway.
-git rev-parse --verify --quiet MERGE_HEAD >/dev/null 2>&1 && exit 0
+# Clear a leftover MERGE_HEAD before git reads it, so a stale one cannot turn this commit into a
+# bogus second merge commit -- and so the skip below only fires on a merge that is genuinely open.
+sh scripts/clear-stale-merge-head.sh
+
+# Skip lint-staged during a real merge: it backs up .git/MERGE_HEAD, stashes, then writes the buffer
+# back, and an interrupted run restores it after git concluded the merge. Conflict resolutions go
+# unlinted as a result -- run `npx prettier --write` by hand if a merge needed real editing.
+if git rev-parse --verify --quiet MERGE_HEAD >/dev/null 2>&1; then
+  exit 0
+fi
 
 npx --no-install lint-staged
