@@ -215,7 +215,12 @@ model RefreshToken {
   lastUsedAt    DateTime? @map("last_used_at") @db.Timestamptz(6)
   /// Null = live. Set = ended, and the row stays for reporting.
   revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(6)
-  /// logout | expired | password_reset | account_disabled | superseded
+  /// logout | expired | password_reset | account_disabled | superseded | sso_logout
+  ///
+  /// `sso_logout` is written by the back-channel logout endpoint (§10.2) — the IdP
+  /// told us this session ended elsewhere. Distinct from `logout`, which is this
+  /// app's own, so the login report can tell "signed out here" from "signed out
+  /// centrally".
   revokedReason String?   @map("revoked_reason") @db.VarChar(32)
   /// `sid` from the ID token — which SSO session created this app session.
   /// 🔴 NOT the same thing as the `sid` claim in our own access token, which is

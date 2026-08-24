@@ -3,7 +3,9 @@ import * as client from 'openid-client';
 import { env } from '../../../config/env.ts';
 import { ApiError } from '../../../lib/apiError.ts';
 import { setRefreshTokenAsCookie } from '../../../lib/cookies.ts';
+import { prisma } from '../../../db/prisma.ts';
 import { formatPublicUser, issueTokens } from '../auth.service.ts';
+import { verifyLogoutToken } from './logoutToken.ts';
 import {
   landingPathFor,
   linkOrCreateLocalUser,
@@ -153,4 +155,46 @@ export async function callback(req: Request, res: Response): Promise<void> {
    */
   const landing = await landingPathFor(user.id, flow.returnTo);
   res.redirect(`${env.appUrl}${landing}#access_token=${encodeURIComponent(accessToken)}`);
+}
+
+/**
+ * POST /api/auth/sso/backchannel-logout — §10.2.
+ *
+ * Called by the accounts service, never by a browser. This is what closes the gap
+ * in §10.1: without it, a centrally disabled account or a "log out everywhere"
+ * keeps working here for up to seven days, because `refresh` is the only place this
+ * app checks anything and it trusts its own row.
+ */
+export async function backchannelLogout(req: Request, res: Response): Promise<void> {
+  const claims = await verifyLogoutToken(req.body?.['logout_token']);
+
+  /**
+   * `sid` ends ONE browser's session here; `sub` ends the whole account everywhere.
+   * Both filter `revokedAt: null` so an already-ended session is not re-stamped with
+   * a later timestamp and a wrong reason — the login report would then misreport why
+   * and when it ended.
+   */
+  const where = claims.sid
+    ? { idpSessionId: claims.sid, revokedAt: null }
+    : { idpSubject: claims.sub!, revokedAt: null };
+
+  const { count } = await prisma.refreshToken.updateMany({
+    where,
+    data: { revokedAt: new Date(), revokedReason: 'sso_logout' },
+  });
+
+  console.log(
+    `sso: back-channel logout revoked ${count} session(s) by ${claims.sid ? 'sid' : 'sub'}`,
+  );
+
+  /**
+   * 🔴 Deliberately NOT `sendSuccess`. The back-channel logout spec fixes this
+   * response shape, and the caller is the accounts service rather than
+   * `web/src/api/client.ts`. CLAUDE.md's envelope rule governs endpoints our own
+   * frontend reads; wrapping this one would make a conformant IdP treat every
+   * successful logout as a malformed response.
+   *
+   * 200 with an empty body, and no cache.
+   */
+  res.set('Cache-Control', 'no-store').status(200).json({});
 }

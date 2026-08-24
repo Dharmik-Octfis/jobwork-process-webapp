@@ -6,6 +6,7 @@ import { createPrismaAdapter } from './adapter.ts';
 import { loadClients } from './clients.ts';
 import { ensureSigningKey, loadSigningJwks } from './keys.ts';
 import { installSessionMirror } from './sessionMirror.ts';
+import { installBackchannelRetry } from './backchannelRetry.ts';
 
 /**
  * The OIDC provider. docs/SSO_AND_IDENTITY.md §7.1, §12.
@@ -200,6 +201,7 @@ export async function createOidcProvider(): Promise<Provider> {
 
   installArgon2ClientSecrets(provider);
   installSessionMirror(provider);
+  installBackchannelRetry(provider);
 
   /**
    * AppSail terminates TLS in front of us, so without this the library sees `http`,

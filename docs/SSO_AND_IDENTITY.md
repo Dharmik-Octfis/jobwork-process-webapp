@@ -670,6 +670,19 @@ shorten `JWT_ACCESS_TTL` to `5m`; it is cheap and cuts the window by two thirds.
 by adding a per-request session lookup — that is the exact thing the architecture rejected, and
 `middlewares/authenticate.test.ts` pins the current behaviour.
 
+🔴 **Back-channel logout cannot be tested against `localhost`.** Discovered 2026-08-24 while
+building it. `oidc-provider` wraps its outgoing fetch in **SSRF protection** that refuses every
+special-use IP range, `127.0.0.0/8` included — so a client registered with a
+`http://localhost:3000/...` back-channel URI gets `fetch failed`, forever, with retries doing exactly
+what they should and never succeeding. That is the library behaving correctly: a client registry is
+attacker-influenced input, and without the guard registering a client would be a way to make the IdP
+POST to anything inside the network.
+
+The consequence is practical, not theoretical: **this one flow only works end to end against real
+hostnames**, which is another reason §15's staging domains matter. Locally, the two halves have to be
+tested separately — the receiver by posting a genuinely signed logout token at it, which is what was
+done here. Do not "fix" it by disabling the SSRF protection.
+
 **Delivery can fail.** If an app is mid-deploy when the logout fires, it misses the notification and
 its refresh token survives. Accounts must **retry with backoff and log failures** — treat it as a
 webhook, not a function call. Without retries "log out everywhere" is best-effort in a way nobody
