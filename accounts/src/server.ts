@@ -1,6 +1,7 @@
 import { createApp } from './app.ts';
 import { env } from './config/env.ts';
 import { prisma } from './db/prisma.ts';
+import { startPayloadSweeper } from './oidc/sweeper.ts';
 
 /**
  * Entry point. Importing `./config/env.ts` has already validated every environment
@@ -22,6 +23,10 @@ async function main(): Promise<void> {
   // rather than on the first user's login.
   const app = await createApp();
 
+  // Expired protocol rows are cleared on a timer — see oidc/sweeper.ts for why this
+  // is in-process rather than a host scheduler.
+  const stopSweeper = startPayloadSweeper();
+
   const server = app.listen(env.port, () => {
     console.log(`accounts listening on http://localhost:${env.port} (${env.nodeEnv})`);
     console.log(`issuer: ${env.oidcIssuer}`);
@@ -29,6 +34,7 @@ async function main(): Promise<void> {
 
   const shutdown = (signal: string): void => {
     console.log(`\n${signal} received — shutting down.`);
+    stopSweeper();
     server.close(() => console.log('HTTP server closed.'));
 
     prisma
