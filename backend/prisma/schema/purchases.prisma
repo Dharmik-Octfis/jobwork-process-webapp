@@ -259,7 +259,6 @@ model Bill {
   sourcePoId     String?        @map("source_po_id") @db.Uuid
   sourcePo       PurchaseOrder? @relation("PoToBill", fields: [sourcePoId], references: [id])
 
-  @@unique([organizationId, billNumber])
   @@map("bills")
 }
 
