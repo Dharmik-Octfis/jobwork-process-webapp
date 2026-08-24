@@ -141,10 +141,10 @@ function baseConfiguration(): Omit<Configuration, 'clients' | 'jwks'> {
  * rather than something discovered in production.
  */
 function installArgon2ClientSecrets(provider: Provider): void {
-  const ClientClass = (provider as unknown as { Client?: { prototype?: Record<string, unknown> } })
+  const clientClass = (provider as unknown as { Client?: { prototype?: Record<string, unknown> } })
     .Client;
 
-  if (typeof ClientClass?.prototype?.['compareClientSecret'] !== 'function') {
+  if (typeof clientClass?.prototype?.['compareClientSecret'] !== 'function') {
     throw new Error(
       'oidc-provider: Client.prototype.compareClientSecret not found. The library moved it, ' +
         'so client secrets would be compared as plaintext against an argon2 hash and every ' +
@@ -152,7 +152,7 @@ function installArgon2ClientSecrets(provider: Provider): void {
     );
   }
 
-  ClientClass.prototype['compareClientSecret'] = async function (
+  clientClass.prototype['compareClientSecret'] = async function (
     this: { clientSecret?: string },
     actual: string,
   ): Promise<boolean> {
