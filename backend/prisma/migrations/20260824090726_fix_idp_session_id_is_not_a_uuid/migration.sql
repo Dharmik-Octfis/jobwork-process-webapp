@@ -1,0 +1,26 @@
+-- fix_idp_session_id_is_not_a_uuid
+--
+-- Corrects the column type added by 20260824064102_add_sso_identity_columns, which
+-- followed docs/SSO_AND_IDENTITY.md §9.1's `@db.Uuid` rather than the IdP's actual
+-- output.
+--
+-- The IdP's `sid` is `nanoid()` — 43 characters of a URL-safe alphabet, not a uuid.
+-- Verified against a real value from the running provider: Postgres answers
+--   invalid input syntax for type uuid: "IT_N2JROOpH_hRKc-cRf4cAlV0Bejl0XkO3I5H9_UPD"
+-- So the original type would not have failed at review; it would have failed on the
+-- first SSO login, writing the session row.
+--
+-- `idp_subject` is deliberately left as uuid: `sub` is the accounts service's
+-- `users.id`, which genuinely is one.
+--
+-- Safe here because the column is entirely NULL — nothing writes it yet. The cast
+-- is free today and would need a backfill plan later.
+--
+-- Deliberately NOT included: the `bills_organization_id_bill_number_key` index that
+-- `migrate diff` offers again. That is pre-existing drift in the other direction —
+-- 20260824054127_remove_bill_unique_constraint dropped it from the database and is
+-- missing from disk, so the schema file is the stale side. Re-adding it here would
+-- silently revert someone else's deliberate change.
+
+-- AlterTable
+ALTER TABLE "refresh_tokens" ALTER COLUMN "idp_session_id" SET DATA TYPE VARCHAR(64);

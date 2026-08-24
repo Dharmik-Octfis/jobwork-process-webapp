@@ -43,10 +43,22 @@ model User {
   @@map("users")
 }
 
-/// One row per browser holding an SSO cookie. `id` is the `sid` claim — the key
-/// every app stores as `idp_session_id` and every back-channel logout names.
+/// One row per browser holding an SSO cookie.
+///
+/// 🔴 `id` is the provider's SESSION UID, not a `sid`, and not a uuid. §7.3
+/// originally said "`id` is the `sid` claim"; that is wrong on both counts and was
+/// corrected 2026-08-24 after reading the library rather than assuming:
+///
+///   • `sid` is PER CLIENT. `Session.sidFor(clientId)` stores a separate value per
+///     app in `authorizations[clientId].sid`, which is deliberate in OIDC — a
+///     shared sid would let two apps correlate the same user. One browser session
+///     therefore has ONE uid and as many sids as it has signed into apps, so a sid
+///     cannot be this table's primary key. The per-app sid lives on SessionGrant.
+///   • Neither is a uuid. Both are `nanoid()` — 43 characters of
+///     `useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict`.
+///     Postgres rejects one outright: `invalid input syntax for type uuid`.
 model SsoSession {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id         String    @id @db.VarChar(64)
   userId     String    @map("user_id") @db.Uuid
   expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -55,10 +67,10 @@ model SsoSession {
   /// Null = live. Set = ended, and the row stays — same rule as `refresh_tokens`
   /// in the app, and the same consequence: every live-session read MUST filter
   /// `revokedAt: null`, or a logged-out session keeps working.
-  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(6)
   /// logout | expired | password_reset | account_disabled | admin_revoked
-  revokedReason String? @map("revoked_reason") @db.VarChar(32)
-  userAgent     String? @map("user_agent")
+  revokedReason String?   @map("revoked_reason") @db.VarChar(32)
+  userAgent     String?   @map("user_agent")
 
   /// Which clients this session actually signed in to. Without it, logout has to
   /// notify every registered app on every logout instead of only the ones with a
@@ -70,10 +82,20 @@ model SsoSession {
   @@map("sso_sessions")
 }
 
+/// One row per (browser session, app) — and therefore one row per `sid`.
+///
+/// 🔴 This is where the `sid` claim lives, because `sid` is per client (see the
+/// note on SsoSession). An app stores its own sid as `idp_session_id`, and a
+/// back-channel logout addressed to that app names that sid and no other. Finding
+/// "every app to notify when this browser logs out" is a read of this table by
+/// `sessionId`; finding "which session is this logout token about" is a read by
+/// `sid`.
 model SessionGrant {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sessionId String   @map("session_id") @db.Uuid
+  sessionId String   @map("session_id") @db.VarChar(64)
   clientId  String   @map("client_id") @db.VarChar(64)
+  /// The `sid` claim issued to THIS client for THIS session. nanoid, not a uuid.
+  sid       String   @unique @db.VarChar(64)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   session SsoSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)

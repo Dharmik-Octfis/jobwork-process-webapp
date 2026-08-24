@@ -221,7 +221,15 @@ model RefreshToken {
   /// 🔴 NOT the same thing as the `sid` claim in our own access token, which is
   /// this row's `id`. Two different ids, one word; conflating them in the revoke
   /// path fails open. Never rename this column `sid`.
-  idpSessionId  String?   @map("idp_session_id") @db.Uuid
+  ///
+  /// 🔴 VarChar, not Uuid — corrected 2026-08-24. §9.1 specified `@db.Uuid`, but
+  /// the IdP's sid is `nanoid()`: 43 characters of a URL-safe alphabet. Postgres
+  /// rejects one with `invalid input syntax for type uuid`, so the original type
+  /// would have failed on the first SSO login rather than at review. It is also
+  /// per-client — our sid differs from the one any other app receives for the same
+  /// browser session, which is deliberate in OIDC so two apps cannot correlate a
+  /// user.
+  idpSessionId  String?   @map("idp_session_id") @db.VarChar(64)
   /// `sub` — for "disable this account everywhere", which has no single sid.
   idpSubject    String?   @map("idp_subject") @db.Uuid
   /// Captured at login so a report can say WHICH device, rather than showing the
