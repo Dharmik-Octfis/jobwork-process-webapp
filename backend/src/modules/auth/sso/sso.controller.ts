@@ -2,9 +2,15 @@ import type { Request, Response } from 'express';
 import * as client from 'openid-client';
 import { env } from '../../../config/env.ts';
 import { ApiError } from '../../../lib/apiError.ts';
-import { setRefreshTokenAsCookie } from '../../../lib/cookies.ts';
+import { clearTokenCookies, setRefreshTokenAsCookie } from '../../../lib/cookies.ts';
 import { prisma } from '../../../db/prisma.ts';
-import { formatPublicUser, issueTokens } from '../auth.service.ts';
+import { readSessionId } from '../../../lib/jwt.ts';
+import {
+  formatPublicUser,
+  issueTokens,
+  logout as logoutLocalSession,
+  logoutByToken as logoutLocalSessionByToken,
+} from '../auth.service.ts';
 import { verifyLogoutToken } from './logoutToken.ts';
 import {
   landingPathFor,
@@ -155,6 +161,61 @@ export async function callback(req: Request, res: Response): Promise<void> {
    */
   const landing = await landingPathFor(user.id, flow.returnTo);
   res.redirect(`${env.appUrl}${landing}#access_token=${encodeURIComponent(accessToken)}`);
+}
+
+/**
+ * GET /api/auth/sso/logout — §9.1: end the local session, then hand the browser to
+ * the IdP to end the SSO session too.
+ *
+ * 🔴 Without this, "log out" in jobwork is not a logout. The local row goes, the
+ * browser bounces back to the login screen, and the SSO cookie at accounts is still
+ * live — so the next sign-in completes silently and instantly. To the user it looks
+ * like the button did nothing; on a shared machine it means the previous person is
+ * one click from being signed back in.
+ *
+ * The local revoke happens FIRST and unconditionally. If the redirect to accounts
+ * fails, or the user closes the tab on the IdP's confirmation page, this app's
+ * session must already be gone.
+ */
+export async function startLogout(req: Request, res: Response): Promise<void> {
+  const accessToken = req.headers.authorization?.startsWith('Bearer ')
+    ? req.headers.authorization.slice('Bearer '.length).trim()
+    : undefined;
+  const refreshToken = req.cookies?.['refreshToken'] as string | undefined;
+
+  try {
+    if (accessToken) await logoutLocalSession(readSessionId(accessToken));
+    else if (refreshToken) await logoutLocalSessionByToken(refreshToken);
+  } catch {
+    // A missing or forged token means there is nothing to revoke. Still clear the
+    // cookie and still send them to the IdP — the SSO session is the point.
+  }
+
+  clearTokenCookies(res);
+
+  const config = await ssoConfig();
+  const endSession = config.serverMetadata().end_session_endpoint;
+
+  // An IdP that publishes no end_session_endpoint cannot be logged out of remotely.
+  // Local logout has already happened, so degrade to that rather than erroring.
+  if (!endSession) {
+    res.redirect(`${env.appUrl}/login`);
+    return;
+  }
+
+  const url = new URL(endSession);
+  /**
+   * `client_id` rather than `id_token_hint`, because §3 means we never keep the ID
+   * token — it is read once at login and discarded. The spec allows this, and the
+   * IdP asks the user to confirm instead, which is the correct trade: the
+   * alternative is storing a token we have no other use for.
+   */
+  url.searchParams.set('client_id', env.sso.clientId!);
+  if (env.sso.postLogoutRedirectUri) {
+    url.searchParams.set('post_logout_redirect_uri', env.sso.postLogoutRedirectUri);
+  }
+
+  res.redirect(url.href);
 }
 
 /**

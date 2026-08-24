@@ -129,6 +129,14 @@ const envSchema = z.object({
    * trailing slash.
    */
   SSO_REDIRECT_URI: z.string().url().optional(),
+  /**
+   * Where the IdP sends the browser after a central logout. Matched by exact string
+   * equality against `oidc_clients.post_logout_redirect_uris`, so it is explicit
+   * config rather than derived from APP_URL — a derived value differing by one
+   * trailing slash produces a logout that ends the session and then dead-ends on an
+   * IdP error page, which reads as "logout is broken".
+   */
+  SSO_POST_LOGOUT_REDIRECT_URI: z.string().url().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -180,6 +188,7 @@ export const env = {
     clientId: raw.SSO_CLIENT_ID,
     clientSecret: raw.SSO_CLIENT_SECRET,
     redirectUri: raw.SSO_REDIRECT_URI,
+    postLogoutRedirectUri: raw.SSO_POST_LOGOUT_REDIRECT_URI,
   },
   corsOrigins: raw.CORS_ORIGINS.split(',')
     .map((origin) => origin.trim())

@@ -1,3 +1,4 @@
+import { prisma } from '../db/prisma.ts';
 import { sweepExpiredPayloads } from './adapter.ts';
 
 /**
@@ -32,6 +33,17 @@ export function startPayloadSweeper(): () => void {
     try {
       const deleted = await sweepExpiredPayloads();
       if (deleted > 0) console.log(`oidc sweep: removed ${deleted} expired payload rows`);
+
+      /**
+       * Abandoned verification and password-reset codes, on the same timer. An
+       * expired one is already refused on use, so this is growth control — but
+       * unlike protocol payloads these rows are credentials tied to an email
+       * address, and a table of them is worth keeping short on its own account.
+       */
+      const { count } = await prisma.verificationToken.deleteMany({
+        where: { expiresAt: { lte: new Date() } },
+      });
+      if (count > 0) console.log(`oidc sweep: removed ${count} expired verification codes`);
     } catch (err) {
       // Never throw out of a timer — an unhandled rejection here would take down a
       // process that is otherwise serving logins perfectly well.
