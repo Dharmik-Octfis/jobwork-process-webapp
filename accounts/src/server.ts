@@ -2,6 +2,7 @@ import { createApp } from './app.ts';
 import { env } from './config/env.ts';
 import { prisma } from './db/prisma.ts';
 import { startPayloadSweeper } from './oidc/sweeper.ts';
+import { mailerStatus } from './lib/mailer.ts';
 
 /**
  * Entry point. Importing `./config/env.ts` has already validated every environment
@@ -30,6 +31,7 @@ async function main(): Promise<void> {
   const server = app.listen(env.port, () => {
     console.log(`accounts listening on http://localhost:${env.port} (${env.nodeEnv})`);
     console.log(`issuer: ${env.oidcIssuer}`);
+    console.log(mailerStatus());
   });
 
   const shutdown = (signal: string): void => {

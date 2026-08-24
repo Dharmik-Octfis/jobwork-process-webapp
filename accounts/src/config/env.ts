@@ -57,6 +57,18 @@ const envSchema = z.object({
     .min(64, 'SIGNING_KEY_SECRET must be at least 64 characters (32 bytes hex)'),
 
   /**
+   * Email — ZeptoMail, matching the app's setup. All optional: unset means codes
+   * are logged rather than sent, which is a local-development affordance and is
+   * announced at boot. See lib/mailer.ts.
+   */
+  ZEPTO_API_URL: z.string().default('api.zeptomail.com/'),
+  ZEPTO_TOKEN: z.string().optional(),
+  ZEPTO_OTP_TEMPLATE_KEY: z.string().optional(),
+  ZEPTO_PRODUCT_NAME: z.string().default('Octfis Accounts'),
+  MAIL_FROM: z.string().default('noreply@octfis.com'),
+  MAIL_FROM_NAME: z.string().default('Octfis Accounts'),
+
+  /**
    * Secrets for `oidc-provider`'s own cookies. First entry signs; the rest still
    * verify, so rotation is prepend-then-drop rather than a forced logout.
    * Comma-separated.
@@ -94,4 +106,12 @@ export const env = {
   oidcIssuer: raw.OIDC_ISSUER,
   signingKeySecret: raw.SIGNING_KEY_SECRET,
   cookieSecrets: raw.COOKIE_SECRETS,
+  zepto: {
+    apiUrl: raw.ZEPTO_API_URL,
+    token: raw.ZEPTO_TOKEN,
+    otpTemplateKey: raw.ZEPTO_OTP_TEMPLATE_KEY,
+    productName: raw.ZEPTO_PRODUCT_NAME,
+    from: raw.MAIL_FROM,
+    fromName: raw.MAIL_FROM_NAME,
+  },
 } as const;

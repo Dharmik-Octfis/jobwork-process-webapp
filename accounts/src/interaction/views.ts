@@ -42,9 +42,14 @@ const STYLE = `
   .error { margin:0 0 16px; padding:10px 12px; border-radius:8px; font-size:13px;
            background:#fdecec; color:#a01d1d; }
   @media (prefers-color-scheme: dark) { .error { background:#3a1d1d; color:#ffb4b4; } }
+  .notice { margin:0 0 16px; padding:10px 12px; border-radius:8px; font-size:13px;
+            background:#eaf3ff; color:#14457f; }
+  @media (prefers-color-scheme: dark) { .notice { background:#16283f; color:#b8d4ff; } }
+  a { color:#2f6bf0; }
 `;
 
-function page(title: string, body: string): string {
+/** The one page chrome, shared by every server-rendered screen here. */
+export function shell(title: string, body: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -66,7 +71,7 @@ export function loginPage(options: {
 }): string {
   const { uid, clientName, email = '', error } = options;
 
-  return page(
+  return shell(
     'Sign in',
     `
     <h1>Sign in</h1>
@@ -85,7 +90,7 @@ export function loginPage(options: {
 }
 
 export function errorPage(message: string): string {
-  return page(
+  return shell(
     'Sign-in problem',
     `
     <h1>Sign-in problem</h1>

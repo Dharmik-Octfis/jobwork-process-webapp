@@ -104,6 +104,37 @@ model SessionGrant {
   @@map("session_grants")
 }
 
+/// Short-lived one-time codes for the flows that prove control of an inbox:
+/// verifying a new address, and resetting a forgotten password.
+///
+/// One table with a `purpose`, not two, because the lifecycle is identical — issue,
+/// email, verify once, delete — and two tables would be two places to get the
+/// expiry check wrong.
+///
+/// Ephemeral, like `oidc_payloads`: no audit columns, no soft delete. A used code
+/// is genuinely deleted, because a spent credential kept around is only a liability.
+///
+/// 🔴 Keyed by email, not by user id. Password reset must not reveal whether an
+/// address has an account (see the service), so the lookup happens before any user
+/// is resolved — and email verification necessarily runs for an address that may not
+/// be confirmed to belong to anyone yet.
+model VerificationToken {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email     String   @db.Citext
+  /// 6-digit numeric code. Short because a human retypes it from an email; the
+  /// 10-minute expiry and single-use deletion are what keep that safe.
+  otp       String   @db.VarChar(6)
+  /// password_reset | email_verify
+  purpose   String   @db.VarChar(20)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  /// The lookup every verification does, and the sweep's index.
+  @@index([email, purpose])
+  @@index([expiresAt])
+  @@map("verification_tokens")
+}
+
 /// The client registry — every app allowed to use this IdP. §8.
 model OidcClient {
   id         String @id @db.VarChar(64) // 'jobwork', 'reports'

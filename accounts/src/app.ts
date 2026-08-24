@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import { prisma } from './db/prisma.ts';
 import { createOidcProvider } from './oidc/provider.ts';
 import { interactionRouter } from './interaction/routes.ts';
+import { accountRouter } from './login/account.routes.ts';
 
 /**
  * The accounts service's HTTP surface.
@@ -59,6 +60,9 @@ export async function createApp(): Promise<Express> {
    * route — see the note in interaction/routes.ts.
    */
   app.use(interactionRouter(provider));
+
+  /** Signup, email verification and password reset — also before the catch-all. */
+  app.use(accountRouter());
 
   /**
    * 🔴 Mounted LAST, at the root, and with no body parser in front of it.
