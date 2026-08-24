@@ -53,6 +53,19 @@ function baseConfiguration(): Omit<Configuration, 'clients' | 'jwks'> {
     },
 
     /**
+     * Put the granted scope's claims IN the ID token — §5's token shape is
+     * `{ sub, email, email_verified, name, picture, sid }`.
+     *
+     * The library's default (`true`) follows the OIDC core rule that, for a plain
+     * code flow, only `sub` goes in the ID token and everything else waits at
+     * /userinfo. That would make every login a second server-to-server round trip
+     * to learn a name and an email we already have — and §3 is emphatic that the ID
+     * token is read ONCE, at login, after which this service leaves the request
+     * path. One token, one read.
+     */
+    conformIdTokenClaims: false,
+
+    /**
      * 🔴 Authorization Code ONLY. The library's defaults also advertise implicit and
      * the hybrid `code id_token`, both of which return tokens in the URL fragment,
      * where they reach browser history, server logs and `Referer` headers.

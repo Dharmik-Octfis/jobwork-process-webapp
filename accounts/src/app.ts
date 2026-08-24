@@ -3,6 +3,7 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { prisma } from './db/prisma.ts';
 import { createOidcProvider } from './oidc/provider.ts';
+import { interactionRouter } from './interaction/routes.ts';
 
 /**
  * The accounts service's HTTP surface.
@@ -51,6 +52,13 @@ export async function createApp(): Promise<Express> {
   });
 
   const provider = await createOidcProvider();
+
+  /**
+   * The login screens, mounted BEFORE the provider so `/interaction/:uid` reaches
+   * them rather than the catch-all below. They bring their own body parser, per
+   * route — see the note in interaction/routes.ts.
+   */
+  app.use(interactionRouter(provider));
 
   /**
    * 🔴 Mounted LAST, at the root, and with no body parser in front of it.
