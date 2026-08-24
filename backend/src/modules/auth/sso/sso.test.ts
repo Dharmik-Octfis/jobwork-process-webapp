@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll } from 'vitest';
-import { prisma } from '../../../db/prisma.ts';
+import { prisma, runAsTenant } from '../../../db/prisma.ts';
 import { ApiError } from '../../../lib/apiError.ts';
 import { landingPathFor, linkOrCreateLocalUser, safeReturnTo } from './sso.service.ts';
 
@@ -45,7 +45,67 @@ function unknownIdentity(): string {
   return crypto.randomUUID();
 }
 
+const invitations: string[] = [];
+
+/**
+ * A pending invitation to a real organization, addressed to an address nobody owns.
+ *
+ * 🔴 `permission_templates` is RLS-gated, so it can only be read from inside a
+ * tenant context — outside one the policy compares against a null
+ * `app.current_tenant` and the lookup silently returns nothing. `organizations` and
+ * `invitations` carry no policy on purpose (they are read before a tenant exists),
+ * which is why only the template needs `runAsTenant`.
+ *
+ * The organization and template are FOUND, never modified; the inviter and the
+ * invitation itself are created here and deleted afterwards.
+ */
+async function makeInvitation(
+  overrides: {
+    status?: string;
+    expiresAt?: Date;
+    acceptedAt?: Date;
+    isDeleted?: boolean;
+  } = {},
+) {
+  const org = await prisma.organization.findFirst({
+    where: { isDeleted: false },
+    select: { id: true },
+  });
+  if (!org) throw new Error('no organization in the dev database to invite into');
+
+  const template = await runAsTenant(org.id, (tx) =>
+    tx.permissionTemplate.findFirst({
+      where: { organizationId: org.id, isDeleted: false },
+      select: { id: true },
+    }),
+  );
+  if (!template) throw new Error('no permission template to attach the invitation to');
+
+  const inviter = await makeUser();
+  const unique = process.hrtime.bigint().toString(36);
+  const email = `sso-invitee-${unique}@example.invalid`;
+
+  const invitation = await prisma.invitation.create({
+    data: {
+      organizationId: org.id,
+      email,
+      tokenHash: `sso-test-${unique}`,
+      status: overrides.status ?? 'pending',
+      invitedById: inviter.id,
+      permissionTemplateId: template.id,
+      expiresAt: overrides.expiresAt ?? new Date(Date.now() + 7 * 864e5),
+      acceptedAt: overrides.acceptedAt ?? null,
+      isDeleted: overrides.isDeleted ?? false,
+    },
+    select: { id: true, email: true },
+  });
+  invitations.push(invitation.id);
+  return invitation;
+}
+
 afterAll(async () => {
+  // Invitations first — they reference the inviter through `invited_by_id`.
+  await prisma.invitation.deleteMany({ where: { id: { in: invitations } } });
   await prisma.user.deleteMany({ where: { id: { in: created } } });
 });
 
@@ -70,6 +130,84 @@ describe('§9.3 — per-app entitlement fails closed', () => {
     await expect(
       linkOrCreateLocalUser({ sub: unknownIdentity(), emailVerified: false }),
     ).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+describe('§9.3 — a pending invitation is the ONE way in', () => {
+  it('provisions a password-less user when the verified email holds a pending invite', async () => {
+    const invite = await makeInvitation();
+
+    const sub = crypto.randomUUID();
+    const user = await linkOrCreateLocalUser({
+      sub,
+      email: invite.email,
+      emailVerified: true,
+      name: 'Invited Person',
+    });
+    created.push(user.id);
+
+    expect(user.identityUserId).toBe(sub);
+    // 🔴 No local password. Giving one would quietly reopen the login the cutover
+    // is closing, for an account that only ever existed through the provider.
+    expect(user.passwordHash, 'an SSO-provisioned user must have no password').toBeNull();
+  });
+
+  it('🔴 refuses the same invitation when the email is NOT verified', async () => {
+    const invite = await makeInvitation();
+
+    // The invite is addressed to an ADDRESS. Without this check, anyone who can
+    // register that address without proving they own it walks into the org.
+    await expect(
+      linkOrCreateLocalUser({
+        sub: crypto.randomUUID(),
+        email: invite.email,
+        emailVerified: false,
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+
+    expect(await prisma.user.count({ where: { email: invite.email } })).toBe(0);
+  });
+
+  it('refuses an expired invitation', async () => {
+    const invite = await makeInvitation({ expiresAt: new Date(Date.now() - 1000) });
+
+    await expect(
+      linkOrCreateLocalUser({ sub: crypto.randomUUID(), email: invite.email, emailVerified: true }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('refuses an already-accepted invitation, so it cannot be reused', async () => {
+    const invite = await makeInvitation({ status: 'accepted', acceptedAt: new Date() });
+
+    await expect(
+      linkOrCreateLocalUser({ sub: crypto.randomUUID(), email: invite.email, emailVerified: true }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('refuses a revoked (soft-deleted) invitation', async () => {
+    const invite = await makeInvitation({ isDeleted: true });
+
+    // Revoking an invite has to actually revoke it — otherwise "uninvite" is a
+    // button that does nothing.
+    await expect(
+      linkOrCreateLocalUser({ sub: crypto.randomUUID(), email: invite.email, emailVerified: true }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('does NOT join the organization — that stays in the invitations module', async () => {
+    const invite = await makeInvitation();
+
+    const user = await linkOrCreateLocalUser({
+      sub: crypto.randomUUID(),
+      email: invite.email,
+      emailVerified: true,
+    });
+    created.push(user.id);
+
+    // Membership carries the role, the permission template and the membership name.
+    // Granting it here would be a second implementation of the thing that grants
+    // access — the accept flow remains the only one.
+    expect(await prisma.membership.count({ where: { userId: user.id } })).toBe(0);
   });
 });
 

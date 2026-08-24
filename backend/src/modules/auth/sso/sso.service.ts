@@ -86,19 +86,61 @@ export interface IdTokenClaims {
  * everyone in the estate can reach this app's login and obtain a perfectly valid
  * token, so this app has to decide for itself whether that person gets in.
  *
- * jobwork's policy is INVITE-ONLY: no local row means no access. This function
- * therefore refuses rather than creating anything. An app that auto-provisions here
- * silently turns every identity in the estate into one of its users — the same
- * failure shape as a route with no `requirePermission`, and just as quiet.
+ * jobwork's policy is INVITE-ONLY, and this is the ONE way to say yes: a pending
+ * invitation, addressed to an email the identity provider has verified. Everything
+ * else refuses. An app that auto-provisions here silently turns every identity in
+ * the estate into one of its users — the same failure shape as a route with no
+ * `requirePermission`, and just as quiet.
  *
- * `src/modules/invitations/` already owns the other half: it stops creating a
- * password and starts stamping `identityUserId`.
+ * 🔴 `emailVerified` is the whole security of this check. The invitation is
+ * addressed to an ADDRESS, so anyone able to register that address at accounts
+ * without proving they own it could walk into the organization it was meant for.
+ * Refuse rather than trust an unverified claim.
+ *
+ * What this deliberately does NOT do is accept the invitation. It creates the local
+ * user — password-less, stamped with `identityUserId` — and stops. Joining the
+ * organization stays in `invitations.service.ts`, which already owns the membership
+ * name, the role and the permission template; duplicating that here would be a
+ * second implementation of the one thing that grants access.
  */
-function provisionOrRefuse(): never {
-  throw new ApiError(
-    403,
-    "You don't have access to this app. Ask your administrator to invite you.",
-  );
+async function provisionOrRefuse(claims: IdTokenClaims) {
+  const refuse = (): never => {
+    throw new ApiError(
+      403,
+      "You don't have access to this app. Ask your administrator to invite you.",
+    );
+  };
+
+  if (!claims.emailVerified || !claims.email) return refuse();
+
+  const invitation = await prisma.invitation.findFirst({
+    where: {
+      email: claims.email,
+      status: 'pending',
+      isDeleted: false,
+      acceptedAt: null,
+      declinedAt: null,
+      expiresAt: { gt: new Date() },
+      // An invitation into a deleted organization is not an invitation.
+      organization: { isDeleted: false },
+    },
+    select: { id: true },
+  });
+
+  if (!invitation) return refuse();
+
+  // No `passwordHash`: this account exists only through the identity provider, and
+  // giving it a local password would quietly reopen the login this cutover closes.
+  return prisma.user.create({
+    data: {
+      email: claims.email,
+      identityUserId: claims.sub,
+      firstName: claims.name?.split(' ')[0] ?? '',
+      lastName: claims.name?.split(' ').slice(1).join(' ') ?? '',
+      fullName: claims.name ?? '',
+      userAgent: 'unknown',
+    },
+  });
 }
 
 /**
@@ -141,7 +183,7 @@ export async function linkOrCreateLocalUser(claims: IdTokenClaims) {
     }
   }
 
-  return provisionOrRefuse();
+  return provisionOrRefuse(claims);
 }
 
 /**
