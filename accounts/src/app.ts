@@ -2,18 +2,18 @@ import express, { type Express } from 'express';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { prisma } from './db/prisma.ts';
+import { createOidcProvider } from './oidc/provider.ts';
 
 /**
  * The accounts service's HTTP surface.
  *
  * 🔴 No CORS, deliberately. Every exchange with this service is either a top-level
- * browser redirect (`/authorize`, `/login`, logout) or a server-to-server call
- * from an app's backend (`/token`, `/jwks`). Nothing legitimate makes a
- * cross-origin XHR here, so an `Access-Control-Allow-Origin` header would only
- * ever widen what a hostile page can do with a logged-in user's cookie. If a
- * discovery endpoint ever genuinely needs it, allow it on that route alone.
+ * browser redirect (`/authorize`, `/login`, logout) or a server-to-server call from
+ * an app's backend (`/token`, `/jwks`). Nothing legitimate makes a cross-origin XHR
+ * here, so an `Access-Control-Allow-Origin` header would only ever widen what a
+ * hostile page can do with a logged-in user's cookie.
  */
-export function createApp(): Express {
+export async function createApp(): Promise<Express> {
   const app = express();
 
   /**
@@ -27,17 +27,14 @@ export function createApp(): Express {
   app.use(
     helmet({
       /**
-       * §11's cross-tab check embeds this origin in an iframe on an app's page.
-       * helmet's default `frame-ancestors: 'none'` would block exactly that, so
-       * the policy has to be set per route when that endpoint is built — not
-       * loosened globally here.
+       * §11's cross-tab check will embed this origin in an iframe on an app's page,
+       * and will need `frame-ancestors` relaxed on that ONE route when it is built.
+       * Denying everywhere is the right default until then.
        */
       contentSecurityPolicy: { directives: { 'frame-ancestors': ["'none'"] } },
     }),
   );
   app.use(cookieParser());
-  app.use(express.urlencoded({ extended: false }));
-  app.use(express.json());
 
   /**
    * Liveness only — no database. A health check that queries the database turns a
@@ -55,6 +52,19 @@ export function createApp(): Express {
       .then(() => res.json({ status: 'ready' }))
       .catch(next);
   });
+
+  const provider = await createOidcProvider();
+
+  /**
+   * 🔴 Mounted LAST, at the root, and with no body parser in front of it.
+   *
+   * `oidc-provider` is a Koa app that parses its own request bodies. An
+   * `express.json()` or `urlencoded()` above it consumes the stream first, and the
+   * token endpoint then sees an empty body and rejects every exchange — with an
+   * error that points at the client rather than at the middleware that ate it.
+   * Routes needing a parsed body must add it per-route, above this line.
+   */
+  app.use('/', provider.callback());
 
   return app;
 }

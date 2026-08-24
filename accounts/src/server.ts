@@ -17,7 +17,10 @@ async function main(): Promise<void> {
   await prisma.$queryRaw`SELECT 1`;
   console.log('✅ Database connected');
 
-  const app = createApp();
+  // Builds the OIDC provider, which reads the signing keys and client registry —
+  // so a missing key or an unreadable SIGNING_KEY_SECRET fails here, at boot,
+  // rather than on the first user's login.
+  const app = await createApp();
 
   const server = app.listen(env.port, () => {
     console.log(`accounts listening on http://localhost:${env.port} (${env.nodeEnv})`);
