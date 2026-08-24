@@ -8,9 +8,15 @@ _Last updated: 2026-08-24 — the three nullable SSO link columns exist but are 
 last changed 2026-07-31: rotation removed, session rows retained for reporting (§3, §4.4)._
 
 > **This describes the single-app model, which is what runs today.**
-> `docs/SSO_AND_IDENTITY.md` is the design for one login across several apps. Almost everything
-> below survives that change unaltered — the two tokens, this session table, and `refresh` become
-> the app-local layer beneath a shared identity provider.
+> `docs/SSO_AND_IDENTITY.md` is one login across several apps. It is now **built and working
+> locally**, but switched off everywhere — `SSO_ENABLED` is unset, so the SSO routes are not even
+> mounted and password login below is the only way in.
+>
+> Almost everything here survives that change unaltered, which is the point: the two tokens, this
+> session table and `refresh` become the app-local layer beneath a shared identity provider, and an
+> SSO sign-in produces exactly the same `refresh_tokens` row as a password sign-in. The one addition
+> is that a session can now also be ended from outside, by back-channel logout — stamped
+> `sso_logout` rather than `logout`.
 
 ---
 
@@ -59,24 +65,27 @@ _also_ has a matching row in the database (the "session"), which is what lets us
 
 Each login (each device) creates **one row** in the `refresh_tokens` table:
 
-| Column          | Meaning                                                                         |
-| --------------- | ------------------------------------------------------------------------------- |
-| `id`            | The session id. This value is embedded in the access token as its `sid` claim.  |
-| `token`         | The refresh token string.                                                       |
-| `userId`        | Which user this session belongs to.                                             |
-| `expiresAt`     | When the refresh token dies. Absolute — set at login, never extended.           |
-| `createdAt`     | When the session started. The real login time, stable for the session's life.   |
-| `lastUsedAt`    | Last refresh on this session. Null = logged in and never came back.             |
-| `revokedAt`     | Null while live. Set when the session ends — the row is **not** deleted.        |
-| `revokedReason` | `logout` / `expired` / `password_reset` / `account_disabled` / `token_mismatch` |
-| `userAgent`     | The device, captured at login.                                                  |
-| `idpSessionId`  | **Unused today.** Which SSO session created this one — see below.               |
-| `idpSubject`    | **Unused today.** The central identity behind this session — see below.         |
+| Column          | Meaning                                                                                        |
+| --------------- | ---------------------------------------------------------------------------------------------- |
+| `id`            | The session id. This value is embedded in the access token as its `sid` claim.                 |
+| `token`         | The refresh token string.                                                                      |
+| `userId`        | Which user this session belongs to.                                                            |
+| `expiresAt`     | When the refresh token dies. Absolute — set at login, never extended.                          |
+| `createdAt`     | When the session started. The real login time, stable for the session's life.                  |
+| `lastUsedAt`    | Last refresh on this session. Null = logged in and never came back.                            |
+| `revokedAt`     | Null while live. Set when the session ends — the row is **not** deleted.                       |
+| `revokedReason` | `logout` / `expired` / `password_reset` / `account_disabled` / `token_mismatch` / `sso_logout` |
+| `userAgent`     | The device, captured at login.                                                                 |
+| `idpSessionId`  | Which SSO session created this one. Null for a password login.                                 |
+| `idpSubject`    | The central identity behind this session. Null for a password login.                           |
 
-> ℹ️ **`idpSessionId` / `idpSubject` are nullable and nothing writes them yet.** They were added
-> 2026-08-24 (`20260824064102_add_sso_identity_columns`) ahead of the accounts service, along with
-> `users.identity_user_id` — `docs/SSO_AND_IDENTITY.md` §13 step 3. Every row is null, and every flow
-> below behaves exactly as described.
+> ℹ️ **Both are null unless the session came from SSO.** They are written only by the SSO callback
+> (`docs/SSO_AND_IDENTITY.md` §9.1), which is not enabled anywhere yet — so today every row still has
+> them null and every flow below behaves exactly as described. A password login never sets them, and
+> that is the point: one session table, two ways in, and the columns say which.
+>
+> `idpSubject` is what makes "disable this account everywhere" reach this app; `idpSessionId` is what
+> lets a logout elsewhere end THIS session rather than all of them.
 >
 > 🔴 **`idpSessionId` is not the `sid` in our access token.** Our `sid` is this row's `id` (see the
 > glossary). `idpSessionId` will hold the _IdP's_ session id. Two different ids, one word — conflating

@@ -7,12 +7,27 @@
 > Today's single-app model is `docs/AUTHENTICATION.md` — read that first if you have not. This
 > document does not replace it. **Almost everything in it survives**, one layer down.
 
-_Status: **design, with the groundwork built.** The accounts service does **not** exist. What does:
-§13 step 3's nullable link columns in jobwork (`20260824064102_add_sso_identity_columns`), and a
-deploy path that can ship a second AppSail independently, with `accounts` registered in
-`deploy/services.json` but not yet deployable (§15). Every flow, schema and handler below is still
-design._
-_Last updated: 2026-08-24 — §13 step 3 done, §15 deployment + the Public Suffix List correction._
+_Status: **built and working locally; not yet deployed anywhere.** As of 2026-08-24 a full sign-in
+runs end to end between `accounts/` and `backend/` on a laptop — redirect, login, consent, code
+exchange, session, logout, and back-channel logout. What is NOT done is everything that needs real
+infrastructure: no accounts database exists beyond `accounts_dev`, no domain is mapped, and nothing
+is deployed. Sections below are marked ✅ built / ⚠️ partly / ❌ design._
+
+| Section                    | State                                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------------- |
+| §2–§6 concepts, flows      | ✅ implemented as described                                                                 |
+| §7 the accounts service    | ✅ built — `accounts/`, with §7.3's schema (see the `sid` correction on `SsoSession`)       |
+| §8 client registry         | ⚠️ table and loader built; per-environment registration is an operational step, not code    |
+| §9 what changes in jobwork | ✅ built, except §9.1's row saying signup/reset are deleted from the app — that is step 6   |
+| §10 revocation             | ✅ built, including retries the library does not do. 🔴 untestable on localhost — see §10.3 |
+| §11 instant cross-tab      | ❌ design. Deferred out of phase 1 on purpose, and untestable until the domains are real    |
+| §12 security checklist     | ✅ every line enforced, and pinned by tests                                                 |
+| §13 migration plan         | steps 1, 3, 4, 7 ✅ · step 2 blocked on app 2 · steps 5–6 are post-cutover                  |
+| §14 portability rules      | ✅ respected in code — but rule 1 is an ACTION still outstanding: we do not own the issuer  |
+| §15 deployment             | ⚠️ deploy path ready; databases and domains are not                                         |
+
+_Last updated: 2026-08-24 — the service, both logout directions, the frontend entry point, and the
+tests that pin them._
 
 ---
 
@@ -275,6 +290,11 @@ the user is not actually logged out of them at all.
 
 ## 7. The accounts service
 
+> ✅ **Built.** `accounts/` — its own package, database (`accounts_dev`), Prisma schema, deploy
+> entry and AppSail config. Boots, serves discovery and JWKS, and signs real tokens.
+> 🔴 One correction to §7.3 below: `SsoSession.id` is the provider's session **uid**, not a `sid`,
+> and neither is a uuid. See the note on the model.
+
 ### 7.1 Shape
 
 A separate deployable: its own AppSail service, its own domain, its own Postgres database.
@@ -450,6 +470,10 @@ They are ephemeral token storage and, like `refresh_tokens` in the app, carry no
 
 ## 8. The client registry
 
+> ⚠️ **Partly built.** The `oidc_clients` table and the loader exist, and secrets are argon2-hashed
+> as described. Registering each app per environment is an operational step that has not happened —
+> nothing is registered outside local development.
+
 Each app is registered once:
 
 | Field                  | jobwork                                                                     |
@@ -471,6 +495,11 @@ providers. `node-oidc-provider` enforces exact matching by default — do not co
 ---
 
 ## 9. What changes in each app
+
+> ✅ **Built** — `backend/src/modules/auth/sso/`, pinned by `sso.test.ts`.
+> ⚠️ One row of §9.1 is deliberately NOT done: signup, forgot-password and reset still exist in the
+> app. They now also exist in accounts, and removing the app's copies is §13 step 6, after every
+> active user is linked. Two implementations run side by side on purpose, for one release.
 
 ### 9.1 jobwork
 
@@ -623,6 +652,11 @@ because of the §5 rule that orgs never appear in the token.
 
 ## 10. Revocation
 
+> ✅ **Built.** The receiving endpoint verifies signature, `iss`, `aud`, a recent `iat`, the `events`
+> claim and the absence of `nonce`; accounts retries delivery with backoff, which the library does
+> not do on its own.
+> 🔴 It cannot be exercised against `localhost` at all — see the SSRF note in §10.3.
+
 ### 10.1 The chain, after SSO
 
 | What changes                                          | Takes effect                                        | Enforced by                                        |
@@ -692,6 +726,9 @@ notices until it matters.
 
 ## 11. Instant cross-tab sign-in and sign-out
 
+> ❌ **Not built, on purpose.** Deferred out of phase 1 by this document, and untestable until the
+> real domains exist — it is the one feature that genuinely depends on the same-site relationship.
+
 The redirects in §6 give "signed in on the next navigation". The instant behaviour — every tab
 reacting within seconds, no refresh — is a **separate layer on top**, and it is what people actually
 notice about Zoho.
@@ -744,6 +781,9 @@ _sign-in_ direction instant.
 
 ## 12. Security checklist — non-negotiables
 
+> ✅ **Every line enforced**, and the ones that fail silently are pinned by tests:
+> `backend/.../sso.test.ts` and `accounts/src/oidc/crypto.test.ts`.
+
 | Rule                                                                                                             | What breaks without it                                                                                       |
 | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | **Exact `redirect_uri` allowlist.** No wildcards, no prefixes, no "same origin"                                  | Open redirect → the attacker receives the code → full account takeover. **The #1 hole in hand-rolled IdPs.** |
@@ -763,8 +803,11 @@ _sign-in_ direction instant.
 
 Order matters. Each step is independently deployable and reversible.
 
-1. **Stand up `accounts.octfis.com`** with its own database. Nothing points at it yet. Register the
+1. ✅ **Stand up `accounts.octfis.com`** with its own database. Nothing points at it yet. Register the
    `jobwork` client per environment.
+   **Done as code 2026-08-24** — the service runs, on its own `accounts_dev` database, with the
+   protocol endpoints, login/consent screens, signup, email verification and password reset. ⚠️ NOT
+   done as infrastructure: no staging or production database, no mapped domain, nothing deployed.
 2. **Seed identities** — the union of every app's users, deduped by email (`@db.Citext` already, so
    case is handled). Where one email has different password hashes in two apps, keep the most
    recently used and tell those users at cutover. Do not guess silently.
@@ -776,13 +819,22 @@ Order matters. Each step is independently deployable and reversible.
    which is safe on an all-NULL column because Postgres treats NULLs as distinct. Still to do in the
    second app. Note this step was deliberately taken **out of order**, ahead of step 1 — it is
    independently deployable and reversible, so it de-risks the cutover without waiting on accounts.
-4. **Cut jobwork over** behind a feature flag, keeping local password login as the rollback path for
+4. ✅ **Cut jobwork over** behind a feature flag, keeping local password login as the rollback path for
    one release. Existing users link on first SSO sign-in via the email branch in §9.2.
+   **Built 2026-08-24.** `SSO_ENABLED` gates it, and with the flag off the routes are not mounted at
+   all rather than merely disabled. The web app reads the flag at RUNTIME from `GET /auth/config`,
+   because a flag compiled into the bundle would need a frontend redeploy to roll back — at exactly
+   the moment nobody can sign in. The password form stays visible beneath the SSO button for the
+   same reason. Not yet switched on anywhere.
 5. **Watch the link rate.** When effectively every active user has a non-null `identityUserId`, the
    flag comes out.
 6. **Delete the email-matching branch**, then **drop `password_hash` from every app database.** A
    password stored in two places is a password that goes stale in one of them.
-7. **Add back-channel logout** (§10), then the instant sync (§11).
+7. ✅ **Add back-channel logout** (§10), then the instant sync (§11).
+   Back-channel logout is **built** — receiver, full token validation, and delivery retries the
+   library does not provide. RP-initiated logout is built too: jobwork's logout revokes locally and
+   then hands the browser to accounts, without which "log out" leaves the SSO cookie alive and the
+   next sign-in completes silently. §11 is **not** built — see the note on that section.
 
 Do not reorder 6 before 5. Until every active user is linked, the email branch is the only thing
 letting them in.
@@ -793,6 +845,12 @@ letting them in.
 
 We deploy to Catalyst AppSail today. The whole point of choosing a protocol rather than a product is
 that this stays true on AWS, a VPS, or anywhere else. Five rules protect that:
+
+🔴 **Rule 1 is the one thing on this page that is still an ACTION, not a rule to respect.** The
+code is written to it — the issuer is config, never derived from a host — but no `octfis.com` name
+points at accounts yet, so every token so far has been signed by `http://localhost:3100`. Nothing is
+lost while that is true (those tokens are local dev only). It stops being free the moment a real user
+signs in, because the issuer is baked into every token already issued.
 
 1. **Own the domain, not the host.** `https://accounts.octfis.com` is the contract; apps must never
    see a `*.catalystserverless.com` URL. 🔴 Set this up on day one — the issuer URL is baked into
