@@ -64,7 +64,12 @@ const envSchema = z.object({
   COOKIE_SECRETS: z
     .string()
     .min(32, 'COOKIE_SECRETS must be at least 32 characters')
-    .transform((raw) => raw.split(',').map((s) => s.trim()).filter(Boolean)),
+    .transform((raw) =>
+      raw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
 });
 
 const parsed = envSchema.safeParse(process.env);

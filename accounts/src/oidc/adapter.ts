@@ -76,7 +76,10 @@ export function createPrismaAdapter(): (name: string) => Adapter {
         const row = await prisma.oidcPayload.findUnique({ where: { type_id: { type: name, id } } });
         if (!row) return;
 
-        const payload = { ...(row.payload as AdapterPayload), consumed: Math.floor(Date.now() / 1000) };
+        const payload = {
+          ...(row.payload as AdapterPayload),
+          consumed: Math.floor(Date.now() / 1000),
+        };
         await prisma.oidcPayload.update({
           where: { type_id: { type: name, id } },
           data: { payload: payload as unknown as object },
@@ -107,6 +110,8 @@ export function createPrismaAdapter(): (name: string) => Adapter {
  * pile of spent authorization codes is a liability nobody chose to keep.
  */
 export async function sweepExpiredPayloads(): Promise<number> {
-  const { count } = await prisma.oidcPayload.deleteMany({ where: { expiresAt: { lte: new Date() } } });
+  const { count } = await prisma.oidcPayload.deleteMany({
+    where: { expiresAt: { lte: new Date() } },
+  });
   return count;
 }

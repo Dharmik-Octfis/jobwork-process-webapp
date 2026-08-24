@@ -73,7 +73,9 @@ export async function loadSigningJwks(): Promise<JWK[]> {
   });
 
   if (rows.length === 0) {
-    throw new Error('no active signing keys — ensureSigningKey() must run before the provider is built');
+    throw new Error(
+      'no active signing keys — ensureSigningKey() must run before the provider is built',
+    );
   }
 
   return rows.map((row): JWK => {

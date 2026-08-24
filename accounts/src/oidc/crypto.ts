@@ -53,5 +53,8 @@ export function open(sealed: SealedValue): string {
 
   // `final()` throws if the tag does not verify — which is the point. A wrong
   // SIGNING_KEY_SECRET surfaces here, loudly, rather than as invalid signatures.
-  return Buffer.concat([decipher.update(Buffer.from(sealed.ct, 'base64')), decipher.final()]).toString('utf8');
+  return Buffer.concat([
+    decipher.update(Buffer.from(sealed.ct, 'base64')),
+    decipher.final(),
+  ]).toString('utf8');
 }

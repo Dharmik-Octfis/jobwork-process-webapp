@@ -47,10 +47,7 @@ export async function createApp(): Promise<Express> {
 
   /** Readiness — this one does check the database, because that is its job. */
   app.get('/health/ready', (_req, res, next) => {
-    prisma
-      .$queryRaw`SELECT 1`
-      .then(() => res.json({ status: 'ready' }))
-      .catch(next);
+    prisma.$queryRaw`SELECT 1`.then(() => res.json({ status: 'ready' })).catch(next);
   });
 
   const provider = await createOidcProvider();
