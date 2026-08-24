@@ -23,7 +23,7 @@ import {
   resolveProcessorName,
 } from '../jobwork.refs.ts';
 import { runAsDocument, type ProcessorType } from '../jobwork.types.ts';
-import { chainNotReady, getStepTotals, recomputeJobOrder } from './jobOrders.status.ts';
+import { chainNotReady, getStepTotals, recomputeJobOrder, recomputeStep } from './jobOrders.status.ts';
 import type { ItemFlow, OutputFlow, StepTotals } from './jobOrders.status.ts';
 import type {
   AppendJobOrderStepsInput,
@@ -600,6 +600,37 @@ async function loadExistingSteps(tx: TenantClient, organizationId: string, jobOr
       },
     },
   });
+}
+
+export async function manuallyCompleteStep(
+  organizationId: string,
+  jobOrderId: string,
+  stepId: string,
+  userId: string | undefined,
+) {
+  return withUniqueViolation('Order already closed or not found', async () =>
+    runAsTenant(organizationId, async (tx) => {
+      const step = await tx.jobOrderStep.findFirst({
+        where: { id: stepId, jobOrderId, organizationId, isDeleted: false },
+        select: { id: true, status: true },
+      });
+      if (!step) throw ApiError.notFound('Step not found.');
+      if (step.status === 'completed' || step.status === 'short_closed') {
+        throw ApiError.conflict('Step is already completed or closed short.');
+      }
+
+      await tx.jobOrderStep.update({
+        where: { id: step.id },
+        data: {
+          isCompleted: true,
+          updatedBy: userId,
+        },
+      });
+
+      await recomputeStep(tx, organizationId, step.id);
+      return getJobOrderOverview(organizationId, jobOrderId);
+    }),
+  );
 }
 
 type ExistingStep = Awaited<ReturnType<typeof loadExistingSteps>>[number];
@@ -1622,14 +1653,21 @@ async function buildItemTotals(
    * is the document that records it.
    */
   const inputs = [
-    ...step.inputs.map((row) => ({
-      itemId: row.itemId,
-      itemName: row.item.name,
-      uomSymbol: unitOf(row.uom),
-      fromStock: row.fromStock,
-      planned: true,
-      issuedQty: (issuedByItem.get(row.itemId)?.issuedQty ?? new Prisma.Decimal(0)).toString(),
-    })),
+    ...step.inputs.map((row) => {
+      const issued = issuedByItem.get(row.itemId)?.issuedQty ?? new Prisma.Decimal(0);
+      const plannedQ = row.plannedQty ?? null;
+      const remainingQ = plannedQ ? new Prisma.Decimal(plannedQ).minus(issued) : null;
+      return {
+        itemId: row.itemId,
+        itemName: row.item.name,
+        uomSymbol: unitOf(row.uom),
+        fromStock: row.fromStock,
+        planned: true,
+        plannedQty: plannedQ?.toString() ?? null,
+        issuedQty: issued.toString(),
+        remainingQty: remainingQ ? (remainingQ.greaterThan(0) ? remainingQ.toString() : '0') : null,
+      };
+    }),
     ...[...issuedByItem.values()]
       .filter((flow) => !step.inputs.some((row) => row.itemId === flow.itemId))
       .map((flow) => ({
@@ -1637,26 +1675,29 @@ async function buildItemTotals(
         itemName: unplannedById.get(flow.itemId)?.name ?? 'Item',
         uomSymbol: unitOf(unplannedById.get(flow.itemId)?.stockingUom),
         fromStock: true,
-        // 🔴 Rework sends the OUTPUT item back out against the same step, so it
-        // lands here without ever having been a planned input. That is not an
-        // anomaly and the page should not present it as one — it is just work
-        // going round again.
         planned: false,
+        plannedQty: null,
         issuedQty: flow.issuedQty.toString(),
+        remainingQty: null,
       })),
   ];
 
   const outputs = [
-    ...step.outputs.map((row) => ({
-      itemId: row.itemId,
-      itemName: row.item.name,
-      uomSymbol: unitOf(row.uom),
-      isPrimary: row.isPrimary,
-      planned: true,
-      receivedQty: (
-        receivedByItem.get(row.itemId)?.receivedQty ?? new Prisma.Decimal(0)
-      ).toString(),
-    })),
+    ...step.outputs.map((row) => {
+      const received = receivedByItem.get(row.itemId)?.receivedQty ?? new Prisma.Decimal(0);
+      const expectedQ = row.expectedQty ?? null;
+      const remainingQ = expectedQ ? new Prisma.Decimal(expectedQ).minus(received) : null;
+      return {
+        itemId: row.itemId,
+        itemName: row.item.name,
+        uomSymbol: unitOf(row.uom),
+        isPrimary: row.isPrimary,
+        planned: true,
+        expectedQty: expectedQ?.toString() ?? null,
+        receivedQty: received.toString(),
+        remainingQty: remainingQ ? (remainingQ.greaterThan(0) ? remainingQ.toString() : '0') : null,
+      };
+    }),
     ...[...receivedByItem.values()]
       .filter((flow) => !step.outputs.some((row) => row.itemId === flow.itemId))
       .map((flow) => ({
@@ -1667,7 +1708,9 @@ async function buildItemTotals(
         // A receipt may return something the plan never named. That row is the
         // one most worth seeing, so it is labelled rather than hidden.
         planned: false,
+        expectedQty: null,
         receivedQty: flow.receivedQty.toString(),
+        remainingQty: null,
       })),
   ];
 

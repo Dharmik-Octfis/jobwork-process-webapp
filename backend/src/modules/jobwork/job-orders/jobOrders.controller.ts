@@ -13,6 +13,7 @@ import {
   getJobOrderNumberPreference,
   getJobOrderOverview,
   getJobOrdersList,
+  manuallyCompleteStep,
   shortCloseJobOrder,
   updateJobOrderById,
   updateJobOrderNumberPreference,
@@ -126,6 +127,17 @@ openApiRegistry.registerPath({
   responses: { 200: { description: 'Closed short' }, 409: { description: 'Already closed' } },
 });
 
+openApiRegistry.registerPath({
+  method: 'post',
+  path: '/organizations/{orgId}/jobwork/job-orders/{id}/steps/{stepId}/complete',
+  tags: ['Job Orders'],
+  summary: 'Manually complete a job order step',
+  request: {
+    params: orgParam.extend({ id: z.string(), stepId: z.string() }),
+  },
+  responses: { 200: { description: 'Step completed' } },
+});
+
 export const getJobOrders = async (req: Request, res: Response) => {
   const parsed = listQuerySchema.safeParse(req.query);
   if (!parsed.success) throw ApiError.badRequest('Invalid search parameters.');
@@ -205,4 +217,14 @@ export const updateNumberPreferenceRoute = async (req: Request, res: Response) =
   const { prefix, nextNumber } = req.body as NumberPreferenceInput;
   const pref = await updateJobOrderNumberPreference(req.tenantId!, prefix, nextNumber);
   sendSuccess(res, pref, 'Number preference updated.');
+};
+
+export const completeStep = async (req: Request, res: Response) => {
+  const updated = await manuallyCompleteStep(
+    req.tenantId!,
+    req.params.id as string,
+    req.params.stepId as string,
+    req.user?.id,
+  );
+  sendSuccess(res, updated, 'Step completed.');
 };

@@ -95,6 +95,17 @@ export async function deleteJobOrder(orgId: string, id: string): Promise<void> {
   await apiClient.delete(`${endpoints.jobwork.jobOrders(orgId)}/${id}`);
 }
 
+export async function completeJobOrderStep(
+  orgId: string,
+  id: string,
+  stepId: string,
+): Promise<JobOrderOverviewData> {
+  const response = await apiClient.post(
+    `${endpoints.jobwork.jobOrders(orgId)}/${id}/steps/${stepId}/complete`,
+  );
+  return jobOrderOverviewSchema.parse(response.data);
+}
+
 /** The numbering series behind the gear beside Job Order Number. */
 const numberPreferenceSchema = z.object({ prefix: z.string(), nextNumber: z.number() });
 

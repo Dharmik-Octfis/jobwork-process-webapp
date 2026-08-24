@@ -7,6 +7,7 @@ import { Modal } from '../../../components/ui/Modal';
 import { Select } from '../../../components/ui/Select';
 import { blurOnWheel } from '../../../components/ui/blurOnWheel';
 import { fetchVendors } from '../../purchases/vendors/vendors.api';
+import { fetchCustomers } from '../../sales/customers/customers.api';
 import { fetchLocations } from '../../configuration/locations/locations.api';
 import { fetchAvailableBatches, fetchStockLocations } from '../batches/batches.api';
 import { formatQty, toNumber } from '../jobwork.schemas';
@@ -127,6 +128,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
   const queryClient = useQueryClient();
 
   const [sourceLocationId, setSourceLocationId] = useState('');
+  const [processorType, setProcessorType] = useState<string>(step.processorType);
   const [processorId, setProcessorId] = useState<string | null>(step.processorId);
   const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10));
   /** 🔴 Keyed by batchId and carrying the batch ROW, not just its id — the picker
@@ -492,11 +494,18 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
   const { data: vendorsPage } = useQuery({
     queryKey: ['vendors', orgId, 'processors'],
     queryFn: () => fetchVendors(orgId!, { perPage: 500 }),
-    enabled: isOpen && Boolean(orgId) && step.processorType !== 'internal',
+    enabled: isOpen && Boolean(orgId) && processorType === 'vendor',
   });
-  const processors = (vendorsPage?.results ?? []).filter(
-    (v) => !v.vendorTypes?.length || v.vendorTypes.includes('job_worker'),
-  );
+  const { data: customersPage } = useQuery({
+    queryKey: ['customers', orgId],
+    queryFn: () => fetchCustomers(orgId!, { perPage: 500 }),
+    enabled: isOpen && Boolean(orgId) && processorType === 'customer',
+  });
+  const processors = processorType === 'customer'
+    ? (customersPage?.results ?? [])
+    : (vendorsPage?.results ?? []).filter(
+        (v) => !v.vendorTypes?.length || v.vendorTypes.includes('job_worker'),
+      );
 
   /**
    * 🔴 WHETHER A PICKER APPEARS IS THE ITEM'S DECISION (2026-08-14).
@@ -599,7 +608,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
       createJobIssue(orgId!, {
         jobOrderStepId: step.id,
         issueDate: issueDate || undefined,
-        processorType: step.processorType,
+        processorType,
         processorId,
         sourceLocationId: effectiveSourceId,
         lines,
@@ -1017,15 +1026,33 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
               ariaLabel="Issue from location"
               fullWidth
             />
-            {/* 🔴 States the rule BEFORE any work is done. The confirm strip catches
-                it at the moment it happens; this is what stops it being a surprise. */}
-            <p style={{ fontSize: 11, color: '#64748b', margin: '4px 0 0 0', lineHeight: 1.45 }}>
-              A challan goes out of one location. Only this location&rsquo;s batches can be issued,
-              and changing it clears whatever has been allocated.
-            </p>
           </div>
 
-          {step.processorType === 'internal' ? (
+          <div>
+            <label style={labelStyle}>Done By</label>
+            <Select
+              value={processorType}
+              onChange={(value) => {
+                setProcessorType(value);
+                if (value === 'internal') {
+                  setProcessorId(null);
+                } else if (value === step.processorType) {
+                  setProcessorId(step.processorId);
+                } else {
+                  setProcessorId(null);
+                }
+              }}
+              options={[
+                { value: 'vendor', label: 'Vendor (jobworker)' },
+                { value: 'customer', label: 'Customer' },
+                { value: 'internal', label: 'In-house' },
+              ]}
+              ariaLabel="Done By"
+              fullWidth
+            />
+          </div>
+
+          {processorType === 'internal' ? (
             <div>
               <label style={labelStyle} htmlFor="issue-workcentre">
                 Work centre
@@ -1056,19 +1083,6 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
               />
             </div>
           )}
-
-          <div>
-            <label style={labelStyle} htmlFor="issue-item">
-              Items
-            </label>
-            <input
-              id="issue-item"
-              type="text"
-              value={inputItems.map((i) => i.name).join(', ') || '—'}
-              readOnly
-              style={readOnlyStyle}
-            />
-          </div>
 
           {/* Remarks sat in the Transport section until that section was removed
               (2026-08-10). It is not a transport field — it is the one free-text
@@ -1166,43 +1180,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                       <div style={{ ...lineCell, fontWeight: 600, color: '#111' }}>
                         {input.name}
                       </div>
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          flexWrap: 'wrap',
-                          marginTop: 3,
-                        }}
-                      >
-                        <span
-                          style={{
-                            padding: '1px 6px',
-                            borderRadius: 9,
-                            fontSize: 10,
-                            fontWeight: 600,
-                            background: input.fromStock ? '#f1f5f9' : '#eff6ff',
-                            color: input.fromStock ? '#475569' : '#1d4ed8',
-                          }}
-                        >
-                          {input.fromStock ? 'From stock' : 'From an earlier step'}
-                        </span>
-                        {input.isBatchTracked && (
-                          <span
-                            style={{
-                              padding: '1px 6px',
-                              borderRadius: 9,
-                              fontSize: 10,
-                              fontWeight: 600,
-                              background: '#fef3c7',
-                              color: '#92400e',
-                            }}
-                            title="This item is batch-tracked, so the batch it goes out of has to be picked."
-                          >
-                            Batch required
-                          </span>
-                        )}
-                      </div>
+
                       {/* The dead end, under the item it is about — a full sentence
                           in a narrow numeric column would wreck the alignment this
                           table exists for. */}
@@ -1215,23 +1193,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                             lineHeight: 1.45,
                           }}
                         >
-                          {/* 🔴 NAME WHERE IT IS. A disabled Add Batches with only
-                              "not here" on it sends the user hunting; the godown and
-                              the quantity turn it into a decision — switch the
-                              location, or raise the second challan. */}
-                          Nothing of this item is at {sourceLocationName} for this job order’s
-                          ownership.{' '}
-                          {(elsewhereByItem.get(input.itemId) ?? []).length > 0 ? (
-                            <>
-                              It is at{' '}
-                              {(elsewhereByItem.get(input.itemId) ?? [])
-                                .map((at) => `${at.name} (${formatQty(at.qty)} ${input.uomLabel})`)
-                                .join(', ')}
-                              . Issue from there, or raise a separate challan for it.
-                            </>
-                          ) : (
-                            <>It is not on the books anywhere yet — receive it first.</>
-                          )}
+                          Quantity not available at this location. Please change the location.
                         </div>
                       )}
 

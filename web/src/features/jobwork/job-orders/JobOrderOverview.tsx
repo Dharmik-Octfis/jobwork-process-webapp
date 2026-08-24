@@ -27,7 +27,7 @@ import {
   stepCharge,
   toNumber,
 } from '../jobwork.schemas';
-import { deleteJobOrder, fetchJobOrderOverview, shortCloseJobOrder } from './jobOrders.api';
+import { deleteJobOrder, fetchJobOrderOverview, shortCloseJobOrder, completeJobOrderStep } from './jobOrders.api';
 import { AddStepsDialog } from './AddStepsDialog';
 import { ActivityTimeline } from './ActivityTimeline';
 import { JobOrderFlow } from './JobOrderFlow';
@@ -418,6 +418,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   const [addStepsOpen, setAddStepsOpen] = useState(false);
   const [shortCloseOpen, setShortCloseOpen] = useState(false);
   const [shortCloseReason, setShortCloseReason] = useState('');
+  const [completeStepTarget, setCompleteStepTarget] = useState<OverviewStep | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -462,6 +463,14 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
       queryClient.invalidateQueries({ queryKey: ['job-orders', orgId] });
       setShortCloseOpen(false);
       setShortCloseReason('');
+    },
+  });
+
+  const completeStep = useMutation({
+    mutationFn: (stepId: string) => completeJobOrderStep(orgId!, id!, stepId),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['job-order-overview', orgId, id], updated);
+      setCompleteStepTarget(null);
     },
   });
 
@@ -795,6 +804,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
              is: the server refuses those, and a button that only ever 409s is
              worse than no button. */
           onAppend={isClosed ? undefined : () => setAddStepsOpen(true)}
+          onComplete={setCompleteStepTarget}
         />
 
         {steps.length > 0 && (
@@ -832,6 +842,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                 activity={stepActivity}
                 onIssue={setIssueStep}
                 onReceive={setReceiveStep}
+                onComplete={setCompleteStepTarget}
                 onOpenDocument={openDocument}
               />
             )}
@@ -901,6 +912,17 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
           }
         />
       )}
+
+      <ConfirmDialog
+        isOpen={Boolean(completeStepTarget)}
+        title="Complete this step"
+        message="Are you sure you want to manually complete this step? You won't be able to undo this action."
+        confirmText={completeStep.isPending ? 'Completing…' : 'Complete Step'}
+        onConfirm={() => {
+          if (completeStepTarget) completeStep.mutate(completeStepTarget.id);
+        }}
+        onCancel={() => setCompleteStepTarget(null)}
+      />
 
       <ConfirmDialog
         isOpen={shortCloseOpen}

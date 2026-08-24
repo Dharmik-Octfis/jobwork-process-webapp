@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, Plus } from 'lucide-react';
 import { STEP_STATUS_META, formatQty, qtyWithUnit, statusMeta, toNumber } from '../jobwork.schemas';
 import type { OverviewStep } from './jobOrders.schemas';
@@ -19,6 +19,7 @@ interface Props {
    * appending never renumbers and the chain rule already sequences the new step.
    */
   onAppend?: () => void;
+  onComplete?: (step: OverviewStep) => void;
 }
 
 const NODE = 32;
@@ -47,8 +48,9 @@ const NODE = 32;
  * same contract every stepper on the web has, and without it a long route is
  * reachable only by mouse.
  */
-export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend }: Props) {
+export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend, onComplete }: Props) {
   const nodeRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [hoveredStepId, setHoveredStepId] = useState<string | null>(null);
   const selectedIndex = steps.findIndex((step) => step.id === selectedId);
 
   // A long route does not fit, so the one being read must be brought into view —
@@ -140,7 +142,12 @@ export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend 
                     : '—';
 
         return (
-          <div key={step.id} style={{ display: 'flex', alignItems: 'flex-start', flexShrink: 0 }}>
+          <div
+            key={step.id}
+            style={{ display: 'flex', alignItems: 'flex-start', flexShrink: 0, position: 'relative' }}
+            onMouseEnter={() => setHoveredStepId(step.id)}
+            onMouseLeave={() => setHoveredStepId(null)}
+          >
             {index > 0 && <Connector filled={steps[index - 1]!.status === 'completed'} />}
 
             <button
@@ -222,7 +229,6 @@ export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend 
                   </span>
                 )}
               </span>
-
               <span style={{ textAlign: 'center', minWidth: 0, width: '100%' }}>
                 <span
                   style={{
@@ -268,6 +274,36 @@ export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend 
                 </span>
               </span>
             </button>
+
+            {hoveredStepId === step.id && !settled && onComplete && (
+              <button
+                type="button"
+                title="Complete Step"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onComplete(step);
+                }}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  right: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 22,
+                  height: 22,
+                  borderRadius: '50%',
+                  background: '#2563eb',
+                  color: '#fff',
+                  border: '2px solid #fff',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                  zIndex: 10,
+                }}
+              >
+                <Check size={12} strokeWidth={3} />
+              </button>
+            )}
           </div>
         );
       })}

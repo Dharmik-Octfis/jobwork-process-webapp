@@ -85,7 +85,7 @@ const toFormRows = (
                 ? String(batch.mrp)
                 : defaultMrp,
             quantityIn: String(batch.quantityIn ?? ''),
-            isExisting: Boolean(batch.batchReference || batch.id),
+            isExisting: Boolean(batch.batchReference),
           }))
         : []
       : [],

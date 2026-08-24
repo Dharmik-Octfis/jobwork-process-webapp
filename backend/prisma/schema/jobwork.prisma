@@ -439,6 +439,9 @@ model JobOrderStep {
   /// sent by a client.
   status String @default("pending") @db.VarChar(30)
 
+  /// A step completed via the manual Complete button.
+  isCompleted Boolean @default(false) @map("is_completed")
+
   remarks String?
 
   customFields Json     @default("{}") @map("custom_fields")

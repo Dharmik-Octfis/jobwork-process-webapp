@@ -294,13 +294,15 @@ async function getItemFlows(
  * has been accounted for. Judging by accepted quantity alone would leave every
  * step with any wastage permanently `partially_received`, which is most of them.
  */
-export function stepStatusFrom(totals: StepTotals): JobOrderStepStatus {
+export function stepStatusFrom(totals: StepTotals, isCompleted: boolean): JobOrderStepStatus {
+  if (isCompleted) return 'completed';
   const moved = totals.perItem.filter((row) => row.issuedQty.greaterThan(0));
   if (moved.length === 0) return 'pending';
   if (moved.every((row) => row.consumedQty.lessThanOrEqualTo(0))) return 'issued';
-  return moved.every((row) => row.consumedQty.greaterThanOrEqualTo(row.issuedQty))
-    ? 'completed'
-    : 'partially_received';
+  
+  // We no longer automatically return 'completed'. If it has received something, 
+  // it is partially_received until manually completed.
+  return 'partially_received';
 }
 
 /**
@@ -373,13 +375,13 @@ export async function recomputeStep(
 ) {
   const step = await tx.jobOrderStep.findFirst({
     where: { id: jobOrderStepId, organizationId, isDeleted: false },
-    select: { id: true, jobOrderId: true, status: true },
+    select: { id: true, jobOrderId: true, status: true, isCompleted: true },
   });
   if (!step) return;
 
   if (!STICKY_STEP_STATUSES.includes(step.status)) {
     const totals = await getStepTotals(tx, organizationId, jobOrderStepId);
-    const next = stepStatusFrom(totals);
+    const next = stepStatusFrom(totals, step.isCompleted);
     if (next !== step.status) {
       await tx.jobOrderStep.update({ where: { id: step.id }, data: { status: next } });
     }
