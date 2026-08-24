@@ -779,7 +779,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                     >
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
                         <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
-                          {item.openingStock || item.openingStock || 0}
+                          {totalOpeningStock.toFixed(2)}
                         </span>
                         <span style={{ fontSize: '10px', color: '#64748b' }}>
                           {item.unit || 'Qty'}
@@ -837,7 +837,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                     >
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
                         <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
-                          {item.openingStock || item.openingStock || 0}
+                          {totalOpeningStock.toFixed(2)}
                         </span>
                         <span style={{ fontSize: '10px', color: '#64748b' }}>
                           {item.unit || 'Qty'}

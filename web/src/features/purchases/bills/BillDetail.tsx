@@ -15,7 +15,7 @@ interface Html2PdfOptions {
   };
 }
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchBillById, getBillSignedUrl, deleteBill, type BillAttachment } from './bills.api';
+import { fetchBillById, getBillSignedUrl, deleteBill, updateBill, type BillAttachment } from './bills.api';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { useParams, useNavigate } from 'react-router-dom';
 import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer } from 'lucide-react';
@@ -62,6 +62,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isPdfMenuOpen, setIsPdfMenuOpen] = useState(false);
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
+  const [isConfirmOpenBillVisible, setIsConfirmOpenBillVisible] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const pdfMenuRef = useRef<HTMLDivElement>(null);
   const pdfTemplateRef = useRef<HTMLDivElement>(null);
@@ -122,6 +123,14 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
       queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
       setIsConfirmDeleteOpen(false);
       onClose();
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: updateBill,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bill', orgId, poId] });
+      queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
     },
   });
 
@@ -209,6 +218,26 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {po.status?.toLowerCase() === 'draft' && (
+            <button
+              onClick={() => setIsConfirmOpenBillVisible(true)}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid #15803d',
+                background: '#15803d',
+                color: 'white',
+                borderRadius: '4px',
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+            >
+              Open Bill
+            </button>
+          )}
+
           <button
             onClick={() => navigate(`/organizations/${orgId}/purchases/bills/${poId}/edit`)}
             style={{
@@ -1569,6 +1598,22 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
         confirmText={deleteMutation.isPending ? 'Deleting...' : 'Delete'}
         onConfirm={() => deleteMutation.mutate()}
         onCancel={() => setIsConfirmDeleteOpen(false)}
+      />
+
+      <ConfirmDialog
+        isOpen={isConfirmOpenBillVisible}
+        title="Open Bill"
+        message="Are you sure you want to open this bill? Stock will be updated."
+        confirmText={updateMutation.isPending ? 'Opening...' : 'Open Bill'}
+        onConfirm={() => {
+          updateMutation.mutate({
+            orgId: orgId!,
+            id: poId,
+            data: { status: 'Open' } as any,
+          });
+          setIsConfirmOpenBillVisible(false);
+        }}
+        onCancel={() => setIsConfirmOpenBillVisible(false)}
       />
     </div>
   );

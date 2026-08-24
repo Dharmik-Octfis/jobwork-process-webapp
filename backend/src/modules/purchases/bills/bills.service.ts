@@ -3,7 +3,7 @@ import type { Prisma } from '../../../../generated/prisma/client.ts';
 import type { CreateBillPayload, UpdateBillPayload, BillItemPayload } from './bills.schemas.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
-import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
+import { ApiError } from '../../../lib/apiError.ts';
 import { validateCustomFields } from '../../settings/customization/custom-fields/customFields.engine.ts';
 import { loadActiveDefinitions } from '../../settings/customization/custom-fields/custom-fields.service.ts';
 import { postMovement, createBatch } from '../../inventory/stock-ledger/stockLedger.service.ts';
@@ -147,9 +147,20 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
       mode: 'create',
     });
 
-    const createdBill = await withUniqueViolation(DUPLICATE_NUMBER, () =>
-      tx.bill.create({
-        data: {
+    const existingBill = await tx.bill.findFirst({
+      where: {
+        organizationId: orgId,
+        vendorId: billData.vendorId,
+        billNumber: billData.billNumber,
+        isDeleted: false,
+      },
+    });
+    if (existingBill) {
+      throw ApiError.conflict(DUPLICATE_NUMBER);
+    }
+
+    const createdBill = await tx.bill.create({
+      data: {
           ...billData,
           totalAmount: totalAmount,
           termsAndConditions: termsAndConditions,
@@ -186,10 +197,9 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
           lineItems: true,
           activities: true,
         },
-      }),
-    );
+      });
 
-    if (createdBill.locationId) {
+    if (createdBill.status?.toLowerCase() === 'open' && createdBill.locationId) {
       const itemIds = lineItems.map((li: BillItemPayload) => li.itemId);
       const items = await tx.item.findMany({
         where: { id: { in: itemIds }, organizationId: orgId },
@@ -309,10 +319,27 @@ export async function updateBill(
       });
     }
 
-    return withUniqueViolation(DUPLICATE_NUMBER, async () => {
-      await tx.bill.update({
-        where: { id },
-        data: {
+    const effectiveVendorId = billData.vendorId ?? existing.vendorId;
+    const effectiveBillNumber = billData.billNumber ?? existing.billNumber;
+    
+    if (billData.vendorId !== undefined || billData.billNumber !== undefined) {
+      const existingDuplicate = await tx.bill.findFirst({
+        where: {
+          organizationId: orgId,
+          vendorId: effectiveVendorId,
+          billNumber: effectiveBillNumber,
+          isDeleted: false,
+          id: { not: id },
+        },
+      });
+      if (existingDuplicate) {
+        throw ApiError.conflict(DUPLICATE_NUMBER);
+      }
+    }
+
+    await tx.bill.update({
+      where: { id },
+      data: {
           ...billData,
           totalAmount: totalAmount,
           termsAndConditions: termsAndConditions,
@@ -339,22 +366,106 @@ export async function updateBill(
           data: { isDeleted: true, updatedBy: userId },
         });
 
-        await tx.billItem.createMany({
-          data: lineItems.map((item: BillItemPayload) => ({
-            billId: id,
-            itemId: item.itemId,
-            quantity: item.quantity,
-            rate: item.rate,
-            discountPercentage: item.discountPercentage ?? null,
-            discountAmount: item.discountAmount ?? null,
-            itemTotal: item.amount,
-            customFields: (item.customFields ?? {}) as Prisma.InputJsonObject,
-            createdBy: userId,
-            updatedBy: userId,
-          })),
-        });
+        for (const item of lineItems) {
+          await tx.billItem.create({
+            data: {
+              billId: id,
+              itemId: item.itemId,
+              quantity: item.quantity,
+              rate: item.rate,
+              discountPercentage: item.discountPercentage ?? null,
+              discount: item.discountAmount ?? null,
+              itemTotal: item.amount,
+              customFields: (item.customFields ?? {}) as Prisma.InputJsonObject,
+              createdBy: userId,
+              updatedBy: userId,
+            },
+          });
+        }
       }
-    });
+
+      const effectiveLocationId = billData.locationId !== undefined ? billData.locationId : existing.locationId;
+      if (existing.status.toLowerCase() === 'draft' && billData.status?.toLowerCase() === 'open' && effectiveLocationId) {
+        const newLines = await tx.billItem.findMany({
+          where: { billId: id, isDeleted: false },
+          orderBy: { createdAt: 'asc' },
+        });
+
+        const effectiveLineItems = lineItems || existing.lineItems || [];
+        const itemIds = effectiveLineItems.map((li: { itemId: string }) => li.itemId);
+        const items = await tx.item.findMany({
+          where: { id: { in: itemIds }, organizationId: orgId },
+          select: { id: true, inventoryTracking: true, trackInventory: true },
+        });
+        const itemsById = new Map(items.map((i) => [i.id, i]));
+
+        for (let i = 0; i < effectiveLineItems.length; i++) {
+          const payload = effectiveLineItems[i] as BillItemPayload;
+          if (!payload) continue;
+          const lineRecord = newLines[i];
+          if (!lineRecord) continue;
+          const item = itemsById.get(payload.itemId);
+
+          if (item?.trackInventory && item.inventoryTracking !== 'none') {
+            const batches = payload.batches?.length
+              ? payload.batches
+              : [{ quantity: Number(payload.quantity) }];
+            for (const b of batches) {
+              let batchId = b.batchId;
+              if (!batchId) {
+                const batch = await createBatch(tx, {
+                  organizationId: orgId,
+                  itemId: item.id,
+                  supplierBatchRef: b.supplierBatchRef,
+                  manufacturerBatch: b.manufacturerBatch,
+                  manufacturedDate: b.manufacturedDate,
+                  expiryDate: b.expiryDate,
+                  mrp: b.mrp,
+                  sellingPrice: b.sellingPrice,
+                  sourceDocType: 'bill',
+                  sourceDocId: id,
+                  userId: userId || undefined,
+                });
+                batchId = batch.id;
+              }
+              await postMovement(tx, {
+                organizationId: orgId,
+                batchId: batchId,
+                locationId: effectiveLocationId,
+                movementType: 'receipt',
+                qtyIn: Number(b.quantity),
+                valueIn: Number(payload.rate || 0) * Number(b.quantity),
+                sourceDocType: 'bill',
+                sourceDocId: id,
+                sourceDocLineId: lineRecord.id,
+                userId: userId || undefined,
+              });
+            }
+          } else if (item?.trackInventory && item.inventoryTracking === 'none') {
+            const batch = await createBatch(tx, {
+              organizationId: orgId,
+              itemId: item.id,
+              sourceDocType: 'bill',
+              sourceDocId: id,
+              userId: userId || undefined,
+            });
+            await postMovement(tx, {
+              organizationId: orgId,
+              batchId: batch.id,
+              locationId: effectiveLocationId,
+              movementType: 'receipt',
+              qtyIn: Number(payload.quantity),
+              valueIn: Number(payload.rate || 0) * Number(payload.quantity),
+              sourceDocType: 'bill',
+              sourceDocId: id,
+              sourceDocLineId: lineRecord.id,
+              userId: userId || undefined,
+            });
+          }
+        }
+      }
+
+      return await tx.bill.findFirst({ where: { id } });
   });
 }
 

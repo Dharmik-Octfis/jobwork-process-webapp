@@ -41,16 +41,12 @@ const createEmptyBatch = (defaultSellingPrice = '', defaultMrp = ''): OpeningSto
   isExisting: false,
 });
 
-const createEmptyLocation = (
-  isBatchTracked: boolean,
-  defaultSellingPrice = '',
-  defaultMrp = '',
-): OpeningStockLocationRow => ({
+const createEmptyLocation = (): OpeningStockLocationRow => ({
   id: crypto.randomUUID(),
   locationId: '',
   openingStock: '',
   openingStockValue: '',
-  batches: isBatchTracked ? [createEmptyBatch(defaultSellingPrice, defaultMrp)] : [],
+  batches: [],
 });
 
 const toFormRows = (
@@ -59,10 +55,9 @@ const toFormRows = (
   defaultSellingPrice = '',
   defaultMrp = '',
 ): OpeningStockLocationRow[] => {
-  if (rows.length === 0)
-    return [createEmptyLocation(isBatchTracked, defaultSellingPrice, defaultMrp)];
-
-  return rows.map((row) => ({
+  return rows
+    .filter((row) => row.openingStock !== null && row.openingStock !== undefined)
+    .map((row) => ({
     id: row.id ?? crypto.randomUUID(),
     locationId: row.locationId,
     openingStock:
@@ -92,7 +87,7 @@ const toFormRows = (
             quantityIn: String(batch.quantityIn ?? ''),
             isExisting: Boolean(batch.batchReference || batch.id),
           }))
-        : [createEmptyBatch(defaultSellingPrice, defaultMrp)]
+        : []
       : [],
   }));
 };
@@ -182,7 +177,7 @@ export function AddOpeningStockModal({
   const handleAddLocation = () => {
     setLocationRows([
       ...locationRows,
-      createEmptyLocation(isBatchTracked, defaultSellingPrice, defaultMrp),
+      createEmptyLocation(),
     ]);
   };
 
@@ -535,15 +530,14 @@ export function AddOpeningStockModal({
                       style={{
                         background: 'none',
                         border: 'none',
-                        cursor: locationRows.length === 1 ? 'not-allowed' : 'pointer',
-                        color: locationRows.length === 1 ? '#cbd5e1' : '#ef4444',
+                        cursor: 'pointer',
+                        color: '#ef4444',
                         padding: '6px',
                         display: 'inline-flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         borderRadius: '4px',
                       }}
-                      disabled={locationRows.length === 1}
                     >
                       <Trash2 size={16} />
                     </button>
@@ -716,6 +710,97 @@ export function AddOpeningStockModal({
             </thead>
             {locationRows.map((loc) => (
               <tbody key={loc.id} style={{ borderBottom: '1px solid #eef0f3' }}>
+                {loc.batches.length === 0 && (
+                  <tr>
+                    <td
+                      rowSpan={2}
+                      style={{
+                        padding: '8px',
+                        verticalAlign: 'top',
+                        borderRight: '1px solid #eef0f3',
+                      }}
+                    >
+                      <Select
+                        value={loc.locationId}
+                        onChange={(val) => updateLocation(loc.id, 'locationId', val)}
+                        options={locationOptions}
+                        placeholder="Select Location"
+                        minWidth="100%"
+                      />
+                    </td>
+                    <td
+                      rowSpan={2}
+                      style={{
+                        padding: '8px',
+                        verticalAlign: 'top',
+                        borderRight: '1px solid #eef0f3',
+                      }}
+                    >
+                      <input
+                        type="number"
+                        value={loc.openingStock}
+                        onChange={(e) => updateLocation(loc.id, 'openingStock', e.target.value)}
+                        style={rightAlignStyle}
+                        onFocus={(e) => (e.target.style.borderColor = '#0062ff')}
+                        onBlur={(e) => (e.target.style.borderColor = '#cbd5e1')}
+                      />
+                    </td>
+                    <td
+                      rowSpan={2}
+                      style={{
+                        padding: '8px',
+                        verticalAlign: 'top',
+                        borderRight: '1px solid #eef0f3',
+                      }}
+                    >
+                      <input
+                        type="number"
+                        value={loc.openingStockValue}
+                        onChange={(e) =>
+                          updateLocation(loc.id, 'openingStockValue', e.target.value)
+                        }
+                        style={rightAlignStyle}
+                        onFocus={(e) => (e.target.style.borderColor = '#0062ff')}
+                        onBlur={(e) => (e.target.style.borderColor = '#cbd5e1')}
+                      />
+                    </td>
+                    <td
+                      colSpan={8}
+                      style={{
+                        padding: '16px',
+                        textAlign: 'center',
+                        color: '#64748b',
+                        fontSize: '13px',
+                        borderRight: '1px solid #eef0f3',
+                      }}
+                    >
+                      No batches added. Click 'New Batch' to add one.
+                    </td>
+                    <td
+                      rowSpan={2}
+                      style={{ padding: '8px', textAlign: 'center', verticalAlign: 'top' }}
+                    >
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteLocation(loc.id)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: '#ef4444',
+                            padding: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            borderRadius: '4px',
+                            transition: 'background-color 0.2s',
+                          }}
+                        >
+                        <Trash2 size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                )}
                 {loc.batches.map((batch, batchIndex) => (
                   <tr key={batch.id}>
                     {batchIndex === 0 && (
@@ -934,8 +1019,8 @@ export function AddOpeningStockModal({
                           style={{
                             background: 'none',
                             border: 'none',
-                            cursor: locationRows.length === 1 ? 'not-allowed' : 'pointer',
-                            color: locationRows.length === 1 ? '#cbd5e1' : '#ef4444',
+                            cursor: 'pointer',
+                            color: '#ef4444',
                             padding: '8px',
                             display: 'flex',
                             alignItems: 'center',
@@ -943,7 +1028,6 @@ export function AddOpeningStockModal({
                             borderRadius: '4px',
                             transition: 'background-color 0.2s',
                           }}
-                          disabled={locationRows.length === 1}
                         >
                           <Trash2 size={16} />
                         </button>
