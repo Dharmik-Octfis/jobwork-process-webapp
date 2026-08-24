@@ -5,6 +5,7 @@ import { prisma } from '../db/prisma.ts';
 import { createPrismaAdapter } from './adapter.ts';
 import { loadClients } from './clients.ts';
 import { ensureSigningKey, loadSigningJwks } from './keys.ts';
+import { installSessionMirror } from './sessionMirror.ts';
 
 /**
  * The OIDC provider. docs/SSO_AND_IDENTITY.md §7.1, §12.
@@ -129,7 +130,7 @@ function baseConfiguration(): Omit<Configuration, 'clients' | 'jwks'> {
       Grant: 14 * 24 * 3600,
     },
 
-    /** Where an unauthenticated /authorize sends the browser. Built next. */
+    /** Where an unauthenticated /authorize sends the browser — interaction/routes.ts. */
     interactions: {
       url: (_ctx, interaction) => `/interaction/${interaction.uid}`,
     },
@@ -198,6 +199,7 @@ export async function createOidcProvider(): Promise<Provider> {
   });
 
   installArgon2ClientSecrets(provider);
+  installSessionMirror(provider);
 
   /**
    * AppSail terminates TLS in front of us, so without this the library sees `http`,

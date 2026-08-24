@@ -71,6 +71,18 @@ export default defineConfig([
           format: ['camelCase', 'UPPER_CASE', 'snake_case', 'PascalCase'],
           leadingUnderscore: 'allow',
         },
+        /**
+         * Prisma's compound-unique lookup keys: `where: { sessionId_clientId: {...} }`.
+         * It builds them by joining the camelCase field names with an underscore, so
+         * they are neither camelCase nor snake_case and no format matches. The name
+         * comes from the generated client, so the only alternative is renaming the
+         * database columns to suit a lint rule.
+         */
+        {
+          selector: ['objectLiteralProperty', 'typeProperty'],
+          filter: { regex: '^[a-z][A-Za-z0-9]*(_[a-z][A-Za-z0-9]*)+$', match: true },
+          format: null,
+        },
       ],
     },
   },
