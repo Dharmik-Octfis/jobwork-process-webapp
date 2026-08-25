@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { Check, Plus } from 'lucide-react';
 import { STEP_STATUS_META, formatQty, qtyWithUnit, statusMeta, toNumber } from '../jobwork.schemas';
 import type { OverviewStep } from './jobOrders.schemas';
@@ -19,7 +19,6 @@ interface Props {
    * appending never renumbers and the chain rule already sequences the new step.
    */
   onAppend?: () => void;
-  onComplete?: (step: OverviewStep) => void;
 }
 
 const NODE = 32;
@@ -48,7 +47,7 @@ const NODE = 32;
  * same contract every stepper on the web has, and without it a long route is
  * reachable only by mouse.
  */
-export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend, onComplete }: Props) {
+export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend }: Props) {
   const nodeRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const selectedIndex = steps.findIndex((step) => step.id === selectedId);
 

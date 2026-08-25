@@ -804,7 +804,6 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
              is: the server refuses those, and a button that only ever 409s is
              worse than no button. */
           onAppend={isClosed ? undefined : () => setAddStepsOpen(true)}
-          onComplete={setCompleteStepTarget}
         />
 
         {steps.length > 0 && (
