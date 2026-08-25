@@ -17,6 +17,48 @@ import { prisma } from '../db/prisma.ts';
  * against the presented secret, which never matches, so every client fails to
  * authenticate. Loudly broken, never silently open.
  */
+/**
+ * Every origin a registered client can legitimately be redirected to.
+ *
+ * 🔴 This exists for `form-action`, and the reason is not obvious. A browser
+ * enforces `form-action` across the WHOLE redirect chain a form submission causes,
+ * not just its immediate target. Signing in posts to this origin, but the response
+ * chain then hops to the app's callback and on to the app itself:
+ *
+ *     POST /interaction/:uid/login  →  /auth/:uid  →  app callback  →  app
+ *     accounts.example                accounts       APP ORIGIN       APP ORIGIN
+ *
+ * With `form-action 'self'` the hop to the app origin violates the policy and the
+ * browser blocks the SUBMISSION — reporting it against the form's own same-origin
+ * action, which makes it look like the policy is contradicting itself.
+ *
+ * Deriving the list from the registry keeps it bounded and self-maintaining: the
+ * origins allowed are exactly the ones an administrator already registered as
+ * redirect targets. It is not a wildcard, and registering a client is still the
+ * only way to add one.
+ */
+export async function clientOrigins(): Promise<string[]> {
+  const rows = await prisma.oidcClient.findMany({
+    where: { isActive: true, isDeleted: false },
+    select: { redirectUris: true, postLogoutUris: true },
+  });
+
+  const origins = new Set<string>();
+
+  for (const row of rows) {
+    for (const uri of [...row.redirectUris, ...row.postLogoutUris]) {
+      try {
+        origins.add(new URL(uri).origin);
+      } catch {
+        // A malformed registry row must not take the service down at boot. It will
+        // fail its own exact-match check at /authorize, which is where it belongs.
+      }
+    }
+  }
+
+  return [...origins];
+}
+
 export async function loadClients(): Promise<ClientMetadata[]> {
   const rows = await prisma.oidcClient.findMany({
     where: { isActive: true, isDeleted: false },

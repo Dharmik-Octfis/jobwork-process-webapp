@@ -1,8 +1,11 @@
+import { resolve } from 'node:path';
 import express, { type Express } from 'express';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+import { env } from './config/env.ts';
 import { prisma } from './db/prisma.ts';
 import { createOidcProvider } from './oidc/provider.ts';
+import { clientOrigins } from './oidc/clients.ts';
 import { interactionRouter } from './interaction/routes.ts';
 import { accountRouter } from './login/account.routes.ts';
 
@@ -26,17 +29,92 @@ export async function createApp(): Promise<Express> {
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
 
+  /**
+   * Read once at boot, like the client registry itself — see the note on
+   * `form-action` below for what these are for and why `'self'` alone is not enough.
+   * ⚠️ Same restart-to-pick-up-a-new-client caveat as `loadClients()`.
+   */
+  const redirectOrigins = await clientOrigins();
+
   app.use(
     helmet({
       /**
-       * §11's cross-tab check will embed this origin in an iframe on an app's page,
-       * and will need `frame-ancestors` relaxed on that ONE route when it is built.
-       * Denying everywhere is the right default until then.
+       * No HSTS outside production. Chrome treats `localhost` as a secure origin, so
+       * it accepts an HSTS header sent over plain HTTP and caches it for a year — for
+       * `localhost` as a whole, `includeSubDomains` and all, which covers every port
+       * and so every service on this machine. Nothing here is reachable over HTTPS,
+       * so that is pure breakage, and it OUTLIVES the fix: removing the header does
+       * not clear what a browser already stored (chrome://net-internals/#hsts does).
+       *
+       * It stays on in production, where the service is genuinely HTTPS.
        */
-      contentSecurityPolicy: { directives: { 'frame-ancestors': ["'none'"] } },
+      strictTransportSecurity: env.isProduction,
+      contentSecurityPolicy: {
+        directives: {
+          /**
+           * §11's cross-tab check will embed this origin in an iframe on an app's
+           * page, and will need `frame-ancestors` relaxed on that ONE route when it
+           * is built. Denying everywhere is the right default until then.
+           */
+          'frame-ancestors': ["'none'"],
+
+          /**
+           * 🔴 `'self'` is NOT enough, and this is the directive that decides
+           * whether signing in works at all.
+           *
+           * A browser enforces `form-action` across the entire REDIRECT CHAIN a
+           * submission causes, not just its immediate target. The sign-in form
+           * posts same-origin, but the response chain then hops to the app:
+           *
+           *     POST /interaction/:uid/login → /auth/:uid → app callback → app
+           *
+           * so with `'self'` alone the browser blocks the submission — and reports
+           * it against the form's own same-origin action, which reads as the policy
+           * contradicting itself. Diagnosed 2026-08-25 after two wrong guesses.
+           *
+           * ⚠️ Nothing about this is specific to localhost. In production the chain
+           * is accounts.octfis.com → jobwork.octfis.com, still cross-origin, so this
+           * would have failed there in exactly the same way.
+           *
+           * The allowed origins come from the client registry, so they are exactly
+           * the redirect targets an administrator already approved — bounded, and
+           * self-maintaining as clients are added.
+           */
+          'form-action': ["'self'", ...redirectOrigins],
+
+          /**
+           * Dropped outside production: it rewrites every same-origin request from
+           * `http://` to `https://`, and there is no HTTPS listener on localhost, so
+           * over plain HTTP it turns working requests into failed ones.
+           *
+           * It stays ON in production, where the service is HTTPS and the directive
+           * is doing real work.
+           */
+          ...(env.isProduction ? {} : { 'upgrade-insecure-requests': null }),
+        },
+      },
     }),
   );
   app.use(cookieParser());
+
+  /**
+   * The one static asset these pages load — the show/hide password toggle.
+   *
+   * Same origin, so helmet's default `script-src 'self'` already allows it and no
+   * CSP is relaxed to make it work. `immutable` is deliberately NOT set: this is a
+   * script on a page with a password field, and being unable to ship a fix to it
+   * without a cache-busting rename is not a trade worth making for one small file.
+   */
+  app.use(
+    '/js',
+    express.static(resolve(process.cwd(), 'public/js'), {
+      maxAge: '1h',
+      // Never fall through to the OIDC catch-all with a directory listing or an
+      // index.html; a miss here is a miss.
+      index: false,
+      redirect: false,
+    }),
+  );
 
   /**
    * Liveness only — no database. A health check that queries the database turns a

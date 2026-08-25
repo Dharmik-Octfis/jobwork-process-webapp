@@ -24,6 +24,18 @@ export function createApp(): express.Express {
   app.use(
     helmet({
       contentSecurityPolicy: false, // Disable CSP for now so frontend assets load without issues
+      /**
+       * No HSTS outside production. Chrome treats `localhost` as a secure origin, so
+       * it accepts an HSTS header sent over plain HTTP and caches it for a year — for
+       * `localhost` as a whole, `includeSubDomains` included, which covers every port.
+       * From then on `http://localhost:*` is upgraded to `https://`, where nothing is
+       * listening. This service and the accounts service share that hostname, so
+       * either one sending it breaks the other.
+       *
+       * Removing the header does not undo what a browser already stored — that has to
+       * be cleared at chrome://net-internals/#hsts.
+       */
+      strictTransportSecurity: env.isProduction,
     }),
   );
 
