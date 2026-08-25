@@ -250,3 +250,35 @@
 .btn-apply:hover {
   background: #1d4ed8;
 }
+
+.filter-badge {
+  background-color: #f97316;
+  color: white;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 700;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+}
+
+.filter-row-clear-btn {
+  background: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.filter-row-clear-btn:hover {
+  background-color: #f1f5f9;
+  color: #ef4444;
+}

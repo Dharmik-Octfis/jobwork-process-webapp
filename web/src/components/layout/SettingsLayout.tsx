@@ -2,7 +2,6 @@ import { useState, Suspense } from 'react';
 import { NavLink, Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { RouteFallback } from './RouteFallback';
 import {
-  ChevronLeft,
   Building2,
   Users,
   Package,
@@ -14,6 +13,7 @@ import {
   MapPin,
   User,
   Workflow,
+  X,
   // react-router exports a `Route` component and this file imports from it, so the
   // icon is aliased even though only the icon is used here.
   Route as RouteIcon,
@@ -83,31 +83,31 @@ export function SettingsLayout() {
             padding: 'var(--space-4)',
             borderBottom: '1px solid var(--color-border)',
             display: 'flex',
-            flexDirection: 'column',
-            gap: 'var(--space-4)',
+            alignItems: 'center',
+            justifyContent: 'space-between',
           }}
         >
           <button
             onClick={() => navigate(`/organizations/${orgId}`)}
+            title="Close Settings"
             style={{
               background: 'none',
               border: 'none',
-              color: 'var(--color-text-muted)',
+              color: '#dc2626', // Deep red
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: 4,
-              fontSize: 13,
-              fontWeight: 500,
-              padding: 0,
+              justifyContent: 'center',
+              padding: '6px',
+              borderRadius: '6px',
             }}
           >
-            <ChevronLeft size={16} /> Back to Dashboard
+            <X size={18} />
           </button>
-
-          <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: 'var(--color-text)' }}>
+          <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: 'var(--color-text)', flex: 1, textAlign: 'center' }}>
             Settings
           </h2>
+          <div style={{ width: 30 }} /> {/* Spacer to perfectly center the title */}
         </div>
 
         <nav

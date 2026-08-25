@@ -15,128 +15,17 @@ import { Button } from '../../../components/ui/Button';
 import { Select } from '../../../components/ui/Select';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { AdvancedFilter } from '../../../components/ui/AdvancedFilter/AdvancedFilter';
+import { MultiSelect } from '../../../components/ui/MultiSelect';
 import type {
   FilterField,
   FilterCondition,
   FilterDataType,
-  FilterOperator,
 } from '../../../components/ui/AdvancedFilter/filterUtils';
-import { evaluateCondition } from '../../../components/ui/AdvancedFilter/filterUtils';
+
 import type { ColumnDef } from '../../list-views/listViews.api';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import type { CustomFieldDefinition } from '../../custom-fields/customFields.schemas';
-import { ChevronDown } from 'lucide-react';
 
-function ColumnMultiSelect({
-  value,
-  onChange,
-  options,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  options: { label: string; value: string }[];
-}) {
-  const [open, setOpen] = React.useState(false);
-  const ref = React.useRef<HTMLDivElement>(null);
-  const selectedValues = value ? value.split(',').filter(Boolean) : [];
-
-  React.useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    if (open) {
-      document.addEventListener('mousedown', onDown);
-    }
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [open]);
-
-  const toggleVal = (v: string) => {
-    let next = [...selectedValues];
-    if (next.includes(v)) {
-      next = next.filter((x) => x !== v);
-    } else {
-      next.push(v);
-    }
-    onChange(next.join(','));
-  };
-
-  return (
-    <div ref={ref} style={{ position: 'relative', minWidth: '100px' }}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        style={{
-          width: '100%',
-          height: 26,
-          padding: '0 8px',
-          fontSize: 12,
-          fontWeight: 400,
-          borderRadius: 4,
-          border: '1px solid #cbd5e1',
-          background: '#fff',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          cursor: 'pointer',
-        }}
-      >
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {selectedValues.length === 0
-            ? '- None -'
-            : selectedValues.length === 1
-            ? selectedValues[0]
-            : `${selectedValues.length} selected`}
-        </span>
-        <ChevronDown size={14} style={{ color: '#64748b' }} />
-      </button>
-
-      {open && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            marginTop: 4,
-            width: '200px',
-            maxHeight: '200px',
-            overflowY: 'auto',
-            background: '#fff',
-            border: '1px solid #e2e8f0',
-            borderRadius: 6,
-            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-            zIndex: 50,
-            padding: '4px',
-          }}
-        >
-          {options.map((opt) => (
-            <label
-              key={opt.value}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '6px 8px',
-                cursor: 'pointer',
-                fontSize: 13,
-                borderRadius: 4,
-                userSelect: 'none',
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <input
-                type="checkbox"
-                checked={selectedValues.includes(opt.value)}
-                onChange={() => toggleVal(opt.value)}
-              />
-              {opt.label}
-            </label>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 const ITEM_MODAL_CATALOG: ColumnDef[] = [
   { key: 'name', label: 'Product Name', locked: true },
@@ -257,8 +146,8 @@ export function MultiSelectItemModal({
   const [debouncedFiltersHash, setDebouncedFiltersHash] = useState('');
   useEffect(() => {
     const handler = setTimeout(() => {
-      setDebouncedQuery(query.length >= 3 ? query : '');
-      
+      setDebouncedQuery(query.trim().length >= 3 ? query : '');
+
       const filteredCols: Record<string, string> = {};
       Object.entries(columnFilters).forEach(([k, v]) => {
         if (!v) return;
@@ -276,17 +165,49 @@ export function MultiSelectItemModal({
             isText = false;
           }
         }
-        
+
         if (isText && v.trim().length < 3) {
           return;
         }
         filteredCols[k] = v;
       });
 
+      // Add advanced conditions to API request
+      advancedConditions.forEach((cond) => {
+        if (cond.value !== undefined && cond.value !== null && cond.value !== '') {
+          // Only send string/number values to backend's fieldFilters
+          if (typeof cond.value === 'string' || typeof cond.value === 'number') {
+            const valStr = String(cond.value);
+
+            // Check if it's a text field to enforce 3-char limit
+            let isText = true;
+            if (cond.field === 'category' || cond.field === 'type') isText = false;
+            if (cond.field.startsWith('cf_')) {
+              const cfKey = cond.field.replace('cf_', '');
+              const def = customFieldsDef?.find((d) => d.key === cfKey);
+              if (
+                def &&
+                (def.dataType === 'select' ||
+                  def.dataType === 'multi_select' ||
+                  def.dataType === 'checkbox')
+              ) {
+                isText = false;
+              }
+            }
+
+            if (isText && valStr.trim().length < 3) {
+              return; // Skip if less than 3 characters
+            }
+
+            filteredCols[cond.field] = valStr;
+          }
+        }
+      });
+
       setDebouncedFiltersHash(JSON.stringify(filteredCols));
     }, 300);
     return () => clearTimeout(handler);
-  }, [query, columnFilters, customFieldsDef]);
+  }, [query, columnFilters, advancedConditions, customFieldsDef]);
 
   const { data: itemsPage } = useQuery({
     queryKey: ['items-modal', orgId, debouncedQuery, page, filter, debouncedFiltersHash],
@@ -304,25 +225,24 @@ export function MultiSelectItemModal({
   });
 
   const [categories, setCategories] = useState<string[]>([]);
-  const [prevItemsForCategories, setPrevItemsForCategories] = useState(itemsPage?.results);
+  const [prevResults, setPrevResults] = useState(itemsPage?.results);
 
-  if (itemsPage?.results !== prevItemsForCategories) {
-    setPrevItemsForCategories(itemsPage?.results);
-    const set = new Set(categories);
-    let changed = false;
-    (itemsPage?.results || []).forEach((item) => {
-      if (item.category && !set.has(item.category)) {
-        set.add(item.category);
-        changed = true;
-      }
+  if (itemsPage?.results !== prevResults) {
+    setPrevResults(itemsPage?.results);
+    setCategories((prev) => {
+      const set = new Set(prev);
+      let changed = false;
+      (itemsPage?.results || []).forEach((item) => {
+        if (item.category && !set.has(item.category)) {
+          set.add(item.category);
+          changed = true;
+        }
+      });
+      return changed ? Array.from(set).sort() : prev;
     });
-    if (changed) {
-      setCategories(Array.from(set).sort());
-    }
   }
 
-  const [prevIsOpen, setPrevIsOpen] = React.useState(isOpen);
-
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
   if (isOpen !== prevIsOpen) {
     setPrevIsOpen(isOpen);
     if (!isOpen) {
@@ -354,138 +274,89 @@ export function MultiSelectItemModal({
       .filter((c): c is ColumnDef => Boolean(c));
   }, [visibleColumns, fullCatalog]);
 
-  const [customFieldTypes, setCustomFieldTypes] = useState<Map<string, FilterDataType>>(new Map());
-  const [prevItemsForCustomFields, setPrevItemsForCustomFields] = useState(itemsPage?.results);
+  const [customFieldTypes, setCustomFieldTypes] = useState<Record<string, FilterDataType>>({});
+  const [productTypes, setProductTypes] = useState<string[]>([]);
+  const [prevItemsPageResults, setPrevItemsPageResults] = useState(itemsPage?.results);
 
-  if (itemsPage?.results !== prevItemsForCustomFields) {
-    setPrevItemsForCustomFields(itemsPage?.results);
-    let changed = false;
-    const next = new Map(customFieldTypes);
+  if (itemsPage?.results !== prevItemsPageResults) {
+    setPrevItemsPageResults(itemsPage?.results);
+
+    let cfChanged = false;
+    const nextCf = { ...customFieldTypes };
     (itemsPage?.results || []).forEach((item) => {
       const fields = item.customFields;
       if (fields) {
         Object.entries(fields).forEach(([k, v]) => {
-          if (v !== null && v !== undefined && !next.has(k)) {
-            changed = true;
-            if (typeof v === 'number') next.set(k, 'number');
-            else if (typeof v === 'boolean') next.set(k, 'boolean');
+          if (v !== null && v !== undefined && !(k in nextCf)) {
+            cfChanged = true;
+            if (typeof v === 'number') nextCf[k] = 'number';
+            else if (typeof v === 'boolean') nextCf[k] = 'boolean';
             else if (
               typeof v === 'string' &&
               /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d{3})?(Z|[+-]\d{2}:\d{2})?)?$/.test(v) &&
               !isNaN(Date.parse(v))
             ) {
-              next.set(k, 'date');
+              nextCf[k] = 'date';
             } else {
-              next.set(k, 'text');
+              nextCf[k] = 'text';
             }
           }
         });
       }
     });
-    if (changed) {
-      setCustomFieldTypes(next);
+    if (cfChanged) {
+      setCustomFieldTypes(nextCf);
     }
-  }
 
-  const [productTypes, setProductTypes] = useState<string[]>([]);
-  const [prevItemsForProductTypes, setPrevItemsForProductTypes] = useState(itemsPage?.results);
-
-  if (itemsPage?.results !== prevItemsForProductTypes) {
-    setPrevItemsForProductTypes(itemsPage?.results);
-    const set = new Set(productTypes);
-    let changed = false;
+    const ptSet = new Set(productTypes);
+    let ptChanged = false;
     (itemsPage?.results || []).forEach((item) => {
       const t = item.itemType || item.itemStructure;
-      if (t && !set.has(t)) {
-        set.add(t);
-        changed = true;
+      if (t && !ptSet.has(t)) {
+        ptSet.add(t);
+        ptChanged = true;
       }
     });
-    if (changed) {
-      setProductTypes(Array.from(set).sort());
+    if (ptChanged) {
+      setProductTypes(Array.from(ptSet).sort());
     }
   }
 
-  const filterFields = useMemo<FilterField[]>(() => {
-    return fullCatalog.map((c) => {
-      let dataType: FilterDataType = 'string';
-      let options: { label: string; value: string | number }[] | undefined = undefined;
+  const filterFields: FilterField[] = fullCatalog.map((c) => {
+    let dataType: FilterDataType = 'string';
+    let options: { label: string; value: string | number }[] | undefined = undefined;
 
-      if (c.key.startsWith('cf_')) {
-        const cfKey = c.key.replace('cf_', '');
-        const def = customFieldsDef?.find((d) => d.key === cfKey);
+    if (c.key.startsWith('cf_')) {
+      const cfKey = c.key.replace('cf_', '');
+      const def = customFieldsDef?.find((d) => d.key === cfKey);
 
-        if (def) {
-          dataType = def.dataType as FilterDataType;
-          if (def.dataType === 'select' || def.dataType === 'multi_select') {
-            options =
-              def.config?.options?.map((opt) => ({ label: opt.label, value: opt.label })) || [];
-          }
-        } else {
-          dataType = customFieldTypes.get(cfKey) || 'text';
+      if (def) {
+        dataType = def.dataType as FilterDataType;
+        if (def.dataType === 'select' || def.dataType === 'multi_select') {
+          options =
+            def.config?.options?.map((opt) => ({ label: opt.label, value: opt.id })) || [];
         }
-      } else if (c.key === 'category') {
-        dataType = 'select';
-        options = categories.map((cat) => ({ label: cat, value: cat }));
-      } else if (c.key === 'type') {
-        dataType = 'select';
-        options = productTypes.map((t) => ({ label: t, value: t }));
+      } else {
+        dataType = customFieldTypes[cfKey] || 'text';
       }
-
-      return {
-        key: c.key,
-        label: c.label,
-        dataType,
-        options,
-      };
-    });
-  }, [fullCatalog, customFieldTypes, categories, productTypes, customFieldsDef]);
-
-  const shownItems = useMemo(() => {
-    let filtered = itemsPage?.results || [];
-
-    if (advancedConditions.length > 0) {
-      filtered = filtered.filter((item) => {
-        const results = advancedConditions.map((cond) => {
-          let itemValue: unknown;
-          if (cond.field === 'name') itemValue = item.name;
-          else if (cond.field === 'sku') itemValue = item.sku;
-          else if (cond.field === 'hsn') itemValue = item.hsnCode;
-          else if (cond.field === 'type') itemValue = item.itemType || item.itemStructure;
-          else if (cond.field === 'category') itemValue = item.category;
-          else if (cond.field.startsWith('cf_')) {
-            const cfKey = cond.field.replace('cf_', '');
-            const rawVal = item.customFields?.[cfKey] ?? item.customFields?.[cfKey];
-
-            const def = customFieldsDef?.find((d) => d.key === cfKey);
-            if (def && (def.dataType === 'select' || def.dataType === 'multi_select')) {
-              const options = def.config?.options || [];
-              if (Array.isArray(rawVal)) {
-                itemValue = rawVal.map((v) => options.find((o) => o.id === v)?.label || v);
-              } else {
-                itemValue = options.find((o) => o.id === rawVal)?.label || rawVal;
-              }
-            } else {
-              itemValue = rawVal;
-            }
-          }
-
-          const filterFieldDef = filterFields.find((f) => f.key === cond.field);
-          const dataType = filterFieldDef?.dataType || 'text';
-
-          return evaluateCondition(
-            itemValue,
-            cond.operator as FilterOperator,
-            cond.value,
-            dataType,
-          );
-        });
-
-        return advancedMatchType === 'any' ? results.some(Boolean) : results.every(Boolean);
-      });
+    } else if (c.key === 'category') {
+      dataType = 'select';
+      options = categories.map((cat) => ({ label: cat, value: cat }));
+    } else if (c.key === 'type') {
+      dataType = 'select';
+      options = productTypes.map((t) => ({ label: t, value: t }));
     }
 
-    return filtered;
+    return {
+      key: c.key,
+      label: c.label,
+      dataType,
+      options,
+    };
+  });
+
+  const shownItems = useMemo(() => {
+    return itemsPage?.results || [];
   }, [
     itemsPage?.results,
     isFilterOpen,
@@ -898,7 +769,7 @@ export function MultiSelectItemModal({
                                     { label: '- None -', value: '' },
                                     ...options.map((opt) => ({
                                       label: opt.label,
-                                      value: opt.label,
+                                      value: opt.id,
                                     })),
                                   ]}
                                   placeholder="- None -"
@@ -916,12 +787,12 @@ export function MultiSelectItemModal({
                             } else if (def.dataType === 'multi_select') {
                               const options = def.config?.options || [];
                               filterInput = (
-                                <ColumnMultiSelect
+                                <MultiSelect
                                   value={val}
                                   onChange={onSelectChange}
                                   options={options.map((opt) => ({
                                     label: opt.label,
-                                    value: opt.label,
+                                    value: opt.id,
                                   }))}
                                 />
                               );

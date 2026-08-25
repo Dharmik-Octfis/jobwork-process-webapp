@@ -386,8 +386,15 @@ export class ItemsService {
           
           if (key.startsWith('cf_')) {
             const cfKey = key.replace('cf_', '');
+            const vals = value.split(',').filter(Boolean);
+            
             customFieldsWhere.push({
-              customFields: { path: [cfKey], equals: value }
+              OR: [
+                { customFields: { path: [cfKey], equals: value } },
+                ...vals.map(v => ({
+                  customFields: { path: [cfKey], array_contains: v }
+                }))
+              ]
             });
           } else if (key === 'type') {
              directFilters.OR = [
