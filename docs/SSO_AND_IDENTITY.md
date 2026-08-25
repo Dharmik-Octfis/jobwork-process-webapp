@@ -18,7 +18,7 @@ is deployed. Sections below are marked ✅ built / ⚠️ partly / ❌ design._
 | §2–§6 concepts, flows      | ✅ implemented as described                                                                 |
 | §7 the accounts service    | ✅ built — `accounts/`, with §7.3's schema (see the `sid` correction on `SsoSession`)       |
 | §8 client registry         | ⚠️ table and loader built; per-environment registration is an operational step, not code    |
-| §9 what changes in jobwork | ✅ built, except §9.1's row saying signup/reset are deleted from the app — that is step 6   |
+| §9 what changes in jobwork | ✅ built. Signup, login, forgot- and reset-password are UNMOUNTED whenever SSO is on        |
 | §10 revocation             | ✅ built, including retries the library does not do. 🔴 untestable on localhost — see §10.3 |
 | §11 instant cross-tab      | ❌ design. Deferred out of phase 1 on purpose, and untestable until the domains are real    |
 | §12 security checklist     | ✅ every line enforced, and pinned by tests                                                 |
@@ -615,6 +615,41 @@ identity in the estate into one of its users. Same failure shape as a route with
 | **Open**        | auto-provision anyone with an account                                               | internal tools                                                                                                                            |
 | **Invite-only** | no local row → _"You don't have access to this app. Ask your admin to invite you."_ | 🟢 **jobwork** — `src/modules/invitations/` already does the other half; it stops creating passwords and starts stamping `identityUserId` |
 | **Org-gated**   | in if any of your orgs has this app enabled                                         | needs the central directory we deliberately did not build (§5)                                                                            |
+
+### 9.5 🔴 One way in, enforced by the router
+
+Decided 2026-08-24, and it supersedes the earlier plan of showing the SSO button
+_beside_ the password form.
+
+When `SSO_ENABLED` is true, four routes are **not mounted at all**:
+
+| Route                        | Why it is a way IN                                        |
+| ---------------------------- | --------------------------------------------------------- |
+| `POST /auth/signup`          | creates a local account with a local password             |
+| `POST /auth/login`           | uses one                                                  |
+| `POST /auth/forgot-password` | **SETS** one — easy to miss, and a full bypass on its own |
+| `POST /auth/reset-password`  | the other half of that same bypass                        |
+
+🔴 **Hiding the forms in the web app is not enforcement, it is a suggestion.** With
+the routes still mounted, `POST /auth/signup` answered **201** to anything that
+asked — verified against the running app before the guard went in, and it really did
+create an account. Anyone with curl could keep minting local accounts that the
+identity provider knows nothing about and cannot disable.
+
+The two password-recovery routes are the ones most easily forgotten. A reset does
+not merely _use_ a password, it **sets** one, so leaving them mounted leaves a way
+to give any existing account a local credential and then sign in with it — SSO
+entirely bypassed, without ever touching the login route.
+
+Not mounted rather than answering 403: an absent route cannot be reached by a stale
+client at all, and the 404 says plainly that this app no longer does this.
+
+`POST /auth/change-password` is deliberately left mounted. It needs a live session
+**and** the current password, so it is not a way in, and an account predating the
+cutover may still have a local password it wants to change.
+
+The rollback is unchanged: `SSO_ENABLED=false` restores all four routes and unmounts
+the SSO ones. One way in at a time, chosen by one variable.
 
 ### 9.4 Landing: multi-tenant vs no-tenant
 
