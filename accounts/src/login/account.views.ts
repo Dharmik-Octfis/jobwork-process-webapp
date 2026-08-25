@@ -1,4 +1,4 @@
-import { escapeHtml, shell } from '../interaction/views.ts';
+import { escapeHtml, passwordField, shell, PASSWORD_TOGGLE_SCRIPT } from '../interaction/views.ts';
 
 /**
  * The account-management pages. Same rules as the sign-in screen: server-rendered,
@@ -33,12 +33,11 @@ export function signupPage(options: FormOptions = {}): string {
       <label for="email">Email</label>
       <input id="email" name="email" type="email" value="${escapeHtml(options.email ?? '')}"
              autocomplete="username" required>
-      <label for="password">Password</label>
-      <input id="password" name="password" type="password" autocomplete="new-password"
-             minlength="8" required>
+      ${passwordField({ id: 'password', name: 'password', label: 'Password', autocomplete: 'new-password', minlength: 8 })}
       <button type="submit">Create account</button>
     </form>
   `,
+    { script: PASSWORD_TOGGLE_SCRIPT },
   );
 }
 
@@ -103,12 +102,11 @@ export function resetPasswordPage(options: FormOptions = {}): string {
       <label for="otp">Code</label>
       <input id="otp" name="otp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
              autocomplete="one-time-code" required autofocus>
-      <label for="password">New password</label>
-      <input id="password" name="password" type="password" autocomplete="new-password"
-             minlength="8" required>
+      ${passwordField({ id: 'password', name: 'password', label: 'New password', autocomplete: 'new-password', minlength: 8 })}
       <button type="submit">Change password</button>
     </form>
   `,
+    { script: PASSWORD_TOGGLE_SCRIPT },
   );
 }
 

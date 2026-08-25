@@ -7,6 +7,7 @@ import { loadClients } from './clients.ts';
 import { ensureSigningKey, loadSigningJwks } from './keys.ts';
 import { installSessionMirror } from './sessionMirror.ts';
 import { installBackchannelRetry } from './backchannelRetry.ts';
+import { logoutConfirmPage, problemPage, signedOutPage } from '../interaction/systemViews.ts';
 
 /**
  * The OIDC provider. docs/SSO_AND_IDENTITY.md §7.1, §12.
@@ -112,9 +113,35 @@ function baseConfiguration(): Omit<Configuration, 'clients' | 'jwks'> {
       devInteractions: { enabled: false },
       /** §10 — how a logout reaches the apps that have a live session. */
       backchannelLogout: { enabled: true },
-      rpInitiatedLogout: { enabled: true },
+      rpInitiatedLogout: {
+        enabled: true,
+        /**
+         * Our own confirmation page. The library's default is a placeholder it
+         * warns about at boot, and it pulls a font from `fonts.googleapis.com` —
+         * an external origin on a page in the auth path, which is the one thing
+         * every page here avoids.
+         */
+        logoutSource: (ctx, form) => {
+          ctx.body = logoutConfirmPage(form, ctx.oidc.client?.clientName);
+        },
+        postLogoutSuccessSource: (ctx) => {
+          ctx.body = signedOutPage();
+        },
+      },
       revocation: { enabled: true },
       userinfo: { enabled: true },
+    },
+
+    /**
+     * The error page, for the two audiences that end up on it: a person who needs a
+     * sentence they can act on, and whoever is debugging who needs the protocol
+     * code. Detail is shown outside production only — see systemViews.ts.
+     */
+    renderError: (ctx, out) => {
+      ctx.type = 'html';
+      ctx.body = problemPage(out as unknown as Record<string, unknown>, {
+        showDetail: !env.isProduction,
+      });
     },
 
     /**

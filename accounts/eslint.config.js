@@ -86,6 +86,21 @@ export default defineConfig([
       ],
     },
   },
+  /**
+   * `public/` is the only browser code this service has — one script, served to the
+   * sign-in page. It runs in a document, not in Node, so it needs browser globals
+   * and none of the Node ones; linting it with the block above reports `document`
+   * as undefined, which is true of the environment it was being checked against and
+   * false of the one it runs in.
+   */
+  {
+    files: ['public/**/*.js'],
+    languageOptions: {
+      globals: globals.browser,
+      // Plain ES5-style script, loaded with a <script> tag rather than bundled.
+      sourceType: 'script',
+    },
+  },
   // MUST be last: turns OFF ESLint formatting rules that would fight Prettier.
   eslintConfigPrettier,
 ]);
