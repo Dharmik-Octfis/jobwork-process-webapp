@@ -18,6 +18,7 @@ export const ssoRouter = Router();
 if (env.sso.enabled) {
   ssoRouter.get('/login', ssoController.startLogin);
   ssoRouter.get('/callback', ssoController.callback);
+  ssoRouter.get('/signup', ssoController.startSignup);
   ssoRouter.get('/logout', ssoController.startLogout);
 
   /**

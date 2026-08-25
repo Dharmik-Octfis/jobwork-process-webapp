@@ -5,13 +5,14 @@ import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { toApiErrorMessage } from '../../api/client';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { Spinner } from '../../components/ui/Spinner';
 
 import { AuthShell } from './AuthShell';
 import { FormErrorBanner } from './FormErrorBanner';
 import { loginSchema } from './auth.schemas';
 import type { LoginInput } from './auth.schemas';
 import { useLogin } from './useLogin';
-import { startSsoLogin, useAuthConfig } from './useAuthConfig';
+import { startSsoLogin, startSsoSignup, useAuthConfig } from './useAuthConfig';
 import { updateLocation } from './auth.api';
 
 import styles from './Auth.module.css';
@@ -45,6 +46,9 @@ export function LoginPage() {
 
   const loginMutation = useLogin(redirectTo);
   const authConfig = useAuthConfig();
+  // Only ever read AFTER the pending and error branches below have returned, so by
+  // here the answer is known and this is a real boolean rather than a guess.
+  const ssoOnly = authConfig.data?.ssoEnabled === true;
 
   const onSubmit = handleSubmit((values) => {
     loginMutation.mutate(values, {
@@ -65,6 +69,47 @@ export function LoginPage() {
     });
   });
 
+  /**
+   * 🔴 Until the config is known, render NEITHER form.
+   *
+   * There is no safe default here, which is the whole point. Guessing "password"
+   * when SSO is on shows a form whose endpoints are 404 — the user types real
+   * credentials into something that cannot work and gets a network error. Guessing
+   * "SSO" when it is off shows a button whose route is not mounted. Both are dead
+   * doors, and a dead door is worse than an honest wait, because the user blames
+   * their password.
+   *
+   * This is not hypothetical: it is exactly what happened on 2026-08-24. A page
+   * loaded while the API was restarting cached the failed config query, fell back
+   * to the password form, and clicking "Sign In" made no request at all — the form
+   * was empty so validation blocked it. It read as "SSO is broken".
+   */
+  if (authConfig.isPending) {
+    return (
+      <AuthShell title="Sign in" subtitle="One moment">
+        <p className={styles.switch}>
+          <Spinner size={16} label="Checking how to sign you in" /> Checking how to sign you in…
+        </p>
+      </AuthShell>
+    );
+  }
+
+  if (authConfig.isError) {
+    return (
+      <AuthShell title="Sign in" subtitle="Can't reach the sign-in service">
+        <FormErrorBanner message="We couldn't check how to sign you in. The API may still be starting." />
+        <Button
+          type="button"
+          fullWidth
+          isLoading={authConfig.isFetching}
+          onClick={() => void authConfig.refetch()}
+        >
+          Try again
+        </Button>
+      </AuthShell>
+    );
+  }
+
   return (
     <AuthShell
       title="Sign in"
@@ -72,69 +117,79 @@ export function LoginPage() {
         invitedEmail ? 'Sign in with the invited email to continue' : 'to access your workspace'
       }
     >
-      {authConfig.data?.ssoEnabled && (
+      {/*
+        🔴 With SSO on it is the ONLY way in: the password form below is not
+        rendered at all, and neither is a local "create account". Both belong to the
+        identity provider now. Offering a second door to the same account means two
+        places a password can leak, and a local password would survive the account
+        being disabled centrally.
+
+        The rollback §13 step 4 asks for is still `SSO_ENABLED=false`, which brings
+        this whole form back and unmounts the SSO routes. The switch is wholesale
+        rather than side by side — one way in at a time, which is the honest shape.
+      */}
+      {ssoOnly ? (
         <div className={styles.ssoBlock}>
           <Button type="button" fullWidth onClick={() => startSsoLogin(redirectTo)}>
-            Continue with Octfis Accounts
+            Sign in with Octfis Accounts
           </Button>
 
-          {/*
-            The password form stays visible below, deliberately. §13 step 4 keeps
-            local login working for one release as the rollback path, so hiding it
-            the moment SSO is enabled would remove the only way back in if the
-            identity provider is the thing that is broken.
-          */}
-          <div className={styles.ssoDivider}>
-            <span>or sign in with a password</span>
-          </div>
+          <p className={styles.switch}>
+            Don't have an account?{' '}
+            <button type="button" className={styles.linkButton} onClick={startSsoSignup}>
+              Create Account
+            </button>
+          </p>
         </div>
+      ) : (
+        <>
+          <form className={layoutStyles.formGrid} onSubmit={onSubmit} noValidate>
+            {loginMutation.isError && (
+              <FormErrorBanner message={toApiErrorMessage(loginMutation.error)} />
+            )}
+
+            <div className={layoutStyles.formGroup}>
+              <Input
+                type="email"
+                autoComplete="email"
+                placeholder="Email address"
+                label=""
+                autoFocus
+                error={errors.email?.message}
+                {...register('email')}
+              />
+            </div>
+
+            <div className={layoutStyles.formGroup}>
+              <Input
+                type="password"
+                autoComplete="current-password"
+                placeholder="Password"
+                label=""
+                error={errors.password?.message}
+                {...register('password')}
+              />
+            </div>
+
+            <div className={styles.forgot}>
+              <Link to="/forgot-password">Forgot password?</Link>
+            </div>
+
+            <Button
+              type="submit"
+              fullWidth
+              className={layoutStyles.submitBtn}
+              isLoading={loginMutation.isPending}
+            >
+              {loginMutation.isPending ? 'Signing In...' : 'Sign In'}
+            </Button>
+          </form>
+
+          <p className={styles.switch}>
+            Don't have an account? <Link to="/signup">Create Account</Link>
+          </p>
+        </>
       )}
-
-      <form className={layoutStyles.formGrid} onSubmit={onSubmit} noValidate>
-        {loginMutation.isError && (
-          <FormErrorBanner message={toApiErrorMessage(loginMutation.error)} />
-        )}
-
-        <div className={layoutStyles.formGroup}>
-          <Input
-            type="email"
-            autoComplete="email"
-            placeholder="Email address"
-            label=""
-            autoFocus
-            error={errors.email?.message}
-            {...register('email')}
-          />
-        </div>
-
-        <div className={layoutStyles.formGroup}>
-          <Input
-            type="password"
-            autoComplete="current-password"
-            placeholder="Password"
-            label=""
-            error={errors.password?.message}
-            {...register('password')}
-          />
-        </div>
-
-        <div className={styles.forgot}>
-          <Link to="/forgot-password">Forgot password?</Link>
-        </div>
-
-        <Button
-          type="submit"
-          fullWidth
-          className={layoutStyles.submitBtn}
-          isLoading={loginMutation.isPending}
-        >
-          {loginMutation.isPending ? 'Signing In...' : 'Sign In'}
-        </Button>
-      </form>
-
-      <p className={styles.switch}>
-        Don't have an account? <Link to="/signup">Create Account</Link>
-      </p>
     </AuthShell>
   );
 }

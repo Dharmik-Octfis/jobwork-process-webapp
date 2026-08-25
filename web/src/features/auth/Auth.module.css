@@ -141,3 +141,29 @@
   height: 1px;
   background: #e2e8f0;
 }
+
+/*
+  A link that performs an action rather than navigating — used where "Create
+  Account" leaves this origin for the identity provider. A <button> rather than an
+  <a>, because it is not a URL the browser should let you open in a new tab or
+  copy: the server decides where accounts lives.
+*/
+.linkButton {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: #0284c7;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.linkButton:hover {
+  text-decoration: underline;
+}
+
+.linkButton:focus-visible {
+  outline: 2px solid #0284c7;
+  outline-offset: 2px;
+  border-radius: 2px;
+}

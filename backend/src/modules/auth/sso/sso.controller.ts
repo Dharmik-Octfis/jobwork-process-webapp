@@ -83,6 +83,27 @@ export async function startLogin(req: Request, res: Response): Promise<void> {
   res.redirect(authorizationUrl.href);
 }
 
+/**
+ * GET /api/auth/sso/signup — send the browser to the provider's signup page.
+ *
+ * 🔴 A redirect from here rather than a link the SPA builds, so the issuer URL stays
+ * server-side. The browser never needs to know where accounts lives — it is told,
+ * one hop at a time — and `/auth/config` therefore keeps reporting only whether SSO
+ * is on, not the shape of the estate behind it.
+ *
+ * Creating an account is the identity provider's business alone. jobwork has no
+ * signup of its own once SSO is enabled: an account here is granted by invitation
+ * (§9.3), never self-created.
+ */
+export async function startSignup(_req: Request, res: Response): Promise<void> {
+  const config = await ssoConfig();
+
+  // `issuer` is the one URL guaranteed to exist; the signup page is ours, at a path
+  // we control, so it is composed rather than discovered.
+  const url = new URL('/signup', config.serverMetadata().issuer);
+  res.redirect(url.href);
+}
+
 /** GET /api/auth/sso/callback — the only place an IdP token is read. */
 export async function callback(req: Request, res: Response): Promise<void> {
   const config = await ssoConfig();

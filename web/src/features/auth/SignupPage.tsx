@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -5,12 +6,14 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { toApiErrorMessage } from '../../api/client';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { Spinner } from '../../components/ui/Spinner';
 
 import { AuthShell } from './AuthShell';
 import { FormErrorBanner } from './FormErrorBanner';
 import { signupSchema } from './auth.schemas';
 import type { SignupInput } from './auth.schemas';
 import { useSignup } from './useSignup';
+import { startSsoSignup, useAuthConfig } from './useAuthConfig';
 import { updateLocation } from './auth.api';
 
 import styles from './Auth.module.css';
@@ -36,6 +39,7 @@ export function SignupPage() {
   });
 
   const signupMutation = useSignup(redirectTo);
+  const authConfig = useAuthConfig();
 
   const onSubmit = handleSubmit((values) => {
     signupMutation.mutate(values, {
@@ -49,27 +53,74 @@ export function SignupPage() {
               }).catch(() => {});
             },
             (error) => console.warn('Geolocation background error:', error.message),
-            { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+            { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 },
           );
         }
       },
     });
   });
 
+  /**
+   * 🔴 Under SSO there is no local signup, so reaching this route directly must not
+   * show the form — it hands the browser to the identity provider instead.
+   *
+   * A redirect rather than a hidden form: leaving the form mounted but unused would
+   * keep a working POST to `/auth/signup` one devtools edit away, and the whole
+   * point is that an account is created in exactly one place.
+   */
+  useEffect(() => {
+    if (authConfig.data?.ssoEnabled === true) startSsoSignup();
+  }, [authConfig.data?.ssoEnabled]);
+
+  if (authConfig.data?.ssoEnabled === true) {
+    return (
+      <AuthShell title="Create Account" subtitle="Taking you to Octfis Accounts…">
+        <p className={styles.switch}>
+          Accounts are created at Octfis Accounts.{' '}
+          <button type="button" className={styles.linkButton} onClick={startSsoSignup}>
+            Continue
+          </button>
+        </p>
+      </AuthShell>
+    );
+  }
+
+  /**
+   * 🔴 Same rule as the sign-in page: until the config is known, show no form.
+   *
+   * Guessing wrong here is worse than on sign-in — the user fills in a name, an
+   * email and a password twice, and only then discovers the endpoint is 404 and
+   * that they were never meant to create an account here at all.
+   */
+  if (authConfig.isPending || authConfig.isError) {
+    return (
+      <AuthShell title="Create Account" subtitle="One moment">
+        {authConfig.isError ? (
+          <>
+            <FormErrorBanner message="We couldn't check where accounts are created. The API may still be starting." />
+            <Button
+              type="button"
+              fullWidth
+              isLoading={authConfig.isFetching}
+              onClick={() => void authConfig.refetch()}
+            >
+              Try again
+            </Button>
+          </>
+        ) : (
+          <p className={styles.switch}>
+            <Spinner size={16} label="Checking" /> One moment…
+          </p>
+        )}
+      </AuthShell>
+    );
+  }
+
   return (
-    <AuthShell
-      title="Create Account"
-      subtitle="Start managing your operations effectively"
-    >
-      <form
-        className={layoutStyles.formGrid}
-        onSubmit={onSubmit}
-        noValidate
-      >
+    <AuthShell title="Create Account" subtitle="Start managing your operations effectively">
+      <form className={layoutStyles.formGrid} onSubmit={onSubmit} noValidate>
         {signupMutation.isError && (
-          <FormErrorBanner
-            message={toApiErrorMessage(signupMutation.error)}
-          />
+          <FormErrorBanner message={toApiErrorMessage(signupMutation.error)} />
         )}
 
         {/* 2-Column Row for First & Last Name */}
@@ -131,8 +182,16 @@ export function SignupPage() {
             />
           </div>
         </div>
-        <p style={{ margin: '4px 0 0 4px', color: 'var(--color-text-muted)', fontSize: 12, lineHeight: 1.4 }}>
-          <span style={{ color: 'var(--color-primary)', fontWeight: 'bold' }}>*</span> Password must contain at least 8 characters (1 uppercase, 1 lowercase, 1 number, 1 special).
+        <p
+          style={{
+            margin: '4px 0 0 4px',
+            color: 'var(--color-text-muted)',
+            fontSize: 12,
+            lineHeight: 1.4,
+          }}
+        >
+          <span style={{ color: 'var(--color-primary)', fontWeight: 'bold' }}>*</span> Password must
+          contain at least 8 characters (1 uppercase, 1 lowercase, 1 number, 1 special).
         </p>
 
         {inviteEmail && (
@@ -143,8 +202,7 @@ export function SignupPage() {
 
         {/* Compact Legal Disclaimer */}
         <p className={styles.termsText}>
-          By creating an account you agree to our{' '}
-          <Link to="/terms">Terms</Link> and{' '}
+          By creating an account you agree to our <Link to="/terms">Terms</Link> and{' '}
           <Link to="/privacy">Privacy Policy</Link>.
         </p>
 

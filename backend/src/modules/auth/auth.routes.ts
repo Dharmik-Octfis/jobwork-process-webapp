@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { env } from '../../config/env.ts';
 import { authenticate } from '../../middlewares/authenticate.ts';
 import { validateBody } from '../../middlewares/validate.ts';
 import * as authController from './auth.controller.ts';
@@ -58,8 +59,41 @@ export const authRouter = Router();
 
 authRouter.get('/config', authController.authConfig);
 
-authRouter.post('/signup', validateBody(signupSchema), authController.signup);
-authRouter.post('/login', validateBody(loginSchema), authController.login);
+/**
+ * 🔴 The four ways a local password can be created or used, and therefore the four
+ * routes that must NOT exist once SSO is on.
+ *
+ * Hiding the forms in the web app is not enforcement — it is a suggestion. Left
+ * mounted, `POST /auth/signup` still answers 201 to anything that asks, so anyone
+ * with curl could keep minting local accounts with local passwords, each one a way
+ * into this app that the identity provider knows nothing about and cannot disable.
+ * Verified: before this guard, that request created an account.
+ *
+ * `forgot-password` and `reset-password` belong here for the same reason and are
+ * easy to miss — a password reset SETS a password, so leaving them is leaving a way
+ * to give any existing account a local credential and sign in with it.
+ *
+ * Not mounted at all rather than returning 403: an absent route cannot be reached
+ * by a stale client, and the 404 says plainly that this app no longer does this.
+ *
+ * ⚠️ `change-password` below is deliberately left alone. It needs a live session AND
+ * the current password, so it is not a way IN — and an account that predates the
+ * cutover may still legitimately have a local password to change.
+ */
+if (!env.sso.enabled) {
+  authRouter.post('/signup', validateBody(signupSchema), authController.signup);
+  authRouter.post('/login', validateBody(loginSchema), authController.login);
+  authRouter.post(
+    '/forgot-password',
+    validateBody(forgotPasswordSchema),
+    authController.forgotPassword,
+  );
+  authRouter.post(
+    '/reset-password',
+    validateBody(resetPasswordSchema),
+    authController.resetPassword,
+  );
+}
 authRouter.post('/refresh-token', authController.refresh);
 authRouter.post('/logout', authController.logout);
 authRouter.get('/me', authenticate, authController.me);
@@ -85,9 +119,5 @@ authRouter.post(
   validateBody(changePasswordSchema),
   authController.changePassword,
 );
-authRouter.post(
-  '/forgot-password',
-  validateBody(forgotPasswordSchema),
-  authController.forgotPassword,
-);
-authRouter.post('/reset-password', validateBody(resetPasswordSchema), authController.resetPassword);
+// `/forgot-password` and `/reset-password` are registered above, inside the
+// `!env.sso.enabled` guard — both SET a local password, so both are ways in.
