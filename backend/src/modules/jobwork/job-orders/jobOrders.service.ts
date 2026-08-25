@@ -1472,7 +1472,9 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
       // 🔴 Issued MINUS CONSUMED, both in the input's unit. Subtracting
       // `receivedQty` would mix metres and pieces on any step where the item
       // changes (jobOrders.status.ts).
-      const outstanding = totals.issuedQty.minus(totals.consumedQty);
+      const issuedD = new Prisma.Decimal(totals.issuedQty);
+      const consumedD = new Prisma.Decimal(totals.consumedQty);
+      const outstanding = issuedD.minus(consumedD);
       steps.push({
         ...step,
         totals: {
