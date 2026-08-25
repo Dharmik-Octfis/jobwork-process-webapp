@@ -16,6 +16,7 @@ import {
   loadActiveDefinitions,
   validateCustomFields,
 } from '../../settings/customization/custom-fields/customFields.engine.ts';
+import { createBatch, postMovement } from '../stock-ledger/stockLedger.service.ts';
 
 export function toComponentResponse(row: Record<string, unknown>) {
   let componentObj = row.component as Record<string, unknown> | undefined;
@@ -207,6 +208,78 @@ export class CompositeItemsService {
           updatedBy: userId ?? null,
         },
       });
+
+      if (
+        item.trackInventory &&
+        item.stockingUomId &&
+        rest.openingStock !== undefined &&
+        rest.openingStock !== null &&
+        Number(rest.openingStock) > 0
+      ) {
+        const primaryLoc =
+          (await tx.location.findFirst({
+            where: { organizationId, isPrimary: true, isDeleted: false },
+          })) ??
+          (await tx.location.findFirst({
+            where: { organizationId, isDeleted: false },
+          }));
+
+        if (primaryLoc) {
+          const declaredQty = new Prisma.Decimal(rest.openingStock);
+          const valuePerUnit =
+            rest.openingStockValuePerUnit !== undefined && rest.openingStockValuePerUnit !== null
+              ? new Prisma.Decimal(rest.openingStockValuePerUnit)
+              : null;
+
+          await tx.itemOpeningStockRow.upsert({
+            where: {
+              // eslint-disable-next-line @typescript-eslint/naming-convention
+              organizationId_itemId_locationId: {
+                organizationId,
+                itemId: item.id,
+                locationId: primaryLoc.id,
+              },
+            },
+            create: {
+              organizationId,
+              itemId: item.id,
+              locationId: primaryLoc.id,
+              openingStock: declaredQty,
+              openingStockValuePerUnit: valuePerUnit,
+              createdBy: userId ?? null,
+              updatedBy: userId ?? null,
+            },
+            update: {
+              openingStock: declaredQty,
+              openingStockValuePerUnit: valuePerUnit,
+              isDeleted: false,
+              updatedBy: userId ?? null,
+            },
+          });
+
+          const batch = await createBatch(tx, {
+            organizationId,
+            itemId: item.id,
+            uomId: item.stockingUomId,
+            ownership: 'own',
+            sourceDocType: 'item_opening_stock',
+            sourceDocId: item.id,
+            userId,
+          });
+
+          await postMovement(tx, {
+            organizationId,
+            batchId: batch.id,
+            locationId: primaryLoc.id,
+            movementType: 'opening',
+            qtyIn: declaredQty,
+            valueIn: valuePerUnit ? declaredQty.times(valuePerUnit) : 0,
+            sourceDocType: 'item_opening_stock',
+            sourceDocId: item.id,
+            userId,
+          });
+        }
+      }
 
       return toItemResponse(item);
     });
