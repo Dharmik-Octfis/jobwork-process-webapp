@@ -501,11 +501,12 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
     queryFn: () => fetchCustomers(orgId!, { perPage: 500 }),
     enabled: isOpen && Boolean(orgId) && processorType === 'customer',
   });
-  const processors = processorType === 'customer'
-    ? (customersPage?.results ?? [])
-    : (vendorsPage?.results ?? []).filter(
-        (v) => !v.vendorTypes?.length || v.vendorTypes.includes('job_worker'),
-      );
+  const processors =
+    processorType === 'customer'
+      ? (customersPage?.results ?? [])
+      : (vendorsPage?.results ?? []).filter(
+          (v) => !v.vendorTypes?.length || v.vendorTypes.includes('job_worker'),
+        );
 
   /**
    * 🔴 WHETHER A PICKER APPEARS IS THE ITEM'S DECISION (2026-08-14).
@@ -781,6 +782,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
 
   return (
     <Modal
+      position="fullScreen"
       isOpen={isOpen}
       onClose={onClose}
       title={`Issue material — step ${step.seq}, ${step.processNameSnapshot}`}
@@ -1180,22 +1182,6 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                       <div style={{ ...lineCell, fontWeight: 600, color: '#111' }}>
                         {input.name}
                       </div>
-
-                      {/* The dead end, under the item it is about — a full sentence
-                          in a narrow numeric column would wreck the alignment this
-                          table exists for. */}
-                      {isEmptyHere && (
-                        <div
-                          style={{
-                            marginTop: 4,
-                            fontSize: 11.5,
-                            color: '#b45309',
-                            lineHeight: 1.45,
-                          }}
-                        >
-                          Quantity not available at this location. Please change the location.
-                        </div>
-                      )}
 
                       {/* 🔴 Said out loud, never swallowed. Nothing was reserved, so
                           a planned batch going missing between planning and issuing

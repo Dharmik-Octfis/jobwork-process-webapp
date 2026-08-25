@@ -752,6 +752,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
 
   return (
     <Modal
+      position="fullScreen"
       isOpen={isOpen}
       onClose={onClose}
       title={`Receive goods — step ${step.seq}, ${step.processNameSnapshot}`}

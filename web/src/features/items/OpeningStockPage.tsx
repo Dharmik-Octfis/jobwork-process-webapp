@@ -1083,7 +1083,7 @@ export function OpeningStockPage() {
       <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '12px', padding: '8px 24px', borderTop: '1px solid #eef0f3', position: 'sticky', bottom: 0, background: '#fff', zIndex: 10 }}>
         <button
           type="button"
-          onClick={() => navigate(`/organizations/${orgId}/items/${itemId}`)}
+          onClick={() => navigate(-1)}
           style={{
             padding: '8px 16px',
             border: '1px solid #cbd5e1',

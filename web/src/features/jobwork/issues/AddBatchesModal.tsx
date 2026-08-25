@@ -260,6 +260,7 @@ export function AddBatchesModal({
 
   return (
     <Modal
+      position="fullScreen"
       isOpen={isOpen}
       onClose={onClose}
       title="Add Batches"

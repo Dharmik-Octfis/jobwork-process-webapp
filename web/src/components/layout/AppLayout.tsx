@@ -415,6 +415,30 @@ export function AppLayout() {
   const location = useLocation();
 
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
+  const [prevPathname, setPrevPathname] = useState(location.pathname);
+  const [prevModulesLength, setPrevModulesLength] = useState(0);
+  const [logoError, setLogoError] = useState(false);
+  const [prevOrgId, setPrevOrgId] = useState(activeOrgId);
+
+  if (activeOrgId !== prevOrgId) {
+    setPrevOrgId(activeOrgId);
+    setLogoError(false);
+  }
+
+  if (location.pathname !== prevPathname || modules.length !== prevModulesLength) {
+    setPrevPathname(location.pathname);
+    setPrevModulesLength(modules.length);
+    const effectiveOrgId = activeOrgId || localStorage.getItem(LAST_ORG_KEY) || undefined;
+    const activeModule = modules.find((m) =>
+      m.children?.some((c) => {
+        const childTo = navPath(c.code, effectiveOrgId);
+        return childTo !== '#' && location.pathname.startsWith(childTo);
+      }),
+    );
+    if (activeModule) {
+      setExpandedModuleId(activeModule.id);
+    }
+  }
 
   const isSidebarCollapsed = location.pathname.endsWith('/opening-stock');
 
@@ -483,10 +507,11 @@ export function AppLayout() {
             overflow: 'hidden',
           }}
         >
-          {activeOrg?.logo_url ? (
+          {activeOrg?.logo_url && !logoError ? (
             <img
               src={activeOrg.logo_url}
               alt={activeOrg.name}
+              onError={() => setLogoError(true)}
               style={{
                 maxWidth: isSidebarCollapsed ? 40 : 190,
                 maxHeight: 40,
@@ -522,6 +547,7 @@ export function AppLayout() {
             flexDirection: 'column',
             gap: 'var(--space-2)',
             overflowY: 'auto',
+            overflowX: 'hidden',
           }}
         >
           {modules.map((module) => (
@@ -612,7 +638,7 @@ export function AppLayout() {
         {/* Page Content. Suspense sits INSIDE <main> so a route chunk still
             loading swaps only this area — the sidebar and header stay on screen.
             Every page under this layout is lazy (see app/router.tsx). */}
-        <main style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+        <main id="app-main-content" style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
           <Suspense fallback={<RouteFallback />}>
             <Outlet />
           </Suspense>
@@ -642,6 +668,14 @@ function ModuleNavGroup({
 
   const isParent = module.children && module.children.length > 0;
 
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const isChildActive = isParent && module.children?.some((child) => {
+    const childTo = navPath(child.code, effectiveOrgId);
+    return childTo !== '#' && location.pathname.startsWith(childTo);
+  });
+
   // States for old accordion
   const [localExpanded, setLocalExpanded] = useState(false);
   const [expandedChildId, setExpandedChildId] = useState<string | null>(null);
@@ -655,14 +689,28 @@ function ModuleNavGroup({
   // States for new flyout
   const [isHovered, setIsHovered] = useState(false);
   const [rect, setRect] = useState<DOMRect | null>(null);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleMouseEnter = (e: React.MouseEvent) => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
     setIsHovered(true);
     setRect(e.currentTarget.getBoundingClientRect());
   };
-  const handleMouseLeave = () => {
-    setIsHovered(false);
+  const handlePortalMouseEnter = () => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    setIsHovered(true);
   };
+  const handleMouseLeave = () => {
+    hoverTimeoutRef.current = setTimeout(() => {
+      setIsHovered(false);
+    }, 50);
+  };
+
+  const [prevLocation, setPrevLocation] = useState(location.pathname);
+  if (location.pathname !== prevLocation) {
+    setPrevLocation(location.pathname);
+    setIsHovered(false);
+  }
 
   if (!isSidebarCollapsed) {
     // --- OLD ACCORDION STYLE ---
@@ -686,6 +734,7 @@ function ModuleNavGroup({
               width: '100%',
               textAlign: 'left',
               transition: 'background-color 0.2s ease',
+              whiteSpace: 'nowrap',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', width: '100%' }}>
@@ -747,6 +796,7 @@ function ModuleNavGroup({
           background: isActive ? '#186337' : 'transparent',
           fontWeight: isActive ? 600 : 500,
           transition: 'all 0.2s ease',
+          whiteSpace: 'nowrap',
         })}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', width: '100%', justifyContent: 'flex-start' }}>
@@ -760,6 +810,14 @@ function ModuleNavGroup({
 
   // --- NEW ZOHO-STYLE COMPACT FLYOUT (when isSidebarCollapsed is true) ---
   if (depth > 0) {
+    const handlePlusClick = (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (to !== '#') {
+        navigate(`${to}/new`);
+      }
+    };
+
     return (
       <NavLink
         to={to}
@@ -792,7 +850,12 @@ function ModuleNavGroup({
         {({ isActive }) => (
           <>
             <span>{module.name}</span>
-            {isActive && <Plus size={14} color="#fff" />}
+            <button
+              onClick={handlePlusClick}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+            >
+              <Plus size={14} color={isActive ? "#fff" : "rgba(255,255,255,0.4)"} />
+            </button>
           </>
         )}
       </NavLink>
@@ -811,19 +874,22 @@ function ModuleNavGroup({
         onClick={(e) => {
            if (isParent) e.preventDefault();
         }}
-        style={({ isActive }) => ({
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '10px 4px',
-          gap: '4px',
-          borderRadius: 'var(--radius-md)',
-          textDecoration: 'none',
-          color: (isActive && !isParent) || isHovered ? 'white' : 'rgba(255,255,255,0.7)',
-          background: (isActive && !isParent) ? '#186337' : isHovered ? 'rgba(255,255,255,0.08)' : 'transparent',
-          transition: 'all 0.2s ease',
-        })}
+        style={({ isActive }) => {
+          const reallyActive = (!isParent && isActive) || isChildActive;
+          return {
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '10px 4px',
+            gap: '4px',
+            borderRadius: 'var(--radius-md)',
+            textDecoration: 'none',
+            color: reallyActive || isHovered ? 'white' : 'rgba(255,255,255,0.7)',
+            background: reallyActive ? '#186337' : isHovered ? 'rgba(255,255,255,0.08)' : 'transparent',
+            transition: 'all 0.2s ease',
+          };
+        }}
       >
         <Icon size={20} />
         <span style={{ fontSize: '11px', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>
@@ -833,29 +899,35 @@ function ModuleNavGroup({
 
       {isParent && isHovered && rect && createPortal(
         <div
-          onMouseEnter={() => setIsHovered(true)}
+          onMouseEnter={handlePortalMouseEnter}
           onMouseLeave={handleMouseLeave}
           style={{
             position: 'fixed',
             top: Math.max(10, Math.min(rect.top, window.innerHeight - (module.children!.length * 40 + 40))),
-            left: rect.right + 8,
-            width: '200px',
-            background: '#1e293b',
-            borderRadius: '6px',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
-            padding: '8px 0',
+            left: rect.right,
+            paddingLeft: '16px',
             zIndex: 9999,
-            display: 'flex',
-            flexDirection: 'column',
-            border: '1px solid rgba(255,255,255,0.1)',
           }}
         >
-          <div style={{ padding: '4px 16px 8px', fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
-            {module.name}
+          <div
+            style={{
+              width: '200px',
+              background: '#1e293b',
+              borderRadius: '6px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+              padding: '8px 0',
+              display: 'flex',
+              flexDirection: 'column',
+              border: '1px solid rgba(255,255,255,0.1)',
+            }}
+          >
+            <div style={{ padding: '4px 16px 8px', fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+              {module.name}
+            </div>
+            {module.children!.map((child) => (
+              <ModuleNavGroup key={child.id} module={child} depth={depth + 1} isSidebarCollapsed={true} />
+            ))}
           </div>
-          {module.children!.map((child) => (
-            <ModuleNavGroup key={child.id} module={child} depth={depth + 1} isSidebarCollapsed={true} />
-          ))}
         </div>,
         document.body
       )}
