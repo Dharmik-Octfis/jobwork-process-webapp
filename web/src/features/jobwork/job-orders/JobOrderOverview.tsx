@@ -893,7 +893,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
           isOpen
           onClose={() => setIssueStep(null)}
           jobOrder={jobOrder}
-          step={issueStep}
+          step={steps.find((s) => s.id === issueStep.id) ?? issueStep}
           onIssued={() =>
             queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] })
           }
@@ -905,7 +905,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
           isOpen
           onClose={() => setReceiveStep(null)}
           jobOrder={jobOrder}
-          step={receiveStep}
+          step={steps.find((s) => s.id === receiveStep.id) ?? receiveStep}
           onReceived={() =>
             queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] })
           }

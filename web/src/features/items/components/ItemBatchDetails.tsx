@@ -205,7 +205,7 @@ export function ItemBatchDetails({
   };
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ padding: '8px 24px 24px' }}>
       {/* Top Filter & Toolbar Bar */}
       <div
         style={{
@@ -225,7 +225,7 @@ export function ItemBatchDetails({
             onChange={(val) => setStatusFilter(val as BatchStatusFilter)}
             options={STATUS_OPTIONS}
             fullWidth={false}
-            minWidth={130}
+            minWidth={160}
             buttonStyle={{ height: 34, borderRadius: 6, borderColor: '#cbd5e1' }}
             ariaLabel="Status Filter"
           />
@@ -305,8 +305,6 @@ export function ItemBatchDetails({
       {/* Table Container with Horizontal Scroll support */}
       <div
         style={{
-          border: '1px solid #eef0f3',
-          borderRadius: '6px',
           overflowX: 'auto',
           background: '#ffffff',
           minHeight: '400px',
@@ -367,13 +365,14 @@ export function ItemBatchDetails({
               </tr>
             ) : (
               filteredBatches.map((b) => {
-                const isHovered = hoveredRowId === b.id;
-                const isMenuOpen = activeMenuBatchId === b.id;
+                const uniqueRowId = `${b.id}_${b.locationId}`;
+                const isHovered = hoveredRowId === uniqueRowId;
+                const isMenuOpen = activeMenuBatchId === uniqueRowId;
 
                 return (
                   <tr
-                    key={b.id}
-                    onMouseEnter={() => setHoveredRowId(b.id)}
+                    key={uniqueRowId}
+                    onMouseEnter={() => setHoveredRowId(uniqueRowId)}
                     onMouseLeave={() => setHoveredRowId(null)}
                     style={{
                       borderBottom: '1px solid #eef0f3',
@@ -438,7 +437,7 @@ export function ItemBatchDetails({
                             style={{ padding: '12px 16px', color: '#334155', whiteSpace: 'nowrap' }}
                           >
                             {b.manufacturedDate
-                              ? format(new Date(b.manufacturedDate), 'dd/MM/yyyy')
+                              ? format(new Date(b.manufacturedDate), 'dd-MM-yyyy')
                               : '-'}
                           </td>
                         );
@@ -453,7 +452,7 @@ export function ItemBatchDetails({
                               whiteSpace: 'nowrap',
                             }}
                           >
-                            {b.expiryDate ? format(new Date(b.expiryDate), 'dd/MM/yyyy') : '-'}
+                            {b.expiryDate ? format(new Date(b.expiryDate), 'dd-MM-yyyy') : '-'}
                             {b.isExpired && (
                               <span
                                 style={{
@@ -549,7 +548,7 @@ export function ItemBatchDetails({
                                 ? { bottom: window.innerHeight - rect.top + 4 }
                                 : { top: rect.bottom + 4 }),
                             });
-                            setActiveMenuBatchId(b.id);
+                            setActiveMenuBatchId(uniqueRowId);
                           }
                         }}
                         style={{

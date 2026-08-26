@@ -98,7 +98,7 @@ export const createJobIssue = async (req: Request, res: Response) => {
     req.body as CreateJobIssueInput,
     req.user?.id,
   );
-  sendSuccess(res, created, 'Material issued.', 201);
+  sendSuccess(res, created, 'Success', 201);
 };
 
 export const getJobIssue = async (req: Request, res: Response) => {
