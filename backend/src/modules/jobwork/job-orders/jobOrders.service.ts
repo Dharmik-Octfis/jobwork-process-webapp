@@ -608,8 +608,8 @@ export async function manuallyCompleteStep(
   stepId: string,
   userId: string | undefined,
 ) {
-  return withUniqueViolation('Order already closed or not found', async () =>
-    runAsTenant(organizationId, async (tx) => {
+  return withUniqueViolation('Order already closed or not found', async () => {
+    await runAsTenant(organizationId, async (tx) => {
       const step = await tx.jobOrderStep.findFirst({
         where: { id: stepId, jobOrderId, organizationId, isDeleted: false },
         select: { id: true, status: true },
@@ -628,9 +628,9 @@ export async function manuallyCompleteStep(
       });
 
       await recomputeStep(tx, organizationId, step.id);
-      return getJobOrderOverview(organizationId, jobOrderId);
-    }),
-  );
+    });
+    return getJobOrderOverview(organizationId, jobOrderId);
+  });
 }
 
 type ExistingStep = Awaited<ReturnType<typeof loadExistingSteps>>[number];

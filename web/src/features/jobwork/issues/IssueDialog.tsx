@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
+import { toast } from 'react-hot-toast';
 import { DateInput } from '../../../components/ui/DateInput';
 import { Modal } from '../../../components/ui/Modal';
 import { Select } from '../../../components/ui/Select';
@@ -88,7 +89,8 @@ const lineCell: React.CSSProperties = {
   minHeight: 32,
 };
 
-const lineCellRight: React.CSSProperties = { ...lineCell, justifyContent: 'flex-end' };
+
+const lineCellCenter: React.CSSProperties = { ...lineCell, justifyContent: 'center' };
 
 /** How many batches one picker asks for. The server caps at this too; the picker
  * says so when it hits the ceiling rather than showing a slice as if it were all. */
@@ -151,8 +153,8 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
   /** Which item section opened Add Batches. Null when it is closed. */
   const [addBatchesFor, setAddBatchesFor] = useState<string | null>(null);
   const [remarks, setRemarks] = useState('');
-  const [overrideReason, setOverrideReason] = useState('');
-  const [needsOverride, setNeedsOverride] = useState(false);
+  const [overrideReason] = useState('');
+  const [_needsOverride, setNeedsOverride] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   /**
@@ -170,24 +172,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
    */
   const [pendingLocationId, setPendingLocationId] = useState<string | null>(null);
 
-  /**
-   * 🔴 WHAT THIS CHALLAN COULD NOT CARRY, AFTER IT HAS BEEN RAISED (2026-08-19).
-   *
-   * One challan goes out of one location, so a step whose items are split across
-   * godowns genuinely needs more than one. That is correct, but a user who is not
-   * told discovers it by reopening the dialog, re-reading the rows, and working
-   * out for themselves which item is still outstanding — three times over, for a
-   * step with three godowns.
-   *
-   * So the dialog does not close on those saves. It says what is left, names the
-   * godown holding it, and offers to carry straight on there with the form
-   * already cleared for the next document.
-   */
-  const [continuation, setContinuation] = useState<{
-    itemNames: string[];
-    locationId: string;
-    locationName: string;
-  } | null>(null);
+
 
   // A query per keystroke would be one round trip per letter of a batch number.
   useEffect(() => {
@@ -212,6 +197,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
         sku: row.item?.sku ?? null,
         uomLabel: row.uom ? (row.uom.symbol ?? row.uom.unitName) : '',
         plannedQty: row.plannedQty === null ? null : toNumber(row.plannedQty),
+        issuedQty: toNumber(step.itemTotals.inputs.find((t) => t.itemId === row.itemId)?.issuedQty),
         fromStock: row.fromStock ?? true,
         /** 🔴 `Item.inventoryTracking = 'batch'` is a promise that every metre is
          * traceable to its roll, and an issue is where that trace is created. The
@@ -643,11 +629,15 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
       const best = [...coverage.values()].sort((a, b) => b.items.length - a.items.length)[0];
 
       if (best) {
+        const issued = inputItems.filter((input) => (qtyByItem.get(input.itemId) ?? 0) > 0);
+        const issuedItemNames = issued.map((i) => i.name);
+        
         resetAllocations(best.id);
-        setContinuation({ itemNames: best.items, locationId: best.id, locationName: best.name });
+        toast.success(`Challan raised for ${issuedItemNames.join(', ')}`);
         return;
       }
 
+      toast.success('Challan raised successfully');
       onClose();
     },
     onError: (err: AxiosError<{ message?: string; details?: Record<string, string> }>) => {
@@ -760,7 +750,6 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
    * no longer describes the screen. */
   const applyLocation = (value: string) => {
     resetAllocations(value);
-    setContinuation(null);
   };
 
   const openAddBatches = (id: string) => {
@@ -863,48 +852,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
           {error}
         </p>
       )}
-      {/* 🔴 THE CHALLAN WENT; THE STEP IS NOT DONE.
-          Green, because nothing failed — this is a receipt for what just happened
-          plus the one next action, with the form already cleared and pointed at
-          the godown holding the rest. */}
-      {continuation && (
-        <div
-          style={{
-            fontSize: 13,
-            color: '#065f46',
-            background: '#ecfdf5',
-            border: '1px solid #a7f3d0',
-            borderRadius: 4,
-            padding: '10px 12px',
-            margin: '0 0 16px 0',
-          }}
-          role="status"
-        >
-          <p style={{ margin: '0 0 8px 0', lineHeight: 1.5 }}>
-            Challan raised. {continuation.itemNames.join(', ')}{' '}
-            {continuation.itemNames.length === 1 ? 'was' : 'were'} not on it — a challan goes out of
-            one location, and {continuation.itemNames.length === 1 ? 'it is' : 'they are'} at{' '}
-            <strong>{continuation.locationName}</strong>. This form is now set to{' '}
-            {continuation.locationName} for the next one.
-          </p>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: '5px 14px',
-              background: '#fff',
-              color: '#334155',
-              border: '1px solid #d1d5db',
-              borderRadius: 4,
-              cursor: 'pointer',
-              fontWeight: 500,
-              fontSize: 12.5,
-            }}
-          >
-            Not now — close
-          </button>
-        </div>
-      )}
+
 
       {/* 🔴 THE CONFIRM, INLINE — not a nested dialog.
           A Modal inside a Modal fights over the focus trap and Esc, and this
@@ -1129,11 +1077,14 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                 <th style={lineTh} scope="col">
                   Item
                 </th>
-                <th style={{ ...lineTh, textAlign: 'right', width: 110 }} scope="col">
+                <th style={{ ...lineTh, textAlign: 'center', width: 110 }} scope="col">
                   Planned
                 </th>
-                <th style={{ ...lineTh, textAlign: 'right', width: 110 }} scope="col">
+                <th style={{ ...lineTh, textAlign: 'center', width: 110 }} scope="col">
                   Available
+                </th>
+                <th style={{ ...lineTh, textAlign: 'center', width: 110 }} scope="col">
+                  To Be Issued
                 </th>
                 <th style={{ ...lineTh, textAlign: 'right', width: 140 }} scope="col">
                   Quantity
@@ -1225,8 +1176,8 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                       )}
                     </td>
 
-                    <td style={{ ...lineTd, textAlign: 'right', color: '#64748b' }}>
-                      <div style={lineCellRight}>
+                    <td style={{ ...lineTd, textAlign: 'center', color: '#64748b' }}>
+                      <div style={lineCellCenter}>
                         {input.plannedQty === null ? '—' : formatQty(input.plannedQty)}
                       </div>
                     </td>
@@ -1234,12 +1185,18 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                     <td
                       style={{
                         ...lineTd,
-                        textAlign: 'right',
+                        textAlign: 'center',
                         color: isEmptyHere ? '#b45309' : '#334155',
                       }}
                     >
-                      <div style={lineCellRight}>
+                      <div style={lineCellCenter}>
                         {query?.isLoading ? '…' : formatQty(available)}
+                      </div>
+                    </td>
+
+                    <td style={{ ...lineTd, textAlign: 'center', color: '#0f172a' }}>
+                      <div style={lineCellCenter}>
+                        {input.plannedQty === null ? '—' : formatQty(Math.max(0, input.plannedQty - input.issuedQty))}
                       </div>
                     </td>
 
@@ -1346,7 +1303,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                             >
                               {pickedBatchCount === 0
                                 ? 'Add Batches'
-                                : `${pickedBatchCount} ${pickedBatchCount === 1 ? 'batch' : 'batches'}`}
+                                : `${pickedBatchCount} ${pickedBatchCount === 1 ? 'batch' : 'batches'} added`}
                             </button>
                           </div>
 
@@ -1405,21 +1362,6 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
           server, and its message names the item it refused.
         */}
 
-        {needsOverride && (
-          <div style={{ marginTop: 12 }}>
-            <label style={{ ...labelStyle, color: '#b45309' }} htmlFor="issue-override">
-              Reason for going past the tolerance ceiling
-            </label>
-            <input
-              id="issue-override"
-              type="text"
-              value={overrideReason}
-              onChange={(e) => setOverrideReason(e.target.value)}
-              style={inputStyle}
-              placeholder="Why is this being allowed?"
-            />
-          </div>
-        )}
       </section>
 
       {/* Keyed and mounted only while open — `AddBatchesModal` seeds its grid once,
