@@ -27,7 +27,12 @@ import {
   stepCharge,
   toNumber,
 } from '../jobwork.schemas';
-import { deleteJobOrder, fetchJobOrderOverview, shortCloseJobOrder, completeJobOrderStep } from './jobOrders.api';
+import {
+  deleteJobOrder,
+  fetchJobOrderOverview,
+  shortCloseJobOrder,
+  completeJobOrderStep,
+} from './jobOrders.api';
 import { AddStepsDialog } from './AddStepsDialog';
 import { ActivityTimeline } from './ActivityTimeline';
 import { JobOrderFlow } from './JobOrderFlow';
@@ -554,19 +559,19 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   };
 
   return (
-    <div style={{ background: '#f8fafc', minHeight: '100%' }}>
-      <header style={{ background: '#fff', borderBottom: '1px solid #eef0f3' }}>
+    <div style={{ background: '#f8fafc', minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
+      <header style={{ background: '#fff', borderBottom: '1px solid #eef0f3', position: 'sticky', top: 0, zIndex: 10 }}>
         <div
           style={{
             display: 'flex',
             alignItems: 'flex-start',
             justifyContent: 'space-between',
             gap: 16,
-            flexWrap: 'wrap',
-            padding: '14px 24px',
+            padding: '13px 24px 3px 24px',
+            boxSizing: 'border-box',
           }}
         >
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', minWidth: 0 }}>
             <button
               type="button"
               onClick={() => (onClose ? onClose() : navigate(listPath))}
@@ -582,12 +587,12 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                 background: '#fff',
                 cursor: 'pointer',
                 color: '#64748b',
-                marginTop: 2,
+                flexShrink: 0,
               }}
             >
               <ArrowLeft size={15} />
             </button>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <h1 style={{ fontSize: 18, fontWeight: 600, color: '#000', margin: 0 }}>
                   {jobOrder.jobOrderNumber}
@@ -619,7 +624,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                   </span>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 5 }}>
+              <div style={{ display: 'flex', gap: 14, whiteSpace: 'nowrap', overflow: 'hidden', marginTop: 5 }}>
                 <span style={metaItem}>
                   {jobOrder.inputItem?.name ?? 'No item yet'}
                   {jobOrder.inputQty !== null && ` · ${formatQty(jobOrder.inputQty)} ${unit}`}
@@ -697,6 +702,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
             />
           </div>
         </div>
+      </header>
 
         {/* 🔴 THE ANSWER FIRST. The sentence on the left is what the page is for;
             the four numbers on the right are what somebody checks once they have
@@ -712,6 +718,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
             padding: '12px 24px',
             background: position.tint,
             borderTop: `1px solid ${position.border}`,
+            borderBottom: '1px solid #eef0f3',
           }}
         >
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', minWidth: 260 }}>
@@ -753,7 +760,6 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
             />
           </div>
         </div>
-      </header>
 
       <div style={{ padding: '18px 24px' }}>
         {/* 🔴 The scale and the position, ALWAYS visible. A twelve-step route

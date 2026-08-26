@@ -299,8 +299,8 @@ export function stepStatusFrom(totals: StepTotals, isCompleted: boolean): JobOrd
   const moved = totals.perItem.filter((row) => row.issuedQty.greaterThan(0));
   if (moved.length === 0) return 'pending';
   if (moved.every((row) => row.consumedQty.lessThanOrEqualTo(0))) return 'issued';
-  
-  // We no longer automatically return 'completed'. If it has received something, 
+
+  // We no longer automatically return 'completed'. If it has received something,
   // it is partially_received until manually completed.
   return 'partially_received';
 }

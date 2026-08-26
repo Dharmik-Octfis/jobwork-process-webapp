@@ -23,7 +23,12 @@ import {
   resolveProcessorName,
 } from '../jobwork.refs.ts';
 import { runAsDocument, type ProcessorType } from '../jobwork.types.ts';
-import { chainNotReady, getStepTotals, recomputeJobOrder, recomputeStep } from './jobOrders.status.ts';
+import {
+  chainNotReady,
+  getStepTotals,
+  recomputeJobOrder,
+  recomputeStep,
+} from './jobOrders.status.ts';
 import type { ItemFlow, OutputFlow, StepTotals } from './jobOrders.status.ts';
 import type {
   AppendJobOrderStepsInput,
