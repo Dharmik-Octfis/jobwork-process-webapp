@@ -14,6 +14,7 @@ import {
   User,
   Workflow,
   X,
+  Settings,
   // react-router exports a `Route` component and this file imports from it, so the
   // icon is aliased even though only the icon is used here.
   Route as RouteIcon,
@@ -29,13 +30,15 @@ export function SettingsLayout() {
 
   const onOrgRoute =
     location.pathname === `/organizations/${orgId}/settings` ||
+    location.pathname.includes('/settings/profile') ||
     // `/members` is still matched so the legacy URL keeps the group expanded while
     // the redirect in router.tsx does its work.
     location.pathname.includes('/settings/users') ||
     location.pathname.includes('/settings/members') ||
     location.pathname.includes('/settings/roles') ||
     location.pathname.includes('/settings/permissions') ||
-    location.pathname.includes('/settings/locations');
+    location.pathname.includes('/settings/locations') ||
+    location.pathname.includes('/settings/preferences');
 
   const onInventoryRoute = location.pathname.includes('/settings/inventory');
   const onConfigRoute = location.pathname.includes('/settings/configuration');
@@ -286,6 +289,25 @@ export function SettingsLayout() {
               >
                 <MapPin size={18} />
                 <span style={{ fontSize: 14 }}>Locations</span>
+              </NavLink>
+
+              <NavLink
+                to={`/organizations/${orgId}/settings/preferences`}
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-3)',
+                  padding: '8px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  textDecoration: 'none',
+                  color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
+                  background: isActive ? 'var(--primary-50)' : 'transparent',
+                  fontWeight: isActive ? 600 : 500,
+                  transition: 'all 0.2s ease',
+                })}
+              >
+                <Settings size={18} />
+                <span style={{ fontSize: 14 }}>Preferences</span>
               </NavLink>
             </div>
           </div>

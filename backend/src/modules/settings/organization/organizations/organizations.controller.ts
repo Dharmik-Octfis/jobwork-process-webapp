@@ -92,6 +92,7 @@ async function mapToZohoFormat(org: Organization & { industry?: Pick<Industry, '
     logo_url: logoUrl,
     account_created_date: org.createdAt.toISOString(),
     industry: org.industry, // from include
+    settings: org.settings,
   };
 }
 
@@ -266,6 +267,10 @@ export async function updateOrganization(req: Request, res: Response, next: Next
       if (data.address.city !== undefined)
         updateData.cityId = data.address.city === '' ? null : data.address.city;
       if (data.address.zip !== undefined) updateData.zip = data.address.zip;
+    }
+
+    if (data.settings !== undefined) {
+      updateData.settings = data.settings;
     }
 
     updateData.updatedBy = userId;

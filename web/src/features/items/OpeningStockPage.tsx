@@ -1,4 +1,4 @@
-import { useState} from 'react';
+import { useState } from 'react';
 import { toast } from 'react-hot-toast';
 import { DateInput } from '../../components/ui/DateInput';
 import { Select } from '../../components/ui/Select';
@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { fetchLocations } from '../configuration/locations/locations.api';
 import { itemsApi } from './items.api';
+import { useTrackingLabel } from '../../hooks/useTrackingLabel';
 import type { ItemOpeningStockLocationRowDto } from './items.schemas';
 
 export interface OpeningStockBatchRow {
@@ -96,6 +97,7 @@ export function OpeningStockPage() {
   const { orgId, id: itemId } = useParams<{ orgId: string; id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { singular, plural } = useTrackingLabel();
 
   const { data: item } = useQuery({
     queryKey: ['item', orgId, itemId],
@@ -256,13 +258,13 @@ export function OpeningStockPage() {
 
           if (declared > 0 && batchSum > declared) {
             toast.error(
-              `Total batch quantity (${batchSum}) cannot exceed location opening stock (${declared}) for "${locName}". Please adjust batch quantities.`,
+              `Total ${singular.toLowerCase()} quantity (${batchSum}) cannot exceed location opening stock (${declared}) for "${locName}". Please adjust ${plural.toLowerCase()} quantities.`,
             );
             return;
           }
           if (declared > 0 && loc.batches.length === 0) {
             toast.error(
-              `Opening stock is declared for "${locName}", but no batch details were entered.`,
+              `Opening stock is declared for "${locName}", but no ${singular.toLowerCase()} details were entered.`,
             );
             return;
           }
@@ -561,7 +563,7 @@ export function OpeningStockPage() {
                     minWidth: '130px',
                   }}
                 >
-                  Batch Reference#*
+                  {singular} Reference#*
                 </th>
                 <th
                   style={{
@@ -575,7 +577,7 @@ export function OpeningStockPage() {
                     minWidth: '130px',
                   }}
                 >
-                  Manufacturer Batch#
+                  Manufacturer {singular}#
                 </th>
                 <th
                   style={{
@@ -729,7 +731,7 @@ export function OpeningStockPage() {
                         borderRight: '1px solid #eef0f3',
                       }}
                     >
-                      No batches added. Click 'New Batch' to add one.
+                      No {plural.toLowerCase()} added. Click 'New {singular}' to add one.
                     </td>
                     <td
                       rowSpan={2}
@@ -818,7 +820,7 @@ export function OpeningStockPage() {
                       <input
                         type="text"
                         value={batch.batchReference}
-                        placeholder="Enter Batch#"
+                        placeholder={`Enter ${singular}#`}
                         disabled={batch.isExisting}
                         onChange={(e) =>
                           updateBatch(loc.id, batch.id, 'batchReference', e.target.value)
@@ -841,7 +843,7 @@ export function OpeningStockPage() {
                       <input
                         type="text"
                         value={batch.manufacturerBatch}
-                        placeholder="Enter MFR Batch#"
+                        placeholder={`Enter MFR ${singular}#`}
                         disabled={batch.isExisting}
                         onChange={(e) =>
                           updateBatch(loc.id, batch.id, 'manufacturerBatch', e.target.value)
@@ -1017,7 +1019,7 @@ export function OpeningStockPage() {
                         }}
                       >
                         <Plus size={14} />
-                        New Batch
+                        New {singular}
                       </button>
                       <div
                         style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#f59e0b' }}

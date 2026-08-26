@@ -39,7 +39,7 @@ function escapeHtml(value: string | null | undefined): string {
     .replace(/"/g, '&quot;');
 }
 
-export function buildChallanHtml(issue: JobIssue, orgName: string): string {
+export function buildChallanHtml(issue: JobIssue, orgName: string, batchLabel: string = 'Batch'): string {
   /**
    * 🔴 THE ITEM IS A COLUMN, and the unit comes off the LINE (§5.7).
    *
@@ -136,7 +136,7 @@ export function buildChallanHtml(issue: JobIssue, orgName: string): string {
       <tr>
         <th style="width:36px">#</th>
         <th>Item</th>
-        <th>Batch</th>
+        <th>${escapeHtml(batchLabel)}</th>
         <th class="num">Quantity</th>
       </tr>
     </thead>
@@ -172,11 +172,11 @@ export function buildChallanHtml(issue: JobIssue, orgName: string): string {
  * a Print button that silently does nothing is the worst possible outcome for a
  * document a truck is waiting on.
  */
-export function printChallan(issue: JobIssue, orgName: string): boolean {
+export function printChallan(issue: JobIssue, orgName: string, batchLabel: string = 'Batch'): boolean {
   const win = window.open('', '_blank', 'width=900,height=1000');
   if (!win) return false;
 
-  win.document.write(buildChallanHtml(issue, orgName));
+  win.document.write(buildChallanHtml(issue, orgName, batchLabel));
   win.document.close();
   // `onload` rather than an immediate call: printing before layout settles gives
   // a blank first page in Safari and Firefox.

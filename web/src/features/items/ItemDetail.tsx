@@ -6,6 +6,7 @@ import { useState, useRef, useEffect, Fragment, useMemo } from 'react';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { ItemLocations } from './components/ItemLocations';
 import { ItemBatchDetails } from './components/ItemBatchDetails';
+import { useTrackingLabel } from '../../hooks/useTrackingLabel';
 import { ItemActivityHistory } from './ItemActivityHistory';
 import { ItemImageGallery } from './components/ItemImageGallery';
 import { CompositeItemsList } from '../inventory/composite-items/CompositeItemsList';
@@ -43,6 +44,9 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
 
   const isInventoryTracked = item?.trackInventory !== false;
 
+  const { singular } = useTrackingLabel();
+  const batchTabName = `${singular} Details`;
+
   const isBatchTracked = useMemo(() => {
     if (!item || !isInventoryTracked) return false;
     const tracking = String(item.inventoryTracking ?? item.inventoryTracking ?? '').toLowerCase();
@@ -53,7 +57,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
 
   const effectiveActiveTab =
     (activeTab === 'Locations' && !isInventoryTracked) ||
-    (activeTab === 'Batch Details' && !isBatchTracked) ||
+    (activeTab === batchTabName && !isBatchTracked) ||
     (activeTab === 'Components' && !showComponentsTab)
       ? 'Overview'
       : activeTab;
@@ -326,7 +330,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
         {[
           'Overview',
           ...(isInventoryTracked ? ['Locations'] : []),
-          ...(isBatchTracked ? ['Batch Details'] : []),
+          ...(isBatchTracked ? [batchTabName] : []),
           'Transactions',
           'Related Lists',
           'History',
@@ -854,7 +858,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
           <div style={{ margin: '0 -24px' }}>
             <ItemLocations orgId={orgId!} itemId={itemId} isBatchTracked={isBatchTracked} />
           </div>
-        ) : effectiveActiveTab === 'Batch Details' ? (
+        ) : effectiveActiveTab === batchTabName ? (
           <div style={{ margin: '0 -24px' }}>
             <ItemBatchDetails
               orgId={orgId!}

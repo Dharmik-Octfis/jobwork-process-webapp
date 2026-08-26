@@ -49,6 +49,7 @@ import { CreateItemModal } from '../../items/CreateItemModal';
 import { AddBillBatchesModal } from './AddBillBatchesModal';
 import { WarehouseLocationsPopover } from './components/WarehouseLocationsPopover';
 import { LineItemStockDisplay } from './components/LineItemStockDisplay';
+import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 
 function getImageKey(img: unknown): string | null {
   if (!img) return null;
@@ -117,6 +118,7 @@ export function CreateBill() {
   const cloneFrom = searchParams.get('cloneFrom');
   const fromPo = searchParams.get('fromPo');
   const queryClient = useQueryClient();
+  const trackingLabel = useTrackingLabel();
 
   const poIdToFetch = id || cloneFrom;
   const isEdit = Boolean(id);
@@ -1159,8 +1161,8 @@ export function CreateBill() {
                               }}
                             >
                               {curItem?.batches?.length
-                                ? `${curItem?.batches?.length} Batches Added`
-                                : '+ Add Batches'}
+                                ? `${curItem?.batches?.length} ${trackingLabel.plural} Added`
+                                : `+ Add ${trackingLabel.plural}`}
                             </button>
                           </div>
                         )}

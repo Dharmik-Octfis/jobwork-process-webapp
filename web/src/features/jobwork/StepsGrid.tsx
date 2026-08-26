@@ -16,6 +16,7 @@ import { fetchCustomers } from '../sales/customers/customers.api';
 import { fetchLocations } from '../configuration/locations/locations.api';
 import { ProcessSelect } from './processes/ProcessSelect';
 import { RATE_BASIS_OPTIONS } from './processes/processes.schemas';
+import { useTrackingLabel } from '../../hooks/useTrackingLabel';
 import {
   PROCESSOR_TYPE_OPTIONS,
   derivedExpectedQty,
@@ -314,6 +315,7 @@ function ItemList({
   onPlanBatches,
   isBatchTracked,
 }: ItemListProps) {
+  const trackingLabel = useTrackingLabel();
   const isInput = side === 'inputs';
   const update = (rowIndex: number, patch: Partial<StepItemRow>) =>
     onChange(rows.map((row, i) => (i === rowIndex ? { ...row, ...patch } : row)));
@@ -606,8 +608,8 @@ function ItemList({
                     disabled={disabled || !(row.plannedQty && row.plannedQty > 0)}
                     title={
                       row.plannedQty && row.plannedQty > 0
-                        ? 'Note which batches this is planned to come out of. Nothing is reserved.'
-                        : 'Enter a quantity first — batches are planned against it.'
+                        ? `Note which ${trackingLabel.plural.toLowerCase()} this is planned to come out of. Nothing is reserved.`
+                        : `Enter a quantity first — ${trackingLabel.plural.toLowerCase()} are planned against it.`
                     }
                     style={{
                       padding: 0,
@@ -624,9 +626,9 @@ function ItemList({
                     }}
                   >
                     {(row.plannedBatches?.length ?? 0) === 0
-                      ? 'Add Batches'
+                      ? `Add ${trackingLabel.plural}`
                       : `${row.plannedBatches!.length} ${
-                          row.plannedBatches!.length === 1 ? 'batch' : 'batches'
+                          row.plannedBatches!.length === 1 ? trackingLabel.singular.toLowerCase() : trackingLabel.plural.toLowerCase()
                         } planned`}
                   </button>
                 )}

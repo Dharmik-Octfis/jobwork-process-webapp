@@ -13,6 +13,7 @@ import { useUoms } from '../inventory/uom/uom.api.ts';
 import { useActiveCustomFields } from '../custom-fields/customFields.api.ts';
 import { UomFormModal } from '../inventory/uom/UomFormModal.tsx';
 import { Plus } from 'lucide-react';
+import { useTrackingLabel } from '../../hooks/useTrackingLabel.ts';
 
 export function EditItemPage() {
   const { id, orgId } = useParams<{ id: string; orgId: string }>();
@@ -21,6 +22,7 @@ export function EditItemPage() {
   const { data: uoms = [] } = useUoms(orgId!);
   const { data: customFields = [] } = useActiveCustomFields(orgId!, 'item');
   const [isUomModalOpen, setIsUomModalOpen] = useState(false);
+  const { singular } = useTrackingLabel();
 
   const [formData, setFormData] = useState<ItemFormData>({
     name: '',
@@ -1038,7 +1040,7 @@ export function EditItemPage() {
                           checked={formData.inventoryTracking === 'batch'}
                           onChange={() => handleRadioChange('inventoryTracking', 'batch')}
                         />{' '}
-                        Batch
+                        {singular}
                       </label>
                     )}
                   </div>

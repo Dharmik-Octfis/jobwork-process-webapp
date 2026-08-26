@@ -17,6 +17,7 @@ import { createJobIssue } from './jobIssues.api';
 import type { JobIssueLineData } from './jobIssues.schemas';
 import { AddBatchesModal } from './AddBatchesModal';
 import { rowKey, type BatchSelection } from './batchSelection';
+import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 
 interface Props {
   isOpen: boolean;
@@ -128,6 +129,7 @@ interface PlanGap {
 export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props) {
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
+  const trackingLabel = useTrackingLabel();
 
   const [sourceLocationId, setSourceLocationId] = useState('');
   const [processorType, setProcessorType] = useState<string>(step.processorType);
@@ -879,7 +881,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                 allLocations.find((l) => l.id === pendingLocationId)?.name ??
                 'that location'}
             </strong>
-            ? Batches are held per location, so the {allocatedCount}{' '}
+            ? {trackingLabel.plural} are held per location, so the {allocatedCount}{' '}
             {allocatedCount === 1 ? 'entry' : 'entries'} allocated here will be cleared.
           </p>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -1093,7 +1095,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                   Unit
                 </th>
                 <th style={{ ...lineTh, width: 200 }} scope="col">
-                  Batches
+                  {trackingLabel.plural}
                 </th>
               </tr>
             </thead>
@@ -1151,7 +1153,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                           The plan places{' '}
                           {planUnmatched[input.itemId]!.elsewhere.map((at, i, all) => (
                             <span key={at.name}>
-                              {at.count} {at.count === 1 ? 'batch' : 'batches'} at{' '}
+                              {at.count} {at.count === 1 ? trackingLabel.singular.toLowerCase() : trackingLabel.plural.toLowerCase()} at{' '}
                               <strong>{at.name}</strong>
                               {i < all.length - 1 ? ', ' : ''}
                             </span>
@@ -1170,7 +1172,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                           }}
                         >
                           {planUnmatched[input.itemId]!.gone} planned{' '}
-                          {planUnmatched[input.itemId]!.gone === 1 ? 'batch is' : 'batches are'} no
+                          {planUnmatched[input.itemId]!.gone === 1 ? `${trackingLabel.singular.toLowerCase()} is` : `${trackingLabel.plural.toLowerCase()} are`} no
                           longer available here — nothing was reserved. Pick replacements.
                         </div>
                       )}
@@ -1302,8 +1304,8 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                               }}
                             >
                               {pickedBatchCount === 0
-                                ? 'Add Batches'
-                                : `${pickedBatchCount} ${pickedBatchCount === 1 ? 'batch' : 'batches'} added`}
+                                ? `Add ${trackingLabel.plural}`
+                                : `${pickedBatchCount} ${pickedBatchCount === 1 ? trackingLabel.singular.toLowerCase() : trackingLabel.plural.toLowerCase()} added`}
                             </button>
                           </div>
 
@@ -1321,7 +1323,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                                 lineHeight: 1.4,
                               }}
                             >
-                              Select the batches this comes out of.
+                              Select the {trackingLabel.plural.toLowerCase()} this comes out of.
                             </div>
                           )}
                           {blockedLines.get(input.itemId) === 'mismatch' && (

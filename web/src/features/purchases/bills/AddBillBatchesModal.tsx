@@ -7,6 +7,7 @@ import { formatQty } from '../../jobwork/jobwork.schemas';
 import { useQuery } from '@tanstack/react-query';
 import { fetchAvailableBatches } from '../../jobwork/batches/batches.api';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
+import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 export interface BillBatchRow {
   id: string;
   batchId: string;
@@ -110,7 +111,9 @@ export function AddBillBatchesModal({
   defaultSellingPrice = '',
   defaultMrp = '',
   onSave,
-}: AddBillBatchesModalProps) {
+  }: AddBillBatchesModalProps) {
+  const trackingLabel = useTrackingLabel();
+
   const { data: availableBatches = [] } = useQuery({
     queryKey: ['availableBatches', orgId, itemId, locationId],
     queryFn: () => fetchAvailableBatches(orgId, { itemId: itemId!, locationId }),
@@ -156,7 +159,7 @@ export function AddBillBatchesModal({
     const validBatches = batches.filter((b) => parseFloat(b.quantityIn) > 0);
 
     if (validBatches.length === 0 && batches.length > 0) {
-      toast.error('Please enter a valid quantity for at least one batch.');
+      toast.error(`Please enter a valid quantity for at least one ${trackingLabel.singular.toLowerCase()}.`);
       return;
     }
 
@@ -205,7 +208,7 @@ export function AddBillBatchesModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Add Batches"
+      title={`Add ${trackingLabel.plural}`}
       width={1100}
       footer={
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', width: '100%' }}>
@@ -333,7 +336,7 @@ export function AddBillBatchesModal({
                   minWidth: '130px',
                 }}
               >
-                Batch Reference#*
+                {trackingLabel.singular} Reference#*
               </th>
               <th
                 style={{
@@ -347,7 +350,7 @@ export function AddBillBatchesModal({
                   minWidth: '130px',
                 }}
               >
-                Manufacturer Batch#
+                Manufacturer {trackingLabel.singular}#
               </th>
               <th
                 style={{
@@ -507,7 +510,7 @@ export function AddBillBatchesModal({
                     <input
                       type="text"
                       value={batch.supplierBatchRef}
-                      placeholder="Enter Batch#"
+                      placeholder={`Enter ${trackingLabel.singular}#`}
                       onChange={(e) => updateBatch(batch.id, 'supplierBatchRef', e.target.value)}
                       style={inputStyle}
                       onFocus={(e) => (e.target.style.borderColor = '#0062ff')}
@@ -519,7 +522,7 @@ export function AddBillBatchesModal({
                   <input
                     type="text"
                     value={batch.manufacturerBatch}
-                    placeholder="Enter MFR Batch#"
+                    placeholder={`Enter MFR ${trackingLabel.singular}#`}
                     disabled={batch.isExisting}
                     onChange={(e) => updateBatch(batch.id, 'manufacturerBatch', e.target.value)}
                     style={{
@@ -653,7 +656,7 @@ export function AddBillBatchesModal({
               padding: '4px',
             }}
           >
-            <Plus size={16} /> New Batch
+            <Plus size={16} /> New {trackingLabel.singular}
           </button>
           <span style={{ color: '#cbd5e1' }}>|</span>
           <button
@@ -672,11 +675,11 @@ export function AddBillBatchesModal({
               padding: '4px',
             }}
           >
-            <Plus size={16} /> Existing Batch
+            <Plus size={16} /> Existing {trackingLabel.singular}
           </button>
         </div>
         <div style={{ fontSize: '13px', color: '#64748b' }}>
-          Batches added: {batches.length} / 100
+          {trackingLabel.plural} added: {batches.length} / 100
         </div>
       </div>
     </Modal>

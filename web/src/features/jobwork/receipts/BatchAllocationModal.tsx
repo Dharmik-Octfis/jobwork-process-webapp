@@ -8,6 +8,7 @@ import { blurOnWheel } from '../../../components/ui/blurOnWheel';
 import { formatDate } from '../../../lib/formatDate';
 import { formatQty, toNumber } from '../jobwork.schemas';
 import type { ReceiptBatchOption } from './jobReceipts.schemas';
+import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 
 /**
  * ADD BATCHES (RECEIVE) — which batches the goods coming back land in.
@@ -385,12 +386,13 @@ export function BatchAllocationModal({
   };
 
   const noun = kind === 'accepted' ? 'accepted' : 'rework';
+  const { singular, plural } = useTrackingLabel();
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={kind === 'accepted' ? 'Add Batches' : 'Add Rework Batches'}
+      title={kind === 'accepted' ? `Add ${plural}` : `Add Rework ${plural}`}
       width={1240}
       footer={
         <>
@@ -430,12 +432,12 @@ export function BatchAllocationModal({
           {!canSave && (
             <span style={{ marginLeft: 'auto', fontSize: 12, color: '#b91c1c' }}>
               {duplicateIds.size > 0
-                ? 'A batch is used twice, or is already taken by the other disposition.'
+                ? `A ${singular.toLowerCase()} is used twice, or is already taken by the other disposition.`
                 : unlabelled.length > 0
-                  ? 'Every batch of a tracked item needs a reference.'
+                  ? `Every ${singular.toLowerCase()} of a tracked item needs a reference.`
                   : definesTarget
-                    ? 'Name at least one batch and how much of it came back.'
-                    : `The batches must add up to the ${noun} quantity.`}
+                    ? `Name at least one ${singular.toLowerCase()} and how much of it came back.`
+                    : `The ${plural.toLowerCase()} must add up to the ${noun} quantity.`}
             </span>
           )}
         </>
@@ -458,7 +460,7 @@ export function BatchAllocationModal({
         <span style={{ color: '#64748b' }}>Received into :</span>
         <span style={{ fontWeight: 500 }}>{locationName ?? '—'}</span>
         <span style={{ color: '#94a3b8', fontSize: 12 }}>
-          — every batch below lands here, whatever it already holds elsewhere.
+          — every {singular.toLowerCase()} below lands here, whatever it already holds elsewhere.
         </span>
       </div>
 
@@ -476,7 +478,7 @@ export function BatchAllocationModal({
         <div>
           <div style={{ fontSize: 15, color: '#111' }}>{itemName}</div>
           <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
-            {kind === 'accepted' ? 'Accepted goods' : 'Rework — kept in its own batch'}
+            {kind === 'accepted' ? 'Accepted goods' : `Rework — kept in its own ${singular.toLowerCase()}`}
           </div>
         </div>
         <div style={{ textAlign: 'right', fontSize: 13, color: '#334155' }}>
@@ -489,7 +491,7 @@ export function BatchAllocationModal({
                 {formatQty(allocated)} {uomLabel}
               </span>
               <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 3 }}>
-                Taken from the batches below — nothing was typed on the row yet.
+                Taken from the {plural.toLowerCase()} below — nothing was typed on the row yet.
               </div>
             </>
           ) : (
@@ -528,7 +530,7 @@ export function BatchAllocationModal({
           <thead>
             <tr style={{ borderBottom: '1px solid #eef0f3' }}>
               <th style={{ ...th, ...(requiresReference ? { color: '#b91c1c' } : {}) }} scope="col">
-                Batch Reference{requiresReference ? '*' : ''}
+                {singular} Reference{requiresReference ? '*' : ''}
               </th>
               {/* 🔴 THE FIVE ATTRIBUTES OF THE BATCH BEING BORN. Editable on a
                   `new` row, read-only facts about the picked batch on an
@@ -539,7 +541,7 @@ export function BatchAllocationModal({
                   restating the batch master. Here they are the only chance
                   anybody gets to state them. */}
               <th style={th} scope="col">
-                Manufacturer Batch#
+                Manufacturer {singular}#
               </th>
               <th style={th} scope="col">
                 Manufactured Date
@@ -581,8 +583,8 @@ export function BatchAllocationModal({
                         type="text"
                         value={row.batchReference}
                         onChange={(e) => typeReference(row.id, e.target.value)}
-                        placeholder="Enter Batch#"
-                        aria-label="New batch reference"
+                        placeholder={`Enter ${singular}#`}
+                        aria-label={`New ${singular.toLowerCase()} reference`}
                         style={{
                           width: '100%',
                           padding: '7px 10px',
@@ -624,6 +626,8 @@ export function BatchAllocationModal({
                         onSearchChange={onSearchChange}
                         isLoading={isLoading}
                         isInvalid={duplicateIds.has(row.id)}
+                        singular={singular}
+                        plural={plural}
                       />
                     )}
                     {lookalike && (
@@ -646,17 +650,11 @@ export function BatchAllocationModal({
                         }}
                       >
                         <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 1 }} />
-                        <span>A batch with this reference already exists. Add to it instead?</span>
+                        <span>A {singular.toLowerCase()} with this reference already exists. Add to it instead?</span>
                       </button>
                     )}
                   </td>
 
-                  {/* 🔴 EDITABLE ONLY WHERE THE ANSWER IS THIS DOCUMENT'S TO
-                      GIVE. A `new` row is naming a batch that does not exist yet;
-                      an `existing` row is looking at one that does, and its dates
-                      and prices belong to it, not to this delivery. Flat text
-                      rather than a disabled input: a greyed-out box invites a
-                      click and then refuses it. */}
                   <AttributeCell row={row} field="manufacturerBatch" onChange={setRow}>
                     {row.option?.manufacturerBatch?.trim() || '—'}
                   </AttributeCell>
@@ -673,13 +671,6 @@ export function BatchAllocationModal({
                     {money(row.option?.mrp ?? null)}
                   </AttributeCell>
 
-                  {/* 🔴 What the picked batch ALREADY holds — the issue grid's
-                      Balance column, answering the receive side's version of the
-                      question: is this the lot I think it is. On hand and with a
-                      processor stay apart, never one total: goods at a dyer are
-                      our stock at their location (§5.4), and "700" that is really
-                      500 here and 200 there reads as stock on hand when it is not.
-                      A new batch holds nothing yet, and says so. */}
                   <td style={{ ...td, textAlign: 'right', color: '#64748b' }}>
                     {row.option ? (
                       <>
@@ -693,7 +684,7 @@ export function BatchAllocationModal({
                         )}
                       </>
                     ) : row.mode === 'new' && isFilled(row) ? (
-                      <span style={{ color: '#94a3b8' }}>New batch</span>
+                      <span style={{ color: '#94a3b8' }}>New {singular.toLowerCase()}</span>
                     ) : (
                       '—'
                     )}
@@ -709,10 +700,11 @@ export function BatchAllocationModal({
                       disabled={!isFilled(row)}
                       value={row.qty || ''}
                       onChange={(e) => setRow(row.id, { qty: Number(e.target.value) || 0 })}
+                      placeholder="0.00"
                       aria-label={
-                        isFilled(row)
-                          ? `Quantity into batch ${row.batchReference || 'this batch'}`
-                          : 'Quantity — name or pick a batch first'
+                        row.mode === 'existing' || row.batchReference.trim()
+                          ? `Quantity into ${singular.toLowerCase()} ${row.batchReference || `this ${singular.toLowerCase()}`}`
+                          : `Quantity — name or pick a ${singular.toLowerCase()} first`
                       }
                       style={{
                         width: '100%',
@@ -767,25 +759,21 @@ export function BatchAllocationModal({
           marginTop: 16,
         }}
       >
-        {/* 🔴 TWO LINKS, because there are two kinds of row and the kind is
-            decided when the row is added — see `RowMode`. The issue grid has one
-            of these on purpose (it cannot invent stock); this one has both,
-            because a receipt creates the quantity it is naming. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <AddRowLink
-            label="New Batch"
+            label={`New ${singular}`}
             onClick={() => setRows((prev) => [...prev, blankRow('new')])}
             disabled={rows.length >= MAX_ROWS}
           />
           <span style={{ color: '#e2e8f0' }}>|</span>
           <AddRowLink
-            label="Existing Batch"
+            label={`Existing ${singular}`}
             onClick={() => setRows((prev) => [...prev, blankRow('existing')])}
             disabled={rows.length >= MAX_ROWS}
           />
         </div>
         <span style={{ fontSize: 12, color: '#64748b' }}>
-          Batches added: {filledRows.length}/{MAX_ROWS}
+          {plural} added: {filledRows.length}/{MAX_ROWS}
         </span>
       </div>
     </Modal>
@@ -946,10 +934,10 @@ const LOAD_MORE_SLACK = 80;
 
 /** What a batch is called on screen. `batchNumber` is internal and never a
  * fallback (2026-08-14); a batch with no reference gets a dated placeholder. */
-function optionLabel(option: ReceiptBatchOption): string {
+function optionLabel(option: ReceiptBatchOption, singular: string): string {
   const date = new Date(option.createdAt);
   const stamp = Number.isNaN(date.getTime()) ? '—' : formatDate(date);
-  return option.supplierBatchRef?.trim() || `Batch of ${stamp}`;
+  return option.supplierBatchRef?.trim() || `${singular} of ${stamp}`;
 }
 
 /**
@@ -978,6 +966,8 @@ function ExistingBatchCell({
   onSearchChange,
   isLoading,
   isInvalid,
+  singular,
+  plural,
 }: {
   row: DraftRow;
   onPick: (option: ReceiptBatchOption) => void;
@@ -992,6 +982,8 @@ function ExistingBatchCell({
   onSearchChange: (search: string) => void;
   isLoading: boolean;
   isInvalid: boolean;
+  singular: string;
+  plural: string;
 }) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState<React.CSSProperties>({ visibility: 'hidden' });
@@ -1033,7 +1025,7 @@ function ExistingBatchCell({
     toggleButtonId,
     inputValue: search,
     selectedItem: row.option,
-    itemToString: (option) => (option ? optionLabel(option) : ''),
+    itemToString: (option) => (option ? optionLabel(option, singular) : ''),
     onInputValueChange: ({ inputValue }) => onSearchChange(inputValue ?? ''),
     onSelectedItemChange: ({ selectedItem }) => {
       if (!selectedItem) return;
@@ -1170,7 +1162,7 @@ function ExistingBatchCell({
           color: active ? '#fff' : '#111',
         }}
       >
-        <div style={{ fontWeight: 500 }}>{optionLabel(option)}</div>
+        <div style={{ fontWeight: 500 }}>{optionLabel(option, singular)}</div>
         <div style={{ fontSize: 11.5, color: active ? '#e0edff' : '#64748b' }}>
           {/* 🔴 Internal and external apart, here too — the picker is where the
               operator decides, so it is where the distinction has to be legible. */}
@@ -1225,9 +1217,9 @@ function ExistingBatchCell({
       >
         <span
           style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-          title={row.option ? optionLabel(row.option) : undefined}
+          title={row.option ? optionLabel(row.option, singular) : undefined}
         >
-          {row.option ? optionLabel(row.option) : 'Select Batch'}
+          {row.option ? optionLabel(row.option, singular) : `Select ${singular}`}
         </span>
         <ChevronDown
           size={14}
@@ -1261,8 +1253,8 @@ function ExistingBatchCell({
             />
             <input
               {...getInputProps({
-                placeholder: 'Search other batches of this item',
-                'aria-label': 'Search batches',
+                placeholder: `Search other ${plural.toLowerCase()} of this item`,
+                'aria-label': `Search ${plural.toLowerCase()}`,
                 onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => {
                   // Tab must not walk into the portal, which lives outside the
                   // focus trap — the next Tab would escape into browser chrome.
@@ -1318,7 +1310,7 @@ function ExistingBatchCell({
                   <li style={{ padding: '8px 12px', fontSize: 12, color: '#64748b' }}>
                     {isLoading
                       ? 'Looking…'
-                      : 'This job order has not produced any batch of this item yet.'}
+                      : `This job order has not produced any ${singular.toLowerCase()} of this item yet.`}
                   </li>
                 ) : (
                   visibleOptions.map((option, index) => renderOption(option, index))
@@ -1352,14 +1344,14 @@ function ExistingBatchCell({
                   </li>
                 )}
 
-                <li style={sectionHeadingStyle}>Other batches of this item</li>
+                <li style={sectionHeadingStyle}>Other {plural.toLowerCase()} of this item</li>
                 {otherOptions.length === 0 ? (
                   <li style={{ padding: '8px 12px', fontSize: 12, color: '#64748b' }}>
                     {isLoading
                       ? 'Looking…'
                       : search
                         ? 'Nothing else matches that.'
-                        : 'This item has no other batches yet.'}
+                        : `This item has no other ${plural.toLowerCase()} yet.`}
                   </li>
                 ) : (
                   otherOptions.map((option, index) =>

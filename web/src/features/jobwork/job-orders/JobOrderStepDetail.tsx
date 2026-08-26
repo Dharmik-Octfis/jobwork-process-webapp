@@ -11,6 +11,7 @@ import {
 } from '../jobwork.schemas';
 import { ActivityTimeline } from './ActivityTimeline';
 import type { ActivityEvent, OverviewStep } from './jobOrders.schemas';
+import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 
 interface Props {
   step: OverviewStep;
@@ -73,6 +74,7 @@ export function JobOrderStepDetail({
   onComplete,
   onOpenDocument,
 }: Props) {
+  const trackingLabel = useTrackingLabel();
   const meta = statusMeta(STEP_STATUS_META, step.status);
   const issued = toNumber(step.totals.issuedQty);
   const received = toNumber(step.totals.receivedQty);
@@ -340,7 +342,7 @@ export function JobOrderStepDetail({
         <ActivityTimeline
           events={activity}
           onOpen={onOpenDocument}
-          empty="Nothing has moved on this step yet. Every challan out and every receipt back will appear here, with the items and batches each one carried."
+          empty={`Nothing has moved on this step yet. Every challan out and every receipt back will appear here, with the items and ${trackingLabel.plural.toLowerCase()} each one carried.`}
         />
       </div>
     </section>

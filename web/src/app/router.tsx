@@ -67,6 +67,10 @@ const OrganizationSettingsPage = lazyPage(
   () => import('../features/organizations/OrganizationSettingsPage'),
   'OrganizationSettingsPage',
 );
+const PreferencesPage = lazyPage(
+  () => import('../features/organizations/PreferencesPage'),
+  'PreferencesPage',
+);
 const UsersPage = lazyPage(() => import('../features/users/UsersPage'), 'UsersPage');
 const RolesPage = lazyPage(() => import('../features/roles/RolesPage'), 'RolesPage');
 const PermissionTemplatesPage = lazyPage(
@@ -346,6 +350,7 @@ export const router = createBrowserRouter([
         element: <SettingsLayout />,
         children: [
           { index: true, element: <OrganizationSettingsPage /> },
+          { path: 'preferences', element: <PreferencesPage /> },
           { path: 'profile', element: <ProfilePage /> },
           { path: 'users', element: <UsersPage /> },
           // "Members & Invites" became "Users" on 2026-07-30. The old path is kept

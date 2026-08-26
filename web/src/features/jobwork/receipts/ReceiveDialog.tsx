@@ -14,6 +14,7 @@ import type { JobOrder, OverviewStep } from '../job-orders/jobOrders.schemas';
 import { createJobReceipt, fetchReceiptBatchOptions, fetchReceivePrefill } from './jobReceipts.api';
 import type { JobReceiptBatchAllocationData, JobReceiptLineData } from './jobReceipts.schemas';
 import { BatchAllocationModal, type BatchAllocation } from './BatchAllocationModal';
+import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 
 interface Props {
   isOpen: boolean;
@@ -174,6 +175,7 @@ const sectionHeading: React.CSSProperties = {
 export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: Props) {
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
+  const trackingLabel = useTrackingLabel();
 
   /**
    * `null` means "everything that is open" — every challan pre-ticked, which is
@@ -996,7 +998,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                         Good
                       </th>
                       <th style={th} scope="col">
-                        Batches
+                        {trackingLabel.plural}
                       </th>
                       {/* 🔴 The disposition lives on THIS grid since 2026-08-12. It used
                           to sit on the consumed rows, per taka; with packages gone the
@@ -1070,9 +1072,9 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                                     background: '#fef3c7',
                                     color: '#92400e',
                                   }}
-                                  title="This item is batch-tracked, so the batches it lands in have to be named."
+                                  title={`This item is ${trackingLabel.singular.toLowerCase()}-tracked, so the ${trackingLabel.plural.toLowerCase()} it lands in have to be named.`}
                                 >
-                                  Batch required
+                                  {trackingLabel.singular} required
                                 </span>
                               )}
                             </div>
@@ -1095,7 +1097,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                               may never share one with the accepted goods. */}
                           <td style={td}>
                             <AllocationButton
-                              label="Add Batches"
+                              label={`Add ${trackingLabel.plural}`}
                               qty={row.acceptedQty}
                               rows={row.batches}
                               tracked={tracked}
@@ -1104,7 +1106,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                             {row.reworkQty > 0 && (
                               <div style={{ marginTop: 4 }}>
                                 <AllocationButton
-                                  label="Add Rework Batches"
+                                  label={`Add Rework ${trackingLabel.plural}`}
                                   qty={row.reworkQty}
                                   rows={row.reworkBatches}
                                   tracked={tracked}
@@ -1147,8 +1149,8 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
               {unallocatedRows.length > 0 && (
                 <p style={{ fontSize: 12, color: '#b91c1c', margin: '8px 0 0 0' }}>
                   {unallocatedRows.length === 1
-                    ? 'One batch-tracked item still needs its batches named — use Add Batches on that row.'
-                    : `${unallocatedRows.length} batch-tracked items still need their batches named — use Add Batches on those rows.`}
+                    ? `One batch-tracked item still needs its ${trackingLabel.plural.toLowerCase()} named — use Add ${trackingLabel.plural} on that row.`
+                    : `${unallocatedRows.length} batch-tracked items still need their ${trackingLabel.plural.toLowerCase()} named — use Add ${trackingLabel.plural} on those rows.`}
                 </p>
               )}
             </section>
@@ -1335,6 +1337,8 @@ function AllocationButton({
   tracked: boolean;
   onClick: () => void;
 }) {
+  const trackingLabel = useTrackingLabel();
+
   if (!tracked) {
     return (
       <span style={{ fontSize: 12, color: '#94a3b8' }} title="This item is not batch-tracked.">
@@ -1363,7 +1367,7 @@ function AllocationButton({
           color: '#0062ff',
         }}
       >
-        {rows.length === 0 ? label : `${rows.length} ${rows.length === 1 ? 'batch' : 'batches'}`}
+        {rows.length === 0 ? label : `${rows.length} ${rows.length === 1 ? trackingLabel.singular.toLowerCase() : trackingLabel.plural.toLowerCase()}`}
       </button>
       {/* Why this row is holding the receipt up, beside the control that fixes
           it — the same place the issue dialog puts it. Only ever a shortfall:

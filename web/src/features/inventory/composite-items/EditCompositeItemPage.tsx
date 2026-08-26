@@ -18,6 +18,7 @@ import { ItemComboBox } from '../../../components/ui/ItemComboBox';
 import type { Item } from '../../items/items.schemas';
 import { Trash2 } from 'lucide-react';
 import { MultiSelectItemModal } from '../../items/components/MultiSelectItemModal';
+import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 
 interface ComponentRow {
   componentItemId: string;
@@ -32,6 +33,7 @@ export function EditCompositeItemPage() {
   const { data: uoms = [] } = useUoms(orgId!);
   const { data: customFields = [] } = useActiveCustomFields(orgId!, 'item');
   const [isUomModalOpen, setIsUomModalOpen] = useState(false);
+  const { singular } = useTrackingLabel();
 
   const [formData, setFormData] = useState<ItemFormData>({
     name: '',
@@ -1612,7 +1614,7 @@ export function EditCompositeItemPage() {
                           checked={formData.inventoryTracking === 'batch'}
                           onChange={() => handleRadioChange('inventoryTracking', 'batch')}
                         />{' '}
-                        Batch
+                        {singular}
                       </label>
                     )}
                   </div>

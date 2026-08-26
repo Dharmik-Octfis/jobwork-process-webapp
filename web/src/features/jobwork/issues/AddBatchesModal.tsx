@@ -7,6 +7,7 @@ import { blurOnWheel } from '../../../components/ui/blurOnWheel';
 import { formatQty, toNumber } from '../jobwork.schemas';
 import type { AvailableBatch } from '../batches/batches.api';
 import { batchLabel, rowKey, type BatchSelection } from './batchSelection';
+import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 
 /** Zoho's ceiling, and a sane one — a hundred allocation rows on one line is
  * already past what anyone reconciles by eye. */
@@ -163,6 +164,8 @@ export function AddBatchesModal({
   isLoading,
   isCapped,
 }: Props) {
+  const { singular, plural } = useTrackingLabel();
+
   /**
    * 🔴 Seeded ONCE, on mount. The caller therefore has to mount this only when it
    * is open and key it on the item — the same hazard `AddOpeningStockModal`
@@ -263,7 +266,7 @@ export function AddBatchesModal({
       position="fullScreen"
       isOpen={isOpen}
       onClose={onClose}
-      title="Add Batches"
+      title={`Add ${plural}`}
       width={1140}
       footer={
         <>
@@ -400,10 +403,10 @@ export function AddBatchesModal({
           <thead>
             <tr style={{ borderBottom: '1px solid #eef0f3' }}>
               <th style={{ ...th, width: 220, color: '#b91c1c' }} scope="col">
-                Batch Reference#*
+                {singular} Reference#*
               </th>
               <th style={th} scope="col">
-                Manufacturer Batch#
+                Manufacturer {singular}#
               </th>
               <th style={th} scope="col">
                 Manufactured Date
@@ -454,6 +457,8 @@ export function AddBatchesModal({
                     isLoading={isLoading}
                     isCapped={isCapped}
                     offeredCount={batches.length}
+                    singular={singular}
+                    plural={plural}
                   />
                 </td>
                 <td style={readOnlyCell}>{row.batch?.manufacturerBatch?.trim() || '—'}</td>
@@ -481,8 +486,8 @@ export function AddBatchesModal({
                     onChange={(e) => setRow(row.id, { qty: Number(e.target.value) || 0 })}
                     aria-label={
                       row.batch
-                        ? `Quantity to issue from batch ${batchLabel(row.batch)}`
-                        : 'Quantity — select a batch first'
+                        ? `Quantity to issue from ${singular.toLowerCase()} ${batchLabel(row.batch)}`
+                        : `Quantity — select a ${singular.toLowerCase()} first`
                     }
                     style={{
                       width: 120,
@@ -503,7 +508,7 @@ export function AddBatchesModal({
                     title={row.batch ? 'Clear this row' : 'Remove this row'}
                     aria-label={
                       row.batch
-                        ? `Clear batch ${batchLabel(row.batch)} from this row`
+                        ? `Clear ${singular.toLowerCase()} ${batchLabel(row.batch)} from this row`
                         : 'Remove this row'
                     }
                     style={{
@@ -557,7 +562,7 @@ export function AddBatchesModal({
             display: 'inline-flex',
             alignItems: 'center',
             gap: 6,
-            padding: '4px 2px',
+            padding: '4px 6px',
             fontSize: 13,
             fontWeight: 500,
             color: rows.length >= MAX_ROWS ? '#94a3b8' : '#0062ff',
@@ -566,10 +571,10 @@ export function AddBatchesModal({
             cursor: rows.length >= MAX_ROWS ? 'not-allowed' : 'pointer',
           }}
         >
-          <Plus size={14} /> Existing Batch
+          <Plus size={14} /> Existing {singular}
         </button>
         <span style={{ fontSize: 12, color: '#64748b' }}>
-          Batches added: {rows.filter((row) => row.batch).length}/{MAX_ROWS}
+          {plural} added: {rows.filter((row) => row.batch).length}/{MAX_ROWS}
         </span>
       </div>
     </Modal>
@@ -599,6 +604,8 @@ interface CellProps {
   isLoading: boolean;
   isCapped: boolean;
   offeredCount: number;
+  singular: string;
+  plural: string;
 }
 
 /**
@@ -623,6 +630,8 @@ function BatchSelectCell({
   isLoading,
   isCapped,
   offeredCount,
+  singular,
+  plural,
 }: CellProps) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState<React.CSSProperties>({ visibility: 'hidden' });
@@ -635,19 +644,20 @@ function BatchSelectCell({
    * `getElementById` inside an effect or a handler, where reading the DOM is fine.
    */
   const uid = useId();
-  const inputId = `${uid}-batch-search`;
-  const toggleButtonId = `${uid}-batch-toggle`;
+  const inputId = `${uid}-alloc-batch`;
+  const toggleButtonId = `${uid}-alloc-toggle`;
 
   const {
     isOpen,
     getToggleButtonProps,
     getMenuProps,
     getInputProps,
-    getItemProps,
     highlightedIndex,
+    getItemProps,
     closeMenu,
   } = useCombobox({
     items: options,
+    id: uid,
     inputId,
     toggleButtonId,
     inputValue: search,
@@ -809,7 +819,7 @@ function BatchSelectCell({
           style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
           title={value ? batchLabel(value) : undefined}
         >
-          {value ? batchLabel(value) : 'Select Batch'}
+          {value ? batchLabel(value) : `Select ${singular}`}
         </span>
         <ChevronDown
           size={14}
@@ -843,8 +853,8 @@ function BatchSelectCell({
             />
             <input
               {...getInputProps({
-                placeholder: 'Search',
-                'aria-label': 'Search batches',
+                placeholder: `Search ${plural.toLowerCase()} of this item`,
+                'aria-label': `Search ${plural.toLowerCase()}`,
                 /**
                  * Tab must not walk into the portal, which lives outside the
                  * dialog `Modal` traps focus within — the next Tab from here would
@@ -884,7 +894,7 @@ function BatchSelectCell({
             {isOpen &&
               (options.length === 0 ? (
                 <li style={{ padding: '10px 12px', fontSize: 12, color: '#64748b' }}>
-                  {emptyMessage}
+                  {emptyMessage.replace('batch', singular.toLowerCase()).replace('batches', plural.toLowerCase())}
                 </li>
               ) : (
                 <>
