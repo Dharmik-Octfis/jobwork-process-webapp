@@ -134,11 +134,42 @@ promotes it to `req.tenantId` after checking `memberships`. Everything downstrea
   (`migrations/20260725140000_.../migration.sql:32`). `migrate dev` offers to **reset** whenever it
   sees drift, and this shared dev database drifts routinely. `npm run db:push` / `npm run db:migrate`
   are guards that explain this and exit 1. See `scripts/db-sync.ts`.
+  🔴 **`npx prisma db push --force-reset` is forbidden outright, under every circumstance.** It does
+  not ask and it does not diff — it drops the schema and rebuilds it empty. On a shared dev database
+  that is every organization's data, gone, with no prompt to say no to.
 - The app connects as **`jobwork_app`** — a non-owner, no `BYPASSRLS`, no DDL rights.
   **Never point `DATABASE_URL` at `postgres`.** The table owner bypasses every policy _silently_;
   RLS that does nothing looks exactly like RLS that works.
 - `MIGRATE_DATABASE_URL` (`postgres`) is for the Prisma CLI only — migrations need DDL.
 - Cross-tenant admin views need a **separate read-only role and client**, never the app's connection.
+
+## 🔴 Query shape — N+1 is a bug here, and `Promise.all` does not fix it
+
+**One grouped query, never one query per row.** A `findMany` followed by an `aggregate`/`findFirst`
+per element is N+1: it is invisible at three rows and it _is_ the response time at three hundred.
+Reach for `groupBy`, an `in` filter, or a single `include` — then index the result into a `Map` in
+memory. `stockLedger.service.ts` is the worked example both ways: `getBalance` answers about **one**
+batch, and `getBalanceByLocation` / `getBalancesByBatchAndLocation` exist precisely so callers with a
+list never loop over it.
+
+🔴 **`Promise.all` buys you nothing inside `runAsTenant`.** An interactive transaction holds **one**
+connection, so every query issued on `tx` is queued and executed by the engine one at a time.
+`Promise.all` changes when the promises are _created_ in JS; it does not reduce the number of round
+trips and it does not let Postgres work on two of them at once. Wrapping an N+1 in `Promise.all`
+makes it _look_ concurrent while running exactly as slowly as before — which is the trap
+`getJobOrderOverview` fell into (`d91fa73`): the loops became `Promise.all`, it did not help, and a
+`{ timeout: 15000 }` went on the transaction in the same commit to stop the `P2028` 500s. The
+timeout was removed 2026-08-27; the N+1 underneath it is the thing to fix.
+
+**So use `Promise.all` where it can actually overlap** — independent work that is _not_ sharing one
+transaction's connection: separate `runAsTenant` calls, a DB read alongside an HTTP call, unrelated
+`prisma` queries outside a transaction. Inside a transaction, collapse the queries instead.
+
+**Do not answer a slow query with a bigger `timeout`.** The budget is a net for work that is
+irreducibly large (`DOCUMENT_TX` in `jobwork.types.ts` — a document write whose per-row ledger
+validation cannot be skipped), not a place to hide a query shape that should have been one
+round trip. Raising it holds a pooled connection longer, and `maxWait` stays at its default, so the
+requests that queue behind the slow one fail on pool acquisition while the offender survives.
 
 ## Schema conventions — copy `prisma/schema/tenant.prisma`, not Prisma defaults
 
