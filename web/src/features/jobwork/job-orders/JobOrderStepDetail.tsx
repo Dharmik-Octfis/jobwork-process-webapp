@@ -257,7 +257,7 @@ export function JobOrderStepDetail({
           }}
         >
           <div>
-            <span style={columnLabel}>Material in</span>
+            <span style={columnLabel}>Material Issue</span>
             <MovementList
               actionLabel="Issued"
               rows={step.itemTotals.inputs.map((row) => ({
@@ -278,7 +278,7 @@ export function JobOrderStepDetail({
           </div>
           <div style={{ width: 1, background: '#e2e8f0' }} />
           <div>
-            <span style={columnLabel}>Material out</span>
+            <span style={columnLabel}>Material Receive</span>
             <MovementList
               actionLabel="Received"
               rows={step.itemTotals.outputs.map((row) => ({
@@ -299,12 +299,14 @@ export function JobOrderStepDetail({
             still out there, how much was lost, what it costs. */}
         <dl
           style={{
-            display: 'flex',
-            gap: 24,
-            flexWrap: 'wrap',
-            margin: '14px 0 0 0',
-            paddingTop: 12,
-            borderTop: '1px solid #f1f5f9',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+            gap: 16,
+            margin: '16px 0 0 0',
+            padding: 16,
+            background: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: 8,
           }}
         >
           <Fact
@@ -431,12 +433,24 @@ function Fact({
   hint?: string;
 }) {
   return (
-    <div title={hint}>
-      <dt style={{ fontSize: 11, color: '#94a3b8' }}>{term}</dt>
-      <dd style={{ margin: 0, fontSize: 13, color: tone ?? '#111', fontWeight: 500 }}>
-        {value}
+    <div title={hint} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <dt
+        style={{
+          fontSize: 10,
+          color: '#64748b',
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          letterSpacing: 0.5,
+        }}
+      >
+        {term}
+      </dt>
+      <dd style={{ margin: 0, display: 'flex', alignItems: 'baseline', gap: 6 }}>
+        <span style={{ fontSize: 15, color: tone ?? '#0f172a', fontWeight: 600 }}>
+          {value}
+        </span>
         {suffix && (
-          <span style={{ display: 'block', fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>
+          <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>
             {suffix}
           </span>
         )}
