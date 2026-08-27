@@ -16,10 +16,10 @@ export function CreateVendor() {
 
   const mutation = useMutation({
     mutationFn: (data: CreateVendorData) => createVendor(orgId!, data),
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['vendors', orgId] });
       queryClient.invalidateQueries({ queryKey: ['vendor-number-preference', orgId] });
-      navigate(`/organizations/${orgId}/purchases/vendors`);
+      navigate(`/organizations/${orgId}/purchases/vendors?id=${data.id}`);
     },
     onError: (
       error: AxiosError<{ error?: string; message?: string; details?: Record<string, string> }>,

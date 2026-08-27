@@ -955,7 +955,7 @@ export function VendorForm({
           </button>
           <button
             type="button"
-            onClick={() => (onCancel ? onCancel() : navigate(`/organizations/${orgId}/purchases/vendors`))}
+            onClick={() => (onCancel ? onCancel() : navigate(-1))}
             style={{
               padding: '6px 20px',
               background: 'white',

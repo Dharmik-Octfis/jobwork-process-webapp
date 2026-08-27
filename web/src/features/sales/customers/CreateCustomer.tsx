@@ -16,10 +16,10 @@ export function CreateCustomer() {
 
   const mutation = useMutation({
     mutationFn: (data: CreateCustomerData) => createCustomer(orgId!, data),
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['customers', orgId] });
       queryClient.invalidateQueries({ queryKey: ['customer-number-preference', orgId] });
-      navigate(`/organizations/${orgId}/sales/customers`);
+      navigate(`/organizations/${orgId}/sales/customers?id=${data.id}`);
     },
     onError: (
       error: AxiosError<{ error?: string; message?: string; details?: Record<string, string> }>,

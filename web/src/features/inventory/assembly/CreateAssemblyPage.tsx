@@ -166,10 +166,10 @@ export function CreateAssemblyPage() {
 
   const createMutation = useMutation({
     mutationFn: (data: CreateAssemblyDto) => assembliesApi.createAssembly({ orgId: orgId!, data }),
-    onSuccess: () => {
+    onSuccess: (resData) => {
       queryClient.invalidateQueries({ queryKey: ['assembly-number-preference', orgId] });
       toast.success('Assembly created successfully');
-      navigate(`/organizations/${orgId}/inventory/assembly`);
+      navigate(`/organizations/${orgId}/inventory/assembly?id=${resData.id}`);
     },
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { message?: string } } };

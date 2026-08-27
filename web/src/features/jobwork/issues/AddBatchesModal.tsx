@@ -205,27 +205,11 @@ export function AddBatchesModal({
     setRows((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)));
 
   /**
-   * 🔴 Picking a batch pre-fills its quantity.
-   *
-   * Computed against the OTHER rows rather than off `remaining`, so re-picking a
-   * row that already held 40 offers the full outstanding amount again instead of
-   * subtracting the row from itself.
-   *
-   * Clamped to the batch's balance as requested: if the batch has less than
-   * what's needed, it will only fill up to its available balance.
+   * 🔴 Picking a batch no longer pre-fills its quantity.
+   * The user must manually enter the quantity as requested.
    */
   const pickBatch = (id: string, batch: AvailableBatch) =>
-    setRows((prev) => {
-      const elsewhere = prev.reduce(
-        (sum, row) => (row.id !== id && row.batch ? sum + row.qty : sum),
-        0,
-      );
-      const targetQty = Math.max(lineQty || 0, plannedQty ?? 0);
-      const remainingNeeded = Math.max(0, Number((targetQty - elsewhere).toFixed(4)));
-      const batchBalance = toNumber(batch.availableQty);
-      const fill = Math.min(remainingNeeded, batchBalance);
-      return prev.map((row) => (row.id === id ? { ...row, batch, qty: fill } : row));
-    });
+    setRows((prev) => prev.map((row) => (row.id === id ? { ...row, batch, qty: 0 } : row)));
 
   /**
    * 🔴 CLEAR, don't delete — the grid opens with five blank rows to be tabbed

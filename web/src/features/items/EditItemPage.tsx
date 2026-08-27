@@ -133,8 +133,8 @@ export function EditItemPage() {
         }
       }
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
-      queryClient.removeQueries({ queryKey: ['item', orgId, id] });
-      navigate(`/organizations/${orgId}/items`);
+      queryClient.invalidateQueries({ queryKey: ['item', orgId, id] });
+      navigate(`/organizations/${orgId}/items?id=${id}`);
     },
     onError: (error) => {
       const err = error as {
@@ -274,7 +274,7 @@ export function EditItemPage() {
       <div style={{ padding: '16px 24px' }}>
         <button
           type="button"
-          onClick={() => navigate(`/organizations/${orgId}/items`)}
+          onClick={() => navigate(-1)}
           style={{
             background: 'none',
             border: 'none',
@@ -1166,7 +1166,7 @@ export function EditItemPage() {
             <button
               type="button"
               disabled={updateMutation.isPending}
-              onClick={() => navigate(`/organizations/${orgId}/items`)}
+              onClick={() => navigate(-1)}
               style={{
                 padding: '8px 24px',
                 background: 'white',

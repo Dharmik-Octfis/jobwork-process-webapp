@@ -23,7 +23,7 @@ export function EditVendor() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['vendors'] });
       await queryClient.invalidateQueries({ queryKey: ['vendor'] });
-      navigate(`/organizations/${orgId}/purchases/vendors`);
+      navigate(`/organizations/${orgId}/purchases/vendors?id=${id}`);
     },
     onError: (
       error: AxiosError<{ error?: string; message?: string; details?: Record<string, string> }>,

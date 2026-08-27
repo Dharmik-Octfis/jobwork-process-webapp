@@ -162,7 +162,10 @@ export function OpeningStockPage() {
   const handleAddLocation = () => {
     setLocationRows([
       ...locationRows,
-      createEmptyLocation(),
+      {
+        ...createEmptyLocation(),
+        batches: isBatchTracked ? [createEmptyBatch(defaultSellingPrice, defaultMrp)] : [],
+      },
     ]);
   };
 
