@@ -7,6 +7,7 @@ import { toast } from 'react-hot-toast';
 import { z } from 'zod';
 import { organizationsApi } from './organizations.api';
 import { toApiErrorMessage } from '../../api/client';
+import { Input } from '../../components/ui/Input';
 import './CreateOrganizationForm.css'; // Re-use styles
 
 const preferencesSchema = z.object({
@@ -74,13 +75,13 @@ export function PreferencesPage() {
   };
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto' }}>
+    <div style={{ height: '100%', overflowY: 'auto', backgroundColor: 'var(--color-bg)' }}>
       <div style={{ maxWidth: '800px', margin: '0 auto', padding: 'var(--space-6)' }}>
         <main>
-          <section className="org-form-section">
-            <div className="org-form-header">
-              <h2>Preferences</h2>
-              <p>Manage default terminology and settings for this organization.</p>
+          <section className="org-form-card" style={{ maxWidth: '100%', padding: 'var(--space-6)' }}>
+            <div className="org-form-header" style={{ marginBottom: 'var(--space-6)', borderBottom: '1px solid var(--color-border)', paddingBottom: 'var(--space-4)' }}>
+              <h2 style={{ fontSize: '24px', color: 'var(--navy-900)', marginBottom: '8px' }}>Preferences</h2>
+              <p style={{ color: 'var(--color-text-muted)', fontSize: '14px' }}>Manage default terminology and settings for this organization.</p>
             </div>
 
             <form onSubmit={handleSubmit(onSubmit)} className="org-form-content">
@@ -88,59 +89,37 @@ export function PreferencesPage() {
                 style={{
                   display: 'grid',
                   gridTemplateColumns: '1fr 1fr',
-                  gap: 'var(--space-2)',
+                  gap: 'var(--space-4)',
                 }}
               >
-                <div className="org-form-group">
-                  <label>Item Tracking Label (Singular)</label>
-                  <input
-                    type="text"
-                    className={`org-form-input ${errors.settings?.itemTrackingLabel?.singular ? 'error' : ''}`}
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <Input
+                    label="Item Tracking Label (Singular)"
                     placeholder="e.g. Batch, Lot, Roll"
+                    error={errors.settings?.itemTrackingLabel?.singular?.message}
+                    hint="Term used for single units."
                     {...register('settings.itemTrackingLabel.singular')}
                   />
-                  <p style={{ marginTop: 4, fontSize: 12, color: 'var(--color-text-muted)' }}>
-                    Term used for single units.
-                  </p>
                 </div>
-                <div className="org-form-group">
-                  <label>Item Tracking Label (Plural)</label>
-                  <input
-                    type="text"
-                    className={`org-form-input ${errors.settings?.itemTrackingLabel?.plural ? 'error' : ''}`}
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <Input
+                    label="Item Tracking Label (Plural)"
                     placeholder="e.g. Batches, Lots, Rolls"
+                    error={errors.settings?.itemTrackingLabel?.plural?.message}
+                    hint="Term used for multiple units."
                     {...register('settings.itemTrackingLabel.plural')}
                   />
-                  <p style={{ marginTop: 4, fontSize: 12, color: 'var(--color-text-muted)' }}>
-                    Term used for multiple units.
-                  </p>
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  marginTop: 'var(--space-4)',
-                  paddingTop: 'var(--space-2)',
-                  borderTop: '1px solid var(--color-border)',
-                }}
-              >
+              <div className="org-form-actions" style={{ marginTop: 'var(--space-6)' }}>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  style={{
-                    background: 'var(--color-primary)',
-                    color: 'white',
-                    border: 'none',
-                    padding: '10px 24px',
-                    borderRadius: 'var(--radius-md)',
-                    fontWeight: 600,
-                    cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                    opacity: isSubmitting ? 0.7 : 1,
-                  }}
+                  className="org-form-submit-btn"
+                  style={{ padding: '8px 24px', fontSize: '15px' }}
                 >
-                  {isSubmitting ? 'Saving...' : 'Save'}
+                  {isSubmitting ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
             </form>
