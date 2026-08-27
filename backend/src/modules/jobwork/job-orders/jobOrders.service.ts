@@ -1448,99 +1448,102 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
     // at a processor, because goods at a processor are still our stock (§5.4).
     let inHandQty = new Prisma.Decimal(0);
     let inHandValue = new Prisma.Decimal(0);
-    for (const batch of batches) {
-      const balance = await getBalance(tx, { organizationId, batchId: batch.id });
+    const batchBalances = await Promise.all(
+      batches.map((batch) => getBalance(tx, { organizationId, batchId: batch.id }))
+    );
+    for (const balance of batchBalances) {
       inHandQty = inHandQty.plus(balance.qty);
       inHandValue = inHandValue.plus(balance.value);
     }
 
-    const steps = [];
-    for (const step of order.steps) {
-      const totals = await getStepTotals(tx, organizationId, step.id);
+    const steps = await Promise.all(
+      order.steps.map(async (step) => {
+        const totals = await getStepTotals(tx, organizationId, step.id);
 
-      // The issue button is enabled by AVAILABILITY, not by status: a step can be
-      // ready on paper and have nothing to send. Measured on the PRINCIPAL input
-      // — the first consumed row, which is what the step is fundamentally about.
-      const principalInput = step.inputs[0] ?? null;
-      let availableQty = new Prisma.Decimal(0);
-      if (principalInput) {
-        const balance = await getBalance(tx, {
-          organizationId,
-          itemId: principalInput.itemId,
-          ownership: order.ownership as Ownership,
-        });
-        availableQty = balance.qty;
-      }
+        // The issue button is enabled by AVAILABILITY, not by status: a step can be
+        // ready on paper and have nothing to send. Measured on the PRINCIPAL input
+        // — the first consumed row, which is what the step is fundamentally about.
+        const principalInput = step.inputs[0] ?? null;
+        let availableQty = new Prisma.Decimal(0);
+        if (principalInput) {
+          const balance = await getBalance(tx, {
+            organizationId,
+            itemId: principalInput.itemId,
+            ownership: order.ownership as Ownership,
+          });
+          availableQty = balance.qty;
+        }
 
-      const blockedReason = await chainNotReady(tx, organizationId, order.id, step);
+        const blockedReason = await chainNotReady(tx, organizationId, order.id, step);
 
-      // 🔴 Issued MINUS CONSUMED, both in the input's unit. Subtracting
-      // `receivedQty` would mix metres and pieces on any step where the item
-      // changes (jobOrders.status.ts).
-      const issuedD = totals.issuedQty;
-      const consumedD = totals.consumedQty;
-      const outstanding = issuedD.minus(consumedD);
-      steps.push({
-        ...step,
-        totals: {
-          issuedQty: totals.issuedQty.toString(),
-          consumedQty: totals.consumedQty.toString(),
-          receivedQty: totals.receivedQty.toString(),
-          acceptedQty: totals.acceptedQty.toString(),
-          reworkQty: totals.reworkQty.toString(),
-          scrapQty: totals.scrapQty.toString(),
-          returnedQty: totals.returnedQty.toString(),
-          outstandingQty: outstanding.toString(),
-          issueCount: totals.issueCount,
-          receiptCount: totals.receiptCount,
-        },
-        /**
-         * 🔴 THE PAGE'S REAL NUMBERS (§5.7 + §6.5). The six totals above are the
-         * principal input's and the primary output's; these are every item's,
-         * each in its own unit, and they are what the Overview renders.
-         *
-         * Both lists include items the PLAN never named — a step can be issued
-         * something nobody listed, and a receipt can return something nobody
-         * expected. Showing only the planned rows would hide exactly the
-         * movements somebody needs to look at.
-         */
-        itemTotals: await buildItemTotals(tx, organizationId, step, totals),
-        availableQty: availableQty.toString(),
-        /**
-         * ⚠️ TEMPORARY — enabled whenever the step has something to issue, NOT
-         * by the ledger.
-         *
-         * It used to require a positive balance, which is the right rule and
-         * will be again. Material In was retired before Purchase Received and
-         * Opening Stock exist, so today there is no way to put stock on the
-         * books at all — and a button that can never light up makes the whole
-         * loop untestable. The Issue dialog creates a zero-valued batch for an
-         * item with no stock and says so on screen (`jobIssues.service.ts`).
-         *
-         * 🔴 Restore `availableQty.greaterThan(0)` the day Purchase Received
-         * lands. Issuing what you do not have is a real defect, not a feature.
-         *
-         * The ONE thing the scaffold does not relax is the chain — see
-         * `blockedReason` below.
-         */
-        canIssue: step.inputs.length > 0 && !blockedReason,
-        /**
-         * 🔴 A STEP FED BY AN EARLIER ONE CANNOT ISSUE UNTIL THAT STEP DELIVERS.
-         *
-         * Step 2 consumes what step 1 produced. If step 1 has returned nothing,
-         * there is physically nothing to send — and the no-stock scaffold would
-         * otherwise happily invent a batch of dyed fabric nobody ever dyed, which
-         * is the one thing it must never do. Raw material can be conjured while
-         * Purchase Received is missing; work in progress cannot.
-         *
-         * Items drawn from stock are unaffected: thread comes from the godown,
-         * not from the operation above.
-         */
-        blockedReason,
-        // Visible once something is out there to come back.
-        canReceive: outstanding.greaterThan(0),
-      });
-    }
+        // 🔴 Issued MINUS CONSUMED, both in the input's unit. Subtracting
+        // `receivedQty` would mix metres and pieces on any step where the item
+        // changes (jobOrders.status.ts).
+        const issuedD = totals.issuedQty;
+        const consumedD = totals.consumedQty;
+        const outstanding = issuedD.minus(consumedD);
+        return {
+          ...step,
+          totals: {
+            issuedQty: totals.issuedQty.toString(),
+            consumedQty: totals.consumedQty.toString(),
+            receivedQty: totals.receivedQty.toString(),
+            acceptedQty: totals.acceptedQty.toString(),
+            reworkQty: totals.reworkQty.toString(),
+            scrapQty: totals.scrapQty.toString(),
+            returnedQty: totals.returnedQty.toString(),
+            outstandingQty: outstanding.toString(),
+            issueCount: totals.issueCount,
+            receiptCount: totals.receiptCount,
+          },
+          /**
+           * 🔴 THE PAGE'S REAL NUMBERS (§5.7 + §6.5). The six totals above are the
+           * principal input's and the primary output's; these are every item's,
+           * each in its own unit, and they are what the Overview renders.
+           *
+           * Both lists include items the PLAN never named — a step can be issued
+           * something nobody listed, and a receipt can return something nobody
+           * expected. Showing only the planned rows would hide exactly the
+           * movements somebody needs to look at.
+           */
+          itemTotals: await buildItemTotals(tx, organizationId, step, totals),
+          availableQty: availableQty.toString(),
+          /**
+           * ⚠️ TEMPORARY — enabled whenever the step has something to issue, NOT
+           * by the ledger.
+           *
+           * It used to require a positive balance, which is the right rule and
+           * will be again. Material In was retired before Purchase Received and
+           * Opening Stock exist, so today there is no way to put stock on the
+           * books at all — and a button that can never light up makes the whole
+           * loop untestable. The Issue dialog creates a zero-valued batch for an
+           * item with no stock and says so on screen (`jobIssues.service.ts`).
+           *
+           * 🔴 Restore `availableQty.greaterThan(0)` the day Purchase Received
+           * lands. Issuing what you do not have is a real defect, not a feature.
+           *
+           * The ONE thing the scaffold does not relax is the chain — see
+           * `blockedReason` below.
+           */
+          canIssue: step.inputs.length > 0 && !blockedReason,
+          /**
+           * 🔴 A STEP FED BY AN EARLIER ONE CANNOT ISSUE UNTIL THAT STEP DELIVERS.
+           *
+           * Step 2 consumes what step 1 produced. If step 1 has returned nothing,
+           * there is physically nothing to send — and the no-stock scaffold would
+           * otherwise happily invent a batch of dyed fabric nobody ever dyed, which
+           * is the one thing it must never do. Raw material can be conjured while
+           * Purchase Received is missing; work in progress cannot.
+           *
+           * Items drawn from stock are unaffected: thread comes from the godown,
+           * not from the operation above.
+           */
+          blockedReason,
+          // Visible once something is out there to come back.
+          canReceive: outstanding.greaterThan(0),
+        };
+      })
+    );
 
     const firstStep = order.steps[0];
     const firstTotals = firstStep ? await getStepTotals(tx, organizationId, firstStep.id) : null;
@@ -1596,7 +1599,7 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
       },
       steps,
     };
-  });
+  }, { timeout: 15000 });
 }
 
 type StepWithRows = Prisma.JobOrderStepGetPayload<{ include: typeof STEP_INCLUDE }>;

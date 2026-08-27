@@ -86,16 +86,10 @@ export function ProcessForm({ initialData, onSubmit, isPending, onCancel }: Proc
     <form
       onSubmit={handleSubmit(submit)}
       noValidate
-      // 64 = the 44px fixed action bar + a 20px gutter, which is the MOST this
-      // ever needs to be: the bar is `position: fixed`, so it contributes nothing
-      // to content height and only overlays the last 44px of the viewport. Any
-      // padding beyond that is empty space that cannot be scrolled to for a
-      // reason — it just makes a form that fits report that it doesn't. This was
-      // 200 (and briefly 120, still too generous) while the form carried the two
-      // unit selects and the custom-fields section. RouteForm and JobOrderForm
-      // keep 120 because they are long enough to scroll regardless and their
-      // bottom rows are dropdowns that want room to open downwards.
-      style={{ padding: '24px 32px', paddingBottom: 64 }}
+      // 200px padding ensures that the form can be scrolled high enough for the
+      // dropdowns at the bottom (like the ItemComboBox) to open downwards without
+      // being clipped by the window's bottom edge or overlapping the fixed action bar.
+      style={{ padding: '24px 32px', paddingBottom: 200 }}
     >
       <section style={{ maxWidth: 640, marginBottom: 32 }}>
         <div style={{ marginBottom: 20 }}>

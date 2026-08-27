@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Suspense} from 'react';
+import { useState, useRef, useEffect, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import {
   NavLink,
@@ -570,7 +570,7 @@ export function AppLayout() {
               borderTop: '1px solid rgba(255,255,255,0.1)',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: isSidebarCollapsed ? 'center' : 'flex-start'
+              justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
             }}
           >
             <NavLink
@@ -671,10 +671,12 @@ function ModuleNavGroup({
   const navigate = useNavigate();
   const location = useLocation();
 
-  const isChildActive = isParent && module.children?.some((child) => {
-    const childTo = navPath(child.code, effectiveOrgId);
-    return childTo !== '#' && location.pathname.startsWith(childTo);
-  });
+  const isChildActive =
+    isParent &&
+    module.children?.some((child) => {
+      const childTo = navPath(child.code, effectiveOrgId);
+      return childTo !== '#' && location.pathname.startsWith(childTo);
+    });
 
   // States for old accordion
   const [localExpanded, setLocalExpanded] = useState(false);
@@ -737,7 +739,14 @@ function ModuleNavGroup({
               whiteSpace: 'nowrap',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', width: '100%' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-2)',
+                width: '100%',
+              }}
+            >
               <div
                 style={{
                   display: 'flex',
@@ -762,7 +771,14 @@ function ModuleNavGroup({
               transition: 'grid-template-rows 0.2s ease',
             }}
           >
-            <div style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+            <div
+              style={{
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--space-1)',
+              }}
+            >
               {module.children?.map((child) => (
                 <ModuleNavGroup
                   key={child.id}
@@ -799,7 +815,15 @@ function ModuleNavGroup({
           whiteSpace: 'nowrap',
         })}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', width: '100%', justifyContent: 'flex-start' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-2)',
+            width: '100%',
+            justifyContent: 'flex-start',
+          }}
+        >
           <div style={{ width: 16 }}></div>
           {depth === 0 && <Icon size={16} />}
           <span style={{ fontSize: 13, marginLeft: 4 }}>{module.name}</span>
@@ -852,9 +876,16 @@ function ModuleNavGroup({
             <span>{module.name}</span>
             <button
               onClick={handlePlusClick}
-              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+              style={{
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+              }}
             >
-              <Plus size={14} color={isActive ? "#fff" : "rgba(255,255,255,0.4)"} />
+              <Plus size={14} color={isActive ? '#fff' : 'rgba(255,255,255,0.4)'} />
             </button>
           </>
         )}
@@ -872,7 +903,7 @@ function ModuleNavGroup({
         to={isParent ? '#' : to}
         end={module.code === 'DASHBOARD'}
         onClick={(e) => {
-           if (isParent) e.preventDefault();
+          if (isParent) e.preventDefault();
         }}
         style={({ isActive }) => {
           const reallyActive = (!isParent && isActive) || isChildActive;
@@ -886,7 +917,11 @@ function ModuleNavGroup({
             borderRadius: 'var(--radius-md)',
             textDecoration: 'none',
             color: reallyActive || isHovered ? 'white' : 'rgba(255,255,255,0.7)',
-            background: reallyActive ? '#186337' : isHovered ? 'rgba(255,255,255,0.08)' : 'transparent',
+            background: reallyActive
+              ? '#186337'
+              : isHovered
+                ? 'rgba(255,255,255,0.08)'
+                : 'transparent',
             transition: 'all 0.2s ease',
           };
         }}
@@ -897,40 +932,61 @@ function ModuleNavGroup({
         </span>
       </NavLink>
 
-      {isParent && isHovered && rect && createPortal(
-        <div
-          onMouseEnter={handlePortalMouseEnter}
-          onMouseLeave={handleMouseLeave}
-          style={{
-            position: 'fixed',
-            top: Math.max(10, Math.min(rect.top, window.innerHeight - (module.children!.length * 40 + 40))),
-            left: rect.right,
-            paddingLeft: '16px',
-            zIndex: 9999,
-          }}
-        >
+      {isParent &&
+        isHovered &&
+        rect &&
+        createPortal(
           <div
+            onMouseEnter={handlePortalMouseEnter}
+            onMouseLeave={handleMouseLeave}
             style={{
-              width: '200px',
-              background: '#1e293b',
-              borderRadius: '6px',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
-              padding: '8px 0',
-              display: 'flex',
-              flexDirection: 'column',
-              border: '1px solid rgba(255,255,255,0.1)',
+              position: 'fixed',
+              top: Math.max(
+                10,
+                Math.min(rect.top, window.innerHeight - (module.children!.length * 40 + 40)),
+              ),
+              left: rect.right,
+              paddingLeft: '16px',
+              zIndex: 9999,
             }}
           >
-            <div style={{ padding: '4px 16px 8px', fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
-              {module.name}
+            <div
+              style={{
+                width: '200px',
+                background: '#1e293b',
+                borderRadius: '6px',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+                padding: '8px 0',
+                display: 'flex',
+                flexDirection: 'column',
+                border: '1px solid rgba(255,255,255,0.1)',
+              }}
+            >
+              <div
+                style={{
+                  padding: '4px 16px 8px',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  color: '#94a3b8',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  marginBottom: '4px',
+                }}
+              >
+                {module.name}
+              </div>
+              {module.children!.map((child) => (
+                <ModuleNavGroup
+                  key={child.id}
+                  module={child}
+                  depth={depth + 1}
+                  isSidebarCollapsed={true}
+                />
+              ))}
             </div>
-            {module.children!.map((child) => (
-              <ModuleNavGroup key={child.id} module={child} depth={depth + 1} isSidebarCollapsed={true} />
-            ))}
-          </div>
-        </div>,
-        document.body
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

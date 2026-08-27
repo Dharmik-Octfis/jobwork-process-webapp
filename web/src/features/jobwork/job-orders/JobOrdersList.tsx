@@ -134,7 +134,13 @@ export function JobOrdersList() {
    */
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
-  const openOrder = (id: string) => setSearchParams({ id });
+  const openOrder = (id: string) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('id', id);
+      return next;
+    });
+  };
 
   return (
     <div
@@ -409,7 +415,16 @@ export function JobOrdersList() {
 
         {selectedId && (
           <div style={{ flex: 1, overflowY: 'auto' }}>
-            <JobOrderOverview jobOrderId={selectedId} onClose={() => setSearchParams({})} />
+            <JobOrderOverview
+              jobOrderId={selectedId}
+              onClose={() => {
+                setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.delete('id');
+                  return next;
+                });
+              }}
+            />
           </div>
         )}
       </div>

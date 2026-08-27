@@ -105,7 +105,7 @@ export function CreateJobOrder() {
           {message}
         </p>
       )}
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div style={{ padding: '0 0 44px 0' }}>
         {/* The form seeds its state ONCE from `initialData`, so it must not mount
             before the order being copied has arrived — it would render blank and
             stay blank. */}

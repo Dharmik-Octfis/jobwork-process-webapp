@@ -82,7 +82,7 @@ export function EditRoute() {
           {message}
         </p>
       )}
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div style={{ padding: '0 0 44px 0' }}>
         <RouteForm
           initialData={route}
           onSubmit={(data) => {

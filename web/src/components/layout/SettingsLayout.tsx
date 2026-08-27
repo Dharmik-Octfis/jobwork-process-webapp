@@ -107,7 +107,16 @@ export function SettingsLayout() {
           >
             <X size={18} />
           </button>
-          <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: 'var(--color-text)', flex: 1, textAlign: 'center' }}>
+          <h2
+            style={{
+              fontSize: 18,
+              fontWeight: 600,
+              margin: 0,
+              color: 'var(--color-text)',
+              flex: 1,
+              textAlign: 'center',
+            }}
+          >
             Settings
           </h2>
           <div style={{ width: 30 }} /> {/* Spacer to perfectly center the title */}
