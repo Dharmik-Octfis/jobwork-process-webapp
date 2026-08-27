@@ -16,6 +16,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { ItemComboBox } from '../../../components/ui/ItemComboBox';
 
 import { MultiSelectItemModal } from '../../items/components/MultiSelectItemModal';
+import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 
 interface ComponentRow {
   componentItemId: string;
@@ -42,6 +43,7 @@ export function CreateCompositeItemPage({
 
   const { data: uoms = [] } = useUoms(orgId!);
   const [isUomModalOpen, setIsUomModalOpen] = useState(false);
+  const { singular } = useTrackingLabel();
 
   const itemToClone = (location.state as { itemToClone?: Partial<Item> & Record<string, unknown> })
     ?.itemToClone;
@@ -1662,7 +1664,7 @@ export function CreateCompositeItemPage({
                     checked={formData.inventoryTracking === 'batch'}
                     onChange={() => handleRadioChange('inventoryTracking', 'batch')}
                   />{' '}
-                  Track Batches
+                  {singular}
                 </label>
               </div>
             </div>

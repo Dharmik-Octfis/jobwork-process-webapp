@@ -14,6 +14,7 @@ import type { JobOrder, OverviewStep } from '../job-orders/jobOrders.schemas';
 import { createJobReceipt, fetchReceiptBatchOptions, fetchReceivePrefill } from './jobReceipts.api';
 import type { JobReceiptBatchAllocationData, JobReceiptLineData } from './jobReceipts.schemas';
 import { BatchAllocationModal, type BatchAllocation } from './BatchAllocationModal';
+import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 
 interface Props {
   isOpen: boolean;
@@ -174,6 +175,7 @@ const sectionHeading: React.CSSProperties = {
 export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: Props) {
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
+  const trackingLabel = useTrackingLabel();
 
   /**
    * `null` means "everything that is open" — every challan pre-ticked, which is
@@ -189,7 +191,6 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
   const [locationId, setLocationId] = useState('');
   const [remarks, setRemarks] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [showPreview, setShowPreview] = useState(false);
   /** Which returned row's batches are being allocated, and for which side. Null
    * closes the grid — and unmounts it, which is what lets it seed itself once. */
   const [allocating, setAllocating] = useState<{
@@ -753,6 +754,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
 
   return (
     <Modal
+      position="fullScreen"
       isOpen={isOpen}
       onClose={onClose}
       title={`Receive goods — step ${step.seq}, ${step.processNameSnapshot}`}
@@ -769,46 +771,26 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
       width={1100}
       footer={
         <>
-          {showPreview ? (
-            <button
-              type="button"
-              onClick={() => mutation.mutate()}
-              disabled={!canSave}
-              style={{
-                padding: '6px 20px',
-                background: canSave ? '#186337' : '#f1f5f9',
-                color: canSave ? '#fff' : '#94a3b8',
-                border: 'none',
-                borderRadius: 4,
-                cursor: canSave ? 'pointer' : 'not-allowed',
-                fontWeight: 500,
-                fontSize: 13,
-              }}
-            >
-              {mutation.isPending ? 'Posting…' : 'Confirm & post'}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowPreview(true)}
-              disabled={!canSave}
-              style={{
-                padding: '6px 20px',
-                background: canSave ? '#0062ff' : '#f1f5f9',
-                color: canSave ? '#fff' : '#94a3b8',
-                border: 'none',
-                borderRadius: 4,
-                cursor: canSave ? 'pointer' : 'not-allowed',
-                fontWeight: 500,
-                fontSize: 13,
-              }}
-            >
-              Preview
-            </button>
-          )}
           <button
             type="button"
-            onClick={showPreview ? () => setShowPreview(false) : onClose}
+            onClick={() => mutation.mutate()}
+            disabled={!canSave}
+            style={{
+              padding: '6px 20px',
+              background: canSave ? '#186337' : '#f1f5f9',
+              color: canSave ? '#fff' : '#94a3b8',
+              border: 'none',
+              borderRadius: 4,
+              cursor: canSave ? 'pointer' : 'not-allowed',
+              fontWeight: 500,
+              fontSize: 13,
+            }}
+          >
+            {mutation.isPending ? 'Receiving…' : 'Receive goods'}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
             style={{
               padding: '6px 20px',
               background: '#fff',
@@ -820,7 +802,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
               fontSize: 13,
             }}
           >
-            {showPreview ? 'Back' : 'Cancel'}
+            Cancel
           </button>
           <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>
             {formatQty(totals.received)} {outUnit} received · {formatQty(totals.accepted)} accepted
@@ -851,67 +833,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
         </p>
       )}
 
-      {prefill && showPreview ? (
-        /**
-         * 🔴 PREVIEW BEFORE POST (§6.5). Entirely computed — nothing is written
-         * until Confirm. A ledger posting cannot be undone by editing, only by a
-         * reversing entry, so the consequence is stated in advance.
-         */
-        <div>
-          <h3 style={sectionHeading}>This is what will be posted</h3>
-          <ul
-            style={{ fontSize: 13, color: '#334155', lineHeight: 1.9, paddingLeft: 18, margin: 0 }}
-          >
-            {/* Item by item, in each item's own unit — the whole point of the
-                preview is that it says exactly what will be written. */}
-            {consumedByItem.map((row) => (
-              <li key={row.itemId}>
-                <strong>
-                  {formatQty(row.qty)} {row.unit}
-                </strong>{' '}
-                of {row.name} is consumed at {step.processorNameSnapshot ?? 'the processor'}.
-              </li>
-            ))}
-            {effectiveReturned
-              .map((row, index) => ({ row, isMain: index === 0 }))
-              .filter(({ row }) => row.acceptedQty > 0 && row.itemId)
-              .map(({ row, isMain }) => (
-                <li key={`acc-${row.key}`}>
-                  A new batch of{' '}
-                  <strong>
-                    {formatQty(row.acceptedQty)} {row.itemName}
-                  </strong>{' '}
-                  is created at{' '}
-                  {godowns.find((l) => l.id === effectiveLocationId)?.name ??
-                    'the selected location'}
-                  , tracing back to every batch that was consumed
-                  {isMain ? ', carrying the cost of the operation' : ''}.
-                </li>
-              ))}
-            {effectiveReturned
-              .filter((row) => row.reworkQty > 0 && row.itemId)
-              .map((row) => (
-                <li key={`rw-${row.key}`}>
-                  A <strong>separate</strong> rework batch of {formatQty(row.reworkQty)}{' '}
-                  {row.itemName} is created — kept apart so the reworked pieces stay countable, and
-                  re-issued against this same step.
-                </li>
-              ))}
-            {lossByItem.map((row) => (
-              <li key={`loss-${row.itemId}`}>
-                {formatQty(row.qty)} {row.unit} of {row.name} does not come back — process loss. No
-                batch is created: its cost stays absorbed in the good pieces, which is what makes
-                their cost honest.
-              </li>
-            ))}
-            <li>
-              {selectedIssueIds.length} challan{selectedIssueIds.length === 1 ? '' : 's'} closed or
-              partly closed, and the step status recomputed.
-            </li>
-          </ul>
-        </div>
-      ) : (
-        prefill && (
+      {prefill && (
           <>
             <section style={{ marginBottom: 20 }}>
               <div
@@ -1076,7 +998,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                         Good
                       </th>
                       <th style={th} scope="col">
-                        Batches
+                        {trackingLabel.plural}
                       </th>
                       {/* 🔴 The disposition lives on THIS grid since 2026-08-12. It used
                           to sit on the consumed rows, per taka; with packages gone the
@@ -1150,9 +1072,9 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                                     background: '#fef3c7',
                                     color: '#92400e',
                                   }}
-                                  title="This item is batch-tracked, so the batches it lands in have to be named."
+                                  title={`This item is ${trackingLabel.singular.toLowerCase()}-tracked, so the ${trackingLabel.plural.toLowerCase()} it lands in have to be named.`}
                                 >
-                                  Batch required
+                                  {trackingLabel.singular} required
                                 </span>
                               )}
                             </div>
@@ -1175,7 +1097,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                               may never share one with the accepted goods. */}
                           <td style={td}>
                             <AllocationButton
-                              label="Add Batches"
+                              label={`Add ${trackingLabel.plural}`}
                               qty={row.acceptedQty}
                               rows={row.batches}
                               tracked={tracked}
@@ -1184,7 +1106,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                             {row.reworkQty > 0 && (
                               <div style={{ marginTop: 4 }}>
                                 <AllocationButton
-                                  label="Add Rework Batches"
+                                  label={`Add Rework ${trackingLabel.plural}`}
                                   qty={row.reworkQty}
                                   rows={row.reworkBatches}
                                   tracked={tracked}
@@ -1227,8 +1149,8 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
               {unallocatedRows.length > 0 && (
                 <p style={{ fontSize: 12, color: '#b91c1c', margin: '8px 0 0 0' }}>
                   {unallocatedRows.length === 1
-                    ? 'One batch-tracked item still needs its batches named — use Add Batches on that row.'
-                    : `${unallocatedRows.length} batch-tracked items still need their batches named — use Add Batches on those rows.`}
+                    ? `One batch-tracked item still needs its ${trackingLabel.plural.toLowerCase()} named — use Add ${trackingLabel.plural} on that row.`
+                    : `${unallocatedRows.length} batch-tracked items still need their ${trackingLabel.plural.toLowerCase()} named — use Add ${trackingLabel.plural} on those rows.`}
                 </p>
               )}
             </section>
@@ -1291,7 +1213,6 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                 receipt's detail screen, not between the goods and the ledger.
                 Remarks is a header field and sits with the other header facts. */}
           </>
-        )
       )}
 
       {/**
@@ -1416,6 +1337,8 @@ function AllocationButton({
   tracked: boolean;
   onClick: () => void;
 }) {
+  const trackingLabel = useTrackingLabel();
+
   if (!tracked) {
     return (
       <span style={{ fontSize: 12, color: '#94a3b8' }} title="This item is not batch-tracked.">
@@ -1444,7 +1367,7 @@ function AllocationButton({
           color: '#0062ff',
         }}
       >
-        {rows.length === 0 ? label : `${rows.length} ${rows.length === 1 ? 'batch' : 'batches'}`}
+        {rows.length === 0 ? label : `${rows.length} ${rows.length === 1 ? trackingLabel.singular.toLowerCase() : trackingLabel.plural.toLowerCase()}`}
       </button>
       {/* Why this row is holding the receipt up, beside the control that fixes
           it — the same place the issue dialog puts it. Only ever a shortfall:

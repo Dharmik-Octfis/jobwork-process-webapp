@@ -49,6 +49,7 @@ import { CreateItemModal } from '../../items/CreateItemModal';
 import { AddBillBatchesModal } from './AddBillBatchesModal';
 import { WarehouseLocationsPopover } from './components/WarehouseLocationsPopover';
 import { LineItemStockDisplay } from './components/LineItemStockDisplay';
+import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 
 function getImageKey(img: unknown): string | null {
   if (!img) return null;
@@ -117,6 +118,7 @@ export function CreateBill() {
   const cloneFrom = searchParams.get('cloneFrom');
   const fromPo = searchParams.get('fromPo');
   const queryClient = useQueryClient();
+  const trackingLabel = useTrackingLabel();
 
   const poIdToFetch = id || cloneFrom;
   const isEdit = Boolean(id);
@@ -1159,8 +1161,8 @@ export function CreateBill() {
                               }}
                             >
                               {curItem?.batches?.length
-                                ? `${curItem?.batches?.length} Batches Added`
-                                : '+ Add Batches'}
+                                ? `${curItem?.batches?.length} ${trackingLabel.plural} Added`
+                                : `+ Add ${trackingLabel.plural}`}
                             </button>
                           </div>
                         )}
@@ -1615,10 +1617,28 @@ export function CreateBill() {
         >
           <button
             type="submit"
+            onClick={() => setValue('status', 'Draft')}
             disabled={mutation.isPending}
             style={{
               padding: '6px 20px',
-              background: '#0062ff',
+              background: '#f8fafc',
+              color: '#0f172a',
+              border: '1px solid #cbd5e1',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 500,
+              fontSize: '13px',
+            }}
+          >
+            {mutation.isPending ? 'Saving...' : 'Save as Draft'}
+          </button>
+          <button
+            type="submit"
+            onClick={() => setValue('status', 'Open')}
+            disabled={mutation.isPending}
+            style={{
+              padding: '6px 20px',
+              background: '#15803d',
               color: 'white',
               border: 'none',
               borderRadius: '4px',
@@ -1627,7 +1647,7 @@ export function CreateBill() {
               fontSize: '13px',
             }}
           >
-            {mutation.isPending ? 'Saving...' : 'Save'}
+            {mutation.isPending ? 'Saving...' : 'Save as Open'}
           </button>
           <button
             type="button"

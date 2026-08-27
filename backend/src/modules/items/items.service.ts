@@ -386,13 +386,20 @@ export class ItemsService {
           
           if (key.startsWith('cf_')) {
             const cfKey = key.replace('cf_', '');
+            const vals = value.split(',').filter(Boolean);
+            
             customFieldsWhere.push({
-              customFields: { path: [cfKey], equals: value }
+              OR: [
+                { customFields: { path: [cfKey], equals: value } },
+                ...vals.map(v => ({
+                  customFields: { path: [cfKey], array_contains: v }
+                }))
+              ]
             });
           } else if (key === 'type') {
              directFilters.OR = [
-               { itemType: value as any },
-               { itemStructure: value as any }
+               { itemType: value },
+               { itemStructure: value }
              ];
           } else if (key === 'name') {
             directFilters.name = { contains: value, mode: 'insensitive' };
@@ -404,7 +411,7 @@ export class ItemsService {
             directFilters.category = value;
           }
         });
-      } catch (e) {
+      } catch (_e) {
         // Ignore invalid JSON
       }
     }
@@ -1269,6 +1276,11 @@ export class ItemsService {
           });
         }
       }
+
+      await tx.item.update({
+        where: { id: itemId },
+        data: { openingStock: null, openingStockValuePerUnit: null, updatedBy: userId ?? null },
+      });
 
       return this.readOpeningStock(tx, itemId, organizationId);
     });

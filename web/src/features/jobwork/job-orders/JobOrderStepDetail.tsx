@@ -1,4 +1,4 @@
-import { AlertTriangle, PackageCheck, Send } from 'lucide-react';
+import { AlertTriangle, PackageCheck, Send, Check } from 'lucide-react';
 import { rateBasisLabel } from '../processes/processes.schemas';
 import {
   STEP_STATUS_META,
@@ -11,6 +11,7 @@ import {
 } from '../jobwork.schemas';
 import { ActivityTimeline } from './ActivityTimeline';
 import type { ActivityEvent, OverviewStep } from './jobOrders.schemas';
+import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 
 interface Props {
   step: OverviewStep;
@@ -18,6 +19,7 @@ interface Props {
   activity: ActivityEvent[];
   onIssue: (step: OverviewStep) => void;
   onReceive: (step: OverviewStep) => void;
+  onComplete?: (step: OverviewStep) => void;
   onOpenDocument: (event: ActivityEvent) => void;
 }
 
@@ -64,7 +66,15 @@ const columnLabel: React.CSSProperties = {
  * outstanding balance against this step. Offering it before anything was issued
  * invites a receipt of goods that never left.
  */
-export function JobOrderStepDetail({ step, activity, onIssue, onReceive, onOpenDocument }: Props) {
+export function JobOrderStepDetail({
+  step,
+  activity,
+  onIssue,
+  onReceive,
+  onComplete,
+  onOpenDocument,
+}: Props) {
+  const trackingLabel = useTrackingLabel();
   const meta = statusMeta(STEP_STATUS_META, step.status);
   const issued = toNumber(step.totals.issuedQty);
   const received = toNumber(step.totals.receivedQty);
@@ -188,6 +198,20 @@ export function JobOrderStepDetail({ step, activity, onIssue, onReceive, onOpenD
               <PackageCheck size={14} /> Receive
             </button>
           )}
+          {!settled && onComplete && (
+            <button
+              type="button"
+              onClick={() => onComplete(step)}
+              style={{
+                ...actionButton,
+                background: '#fff',
+                color: '#2563eb',
+                border: '1px solid #2563eb',
+              }}
+            >
+              <Check size={14} /> Mark as complete
+            </button>
+          )}
         </div>
       </header>
 
@@ -228,13 +252,14 @@ export function JobOrderStepDetail({ step, activity, onIssue, onReceive, onOpenD
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-            gap: 20,
+            gridTemplateColumns: '1fr auto 1fr',
+            gap: 24,
           }}
         >
           <div>
-            <span style={columnLabel}>Material in</span>
+            <span style={columnLabel}>Material Issue</span>
             <MovementList
+              actionLabel="Issued"
               rows={step.itemTotals.inputs.map((row) => ({
                 key: row.itemId,
                 name: row.itemName,
@@ -245,19 +270,25 @@ export function JobOrderStepDetail({ step, activity, onIssue, onReceive, onOpenD
                   : 'rework',
                 qty: qtyWithUnit(row.issuedQty, row.uomSymbol),
                 muted: toNumber(row.issuedQty) === 0,
+                planned: row.plannedQty ? qtyWithUnit(row.plannedQty, row.uomSymbol) : undefined,
+                remaining: row.remainingQty ? qtyWithUnit(row.remainingQty, row.uomSymbol) : undefined,
               }))}
               empty="Nothing issued yet."
             />
           </div>
+          <div style={{ width: 1, background: '#e2e8f0' }} />
           <div>
-            <span style={columnLabel}>Material out</span>
+            <span style={columnLabel}>Material Receive</span>
             <MovementList
+              actionLabel="Received"
               rows={step.itemTotals.outputs.map((row) => ({
                 key: row.itemId,
                 name: row.itemName,
                 note: row.isPrimary ? 'main output' : row.planned ? 'by-product' : 'unplanned',
                 qty: qtyWithUnit(row.receivedQty, row.uomSymbol),
                 muted: toNumber(row.receivedQty) === 0,
+                planned: row.expectedQty ? qtyWithUnit(row.expectedQty, row.uomSymbol) : undefined,
+                remaining: row.remainingQty ? qtyWithUnit(row.remainingQty, row.uomSymbol) : undefined,
               }))}
               empty="Nothing back yet."
             />
@@ -311,7 +342,7 @@ export function JobOrderStepDetail({ step, activity, onIssue, onReceive, onOpenD
         <ActivityTimeline
           events={activity}
           onOpen={onOpenDocument}
-          empty="Nothing has moved on this step yet. Every challan out and every receipt back will appear here, with the items and batches each one carried."
+          empty={`Nothing has moved on this step yet. Every challan out and every receipt back will appear here, with the items and ${trackingLabel.plural.toLowerCase()} each one carried.`}
         />
       </div>
     </section>
@@ -324,47 +355,65 @@ interface MovementRow {
   note: string;
   qty: string;
   muted: boolean;
+  planned?: string;
+  remaining?: string;
 }
 
 /**
- * A definition list, not a table. One number per item is a name/value pair, and
- * a `<table>` with a single data column makes a screen reader announce a column
- * heading before every figure.
+ * A table layout showing planned, remaining, and actual quantities per item.
  */
-function MovementList({ rows, empty }: { rows: MovementRow[]; empty: string }) {
+function MovementList({
+  actionLabel,
+  rows,
+  empty,
+}: {
+  actionLabel: string;
+  rows: MovementRow[];
+  empty: string;
+}) {
   if (rows.length === 0) {
     return <p style={{ fontSize: 12, color: '#94a3b8', margin: 0 }}>{empty}</p>;
   }
+
+  const thStyle: React.CSSProperties = {
+    padding: '0 0 6px 0',
+    fontSize: 10,
+    color: '#94a3b8',
+    fontWeight: 500,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+  };
+
   return (
-    <dl style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {rows.map((row) => (
-        <div
-          key={row.key}
-          style={{
-            display: 'flex',
-            alignItems: 'baseline',
-            justifyContent: 'space-between',
-            gap: 12,
-          }}
-        >
-          <dt style={{ fontSize: 12, color: '#334155', minWidth: 0 }}>
-            {row.name}
-            <span style={{ display: 'block', fontSize: 10, color: '#94a3b8' }}>{row.note}</span>
-          </dt>
-          <dd
-            style={{
-              margin: 0,
-              fontSize: 13,
-              fontWeight: 600,
-              whiteSpace: 'nowrap',
-              color: row.muted ? '#cbd5e1' : '#111',
-            }}
-          >
-            {row.qty}
-          </dd>
-        </div>
-      ))}
-    </dl>
+    <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8 }}>
+      <thead>
+        <tr>
+          <th style={{ ...thStyle, textAlign: 'left' }}>Item</th>
+          <th style={{ ...thStyle }}>Plan</th>
+          <th style={{ ...thStyle }}>{actionLabel}</th>
+          <th style={{ ...thStyle }}>Rem</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={row.key}>
+            <td style={{ padding: '6px 8px 6px 0', verticalAlign: 'top' }}>
+              <div style={{ fontSize: 12, color: '#334155', fontWeight: 500 }}>{row.name}</div>
+              <div style={{ fontSize: 10, color: '#94a3b8' }}>{row.note}</div>
+            </td>
+            <td style={{ padding: '6px 8px 6px 0', verticalAlign: 'top', textAlign: 'center', fontSize: 12, color: '#475569' }}>
+              {row.planned || '—'}
+            </td>
+            <td style={{ padding: '6px 8px 6px 0', verticalAlign: 'top', textAlign: 'center', fontSize: 12, color: row.muted ? '#cbd5e1' : '#475569', whiteSpace: 'nowrap' }}>
+              {row.qty}
+            </td>
+            <td style={{ padding: '6px 0', verticalAlign: 'top', textAlign: 'center', fontSize: 12, color: '#475569' }}>
+              {row.remaining || '—'}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

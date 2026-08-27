@@ -355,7 +355,7 @@ model Organization {
   itemAssemblyComments     ItemAssemblyComment[]
   itemAssemblyActivities   ItemAssemblyActivity[]
   itemOpeningStockRows     ItemOpeningStockRow[]
-
+  settings                 Json                    @default("{}") @map("settings")
   @@map("organizations")
 }
 

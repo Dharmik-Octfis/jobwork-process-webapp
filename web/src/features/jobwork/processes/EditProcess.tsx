@@ -65,7 +65,7 @@ export function EditProcess() {
         <BackButton onClick={() => navigate(backPath)} label="Back to the process" />
         <h1 style={{ fontSize: 18, fontWeight: 600, color: '#000', margin: 0 }}>{process.name}</h1>
       </header>
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div style={{ padding: '0 0 44px 0' }}>
         <ProcessForm
           initialData={process}
           onSubmit={(data) => mutation.mutate(data)}

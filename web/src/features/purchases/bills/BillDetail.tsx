@@ -15,7 +15,7 @@ interface Html2PdfOptions {
   };
 }
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchBillById, getBillSignedUrl, deleteBill, type BillAttachment } from './bills.api';
+import { fetchBillById, getBillSignedUrl, deleteBill, updateBill, type BillAttachment } from './bills.api';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { useParams, useNavigate } from 'react-router-dom';
 import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer } from 'lucide-react';
@@ -23,6 +23,7 @@ import { useState, useRef, useEffect, Fragment } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { BillComments } from './BillComments';
 import { BillActivityTimeline } from './BillActivityTimeline';
+import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 
 function BillAttachmentLink({ orgId, attachment }: { orgId: string; attachment: BillAttachment }) {
   const isDirectUrl = Boolean(attachment.data || attachment.url);
@@ -56,12 +57,14 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
   const { orgId } = useParams<{ orgId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const trackingLabel = useTrackingLabel();
   const [activeTab, setActiveTab] = useState('Overview');
   const [activeSubTab, setActiveSubTab] = useState<'Bills' | 'Receives'>('Bills');
   const [isPdfView, setIsPdfView] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isPdfMenuOpen, setIsPdfMenuOpen] = useState(false);
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
+  const [isConfirmOpenBillVisible, setIsConfirmOpenBillVisible] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const pdfMenuRef = useRef<HTMLDivElement>(null);
   const pdfTemplateRef = useRef<HTMLDivElement>(null);
@@ -122,6 +125,14 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
       queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
       setIsConfirmDeleteOpen(false);
       onClose();
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: updateBill,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bill', orgId, poId] });
+      queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
     },
   });
 
@@ -209,6 +220,26 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {po.status?.toLowerCase() === 'draft' && (
+            <button
+              onClick={() => setIsConfirmOpenBillVisible(true)}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid #15803d',
+                background: '#15803d',
+                color: 'white',
+                borderRadius: '4px',
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+            >
+              Open Bill
+            </button>
+          )}
+
           <button
             onClick={() => navigate(`/organizations/${orgId}/purchases/bills/${poId}/edit`)}
             style={{
@@ -1036,14 +1067,14 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                     marginTop: '24px',
                   }}
                 >
-                  <h3 style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>BATCH DETAILS</h3>
+                  <h3 style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{trackingLabel.singular.toUpperCase()} DETAILS</h3>
                   <div style={{ border: '1px solid #e2e8f0', borderRadius: '6px', overflow: 'hidden' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                       <thead>
                         <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                           <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', width: '20%' }}>ITEM</th>
-                          <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b' }}>SUPPLIER BATCH REF</th>
-                          <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b' }}>MANUFACTURER BATCH#</th>
+                          <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b' }}>SUPPLIER {trackingLabel.singular.toUpperCase()} REF</th>
+                          <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b' }}>MANUFACTURER {trackingLabel.singular.toUpperCase()}#</th>
                           <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b' }}>MFG. DATE</th>
                           <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b' }}>EXPIRY DATE</th>
                           <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600, color: '#64748b' }}>QUANTITY</th>
@@ -1514,13 +1545,13 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
               {/* PDF Batch Details Section */}
               {(po.lineItems || []).some(item => item.batches && item.batches.length > 0) && (
                 <div style={{ marginTop: '16px', marginBottom: '8px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#000', marginBottom: '6px' }}>BATCH DETAILS</div>
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#000', marginBottom: '6px' }}>{trackingLabel.singular.toUpperCase()} DETAILS</div>
                   <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #000', fontSize: '10px' }}>
                     <thead>
                       <tr style={{ background: '#f8fafc', borderBottom: '1px solid #000' }}>
                         <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #000', width: '25%' }}>Item</th>
-                        <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #000' }}>Supplier Batch Ref</th>
-                        <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #000' }}>Manufacturer Batch#</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #000' }}>Supplier {trackingLabel.singular} Ref</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #000' }}>Manufacturer {trackingLabel.singular}#</th>
                         <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #000' }}>Mfg. Date</th>
                         <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #000' }}>Expiry Date</th>
                         <th style={{ padding: '6px 8px', textAlign: 'right' }}>Quantity</th>
@@ -1569,6 +1600,22 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
         confirmText={deleteMutation.isPending ? 'Deleting...' : 'Delete'}
         onConfirm={() => deleteMutation.mutate()}
         onCancel={() => setIsConfirmDeleteOpen(false)}
+      />
+
+      <ConfirmDialog
+        isOpen={isConfirmOpenBillVisible}
+        title="Open Bill"
+        message="Are you sure you want to open this bill? Stock will be updated."
+        confirmText={updateMutation.isPending ? 'Opening...' : 'Open Bill'}
+        onConfirm={() => {
+          updateMutation.mutate({
+            orgId: orgId!,
+            id: poId,
+            data: { status: 'Open' },
+          });
+          setIsConfirmOpenBillVisible(false);
+        }}
+        onCancel={() => setIsConfirmOpenBillVisible(false)}
       />
     </div>
   );

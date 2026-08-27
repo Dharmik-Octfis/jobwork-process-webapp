@@ -112,15 +112,10 @@ export function RouteForm({ initialData, onSubmit, isPending, onCancel, fieldErr
     <form
       onSubmit={handleSubmit(submit)}
       noValidate
-      // 64 = the 44px fixed action bar + a 20px gutter, the same figure
-      // `ProcessForm` settled on. The bar is `position: fixed`, so it adds
-      // nothing to content height and only overlays the last 44px of the
-      // viewport; padding beyond that is empty space nobody can scroll to for a
-      // reason, which makes a form that FITS report that it does not. This was
-      // 120 while the Custom Fields section sat at the bottom — with that gone
-      // the last thing on the page is the steps grid, whose dropdowns open
-      // upwards when there is no room below.
-      style={{ padding: '24px 32px', paddingBottom: 64 }}
+      // 200px padding ensures that the form can be scrolled high enough for the
+      // dropdowns at the bottom (like the ItemComboBox) to open downwards without
+      // being clipped by the window's bottom edge or overlapping the fixed action bar.
+      style={{ padding: '24px 32px', paddingBottom: 200 }}
     >
       <section style={{ maxWidth: 640, marginBottom: 32 }}>
         <div style={{ marginBottom: 20 }}>

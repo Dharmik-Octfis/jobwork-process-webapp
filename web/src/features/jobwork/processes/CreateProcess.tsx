@@ -43,7 +43,7 @@ export function CreateProcess() {
         <BackButton onClick={() => navigate(listPath)} label="Back to processes" />
         <h1 style={{ fontSize: 18, fontWeight: 600, color: '#000', margin: 0 }}>New Process</h1>
       </header>
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div style={{ padding: '0 0 44px 0' }}>
         <ProcessForm
           onSubmit={(data) => mutation.mutate(data)}
           isPending={mutation.isPending}

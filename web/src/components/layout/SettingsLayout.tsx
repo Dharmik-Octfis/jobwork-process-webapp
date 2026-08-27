@@ -2,7 +2,6 @@ import { useState, Suspense } from 'react';
 import { NavLink, Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { RouteFallback } from './RouteFallback';
 import {
-  ChevronLeft,
   Building2,
   Users,
   Package,
@@ -14,6 +13,8 @@ import {
   MapPin,
   User,
   Workflow,
+  X,
+  Settings,
   // react-router exports a `Route` component and this file imports from it, so the
   // icon is aliased even though only the icon is used here.
   Route as RouteIcon,
@@ -29,13 +30,15 @@ export function SettingsLayout() {
 
   const onOrgRoute =
     location.pathname === `/organizations/${orgId}/settings` ||
+    location.pathname.includes('/settings/profile') ||
     // `/members` is still matched so the legacy URL keeps the group expanded while
     // the redirect in router.tsx does its work.
     location.pathname.includes('/settings/users') ||
     location.pathname.includes('/settings/members') ||
     location.pathname.includes('/settings/roles') ||
     location.pathname.includes('/settings/permissions') ||
-    location.pathname.includes('/settings/locations');
+    location.pathname.includes('/settings/locations') ||
+    location.pathname.includes('/settings/preferences');
 
   const onInventoryRoute = location.pathname.includes('/settings/inventory');
   const onConfigRoute = location.pathname.includes('/settings/configuration');
@@ -83,31 +86,40 @@ export function SettingsLayout() {
             padding: 'var(--space-4)',
             borderBottom: '1px solid var(--color-border)',
             display: 'flex',
-            flexDirection: 'column',
-            gap: 'var(--space-4)',
+            alignItems: 'center',
+            justifyContent: 'space-between',
           }}
         >
           <button
             onClick={() => navigate(`/organizations/${orgId}`)}
+            title="Close Settings"
             style={{
               background: 'none',
               border: 'none',
-              color: 'var(--color-text-muted)',
+              color: '#dc2626', // Deep red
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: 4,
-              fontSize: 13,
-              fontWeight: 500,
-              padding: 0,
+              justifyContent: 'center',
+              padding: '6px',
+              borderRadius: '6px',
             }}
           >
-            <ChevronLeft size={16} /> Back to Dashboard
+            <X size={18} />
           </button>
-
-          <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: 'var(--color-text)' }}>
+          <h2
+            style={{
+              fontSize: 18,
+              fontWeight: 600,
+              margin: 0,
+              color: 'var(--color-text)',
+              flex: 1,
+              textAlign: 'center',
+            }}
+          >
             Settings
           </h2>
+          <div style={{ width: 30 }} /> {/* Spacer to perfectly center the title */}
         </div>
 
         <nav
@@ -286,6 +298,25 @@ export function SettingsLayout() {
               >
                 <MapPin size={18} />
                 <span style={{ fontSize: 14 }}>Locations</span>
+              </NavLink>
+
+              <NavLink
+                to={`/organizations/${orgId}/settings/preferences`}
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-3)',
+                  padding: '8px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  textDecoration: 'none',
+                  color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
+                  background: isActive ? 'var(--primary-50)' : 'transparent',
+                  fontWeight: isActive ? 600 : 500,
+                  transition: 'all 0.2s ease',
+                })}
+              >
+                <Settings size={18} />
+                <span style={{ fontSize: 14 }}>Preferences</span>
               </NavLink>
             </div>
           </div>

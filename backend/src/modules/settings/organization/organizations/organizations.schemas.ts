@@ -50,6 +50,13 @@ export const createOrganizationSchema = openApiRegistry.register(
     .optional()
     .or(z.literal(''))
     .openapi({ example: 'https://acmecorp.in' }),
+
+  settings: z.object({
+    itemTrackingLabel: z.object({
+      singular: z.string().max(30).default('Batch'),
+      plural: z.string().max(30).default('Batches'),
+    }).optional()
+  }).optional(),
 }),
 );
 

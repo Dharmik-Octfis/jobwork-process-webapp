@@ -8,6 +8,7 @@ import '../../users/Users.css'; // For users-tooltip-wrapper classes
 import { AddOpeningStockModal } from './AddOpeningStockModal';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { Select, type SelectOption } from '../../../components/ui/Select';
+import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 import type { ItemOpeningStockLocationRowDto, ItemBatchDto } from '../items.schemas';
 
 interface ItemBatchDetailsProps {
@@ -42,23 +43,7 @@ interface ColumnDef {
   width: string;
 }
 
-const ALL_COLUMNS: ColumnDef[] = [
-  { key: 'batchReference', label: 'BATCH REFERENCE#', align: 'left', width: '180px' },
-  { key: 'manufacturerBatch', label: 'MANUFACTURER BATCH #', align: 'left', width: '180px' },
-  { key: 'manufacturedDate', label: 'MANUFACTURED DATE', align: 'left', width: '150px' },
-  { key: 'expiryDate', label: 'EXPIRY DATE', align: 'left', width: '150px' },
-  { key: 'quantityIn', label: 'QUANTITY IN', align: 'right', width: '130px' },
-  { key: 'quantityAvailable', label: 'QUANTITY AVAILABLE', align: 'right', width: '160px' },
-  { key: 'sellingPrice', label: 'SELLING PRICE', align: 'right', width: '140px' },
-];
-
-const STATUS_OPTIONS: SelectOption[] = [
-  { value: 'all', label: 'All Batches' },
-  { value: 'active', label: 'Active Batches' },
-  { value: 'inactive', label: 'Inactive Batches' },
-  { value: 'empty', label: 'Empty Batches' },
-  { value: 'expired', label: 'Expired Batches' },
-];
+// Columns and status options moved inside to use dynamic labels
 
 export function ItemBatchDetails({
   orgId,
@@ -81,9 +66,29 @@ export function ItemBatchDetails({
     bottom?: number;
   } | null>(null);
 
+  const { singular, plural, getPlaceholder } = useTrackingLabel();
+
+  const allColumns: ColumnDef[] = useMemo(() => [
+    { key: 'batchReference', label: `${singular.toUpperCase()} REFERENCE#`, align: 'left', width: '180px' },
+    { key: 'manufacturerBatch', label: `MANUFACTURER ${singular.toUpperCase()} #`, align: 'left', width: '180px' },
+    { key: 'manufacturedDate', label: 'MANUFACTURED DATE', align: 'left', width: '150px' },
+    { key: 'expiryDate', label: 'EXPIRY DATE', align: 'left', width: '150px' },
+    { key: 'quantityIn', label: 'QUANTITY IN', align: 'right', width: '130px' },
+    { key: 'quantityAvailable', label: 'QUANTITY AVAILABLE', align: 'right', width: '160px' },
+    { key: 'sellingPrice', label: 'SELLING PRICE', align: 'right', width: '140px' },
+  ], [singular]);
+
+  const statusOptions: SelectOption[] = useMemo(() => [
+    { value: 'all', label: `All ${plural}` },
+    { value: 'active', label: `Active ${plural}` },
+    { value: 'inactive', label: `Inactive ${plural}` },
+    { value: 'empty', label: `Empty ${plural}` },
+    { value: 'expired', label: `Expired ${plural}` },
+  ], [plural]);
+
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState<string[]>(() =>
-    ALL_COLUMNS.map((col) => col.key),
+    allColumns.map((col) => col.key),
   );
   const [isColumnPickerOpen, setIsColumnPickerOpen] = useState(false);
 
@@ -192,9 +197,9 @@ export function ItemBatchDetails({
 
   const activeColumns = useMemo(() => {
     return visibleColumns
-      .map((key) => ALL_COLUMNS.find((col) => col.key === key))
+      .map((key) => allColumns.find((col) => col.key === key))
       .filter((col): col is ColumnDef => Boolean(col));
-  }, [visibleColumns]);
+  }, [visibleColumns, allColumns]);
 
   const handleToggleInactive = (batch: BatchItem) => {
     setActiveMenuBatchId(null);
@@ -205,7 +210,7 @@ export function ItemBatchDetails({
   };
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ padding: '8px 24px 24px' }}>
       {/* Top Filter & Toolbar Bar */}
       <div
         style={{
@@ -223,9 +228,9 @@ export function ItemBatchDetails({
           <Select
             value={statusFilter}
             onChange={(val) => setStatusFilter(val as BatchStatusFilter)}
-            options={STATUS_OPTIONS}
+            options={statusOptions}
             fullWidth={false}
-            minWidth={130}
+            minWidth={160}
             buttonStyle={{ height: 34, borderRadius: 6, borderColor: '#cbd5e1' }}
             ariaLabel="Status Filter"
           />
@@ -257,7 +262,7 @@ export function ItemBatchDetails({
             />
             <input
               type="text"
-              placeholder="Find Batch Number"
+              placeholder={getPlaceholder()}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{
@@ -305,8 +310,6 @@ export function ItemBatchDetails({
       {/* Table Container with Horizontal Scroll support */}
       <div
         style={{
-          border: '1px solid #eef0f3',
-          borderRadius: '6px',
           overflowX: 'auto',
           background: '#ffffff',
           minHeight: '400px',
@@ -353,7 +356,7 @@ export function ItemBatchDetails({
                   colSpan={activeColumns.length + 1}
                   style={{ padding: '36px', textAlign: 'center', color: '#64748b' }}
                 >
-                  Loading batch details...
+                  Loading {singular.toLowerCase()} details...
                 </td>
               </tr>
             ) : filteredBatches.length === 0 ? (
@@ -362,18 +365,19 @@ export function ItemBatchDetails({
                   colSpan={activeColumns.length + 1}
                   style={{ padding: '36px', textAlign: 'center', color: '#64748b' }}
                 >
-                  No batch details found.
+                  No {singular.toLowerCase()} details found.
                 </td>
               </tr>
             ) : (
               filteredBatches.map((b) => {
-                const isHovered = hoveredRowId === b.id;
-                const isMenuOpen = activeMenuBatchId === b.id;
+                const uniqueRowId = `${b.id}_${b.locationId}`;
+                const isHovered = hoveredRowId === uniqueRowId;
+                const isMenuOpen = activeMenuBatchId === uniqueRowId;
 
                 return (
                   <tr
-                    key={b.id}
-                    onMouseEnter={() => setHoveredRowId(b.id)}
+                    key={uniqueRowId}
+                    onMouseEnter={() => setHoveredRowId(uniqueRowId)}
                     onMouseLeave={() => setHoveredRowId(null)}
                     style={{
                       borderBottom: '1px solid #eef0f3',
@@ -438,7 +442,7 @@ export function ItemBatchDetails({
                             style={{ padding: '12px 16px', color: '#334155', whiteSpace: 'nowrap' }}
                           >
                             {b.manufacturedDate
-                              ? format(new Date(b.manufacturedDate), 'dd/MM/yyyy')
+                              ? format(new Date(b.manufacturedDate), 'dd-MM-yyyy')
                               : '-'}
                           </td>
                         );
@@ -453,7 +457,7 @@ export function ItemBatchDetails({
                               whiteSpace: 'nowrap',
                             }}
                           >
-                            {b.expiryDate ? format(new Date(b.expiryDate), 'dd/MM/yyyy') : '-'}
+                            {b.expiryDate ? format(new Date(b.expiryDate), 'dd-MM-yyyy') : '-'}
                             {b.isExpired && (
                               <span
                                 style={{
@@ -549,7 +553,7 @@ export function ItemBatchDetails({
                                 ? { bottom: window.innerHeight - rect.top + 4 }
                                 : { top: rect.bottom + 4 }),
                             });
-                            setActiveMenuBatchId(b.id);
+                            setActiveMenuBatchId(uniqueRowId);
                           }
                         }}
                         style={{
@@ -651,7 +655,7 @@ export function ItemBatchDetails({
       <CustomizeColumnsModal
         isOpen={isColumnPickerOpen}
         onClose={() => setIsColumnPickerOpen(false)}
-        catalog={ALL_COLUMNS}
+        catalog={allColumns}
         visible={visibleColumns}
         onSave={(cols) => {
           setVisibleColumns(cols);

@@ -12,6 +12,7 @@ import { CustomFieldsSection } from '../custom-fields/CustomFieldsSection.tsx';
 import { useUoms } from '../inventory/uom/uom.api.ts';
 import { UomFormModal } from '../inventory/uom/UomFormModal.tsx';
 import { Plus } from 'lucide-react';
+import { useTrackingLabel } from '../../hooks/useTrackingLabel.ts';
 
 interface CreateItemPageProps {
   isModal?: boolean;
@@ -28,6 +29,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
 
   const { data: uoms = [] } = useUoms(orgId!);
   const [isUomModalOpen, setIsUomModalOpen] = useState(false);
+  const { singular } = useTrackingLabel();
 
   const itemToClone = (location.state as { itemToClone?: Partial<Item> & Record<string, unknown> })
     ?.itemToClone;
@@ -1039,7 +1041,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                           checked={formData.inventoryTracking === 'batch'}
                           onChange={() => handleRadioChange('inventoryTracking', 'batch')}
                         />{' '}
-                        Batch
+                        {singular}
                       </label>
                     )}
                   </div>

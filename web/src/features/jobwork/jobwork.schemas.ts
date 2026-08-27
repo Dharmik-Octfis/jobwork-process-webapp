@@ -18,11 +18,11 @@ export function toNumber(value: string | number | null | undefined): number {
   return typeof value === 'number' ? value : Number(value);
 }
 
-/** Quantities render at up to 4 places but never with trailing zeros — "4850",
- * not "4850.0000", which reads as false precision on a shop-floor screen. */
+/** Quantities render at up to 2 places but never with trailing zeros — "4850",
+ * not "4850.00", which reads as false precision on a shop-floor screen. */
 export function formatQty(value: string | number | null | undefined): string {
   const n = toNumber(value);
-  return Number.isFinite(n) ? String(Number(n.toFixed(4))) : '0';
+  return Number.isFinite(n) ? String(Number(n.toFixed(2))) : '0';
 }
 
 /**

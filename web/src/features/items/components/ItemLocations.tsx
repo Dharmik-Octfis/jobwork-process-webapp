@@ -1,8 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Settings, ChevronDown } from 'lucide-react';
 import { fetchLocations, type Location } from '../../configuration/locations/locations.api';
-import { AddOpeningStockModal } from './AddOpeningStockModal';
 import { itemsApi } from '../items.api';
 import type { ItemOpeningStockLocationRowDto } from '../items.schemas';
 
@@ -16,12 +16,11 @@ interface ItemLocationsProps {
 }
 
 export function ItemLocations({ orgId, itemId, isBatchTracked: _isBatchTracked = true }: ItemLocationsProps) {
-  const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [stockType, setStockType] = useState<'accounting' | 'physical'>('accounting');
   const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
-  const [isOpeningStockModalOpen, setIsOpeningStockModalOpen] = useState(false);
 
-  const { data: item } = useQuery({
+  const { data: _item } = useQuery({
     queryKey: ['item', orgId, itemId],
     queryFn: () => itemsApi.getItem(orgId, itemId),
     enabled: !!orgId && !!itemId,
@@ -39,16 +38,6 @@ export function ItemLocations({ orgId, itemId, isBatchTracked: _isBatchTracked =
     enabled: !!orgId && !!itemId,
   });
 
-  const saveOpeningStockMutation = useMutation({
-    mutationFn: (rows: ItemOpeningStockLocationRowDto[]) =>
-      itemsApi.saveOpeningStock(orgId, itemId, { locationRows: rows }),
-    onSuccess: async (savedRows) => {
-      const nextRows = Array.isArray(savedRows) ? savedRows : [];
-      queryClient.setQueryData(['itemOpeningStock', orgId, itemId], nextRows);
-      await queryClient.invalidateQueries({ queryKey: ['itemOpeningStock', orgId, itemId] });
-      await queryClient.invalidateQueries({ queryKey: ['item', orgId, itemId] });
-    },
-  });
 
   // 🔴 `stockOnHand` FIRST — it is the ledger balance, which is what every other
   // screen sees. Reading `openingStock` ahead of it froze this column at the
@@ -132,7 +121,7 @@ export function ItemLocations({ orgId, itemId, isBatchTracked: _isBatchTracked =
                     type="button"
                     onClick={() => {
                       setIsSettingsMenuOpen(false);
-                      setIsOpeningStockModalOpen(true);
+                      navigate(`/organizations/${orgId}/items/${itemId}/opening-stock`);
                     }}
                     style={{
                       width: '100%',
@@ -378,21 +367,6 @@ export function ItemLocations({ orgId, itemId, isBatchTracked: _isBatchTracked =
         </table>
       </div>
 
-      {isOpeningStockModalOpen && (
-        <AddOpeningStockModal
-          isOpen
-          onClose={() => setIsOpeningStockModalOpen(false)}
-          orgId={orgId}
-          itemId={itemId}
-          inventoryTracking={item?.inventoryTracking}
-          itemName={item?.name}
-          initialRows={openingStockRows}
-          isSaving={saveOpeningStockMutation.isPending}
-          onSave={async (rows) => {
-            await saveOpeningStockMutation.mutateAsync(rows);
-          }}
-        />
-      )}
     </div>
   );
 }

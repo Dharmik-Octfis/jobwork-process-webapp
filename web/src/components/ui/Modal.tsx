@@ -14,7 +14,7 @@ interface ModalProps {
    * scrolls off a long grid. */
   footer?: ReactNode;
   width?: number | string;
-  position?: 'center' | 'right';
+  position?: 'center' | 'right' | 'fullScreen';
 }
 
 /**
@@ -169,12 +169,17 @@ export function Modal({
 
   if (!isOpen) return null;
 
+  const isFullScreen = position === 'fullScreen';
+  const mainNode = isFullScreen ? document.getElementById('app-main-content') : null;
+  const portalTarget = mainNode || document.body;
+  const overlayPosition = mainNode ? 'absolute' : 'fixed';
+
   return createPortal(
     <div
       style={{
-        position: 'fixed',
+        position: overlayPosition,
         inset: 0,
-        background: 'rgba(15, 23, 42, 0.45)',
+        background: isFullScreen ? '#fff' : 'rgba(15, 23, 42, 0.45)',
         display: 'flex',
         alignItems: position === 'right' ? 'center' : 'flex-start',
         justifyContent: position === 'right' ? 'flex-end' : 'center',
@@ -194,14 +199,14 @@ export function Modal({
         tabIndex={-1}
         style={{
           background: '#fff',
-          borderRadius: position === 'right' ? 8 : 6,
+          borderRadius: position === 'fullScreen' ? 0 : position === 'right' ? 8 : 6,
           width: '100%',
-          maxWidth: width,
-          boxShadow: '0 12px 40px rgba(15, 23, 42, 0.25)',
+          maxWidth: position === 'fullScreen' ? '100%' : width,
+          boxShadow: position === 'fullScreen' ? 'none' : '0 12px 40px rgba(15, 23, 42, 0.25)',
           display: 'flex',
           flexDirection: 'column',
           maxHeight: position === 'right' ? 'calc(100vh - 32px)' : '100vh',
-          height: position === 'right' ? 'calc(100vh - 32px)' : undefined,
+          height: position === 'right' ? 'calc(100vh - 32px)' : position === 'fullScreen' ? '100%' : undefined,
           outline: 'none',
           overflow: 'hidden',
         }}
@@ -277,7 +282,9 @@ export function Modal({
               display: 'flex',
               alignItems: 'center',
               gap: 12,
-              padding: '12px 20px',
+              padding: position === 'fullScreen' ? '0 20px' : '12px 20px',
+              height: position === 'fullScreen' ? 44 : undefined,
+              boxSizing: 'border-box',
               borderTop: '1px solid #eef0f3',
               background: '#fff',
             }}
@@ -287,6 +294,6 @@ export function Modal({
         )}
       </div>
     </div>,
-    document.body,
+    portalTarget,
   );
 }

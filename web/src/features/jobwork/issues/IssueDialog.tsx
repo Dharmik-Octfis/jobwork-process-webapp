@@ -2,11 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
+import { toast } from 'react-hot-toast';
 import { DateInput } from '../../../components/ui/DateInput';
 import { Modal } from '../../../components/ui/Modal';
 import { Select } from '../../../components/ui/Select';
 import { blurOnWheel } from '../../../components/ui/blurOnWheel';
 import { fetchVendors } from '../../purchases/vendors/vendors.api';
+import { fetchCustomers } from '../../sales/customers/customers.api';
 import { fetchLocations } from '../../configuration/locations/locations.api';
 import { fetchAvailableBatches, fetchStockLocations } from '../batches/batches.api';
 import { formatQty, toNumber } from '../jobwork.schemas';
@@ -15,6 +17,7 @@ import { createJobIssue } from './jobIssues.api';
 import type { JobIssueLineData } from './jobIssues.schemas';
 import { AddBatchesModal } from './AddBatchesModal';
 import { rowKey, type BatchSelection } from './batchSelection';
+import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 
 interface Props {
   isOpen: boolean;
@@ -87,7 +90,8 @@ const lineCell: React.CSSProperties = {
   minHeight: 32,
 };
 
-const lineCellRight: React.CSSProperties = { ...lineCell, justifyContent: 'flex-end' };
+
+const lineCellCenter: React.CSSProperties = { ...lineCell, justifyContent: 'center' };
 
 /** How many batches one picker asks for. The server caps at this too; the picker
  * says so when it hits the ceiling rather than showing a slice as if it were all. */
@@ -125,8 +129,10 @@ interface PlanGap {
 export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props) {
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
+  const trackingLabel = useTrackingLabel();
 
   const [sourceLocationId, setSourceLocationId] = useState('');
+  const [processorType, setProcessorType] = useState<string>(step.processorType);
   const [processorId, setProcessorId] = useState<string | null>(step.processorId);
   const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10));
   /** 🔴 Keyed by batchId and carrying the batch ROW, not just its id — the picker
@@ -149,8 +155,8 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
   /** Which item section opened Add Batches. Null when it is closed. */
   const [addBatchesFor, setAddBatchesFor] = useState<string | null>(null);
   const [remarks, setRemarks] = useState('');
-  const [overrideReason, setOverrideReason] = useState('');
-  const [needsOverride, setNeedsOverride] = useState(false);
+  const [overrideReason] = useState('');
+  const [_needsOverride, setNeedsOverride] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   /**
@@ -168,24 +174,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
    */
   const [pendingLocationId, setPendingLocationId] = useState<string | null>(null);
 
-  /**
-   * 🔴 WHAT THIS CHALLAN COULD NOT CARRY, AFTER IT HAS BEEN RAISED (2026-08-19).
-   *
-   * One challan goes out of one location, so a step whose items are split across
-   * godowns genuinely needs more than one. That is correct, but a user who is not
-   * told discovers it by reopening the dialog, re-reading the rows, and working
-   * out for themselves which item is still outstanding — three times over, for a
-   * step with three godowns.
-   *
-   * So the dialog does not close on those saves. It says what is left, names the
-   * godown holding it, and offers to carry straight on there with the form
-   * already cleared for the next document.
-   */
-  const [continuation, setContinuation] = useState<{
-    itemNames: string[];
-    locationId: string;
-    locationName: string;
-  } | null>(null);
+
 
   // A query per keystroke would be one round trip per letter of a batch number.
   useEffect(() => {
@@ -210,6 +199,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
         sku: row.item?.sku ?? null,
         uomLabel: row.uom ? (row.uom.symbol ?? row.uom.unitName) : '',
         plannedQty: row.plannedQty === null ? null : toNumber(row.plannedQty),
+        issuedQty: toNumber(step.itemTotals.inputs.find((t) => t.itemId === row.itemId)?.issuedQty),
         fromStock: row.fromStock ?? true,
         /** 🔴 `Item.inventoryTracking = 'batch'` is a promise that every metre is
          * traceable to its roll, and an issue is where that trace is created. The
@@ -492,11 +482,19 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
   const { data: vendorsPage } = useQuery({
     queryKey: ['vendors', orgId, 'processors'],
     queryFn: () => fetchVendors(orgId!, { perPage: 500 }),
-    enabled: isOpen && Boolean(orgId) && step.processorType !== 'internal',
+    enabled: isOpen && Boolean(orgId) && processorType === 'vendor',
   });
-  const processors = (vendorsPage?.results ?? []).filter(
-    (v) => !v.vendorTypes?.length || v.vendorTypes.includes('job_worker'),
-  );
+  const { data: customersPage } = useQuery({
+    queryKey: ['customers', orgId],
+    queryFn: () => fetchCustomers(orgId!, { perPage: 500 }),
+    enabled: isOpen && Boolean(orgId) && processorType === 'customer',
+  });
+  const processors =
+    processorType === 'customer'
+      ? (customersPage?.results ?? [])
+      : (vendorsPage?.results ?? []).filter(
+          (v) => !v.vendorTypes?.length || v.vendorTypes.includes('job_worker'),
+        );
 
   /**
    * 🔴 WHETHER A PICKER APPEARS IS THE ITEM'S DECISION (2026-08-14).
@@ -599,7 +597,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
       createJobIssue(orgId!, {
         jobOrderStepId: step.id,
         issueDate: issueDate || undefined,
-        processorType: step.processorType,
+        processorType,
         processorId,
         sourceLocationId: effectiveSourceId,
         lines,
@@ -633,11 +631,15 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
       const best = [...coverage.values()].sort((a, b) => b.items.length - a.items.length)[0];
 
       if (best) {
+        const issued = inputItems.filter((input) => (qtyByItem.get(input.itemId) ?? 0) > 0);
+        const issuedItemNames = issued.map((i) => i.name);
+        
         resetAllocations(best.id);
-        setContinuation({ itemNames: best.items, locationId: best.id, locationName: best.name });
+        toast.success(`Challan raised for ${issuedItemNames.join(', ')}`);
         return;
       }
 
+      toast.success('Challan raised successfully');
       onClose();
     },
     onError: (err: AxiosError<{ message?: string; details?: Record<string, string> }>) => {
@@ -750,7 +752,6 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
    * no longer describes the screen. */
   const applyLocation = (value: string) => {
     resetAllocations(value);
-    setContinuation(null);
   };
 
   const openAddBatches = (id: string) => {
@@ -772,6 +773,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
 
   return (
     <Modal
+      position="fullScreen"
       isOpen={isOpen}
       onClose={onClose}
       title={`Issue material — step ${step.seq}, ${step.processNameSnapshot}`}
@@ -852,48 +854,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
           {error}
         </p>
       )}
-      {/* 🔴 THE CHALLAN WENT; THE STEP IS NOT DONE.
-          Green, because nothing failed — this is a receipt for what just happened
-          plus the one next action, with the form already cleared and pointed at
-          the godown holding the rest. */}
-      {continuation && (
-        <div
-          style={{
-            fontSize: 13,
-            color: '#065f46',
-            background: '#ecfdf5',
-            border: '1px solid #a7f3d0',
-            borderRadius: 4,
-            padding: '10px 12px',
-            margin: '0 0 16px 0',
-          }}
-          role="status"
-        >
-          <p style={{ margin: '0 0 8px 0', lineHeight: 1.5 }}>
-            Challan raised. {continuation.itemNames.join(', ')}{' '}
-            {continuation.itemNames.length === 1 ? 'was' : 'were'} not on it — a challan goes out of
-            one location, and {continuation.itemNames.length === 1 ? 'it is' : 'they are'} at{' '}
-            <strong>{continuation.locationName}</strong>. This form is now set to{' '}
-            {continuation.locationName} for the next one.
-          </p>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: '5px 14px',
-              background: '#fff',
-              color: '#334155',
-              border: '1px solid #d1d5db',
-              borderRadius: 4,
-              cursor: 'pointer',
-              fontWeight: 500,
-              fontSize: 12.5,
-            }}
-          >
-            Not now — close
-          </button>
-        </div>
-      )}
+
 
       {/* 🔴 THE CONFIRM, INLINE — not a nested dialog.
           A Modal inside a Modal fights over the focus trap and Esc, and this
@@ -920,7 +881,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                 allLocations.find((l) => l.id === pendingLocationId)?.name ??
                 'that location'}
             </strong>
-            ? Batches are held per location, so the {allocatedCount}{' '}
+            ? {trackingLabel.plural} are held per location, so the {allocatedCount}{' '}
             {allocatedCount === 1 ? 'entry' : 'entries'} allocated here will be cleared.
           </p>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -1017,15 +978,33 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
               ariaLabel="Issue from location"
               fullWidth
             />
-            {/* 🔴 States the rule BEFORE any work is done. The confirm strip catches
-                it at the moment it happens; this is what stops it being a surprise. */}
-            <p style={{ fontSize: 11, color: '#64748b', margin: '4px 0 0 0', lineHeight: 1.45 }}>
-              A challan goes out of one location. Only this location&rsquo;s batches can be issued,
-              and changing it clears whatever has been allocated.
-            </p>
           </div>
 
-          {step.processorType === 'internal' ? (
+          <div>
+            <label style={labelStyle}>Done By</label>
+            <Select
+              value={processorType}
+              onChange={(value) => {
+                setProcessorType(value);
+                if (value === 'internal') {
+                  setProcessorId(null);
+                } else if (value === step.processorType) {
+                  setProcessorId(step.processorId);
+                } else {
+                  setProcessorId(null);
+                }
+              }}
+              options={[
+                { value: 'vendor', label: 'Vendor (jobworker)' },
+                { value: 'customer', label: 'Customer' },
+                { value: 'internal', label: 'In-house' },
+              ]}
+              ariaLabel="Done By"
+              fullWidth
+            />
+          </div>
+
+          {processorType === 'internal' ? (
             <div>
               <label style={labelStyle} htmlFor="issue-workcentre">
                 Work centre
@@ -1056,19 +1035,6 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
               />
             </div>
           )}
-
-          <div>
-            <label style={labelStyle} htmlFor="issue-item">
-              Items
-            </label>
-            <input
-              id="issue-item"
-              type="text"
-              value={inputItems.map((i) => i.name).join(', ') || '—'}
-              readOnly
-              style={readOnlyStyle}
-            />
-          </div>
 
           {/* Remarks sat in the Transport section until that section was removed
               (2026-08-10). It is not a transport field — it is the one free-text
@@ -1113,11 +1079,14 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                 <th style={lineTh} scope="col">
                   Item
                 </th>
-                <th style={{ ...lineTh, textAlign: 'right', width: 110 }} scope="col">
+                <th style={{ ...lineTh, textAlign: 'center', width: 110 }} scope="col">
                   Planned
                 </th>
-                <th style={{ ...lineTh, textAlign: 'right', width: 110 }} scope="col">
+                <th style={{ ...lineTh, textAlign: 'center', width: 110 }} scope="col">
                   Available
+                </th>
+                <th style={{ ...lineTh, textAlign: 'center', width: 110 }} scope="col">
+                  To Be Issued
                 </th>
                 <th style={{ ...lineTh, textAlign: 'right', width: 140 }} scope="col">
                   Quantity
@@ -1126,7 +1095,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                   Unit
                 </th>
                 <th style={{ ...lineTh, width: 200 }} scope="col">
-                  Batches
+                  {trackingLabel.plural}
                 </th>
               </tr>
             </thead>
@@ -1166,74 +1135,6 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                       <div style={{ ...lineCell, fontWeight: 600, color: '#111' }}>
                         {input.name}
                       </div>
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          flexWrap: 'wrap',
-                          marginTop: 3,
-                        }}
-                      >
-                        <span
-                          style={{
-                            padding: '1px 6px',
-                            borderRadius: 9,
-                            fontSize: 10,
-                            fontWeight: 600,
-                            background: input.fromStock ? '#f1f5f9' : '#eff6ff',
-                            color: input.fromStock ? '#475569' : '#1d4ed8',
-                          }}
-                        >
-                          {input.fromStock ? 'From stock' : 'From an earlier step'}
-                        </span>
-                        {input.isBatchTracked && (
-                          <span
-                            style={{
-                              padding: '1px 6px',
-                              borderRadius: 9,
-                              fontSize: 10,
-                              fontWeight: 600,
-                              background: '#fef3c7',
-                              color: '#92400e',
-                            }}
-                            title="This item is batch-tracked, so the batch it goes out of has to be picked."
-                          >
-                            Batch required
-                          </span>
-                        )}
-                      </div>
-                      {/* The dead end, under the item it is about — a full sentence
-                          in a narrow numeric column would wreck the alignment this
-                          table exists for. */}
-                      {isEmptyHere && (
-                        <div
-                          style={{
-                            marginTop: 4,
-                            fontSize: 11.5,
-                            color: '#b45309',
-                            lineHeight: 1.45,
-                          }}
-                        >
-                          {/* 🔴 NAME WHERE IT IS. A disabled Add Batches with only
-                              "not here" on it sends the user hunting; the godown and
-                              the quantity turn it into a decision — switch the
-                              location, or raise the second challan. */}
-                          Nothing of this item is at {sourceLocationName} for this job order’s
-                          ownership.{' '}
-                          {(elsewhereByItem.get(input.itemId) ?? []).length > 0 ? (
-                            <>
-                              It is at{' '}
-                              {(elsewhereByItem.get(input.itemId) ?? [])
-                                .map((at) => `${at.name} (${formatQty(at.qty)} ${input.uomLabel})`)
-                                .join(', ')}
-                              . Issue from there, or raise a separate challan for it.
-                            </>
-                          ) : (
-                            <>It is not on the books anywhere yet — receive it first.</>
-                          )}
-                        </div>
-                      )}
 
                       {/* 🔴 Said out loud, never swallowed. Nothing was reserved, so
                           a planned batch going missing between planning and issuing
@@ -1252,7 +1153,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                           The plan places{' '}
                           {planUnmatched[input.itemId]!.elsewhere.map((at, i, all) => (
                             <span key={at.name}>
-                              {at.count} {at.count === 1 ? 'batch' : 'batches'} at{' '}
+                              {at.count} {at.count === 1 ? trackingLabel.singular.toLowerCase() : trackingLabel.plural.toLowerCase()} at{' '}
                               <strong>{at.name}</strong>
                               {i < all.length - 1 ? ', ' : ''}
                             </span>
@@ -1271,14 +1172,14 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                           }}
                         >
                           {planUnmatched[input.itemId]!.gone} planned{' '}
-                          {planUnmatched[input.itemId]!.gone === 1 ? 'batch is' : 'batches are'} no
+                          {planUnmatched[input.itemId]!.gone === 1 ? `${trackingLabel.singular.toLowerCase()} is` : `${trackingLabel.plural.toLowerCase()} are`} no
                           longer available here — nothing was reserved. Pick replacements.
                         </div>
                       )}
                     </td>
 
-                    <td style={{ ...lineTd, textAlign: 'right', color: '#64748b' }}>
-                      <div style={lineCellRight}>
+                    <td style={{ ...lineTd, textAlign: 'center', color: '#64748b' }}>
+                      <div style={lineCellCenter}>
                         {input.plannedQty === null ? '—' : formatQty(input.plannedQty)}
                       </div>
                     </td>
@@ -1286,12 +1187,18 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                     <td
                       style={{
                         ...lineTd,
-                        textAlign: 'right',
+                        textAlign: 'center',
                         color: isEmptyHere ? '#b45309' : '#334155',
                       }}
                     >
-                      <div style={lineCellRight}>
+                      <div style={lineCellCenter}>
                         {query?.isLoading ? '…' : formatQty(available)}
+                      </div>
+                    </td>
+
+                    <td style={{ ...lineTd, textAlign: 'center', color: '#0f172a' }}>
+                      <div style={lineCellCenter}>
+                        {input.plannedQty === null ? '—' : formatQty(Math.max(0, input.plannedQty - input.issuedQty))}
                       </div>
                     </td>
 
@@ -1397,8 +1304,8 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                               }}
                             >
                               {pickedBatchCount === 0
-                                ? 'Add Batches'
-                                : `${pickedBatchCount} ${pickedBatchCount === 1 ? 'batch' : 'batches'}`}
+                                ? `Add ${trackingLabel.plural}`
+                                : `${pickedBatchCount} ${pickedBatchCount === 1 ? trackingLabel.singular.toLowerCase() : trackingLabel.plural.toLowerCase()} added`}
                             </button>
                           </div>
 
@@ -1416,7 +1323,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
                                 lineHeight: 1.4,
                               }}
                             >
-                              Select the batches this comes out of.
+                              Select the {trackingLabel.plural.toLowerCase()} this comes out of.
                             </div>
                           )}
                           {blockedLines.get(input.itemId) === 'mismatch' && (
@@ -1457,21 +1364,6 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
           server, and its message names the item it refused.
         */}
 
-        {needsOverride && (
-          <div style={{ marginTop: 12 }}>
-            <label style={{ ...labelStyle, color: '#b45309' }} htmlFor="issue-override">
-              Reason for going past the tolerance ceiling
-            </label>
-            <input
-              id="issue-override"
-              type="text"
-              value={overrideReason}
-              onChange={(e) => setOverrideReason(e.target.value)}
-              style={inputStyle}
-              placeholder="Why is this being allowed?"
-            />
-          </div>
-        )}
       </section>
 
       {/* Keyed and mounted only while open — `AddBatchesModal` seeds its grid once,

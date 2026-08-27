@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { Filter, Check, ChevronDown } from 'lucide-react';
+import { Filter, ChevronDown, ChevronRight, X } from 'lucide-react';
 import { Select } from '../Select';
+import { MultiSelect } from '../MultiSelect';
 import './AdvancedFilter.css';
 
 export type { FilterOperator, FilterDataType, FilterField, FilterCondition } from './filterUtils';
@@ -165,7 +166,7 @@ export function AdvancedFilter({
               const getInputType = () => {
                 if (['number', 'currency', 'percentage'].includes(field.dataType)) return 'number';
                 if (field.dataType === 'date') return 'date';
-                if (field.dataType === 'time') return 'time'; 
+                if (field.dataType === 'time') return 'time';
                 if (field.dataType === 'datetime') return 'datetime-local';
                 return 'text';
               };
@@ -173,8 +174,17 @@ export function AdvancedFilter({
               return (
                 <div key={field.key} className="filter-row-container">
                   <div className="filter-row-header" onClick={() => toggleField(field.key)}>
-                    <span className={`filter-row-title ${hasCondition ? 'active' : ''}`}>
+                    <span className={`filter-row-title ${hasCondition ? 'active' : ''}`} style={{ display: 'flex', alignItems: 'center' }}>
                       {field.label}
+                      {hasCondition && (
+                        <span className="filter-badge">
+                          {typeof condition.value === 'string' && condition.value.includes(',')
+                            ? condition.value.split(',').filter(Boolean).length
+                            : Array.isArray(condition.value)
+                            ? condition.value.length
+                            : 1}
+                        </span>
+                      )}
                     </span>
                     <div className="filter-row-status" onClick={(e) => e.stopPropagation()}>
                       {isExpanded && (
@@ -202,13 +212,30 @@ export function AdvancedFilter({
                           />
                         </div>
                       )}
-                      {hasCondition && <Check size={14} className="condition-indicator" />}
+                      {hasCondition && (
+                        <button
+                          type="button"
+                          className="filter-row-clear-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const newConditions = localConditions.filter((c) => c.field !== field.key);
+                            setLocalConditions(newConditions);
+                          }}
+                          title="Remove filter"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="filter-row-toggle-btn"
                         onClick={() => toggleField(field.key)}
                       >
-                        <ChevronDown size={16} className={`chevron ${isExpanded ? 'open' : ''}`} />
+                        {isExpanded ? (
+                          <ChevronDown size={16} className="chevron open" />
+                        ) : (
+                          <ChevronRight size={16} className="chevron" />
+                        )}
                       </button>
                     </div>
                   </div>
@@ -250,12 +277,17 @@ export function AdvancedFilter({
                             buttonStyle={{ height: 32, fontSize: 13, flex: 1 }}
                           />
                         ) : field.dataType === 'multi_select' ? (
-                          <input
-                            type="text"
-                            className="filter-row-input"
-                            placeholder={`Enter comma-separated values...`}
+                          <MultiSelect
+                            options={
+                              field.options?.map((o) => ({
+                                label: o.label,
+                                value: o.value.toString(),
+                              })) || []
+                            }
                             value={(condition?.value as string) || ''}
-                            onChange={(e) => updateFieldCondition({ value: e.target.value })}
+                            onChange={(val) => updateFieldCondition({ value: val })}
+                            placeholder="- Select multiple -"
+                            buttonStyle={{ height: 28, fontSize: 12, width: '100%' }}
                           />
                         ) : isBetween ? (
                           <>

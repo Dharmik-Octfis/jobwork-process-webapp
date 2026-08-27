@@ -9,6 +9,7 @@ import { organizationsApi } from '../../organizations/organizations.api';
 import { ISSUE_STATUS_META, formatQty, sharedUnit, statusMeta, toNumber } from '../jobwork.schemas';
 import { cancelJobIssue, fetchJobIssueById } from './jobIssues.api';
 import { printChallan } from './printChallan';
+import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 
 interface Props {
   issueId: string;
@@ -33,6 +34,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { orgId } = useParams<{ orgId: string }>();
+  const trackingLabel = useTrackingLabel();
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -143,7 +145,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
           <button
             type="button"
             onClick={() => {
-              const opened = printChallan(issue, orgName);
+              const opened = printChallan(issue, orgName, trackingLabel.singular);
               if (!opened) {
                 setError(
                   'The print window was blocked. Allow pop-ups for this site and try again.',
@@ -304,7 +306,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
                   Item
                 </th>
                 <th style={th} scope="col">
-                  Batch
+                  {trackingLabel.singular}
                 </th>
                 <th style={th} scope="col">
                   Quantity

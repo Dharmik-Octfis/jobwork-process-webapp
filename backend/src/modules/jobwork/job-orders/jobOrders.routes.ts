@@ -22,6 +22,7 @@ import {
   shortClose,
   updateJobOrder,
   updateNumberPreferenceRoute,
+  completeStep,
 } from './jobOrders.controller.ts';
 
 /** Mounted at `/organizations/:orgId/jobwork/job-orders`. */
@@ -86,6 +87,13 @@ router.post(
   validateBody(shortCloseSchema),
   shortClose,
 );
+
+router.post(
+  '/:id/steps/:stepId/complete',
+  requirePermission('job_order:update'),
+  completeStep,
+);
+
 router.delete('/:id', requirePermission('job_order:delete'), deleteJobOrder);
 
 export { router as jobOrdersRouter };

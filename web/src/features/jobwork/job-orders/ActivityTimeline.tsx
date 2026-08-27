@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, History, RotateCcw } from 'lucide-react';
 import { formatDate } from '../../../lib/formatDate';
 import { formatQty, qtyWithUnit, toNumber } from '../jobwork.schemas';
@@ -115,7 +116,7 @@ function Entry({
   const dotColor = cancelled ? '#cbd5e1' : accent;
 
   return (
-    <li style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
+    <li style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
       {/* The rail. A flex column so the connector stretches to whatever the row
           beside it turned out to be, rather than a guessed height. */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 24 }}>
@@ -125,9 +126,9 @@ function Entry({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            width: 24,
-            height: 24,
-            marginTop: 10,
+            width: 20,
+            height: 20,
+            marginTop: 8,
             borderRadius: '50%',
             background: cancelled ? '#f8fafc' : isIssue ? '#eff6ff' : '#f0fdf4',
             border: `1px solid ${cancelled ? '#e2e8f0' : dotColor}`,
@@ -135,7 +136,7 @@ function Entry({
             flexShrink: 0,
           }}
         >
-          {isIssue ? <ArrowUpRight size={13} /> : <ArrowDownLeft size={13} />}
+          {isIssue ? <ArrowUpRight size={11} /> : <ArrowDownLeft size={11} />}
         </span>
         {!isLast && <span style={{ flex: 1, width: 1, background: '#e6e9ee', minHeight: 8 }} />}
       </div>
@@ -149,8 +150,8 @@ function Entry({
           display: 'block',
           textAlign: 'left',
           font: 'inherit',
-          padding: '10px 12px',
-          margin: '4px 0 8px 0',
+          padding: '6px 10px',
+          margin: '2px 0 6px 0',
           border: '1px solid #eef0f3',
           borderLeft: `2px solid ${cancelled ? '#e2e8f0' : accent}`,
           borderRadius: 6,
@@ -164,7 +165,7 @@ function Entry({
             display: 'flex',
             alignItems: 'baseline',
             justifyContent: 'space-between',
-            gap: 12,
+            gap: 10,
             flexWrap: 'wrap',
           }}
         >
@@ -228,24 +229,24 @@ function Entry({
           </span>
         </div>
 
-        <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+        <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>
           {isIssue ? 'to' : 'from'} {event.partyName ?? 'processor'}
           {event.kind === 'receipt' && event.againstChallans.length > 0 && (
             <> · against {event.againstChallans.join(', ')}</>
           )}
         </div>
 
-        <div style={{ marginTop: 8 }}>
+        <div style={{ marginTop: 4 }}>
           {event.kind === 'issue' ? <IssueLines event={event} /> : <ReceiptLines event={event} />}
         </div>
 
         {event.remarks && (
-          <p style={{ fontSize: 11, color: '#64748b', margin: '8px 0 0 0', lineHeight: 1.5 }}>
+          <p style={{ fontSize: 11, color: '#64748b', margin: '4px 0 0 0', lineHeight: 1.5 }}>
             “{event.remarks}”
           </p>
         )}
 
-        <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 8 }}>by {event.actorName}</div>
+        <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 4 }}>by {event.actorName}</div>
       </button>
     </li>
   );
@@ -253,12 +254,18 @@ function Entry({
 
 /** One line per item that left, each in its own unit and naming its batch. */
 function IssueLines({ event }: { event: ActivityIssue }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   if (event.lines.length === 0) {
     return <MovementRow name="Nothing on this challan" detail={null} qty={null} />;
   }
+
+  const displayLines = isExpanded ? event.lines : event.lines.slice(0, 2);
+  const extraCount = event.lines.length - 2;
+
   return (
-    <>
-      {event.lines.map((line) => (
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '4px 16px' }}>
+      {displayLines.map((line) => (
         <MovementRow
           key={line.id}
           name={line.itemName}
@@ -266,7 +273,51 @@ function IssueLines({ event }: { event: ActivityIssue }) {
           qty={qtyWithUnit(line.qty, line.uomSymbol)}
         />
       ))}
-    </>
+      {!isExpanded && extraCount > 0 && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsExpanded(true);
+          }}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            fontSize: 11,
+            color: '#0062ff',
+            fontWeight: 500,
+            cursor: 'pointer',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
+          onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+        >
+          + {extraCount} more item{extraCount > 1 ? 's' : ''}
+        </button>
+      )}
+      {isExpanded && extraCount > 0 && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsExpanded(false);
+          }}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            fontSize: 11,
+            color: '#0062ff',
+            fontWeight: 500,
+            cursor: 'pointer',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
+          onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+        >
+          Show less
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -280,53 +331,101 @@ function IssueLines({ event }: { event: ActivityIssue }) {
  * rework.
  */
 function ReceiptLines({ event }: { event: ActivityReceipt }) {
-  return (
-    <>
-      {event.outputs.map((output) => {
-        const received = toNumber(output.receivedQty);
-        const accepted = toNumber(output.acceptedQty);
-        const rework = toNumber(output.reworkQty);
-        const scrap = toNumber(output.scrapQty);
-        const split = rework > 0 || scrap > 0 || accepted !== received;
-        const batchRefs = output.batches
-          .map((batch) => batch.batchRef)
-          .filter((ref): ref is string => Boolean(ref));
+  const [isExpanded, setIsExpanded] = useState(false);
+  const displayOutputs = isExpanded ? event.outputs : event.outputs.slice(0, 2);
+  const extraCount = event.outputs.length - 2;
 
-        return (
-          <div key={output.id} style={{ marginBottom: 4 }}>
-            <MovementRow
-              name={output.itemName}
-              detail={batchRefs.length > 0 ? `→ ${[...new Set(batchRefs)].join(', ')}` : null}
-              qty={qtyWithUnit(received, output.uomSymbol)}
-            />
-            {split && (
-              <div
-                style={{
-                  display: 'flex',
-                  gap: 10,
-                  flexWrap: 'wrap',
-                  fontSize: 11,
-                  marginTop: 2,
-                  paddingLeft: 2,
-                }}
-              >
-                <Disposition color="#15803d" text={`${formatQty(accepted)} accepted`} />
-                {rework > 0 && <Disposition color="#b45309" text={`${formatQty(rework)} rework`} />}
-                {scrap > 0 && <Disposition color="#b91c1c" text={`${formatQty(scrap)} scrap`} />}
-                {output.reason && <span style={{ color: '#94a3b8' }}>· {output.reason}</span>}
-              </div>
-            )}
-          </div>
-        );
-      })}
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '4px 16px' }}>
+        {displayOutputs.map((output) => {
+          const received = toNumber(output.receivedQty);
+          const accepted = toNumber(output.acceptedQty);
+          const rework = toNumber(output.reworkQty);
+          const scrap = toNumber(output.scrapQty);
+          const split = rework > 0 || scrap > 0 || accepted !== received;
+          const batchRefs = output.batches
+            .map((batch) => batch.batchRef)
+            .filter((ref): ref is string => Boolean(ref));
+
+          return (
+            <span key={output.id} style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '4px 12px' }}>
+              <MovementRow
+                name={output.itemName}
+                detail={batchRefs.length > 0 ? `→ ${[...new Set(batchRefs)].join(', ')}` : null}
+                qty={qtyWithUnit(received, output.uomSymbol)}
+              />
+              {split && (
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    gap: 10,
+                    flexWrap: 'wrap',
+                    fontSize: 11,
+                  }}
+                >
+                  <Disposition color="#15803d" text={`${formatQty(accepted)} accepted`} />
+                  {rework > 0 && <Disposition color="#b45309" text={`${formatQty(rework)} rework`} />}
+                  {scrap > 0 && <Disposition color="#b91c1c" text={`${formatQty(scrap)} scrap`} />}
+                  {output.reason && <span style={{ color: '#94a3b8' }}>· {output.reason}</span>}
+                </span>
+              )}
+            </span>
+          );
+        })}
+        {!isExpanded && extraCount > 0 && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsExpanded(true);
+            }}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              fontSize: 11,
+              color: '#0062ff',
+              fontWeight: 500,
+              cursor: 'pointer',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
+            onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+          >
+            + {extraCount} more item{extraCount > 1 ? 's' : ''}
+          </button>
+        )}
+        {isExpanded && extraCount > 0 && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsExpanded(false);
+            }}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              fontSize: 11,
+              color: '#0062ff',
+              fontWeight: 500,
+              cursor: 'pointer',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
+            onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+          >
+            Show less
+          </button>
+        )}
+      </div>
       {toNumber(event.returnedQty) > 0 && (
-        <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+        <div style={{ fontSize: 11, color: '#64748b' }}>
           {/* It never entered our stock, so it has no batch and no ledger row —
               which is exactly why it has to be said in words. */}
           {formatQty(event.returnedQty)} sent straight back — never taken into stock
         </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -352,20 +451,19 @@ function MovementRow({
   qty: string | null;
 }) {
   return (
-    <div
+    <span
       style={{
-        display: 'flex',
+        display: 'inline-flex',
         alignItems: 'baseline',
-        justifyContent: 'space-between',
-        gap: 10,
+        gap: 6,
         fontSize: 12,
       }}
     >
-      <span style={{ color: '#334155', minWidth: 0 }}>
+      <span style={{ color: '#334155' }}>
         {name}
         {detail && <span style={{ color: '#94a3b8', fontSize: 11 }}> · {detail}</span>}
       </span>
       {qty && <span style={{ color: '#111', fontWeight: 500, whiteSpace: 'nowrap' }}>{qty}</span>}
-    </div>
+    </span>
   );
 }

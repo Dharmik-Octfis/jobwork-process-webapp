@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { toast } from 'react-hot-toast';
-import { DateInput } from '../../../components/ui/DateInput';
-import { Modal } from '../../../components/ui/Modal';
-import { Select } from '../../../components/ui/Select';
+import { DateInput } from '../../components/ui/DateInput';
+import { Select } from '../../components/ui/Select';
 import { Trash2, Plus, X } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { fetchLocations } from '../../configuration/locations/locations.api';
-import { itemsApi } from '../items.api';
-import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
-import type { ItemOpeningStockLocationRowDto } from '../items.schemas';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate, useParams } from 'react-router-dom';
+import { fetchLocations } from '../configuration/locations/locations.api';
+import { itemsApi } from './items.api';
+import { useTrackingLabel } from '../../hooks/useTrackingLabel';
+import type { ItemOpeningStockLocationRowDto } from './items.schemas';
 
 export interface OpeningStockBatchRow {
   id: string;
@@ -93,37 +93,38 @@ const toFormRows = (
   }));
 };
 
-interface AddOpeningStockModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  orgId: string;
-  itemId?: string;
-  inventoryTracking?: string | null;
-  itemName?: string;
-  initialRows?: ItemOpeningStockLocationRowDto[];
-  onSave?: (data: OpeningStockLocationRow[]) => void | Promise<void>;
-  isSaving?: boolean;
-}
-
-export function AddOpeningStockModal({
-  isOpen,
-  onClose,
-  orgId,
-  itemId,
-  inventoryTracking,
-  itemName,
-  initialRows = [],
-  onSave,
-  isSaving = false,
-}: AddOpeningStockModalProps) {
-  const isBatchTracked = inventoryTracking === 'batch';
+export function OpeningStockPage() {
+  const { orgId, id: itemId } = useParams<{ orgId: string; id: string }>();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { singular, plural } = useTrackingLabel();
 
   const { data: item } = useQuery({
     queryKey: ['item', orgId, itemId],
-    queryFn: () => itemsApi.getItem(orgId, itemId!),
-    enabled: !!orgId && !!itemId && isOpen,
+    queryFn: () => itemsApi.getItem(orgId!, itemId!),
+    enabled: !!orgId && !!itemId,
   });
+
+  const { data: initialRows } = useQuery({
+    queryKey: ['itemOpeningStock', orgId, itemId],
+    queryFn: () => itemsApi.getOpeningStock(orgId!, itemId!),
+    enabled: !!orgId && !!itemId,
+  });
+
+  const saveOpeningStockMutation = useMutation({
+    mutationFn: (rows: OpeningStockLocationRow[]) => itemsApi.saveOpeningStock(orgId!, itemId!, { locationRows: rows as unknown as ItemOpeningStockLocationRowDto[] }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['itemOpeningStock', orgId, itemId] });
+      await queryClient.invalidateQueries({ queryKey: ['item', orgId, itemId] });
+      toast.success('Opening stock saved');
+      navigate(`/organizations/${orgId}/items?id=${itemId}`);
+    },
+    onError: () => toast.error('Failed to save opening stock'),
+  });
+
+  const isSaving = saveOpeningStockMutation.isPending;
+  const isBatchTracked = item?.inventoryTracking === 'batch';
+  const itemName = item?.name;
 
   const defaultSellingPrice =
     item?.sellingPrice !== undefined && item?.sellingPrice !== null
@@ -135,38 +136,20 @@ export function AddOpeningStockModal({
       ? String(item.mrp)
       : defaultSellingPrice;
 
-  const [locationRows, setLocationRows] = useState<OpeningStockLocationRow[]>(() =>
-    toFormRows(initialRows, isBatchTracked, defaultSellingPrice, defaultMrp),
-  );
+  const [locationRows, setLocationRows] = useState<OpeningStockLocationRow[]>([]);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  const [prevDefaultSellingPrice, setPrevDefaultSellingPrice] = useState(defaultSellingPrice);
-  const [prevDefaultMrp, setPrevDefaultMrp] = useState(defaultMrp);
-
-  if (
-    (defaultSellingPrice && defaultSellingPrice !== prevDefaultSellingPrice) ||
-    (defaultMrp && defaultMrp !== prevDefaultMrp)
-  ) {
-    setPrevDefaultSellingPrice(defaultSellingPrice);
-    setPrevDefaultMrp(defaultMrp);
-    setLocationRows((prevRows) =>
-      prevRows.map((loc) => ({
-        ...loc,
-        batches: loc.batches.map((b) => {
-          if (b.isExisting) return b;
-          return {
-            ...b,
-            sellingPrice: b.sellingPrice || defaultSellingPrice,
-            mrp: b.mrp || defaultMrp,
-          };
-        }),
-      })),
-    );
+  if (initialRows && item && !isInitialized) {
+    setLocationRows(toFormRows(initialRows, isBatchTracked, defaultSellingPrice, defaultMrp));
+    setIsInitialized(true);
   }
+
+
 
   const { data: locations = [] } = useQuery({
     queryKey: ['locations', orgId],
-    queryFn: () => fetchLocations(orgId),
-    enabled: !!orgId && isOpen,
+    queryFn: () => fetchLocations(orgId!),
+    enabled: !!orgId,
   });
 
   const locationOptions = [...locations]
@@ -293,10 +276,7 @@ export function AddOpeningStockModal({
         }
       }
 
-      if (onSave) {
-        await onSave(locationRows);
-      }
-      onClose();
+      await saveOpeningStockMutation.mutateAsync(locationRows);
     } catch (error) {
       console.error('Failed to save opening stock', error);
     }
@@ -322,57 +302,32 @@ export function AddOpeningStockModal({
   });
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={itemName || 'Add Opening Stock'}
-      subtitle={
-        isBatchTracked
-          ? `Enter location stock and ${singular.toLowerCase()} details, then save to persist them.`
-          : 'Enter location stock details, then save to persist them.'
-      }
-      width="1300px"
-      position="right"
-      footer={
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', width: '100%' }}>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: '8px 16px',
-              border: '1px solid #d1d5db',
-              background: '#fff',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 500,
-              fontSize: '14px',
-              color: '#374151',
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isSaving}
-            style={{
-              padding: '8px 24px',
-              border: 'none',
-              background: isSaving ? '#93c5fd' : '#0062ff',
-              color: '#fff',
-              borderRadius: '4px',
-              cursor: isSaving ? 'not-allowed' : 'pointer',
-              fontWeight: 500,
-              fontSize: '14px',
-              opacity: isSaving ? 0.85 : 1,
-            }}
-          >
-            {isSaving ? 'Saving...' : 'Save'}
-          </button>
-        </div>
-      }
-    >
-      <div style={{ overflowX: 'auto', minHeight: '500px' }}>
+    <div style={{ background: '#fff', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #eef0f3', padding: '16px 24px' }}>
+        <h1 style={{ fontSize: '20px', fontWeight: 600, color: '#0f172a', margin: 0 }}>{itemName || 'Opening Stock'}</h1>
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            color: '#64748b',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '8px',
+            borderRadius: '50%',
+            transition: 'background-color 0.2s',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
+          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+        >
+          <X size={20} />
+        </button>
+      </div>
+
+      <div style={{ overflowX: 'auto', flex: 1, padding: '24px' }}>
         {!isBatchTracked ? (
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
             <thead>
@@ -1126,6 +1081,45 @@ export function AddOpeningStockModal({
           </button>
         </div>
       </div>
-    </Modal>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '12px', padding: '8px 24px', borderTop: '1px solid #eef0f3', position: 'sticky', bottom: 0, background: '#fff', zIndex: 10 }}>
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          style={{
+            padding: '8px 16px',
+            border: '1px solid #cbd5e1',
+            background: '#fff',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontWeight: 500,
+            fontSize: '13px',
+            color: '#334155',
+            transition: 'background-color 0.2s'
+          }}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={isSaving}
+          style={{
+            padding: '8px 24px',
+            border: 'none',
+            background: isSaving ? '#93c5fd' : '#0062ff',
+            color: '#fff',
+            borderRadius: '6px',
+            cursor: isSaving ? 'not-allowed' : 'pointer',
+            fontWeight: 500,
+            fontSize: '13px',
+            opacity: isSaving ? 0.85 : 1,
+            transition: 'background-color 0.2s'
+          }}
+        >
+          {isSaving ? 'Saving...' : 'Save'}
+        </button>
+      </div>
+    </div>
   );
 }

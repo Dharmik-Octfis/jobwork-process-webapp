@@ -134,7 +134,13 @@ export function JobOrdersList() {
    */
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
-  const openOrder = (id: string) => setSearchParams({ id });
+  const openOrder = (id: string) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('id', id);
+      return next;
+    });
+  };
 
   return (
     <div
@@ -286,18 +292,6 @@ export function JobOrdersList() {
               /* Narrow master pane beside the detail. Each row is a real button, so
                Tab walks the list and Enter opens a row (CLAUDE.md). */
               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <div
-                  style={{
-                    padding: '8px 16px',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: '#64748b',
-                    background: '#f9f9fb',
-                    borderBottom: '1px solid #eef0f3',
-                  }}
-                >
-                  {filters.find((f) => f.key === filter)?.label ?? 'Job Orders'}
-                </div>
                 {orders.map((order) => (
                   <button
                     key={order.id}
@@ -421,7 +415,16 @@ export function JobOrdersList() {
 
         {selectedId && (
           <div style={{ flex: 1, overflowY: 'auto' }}>
-            <JobOrderOverview jobOrderId={selectedId} onClose={() => setSearchParams({})} />
+            <JobOrderOverview
+              jobOrderId={selectedId}
+              onClose={() => {
+                setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.delete('id');
+                  return next;
+                });
+              }}
+            />
           </div>
         )}
       </div>

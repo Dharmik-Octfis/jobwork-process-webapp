@@ -67,6 +67,10 @@ const OrganizationSettingsPage = lazyPage(
   () => import('../features/organizations/OrganizationSettingsPage'),
   'OrganizationSettingsPage',
 );
+const PreferencesPage = lazyPage(
+  () => import('../features/organizations/PreferencesPage'),
+  'PreferencesPage',
+);
 const UsersPage = lazyPage(() => import('../features/users/UsersPage'), 'UsersPage');
 const RolesPage = lazyPage(() => import('../features/roles/RolesPage'), 'RolesPage');
 const PermissionTemplatesPage = lazyPage(
@@ -164,6 +168,7 @@ const RejectionReasonsList = lazyPage(
 const ItemsList = lazyPage(() => import('../features/items/ItemsList'), 'ItemsList');
 const CreateItemPage = lazyPage(() => import('../features/items/CreateItemPage'), 'CreateItemPage');
 const EditItemPage = lazyPage(() => import('../features/items/EditItemPage'), 'EditItemPage');
+const OpeningStockPage = lazyPage(() => import('../features/items/OpeningStockPage'), 'OpeningStockPage');
 const CompositeItemsPage = lazyPage(
   () => import('../features/inventory/composite-items/CompositeItemsPage'),
   'CompositeItemsPage',
@@ -319,6 +324,7 @@ export const router = createBrowserRouter([
               { path: '/organizations/:orgId/items', element: <ItemsList /> },
               { path: '/organizations/:orgId/items/new', element: <CreateItemPage /> },
               { path: '/organizations/:orgId/items/:id/edit', element: <EditItemPage /> },
+              { path: '/organizations/:orgId/items/:id/opening-stock', element: <OpeningStockPage /> },
               { path: '/organizations/:orgId/composite-items', element: <CompositeItemsPage /> },
               {
                 path: '/organizations/:orgId/composite-items/new',
@@ -344,6 +350,7 @@ export const router = createBrowserRouter([
         element: <SettingsLayout />,
         children: [
           { index: true, element: <OrganizationSettingsPage /> },
+          { path: 'preferences', element: <PreferencesPage /> },
           { path: 'profile', element: <ProfilePage /> },
           { path: 'users', element: <UsersPage /> },
           // "Members & Invites" became "Users" on 2026-07-30. The old path is kept

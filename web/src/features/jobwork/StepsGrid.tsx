@@ -12,9 +12,11 @@ import { useUoms } from '../inventory/uom/uom.api';
 import { itemsApi } from '../items/items.api';
 import type { Item } from '../items/items.schemas';
 import { fetchVendors } from '../purchases/vendors/vendors.api';
+import { fetchCustomers } from '../sales/customers/customers.api';
 import { fetchLocations } from '../configuration/locations/locations.api';
 import { ProcessSelect } from './processes/ProcessSelect';
 import { RATE_BASIS_OPTIONS } from './processes/processes.schemas';
+import { useTrackingLabel } from '../../hooks/useTrackingLabel';
 import {
   PROCESSOR_TYPE_OPTIONS,
   derivedExpectedQty,
@@ -313,6 +315,7 @@ function ItemList({
   onPlanBatches,
   isBatchTracked,
 }: ItemListProps) {
+  const trackingLabel = useTrackingLabel();
   const isInput = side === 'inputs';
   const update = (rowIndex: number, patch: Partial<StepItemRow>) =>
     onChange(rows.map((row, i) => (i === rowIndex ? { ...row, ...patch } : row)));
@@ -605,8 +608,8 @@ function ItemList({
                     disabled={disabled || !(row.plannedQty && row.plannedQty > 0)}
                     title={
                       row.plannedQty && row.plannedQty > 0
-                        ? 'Note which batches this is planned to come out of. Nothing is reserved.'
-                        : 'Enter a quantity first — batches are planned against it.'
+                        ? `Note which ${trackingLabel.plural.toLowerCase()} this is planned to come out of. Nothing is reserved.`
+                        : `Enter a quantity first — ${trackingLabel.plural.toLowerCase()} are planned against it.`
                     }
                     style={{
                       padding: 0,
@@ -623,9 +626,9 @@ function ItemList({
                     }}
                   >
                     {(row.plannedBatches?.length ?? 0) === 0
-                      ? 'Add Batches'
+                      ? `Add ${trackingLabel.plural}`
                       : `${row.plannedBatches!.length} ${
-                          row.plannedBatches!.length === 1 ? 'batch' : 'batches'
+                          row.plannedBatches!.length === 1 ? trackingLabel.singular.toLowerCase() : trackingLabel.plural.toLowerCase()
                         } planned`}
                   </button>
                 )}
@@ -755,21 +758,13 @@ export function StepsGrid<T extends StepGridRow>({
   const { data: vendorsPage } = useQuery({
     queryKey: ['vendors', orgId, 'processors'],
     queryFn: () => fetchVendors(orgId!, { perPage: 500 }),
-    enabled: Boolean(orgId),
+    enabled: Boolean(orgId) && steps.some(s => s.processorType !== 'internal'),
   });
-  /**
-   * 🔴 Job workers only. An unfiltered vendor dropdown offers transporters as
-   * processors, which is the single most common defect on this kind of screen
-   * (§10). `vendorTypes` is empty on every row created before that column
-   * existed, so those are shown too rather than hiding a vendor somebody needs —
-   * "not yet classified" is not "not a jobworker".
-   */
-  const processors = (vendorsPage?.results ?? []).filter(
-    (v) =>
-      v.vendorTypes === undefined ||
-      v.vendorTypes.length === 0 ||
-      v.vendorTypes.includes('job_worker'),
-  );
+  const { data: customersPage } = useQuery({
+    queryKey: ['customers', orgId],
+    queryFn: () => fetchCustomers(orgId!, { perPage: 500 }),
+    enabled: Boolean(orgId) && steps.some(s => s.processorType === 'customer'),
+  });
 
   const { data: locations = [] } = useQuery({
     queryKey: ['locations', orgId],
@@ -1052,7 +1047,7 @@ export function StepsGrid<T extends StepGridRow>({
                         { value: '', label: 'Select a work centre…' },
                         ...workCentres.map((l) => ({ value: l.id, label: l.name })),
                       ]}
-                      disabled={readOnly}
+                      disabled={true}
                       ariaLabel={`Step ${stepNo} work centre`}
                       minWidth={0}
                       portal={portalMenus}
@@ -1063,10 +1058,18 @@ export function StepsGrid<T extends StepGridRow>({
                       onChange={(value) => update(index, { processorId: value || null })}
                       options={[
                         { value: '', label: 'Decide per job order' },
-                        ...processors.map((v) => ({
-                          value: v.id,
-                          label: v.companyName || v.contactName,
-                        })),
+                        ...(step.processorType === 'customer'
+                          ? (customersPage?.results ?? []).map((c) => ({
+                              value: c.id,
+                              label: c.companyName || c.contactName,
+                            }))
+                          : (vendorsPage?.results ?? [])
+                              .filter((v) => !v.vendorTypes?.length || v.vendorTypes.includes('job_worker'))
+                              .map((v) => ({
+                                value: v.id,
+                                label: v.companyName || v.contactName,
+                              }))
+                        ),
                       ]}
                       disabled={readOnly}
                       ariaLabel={`Step ${stepNo} processor`}

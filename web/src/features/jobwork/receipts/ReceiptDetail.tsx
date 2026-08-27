@@ -9,6 +9,7 @@ import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
 import { formatQty, toNumber } from '../jobwork.schemas';
 import { cancelJobReceipt, fetchJobReceiptById } from './jobReceipts.api';
+import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 
 interface Props {
   receiptId: string;
@@ -57,6 +58,7 @@ function BatchChip({
    * split delivery, not a new lot. */
   isTopUp?: boolean;
 }) {
+  const { singular } = useTrackingLabel();
   return (
     <span
       style={{
@@ -74,9 +76,9 @@ function BatchChip({
       }}
       title={
         (tone === 'good'
-          ? 'Batch ready to issue onward'
-          : 'Rework batch — re-issue to this same step') +
-        (isTopUp ? ' · added to a batch that already existed' : ' · created by this receipt')
+          ? `${singular} ready to issue onward`
+          : `Rework ${singular.toLowerCase()} — re-issue to this same step`) +
+        (isTopUp ? ` · added to a ${singular.toLowerCase()} that already existed` : ' · created by this receipt')
       }
     >
       {tone === 'rework' && <span style={{ fontFamily: 'inherit', opacity: 0.8 }}>↻</span>}
@@ -89,6 +91,7 @@ function BatchChip({
 
 export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
   const queryClient = useQueryClient();
+  const { singular } = useTrackingLabel();
   const { orgId } = useParams<{ orgId: string }>();
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
@@ -343,13 +346,13 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
             </tr>
             {receipt.outputBatch && (
               <tr>
-                <td style={rowLabel}>Output batch</td>
+                <td style={rowLabel}>Output {singular.toLowerCase()}</td>
                 <td style={rowValue}>{receipt.outputBatch.supplierBatchRef ?? '—'}</td>
               </tr>
             )}
             {receipt.reworkBatch && (
               <tr>
-                <td style={rowLabel}>Rework batch</td>
+                <td style={rowLabel}>Rework {singular.toLowerCase()}</td>
                 <td style={{ ...rowValue, color: '#b45309' }}>
                   {receipt.reworkBatch.supplierBatchRef ?? '—'} — kept separate so the reworked
                   pieces stay countable

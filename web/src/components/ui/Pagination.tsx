@@ -32,6 +32,8 @@ export function Pagination({
   perPage,
   onPerPageChange,
   total,
+  hideTotal,
+  hidePerPage,
   isCounting,
   onRequestCount,
 }: {
@@ -44,6 +46,8 @@ export function Pagination({
   total?: number;
   isCounting?: boolean;
   onRequestCount: () => void;
+  hideTotal?: boolean;
+  hidePerPage?: boolean;
 }) {
   if (!pageContext) return null;
 
@@ -66,47 +70,52 @@ export function Pagination({
         color: 'var(--color-text-muted)',
       }}
     >
-      {/* Total count — computed only when asked for. */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span>Total count:</span>
-        {isCounting ? (
-          <span>loading…</span>
-        ) : total !== undefined ? (
-          <span style={{ fontWeight: 600, color: 'var(--color-text)' }}>{total}</span>
-        ) : (
-          <button
-            type="button"
-            onClick={onRequestCount}
-            style={{
-              background: 'none',
-              border: 'none',
-              padding: 0,
-              font: 'inherit',
-              fontWeight: 500,
-              color: 'var(--color-primary)',
-              cursor: 'pointer',
-            }}
-          >
-            View
-          </button>
-        )}
-      </div>
+      {hideTotal ? (
+        <div />
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span>Total count:</span>
+          {isCounting ? (
+            <span>loading…</span>
+          ) : total !== undefined ? (
+            <span style={{ fontWeight: 600, color: 'var(--color-text)' }}>{total}</span>
+          ) : (
+            <button
+              type="button"
+              onClick={onRequestCount}
+              style={{
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                font: 'inherit',
+                fontWeight: 500,
+                color: 'var(--color-primary)',
+                cursor: 'pointer',
+              }}
+            >
+              View
+            </button>
+          )}
+        </div>
+      )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Select
-            value={String(perPage)}
-            onChange={(v) => onPerPageChange(Number(v))}
-            options={PER_PAGE_OPTIONS.map((n) => ({ value: String(n), label: String(n) }))}
-            minWidth={78}
-            fullWidth={false}
-            // The bar sits at the bottom of a container that clips its overflow,
-            // so the list has to open upward or it is never visible.
-            dropUp
-            ariaLabel="Rows per page"
-          />
-          <span>per page</span>
-        </div>
+        {!hidePerPage && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Select
+              value={String(perPage)}
+              onChange={(v) => onPerPageChange(Number(v))}
+              options={PER_PAGE_OPTIONS.map((n) => ({ value: String(n), label: String(n) }))}
+              minWidth={78}
+              fullWidth={false}
+              // The bar sits at the bottom of a container that clips its overflow,
+              // so the list has to open upward or it is never visible.
+              dropUp
+              ariaLabel="Rows per page"
+            />
+            <span>per page</span>
+          </div>
+        )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span>Page {pageContext.page}</span>

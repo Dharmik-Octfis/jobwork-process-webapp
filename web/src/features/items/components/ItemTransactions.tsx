@@ -4,7 +4,6 @@ import { ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { itemsApi } from '../items.api';
-import { Pagination } from '../../../components/ui/Pagination';
 
 interface ItemTransactionsProps {
   orgId: string;
@@ -24,8 +23,8 @@ interface BillTransactionRow {
 }
 
 export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(25);
+  const [page] = useState(1);
+  const [perPage] = useState(25);
 
   const { data, isLoading } = useQuery({
     queryKey: ['itemBills', orgId, itemId, page, perPage],
@@ -267,16 +266,7 @@ export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
         </table>
       </div>
 
-      {data && (
-        <Pagination
-          pageContext={data.pageContext}
-          page={page}
-          perPage={perPage}
-          onPageChange={setPage}
-          onPerPageChange={setPerPage}
-          onRequestCount={() => {}}
-        />
-      )}
+
     </div>
   );
 }

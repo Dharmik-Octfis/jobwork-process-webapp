@@ -115,7 +115,9 @@ export const stepItemTotalsSchema = z.object({
   uomSymbol: z.string().nullable(),
   planned: z.boolean(),
   fromStock: z.boolean(),
+  plannedQty: z.string().nullable(),
   issuedQty: z.string(),
+  remainingQty: z.string().nullable(),
 });
 
 export const stepOutputTotalsSchema = z.object({
@@ -124,7 +126,9 @@ export const stepOutputTotalsSchema = z.object({
   uomSymbol: z.string().nullable(),
   planned: z.boolean(),
   isPrimary: z.boolean(),
+  expectedQty: z.string().nullable(),
   receivedQty: z.string(),
+  remainingQty: z.string().nullable(),
 });
 
 export type StepItemTotals = z.infer<typeof stepItemTotalsSchema>;

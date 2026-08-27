@@ -140,7 +140,10 @@ export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend 
                     : '—';
 
         return (
-          <div key={step.id} style={{ display: 'flex', alignItems: 'flex-start', flexShrink: 0 }}>
+          <div
+            key={step.id}
+            style={{ display: 'flex', alignItems: 'flex-start', flexShrink: 0, position: 'relative' }}
+          >
             {index > 0 && <Connector filled={steps[index - 1]!.status === 'completed'} />}
 
             <button
@@ -222,7 +225,6 @@ export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend 
                   </span>
                 )}
               </span>
-
               <span style={{ textAlign: 'center', minWidth: 0, width: '100%' }}>
                 <span
                   style={{
@@ -268,6 +270,8 @@ export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend 
                 </span>
               </span>
             </button>
+
+
           </div>
         );
       })}
