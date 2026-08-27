@@ -19,6 +19,8 @@
     "deploy:production": "node scripts/deploy.mjs production api",
     "deploy:staging:api": "node scripts/deploy.mjs staging api",
     "deploy:production:api": "node scripts/deploy.mjs production api",
+    "deploy:staging:accounts": "node scripts/deploy.mjs staging accounts",
+    "deploy:production:accounts": "node scripts/deploy.mjs production accounts",
     "capture:staging": "node scripts/capture-target.mjs staging",
     "capture:production": "node scripts/capture-target.mjs production",
     "deploy:appsail": "node -e \"console.error('\\n  deploy:appsail is gone — a deploy must name its target.\\n  Staging and production live under different Zoho accounts.\\n\\n    npm run deploy:staging\\n    npm run deploy:production\\n'); process.exit(1)\""
