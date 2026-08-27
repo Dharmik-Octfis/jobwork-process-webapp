@@ -274,8 +274,11 @@ shop-floor terminals, and an operator walking away from a shared machine must be
 ```
 1. User clicks "Log out" in jobwork
 2. jobwork revokes its own row (revoked_reason: 'logout') and clears its cookies
-3. jobwork redirects browser → accounts/logout
-     ?id_token_hint=<id_token>&post_logout_redirect_uri=https://jobwork.octfis.com/logged-out
+3. jobwork redirects browser → accounts/session/end
+     ?client_id=jobwork&post_logout_redirect_uri=https://jobwork.octfis.com/logged-out
+     (client_id, not id_token_hint: §3 discards the ID token, and the hint would
+      not skip a step — the library renders its sign-out page either way)
+3b. that page submits itself with logout=yes         ← no confirmation click
 4. accounts kills the __Host-sso cookie              ← no more silent re-login
 5. accounts POSTs a signed logout token, server-to-server, to EVERY app
    holding a live session for that sid               ← §10, this is what makes it real
@@ -732,12 +735,19 @@ The revoke itself is code that already exists — `revokeUserSessions`
 
 ### 10.3 Two honest limits
 
-**Open tabs keep working for up to 15 minutes.** Back-channel logout kills refresh tokens instantly,
-but an already-issued access token stays valid until it expires, because `authenticate` does no
-database lookup — a deliberate 2026-07-24 decision. If that feels too loose for logout specifically,
-shorten `JWT_ACCESS_TTL` to `5m`; it is cheap and cuts the window by two thirds. **Do not** close it
-by adding a per-request session lookup — that is the exact thing the architecture rejected, and
-`middlewares/authenticate.test.ts` pins the current behaviour.
+**Open tabs keep working for up to 15 minutes** — unless they ask. Back-channel logout kills refresh
+tokens instantly, but an already-issued access token stays valid until it expires, because
+`authenticate` does no database lookup — a deliberate 2026-07-24 decision. If that feels too loose
+for logout specifically, shorten `JWT_ACCESS_TTL` to `5m`; it is cheap and cuts the window by two
+thirds. **Do not** close it by adding a per-request session lookup — that is the exact thing the
+architecture rejected, and `middlewares/authenticate.test.ts` pins the current behaviour.
+
+> ✅ **Mostly closed since 2026-08-27 by the poll in §11.** `GET /auth/session` resolves the `sid`
+> against `refresh_tokens` on demand, and every visible tab calls it every 15 seconds — so a tab
+> now signs itself out in seconds rather than at the end of the access token's life. The 15 minutes
+> remains the true bound for anything that does **not** poll: a mobile client, a script, a tab left
+> in a background window. This is the "cache the lookup" shape the rule allows, taken one step
+> further: the lookup is an endpoint a client opts into, not middleware every route pays for.
 
 🔴 **Back-channel logout cannot be tested against `localhost`.** Discovered 2026-08-24 while
 building it. `oidc-provider` wraps its outgoing fetch in **SSRF protection** that refuses every
@@ -761,8 +771,15 @@ notices until it matters.
 
 ## 11. Instant cross-tab sign-in and sign-out
 
-> ❌ **Not built, on purpose.** Deferred out of phase 1 by this document, and untestable until the
-> real domains exist — it is the one feature that genuinely depends on the same-site relationship.
+> ⚠️ **Half built.** The **sign-out** direction shipped 2026-08-27 as the polling option below —
+> `GET /auth/session` + `web/src/features/auth/useSessionWatch.ts`, mounted on `ProtectedRoute`.
+> Every visible tab checks every 15 seconds, and immediately on regaining focus, so a logout
+> anywhere signs this app out within seconds.
+>
+> The **sign-in** direction is still ❌ not built, and cannot be faked with polling: only the
+> accounts origin can see its own cookie, so a logged-out tab has nothing to ask. That needs the
+> iframe, and the iframe needs the real same-site domains — which is why it was deferred out of
+> phase 1 in the first place.
 
 The redirects in §6 give "signed in on the next navigation". The instant behaviour — every tab
 reacting within seconds, no refresh — is a **separate layer on top**, and it is what people actually
@@ -803,7 +820,7 @@ annoyance; a refresh token that survives logout is an incident.
 
 | Approach                              | Instant?     | Cross-domain?     | Cost                                                                                                                                                    |
 | ------------------------------------- | ------------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Poll our own `/api/auth/session`      | ~5–30 s      | ✅                | one request per tab per interval; ~10 lines. **Start here.**                                                                                            |
+| Poll our own `/api/auth/session`      | ~15 s        | ✅                | one indexed row per **visible** tab per 15 s. ✅ **Built** — sign-out only.                                                                             |
 | Iframe + `prompt=none` (the Zoho way) | ✅           | ❌ same-site only | spec-defined, no server load                                                                                                                            |
 | Iframe + `BroadcastChannel` relay     | ✅ true push | ❌ same-site only | every app embeds an accounts-origin iframe; those iframes share one origin and broadcast to each other, each relaying to its parent. No polling at all. |
 | SSE / WebSocket from our own backend  | ✅ true push | ✅                | fed by §10. ⚠️ verify AppSail's idle-connection timeout — load balancers cut long-lived connections                                                     |

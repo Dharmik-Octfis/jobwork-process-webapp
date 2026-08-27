@@ -232,9 +232,9 @@ export async function startLogout(req: Request, res: Response): Promise<void> {
   const url = new URL(endSession);
   /**
    * `client_id` rather than `id_token_hint`, because §3 means we never keep the ID
-   * token — it is read once at login and discarded. The spec allows this, and the
-   * IdP asks the user to confirm instead, which is the correct trade: the
-   * alternative is storing a token we have no other use for.
+   * token — it is read once at login and discarded. The spec allows this, and it
+   * costs nothing: `id_token_hint` would not skip a step, because the IdP renders
+   * its sign-out page either way and that page submits itself.
    */
   url.searchParams.set('client_id', env.sso.clientId!);
   if (env.sso.postLogoutRedirectUri) {

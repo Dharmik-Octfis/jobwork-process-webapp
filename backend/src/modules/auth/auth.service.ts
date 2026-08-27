@@ -460,6 +460,67 @@ export async function listUserSessions(userId: string) {
   });
 }
 
+/** Why a polling client was told its session is over. `null` means it is not. */
+export type SessionEndedReason = 'revoked' | 'expired' | 'account_disabled' | 'sso_logout';
+
+/**
+ * Is this session still usable *right now*?
+ *
+ * 🔴 This is the one place outside `refresh` that resolves a `sid` against the
+ * database, and that is the whole point of it. `authenticate` deliberately never
+ * does (see its header), so a session revoked elsewhere — a back-channel logout
+ * from another app, "sign out everywhere", a disabled account — stays invisible to
+ * this app until the access token lapses, up to 15 minutes later. A client that
+ * wants to know sooner has to ask, and this is what it asks.
+ *
+ * ⚠️ It does NOT reinstate the per-request lookup CLAUDE.md forbids. It is a
+ * separate endpoint a client polls every 15 seconds, not middleware on every route,
+ * so the cost is bounded by open tabs rather than by request volume.
+ *
+ * Never throws for an ended session — it answers 200 with `active: false`. A 401
+ * would be caught by the web client's refresh interceptor and turned into a silent
+ * retry, which is exactly the machinery this is trying to get ahead of.
+ */
+export async function getSessionStatus(
+  sessionId: string,
+  userId: string,
+): Promise<{ active: boolean; reason: SessionEndedReason | null }> {
+  const session = await prisma.refreshToken.findFirst({
+    where: { id: sessionId, userId },
+    select: {
+      revokedAt: true,
+      revokedReason: true,
+      expiresAt: true,
+      user: { select: { isActive: true, isDeleted: true } },
+    },
+  });
+
+  // No row at all: a `sid` we never issued, or one belonging to someone else.
+  // Indistinguishable from a revoked session to the caller, and should be.
+  if (!session) return { active: false, reason: 'revoked' };
+
+  if (session.revokedAt) {
+    // The stored reason is what lets the UI say "signed out from another app"
+    // rather than a generic message — but only for the reasons a user can act on.
+    const reason: SessionEndedReason =
+      session.revokedReason === 'sso_logout'
+        ? 'sso_logout'
+        : session.revokedReason === 'account_disabled'
+          ? 'account_disabled'
+          : 'revoked';
+    return { active: false, reason };
+  }
+
+  if (session.expiresAt <= new Date()) return { active: false, reason: 'expired' };
+
+  // Checked here as well as on the row, because deactivating a user and revoking
+  // their sessions are two writes — and only the first is guaranteed to have run
+  // if someone flipped the flag by hand.
+  if (!isUsableAccount(session.user)) return { active: false, reason: 'account_disabled' };
+
+  return { active: true, reason: null };
+}
+
 export async function getUserById(userId: string): Promise<PublicUser> {
   // `findFirst`, not `findUnique`: the `ACTIVE_USER` flags are not part of the
   // unique key. Without them a soft-deleted user still resolved here, so

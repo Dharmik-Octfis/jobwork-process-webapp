@@ -1,7 +1,7 @@
 import { escapeHtml, shell } from './views.ts';
 
 /**
- * The pages `oidc-provider` renders on its own — logout confirmation, post-logout,
+ * The pages `oidc-provider` renders on its own — the sign-out hand-off, post-logout,
  * and errors. Left alone they are the library's built-in placeholders, which the
  * library itself warns about at boot ("you SHOULD change it in order to customize
  * the look").
@@ -14,46 +14,55 @@ import { escapeHtml, shell } from './views.ts';
  */
 
 /**
- * The sign-out confirmation.
+ * The sign-out hand-off. Not a confirmation — it submits itself and is on screen
+ * for a few milliseconds.
  *
- * 🔴 This page is NOT optional, and it is not merely a courtesy. Without an
- * `id_token_hint` the provider cannot know the request genuinely came from the
- * user, so any site that links to `/session/end` could otherwise sign people out
- * of every app at once — a small but real cross-site nuisance. The spec expects a
- * confirmation in exactly this case.
+ * 🔴 `logout=yes` is what makes this a real sign-out. Without that parameter the
+ * request succeeds but only detaches the ONE client that asked, leaving the SSO
+ * cookie alive — so the user lands back on the app's login page and is signed
+ * straight back in without typing anything. That is the failure this page exists to
+ * avoid, and it is why the parameter is a hidden input rather than a button the user
+ * could decline.
  *
- * We could skip it by sending `id_token_hint`, but that would mean STORING the ID
- * token after login purely to hand it back at logout, and §3 is explicit that the
- * token is read once and discarded. One click is the better trade than a retained
- * credential.
+ * The library always renders this page: `end_session.js` calls `logoutSource`
+ * whenever a session exists, and sending `id_token_hint` would NOT skip it. So
+ * auto-submitting is the only way to remove the click, and storing the ID token
+ * after login would buy nothing.
+ *
+ * ⚠️ **The trade, stated plainly:** the confirmation was the only thing stopping
+ * another site from linking to `/session/end?client_id=…` and signing the user out
+ * of everything. Removing it makes that possible. It is a nuisance, not a breach —
+ * nothing is disclosed and nothing is authorised — and it is the same trade Google
+ * and Zoho make, where sign-out is a plain link. Restoring the click means putting
+ * a submit button back in place of the hidden input below.
  *
  * `form` comes from the library and already carries the XSRF token and the form id
- * (`op.logoutForm`). The buttons live outside it and target it by id, which is how
- * the default does it — hence `form="op.logoutForm"` rather than nesting them.
+ * (`op.logoutForm`). The input and the fallback button sit outside it and target it
+ * by id, which is how the library's own default does it.
  *
- * 🔴 The confirm button MUST carry `name="logout" value="yes"`. That parameter is
- * what makes the provider actually destroy the session; without it the request
- * succeeds but only detaches this one client, and the user stays signed in
- * everywhere else while believing they signed out.
+ * The `<noscript>` button is not decoration: `submit()` lives in a file because
+ * inline script is blocked by CSP, and a blocked or disabled script would otherwise
+ * leave a page that can never sign anyone out. It carries no `name`, because a
+ * second `logout` parameter is rejected by the provider's `rejectDupes`.
  */
-export function logoutConfirmPage(form: string, clientName?: string): string {
+export function signingOutPage(form: string, clientName?: string): string {
   const who = clientName ? escapeHtml(clientName) : 'your apps';
 
   return shell(
-    'Sign out',
+    'Signing out',
     `
-    <h1>Sign out?</h1>
-    <p class="sub">This signs you out of ${who} and every other Octfis app on this browser.</p>
+    <h1>Signing you out…</h1>
+    <p class="sub">Ending your session on ${who} and every other Octfis app on this browser.</p>
     ${form}
-    <div class="stack">
-      <button autofocus type="submit" form="op.logoutForm" name="logout" value="yes">
-        Yes, sign me out
-      </button>
-      <button type="submit" form="op.logoutForm" class="secondary">
-        No, stay signed in
-      </button>
-    </div>
+    <input type="hidden" name="logout" value="yes" form="op.logoutForm">
+    <noscript>
+      <p class="sub">JavaScript is off, so this needs one click.</p>
+      <div class="stack">
+        <button autofocus type="submit" form="op.logoutForm">Sign out</button>
+      </div>
+    </noscript>
   `,
+    { script: '/js/logout-submit.js' },
   );
 }
 

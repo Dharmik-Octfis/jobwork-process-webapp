@@ -96,6 +96,7 @@ if (!env.sso.enabled) {
 }
 authRouter.post('/refresh-token', authController.refresh);
 authRouter.post('/logout', authController.logout);
+authRouter.get('/session', authenticate, authController.sessionStatus);
 authRouter.get('/me', authenticate, authController.me);
 authRouter.get('/me/sessions', authenticate, authController.mySessions);
 authRouter.put(

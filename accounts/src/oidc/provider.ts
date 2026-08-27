@@ -7,7 +7,7 @@ import { loadClients } from './clients.ts';
 import { ensureSigningKey, loadSigningJwks } from './keys.ts';
 import { installSessionMirror } from './sessionMirror.ts';
 import { installBackchannelRetry } from './backchannelRetry.ts';
-import { logoutConfirmPage, problemPage, signedOutPage } from '../interaction/systemViews.ts';
+import { problemPage, signedOutPage, signingOutPage } from '../interaction/systemViews.ts';
 
 /**
  * The OIDC provider. docs/SSO_AND_IDENTITY.md §7.1, §12.
@@ -116,13 +116,18 @@ function baseConfiguration(): Omit<Configuration, 'clients' | 'jwks'> {
       rpInitiatedLogout: {
         enabled: true,
         /**
-         * Our own confirmation page. The library's default is a placeholder it
-         * warns about at boot, and it pulls a font from `fonts.googleapis.com` —
-         * an external origin on a page in the auth path, which is the one thing
-         * every page here avoids.
+         * 🔴 Our page submits itself — signing out of one app signs the browser out
+         * of all of them, with no confirmation step. The library's default is a
+         * placeholder it warns about at boot, and it pulls a font from
+         * `fonts.googleapis.com` — an external origin on a page in the auth path,
+         * which is the one thing every page here avoids.
+         *
+         * The library calls this whenever a session exists, `id_token_hint` or not,
+         * so this hook is the only place the click can be removed. What that costs
+         * is written on `signingOutPage`.
          */
         logoutSource: (ctx, form) => {
-          ctx.body = logoutConfirmPage(form, ctx.oidc.client?.clientName);
+          ctx.body = signingOutPage(form, ctx.oidc.client?.clientName);
         },
         postLogoutSuccessSource: (ctx) => {
           ctx.body = signedOutPage();

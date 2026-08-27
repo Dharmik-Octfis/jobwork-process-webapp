@@ -98,6 +98,22 @@ export async function logout(req: Request, res: Response): Promise<void> {
   sendSuccess(res, null, 'Logged out successfully');
 }
 
+/**
+ * GET /auth/session — "is my session still live?", for clients that poll.
+ *
+ * Cheap on purpose: one indexed row, no user payload. The web app calls it every
+ * 15 seconds per visible tab, which is what turns a logout elsewhere into a sign-out
+ * here in seconds instead of one access-token lifetime.
+ */
+export async function sessionStatus(req: Request, res: Response): Promise<void> {
+  if (!req.user) {
+    throw new ApiError(401, 'Sign in to continue.');
+  }
+
+  const status = await authService.getSessionStatus(req.user.sid, req.user.id);
+  sendSuccess(res, status);
+}
+
 export async function me(req: Request, res: Response): Promise<void> {
   if (!req.user) {
     throw new ApiError(401, 'Sign in to continue.');
