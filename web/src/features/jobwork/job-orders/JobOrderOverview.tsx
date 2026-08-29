@@ -33,9 +33,8 @@ import {
   completeJobOrderStep,
 } from './jobOrders.api';
 import { AddStepsDialog } from './AddStepsDialog';
-import { ActivityTimeline } from './ActivityTimeline';
 import { JobOrderFlow } from './JobOrderFlow';
-import { JobOrderStepDetail } from './JobOrderStepDetail';
+import { JobOrderStepDetail, ActivityTabs } from './JobOrderStepDetail';
 import type {
   ActivityEvent,
   JobOrderOverviewData,
@@ -460,11 +459,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
     [activity, selectedStep],
   );
 
-  /** `stepId → "2 · Dyeing"`, for the whole-order timeline, which interleaves them. */
-  const stepLabels = useMemo(
-    () => new Map(steps.map((step) => [step.id, `${step.seq} · ${step.processNameSnapshot}`])),
-    [steps],
-  );
+
 
   const shortClose = useMutation({
     mutationFn: () => shortCloseJobOrder(orgId!, id!, shortCloseReason),
@@ -851,11 +846,9 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                     above answers "what is happening here"; this answers "what has
                     this order been through" — and the two orders of the same
                     documents are genuinely different readings. */}
-                <ActivityTimeline
+                <ActivityTabs
                   events={activity}
-                  stepLabels={stepLabels}
                   onOpen={openDocument}
-                  empty="Nothing has moved on this order yet. Issue material to the first step, and every challan and receipt across every step will be listed here in the order it happened."
                 />
               </div>
             )}

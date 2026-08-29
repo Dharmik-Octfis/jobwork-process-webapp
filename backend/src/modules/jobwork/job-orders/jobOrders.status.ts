@@ -428,3 +428,196 @@ export async function recomputeJobOrder(
     await tx.jobOrder.update({ where: { id: order.id }, data: { status: next } });
   }
 }
+
+/**
+ * Bulk version of getStepTotals to solve N+1 on the overview page.
+ */
+export async function getAllStepTotals(
+  tx: TenantClient,
+  organizationId: string,
+  stepIds: string[],
+): Promise<Map<string, StepTotals>> {
+  const result = new Map<string, StepTotals>();
+  if (stepIds.length === 0) return result;
+
+  const allIssues = await tx.jobIssue.findMany({
+    where: {
+      organizationId,
+      jobOrderStepId: { in: stepIds },
+      isDeleted: false,
+      status: { not: 'cancelled' },
+    },
+    select: { id: true, jobOrderStepId: true },
+  });
+
+  const allReceipts = await tx.jobReceipt.findMany({
+    where: {
+      organizationId,
+      jobOrderStepId: { in: stepIds },
+      isDeleted: false,
+      status: { not: 'cancelled' },
+    },
+    select: {
+      id: true,
+      jobOrderStepId: true,
+      totalIssuedQty: true,
+      totalReceivedQty: true,
+      totalAcceptedQty: true,
+      totalReworkQty: true,
+      totalScrapQty: true,
+      totalReturnedQty: true,
+    },
+  });
+
+  const issueIds = allIssues.map((i) => i.id);
+  const receiptIds = allReceipts.map((r) => r.id);
+
+  const allLines = issueIds.length > 0 ? await tx.jobIssueLine.findMany({
+    where: { organizationId, jobIssueId: { in: issueIds }, isDeleted: false },
+    select: { qty: true, itemId: true, jobIssueId: true },
+  }) : [];
+
+  const allConsumed = receiptIds.length > 0 ? await tx.stockLedgerEntry.groupBy({
+    by: ['itemId', 'sourceDocId'],
+    where: {
+      organizationId,
+      sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+      sourceDocId: { in: receiptIds },
+      movementType: 'consume',
+    },
+    _sum: { qtyOut: true },
+  }) : [];
+
+  const allOutputs = receiptIds.length > 0 ? await tx.jobReceiptOutput.groupBy({
+    by: ['itemId', 'jobReceiptId'],
+    where: { organizationId, jobReceiptId: { in: receiptIds }, isDeleted: false },
+    _sum: {
+      receivedQty: true,
+      acceptedQty: true,
+      reworkQty: true,
+      scrapQty: true,
+      returnedQty: true,
+    },
+  }) : [];
+
+  const sum = (rows: { [k: string]: unknown }[], key: string) =>
+    rows.reduce((acc, row) => acc.plus(new Prisma.Decimal(String(row[key] ?? 0))), ZERO);
+
+  for (const stepId of stepIds) {
+    const stepIssues = allIssues.filter(i => i.jobOrderStepId === stepId);
+    const stepReceipts = allReceipts.filter(r => r.jobOrderStepId === stepId);
+    const stepIssueIds = new Set(stepIssues.map(i => i.id));
+    const stepReceiptIds = new Set(stepReceipts.map(r => r.id));
+
+    const stepLines = allLines.filter(l => l.jobIssueId && stepIssueIds.has(l.jobIssueId));
+    const stepConsumed = allConsumed.filter(c => c.sourceDocId && stepReceiptIds.has(c.sourceDocId));
+    const stepOutputs = allOutputs.filter(o => stepReceiptIds.has(o.jobReceiptId));
+
+    const flows = new Map<string, ItemFlow>();
+    const of = (itemId: string) => {
+      const existing = flows.get(itemId);
+      if (existing) return existing;
+      const created = { itemId, issuedQty: ZERO, consumedQty: ZERO };
+      flows.set(itemId, created);
+      return created;
+    };
+    for (const line of stepLines) {
+      const flow = of(line.itemId);
+      flow.issuedQty = flow.issuedQty.plus(line.qty);
+    }
+    for (const row of stepConsumed) {
+      const flow = of(row.itemId);
+      flow.consumedQty = flow.consumedQty.plus(row._sum.qtyOut ?? ZERO);
+    }
+    const perItem = [...flows.values()];
+
+    const outFlows = new Map<string, OutputFlow>();
+    const outOf = (itemId: string) => {
+      const existing = outFlows.get(itemId);
+      if (existing) return existing;
+      const created = { itemId, receivedQty: ZERO, acceptedQty: ZERO, reworkQty: ZERO, scrapQty: ZERO, returnedQty: ZERO };
+      outFlows.set(itemId, created);
+      return created;
+    };
+    for (const row of stepOutputs) {
+      const flow = outOf(row.itemId);
+      flow.receivedQty = flow.receivedQty.plus(row._sum.receivedQty ?? ZERO);
+      flow.acceptedQty = flow.acceptedQty.plus(row._sum.acceptedQty ?? ZERO);
+      flow.reworkQty = flow.reworkQty.plus(row._sum.reworkQty ?? ZERO);
+      flow.scrapQty = flow.scrapQty.plus(row._sum.scrapQty ?? ZERO);
+      flow.returnedQty = flow.returnedQty.plus(row._sum.returnedQty ?? ZERO);
+    }
+    const perOutput = [...outFlows.values()];
+
+    result.set(stepId, {
+      issuedQty: perItem.reduce((acc, row) => acc.plus(row.issuedQty), ZERO),
+      consumedQty: perItem.reduce((acc, row) => acc.plus(row.consumedQty), ZERO),
+      receivedQty: sum(stepReceipts, 'totalReceivedQty'),
+      acceptedQty: sum(stepReceipts, 'totalAcceptedQty'),
+      reworkQty: sum(stepReceipts, 'totalReworkQty'),
+      scrapQty: sum(stepReceipts, 'totalScrapQty'),
+      returnedQty: sum(stepReceipts, 'totalReturnedQty'),
+      issueCount: stepIssues.length,
+      receiptCount: stepReceipts.length,
+      perItem,
+      perOutput,
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Bulk version of chainNotReady.
+ */
+export async function getAllChainNotReady(
+  tx: TenantClient,
+  organizationId: string,
+  jobOrderId: string,
+  steps: { id: string; seq: number; processNameSnapshot: string; status: string }[],
+): Promise<Map<string, string | null>> {
+  const result = new Map<string, string | null>();
+  if (steps.length === 0) return result;
+
+  const previousIds = steps.filter(s => s.seq > 1).map(s => {
+    // Find the immediately preceding step
+    const prevs = steps.filter(p => p.seq < s.seq).sort((a, b) => b.seq - a.seq);
+    return prevs[0]?.id;
+  }).filter(Boolean) as string[];
+
+  const returned = previousIds.length > 0 ? await tx.jobReceipt.groupBy({
+    by: ['jobOrderStepId'],
+    where: {
+      organizationId,
+      jobOrderStepId: { in: previousIds },
+      isDeleted: false,
+      status: { not: 'cancelled' },
+    },
+    _sum: { totalReceivedQty: true },
+  }) : [];
+  const returnedByStep = new Map(returned.map(r => [r.jobOrderStepId, r._sum.totalReceivedQty ?? ZERO]));
+
+  for (const step of steps) {
+    if (step.seq <= 1) {
+      result.set(step.id, null);
+      continue;
+    }
+    const prevs = steps.filter(p => p.seq < step.seq).sort((a, b) => b.seq - a.seq);
+    const previous = prevs[0];
+    if (!previous) {
+      result.set(step.id, null);
+      continue;
+    }
+    if (previous.status === 'short_closed') {
+      result.set(step.id, null);
+      continue;
+    }
+    const received = returnedByStep.get(previous.id) ?? ZERO;
+    if (received.greaterThan(0)) {
+      result.set(step.id, null);
+      continue;
+    }
+    result.set(step.id, `Nothing has come back from step ${previous.seq} (${previous.processNameSnapshot}) yet, so there is nothing to send on.`);
+  }
+  return result;
+}

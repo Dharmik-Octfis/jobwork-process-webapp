@@ -842,7 +842,7 @@ function ModuleNavGroup({
               {depth === 0 && <Icon size={16} />}
               <span style={{ fontSize: 13, marginLeft: 4 }}>{module.name}</span>
             </div>
-            
+
             {(isHovered || isActive) && (
               <button
                 onClick={handlePlusClick}

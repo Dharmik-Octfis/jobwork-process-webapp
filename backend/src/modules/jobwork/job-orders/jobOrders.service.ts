@@ -14,7 +14,7 @@ import {
   loadActiveDefinitions,
   validateCustomFields,
 } from '../../settings/customization/custom-fields/customFields.engine.ts';
-import { getBalance, type Ownership } from '../../inventory/stock-ledger/stockLedger.service.ts';
+import { type Ownership } from '../../inventory/stock-ledger/stockLedger.service.ts';
 import {
   assertItemsBelongToOrg,
   assertLocationsBelongToOrg,
@@ -24,8 +24,9 @@ import {
 } from '../jobwork.refs.ts';
 import { runAsDocument, type ProcessorType } from '../jobwork.types.ts';
 import {
-  chainNotReady,
+  getAllChainNotReady,
   getStepTotals,
+  getAllStepTotals,
   recomputeJobOrder,
   recomputeStep,
 } from './jobOrders.status.ts';
@@ -1431,125 +1432,196 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
   // connection held open by the tenant tx (`lib/memberDirectory.ts`).
   const directory = await getMemberDirectory(organizationId);
 
-  return runAsTenant(organizationId, async (tx) => {
-    const order = await tx.jobOrder.findFirst({
-      where: { id, organizationId, isDeleted: false },
-      include: JOB_ORDER_INCLUDE,
-    });
-    if (!order) throw ApiError.notFound('Job order not found');
-
-    const batches = await tx.batch.findMany({
-      where: { organizationId, isDeleted: false, sourceDocId: id },
-      // 🔴 No `batchNumber` (2026-08-14) — internal key, never leaves the server.
-      select: { id: true, supplierBatchRef: true, itemId: true },
-    });
-
-
-
-    const steps = await Promise.all(
-      order.steps.map(async (step) => {
-        const totals = await getStepTotals(tx, organizationId, step.id);
-
-        // The issue button is enabled by AVAILABILITY, not by status: a step can be
-        // ready on paper and have nothing to send. Measured on the PRINCIPAL input
-        // — the first consumed row, which is what the step is fundamentally about.
-        const principalInput = step.inputs[0] ?? null;
-        let availableQty = new Prisma.Decimal(0);
-        if (principalInput) {
-          const balance = await getBalance(tx, {
-            organizationId,
-            itemId: principalInput.itemId,
-            ownership: order.ownership as Ownership,
-          });
-          availableQty = balance.qty;
-        }
-
-        const blockedReason = await chainNotReady(tx, organizationId, order.id, step);
-
-        // 🔴 Issued MINUS CONSUMED, both in the input's unit. Subtracting
-        // `receivedQty` would mix metres and pieces on any step where the item
-        // changes (jobOrders.status.ts).
-        const issuedD = totals.issuedQty;
-        const consumedD = totals.consumedQty;
-        const outstanding = issuedD.minus(consumedD);
-        return {
-          ...step,
-          totals: {
-            issuedQty: totals.issuedQty.toString(),
-            consumedQty: totals.consumedQty.toString(),
-            receivedQty: totals.receivedQty.toString(),
-            acceptedQty: totals.acceptedQty.toString(),
-            reworkQty: totals.reworkQty.toString(),
-            scrapQty: totals.scrapQty.toString(),
-            returnedQty: totals.returnedQty.toString(),
-            outstandingQty: outstanding.toString(),
-            issueCount: totals.issueCount,
-            receiptCount: totals.receiptCount,
-          },
-          /**
-           * 🔴 THE PAGE'S REAL NUMBERS (§5.7 + §6.5). The six totals above are the
-           * principal input's and the primary output's; these are every item's,
-           * each in its own unit, and they are what the Overview renders.
-           *
-           * Both lists include items the PLAN never named — a step can be issued
-           * something nobody listed, and a receipt can return something nobody
-           * expected. Showing only the planned rows would hide exactly the
-           * movements somebody needs to look at.
-           */
-          itemTotals: await buildItemTotals(tx, organizationId, step, totals),
-          availableQty: availableQty.toString(),
-          /**
-           * ⚠️ TEMPORARY — enabled whenever the step has something to issue, NOT
-           * by the ledger.
-           *
-           * It used to require a positive balance, which is the right rule and
-           * will be again. Material In was retired before Purchase Received and
-           * Opening Stock exist, so today there is no way to put stock on the
-           * books at all — and a button that can never light up makes the whole
-           * loop untestable. The Issue dialog creates a zero-valued batch for an
-           * item with no stock and says so on screen (`jobIssues.service.ts`).
-           *
-           * 🔴 Restore `availableQty.greaterThan(0)` the day Purchase Received
-           * lands. Issuing what you do not have is a real defect, not a feature.
-           *
-           * The ONE thing the scaffold does not relax is the chain — see
-           * `blockedReason` below.
-           */
-          canIssue: step.inputs.length > 0 && !blockedReason,
-          /**
-           * 🔴 A STEP FED BY AN EARLIER ONE CANNOT ISSUE UNTIL THAT STEP DELIVERS.
-           *
-           * Step 2 consumes what step 1 produced. If step 1 has returned nothing,
-           * there is physically nothing to send — and the no-stock scaffold would
-           * otherwise happily invent a batch of dyed fabric nobody ever dyed, which
-           * is the one thing it must never do. Raw material can be conjured while
-           * Purchase Received is missing; work in progress cannot.
-           *
-           * Items drawn from stock are unaffected: thread comes from the godown,
-           * not from the operation above.
-           */
-          blockedReason,
-          // Visible once something is out there to come back.
-          canReceive: outstanding.greaterThan(0),
-        };
+  const [order, batches] = await Promise.all([
+    runAsTenant(organizationId, (tx) =>
+      tx.jobOrder.findFirst({
+        where: { id, organizationId, isDeleted: false },
+        include: JOB_ORDER_INCLUDE,
       }),
-    );
+    ),
+    runAsTenant(organizationId, (tx) =>
+      tx.batch.findMany({
+        where: { organizationId, isDeleted: false, sourceDocId: id },
+        // 🔴 No `batchNumber` (2026-08-14) — internal key, never leaves the server.
+        select: { id: true, supplierBatchRef: true, itemId: true },
+      }),
+    ),
+  ]);
 
-    const firstStep = order.steps[0];
-    const firstTotals = firstStep ? await getStepTotals(tx, organizationId, firstStep.id) : null;
+  if (!order) throw ApiError.notFound('Job order not found');
 
+  const stepIds = order.steps.map((s) => s.id);
+  const principalItemIds = [
+    ...new Set(order.steps.map((s) => s.inputs[0]?.itemId).filter(Boolean)),
+  ] as string[];
 
+  const [allTotalsMap, allChainBlockedMap, balances, activity, firstTotals] = await Promise.all([
+    runAsTenant(organizationId, (tx) => getAllStepTotals(tx, organizationId, stepIds)),
+    runAsTenant(organizationId, (tx) =>
+      getAllChainNotReady(
+        tx,
+        organizationId,
+        id,
+        order.steps as { id: string; seq: number; processNameSnapshot: string; status: string }[],
+      ),
+    ),
+    runAsTenant(organizationId, (tx) =>
+      principalItemIds.length > 0
+        ? tx.stockLedgerEntry.groupBy({
+            by: ['itemId'],
+            where: {
+              organizationId,
+              itemId: { in: principalItemIds },
+              ownership: order.ownership as Ownership,
+            },
+            _sum: { qtyIn: true, qtyOut: true },
+          })
+        : Promise.resolve([]),
+    ),
+    runAsTenant(organizationId, (tx) => buildActivity(tx, organizationId, id, directory)),
+    runAsTenant(organizationId, (tx) => {
+      const firstStep = order.steps[0];
+      return firstStep ? getStepTotals(tx, organizationId, firstStep.id) : Promise.resolve(null);
+    }),
+  ]);
 
+  const availableQtyMap = new Map<string, Prisma.Decimal>();
+  for (const row of balances as { itemId: string; _sum: { qtyIn: Prisma.Decimal | null; qtyOut: Prisma.Decimal | null } }[]) {
+    const inD = row._sum.qtyIn ?? new Prisma.Decimal(0);
+    const outD = row._sum.qtyOut ?? new Prisma.Decimal(0);
+    availableQtyMap.set(row.itemId, inD.minus(outD));
+  }
+
+  const allUnplannedIds = new Set<string>();
+  for (const step of order.steps) {
+    const totals = allTotalsMap.get(step.id)!;
+    const planned = new Set([
+      ...step.inputs.map((row) => row.itemId),
+      ...step.outputs.map((row) => row.itemId),
+    ]);
+    for (const flow of totals.perItem) {
+      if (!planned.has(flow.itemId)) allUnplannedIds.add(flow.itemId);
+    }
+    for (const flow of totals.perOutput) {
+      if (!planned.has(flow.itemId)) allUnplannedIds.add(flow.itemId);
+    }
+  }
+
+  const unplannedItems =
+    allUnplannedIds.size > 0
+      ? await runAsTenant(organizationId, (tx) =>
+          tx.item.findMany({
+            where: { id: { in: [...allUnplannedIds] }, organizationId },
+            select: {
+              id: true,
+              name: true,
+              stockingUom: { select: { symbol: true, unitName: true } },
+            },
+          }),
+        )
+      : [];
+
+  const unplannedById = new Map<
+    string,
+    { name: string; stockingUom: { symbol: string | null; unitName: string } | null }
+  >(
+    unplannedItems.map((item) => [
+      item.id,
+      item as { name: string; stockingUom: { symbol: string | null; unitName: string } | null },
+    ]),
+  );
+
+  const steps = order.steps.map((step) => {
+    const totals = allTotalsMap.get(step.id)!;
+
+    // The issue button is enabled by AVAILABILITY, not by status: a step can be
+    // ready on paper and have nothing to send. Measured on the PRINCIPAL input
+    // — the first consumed row, which is what the step is fundamentally about.
+    const principalInput = step.inputs[0] ?? null;
+    let availableQty = new Prisma.Decimal(0);
+    if (principalInput) {
+      availableQty = availableQtyMap.get(principalInput.itemId) ?? new Prisma.Decimal(0);
+    }
+
+    const blockedReason = allChainBlockedMap.get(step.id) ?? null;
+
+    // 🔴 Issued MINUS CONSUMED, both in the input's unit. Subtracting
+    // `receivedQty` would mix metres and pieces on any step where the item
+    // changes (jobOrders.status.ts).
+    const issuedD = totals.issuedQty;
+    const consumedD = totals.consumedQty;
+    const outstanding = issuedD.minus(consumedD);
     return {
-      jobOrder: order,
-      batches,
-      activity: await buildActivity(tx, organizationId, id, directory),
-      summary: {
-        issuedQty: firstTotals ? firstTotals.issuedQty.toString() : '0',
+      ...step,
+      totals: {
+        issuedQty: totals.issuedQty.toString(),
+        consumedQty: totals.consumedQty.toString(),
+        receivedQty: totals.receivedQty.toString(),
+        acceptedQty: totals.acceptedQty.toString(),
+        reworkQty: totals.reworkQty.toString(),
+        scrapQty: totals.scrapQty.toString(),
+        returnedQty: totals.returnedQty.toString(),
+        outstandingQty: outstanding.toString(),
+        issueCount: totals.issueCount,
+        receiptCount: totals.receiptCount,
       },
-      steps,
+      /**
+       * 🔴 THE PAGE'S REAL NUMBERS (§5.7 + §6.5). The six totals above are the
+       * principal input's and the primary output's; these are every item's,
+       * each in its own unit, and they are what the Overview renders.
+       *
+       * Both lists include items the PLAN never named — a step can be issued
+       * something nobody listed, and a receipt can return something nobody
+       * expected. Showing only the planned rows would hide exactly the
+       * movements somebody needs to look at.
+       */
+      itemTotals: buildItemTotals(step, totals, unplannedById),
+      availableQty: availableQty.toString(),
+      /**
+       * ⚠️ TEMPORARY — enabled whenever the step has something to issue, NOT
+       * by the ledger.
+       *
+       * It used to require a positive balance, which is the right rule and
+       * will be again. Material In was retired before Purchase Received and
+       * Opening Stock exist, so today there is no way to put stock on the
+       * books at all — and a button that can never light up makes the whole
+       * loop untestable. The Issue dialog creates a zero-valued batch for an
+       * item with no stock and says so on screen (`jobIssues.service.ts`).
+       *
+       * 🔴 Restore `availableQty.greaterThan(0)` the day Purchase Received
+       * lands. Issuing what you do not have is a real defect, not a feature.
+       *
+       * The ONE thing the scaffold does not relax is the chain — see
+       * `blockedReason` below.
+       */
+      canIssue: step.inputs.length > 0 && !blockedReason,
+      /**
+       * 🔴 A STEP FED BY AN EARLIER ONE CANNOT ISSUE UNTIL THAT STEP DELIVERS.
+       *
+       * Step 2 consumes what step 1 produced. If step 1 has returned nothing,
+       * there is physically nothing to send — and the no-stock scaffold would
+       * otherwise happily invent a batch of dyed fabric nobody ever dyed, which
+       * is the one thing it must never do. Raw material can be conjured while
+       * Purchase Received is missing; work in progress cannot.
+       *
+       * Items drawn from stock are unaffected: thread comes from the godown,
+       * not from the operation above.
+       */
+      blockedReason,
+      // Visible once something is out there to come back.
+      canReceive: outstanding.greaterThan(0),
     };
   });
+
+  return {
+    jobOrder: order,
+    batches,
+    activity,
+    summary: {
+      issuedQty: firstTotals ? firstTotals.issuedQty.toString() : '0',
+    },
+    steps,
+  };
 }
 
 type StepWithRows = Prisma.JobOrderStepGetPayload<{ include: typeof STEP_INCLUDE }>;
@@ -1562,41 +1634,16 @@ type StepWithRows = Prisma.JobOrderStepGetPayload<{ include: typeof STEP_INCLUDE
  * kept either way — a plan nothing has moved against yet is a row of zeroes, and
  * a movement nobody planned is the row most worth seeing.
  */
-async function buildItemTotals(
-  tx: TenantClient,
-  organizationId: string,
+function buildItemTotals(
   step: StepWithRows,
   totals: StepTotals,
+  unplannedById: Map<string, { name: string; stockingUom: { symbol: string | null; unitName: string } | null }>,
 ) {
   const issuedByItem = new Map<string, ItemFlow>(
     totals.perItem.map((row) => [row.itemId, row] as const),
   );
   const receivedByItem = new Map<string, OutputFlow>(
     totals.perOutput.map((row) => [row.itemId, row] as const),
-  );
-
-  // One query for anything moved but never planned, so those rows can still be
-  // named on screen instead of rendering as a bare id.
-  const planned = new Set([
-    ...step.inputs.map((row) => row.itemId),
-    ...step.outputs.map((row) => row.itemId),
-  ]);
-  const unplannedIds = [...new Set([...issuedByItem.keys(), ...receivedByItem.keys()])].filter(
-    (itemId) => !planned.has(itemId),
-  );
-  const unplanned =
-    unplannedIds.length > 0
-      ? await tx.item.findMany({
-          where: { id: { in: unplannedIds }, organizationId },
-          select: {
-            id: true,
-            name: true,
-            stockingUom: { select: { symbol: true, unitName: true } },
-          },
-        })
-      : [];
-  const unplannedById = new Map<string, (typeof unplanned)[number]>(
-    unplanned.map((item) => [item.id, item] as const),
   );
 
   const unitOf = (uom: { symbol: string | null; unitName: string } | null | undefined) =>

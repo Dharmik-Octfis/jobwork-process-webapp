@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { AlertTriangle, PackageCheck, Send, Check } from 'lucide-react';
+import { formatDate } from '../../../lib/formatDate';
 import {
   STEP_STATUS_META,
   formatQty,
@@ -7,9 +9,7 @@ import {
   statusMeta,
   toNumber,
 } from '../jobwork.schemas';
-import { ActivityTimeline } from './ActivityTimeline';
 import type { ActivityEvent, OverviewStep } from './jobOrders.schemas';
-import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 
 interface Props {
   step: OverviewStep;
@@ -72,7 +72,7 @@ export function JobOrderStepDetail({
   onComplete,
   onOpenDocument,
 }: Props) {
-  const trackingLabel = useTrackingLabel();
+
   const meta = statusMeta(STEP_STATUS_META, step.status);
 
 
@@ -266,20 +266,162 @@ export function JobOrderStepDetail({
       </div>
 
       <div style={{ padding: '14px 16px', borderTop: '1px solid #eef0f3', background: '#fcfcfd' }}>
-        <h4 style={{ ...columnLabel, marginBottom: 10 }}>
-          What happened
-          <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0, marginLeft: 6 }}>
-            {step.totals.issueCount} issue{step.totals.issueCount === 1 ? '' : 's'} ·{' '}
-            {step.totals.receiptCount} receipt{step.totals.receiptCount === 1 ? '' : 's'}
-          </span>
-        </h4>
-        <ActivityTimeline
-          events={activity}
-          onOpen={onOpenDocument}
-          empty={`Nothing has moved on this step yet. Every challan out and every receipt back will appear here, with the items and ${trackingLabel.plural.toLowerCase()} each one carried.`}
-        />
+        <ActivityTabs events={activity} onOpen={onOpenDocument} />
       </div>
     </section>
+  );
+}
+
+export function ActivityTabs({ events, onOpen }: { events: ActivityEvent[], onOpen: (event: ActivityEvent) => void }) {
+  const [activeTab, setActiveTab] = useState<'issue' | 'receipt' | null>(null);
+  const issues = events.filter((e) => e.kind === 'issue');
+  const receipts = events.filter((e) => e.kind === 'receipt');
+
+  const activeEvents = activeTab === 'issue' ? issues : activeTab === 'receipt' ? receipts : [];
+
+  const handleToggle = () => {
+    if (activeTab) {
+      setActiveTab(null);
+    } else {
+      setActiveTab(issues.length > 0 ? 'issue' : 'receipt');
+    }
+  };
+
+  return (
+    <div style={{ border: '1px solid #eef0f3', borderRadius: 6, background: '#fff' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'stretch', borderBottom: activeTab ? '1px solid #eef0f3' : '1px solid transparent' }}>
+        <div style={{ display: 'flex', alignItems: 'stretch' }}>
+          <button
+            type="button"
+            onClick={() => setActiveTab(activeTab === 'issue' ? null : 'issue')}
+            style={{
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === 'issue' ? '3px solid #2563eb' : '3px solid transparent',
+              fontSize: 14,
+              fontWeight: 600,
+              color: activeTab === 'issue' ? '#1e293b' : '#64748b',
+              cursor: 'pointer',
+              padding: '12px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              transition: 'all 0.2s',
+            }}
+          >
+            Issues
+            <span style={{ fontSize: 12, background: '#f1f5f9', color: '#3b82f6', padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>
+              {issues.length}
+            </span>
+          </button>
+          
+          <div style={{ width: 2, background: '#e2e8f0', margin: '12px 0', borderRadius: 2 }} />
+
+          <button
+            type="button"
+            onClick={() => setActiveTab(activeTab === 'receipt' ? null : 'receipt')}
+            style={{
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === 'receipt' ? '3px solid #2563eb' : '3px solid transparent',
+              fontSize: 14,
+              fontWeight: 600,
+              color: activeTab === 'receipt' ? '#1e293b' : '#64748b',
+              cursor: 'pointer',
+              padding: '12px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              transition: 'all 0.2s',
+            }}
+          >
+            Receives
+            <span style={{ fontSize: 12, background: '#f1f5f9', color: '#3b82f6', padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>
+              {receipts.length}
+            </span>
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleToggle}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: '0 16px',
+            cursor: 'pointer',
+            color: '#64748b',
+            display: 'flex',
+            alignItems: 'center',
+          }}
+        >
+          <svg
+            width="10"
+            height="6"
+            viewBox="0 0 10 6"
+            fill="none"
+            style={{
+              transform: activeTab ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.2s'
+            }}
+          >
+            <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
+      </div>
+      
+      {activeTab && (
+        <div style={{ padding: '0 16px 16px 16px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 12 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left', fontSize: 12, color: '#64748b', paddingBottom: 8, fontWeight: 500, borderBottom: '1px solid #eef0f3' }}>
+                  Date
+                </th>
+                <th style={{ textAlign: 'left', fontSize: 12, color: '#64748b', paddingBottom: 8, fontWeight: 500, borderBottom: '1px solid #eef0f3' }}>
+                  {activeTab === 'issue' ? 'Issue Number' : 'Receive Number'}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeEvents.map((event) => (
+                <tr key={event.id}>
+                  <td style={{ padding: '12px 0', fontSize: 13, color: '#334155', borderBottom: '1px solid #f8fafc' }}>
+                    {formatDate(event.date)}
+                  </td>
+                  <td style={{ padding: '12px 0', fontSize: 13, borderBottom: '1px solid #f8fafc' }}>
+                    <button
+                      type="button"
+                      onClick={() => onOpen(event)}
+                      style={{
+                        color: '#2563eb',
+                        background: 'none',
+                        border: 'none',
+                        padding: 0,
+                        cursor: 'pointer',
+                        font: 'inherit',
+                        fontWeight: 500,
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
+                      onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+                    >
+                      {event.number}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {activeEvents.length === 0 && (
+                <tr>
+                  <td colSpan={2} style={{ padding: '24px 0', textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>
+                    No {activeTab === 'issue' ? 'issues' : 'receives'} found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
 
