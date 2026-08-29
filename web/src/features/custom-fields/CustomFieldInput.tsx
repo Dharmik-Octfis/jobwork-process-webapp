@@ -1,5 +1,6 @@
 import type { CustomFieldDefinition } from './customFields.schemas';
 import { DateInput } from '../../components/ui/DateInput';
+import { DateTimeInput } from '../../components/ui/DateTimeInput';
 import { Select } from '../../components/ui/Select';
 
 const inputStyle: React.CSSProperties = {
@@ -86,28 +87,33 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
           style={inputStyle}
           containerStyle={{ maxWidth: 440 }}
           portal={portal}
+          defaultToCurrent={true}
         />
       );
       break;
 
     case 'datetime':
       control = (
-        <input
-          type="datetime-local"
+        <DateInput
+          type="datetime"
           value={isoToLocalInput(value)}
-          onChange={(e) => onChange(localInputToIso(e.target.value))}
+          onChange={(val) => onChange(localInputToIso(val))}
           style={inputStyle}
+          containerStyle={{ maxWidth: 440 }}
+          portal={portal}
+          defaultToCurrent={true}
         />
       );
       break;
 
     case 'time':
       control = (
-        <input
+        <DateTimeInput
           type="time"
           value={(value as string) ?? ''}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(val) => onChange(val)}
           style={inputStyle}
+          defaultToCurrent={true}
         />
       );
       break;

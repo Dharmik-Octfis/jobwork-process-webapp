@@ -30,17 +30,21 @@ export interface OpeningStockLocationRow {
   batches: OpeningStockBatchRow[];
 }
 
-const createEmptyBatch = (defaultSellingPrice = '', defaultMrp = ''): OpeningStockBatchRow => ({
-  id: crypto.randomUUID(),
-  batchReference: '',
-  manufacturerBatch: '',
-  manufacturedDate: '',
-  expiryDate: '',
-  sellingPrice: defaultSellingPrice,
-  mrp: defaultMrp,
-  quantityIn: '',
-  isExisting: false,
-});
+const createEmptyBatch = (defaultSellingPrice = '', defaultMrp = ''): OpeningStockBatchRow => {
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  return {
+    id: crypto.randomUUID(),
+    batchReference: '',
+    manufacturerBatch: '',
+    manufacturedDate: todayStr,
+    expiryDate: todayStr,
+    sellingPrice: defaultSellingPrice,
+    mrp: defaultMrp,
+    quantityIn: '',
+    isExisting: false,
+  };
+};
 
 const createEmptyLocation = (): OpeningStockLocationRow => ({
   id: crypto.randomUUID(),

@@ -265,7 +265,6 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
    * the field) rather than to offer the dyer's own shed as somewhere to receive
    * into.
    */
-  const OFF_PREMISES = ['processor', 'in_transit', 'customer_site'];
   const knownLocations = useMemo(() => {
     const byId = new Map<string, { id: string; name: string; type: string }>();
     for (const l of locations) byId.set(l.id, { id: l.id, name: l.name, type: l.type });
@@ -274,7 +273,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
     }
     return [...byId.values()];
   }, [locations, stockLocations]);
-  const godowns = knownLocations.filter((l) => !OFF_PREMISES.includes(l.type));
+  const godowns = knownLocations;
 
   const { data: itemsPage } = useQuery({
     queryKey: ['items', orgId, 'receive'],

@@ -56,10 +56,13 @@ export function DateInput({
   className,
   containerStyle,
   portal = false,
+  defaultToCurrent = true,
+  type = 'date',
 }: {
-  /** `yyyy-MM-dd`, or `''`. Same as the native input it replaces. */
+  /** `yyyy-MM-dd` or `yyyy-MM-ddTHH:mm`, or `''`. */
   value: string;
   onChange: (value: string) => void;
+  type?: 'date' | 'datetime';
   id?: string;
   disabled?: boolean;
   hasError?: boolean;
@@ -87,6 +90,8 @@ export function DateInput({
    * sibling of the overlay, and it takes Escape off the dialog.
    */
   portal?: boolean;
+  /** If true, automatically sets the current date when empty */
+  defaultToCurrent?: boolean;
 }) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -96,8 +101,24 @@ export function DateInput({
   const autoId = useId();
   const inputId = id ?? `${autoId}-date`;
 
+  const [timeState, setTimeState] = useState(() => parseTime(value));
+
+  // Apply defaultToCurrent logic during initialization if value is empty
+  useEffect(() => {
+    if (defaultToCurrent && !value) {
+      const today = new Date();
+      if (type === 'datetime') {
+        const hh = String(today.getHours()).padStart(2, '0');
+        const mm = String(today.getMinutes()).padStart(2, '0');
+        onChange(`${format(today, ISO)}T${hh}:${mm}`);
+      } else {
+        onChange(format(today, ISO));
+      }
+    }
+  }, [defaultToCurrent, value, onChange, type]);
+
   const [isOpen, setIsOpen] = useState(false);
-  const [text, setText] = useState(() => displayFrom(value));
+  const [text, setText] = useState(() => displayFrom(value, type));
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(fromIso(value) ?? new Date()));
   const [activeDay, setActiveDay] = useState(() => fromIso(value) ?? new Date());
   const [position, setPosition] = useState<React.CSSProperties>({ visibility: 'hidden' });
@@ -122,7 +143,8 @@ export function DateInput({
   const [lastValue, setLastValue] = useState(value);
   if (value !== lastValue) {
     setLastValue(value);
-    setText(displayFrom(value));
+    setText(displayFrom(value, type));
+    setTimeState(parseTime(value));
   }
 
   const open = () => {
@@ -140,8 +162,24 @@ export function DateInput({
 
   const commit = (day: Date) => {
     if (isBlocked(day, minDate, maxDate)) return;
+    if (type === 'datetime') {
+      setActiveDay(day);
+      return;
+    }
     onChange(format(day, ISO));
     setText(format(day, DISPLAY));
+    close(true);
+  };
+
+  const applyDatetime = () => {
+    if (isBlocked(activeDay, minDate, maxDate)) return;
+    let h = parseInt(timeState.hour, 10);
+    if (timeState.ampm === 'PM' && h < 12) h += 12;
+    if (timeState.ampm === 'AM' && h === 12) h = 0;
+    const hh = String(h).padStart(2, '0');
+    const isoTime = `${format(activeDay, ISO)}T${hh}:${timeState.minute}`;
+    onChange(isoTime);
+    setText(displayFrom(isoTime, 'datetime'));
     close(true);
   };
 
@@ -294,10 +332,10 @@ export function DateInput({
   };
 
   const gridStart = startOfWeek(startOfMonth(viewMonth), { weekStartsOn: 0 });
-  // Always six weeks, so switching month never changes the popup's height and
-  // re-runs the flip-up measurement mid-interaction.
   const days = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
   const today = new Date();
+
+  const POPUP_WIDTH = type === 'datetime' ? 420 : CALENDAR_WIDTH;
 
   const calendar = (
     <div
@@ -312,131 +350,169 @@ export function DateInput({
               position: 'absolute',
               top: 'calc(100% + 4px)',
               left: 0,
-              width: CALENDAR_WIDTH,
+              width: POPUP_WIDTH,
               zIndex: 70,
             }),
-        padding: 10,
+        display: 'flex',
+        flexDirection: 'row',
         background: '#fff',
         border: '1px solid #e2e8f0',
         borderRadius: 6,
         boxShadow: '0 10px 30px rgba(15, 23, 42, 0.18)',
+        overflow: 'hidden',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8 }}>
-        <NavButton label="Previous year" onClick={() => moveTo(addYears(activeDay, -1))}>
-          <ChevronLeft size={13} />
-          <ChevronLeft size={13} style={{ marginLeft: -9 }} />
-        </NavButton>
-        <NavButton label="Previous month" onClick={() => moveTo(addMonths(activeDay, -1))}>
-          <ChevronLeft size={14} />
-        </NavButton>
-        <div
-          aria-live="polite"
-          style={{
-            flex: 1,
-            textAlign: 'center',
-            fontSize: 12.5,
-            fontWeight: 600,
-            color: '#111',
-          }}
-        >
-          {format(viewMonth, 'MMMM yyyy')}
-        </div>
-        <NavButton label="Next month" onClick={() => moveTo(addMonths(activeDay, 1))}>
-          <ChevronRight size={14} />
-        </NavButton>
-        <NavButton label="Next year" onClick={() => moveTo(addYears(activeDay, 1))}>
-          <ChevronRight size={13} />
-          <ChevronRight size={13} style={{ marginLeft: -9 }} />
-        </NavButton>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
-        {WEEKDAYS.map((day) => (
+      <div style={{ padding: 10, width: CALENDAR_WIDTH, flexShrink: 0, boxSizing: 'border-box' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8 }}>
+          <NavButton label="Previous year" onClick={() => moveTo(addYears(activeDay, -1))}>
+            <ChevronLeft size={13} />
+            <ChevronLeft size={13} style={{ marginLeft: -9 }} />
+          </NavButton>
+          <NavButton label="Previous month" onClick={() => moveTo(addMonths(activeDay, -1))}>
+            <ChevronLeft size={14} />
+          </NavButton>
           <div
-            key={day}
-            aria-hidden="true"
+            aria-live="polite"
             style={{
-              padding: '2px 0',
+              flex: 1,
               textAlign: 'center',
-              fontSize: 10.5,
+              fontSize: 12.5,
               fontWeight: 600,
-              color: '#94a3b8',
+              color: '#111',
             }}
           >
-            {day}
+            {format(viewMonth, 'MMMM yyyy')}
           </div>
-        ))}
-        {days.map((day) => {
-          const iso = format(day, ISO);
-          const isActive = iso === format(activeDay, ISO);
-          const isSelected = Boolean(selected) && iso === format(selected!, ISO);
-          const isOutside = day.getMonth() !== viewMonth.getMonth();
-          const blocked = isBlocked(day, minDate, maxDate);
-          return (
-            <button
-              key={iso}
-              ref={isActive ? activeDayRef : undefined}
-              type="button"
-              // One tab stop for the whole grid — arrows move within it.
-              tabIndex={isActive ? 0 : -1}
-              // `aria-disabled`, not `disabled`: a disabled button cannot take
-              // focus, so an arrow key landing on an out-of-range day would strand
-              // the grid's only tab stop and the calendar would stop responding.
-              // `commit` refuses it either way.
-              aria-disabled={blocked || undefined}
-              aria-pressed={isSelected}
-              aria-current={iso === format(today, ISO) ? 'date' : undefined}
-              aria-label={format(day, 'd MMMM yyyy')}
-              onClick={() => commit(day)}
+          <NavButton label="Next month" onClick={() => moveTo(addMonths(activeDay, 1))}>
+            <ChevronRight size={14} />
+          </NavButton>
+          <NavButton label="Next year" onClick={() => moveTo(addYears(activeDay, 1))}>
+            <ChevronRight size={13} />
+            <ChevronRight size={13} style={{ marginLeft: -9 }} />
+          </NavButton>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
+          {WEEKDAYS.map((day) => (
+            <div
+              key={day}
+              aria-hidden="true"
               style={{
-                height: 28,
-                border: '1px solid transparent',
-                borderRadius: 4,
-                background: isSelected ? '#2563eb' : 'transparent',
-                fontFamily: 'inherit',
-                fontSize: 12,
-                fontWeight: isSelected ? 600 : 400,
-                color: blocked ? '#cbd5e1' : isSelected ? '#fff' : isOutside ? '#cbd5e1' : '#111',
-                cursor: blocked ? 'not-allowed' : 'pointer',
-                // Today reads as an outline, so it never competes with the filled
-                // selection for "which one is chosen".
-                ...(iso === format(today, ISO) && !isSelected
-                  ? { borderColor: '#2563eb', fontWeight: 600 }
-                  : {}),
+                padding: '2px 0',
+                textAlign: 'center',
+                fontSize: 10.5,
+                fontWeight: 600,
+                color: '#94a3b8',
               }}
             >
-              {day.getDate()}
-            </button>
-          );
-        })}
-      </div>
+              {day}
+            </div>
+          ))}
+          {days.map((day) => {
+            const iso = format(day, ISO);
+            const isActive = iso === format(activeDay, ISO);
+            const isSelected = Boolean(selected) && iso === format(selected!, ISO);
+            const isOutside = day.getMonth() !== viewMonth.getMonth();
+            const blocked = isBlocked(day, minDate, maxDate);
+            return (
+              <button
+                key={iso}
+                ref={isActive ? activeDayRef : undefined}
+                type="button"
+                tabIndex={isActive ? 0 : -1}
+                aria-disabled={blocked || undefined}
+                aria-pressed={isSelected}
+                aria-current={iso === format(today, ISO) ? 'date' : undefined}
+                aria-label={format(day, 'd MMMM yyyy')}
+                onClick={() => commit(day)}
+                style={{
+                  height: 28,
+                  border: '1px solid transparent',
+                  borderRadius: 4,
+                  background: isSelected ? '#2563eb' : 'transparent',
+                  fontFamily: 'inherit',
+                  fontSize: 12,
+                  fontWeight: isSelected ? 600 : 400,
+                  color: blocked ? '#cbd5e1' : isSelected ? '#fff' : isOutside ? '#cbd5e1' : '#111',
+                  cursor: blocked ? 'not-allowed' : 'pointer',
+                  ...(iso === format(today, ISO) && !isSelected
+                    ? { borderColor: '#2563eb', fontWeight: 600 }
+                    : {}),
+                }}
+              >
+                {day.getDate()}
+              </button>
+            );
+          })}
+        </div>
 
-      <div
-        style={{
-          display: 'flex',
-          gap: 8,
-          marginTop: 8,
-          paddingTop: 8,
-          borderTop: '1px solid #eef0f3',
-        }}
-      >
-        <FooterButton
-          onClick={() => commit(clamp(new Date(), minDate, maxDate))}
-          disabled={isBlocked(new Date(), minDate, maxDate)}
-        >
-          Today
-        </FooterButton>
-        <FooterButton
-          onClick={() => {
-            onChange('');
-            setText('');
-            close(true);
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            marginTop: 8,
+            paddingTop: 8,
+            borderTop: '1px solid #eef0f3',
           }}
         >
-          Clear
-        </FooterButton>
+          <FooterButton
+            onClick={() => commit(clamp(new Date(), minDate, maxDate))}
+            disabled={isBlocked(new Date(), minDate, maxDate)}
+          >
+            Today
+          </FooterButton>
+          <FooterButton
+            onClick={() => {
+              onChange('');
+              setText('');
+              close(true);
+            }}
+          >
+            Clear
+          </FooterButton>
+        </div>
       </div>
+
+      {type === 'datetime' && (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'column', width: 168, borderLeft: '1px solid #e2e8f0', background: '#fafafa' }}>
+          <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+            <TimeColumn
+              options={Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'))}
+              selected={timeState.hour}
+              onSelect={(val) => setTimeState({ ...timeState, hour: val })}
+            />
+            <TimeColumn
+              options={Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'))}
+              selected={timeState.minute}
+              onSelect={(val) => setTimeState({ ...timeState, minute: val })}
+            />
+            <TimeColumn
+              options={['AM', 'PM']}
+              selected={timeState.ampm}
+              onSelect={(val) => setTimeState({ ...timeState, ampm: val })}
+            />
+          </div>
+          <div style={{ padding: '8px', borderTop: '1px solid #e2e8f0', background: '#fff' }}>
+            <button
+              type="button"
+              onClick={applyDatetime}
+              style={{
+                width: '100%',
+                padding: '6px 0',
+                borderRadius: 4,
+                border: 'none',
+                background: '#2563eb',
+                color: '#fff',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Apply Time
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -461,7 +537,7 @@ export function DateInput({
         // sits showing `21-0` as though it meant something.
         onBlur={() => {
           setFocused(false);
-          setText((current) => (isoFrom(current) === value ? current : displayFrom(value)));
+          setText((current) => (isoFrom(current) === value ? current : displayFrom(value, type)));
         }}
         style={{
           width: '100%',
@@ -597,9 +673,27 @@ function fromIso(iso: string | undefined): Date | null {
   return isValid(parsed) ? parsed : null;
 }
 
-function displayFrom(iso: string): string {
+function parseTime(iso: string | undefined) {
+  if (!iso || !iso.includes('T')) return { hour: '12', minute: '00', ampm: 'AM' };
+  const timePart = iso.split('T')[1];
+  if (!timePart) return { hour: '12', minute: '00', ampm: 'AM' };
+  const [h, m] = timePart.split(':');
+  let hh = parseInt(h || '12', 10);
+  const ampm = hh >= 12 ? 'PM' : 'AM';
+  hh = hh % 12;
+  if (hh === 0) hh = 12;
+  return { hour: String(hh).padStart(2, '0'), minute: m || '00', ampm };
+}
+
+function displayFrom(iso: string, type: 'date' | 'datetime' = 'date'): string {
   const date = fromIso(iso);
-  return date ? format(date, DISPLAY) : '';
+  if (!date) return '';
+  let dateStr = format(date, DISPLAY);
+  if (type === 'datetime' && iso.includes('T')) {
+    const time = parseTime(iso);
+    dateStr += ` ${time.hour}:${time.minute} ${time.ampm}`;
+  }
+  return dateStr;
 }
 
 function isoFrom(display: string): string {
@@ -619,4 +713,50 @@ function clamp(day: Date, min: Date | null, max: Date | null): Date {
   if (min && format(day, ISO) < format(min, ISO)) return min;
   if (max && format(day, ISO) > format(max, ISO)) return max;
   return day;
+}
+
+function TimeColumn({ options, selected, onSelect }: { options: string[], selected: string, onSelect: (val: string) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Scroll selected item into view on mount
+    const selectedEl = ref.current?.querySelector('[data-selected="true"]');
+    if (selectedEl) {
+      selectedEl.scrollIntoView({ block: 'center', behavior: 'instant' });
+    }
+  }, []); // only on mount
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        flex: 1,
+        overflowY: 'auto',
+        borderRight: '1px solid #eef0f3',
+        padding: '4px 0',
+      }}
+    >
+      {options.map(opt => {
+        const isSelected = opt === selected;
+        return (
+          <div
+            key={opt}
+            data-selected={isSelected}
+            onClick={() => onSelect(opt)}
+            style={{
+              padding: '6px 0',
+              textAlign: 'center',
+              fontSize: 13,
+              cursor: 'pointer',
+              background: isSelected ? '#2563eb' : 'transparent',
+              color: isSelected ? '#fff' : '#334155',
+              fontWeight: isSelected ? 600 : 400,
+            }}
+          >
+            {opt}
+          </div>
+        )
+      })}
+    </div>
+  )
 }
