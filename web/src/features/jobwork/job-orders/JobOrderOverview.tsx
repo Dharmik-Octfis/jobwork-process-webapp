@@ -37,7 +37,13 @@ import { AddStepsDialog } from './AddStepsDialog';
 import { ActivityTimeline } from './ActivityTimeline';
 import { JobOrderFlow } from './JobOrderFlow';
 import { JobOrderStepDetail } from './JobOrderStepDetail';
-import type { ActivityEvent, JobOrderOverviewData, OverviewStep } from './jobOrders.schemas';
+import type {
+  ActivityEvent,
+  JobOrderOverviewData,
+  OverviewStep,
+  JobOrder,
+  JobOrdersPage,
+} from './jobOrders.schemas';
 
 const metaItem: React.CSSProperties = { fontSize: 12, color: '#64748b' };
 
@@ -465,7 +471,16 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
     mutationFn: () => shortCloseJobOrder(orgId!, id!, shortCloseReason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] });
-      queryClient.invalidateQueries({ queryKey: ['job-orders', orgId] });
+      queryClient.setQueriesData({ queryKey: ['job-orders', orgId], type: 'active' }, (old: JobOrdersPage | undefined) => {
+        if (!old || !old.results) return old;
+        return {
+          ...old,
+          results: old.results.map((item: JobOrder) =>
+            item.id === id ? { ...item, status: 'short_closed' } : item
+          ),
+        };
+      });
+      queryClient.invalidateQueries({ queryKey: ['job-orders', orgId], type: 'inactive' });
       setShortCloseOpen(false);
       setShortCloseReason('');
     },
@@ -475,6 +490,16 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
     mutationFn: (stepId: string) => completeJobOrderStep(orgId!, id!, stepId),
     onSuccess: (updated) => {
       queryClient.setQueryData(['job-order-overview', orgId, id], updated);
+      queryClient.setQueriesData({ queryKey: ['job-orders', orgId], type: 'active' }, (old: JobOrdersPage | undefined) => {
+        if (!old || !old.results) return old;
+        return {
+          ...old,
+          results: old.results.map((item: JobOrder) =>
+            item.id === id ? { ...item, status: updated.jobOrder.status } : item
+          ),
+        };
+      });
+      queryClient.invalidateQueries({ queryKey: ['job-orders', orgId], type: 'inactive' });
       setCompleteStepTarget(null);
     },
   });
@@ -890,7 +915,16 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
             // The list too: appending to a completed order reopens it as
             // in_progress, and the row would otherwise keep saying "Completed".
             queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] });
-            queryClient.invalidateQueries({ queryKey: ['job-orders', orgId] });
+            queryClient.setQueriesData({ queryKey: ['job-orders', orgId], type: 'active' }, (old: JobOrdersPage | undefined) => {
+              if (!old || !old.results) return old;
+              return {
+                ...old,
+                results: old.results.map((item: JobOrder) =>
+                  item.id === id ? { ...item, status: 'in_progress' } : item
+                ),
+              };
+            });
+            queryClient.invalidateQueries({ queryKey: ['job-orders', orgId], type: 'inactive' });
           }}
         />
       )}

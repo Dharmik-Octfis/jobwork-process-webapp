@@ -5,6 +5,7 @@ import {
   type UpdateVendorData,
   type VendorAddress,
   type VendorContactPerson,
+  type VendorsPage,
 } from './vendors.schemas';
 import { useParams, useNavigate } from 'react-router-dom';
 import { X, Edit, ChevronDown, ChevronUp, Pencil, Trash, User, Settings, Plus } from 'lucide-react';
@@ -97,9 +98,18 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
       const dataToUpdate = { ...rest, status: newStatus };
       return updateVendor({ orgId: orgId!, id: vendorId, data: dataToUpdate as UpdateVendorData });
     },
-    onSuccess: () => {
+    onSuccess: (_, newStatus) => {
+      queryClient.setQueriesData({ queryKey: ['vendors', orgId], type: 'active' }, (old: VendorsPage | undefined) => {
+        if (!old || !old.results) return old;
+        return {
+          ...old,
+          results: old.results.map((item: Vendor) =>
+            item.id === vendorId ? { ...item, status: newStatus } : item
+          ),
+        };
+      });
+      queryClient.invalidateQueries({ queryKey: ['vendors', orgId], type: 'inactive' });
       queryClient.invalidateQueries({ queryKey: ['vendor', orgId, vendorId] });
-      queryClient.invalidateQueries({ queryKey: ['vendors', orgId] });
     },
   });
 

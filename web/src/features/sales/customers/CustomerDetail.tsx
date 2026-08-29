@@ -7,6 +7,7 @@ import {
 } from './customers.api';
 import {
   type Customer,
+  type CustomersPage,
   type UpdateCustomerData,
   type CustomerAddress,
   type CustomerContactPerson,
@@ -107,9 +108,18 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
         data: dataToUpdate as UpdateCustomerData,
       });
     },
-    onSuccess: () => {
+    onSuccess: (_, newStatus) => {
+      queryClient.setQueriesData({ queryKey: ['customers', orgId], type: 'active' }, (old: CustomersPage | undefined) => {
+        if (!old || !old.results) return old;
+        return {
+          ...old,
+          results: old.results.map((item: Customer) =>
+            item.id === customerId ? { ...item, status: newStatus } : item
+          ),
+        };
+      });
+      queryClient.invalidateQueries({ queryKey: ['customers', orgId], type: 'inactive' });
       queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] });
-      queryClient.invalidateQueries({ queryKey: ['customers', orgId] });
     },
   });
 

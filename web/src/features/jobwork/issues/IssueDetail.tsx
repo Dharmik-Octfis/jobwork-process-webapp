@@ -9,6 +9,7 @@ import { organizationsApi } from '../../organizations/organizations.api';
 import { ISSUE_STATUS_META, formatQty, sharedUnit, statusMeta, toNumber } from '../jobwork.schemas';
 import { cancelJobIssue, fetchJobIssueById } from './jobIssues.api';
 import { printChallan } from './printChallan';
+import type { JobIssue, JobIssuesPage } from './jobIssues.schemas';
 import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 
 interface Props {
@@ -57,7 +58,16 @@ export function IssueDetail({ issueId, onClose }: Props) {
   const cancelMutation = useMutation({
     mutationFn: () => cancelJobIssue(orgId!, issueId, cancelReason),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
+      queryClient.setQueriesData({ queryKey: ['job-issues', orgId], type: 'active' }, (old: JobIssuesPage | undefined) => {
+        if (!old || !old.results) return old;
+        return {
+          ...old,
+          results: old.results.map((item: JobIssue) =>
+            item.id === issueId ? { ...item, status: 'cancelled' } : item
+          ),
+        };
+      });
+      queryClient.invalidateQueries({ queryKey: ['job-issues', orgId], type: 'inactive' });
       queryClient.invalidateQueries({ queryKey: ['job-issue', orgId, issueId] });
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
       setCancelOpen(false);

@@ -9,6 +9,7 @@ import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
 import { formatQty, toNumber } from '../jobwork.schemas';
 import { cancelJobReceipt, fetchJobReceiptById } from './jobReceipts.api';
+import type { JobReceipt, JobReceiptsPage } from './jobReceipts.schemas';
 import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 
 interface Props {
@@ -108,7 +109,16 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
   const cancelMutation = useMutation({
     mutationFn: () => cancelJobReceipt(orgId!, receiptId, cancelReason),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['job-receipts', orgId] });
+      queryClient.setQueriesData({ queryKey: ['job-receipts', orgId], type: 'active' }, (old: JobReceiptsPage | undefined) => {
+        if (!old || !old.results) return old;
+        return {
+          ...old,
+          results: old.results.map((item: JobReceipt) =>
+            item.id === receiptId ? { ...item, status: 'cancelled' } : item
+          ),
+        };
+      });
+      queryClient.invalidateQueries({ queryKey: ['job-receipts', orgId], type: 'inactive' });
       queryClient.invalidateQueries({ queryKey: ['job-receipt', orgId, receiptId] });
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
       setCancelOpen(false);
