@@ -253,10 +253,6 @@ export const jobOrderOverviewSchema = z.object({
   ),
   summary: z.object({
     issuedQty: z.string(),
-    inHandQty: z.string(),
-    inHandValue: z.string(),
-    wastagePct: z.string().nullable(),
-    costPerUnit: z.string().nullable(),
   }),
   steps: z.array(overviewStepSchema),
 });

@@ -24,7 +24,6 @@ import {
   formatQty,
   qtyWithUnit,
   statusMeta,
-  stepCharge,
   toNumber,
 } from '../jobwork.schemas';
 import {
@@ -548,25 +547,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   ).length;
   const donePct = steps.length > 0 ? Math.round((doneSteps / steps.length) * 100) : 0;
 
-  /**
-   * What the whole order costs to have made — the per-step charges added up.
-   *
-   * Money is the one figure on this page that CAN be summed across steps: every
-   * step bills in the same currency, unlike the quantities, which are metres and
-   * pieces and cones and must never be added (§6.5). `null` when no step has a
-   * rate at all, which is different from a total of zero.
-   */
-  const charges = steps
-    .map((step) =>
-      stepCharge({
-        rate: step.rate,
-        rateBasis: step.rateBasis,
-        issuedQty: step.totals.issuedQty,
-        receivedQty: step.totals.receivedQty,
-      }),
-    )
-    .filter((amount): amount is number => amount !== null);
-  const totalCharge = charges.length > 0 ? charges.reduce((sum, n) => sum + n, 0) : null;
+
 
   // Late only while there is still work to do — a finished order is not overdue,
   // it is finished.
@@ -763,27 +744,6 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
 
           <div style={{ display: 'flex', gap: 26, flexWrap: 'wrap' }}>
             <Tile label="Issued" value={formatQty(summary.issuedQty)} unit={unit} />
-            <Tile
-              label="In hand"
-              value={formatQty(summary.inHandQty)}
-              note={
-                summary.costPerUnit === null ? null : `${formatQty(summary.costPerUnit)} per unit`
-              }
-            />
-            <Tile
-              label="Wastage"
-              value={summary.wastagePct === null ? '—' : `${summary.wastagePct}%`}
-              note="across closed steps"
-            />
-            <Tile
-              label="Charges"
-              value={totalCharge === null ? '—' : formatQty(totalCharge)}
-              note={
-                totalCharge === null
-                  ? 'no rates agreed'
-                  : `${charges.length} of ${steps.length} steps rated`
-              }
-            />
           </div>
         </div>
 

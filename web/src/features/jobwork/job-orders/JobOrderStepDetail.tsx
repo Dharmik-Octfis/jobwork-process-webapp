@@ -1,12 +1,10 @@
 import { AlertTriangle, PackageCheck, Send, Check } from 'lucide-react';
-import { rateBasisLabel } from '../processes/processes.schemas';
 import {
   STEP_STATUS_META,
   formatQty,
   processorTypeLabel,
   qtyWithUnit,
   statusMeta,
-  stepCharge,
   toNumber,
 } from '../jobwork.schemas';
 import { ActivityTimeline } from './ActivityTimeline';
@@ -76,47 +74,16 @@ export function JobOrderStepDetail({
 }: Props) {
   const trackingLabel = useTrackingLabel();
   const meta = statusMeta(STEP_STATUS_META, step.status);
-  const issued = toNumber(step.totals.issuedQty);
-  const received = toNumber(step.totals.receivedQty);
-  const returned = toNumber(step.totals.returnedQty);
-  const outstanding = toNumber(step.totals.outstandingQty);
-  const tolerance = step.tolerancePct === null ? null : toNumber(step.tolerancePct);
+
 
   // The principal input's and primary output's units, read off the two lists —
   // the four scalars that used to mirror them went with Migration B (2026-08-12).
-  const issueUom = step.inputs[0]?.uom;
-  const issueUnit = issueUom ? (issueUom.symbol ?? issueUom.unitName) : '';
+
   const primaryOutput = step.outputs.find((row) => row.isPrimary) ?? step.outputs[0];
   const receiveUom = primaryOutput?.uom;
   const receiveUnit = receiveUom ? (receiveUom.symbol ?? receiveUom.unitName) : '';
 
-  /**
-   * Wastage is shown only when it means something. Two conditions:
-   *
-   *   - the step has closed. One still out at the dyer has issued everything and
-   *     received nothing, which reads as 100% and says nothing at all.
-   *   - 🔴 the units match. `issued − received` across a step that turns metres
-   *     into pieces is not a quantity, and printing a number there would invite
-   *     somebody to act on it.
-   */
   const settled = step.status === 'completed' || step.status === 'short_closed';
-  const comparable =
-    step.itemTotals.inputs.length <= 1 &&
-    step.itemTotals.outputs.length <= 1 &&
-    (!primaryOutput?.uomId || primaryOutput.uomId === step.inputs[0]?.uomId);
-  const lost = issued - received - returned;
-  const wastagePct = settled && comparable && issued > 0 ? (lost / issued) * 100 : null;
-  const overTolerance = wastagePct !== null && tolerance !== null ? wastagePct > tolerance : false;
-
-  // 🔴 The SAME helper the header's Charges tile sums, so the step and the order
-  // can never disagree about what this step costs.
-  const rate = step.rate === null ? null : toNumber(step.rate);
-  const amount = stepCharge({
-    rate: step.rate,
-    rateBasis: step.rateBasis,
-    issuedQty: step.totals.issuedQty,
-    receivedQty: step.totals.receivedQty,
-  });
 
   const reworkPending = toNumber(step.totals.reworkQty) > 0;
 
@@ -295,40 +262,7 @@ export function JobOrderStepDetail({
           </div>
         </div>
 
-        {/* Three facts, on one line, in the order they are asked about: what is
-            still out there, how much was lost, what it costs. */}
-        <dl
-          style={{
-            display: 'flex',
-            gap: 24,
-            flexWrap: 'wrap',
-            margin: '14px 0 0 0',
-            paddingTop: 12,
-            borderTop: '1px solid #f1f5f9',
-          }}
-        >
-          <Fact
-            term="Still out"
-            value={outstanding > 0 ? qtyWithUnit(outstanding, issueUnit) : '—'}
-            tone={outstanding > 0 ? '#1d4ed8' : '#111'}
-          />
-          <Fact
-            term="Wastage"
-            value={wastagePct === null ? '—' : `${wastagePct.toFixed(2)}%`}
-            suffix={tolerance === null ? null : `/ ${formatQty(tolerance)}%`}
-            tone={overTolerance ? '#b91c1c' : '#111'}
-            hint={
-              comparable
-                ? undefined
-                : 'Not comparable — this step moves more than one item, or returns a different unit from the one it issues.'
-            }
-          />
-          <Fact
-            term="Charge"
-            value={amount === null ? '—' : formatQty(amount)}
-            suffix={rate === null ? null : `${formatQty(rate)} · ${rateBasisLabel(step.rateBasis)}`}
-          />
-        </dl>
+
       </div>
 
       <div style={{ padding: '14px 16px', borderTop: '1px solid #eef0f3', background: '#fcfcfd' }}>
@@ -417,30 +351,4 @@ function MovementList({
   );
 }
 
-function Fact({
-  term,
-  value,
-  suffix,
-  tone,
-  hint,
-}: {
-  term: string;
-  value: string;
-  suffix?: string | null;
-  tone?: string;
-  hint?: string;
-}) {
-  return (
-    <div title={hint}>
-      <dt style={{ fontSize: 11, color: '#94a3b8' }}>{term}</dt>
-      <dd style={{ margin: 0, fontSize: 13, color: tone ?? '#111', fontWeight: 500 }}>
-        {value}
-        {suffix && (
-          <span style={{ display: 'block', fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>
-            {suffix}
-          </span>
-        )}
-      </dd>
-    </div>
-  );
-}
+

@@ -1444,17 +1444,7 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
       select: { id: true, supplierBatchRef: true, itemId: true },
     });
 
-    // In hand = this order's own batches, wherever they physically are — including
-    // at a processor, because goods at a processor are still our stock (§5.4).
-    let inHandQty = new Prisma.Decimal(0);
-    let inHandValue = new Prisma.Decimal(0);
-    const batchBalances = await Promise.all(
-      batches.map((batch) => getBalance(tx, { organizationId, batchId: batch.id })),
-    );
-    for (const balance of batchBalances) {
-      inHandQty = inHandQty.plus(balance.qty);
-      inHandValue = inHandValue.plus(balance.value);
-    }
+
 
     const steps = await Promise.all(
       order.steps.map(async (step) => {
@@ -1548,37 +1538,7 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
     const firstStep = order.steps[0];
     const firstTotals = firstStep ? await getStepTotals(tx, organizationId, firstStep.id) : null;
 
-    /**
-     * Wastage across CLOSED steps only, and only where the units allow it.
-     *
-     * Two exclusions, each for its own reason:
-     *
-     *   - A step still out at the dyer has issued everything and received
-     *     nothing, so including it would report 100% wastage on every order the
-     *     moment it starts.
-     *
-     *   - 🔴 A step where the OUTPUT UNIT DIFFERS FROM THE INPUT UNIT is skipped
-     *     entirely. "How much was lost" is `issued − received`, and 4,800 metres
-     *     minus 2,850 pieces is not a quantity — it is the conversion the whole
-     *     domain refuses to make (§5.1). A number here would be worse than no
-     *     number, because somebody would act on it.
-     */
-    let wastageIssued = new Prisma.Decimal(0);
-    let wastageLost = new Prisma.Decimal(0);
-    for (const step of steps) {
-      if (step.status !== 'completed' && step.status !== 'short_closed') continue;
-      // 🔴 Read off the LISTS since the scalars went (2026-08-12): the principal
-      // input's unit against the primary output's. Comparing nulls would make
-      // every unit-changing step pass this test and report nonsense wastage.
-      const inputUomId = step.inputs[0]?.uomId ?? null;
-      const outputUomId = (step.outputs.find((row) => row.isPrimary) ?? step.outputs[0])?.uomId;
-      if (outputUomId && outputUomId !== inputUomId) continue;
-      const issued = new Prisma.Decimal(step.totals.issuedQty);
-      const received = new Prisma.Decimal(step.totals.receivedQty);
-      const returned = new Prisma.Decimal(step.totals.returnedQty);
-      wastageIssued = wastageIssued.plus(issued);
-      wastageLost = wastageLost.plus(issued.minus(received).minus(returned));
-    }
+
 
     return {
       jobOrder: order,
@@ -1586,16 +1546,6 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
       activity: await buildActivity(tx, organizationId, id, directory),
       summary: {
         issuedQty: firstTotals ? firstTotals.issuedQty.toString() : '0',
-        inHandQty: inHandQty.toString(),
-        inHandValue: inHandValue.toString(),
-        wastagePct: wastageIssued.greaterThan(0)
-          ? wastageLost.dividedBy(wastageIssued).times(100).toDecimalPlaces(2).toString()
-          : null,
-        // Cost per unit of what is actually still here. Derived every time; there
-        // is no stored cost column and there will not be one (§9.1).
-        costPerUnit: inHandQty.greaterThan(0)
-          ? inHandValue.dividedBy(inHandQty).toDecimalPlaces(4).toString()
-          : null,
       },
       steps,
     };
