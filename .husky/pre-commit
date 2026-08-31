@@ -9,4 +9,15 @@ if git rev-parse --verify --quiet MERGE_HEAD >/dev/null 2>&1; then
   exit 0
 fi
 
-npx --no-install lint-staged
+# `if` so husky's `sh -e` cannot abort before the guard below: lint-staged writes MERGE_HEAD back
+# from its buffer on the way out of a FAILED run (gitWorkflow.js restoreOriginalState -> reset
+# --hard, then restoreMergeStatus), which is after every hook that could have caught it.
+if npx --no-install lint-staged; then
+  lint_status=0
+else
+  lint_status=$?
+fi
+
+sh scripts/clear-stale-merge-head.sh
+
+exit $lint_status

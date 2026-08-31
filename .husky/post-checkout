@@ -1,0 +1,3 @@
+# A stale MERGE_HEAD survives every merge-path hook when a non-git client re-creates it later, so
+# self-heal at the next branch switch instead of leaving the Commit button stuck on "Continue".
+sh scripts/clear-stale-merge-head.sh
