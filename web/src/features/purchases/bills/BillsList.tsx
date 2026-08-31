@@ -28,8 +28,8 @@ function renderBillCell(po: Bill, key: string, _paymentTerms: PaymentTerm[] = []
   if (key === 'vendor') {
     return po.vendor?.contactName || '-';
   }
-  if (key === 'totalAmount') {
-    return `₹${Number(po.totalAmount || po.totalAmount || 0).toFixed(2)}`;
+  if (key === 'totalAmount' || key === 'total') {
+    return `₹${Number(po.totalAmount || 0).toFixed(2)}`;
   }
   const value = (po as Record<string, unknown>)[key];
   if (value === null || value === undefined || value === '') return '-';
