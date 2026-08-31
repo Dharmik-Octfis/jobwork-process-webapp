@@ -573,7 +573,7 @@ export async function getAllStepTotals(
 export async function getAllChainNotReady(
   tx: TenantClient,
   organizationId: string,
-  jobOrderId: string,
+  _jobOrderId: string,
   steps: { id: string; seq: number; processNameSnapshot: string; status: string }[],
 ): Promise<Map<string, string | null>> {
   const result = new Map<string, string | null>();
