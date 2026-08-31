@@ -124,8 +124,28 @@ apiClient.interceptors.response.use(
       const message = response.data.message;
       const method = response.config.method?.toLowerCase();
       // Show toast if it's a mutation and the message is not just the generic 'Success'
-      if (['post', 'put', 'patch', 'delete'].includes(method || '') && message && message !== 'Success') {
-        toast.success(message);
+      if (
+        ['post', 'put', 'patch', 'delete'].includes(method || '') &&
+        message &&
+        message !== 'Success'
+      ) {
+        /**
+         * 🔴 A 2xx does not always mean everything worked. Some endpoints do their
+         * main job and then attempt a side effect they refuse to fail the request
+         * over — sending an email being the one that exists today: the invitation
+         * is real and must not be thrown away because a mail provider is down.
+         *
+         * Those endpoints say so in the payload, and this is where it has to be
+         * honoured, because this interceptor is what the user actually sees. A
+         * green tick over "the email could not be sent" is worse than no toast:
+         * it is the app stating the opposite of what happened, which is how a mail
+         * outage went unnoticed until someone asked why nobody replied.
+         */
+        const payload = response.data.data as { emailDelivered?: boolean } | null;
+        const partial = payload?.emailDelivered === false;
+
+        if (partial) toast(message, { icon: '⚠️', duration: 8000 });
+        else toast.success(message);
       }
       return { ...response, data: response.data.data };
     }

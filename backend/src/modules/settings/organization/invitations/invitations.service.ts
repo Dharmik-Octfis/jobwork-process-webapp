@@ -1,4 +1,5 @@
 import { randomBytes, createHash } from 'node:crypto';
+import { inspect } from 'node:util';
 import { prisma, runAsTenant } from '../../../../db/prisma.ts';
 import { ApiError } from '../../../../lib/apiError.ts';
 import { env } from '../../../../config/env.ts';
@@ -8,6 +9,7 @@ import { composeFullName, invalidateMemberDirectory } from '../../../../lib/memb
 import { issueTokens, formatPublicUser } from '../../../auth/auth.service.ts';
 import type { CreateInvitationInput, AcceptInvitationInput } from './invitations.schemas.ts';
 import type {
+  CreateInvitationResult,
   PublicInvitation,
   InvitationLookupResult,
   AcceptInvitationResult,
@@ -214,7 +216,7 @@ export async function createInvitation(
   inviterId: string,
   organizationId: string,
   input: CreateInvitationInput,
-): Promise<PublicInvitation> {
+): Promise<CreateInvitationResult> {
   // Authorization is the route's job now (`requirePermission('member:create')`).
   await assertInvitableTemplate(organizationId, input.permissionTemplateId);
   if (input.roleId) await assertInvitableRole(organizationId, input.roleId);
@@ -296,6 +298,8 @@ export async function createInvitation(
   });
 
   const inviteLink = `${env.appUrl}/invite/accept?token=${rawToken}`;
+  let emailDelivered = true;
+
   try {
     await sendInvitationEmail({
       to: invite.email,
@@ -303,12 +307,32 @@ export async function createInvitation(
       organizationName: invite.organization.name,
     });
   } catch (e) {
-    // Log, but do not fail the request; the user can trigger a retry via the
-    // dashboard or re-sending the invite.
-    console.error('Failed to send invitation email', e);
+    /**
+     * 🔴 Swallowed on purpose — but REPORTED, which it was not until 2026-08-31.
+     *
+     * Keeping the row is right: the invitation is valid, `@@unique([organizationId,
+     * email])` means re-inviting would 409, and a provider blip should not destroy
+     * work the admin just did. What was wrong is that the caller could not tell a
+     * delivered invitation from an undelivered one, so the UI said "Invitation
+     * sent" either way.
+     *
+     * That is how a billing problem — the ZeptoMail account had run out of credit,
+     * `TM_5001 / LE_102` — presented as a mystery for as long as it did: every
+     * invitation, every signup OTP and every password reset failed silently, and
+     * the only evidence was this `console.error` in a log nobody was tailing.
+     *
+     * The error is logged with its provider payload, because "failed to send" on
+     * its own is what made this take a reproduction to diagnose rather than a
+     * glance at the logs.
+     */
+    emailDelivered = false;
+    // `inspect` with a depth, not the default: the provider nests the useful part
+    // (`error.details[0].message` — "Credit exhausted") two levels down, and
+    // console's default depth of 2 renders it as `[Array]`.
+    console.error(`Failed to send invitation email to ${invite.email}:`, inspect(e, { depth: 5 }));
   }
 
-  return toPublicInvitation(invite);
+  return { invitation: toPublicInvitation(invite), emailDelivered };
 }
 
 /** Pending invitations for an org. Gated by `member:read` on the route. */
@@ -749,6 +773,35 @@ export async function acceptInvitation(
   }
 
   // ── Case B: anonymous acceptor ─────────────────────────────────────────────
+
+  /**
+   * 🔴 There is no anonymous accept once SSO is on — this is the FIFTH way a local
+   * password could be created, and the cutover missed it.
+   *
+   * `auth.routes.ts` unmounts `/signup`, `/login`, `/forgot-password` and
+   * `/reset-password` precisely so that a password cannot be minted or used while
+   * the identity provider is the way in. This endpoint sat outside that guard and
+   * did the same thing: hand it a valid invite token and it created a user with a
+   * `passwordHash` and signed them straight in — an account the provider knows
+   * nothing about, cannot disable, and which survives the central one being
+   * deactivated. Same failure shape as a route with no `requirePermission`, and
+   * just as quiet: nothing was broken, so nothing complained.
+   *
+   * 🔴 It is a refusal, not a redirect to a local signup, and the path it refuses
+   * to is already built. The invitee signs in through the provider; the SSO
+   * callback's `provisionOrRefuse` (`sso.service.ts`) looks for exactly this
+   * pending invitation, creates the local user WITHOUT a password, and `returnTo`
+   * brings them back here as Case A. Nothing new is needed — this branch was
+   * duplicating, badly, work that path already does properly.
+   *
+   * Checked BEFORE the account lookup on purpose: under SSO the answer is the same
+   * either way, and asking first would let this endpoint tell an anonymous caller
+   * whether a given address is registered.
+   */
+  if (env.sso.enabled) {
+    throw new ApiError(401, 'Sign in to accept this invitation.', { code: 'SIGN_IN_REQUIRED' });
+  }
+
   const existingUser = await prisma.user.findUnique({
     where: { email: invite.email },
     select: { id: true },

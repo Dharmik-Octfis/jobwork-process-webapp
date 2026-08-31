@@ -32,18 +32,20 @@
     "Adding a service: add an entry here, give every target in targets.json its own",
     "services.<name>.envFile, and add its npm scripts to the root package.json.",
     "",
-    "🔴 `accounts` is wired end to end — accounts/, its app-config.base.json, the",
-    "build:accounts script and `npm run deploy:<target>:accounts` all exist — but it has",
-    "NEVER BEEN DEPLOYED, and two things are still missing. (1) Neither .env.<target>",
-    "file exists: only accounts/.env.production.example is committed, so a deploy stops",
-    "at the env-file check before it builds or uploads anything. (2) The AppSail itself",
-    "must already exist in the target's Catalyst project — production has no `appsail`",
-    "override, so the name is `octfis-accounts`; if that AppSail is absent the CLI drops",
-    "into its interactive create flow mid-deploy. Its `requiredEnv` is the minimum the",
-    "design fixes (docs/SSO_AND_IDENTITY.md §14: DATABASE_URL because all state lives in",
-    "our Postgres, OIDC_ISSUER because the issuer is baked into every token and cannot",
-    "change later). Signing keys are NOT here — §7.3 keeps them in the signing_keys",
-    "table, not an env var. Grow the list as the service grows."
+    "🔴 `accounts` IS DEPLOYED TO PRODUCTION (2026-08-31) as `octfis-accounts`, behind",
+    "accounts.octfis.com. STAGING IS NOT: accounts/.env.staging's OIDC_ISSUER is still a",
+    "guessed hostname flagged in that file, and the issuer is baked into every token it",
+    "ever signs — confirm it in the console before the first staging sign-in.",
+    "",
+    "🔴 DEPLOY ORDER, when SSO config changes: ACCOUNTS FIRST, then api. The client",
+    "registry and the CSP form-action origins are read once when accounts BOOTS, and it",
+    "is the api deploy that flips SSO_ENABLED on — which unmounts password login. Deploy",
+    "them the other way round and production has neither way in until accounts catches up.",
+    "",
+    "Its `requiredEnv` is the minimum the design fixes (docs/SSO_AND_IDENTITY.md §14:",
+    "DATABASE_URL because all state lives in our Postgres, OIDC_ISSUER because the issuer",
+    "is baked into every token and cannot change later). Signing keys are NOT here — §7.3",
+    "keeps them in the signing_keys table, not an env var. Grow the list as it grows."
   ],
   "api": {
     "source": "backend",
@@ -67,6 +69,6 @@
     "appConfigOut": "accounts/app-config.json",
     "localEnv": "accounts/.env",
     "build": ["build:accounts"],
-    "requiredEnv": ["DATABASE_URL", "OIDC_ISSUER"]
+    "requiredEnv": ["DATABASE_URL", "OIDC_ISSUER", "DEFAULT_APP_SIGNIN_URL"]
   }
 }

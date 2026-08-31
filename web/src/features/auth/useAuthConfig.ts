@@ -55,24 +55,16 @@ export function useAuthConfig() {
  * `returnTo` is passed so a deep link survives the round trip; the server rejects
  * anything that is not a same-app path, because an absolute one would make this an
  * open redirect.
+ *
+ * `email` becomes the provider's `login_hint`, and is only ever set when we already
+ * know who is arriving — today, an invitee following their link. It prefills the
+ * provider's sign-in and signup fields so someone with no account yet registers the
+ * address they were actually invited at; registering a different one gets them
+ * signed in and then refused. It is a default in an editable field, nothing more.
  */
-export function startSsoLogin(returnTo?: string): void {
+export function startSsoLogin(returnTo?: string, email?: string): void {
   const url = new URL(`${window.location.origin}/api/auth/sso/login`);
   if (returnTo) url.searchParams.set('returnTo', returnTo);
+  if (email) url.searchParams.set('email', email);
   window.location.assign(url.href);
-}
-
-/**
- * Send the browser to the identity provider to create an account.
- *
- * 🔴 Via our own API, not a link straight to accounts. The issuer URL stays
- * server-side — the browser is told where to go one hop at a time — so
- * `/auth/config` never has to publish the shape of the estate to an
- * unauthenticated caller.
- *
- * There is no local signup once SSO is on: an account in jobwork is granted by
- * invitation (§9.3), never self-created here.
- */
-export function startSsoSignup(): void {
-  window.location.assign(`${window.location.origin}/api/auth/sso/signup`);
 }

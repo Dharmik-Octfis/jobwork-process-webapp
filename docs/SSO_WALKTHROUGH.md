@@ -271,7 +271,27 @@ Location: http://localhost:3100/auth
             &code_challenge_method=S256
 ```
 
-#### What is deliberately _not_ asked for
+#### One optional extra: `login_hint`
+
+If jobwork already knows which email address is arriving, it adds one more parameter:
+
+```
+&login_hint=james.walker%40example.com
+```
+
+accounts uses it to fill in the email box on the sign-in page, and passes it on to
+"Create Account" as `/signup?email=…`.
+
+This is only ever set for someone following an **invitation link**. jobwork's sign-in page
+reads the `?email=` the invitation put there and passes it along. It matters because an
+invitation is addressed to one exact address: if the invitee registers a different one,
+everything appears to work — account created, email verified, signed in — and then step 8
+refuses them, and we cannot explain why without revealing who is invited where. Filling the
+box in removes the chance to get it wrong.
+
+🔴 **A hint, not a fact.** It comes from a query string, so it is whatever the browser sent.
+It fills a box the user can edit and decides nothing. Entitlement is still checked at step 8
+against the address accounts says it **verified**.
 
 ```ts
 scope: 'openid email profile',    // and NOT offline_access
@@ -1037,8 +1057,10 @@ recorded on the session at step 9.
 > | fell past 2, refused by 3 | email not verified at accounts — so branch 2's gate never opened, and branch 3 refused on the same claim | verify the address        |
 > | branch 3                  | no pending invitation                                                                                    | have an admin invite them |
 >
-> And a fourth outcome that is **not** a refusal: signing in works, but there is no membership,
-> so step 10 lands them on `/no-access`. Authenticated, entitled to the app, in no organization.
+> And a fourth outcome that is **not** a refusal: signing in works, but there is no membership.
+> Authenticated, entitled to the app, in no organization. Step 10 lands them on their `returnTo`
+> when they came from an invitation link — which is the usual way this happens — and otherwise
+> on `/organizations` and its empty state.
 
 ---
 
@@ -1150,33 +1172,49 @@ the browser again — the SPA does.
 Its two inputs come from opposite ends of the flow:
 
 ```ts
-landingPathFor(user.id, flow.returnTo);
-//             ↑ from step 8      ↑ from the cookie written at step 2
+landingPathFor(flow.returnTo);
+//             ↑ from the cookie written at step 2
 ```
 
-**Reads (jobwork DB):** `memberships`, filtered `isDeleted: false` **and**
-`organization.isDeleted: false` — membership of a deleted org is not membership.
-
-#### The ladder, in the order the code actually tests it
+**Reads:** nothing. This step touches no database at all.
 
 ```ts
-if (memberships.length === 0) return '/no-access';                       // 1
-if (returnTo)                 return returnTo;                           // 2
-if (memberships.length === 1) return `/organizations/${…}`;              // 3
-return '/organizations';                                                 // 4
+return returnTo ?? '/';
 ```
 
-| #   | Situation                | Lands on                      |
-| --- | ------------------------ | ----------------------------- |
-| 1   | **No membership at all** | `/no-access`                  |
-| 2   | `returnTo` was given     | that path                     |
-| 3   | Exactly one organization | `/organizations/b41f7a90-…`   |
-| 4   | Several organizations    | `/organizations` (the picker) |
+| Situation            | Lands on                                          |
+| -------------------- | ------------------------------------------------- |
+| `returnTo` was given | that path                                         |
+| anything else        | `/` — the app's `OrgRedirect` takes it from there |
 
-The order is the point: **`/no-access` is tested first**, so a deep link cannot talk its way
-past having no membership. Reverse rules 1 and 2 and a `returnTo` would drop an unentitled
-user straight into an org page, where every request then 403s and the app looks broken rather
-than closed.
+🔴 **This was rewritten twice on 2026-08-31, both times because it was deciding something the
+app decides better. Do not put the ladder back.**
+
+It first answered `/no-access` for a member of nothing, tested _before_ `returnTo`, on the
+reasoning that a deep link must not talk its way past having no membership. Two things were
+wrong with that. **`/no-access` was never built** — it is not in `web/src/app/router.tsx`, so
+the one case with no obvious landing place ended a _successful_ sign-in on the app's catch-all,
+a dead redirect that reads as the sign-in itself failing. And testing it first broke the single
+flow that produces a member of nothing: an invitee arrives with
+`returnTo=/invite/accept?token=…`, and that rule threw it away, so the invitation they clicked
+could never be accepted.
+
+The replacement — `returnTo`, else one org, else `/organizations` — lasted a few hours, because
+it produced **two different homes for the same account**. jobwork's own sign-in button passes
+`returnTo=/`, which reaches `OrgRedirect` and reopens the organization that browser last used.
+Arriving from `accounts.octfis.com` carries no `returnTo`, ran the ladder, and dropped a
+multi-org user on `/organizations` — a bare picker that reads as a broken page when you
+expected the app. Same credentials, different destination depending on which URL you typed.
+
+The server cannot win that comparison: the last-used organization lives in `localStorage`, so
+`OrgRedirect` will always know more than this function does. Hand it the decision and there is
+only one answer to be right or wrong. The `memberships` query is gone from the sign-in path
+with it.
+
+What the very first rule protected against survives, and is smaller than it looks: a stale deep
+link can drop an unentitled user on an org page whose requests 403. They are authenticated and
+not entitled either way; the app shows its ordinary error instead of a friendlier page. A
+working invitation flow is worth more than a nicer message on a link that should not exist.
 
 #### Why this step looks like it trusts `returnTo` — it was checked at step 2
 
@@ -1390,20 +1428,51 @@ apps a person ever opened.
 > which mints a new local session. §6.5 is **layer 1**: jobwork renewing a session it already
 > has, every 15 minutes, without accounts being involved at all (§3).
 
+### 6.1b Someone types `accounts.octfis.com` straight into the address bar
+
+§4 starts at jobwork's login screen, but people also open the identity provider directly. A
+bare visit to `/` is answered with one redirect:
+
+```
+GET https://accounts.octfis.com/
+  → 302 https://jobwork.octfis.com/api/auth/sso/login
+```
+
+That is step 1 again, so the rest of the walkthrough continues unchanged: already signed in
+here → straight into jobwork; not signed in → the accounts sign-in page.
+
+🔴 **accounts cannot serve a sign-in form at `/`, and this is why.** A session is only ever
+created by finishing an interaction, and only `/authorize` starts one. A form on the root page
+would check a password and then have nowhere to put the result. Sending the visitor to an app
+makes the app start a real authorization request, which comes straight back here.
+
+The target is configuration, not code: `DEFAULT_APP_SIGNIN_URL`, the **full** sign-in URL of
+the default app, so accounts knows nothing about any app's route shape. It is required — an
+unset value would leave a dead root on the domain people type, which reads as an outage.
+
 ### 6.2 Creating an account
 
-There is **no signup form in jobwork** once SSO is on. "Create an account" is a redirect:
+There is **no signup form in jobwork** once SSO is on, and since 2026-08-31 **no signup link
+either**. The sign-in screen is one button, `Access Jobwork`, and nothing beside it.
 
 ```
-click  →  GET :3000/api/auth/sso/signup  →  302  →  :3100/signup
+:5173/login  →  "Access Jobwork"  →  :3000/api/auth/sso/login  →  :3100  →  "Create Account"
 ```
 
-#### Why a server redirect and not a link the SPA builds
+Accounts are created at the identity provider, and its own sign-in page is where that link
+lives. jobwork publishing a second one bought nothing and cost two things: a route
+(`GET /api/auth/sso/signup`) that existed only to redirect, and a door that skipped the step
+deciding whether the person gets in at all — jobwork is invite-only
+(`provisionOrRefuse`), so anyone arriving through it was refused after registering.
 
-For the SPA to link straight to `:3100/signup`, it would have to _know_ `:3100` — which means
-step 0 would have to publish the issuer URL to an unauthenticated caller. The redirect keeps
-that server-side: the browser is **told** where to go, one hop at a time, and never handed a
-map of the estate.
+`/signup` in the SPA still exists for the SSO-off rollback; with SSO on it redirects to
+`/login`, carrying `next` so an invitee still lands back on their invitation.
+
+#### Why the issuer URL still never reaches the browser from us
+
+The SPA never needed to know `:3100`: it sends the browser to its **own** `/api/auth/sso/login`,
+and the redirect to accounts is composed server-side. Step 0 still publishes only whether SSO
+is on, never a map of the estate.
 
 ```ts
 const url = new URL('/signup', config.serverMetadata().issuer); // composed, not discovered
@@ -1426,9 +1495,28 @@ into jobwork are two separate things, and this does only the first.
 > form was gone; the door was not. Under SSO the four password routes — `signup`, `login`,
 > `forgot-password`, `reset-password` — are now **never mounted**. The enforcement is the
 > router, not the markup.
+>
+> 🔴 **And the same lesson had to be learned twice.** A week later
+> `POST /invitations/:token/accept` turned out to do the identical thing from another module:
+> its anonymous branch created a user with a `passwordHash` and signed them in. Unmounting
+> four routes in `auth.routes.ts` had felt like finishing the job, because that file is where
+> passwords live — but the question is not "which auth routes are mounted", it is **"where can
+> a `passwordHash` be written"**, and the answer to that is a `grep`, not a file. It now
+> refuses with `401 SIGN_IN_REQUIRED`; `invitations.sso.test.ts` pins it.
 
 Signing up at accounts creates an identity, nothing more. It does **not** grant jobwork
 access — that still needs an invitation (§8, step 8 branch 3).
+
+**How an invitee actually gets in, end to end.** Every hop below already existed; the only
+change was deleting the shortcut that skipped them:
+
+```
+invite email → /invite/accept?token=…  →  not signed in  →  /login?next=/invite/accept?token=…
+             →  "Access Jobwork"  →  accounts  →  "Create Account"  →  verify email  →  sign in
+             →  jobwork callback: provisionOrRefuse finds THIS pending invitation,
+                creates the local user with NO password
+             →  returnTo lands back on /invite/accept  →  Case A accepts it  →  membership
+```
 
 ### 6.3 Signing out
 
@@ -1700,7 +1788,7 @@ memberships and permissions — which is exactly the coupling the whole design e
 | No link, **unverified** email matches an existing user | ❌ 403                                                 |
 | No link, no match, pending invitation                  | ✅ in — user created, still needs to accept the invite |
 | No link, no match, no invitation                       | ❌ 403 _"Ask your administrator to invite you."_       |
-| Valid identity, no membership anywhere                 | ✅ signed in, lands on `/no-access`                    |
+| Valid identity, no membership anywhere                 | ✅ signed in, lands on `/` → `OrgRedirect`             |
 
 ---
 
@@ -1744,7 +1832,7 @@ Three facts explain the whole shape:
 | 7b   | `GET /jwks`                    | jobwork → accounts _(no browser)_ | Fetch accounts' public keys to verify the ID token's signature. Cached, so this is not usually a live call.                                                                                               | step 8                   |
 | 8    | _(no request — jobwork DB)_    | jobwork → its own DB              | **Who is this locally?** Link by identity id → else by verified email → else create from a pending invitation → else 403. §8 has the full table.                                                          | step 9                   |
 | 9    | _(no request — jobwork DB)_    | jobwork → its own DB              | From here it is an ordinary jobwork login: write `refresh_tokens`, set the `refreshToken` cookie. OIDC is finished and never runs again.                                                                  | step 10                  |
-| 10   | _(no request)_                 | jobwork → browser                 | Decide where to land — the `returnTo` deep link, an org, or `/no-access`.                                                                                                                                 | `302` → `:5173`          |
+| 10   | _(no request)_                 | jobwork → browser                 | Decide where to land — the `returnTo` deep link, or `/` and let `OrgRedirect` choose.                                                                                                                     | `302` → `:5173`          |
 | 11   | `POST /api/auth/refresh-token` | web SPA → jobwork                 | The page just hard-reloaded from a redirect, so the SPA holds **no access token in memory**. It does what it does after any reload.                                                                       | signed in                |
 
 Steps 8–10 make no HTTP call at all — that is why the URL list has a gap there, not because
@@ -1755,7 +1843,6 @@ something is missing.
 | Flow                | What is called                          | From → To                         | Why                                                                                                                      |
 | ------------------- | --------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | §6.1 returning user | _same steps 0–2, then_ `GET /auth`      | browser → accounts                | The `_session` cookie is presented, so steps 4–5 are skipped entirely. No form, no password.                             |
-| §6.2 signup         | `GET /api/auth/sso/signup`              | browser → jobwork                 | One-hop redirect out, so the issuer URL is never published to an unauthenticated caller.                                 |
 | §6.3 logout         | `GET /api/auth/sso/logout`              | browser → jobwork                 | Kill the local session **first**, then send the browser to accounts to end the SSO session too.                          |
 | §6.4 back-channel   | `POST /api/auth/sso/backchannel-logout` | accounts → jobwork _(no browser)_ | The reverse direction, and the only one: accounts phones each app to say "that session is over". No user is present.     |
 | §6.4 the poll       | `GET /api/auth/session`                 | web SPA → jobwork, every 15 s     | The revoke above only reaches the database. This is how the open tab finds out, instead of waiting out its access token. |
@@ -2140,8 +2227,9 @@ Authentication says _who you are_; this table is most of _may you be here at all
 }
 ```
 
-**Read at step 8.** Note SSO does **not** auto-accept it — signing in creates the user; they
-still land on `/no-access` until the invitation is accepted and a membership exists.
+**Read at step 8.** Note SSO does **not** auto-accept it — signing in creates the user, and the
+`returnTo` carried from the invitation link lands them back on `/invite/accept`, where accepting
+is what creates the membership.
 
 #### `memberships` — what "in" actually means
 
@@ -2193,13 +2281,31 @@ The `sso_flow` cookie is missing. Either more than 10 minutes passed on the logi
 the cookie was blocked. If it happens on _every_ attempt, check `SameSite` — `Strict` drops
 the cookie on the way back from accounts and every login fails.
 
+**No email arrives — invitation, signup OTP, or password reset.**
+🔴 **Check the mail provider's balance first, not the code.** On 2026-08-31 every one of these
+failed for hours with no visible symptom: ZeptoMail answered
+`TM_5001 / LE_102 "Credit exhausted"`, both services caught it, and the UI said "Invitation
+sent". All three flows share ONE ZeptoMail token, so when it runs dry they stop together —
+which also means "signup OTP never arrives" and "invitations never arrive" are one incident,
+not two.
+
+Both swallows are deliberate and stay: an invitation must survive a provider outage, and
+`accounts` must not let a mail failure tell an attacker which addresses are registered. What
+changed is that they now REPORT. `createInvitation` returns `emailDelivered`, the toast says
+"Invitation created, but the email could not be sent", and the log line carries the provider's
+own payload (`inspect(e, { depth: 5 })` — the useful part is nested two levels down and the
+default depth renders it as `[Array]`).
+
+To confirm in ten seconds, call the provider directly with the deployed token and template key
+and print the error. A rejection here is an account problem; a success means look at egress.
+
 **403 "You don't have access to this app."**
 Working as designed. There is no pending invitation for that email, _or_ the address is not
 verified at accounts. Both are required.
 
-**Signed in, but landed on `/no-access`.**
+**Signed in, but landed on `/organizations` with nothing in it.**
 Authentication worked; entitlement did not. The user has no membership. Invite them, and have
-them accept it.
+them open the invitation link — accepting it is what creates one.
 
 **🔴 The `form-action` trap — read this before touching the CSP.**
 Signing in was blocked outright by `form-action 'self'`, and it took three attempts to find.

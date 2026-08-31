@@ -187,23 +187,31 @@ export async function linkOrCreateLocalUser(claims: IdTokenClaims) {
 }
 
 /**
- * Where to send the browser after a successful sign-in — §9.4, and the only place
- * tenancy appears in the login path.
+ * Where to send the browser after a successful sign-in — §9.4.
  *
- * 🔴 Never auto-create an organization here. A user with no membership has
- * authenticated but is not entitled to anything yet, and inventing a tenant to give
- * them somewhere to land would hand every new identity its own empty company.
+ * A deep link if the user was heading somewhere specific, otherwise the app's own
+ * root, which is `OrgRedirect`.
+ *
+ * 🔴 This deliberately does NOT pick an organization, and it used to. Two versions
+ * of "where is home" cannot both be right, and this one was always the worse of the
+ * two: `OrgRedirect` remembers the organization this browser last used, and the
+ * server cannot — that lives in `localStorage`. So signing in from jobwork's own
+ * button (which passes `returnTo=/`) reopened your last workspace, while arriving
+ * from `accounts.octfis.com` with no `returnTo` ran the ladder here and dropped a
+ * multi-org user on `/organizations` — a bare picker that reads as a broken page
+ * when you expected the app. Same account, same credentials, two different
+ * destinations depending on which URL you happened to type.
+ *
+ * One decision-maker now, and it is the one holding more information. This also
+ * takes a membership query off every single sign-in.
+ *
+ * 🔴 Still never auto-create an organization. `OrgRedirect` sends a member of
+ * nothing to `/organizations/new` and OFFERS; it does not invent a tenant. An
+ * invitee reaching that screen came through an invitation link, which carries a
+ * `returnTo` and never gets here.
  */
-export async function landingPathFor(userId: string, returnTo?: string): Promise<string> {
-  const memberships = await prisma.membership.findMany({
-    where: { userId, isDeleted: false, organization: { isDeleted: false } },
-    select: { organizationId: true },
-  });
-
-  if (memberships.length === 0) return '/no-access';
-  if (returnTo) return returnTo;
-  if (memberships.length === 1) return `/organizations/${memberships[0]!.organizationId}`;
-  return '/organizations';
+export function landingPathFor(returnTo?: string): string {
+  return returnTo ?? '/';
 }
 
 /**

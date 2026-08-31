@@ -288,13 +288,32 @@ describe('§12 — returnTo must not become an open redirect', () => {
 });
 
 describe('§9.4 — landing', () => {
-  it('sends a user with no memberships to /no-access, and creates no organization', async () => {
+  /**
+   * 🔴 The app root, NOT an organization, and never a path this file invented.
+   *
+   * Two rewrites in one day, both from the same mistake — deciding here something
+   * the app decides better. It answered `/no-access` (a route that was never built,
+   * so a successful sign-in ended on the catch-all), then `/organizations` for a
+   * multi-org user — which meant signing in from jobwork's button reopened your
+   * last workspace while signing in at accounts.octfis.com dropped you on a bare
+   * picker. `OrgRedirect` owns this, and it knows the last organization used.
+   */
+  it('sends a sign-in with no deep link to the app root', () => {
+    expect(landingPathFor()).toBe('/');
+  });
+
+  it('honours a deep link, so an invitation link survives the round trip', () => {
+    expect(landingPathFor('/invite/accept?token=abc')).toBe('/invite/accept?token=abc');
+  });
+
+  it('creates no organization for a member of nothing', async () => {
     const user = await makeUser();
     const orgsBefore = await prisma.organization.count();
 
-    expect(await landingPathFor(user.id)).toBe('/no-access');
+    expect(landingPathFor()).toBe('/');
 
     // Inventing a tenant here would hand every new identity its own empty company.
     expect(await prisma.organization.count()).toBe(orgsBefore);
+    expect(await prisma.membership.count({ where: { userId: user.id } })).toBe(0);
   });
 });

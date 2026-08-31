@@ -65,8 +65,30 @@ export async function startLogin(req: Request, res: Response): Promise<void> {
 
   res.cookie(FLOW_COOKIE, JSON.stringify(flow), flowCookieOptions());
 
+  /**
+   * `login_hint` — the address we believe is arriving, passed to the provider so it
+   * can prefill its sign-in field and carry it into signup.
+   *
+   * This exists for the invitation path. An invitee has no account at the provider
+   * yet, and an invitation grants access to ONE address; if they register a
+   * different one, sign-in succeeds and then `provisionOrRefuse` refuses them — a
+   * dead end that cannot be explained to them without disclosing who is invited.
+   * Handing the address forward removes the chance to get it wrong.
+   *
+   * 🔴 A hint, not an assertion. It comes from the query string, so it is whatever
+   * the browser sent; it prefills a field the user can edit and authorises nothing.
+   * Entitlement is decided later against the email the provider says it VERIFIED.
+   * It is length-capped and shape-checked only to keep junk out of a URL.
+   */
+  const hint = req.query['email'];
+  const loginHint =
+    typeof hint === 'string' && hint.length <= 254 && /^[^\s@]+@[^\s@]+$/.test(hint)
+      ? hint
+      : undefined;
+
   const authorizationUrl = client.buildAuthorizationUrl(config, {
     redirect_uri: env.sso.redirectUri!,
+    ...(loginHint ? { login_hint: loginHint } : {}),
     /**
      * 🔴 No `offline_access` — §3. Asking for it would make accounts issue us a
      * refresh token we would then have to store and rotate, when the whole point is
@@ -84,27 +106,12 @@ export async function startLogin(req: Request, res: Response): Promise<void> {
 }
 
 /**
- * GET /api/auth/sso/signup — send the browser to the provider's signup page.
+ * GET /api/auth/sso/callback — the only place an IdP token is read.
  *
- * 🔴 A redirect from here rather than a link the SPA builds, so the issuer URL stays
- * server-side. The browser never needs to know where accounts lives — it is told,
- * one hop at a time — and `/auth/config` therefore keeps reporting only whether SSO
- * is on, not the shape of the estate behind it.
- *
- * Creating an account is the identity provider's business alone. jobwork has no
- * signup of its own once SSO is enabled: an account here is granted by invitation
- * (§9.3), never self-created.
+ * There is deliberately no `/signup` beside it. Creating an account is the identity
+ * provider's business alone, and its own sign-in page carries that link — so a
+ * second entry point here would only be a redirect jobwork has to keep working.
  */
-export async function startSignup(_req: Request, res: Response): Promise<void> {
-  const config = await ssoConfig();
-
-  // `issuer` is the one URL guaranteed to exist; the signup page is ours, at a path
-  // we control, so it is composed rather than discovered.
-  const url = new URL('/signup', config.serverMetadata().issuer);
-  res.redirect(url.href);
-}
-
-/** GET /api/auth/sso/callback — the only place an IdP token is read. */
 export async function callback(req: Request, res: Response): Promise<void> {
   const config = await ssoConfig();
 
@@ -185,8 +192,7 @@ export async function callback(req: Request, res: Response): Promise<void> {
    * reload restores a password login too. Reusing that path costs one request that
    * was going to happen anyway and keeps exactly one way in.
    */
-  const landing = await landingPathFor(user.id, flow.returnTo);
-  res.redirect(`${env.appUrl}${landing}`);
+  res.redirect(`${env.appUrl}${landingPathFor(flow.returnTo)}`);
 }
 
 /**

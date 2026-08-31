@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { env } from './config/env.ts';
 import { prisma } from './db/prisma.ts';
+import { pinPublicOrigin } from './lib/publicOrigin.ts';
 import { createOidcProvider } from './oidc/provider.ts';
 import { clientOrigins } from './oidc/clients.ts';
 import { interactionRouter } from './interaction/routes.ts';
@@ -28,6 +29,11 @@ export async function createApp(): Promise<Express> {
    */
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
+
+  // `trust proxy` above is what makes Express read the header this sets. AppSail
+  // sends no `X-Forwarded-Proto` of its own, so without this every URL the provider
+  // advertises is `http://` — see the note on `pinPublicOrigin`.
+  app.use(pinPublicOrigin(env.oidcIssuer));
 
   /**
    * Read once at boot, like the client registry itself — see the note on
@@ -98,23 +104,48 @@ export async function createApp(): Promise<Express> {
   app.use(cookieParser());
 
   /**
-   * The one static asset these pages load — the show/hide password toggle.
+   * The only two static paths: the show/hide password toggle, and the brand images.
    *
-   * Same origin, so helmet's default `script-src 'self'` already allows it and no
-   * CSP is relaxed to make it work. `immutable` is deliberately NOT set: this is a
-   * script on a page with a password field, and being unable to ship a fix to it
-   * without a cache-busting rename is not a trade worth making for one small file.
+   * Same origin, so helmet's defaults (`script-src 'self'`, `img-src 'self' data:`)
+   * already allow both and no CSP is relaxed to make them work — which is the whole
+   * reason the logo is a copy here rather than the app's `cliq.zoho.com` URL.
+   *
+   * `immutable` is deliberately NOT set: these sit on a page with a password field,
+   * and being unable to ship a fix without a cache-busting rename is not a trade
+   * worth making for three small files.
+   *
+   * Mounted at their own prefixes, never `public/` at the root — a static mount at
+   * `/` would shadow whatever protocol path the library adds next.
    */
-  app.use(
-    '/js',
-    express.static(resolve(process.cwd(), 'public/js'), {
-      maxAge: '1h',
-      // Never fall through to the OIDC catch-all with a directory listing or an
-      // index.html; a miss here is a miss.
-      index: false,
-      redirect: false,
-    }),
-  );
+  for (const dir of ['js', 'assets']) {
+    app.use(
+      `/${dir}`,
+      express.static(resolve(process.cwd(), `public/${dir}`), {
+        maxAge: '1h',
+        // Never fall through to the OIDC catch-all with a directory listing or an
+        // index.html; a miss here is a miss.
+        index: false,
+        redirect: false,
+      }),
+    );
+  }
+
+  /**
+   * The root — see the note on `DEFAULT_APP_SIGNIN_URL`.
+   *
+   * 🔴 Not a landing page, because this service cannot host one: a session is only
+   * ever created by finishing an interaction, and only `/authorize` starts one. So
+   * `/` hands the visitor to the default app's sign-in entry point, which starts a
+   * real authorization request and comes straight back — to the app if they already
+   * have a session here, to this service's own sign-in page if they do not.
+   *
+   * 302, not 301: the default app is configuration and will change. A 301 is cached
+   * by the browser more or less forever, so getting this wrong once would outlive
+   * the fix.
+   */
+  app.get('/', (_req, res) => {
+    res.set('X-Robots-Tag', 'noindex').redirect(302, env.defaultAppSigninUrl);
+  });
 
   /**
    * Liveness only — no database. A health check that queries the database turns a

@@ -27,15 +27,18 @@ export function signupPage(options: FormOptions = {}): string {
     ${messages(options)}
     <form method="post" action="/signup" autocomplete="on">
       <label for="firstName">First name</label>
-      <input id="firstName" name="firstName" autocomplete="given-name" required autofocus>
+      <input id="firstName" name="firstName" placeholder="First name"
+             autocomplete="given-name" required autofocus>
       <label for="lastName">Last name</label>
-      <input id="lastName" name="lastName" autocomplete="family-name" required>
-      <label for="email">Email</label>
+      <input id="lastName" name="lastName" placeholder="Last name"
+             autocomplete="family-name" required>
+      <label for="email">Email address</label>
       <input id="email" name="email" type="email" value="${escapeHtml(options.email ?? '')}"
-             autocomplete="username" required>
+             placeholder="Email address" autocomplete="username" required>
       ${passwordField({ id: 'password', name: 'password', label: 'Password', autocomplete: 'new-password', minlength: 8 })}
-      <button type="submit">Create account</button>
+      <button type="submit">Create Account</button>
     </form>
+    <p class="switch">Already have an account? <a href="/">Sign in</a></p>
   `,
     { script: PASSWORD_TOGGLE_SCRIPT },
   );
@@ -61,11 +64,12 @@ export function verifyEmailPage(options: FormOptions = {}): string {
     <p class="sub">Enter the 6-digit code we sent you</p>
     ${messages(options)}
     <form method="post" action="/verify-email" autocomplete="off">
-      <label for="email">Email</label>
-      <input id="email" name="email" type="email" value="${escapeHtml(options.email ?? '')}" required>
-      <label for="otp">Code</label>
-      <input id="otp" name="otp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
-             autocomplete="one-time-code" required autofocus>
+      <label for="email">Email address</label>
+      <input id="email" name="email" type="email" value="${escapeHtml(options.email ?? '')}"
+             placeholder="Email address" required>
+      <label for="otp">6-digit code</label>
+      <input id="otp" name="otp" placeholder="6-digit code" inputmode="numeric"
+             pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required autofocus>
       <button type="submit">Verify</button>
     </form>
   `,
@@ -80,11 +84,12 @@ export function forgotPasswordPage(options: FormOptions = {}): string {
     <p class="sub">We'll send a 6-digit code to your email</p>
     ${messages(options)}
     <form method="post" action="/forgot-password" autocomplete="on">
-      <label for="email">Email</label>
+      <label for="email">Email address</label>
       <input id="email" name="email" type="email" value="${escapeHtml(options.email ?? '')}"
-             autocomplete="username" required autofocus>
+             placeholder="Email address" autocomplete="username" required autofocus>
       <button type="submit">Send code</button>
     </form>
+    <p class="switch"><a href="/">Back to sign in</a></p>
   `,
   );
 }
@@ -97,11 +102,12 @@ export function resetPasswordPage(options: FormOptions = {}): string {
     <p class="sub">Enter the code we emailed you, and a new password</p>
     ${messages(options)}
     <form method="post" action="/reset-password" autocomplete="off">
-      <label for="email">Email</label>
-      <input id="email" name="email" type="email" value="${escapeHtml(options.email ?? '')}" required>
-      <label for="otp">Code</label>
-      <input id="otp" name="otp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
-             autocomplete="one-time-code" required autofocus>
+      <label for="email">Email address</label>
+      <input id="email" name="email" type="email" value="${escapeHtml(options.email ?? '')}"
+             placeholder="Email address" required>
+      <label for="otp">6-digit code</label>
+      <input id="otp" name="otp" placeholder="6-digit code" inputmode="numeric"
+             pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required autofocus>
       ${passwordField({ id: 'password', name: 'password', label: 'New password', autocomplete: 'new-password', minlength: 8 })}
       <button type="submit">Change password</button>
     </form>

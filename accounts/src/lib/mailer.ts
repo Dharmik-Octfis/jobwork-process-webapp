@@ -14,8 +14,13 @@ import { env } from '../config/env.ts';
 
 const configured = Boolean(env.zepto.token && env.zepto.otpTemplateKey);
 
+// Prefixed here rather than in the env file, so the stored value is the bare token —
+// the form the ZeptoMail console hands you, and the same form backend keeps in
+// SMTP_PASS. While this lived in the env file the two services held the same secret
+// in two different shapes, and copying one to the other authenticated as nobody —
+// silently, because sendOtpEmail below must swallow send failures.
 const client = configured
-  ? new SendMailClient({ url: env.zepto.apiUrl, token: env.zepto.token! })
+  ? new SendMailClient({ url: env.zepto.apiUrl, token: `Zoho-enczapikey ${env.zepto.token!}` })
   : undefined;
 
 export function mailerStatus(): string {

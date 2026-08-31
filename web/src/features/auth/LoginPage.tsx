@@ -12,7 +12,7 @@ import { FormErrorBanner } from './FormErrorBanner';
 import { loginSchema } from './auth.schemas';
 import type { LoginInput } from './auth.schemas';
 import { useLogin } from './useLogin';
-import { startSsoLogin, startSsoSignup, useAuthConfig } from './useAuthConfig';
+import { startSsoLogin, useAuthConfig } from './useAuthConfig';
 import { updateLocation } from './auth.api';
 
 import styles from './Auth.module.css';
@@ -118,11 +118,17 @@ export function LoginPage() {
       }
     >
       {/*
-        🔴 With SSO on it is the ONLY way in: the password form below is not
+        🔴 With SSO on this button is the ONLY way in: the password form below is not
         rendered at all, and neither is a local "create account". Both belong to the
         identity provider now. Offering a second door to the same account means two
         places a password can leak, and a local password would survive the account
         being disabled centrally.
+
+        There is no signup link beside it either, and that is not an omission.
+        Accounts are created at the identity provider — its own sign-in page carries
+        the link — and jobwork is invite-only regardless (`provisionOrRefuse`), so a
+        "create account" here would offer a door that refuses everyone who walks
+        through it.
 
         The rollback §13 step 4 asks for is still `SSO_ENABLED=false`, which brings
         this whole form back and unmounts the SSO routes. The switch is wholesale
@@ -130,16 +136,19 @@ export function LoginPage() {
       */}
       {ssoOnly ? (
         <div className={styles.ssoBlock}>
-          <Button type="button" fullWidth onClick={() => startSsoLogin(redirectTo)}>
-            Sign in with Octfis Accounts
+          {/*
+            `invitedEmail` is the `?email=` an invitation link carries. Passing it
+            on prefills the provider's sign-in — and its signup, which is the case
+            that matters: an invitee with no account must register the address they
+            were invited at, or they get in and are then refused.
+          */}
+          <Button
+            type="button"
+            fullWidth
+            onClick={() => startSsoLogin(redirectTo, invitedEmail || undefined)}
+          >
+            Access Jobwork
           </Button>
-
-          <p className={styles.switch}>
-            Don't have an account?{' '}
-            <button type="button" className={styles.linkButton} onClick={startSsoSignup}>
-              Create Account
-            </button>
-          </p>
         </div>
       ) : (
         <>

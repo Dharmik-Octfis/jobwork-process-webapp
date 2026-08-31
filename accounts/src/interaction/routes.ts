@@ -53,7 +53,19 @@ export function interactionRouter(provider: Provider): Router {
     });
 
     if (prompt.name === 'login') {
-      res.type('html').send(loginPage({ uid, clientName: client?.name ?? clientId }));
+      /**
+       * `login_hint` is the standard OIDC way for an app to say "we believe this is
+       * who is arriving" — here it is the address an invitation was sent to, passed
+       * through from jobwork. It prefills the field and follows the user to signup.
+       *
+       * A hint, never a credential: the user can change it, and it decides nothing.
+       * It is escaped where it is rendered, like everything else on this page.
+       */
+      const loginHint = typeof params['login_hint'] === 'string' ? params['login_hint'] : undefined;
+
+      res
+        .type('html')
+        .send(loginPage({ uid, clientName: client?.name ?? clientId, email: loginHint }));
       return;
     }
 

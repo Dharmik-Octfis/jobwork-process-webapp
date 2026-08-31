@@ -46,6 +46,32 @@ const envSchema = z.object({
     }),
 
   /**
+   * Where a bare visit to `/` goes — the sign-in ENTRY POINT of the default app,
+   * e.g. `https://jobwork.octfis.com/api/auth/sso/login`.
+   *
+   * 🔴 This service has no home page of its own, and cannot have one. There is no
+   * sign-in without an authorization request to return to: the session is created
+   * by `provider.interactionFinished`, which needs an interaction, which only
+   * `/authorize` can start. A standalone form here could check a password and then
+   * have nowhere to put the result.
+   *
+   * So `/` hands the visitor to an app, which immediately starts a real
+   * authorization request and comes straight back — landing them either in the app
+   * (they already had a session here) or on this service's own sign-in page. One
+   * redirect, and every hop is a top-level GET.
+   *
+   * 🔴 The full URL, not a host, so this service knows nothing about any app's
+   * route shape. Required, like OIDC_ISSUER: unset, `/` is a dead end, and a dead
+   * root on the domain people type reads as an outage.
+   */
+  DEFAULT_APP_SIGNIN_URL: z
+    .string()
+    .url('DEFAULT_APP_SIGNIN_URL must be an absolute URL')
+    .refine((url) => url.startsWith('https://') || url.startsWith('http://localhost'), {
+      message: 'DEFAULT_APP_SIGNIN_URL must be https, except on localhost',
+    }),
+
+  /**
    * 🔴 Encrypts `signing_keys.private_jwk` at rest, and lives OUTSIDE the database
    * it protects. Storing it alongside the ciphertext would make a database dump a
    * licence to mint tokens for anyone, for any app, forever.
@@ -104,6 +130,7 @@ export const env = {
   databaseUrl: raw.DATABASE_URL,
   databaseSslCaPath: raw.DATABASE_SSL_CA_PATH,
   oidcIssuer: raw.OIDC_ISSUER,
+  defaultAppSigninUrl: raw.DEFAULT_APP_SIGNIN_URL,
   signingKeySecret: raw.SIGNING_KEY_SECRET,
   cookieSecrets: raw.COOKIE_SECRETS,
   zepto: {

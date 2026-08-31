@@ -44,8 +44,21 @@ export function accountRouter(): Router {
   const router = Router();
   const form = urlencoded({ extended: false });
 
-  router.get('/signup', (_req: Request, res: Response) => {
-    res.type('html').send(signupPage());
+  /**
+   * `?email=` prefills the address, and it matters more than a convenience.
+   *
+   * The person arriving here usually came from an invitation addressed to ONE
+   * address, and an app grants access by matching that address (jobwork's
+   * `provisionOrRefuse`). Register a different one and everything succeeds —
+   * account created, email verified, signed in — and then the app refuses them,
+   * with no way to tell them why without leaking who is invited where.
+   *
+   * Only ever a default: it is an editable field, and nothing downstream trusts
+   * it. Entitlement is decided against the address the user actually VERIFIES.
+   */
+  router.get('/signup', (req: Request, res: Response) => {
+    const email = typeof req.query['email'] === 'string' ? req.query['email'] : undefined;
+    res.type('html').send(signupPage({ email }));
   });
 
   router.post('/signup', form, async (req: Request, res: Response) => {

@@ -1,7 +1,6 @@
-import { useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 
 import { toApiErrorMessage } from '../../api/client';
 import { Button } from '../../components/ui/Button';
@@ -13,7 +12,7 @@ import { FormErrorBanner } from './FormErrorBanner';
 import { signupSchema } from './auth.schemas';
 import type { SignupInput } from './auth.schemas';
 import { useSignup } from './useSignup';
-import { startSsoSignup, useAuthConfig } from './useAuthConfig';
+import { useAuthConfig } from './useAuthConfig';
 import { updateLocation } from './auth.api';
 
 import styles from './Auth.module.css';
@@ -61,28 +60,21 @@ export function SignupPage() {
   });
 
   /**
-   * 🔴 Under SSO there is no local signup, so reaching this route directly must not
-   * show the form — it hands the browser to the identity provider instead.
+   * 🔴 Under SSO there is no local signup, so reaching this route — by a typed URL
+   * or by an invitation link for someone with no account yet — must not show the
+   * form. It goes to the sign-in page, which is the one door.
    *
-   * A redirect rather than a hidden form: leaving the form mounted but unused would
-   * keep a working POST to `/auth/signup` one devtools edit away, and the whole
-   * point is that an account is created in exactly one place.
+   * It does NOT jump straight to the provider's signup page. That was a second
+   * entry point jobwork had to keep working, and it skipped the step that decides
+   * whether this person gets in at all. "Access Jobwork" leads to the provider's
+   * own sign-in screen, which carries the link to create an account — so the path
+   * still exists, it just is not jobwork's to publish.
+   *
+   * `next` is preserved, so an invitee lands back on their invitation afterwards.
    */
-  useEffect(() => {
-    if (authConfig.data?.ssoEnabled === true) startSsoSignup();
-  }, [authConfig.data?.ssoEnabled]);
-
   if (authConfig.data?.ssoEnabled === true) {
-    return (
-      <AuthShell title="Create Account" subtitle="Taking you to Octfis Accounts…">
-        <p className={styles.switch}>
-          Accounts are created at Octfis Accounts.{' '}
-          <button type="button" className={styles.linkButton} onClick={startSsoSignup}>
-            Continue
-          </button>
-        </p>
-      </AuthShell>
-    );
+    const next = params.get('next');
+    return <Navigate to={next ? `/login?next=${encodeURIComponent(next)}` : '/login'} replace />;
   }
 
   /**

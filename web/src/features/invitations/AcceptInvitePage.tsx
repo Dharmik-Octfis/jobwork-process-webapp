@@ -10,6 +10,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { AuthShell } from '../auth/AuthShell';
 import { FormErrorBanner } from '../auth/FormErrorBanner';
+import { useAuthConfig } from '../auth/useAuthConfig';
 import { invitationsApi, type AcceptInvitationBody } from './invitations.api';
 import styles from '../auth/Auth.module.css';
 
@@ -29,12 +30,17 @@ type SignupValues = z.infer<typeof signupSchema>;
  *   • signed in as someone else       → asked to switch accounts
  *   • not signed in, account exists    → sent to sign in, then reopen the link
  *   • not signed in, brand-new person  → inline "create account" form
+ *
+ * 🔴 That last branch exists ONLY with SSO off. With it on, an account is never
+ * created here — see Case B.
  */
 export function AcceptInvitePage() {
   const [params] = useSearchParams();
   const token = params.get('token') ?? '';
   const navigate = useNavigate();
   const { user, isAuthenticated, isLoading: authLoading, setSession } = useAuth();
+  const authConfig = useAuthConfig();
+  const ssoEnabled = authConfig.data?.ssoEnabled === true;
   const autoAcceptStarted = useRef(false);
 
   const lookup = useQuery({
@@ -93,7 +99,14 @@ export function AcceptInvitePage() {
     );
   }
 
-  if (lookup.isLoading || authLoading) {
+  /**
+   * 🔴 `authConfig.isPending` belongs in this guard, for the same reason it does on
+   * the sign-in screen: until it resolves there is no safe default. Guessing "SSO
+   * off" renders the create-account form, and the accept it submits to is refused —
+   * so the invitee fills in a name and a password and is told no, which reads as
+   * the invitation being broken.
+   */
+  if (lookup.isLoading || authLoading || authConfig.isPending) {
     return <Shell title="Checking your invitation…" subtitle="One moment." />;
   }
 
@@ -129,11 +142,14 @@ export function AcceptInvitePage() {
     encodeURIComponent(inviteEmail) +
     '&next=' +
     encodeURIComponent('/invite/accept?token=' + token);
-  const signupPath =
-    '/signup?email=' +
-    encodeURIComponent(inviteEmail) +
-    '&next=' +
-    encodeURIComponent('/invite/accept?token=' + token);
+  // With SSO on there is no local signup to send anyone to; `/signup` only bounces
+  // back to `/login`, so skip the hop.
+  const signupPath = ssoEnabled
+    ? loginPath
+    : '/signup?email=' +
+      encodeURIComponent(inviteEmail) +
+      '&next=' +
+      encodeURIComponent('/invite/accept?token=' + token);
   // The job title if the inviter set one, otherwise the access they're getting —
   // a title is optional, and "invited as undefined" helps nobody.
   const invitedAs = invite.roleName ?? invite.permissionTemplateName ?? 'a member';
@@ -166,12 +182,26 @@ export function AcceptInvitePage() {
     );
   }
 
-  // ── Case B: not signed in, but an account already exists ─────────────────────
-  if (invite.accountExists) {
+  /**
+   * ── Case B: not signed in ───────────────────────────────────────────────────
+   *
+   * 🔴 Under SSO there is no Case C, so `accountExists` stops mattering: signing in
+   * is the only way to get an account at all, and the sign-in screen leads to the
+   * provider, which is where one is created. The API refuses an anonymous accept
+   * outright (`SIGN_IN_REQUIRED`); this is the same rule stated in the UI, so the
+   * invitee is never shown a form whose submit is guaranteed to fail.
+   *
+   * Signing in is not a detour that loses the invitation — `next` carries this page
+   * across, and the SSO callback provisions the local user FROM this very pending
+   * invitation, so they come back as Case A and it accepts itself.
+   */
+  if (ssoEnabled || invite.accountExists) {
     return <Navigate to={loginPath} replace />;
   }
 
   // ── Case C: not signed in, brand-new person → create account + accept ────────
+  // Reachable only with SSO off — the rollback path, where jobwork still owns
+  // passwords.
   const onSubmit = handleSubmit((values) => acceptMutation.mutate(values));
 
   return (
