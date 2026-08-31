@@ -1250,11 +1250,19 @@ export function CreateAssemblyPage() {
       {/* Footer Actions */}
       <div
         style={{
-          padding: '16px 24px',
+          height: '44px',
+          boxSizing: 'border-box',
+          position: 'fixed',
+          bottom: 0,
+          left: 220,
+          right: 0,
+          background: '#fff',
+          padding: '0 24px',
           borderTop: '1px solid #eef0f3',
           display: 'flex',
+          alignItems: 'center',
           gap: '12px',
-          background: '#f9f9fb',
+          zIndex: 100,
         }}
       >
         <button
@@ -1262,30 +1270,32 @@ export function CreateAssemblyPage() {
           form="create-assembly-form"
           disabled={createMutation.isPending}
           style={{
-            padding: '8px 16px',
+            padding: '6px 20px',
             background: '#0062ff',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
-            fontSize: '13px',
+            cursor: createMutation.isPending ? 'not-allowed' : 'pointer',
             fontWeight: 500,
-            cursor: 'pointer',
+            fontSize: '13px',
+            opacity: createMutation.isPending ? 0.7 : 1,
           }}
         >
           {createMutation.isPending ? 'Saving...' : 'Save'}
         </button>
         <button
           type="button"
+          disabled={createMutation.isPending}
           onClick={() => navigate(-1)}
           style={{
-            padding: '8px 16px',
+            padding: '6px 20px',
             background: 'white',
-            color: '#1e293b',
+            color: createMutation.isPending ? '#94a3b8' : '#333',
             border: '1px solid #d1d5db',
             borderRadius: '4px',
-            fontSize: '13px',
+            cursor: createMutation.isPending ? 'not-allowed' : 'pointer',
             fontWeight: 500,
-            cursor: 'pointer',
+            fontSize: '13px',
           }}
         >
           Cancel

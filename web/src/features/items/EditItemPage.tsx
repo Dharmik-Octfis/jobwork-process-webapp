@@ -1130,31 +1130,30 @@ export function EditItemPage() {
 
           <div
             style={{
-              height: '56px',
+              height: '44px',
               boxSizing: 'border-box',
               position: 'fixed',
               bottom: 0,
               left: 220,
               right: 0,
               background: '#fff',
-              padding: '0 32px',
-              borderTop: '1px solid #cbd5e1',
+              padding: '0 24px',
+              borderTop: '1px solid #eef0f3',
               display: 'flex',
               alignItems: 'center',
               gap: '12px',
               zIndex: 100,
-              boxShadow: '0 -2px 10px rgba(0,0,0,0.05)',
             }}
           >
             <button
               type="submit"
               disabled={updateMutation.isPending}
               style={{
-                padding: '8px 24px',
+                padding: '6px 20px',
                 background: '#0062ff',
                 color: 'white',
                 border: 'none',
-                borderRadius: '6px',
+                borderRadius: '4px',
                 cursor: updateMutation.isPending ? 'not-allowed' : 'pointer',
                 fontWeight: 500,
                 fontSize: '13px',
@@ -1168,11 +1167,11 @@ export function EditItemPage() {
               disabled={updateMutation.isPending}
               onClick={() => navigate(-1)}
               style={{
-                padding: '8px 24px',
+                padding: '6px 20px',
                 background: 'white',
-                color: updateMutation.isPending ? '#94a3b8' : '#334155',
-                border: '1px solid #cbd5e1',
-                borderRadius: '6px',
+                color: updateMutation.isPending ? '#94a3b8' : '#333',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
                 cursor: updateMutation.isPending ? 'not-allowed' : 'pointer',
                 fontWeight: 500,
                 fontSize: '13px',

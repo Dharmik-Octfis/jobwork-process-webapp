@@ -1132,32 +1132,30 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
 
           <div
             style={{
-              height: '56px',
+              height: '44px',
               boxSizing: 'border-box',
               position: isModal ? 'sticky' : 'fixed',
               bottom: 0,
               left: isModal ? 0 : 220,
               right: 0,
               background: '#fff',
-              padding: isModal ? '0 20px' : '0 32px',
-              margin: isModal ? '20px -20px 0 -20px' : 0,
-              borderTop: '1px solid #cbd5e1',
+              padding: isModal ? '0 20px' : '0 24px',
+              borderTop: '1px solid #eef0f3',
               display: 'flex',
               alignItems: 'center',
               gap: '12px',
               zIndex: 100,
-              boxShadow: '0 -2px 10px rgba(0,0,0,0.05)',
             }}
           >
             <button
               type="submit"
               disabled={createMutation.isPending}
               style={{
-                padding: '8px 24px',
+                padding: '6px 20px',
                 background: '#0062ff',
                 color: 'white',
                 border: 'none',
-                borderRadius: '6px',
+                borderRadius: '4px',
                 cursor: createMutation.isPending ? 'not-allowed' : 'pointer',
                 fontWeight: 500,
                 fontSize: '13px',
@@ -1173,11 +1171,11 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                 isModal && onCancel ? onCancel() : navigate(`/organizations/${orgId}/items`)
               }
               style={{
-                padding: '8px 24px',
+                padding: '6px 20px',
                 background: 'white',
-                color: createMutation.isPending ? '#94a3b8' : '#334155',
-                border: '1px solid #cbd5e1',
-                borderRadius: '6px',
+                color: createMutation.isPending ? '#94a3b8' : '#333',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
                 cursor: createMutation.isPending ? 'not-allowed' : 'pointer',
                 fontWeight: 500,
                 fontSize: '13px',

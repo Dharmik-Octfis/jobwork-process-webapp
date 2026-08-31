@@ -349,8 +349,6 @@ export function CreateBill() {
     }
   }, [watchPoDate, watchPaymentTerms, paymentTerms, setValue]);
 
-
-
   const [isDeliveryAddressModalOpen, setIsDeliveryAddressModalOpen] = useState(false);
   const [isPaymentTermModalOpen, setIsPaymentTermModalOpen] = useState(false);
   const [customDeliveryName, setCustomDeliveryName] = useState('');
@@ -443,8 +441,6 @@ export function CreateBill() {
     setValue('subTotal', computedSubTotal);
     setValue('totalAmount', computedTotalAmount);
   }, [computedSubTotal, computedTotalAmount, setValue]);
-
-
 
   const mutation = useMutation({
     mutationFn: (data: CreateBillData) => {
@@ -1620,8 +1616,6 @@ export function CreateBill() {
           </button>
         </div>
       </form>
-
-
 
       <DeliveryAddressModal
         isOpen={isDeliveryAddressModalOpen}
