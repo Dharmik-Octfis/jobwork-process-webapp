@@ -8,7 +8,7 @@ import {
   setNumberPreference,
 } from '../../../lib/numberSequence.ts';
 import { getMemberDirectory, type MemberDirectory } from '../../../lib/memberDirectory.ts';
-import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
+import {  pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import {
   loadActiveDefinitions,
@@ -25,7 +25,6 @@ import {
 import { runAsDocument, type ProcessorType } from '../jobwork.types.ts';
 import {
   getAllChainNotReady,
-  getStepTotals,
   getAllStepTotals,
   recomputeJobOrder,
   recomputeStep,
@@ -66,14 +65,24 @@ import type {
 
 const DUPLICATE_NUMBER = 'A job order with this number already exists in this organization.';
 
-const SEARCH_COLUMNS = ['jobOrderNumber', 'routeNameSnapshot', 'remarks'] as const;
 
 function jobOrderListWhere(organizationId: string, opts: ListQuery): Prisma.JobOrderWhereInput {
-  return {
+  const baseWhere = {
     organizationId,
     isDeleted: false,
     ...filterWhere<Prisma.JobOrderWhereInput>('job_order', opts.filter),
-    ...searchWhere<Prisma.JobOrderWhereInput>(opts.search, [...SEARCH_COLUMNS]),
+  };
+
+  if (!opts.search) return baseWhere;
+
+  return {
+    ...baseWhere,
+    OR: [
+      { jobOrderNumber: { contains: opts.search, mode: 'insensitive' } },
+      { routeNameSnapshot: { contains: opts.search, mode: 'insensitive' } },
+      { remarks: { contains: opts.search, mode: 'insensitive' } },
+      { inputItem: { name: { contains: opts.search, mode: 'insensitive' } } },
+    ],
   };
 }
 
@@ -123,6 +132,18 @@ const JOB_ORDER_INCLUDE = {
   },
 } satisfies Prisma.JobOrderInclude;
 
+const JOB_ORDER_LIST_INCLUDE = {
+  inputItem: { select: { id: true, name: true, sku: true, inventoryTracking: true } },
+  inputUom: { select: { id: true, unitName: true, symbol: true } },
+  route: { select: { id: true, name: true } },
+  steps: {
+    where: { isDeleted: false },
+    orderBy: { seq: 'asc' },
+    // Omit `include: STEP_INCLUDE` for list view to avoid massive N+1 queries.
+    // The frontend only needs `order.steps.length` and step scalar fields for lists.
+  },
+} satisfies Prisma.JobOrderInclude;
+
 export async function getJobOrdersList(organizationId: string, opts: ListQuery) {
   const { page, perPage } = opts;
   return runAsTenant(organizationId, async (tx) => {
@@ -132,7 +153,7 @@ export async function getJobOrdersList(organizationId: string, opts: ListQuery) 
       orderBy: [{ orderDate: 'desc' }, { createdAt: 'desc' }],
       skip: (page - 1) * perPage,
       take: takeForPage(perPage),
-      include: JOB_ORDER_INCLUDE,
+      include: JOB_ORDER_LIST_INCLUDE,
     });
     return pageSlice(rows, page, perPage);
   });
@@ -149,6 +170,15 @@ export async function getJobOrderById(organizationId: string, id: string) {
     tx.jobOrder.findFirst({
       where: { id, organizationId, isDeleted: false },
       include: JOB_ORDER_INCLUDE,
+    }),
+  );
+}
+
+export async function getJobOrderWithStepsById(organizationId: string, id: string) {
+  return runAsTenant(organizationId, (tx) =>
+    tx.jobOrder.findFirst({
+      where: { id, organizationId, isDeleted: false },
+      select: JOB_ORDER_WITH_STEPS_SELECT,
     }),
   );
 }
@@ -798,6 +828,52 @@ async function buildSteps(
   return rows;
 }
 
+const ROW_OVERVIEW_INCLUDE = {
+  item: { select: { id: true, name: true, sku: true, inventoryTracking: true } },
+  uom: { select: { id: true, unitName: true, symbol: true } },
+} satisfies Prisma.JobOrderStepInputInclude;
+
+const STEP_OVERVIEW_INCLUDE = {
+  inputs: {
+    where: { isDeleted: false },
+    orderBy: { seq: 'asc' },
+    include: ROW_OVERVIEW_INCLUDE,
+  },
+  outputs: {
+    where: { isDeleted: false },
+    orderBy: { seq: 'asc' },
+    include: ROW_OVERVIEW_INCLUDE,
+  },
+  process: { select: { id: true, name: true, code: true } },
+  workCentre: { select: { id: true, name: true } },
+} satisfies Prisma.JobOrderStepInclude;
+
+
+export const JOB_ORDER_OVERVIEW_INCLUDE = {
+  inputItem: { select: { id: true, name: true, sku: true, inventoryTracking: true } },
+  inputUom: { select: { id: true, unitName: true, symbol: true } },
+  route: { select: { id: true, name: true } },
+  steps: {
+    where: { isDeleted: false },
+    orderBy: { seq: 'asc' },
+    include: STEP_OVERVIEW_INCLUDE,
+  },
+} satisfies Prisma.JobOrderInclude;
+
+export const JOB_ORDER_WITH_STEPS_SELECT = {
+  id: true,
+  steps: {
+    where: { isDeleted: false },
+    orderBy: { seq: 'asc' },
+    select: {
+      id: true,
+      seq: true,
+      processNameSnapshot: true,
+      processorNameSnapshot: true,
+    },
+  },
+} satisfies Prisma.JobOrderSelect;
+
 export async function createNewJobOrder(
   organizationId: string,
   data: CreateJobOrderInput,
@@ -1432,94 +1508,84 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
   // connection held open by the tenant tx (`lib/memberDirectory.ts`).
   const directory = await getMemberDirectory(organizationId);
 
-  const [order, batches] = await Promise.all([
-    runAsTenant(organizationId, (tx) =>
-      tx.jobOrder.findFirst({
-        where: { id, organizationId, isDeleted: false },
-        include: JOB_ORDER_INCLUDE,
-      }),
-    ),
-    runAsTenant(organizationId, (tx) =>
-      tx.batch.findMany({
-        where: { organizationId, isDeleted: false, sourceDocId: id },
-        // 🔴 No `batchNumber` (2026-08-14) — internal key, never leaves the server.
-        select: { id: true, supplierBatchRef: true, itemId: true },
-      }),
-    ),
-  ]);
+  return runAsTenant(organizationId, async (tx) => {
+    const order = await tx.jobOrder.findFirst({
+      where: { id, organizationId, isDeleted: false },
+      include: JOB_ORDER_OVERVIEW_INCLUDE,
+    });
 
-  if (!order) throw ApiError.notFound('Job order not found');
+    if (!order) throw ApiError.notFound('Job order not found');
 
-  const stepIds = order.steps.map((s) => s.id);
-  const principalItemIds = [
-    ...new Set(order.steps.map((s) => s.inputs[0]?.itemId).filter(Boolean)),
-  ] as string[];
+    const batches = await tx.batch.findMany({
+      where: { organizationId, isDeleted: false, sourceDocId: id },
+      // 🔴 No `batchNumber` (2026-08-14) — internal key, never leaves the server.
+      select: { id: true, supplierBatchRef: true, itemId: true },
+    });
 
-  const [allTotalsMap, allChainBlockedMap, balances, activity, firstTotals] = await Promise.all([
-    runAsTenant(organizationId, (tx) => getAllStepTotals(tx, organizationId, stepIds)),
-    runAsTenant(organizationId, (tx) =>
-      getAllChainNotReady(
-        tx,
-        organizationId,
-        id,
-        order.steps as { id: string; seq: number; processNameSnapshot: string; status: string }[],
-      ),
-    ),
-    runAsTenant(organizationId, (tx) =>
-      principalItemIds.length > 0
-        ? tx.stockLedgerEntry.groupBy({
-            by: ['itemId'],
-            where: {
-              organizationId,
-              itemId: { in: principalItemIds },
-              ownership: order.ownership as Ownership,
-            },
-            _sum: { qtyIn: true, qtyOut: true },
-          })
-        : Promise.resolve([]),
-    ),
-    runAsTenant(organizationId, (tx) => buildActivity(tx, organizationId, id, directory)),
-    runAsTenant(organizationId, (tx) => {
-      const firstStep = order.steps[0];
-      return firstStep ? getStepTotals(tx, organizationId, firstStep.id) : Promise.resolve(null);
-    }),
-  ]);
+    const stepIds = order.steps.map((s) => s.id);
+    const principalItemIds = [
+      ...new Set(order.steps.map((s) => s.inputs[0]?.itemId).filter(Boolean)),
+    ] as string[];
 
-  const availableQtyMap = new Map<string, Prisma.Decimal>();
-  for (const row of balances as { itemId: string; _sum: { qtyIn: Prisma.Decimal | null; qtyOut: Prisma.Decimal | null } }[]) {
-    const inD = row._sum.qtyIn ?? new Prisma.Decimal(0);
-    const outD = row._sum.qtyOut ?? new Prisma.Decimal(0);
-    availableQtyMap.set(row.itemId, inD.minus(outD));
-  }
+    const allTotalsMap = await getAllStepTotals(tx, organizationId, stepIds);
 
-  const allUnplannedIds = new Set<string>();
-  for (const step of order.steps) {
-    const totals = allTotalsMap.get(step.id)!;
-    const planned = new Set([
-      ...step.inputs.map((row) => row.itemId),
-      ...step.outputs.map((row) => row.itemId),
-    ]);
-    for (const flow of totals.perItem) {
-      if (!planned.has(flow.itemId)) allUnplannedIds.add(flow.itemId);
+    const allChainBlockedMap = await getAllChainNotReady(
+      tx,
+      organizationId,
+      id,
+      order.steps as { id: string; seq: number; processNameSnapshot: string; status: string }[],
+    );
+
+    const balances = principalItemIds.length > 0
+      ? await tx.stockLedgerEntry.groupBy({
+          by: ['itemId'],
+          where: {
+            organizationId,
+            itemId: { in: principalItemIds },
+            ownership: order.ownership as Ownership,
+          },
+          _sum: { qtyIn: true, qtyOut: true },
+        })
+      : [];
+
+    const activity = await buildActivity(tx, organizationId, id, directory);
+
+    const firstStep = order.steps[0];
+    const firstTotals = firstStep ? allTotalsMap.get(firstStep.id) : null;
+
+    const availableQtyMap = new Map<string, Prisma.Decimal>();
+    for (const row of balances as { itemId: string; _sum: { qtyIn: Prisma.Decimal | null; qtyOut: Prisma.Decimal | null } }[]) {
+      const inD = row._sum.qtyIn ?? new Prisma.Decimal(0);
+      const outD = row._sum.qtyOut ?? new Prisma.Decimal(0);
+      availableQtyMap.set(row.itemId, inD.minus(outD));
     }
-    for (const flow of totals.perOutput) {
-      if (!planned.has(flow.itemId)) allUnplannedIds.add(flow.itemId);
-    }
-  }
 
-  const unplannedItems =
-    allUnplannedIds.size > 0
-      ? await runAsTenant(organizationId, (tx) =>
-          tx.item.findMany({
+    const allUnplannedIds = new Set<string>();
+    for (const step of order.steps) {
+      const totals = allTotalsMap.get(step.id)!;
+      const planned = new Set([
+        ...step.inputs.map((row) => row.itemId),
+        ...step.outputs.map((row) => row.itemId),
+      ]);
+      for (const flow of totals.perItem) {
+        if (!planned.has(flow.itemId)) allUnplannedIds.add(flow.itemId);
+      }
+      for (const flow of totals.perOutput) {
+        if (!planned.has(flow.itemId)) allUnplannedIds.add(flow.itemId);
+      }
+    }
+
+    const unplannedItems =
+      allUnplannedIds.size > 0
+        ? await tx.item.findMany({
             where: { id: { in: [...allUnplannedIds] }, organizationId },
             select: {
               id: true,
               name: true,
               stockingUom: { select: { symbol: true, unitName: true } },
             },
-          }),
-        )
-      : [];
+          })
+        : [];
 
   const unplannedById = new Map<
     string,
@@ -1613,18 +1679,19 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
     };
   });
 
-  return {
-    jobOrder: order,
-    batches,
-    activity,
-    summary: {
-      issuedQty: firstTotals ? firstTotals.issuedQty.toString() : '0',
-    },
-    steps,
-  };
+    return {
+      jobOrder: order,
+      batches,
+      activity,
+      summary: {
+        issuedQty: firstTotals ? firstTotals.issuedQty.toString() : '0',
+      },
+      steps,
+    };
+  });
 }
 
-type StepWithRows = Prisma.JobOrderStepGetPayload<{ include: typeof STEP_INCLUDE }>;
+type StepWithRows = Prisma.JobOrderStepGetPayload<{ include: typeof STEP_OVERVIEW_INCLUDE }>;
 
 /**
  * Merge what the step PLANNED with what has actually moved, per item.
@@ -1753,8 +1820,7 @@ async function buildActivity(
   const unitOf = (uom: { symbol: string | null; unitName: string } | null | undefined) =>
     uom ? (uom.symbol ?? uom.unitName) : null;
 
-  const [issues, receipts] = await Promise.all([
-    tx.jobIssue.findMany({
+  const issues = await tx.jobIssue.findMany({
       where: { organizationId, jobOrderId, isDeleted: false },
       select: {
         id: true,
@@ -1783,8 +1849,8 @@ async function buildActivity(
           },
         },
       },
-    }),
-    tx.jobReceipt.findMany({
+    });
+    const receipts = await tx.jobReceipt.findMany({
       where: { organizationId, jobOrderId, isDeleted: false },
       select: {
         id: true,
@@ -1836,8 +1902,7 @@ async function buildActivity(
           },
         },
       },
-    }),
-  ]);
+    });
 
   const issueEvents = issues.map((issue) => ({
     kind: 'issue' as const,

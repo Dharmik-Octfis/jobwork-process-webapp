@@ -414,14 +414,24 @@ export function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const rememberedOrgId = localStorage.getItem(LAST_ORG_KEY);
+  const effectiveOrgId = activeOrgId || rememberedOrgId || organizations?.[0]?.organizationId;
+  const activeOrg = organizations?.find((o) => o.organizationId === effectiveOrgId) || organizations?.[0];
+
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
   const [prevPathname, setPrevPathname] = useState(location.pathname);
   const [prevModulesLength, setPrevModulesLength] = useState(0);
   const [logoError, setLogoError] = useState(false);
   const [prevOrgId, setPrevOrgId] = useState(activeOrgId);
+  const [prevLogoUrl, setPrevLogoUrl] = useState(activeOrg?.logo_url);
 
   if (activeOrgId !== prevOrgId) {
     setPrevOrgId(activeOrgId);
+    setLogoError(false);
+  }
+
+  if (activeOrg?.logo_url !== prevLogoUrl) {
+    setPrevLogoUrl(activeOrg?.logo_url);
     setLogoError(false);
   }
 
@@ -455,9 +465,6 @@ export function AppLayout() {
    * refetches on its own. The old code called `queryClient.invalidateQueries()`
    * with no key, nuking every cache in the app including master data.
    */
-  const rememberedOrgId = localStorage.getItem(LAST_ORG_KEY);
-  const effectiveOrgId = activeOrgId || rememberedOrgId || organizations?.[0]?.organizationId;
-
   const switchOrg = (nextOrgId: string) => {
     if (!activeOrgId) {
       navigate(`/organizations/${nextOrgId}`);
@@ -469,9 +476,6 @@ export function AppLayout() {
     );
     navigate(nextPath);
   };
-
-  const activeOrg =
-    organizations?.find((o) => o.organizationId === effectiveOrgId) || organizations?.[0];
 
   return (
     <div

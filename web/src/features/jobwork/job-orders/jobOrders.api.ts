@@ -7,7 +7,9 @@ import {
   jobOrderSchema,
   jobOrdersPageSchema,
   type CreateJobOrderData,
+  jobOrderWithStepsSchema,
   type JobOrder,
+  type JobOrderWithSteps,
   type JobOrderOverviewData,
   type JobOrdersPage,
   type JobOrderStepData,
@@ -30,6 +32,11 @@ export async function fetchJobOrderCount(orgId: string, params: PageParams = {})
 export async function fetchJobOrderById(orgId: string, id: string): Promise<JobOrder> {
   const response = await apiClient.get(`${endpoints.jobwork.jobOrders(orgId)}/${id}`);
   return jobOrderSchema.parse(response.data);
+}
+
+export async function fetchJobOrderWithStepsById(orgId: string, id: string): Promise<JobOrderWithSteps> {
+  const response = await apiClient.get(`${endpoints.jobwork.jobOrders(orgId)}/${id}/with-steps`);
+  return jobOrderWithStepsSchema.parse(response.data);
 }
 
 /** The stepper page. ONE request: the tiles, the per-step totals and the live

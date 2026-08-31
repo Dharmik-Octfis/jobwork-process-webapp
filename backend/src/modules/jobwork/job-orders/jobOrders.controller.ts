@@ -10,6 +10,7 @@ import {
   createNewJobOrder,
   deleteJobOrderById,
   getJobOrderById,
+  getJobOrderWithStepsById,
   getJobOrderNumberPreference,
   getJobOrderOverview,
   getJobOrdersList,
@@ -161,6 +162,12 @@ export const createJobOrder = async (req: Request, res: Response) => {
 
 export const getJobOrder = async (req: Request, res: Response) => {
   const found = await getJobOrderById(req.tenantId!, req.params.id as string);
+  if (!found) throw ApiError.notFound('Job order not found');
+  sendSuccess(res, found);
+};
+
+export const getJobOrderWithSteps = async (req: Request, res: Response) => {
+  const found = await getJobOrderWithStepsById(req.tenantId!, req.params.id as string);
   if (!found) throw ApiError.notFound('Job order not found');
   sendSuccess(res, found);
 };

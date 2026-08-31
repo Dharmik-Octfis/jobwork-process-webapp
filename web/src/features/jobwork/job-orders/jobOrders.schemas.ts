@@ -83,6 +83,20 @@ export const jobOrderSchema = z.object({
 
 export type JobOrder = z.infer<typeof jobOrderSchema>;
 
+export const jobOrderWithStepsSchema = z.object({
+  id: z.string(),
+  steps: z.array(
+    z.object({
+      id: z.string(),
+      seq: z.number(),
+      processNameSnapshot: z.string(),
+      processorNameSnapshot: z.string().nullable(),
+    })
+  ).default([]),
+});
+
+export type JobOrderWithSteps = z.infer<typeof jobOrderWithStepsSchema>;
+
 /** Per-step derived totals from the Overview endpoint. Strings, because they are
  * Decimals — see `decimalString`. */
 export const stepTotalsSchema = z.object({

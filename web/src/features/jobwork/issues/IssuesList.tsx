@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useParams, useSearchParams } from 'react-router-dom';
-import { Send, SlidersHorizontal } from 'lucide-react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Plus, Send, SlidersHorizontal } from 'lucide-react';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { Pagination } from '../../../components/ui/Pagination';
@@ -92,6 +92,7 @@ function renderCell(issue: JobIssue, key: string): React.ReactNode {
  * than a filter preset.
  */
 export function IssuesList() {
+  const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
@@ -204,26 +205,47 @@ export function IssuesList() {
             )}
 
             {!selectedId && !stepId && (
-              <button
-                type="button"
-                onClick={() => setIsColumnsOpen(true)}
-                title="Customize Columns"
-                aria-label="Customize Columns"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: 30,
-                  height: 30,
-                  borderRadius: 4,
-                  border: '1px solid #e2e8f0',
-                  background: '#fff',
-                  cursor: 'pointer',
-                  color: '#64748b',
-                }}
-              >
-                <SlidersHorizontal size={15} />
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <button
+                  type="button"
+                  onClick={() => setIsColumnsOpen(true)}
+                  title="Customize Columns"
+                  aria-label="Customize Columns"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 30,
+                    height: 30,
+                    borderRadius: 4,
+                    border: '1px solid #e2e8f0',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    color: '#64748b',
+                  }}
+                >
+                  <SlidersHorizontal size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/organizations/${orgId}/jobwork/issues/new`)}
+                  style={{
+                    background: '#186337',
+                    color: 'white',
+                    border: 'none',
+                    padding: '6px 12px',
+                    borderRadius: 4,
+                    fontWeight: 500,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                  }}
+                >
+                  <Plus size={16} /> New
+                </button>
+              </div>
             )}
           </header>
 

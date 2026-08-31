@@ -157,9 +157,17 @@ const JobOrderOverview = lazyPage(
   'JobOrderOverview',
 );
 const IssuesList = lazyPage(() => import('../features/jobwork/issues/IssuesList'), 'IssuesList');
+const CreateIssuePage = lazyPage(
+  () => import('../features/jobwork/issues/CreateIssuePage'),
+  'CreateIssuePage',
+);
 const ReceiptsList = lazyPage(
   () => import('../features/jobwork/receipts/ReceiptsList'),
   'ReceiptsList',
+);
+const CreateReceivePage = lazyPage(
+  () => import('../features/jobwork/receipts/CreateReceivePage'),
+  'CreateReceivePage',
 );
 const RejectionReasonsList = lazyPage(
   () => import('../features/jobwork/rejection-reasons/RejectionReasonsList'),
@@ -287,12 +295,9 @@ export const router = createBrowserRouter([
               },
               // Jobwork, Sprints 1–4.
               //
-              // 🔴 There is no `issues/new` and no `receipts/new`, deliberately.
-              // Both documents are raised from a job order step — the dialogs
-              // live on the Overview page — because a challan with no step has no
-              // process, no rate, no tolerance and nothing to come back to. A
-              // standalone create route would be a form that cannot be filled in
-              // correctly.
+              // Previously, there was no `issues/new` and no `receipts/new`, deliberately.
+              // But now they are implemented as full pages that allow standalone creation
+              // or redirecting from the Job Order Overview page.
               { path: '/organizations/:orgId/jobwork', element: <JobworkPage /> },
               // The Processes and Process Routes masters now live under Settings —
               // these two only forward the old URLs there.
@@ -316,7 +321,9 @@ export const router = createBrowserRouter([
                 element: <EditJobOrder />,
               },
               { path: '/organizations/:orgId/jobwork/issues', element: <IssuesList /> },
+              { path: '/organizations/:orgId/jobwork/issues/new', element: <CreateIssuePage /> },
               { path: '/organizations/:orgId/jobwork/receipts', element: <ReceiptsList /> },
+              { path: '/organizations/:orgId/jobwork/receipts/new', element: <CreateReceivePage /> },
               {
                 path: '/organizations/:orgId/jobwork/rejection-reasons',
                 element: <RejectionReasonsList />,

@@ -15,9 +15,10 @@ import {
 import type { AxiosError } from 'axios';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
+
+import { JobOrderFlow } from './JobOrderFlow';
+import { ActivityTabs } from './JobOrderStepDetail';
 import { formatDate } from '../../../lib/formatDate';
-import { IssueDialog } from '../issues/IssueDialog';
-import { ReceiveDialog } from '../receipts/ReceiveDialog';
 import {
   JOB_ORDER_STATUS_META,
   daysSince,
@@ -33,8 +34,7 @@ import {
   completeJobOrderStep,
 } from './jobOrders.api';
 import { AddStepsDialog } from './AddStepsDialog';
-import { JobOrderFlow } from './JobOrderFlow';
-import { JobOrderStepDetail, ActivityTabs } from './JobOrderStepDetail';
+import { JobOrderStepDetail } from './JobOrderStepDetail';
 import type {
   ActivityEvent,
   JobOrderOverviewData,
@@ -420,8 +420,6 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   const { orgId, id: routeId } = useParams<{ orgId: string; id: string }>();
   const id = jobOrderId ?? routeId;
 
-  const [issueStep, setIssueStep] = useState<OverviewStep | null>(null);
-  const [receiveStep, setReceiveStep] = useState<OverviewStep | null>(null);
   const [pickedStepId, setPickedStepId] = useState<string | null>(null);
   const [view, setView] = useState<'step' | 'history'>('step');
   const [addStepsOpen, setAddStepsOpen] = useState(false);
@@ -826,8 +824,8 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
               <JobOrderStepDetail
                 step={selectedStep}
                 activity={stepActivity}
-                onIssue={setIssueStep}
-                onReceive={setReceiveStep}
+                onIssue={(step) => navigate(`/organizations/${orgId}/jobwork/issues/new?jobOrderId=${id}&stepId=${step.id}`)}
+                onReceive={(step) => navigate(`/organizations/${orgId}/jobwork/receipts/new?jobOrderId=${id}&stepId=${step.id}`)}
                 onComplete={setCompleteStepTarget}
                 onOpenDocument={openDocument}
               />
@@ -879,30 +877,6 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
             });
             queryClient.invalidateQueries({ queryKey: ['job-orders', orgId], type: 'inactive' });
           }}
-        />
-      )}
-
-      {issueStep && (
-        <IssueDialog
-          isOpen
-          onClose={() => setIssueStep(null)}
-          jobOrder={jobOrder}
-          step={steps.find((s) => s.id === issueStep.id) ?? issueStep}
-          onIssued={() =>
-            queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] })
-          }
-        />
-      )}
-
-      {receiveStep && (
-        <ReceiveDialog
-          isOpen
-          onClose={() => setReceiveStep(null)}
-          jobOrder={jobOrder}
-          step={steps.find((s) => s.id === receiveStep.id) ?? receiveStep}
-          onReceived={() =>
-            queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] })
-          }
         />
       )}
 
