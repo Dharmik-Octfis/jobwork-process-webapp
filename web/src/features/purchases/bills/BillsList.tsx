@@ -29,7 +29,7 @@ function renderBillCell(po: Bill, key: string, _paymentTerms: PaymentTerm[] = []
     return po.vendor?.contactName || '-';
   }
   if (key === 'totalAmount' || key === 'total') {
-    return `₹${Number(po.totalAmount || 0).toFixed(2)}`;
+    return `₹${Number((po as Record<string, unknown>).total || po.totalAmount || 0).toFixed(2)}`;
   }
   const value = (po as Record<string, unknown>)[key];
   if (value === null || value === undefined || value === '') return '-';
@@ -313,7 +313,7 @@ export function BillsList() {
                           {po.billNumber}
                         </div>
                         <div style={{ fontSize: '12px', color: '#64748b' }}>
-                          {po.vendor?.contactName || '-'} • ₹{po.totalAmount || po.totalAmount || 0}
+                          {po.vendor?.contactName || '-'} • ₹{(po as Record<string, unknown>).total || po.totalAmount || 0}
                         </div>
                       </div>
                     ))}
