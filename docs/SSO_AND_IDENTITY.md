@@ -9,8 +9,11 @@
 
 _Status: **live in production.** As of 2026-08-31 `accounts.octfis.com` and `jobwork.octfis.com` are
 both deployed AppSails and SSO is the only way into production jobwork — `SSO_ENABLED=true` there, so
-local login, signup, forgot- and reset-password are unmounted. STAGING IS NOT: neither service is
-deployed to it and `backend/.env.staging` carries no `SSO_*`, so staging is still password login.
+local login, signup, forgot- and reset-password are unmounted. STAGING IS **CONFIGURED BUT NOT
+DEPLOYED**: both env files and the `jobwork-staging` registry row are in place, but the
+`octfis-accounts-staging` AppSail does not exist yet, so nothing is live there. 🔴 Deploy accounts
+BEFORE the api — `backend/.env.staging` already carries `SSO_ENABLED=true`, which unmounts password
+login, and the boot check proves those variables are SET without ever contacting the issuer.
 ⚠️ All three environments still share one `accounts_dev` database (see §15). Sections below are
 marked ✅ built / ⚠️ partly / ❌ design._
 
@@ -482,7 +485,11 @@ They are ephemeral token storage and, like `refresh_tokens` in the app, carry no
 > argon2-hashed as described, and `accounts: npm run register:client` is the reviewed database change
 > that writes a row — it hashes the secret (the column holds a hash; pasting plaintext in makes every
 > token exchange fail `invalid_client`) and prints the plaintext once. Registered today: `jobwork`
-> (localhost) and `jobwork-production`. Staging has no row because staging is not deployed.
+> (localhost), `jobwork-production` and `jobwork-staging` — one row per environment, each with its
+> own secret. ⚠️ All three live in the same `accounts_dev` database, so the production accounts
+> service also loads the staging row and its `form-action` widens to include the staging origin after
+> its next restart. That is the documented consequence of deriving the CSP from the registry, and it
+> is bounded: only origins an administrator has already registered as redirect targets.
 >
 > ⚠️ The registry is read ONCE AT BOOT, and so are the CSP `form-action` origins derived from it. A
 > row written by that script does nothing until the accounts service is redeployed — and the symptom
@@ -993,9 +1000,19 @@ and would otherwise push every entry in that array. What is committed today:
   behind `jobwork.octfis.com`. **Order matters and is not obvious:** accounts goes FIRST, because
   the api deploy is what turns SSO on and the client row it authenticates with is only loaded when
   accounts boots. Reversed, production has no password login and no working SSO at the same time.
-- ⚠️ **Staging is not deployed and has no `SSO_*`.** Its accounts hostname in `accounts/.env.staging`
-  is still a guess flagged in that file, and `backend/.env.staging` has no SSO block at all, so
-  staging is password login. Registering `jobwork-staging` needs the real hostnames first.
+- ⚠️ **Staging is configured, not deployed.** Both env files carry a full `SSO_*` block and
+  `jobwork-staging` is registered. What is missing is infrastructure: the console lists exactly ONE
+  AppSail in the staging project (`jobwork-api`), so `octfis-accounts-staging` has to be created
+  before anything works, and its `url_prefix` must be `octfis-accounts-staging` for the issuer to
+  resolve. The hostname pattern is now confirmed rather than guessed — `jobwork-api` reports
+  `url_prefix: jobwork` at `jobwork.development.catalystappsail.com`, i.e.
+  `<url_prefix>.development.catalystappsail.com`. The old value here was the bare
+  `<appsail>.catalystappsail.com`, which would have failed every sign-in.
+- 🔴 **Staging's issuer stays on a Catalyst hostname, decided 2026-08-31 against §14 rule 1.** Two
+  costs were accepted: the issuer is permanent on a host we do not own, and staging shares its
+  registrable domain with every other Catalyst tenant — so its cookie topology is not production's
+  under `octfis.com`, and staging cannot rehearse that part. Mapping `accounts-staging.octfis.com`
+  remains the fix; no DNS record exists for it today.
 - 🔴 **Not named `jobwork-accounts`.** Accounts is estate-wide shared infrastructure with its own
   domain (§14), and jobwork is only its first client; naming it after one client would bake that
   inversion into the console and the URLs.
