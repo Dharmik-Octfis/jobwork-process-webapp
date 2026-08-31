@@ -331,7 +331,7 @@ model Organization {
 /// 🔴 THE NAME IS PER-ORG. EVERY OTHER PERSONAL DETAIL IS NOT.
 ///
 /// The name shown anywhere inside an organization comes from THIS row, never from
-/// `User`: the same account can be "Priya Shah" in one org and "P. Shah" in
+/// `User`: the same account can be "James Walker" in one org and "J. Walker" in
 /// another, and editing one must never write the other.
 ///
 /// Everything else about the person — phone, mobile, date of birth, address,

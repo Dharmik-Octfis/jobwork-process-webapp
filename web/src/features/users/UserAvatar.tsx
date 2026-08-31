@@ -28,7 +28,7 @@ function hueFor(name: string): number {
   return (sum % 12) * 30;
 }
 
-/** First letter of the first two words: "Priya Shah" → "PS", "Priya" → "P". */
+/** First letter of the first two words: "James Walker" → "JW", "James" → "J". */
 function initialsFor(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';
@@ -68,23 +68,23 @@ export function UserAvatar({ name, url: initialUrl, size = 34 }: UserAvatarProps
     >
       {/* Always render initials behind or before the image loads */}
       {(!url || !imgLoaded) && initialsFor(name)}
-      
+
       {url && (
-        <img 
-          src={url} 
-          alt="" 
+        <img
+          src={url}
+          alt=""
           onLoad={() => setImgLoaded(true)}
-          onError={() => setImgFailed(true)} 
-          style={{ 
-            opacity: imgLoaded ? 1 : 0, 
-            position: 'absolute', 
-            top: 0, 
-            left: 0, 
-            width: '100%', 
-            height: '100%', 
+          onError={() => setImgFailed(true)}
+          style={{
+            opacity: imgLoaded ? 1 : 0,
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
             objectFit: 'cover',
-            transition: 'opacity 0.2s ease-in-out'
-          }} 
+            transition: 'opacity 0.2s ease-in-out',
+          }}
         />
       )}
     </span>

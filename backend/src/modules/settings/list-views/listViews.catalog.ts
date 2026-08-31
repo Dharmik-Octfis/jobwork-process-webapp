@@ -146,7 +146,7 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
    * because that is what an admin calls the thing they put a person on.
    *
    * `createdBy` / `updatedBy` each render as attribution AND timestamp in one cell
-   * ("Priya Shah · 20 Jul 2026"), which is why there is no separate `createdAt`
+   * ("James Walker · 20 Jul 2026"), which is why there is no separate `createdAt`
    * column here — who changed a permission set and when are read together or not
    * at all. The name comes from the org's member directory, so it is this
    * organization's name for the person (`lib/memberDirectory.ts`).

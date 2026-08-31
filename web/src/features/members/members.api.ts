@@ -8,8 +8,8 @@ import { endpoints } from '../../api/endpoints';
  * a change affects:
  *
  *   PER-ORGANIZATION — firstName, lastName, fullName, status, role, permission
- *     template, customFields. The same email can be "Priya Shah" in one org and
- *     "P. Shah" in another; changing one never changes the other.
+ *     template, customFields. The same email can be "James Walker" in one org and
+ *     "J. Walker" in another; changing one never changes the other.
  *
  *   GLOBAL (the account) — email, avatarUrl, phone, mobile, dateOfBirth, address.
  *     Changing these changes what EVERY organization that person belongs to sees.
