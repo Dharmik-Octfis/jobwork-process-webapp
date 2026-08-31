@@ -983,7 +983,7 @@ export function CustomerForm({
           </button>
           <button
             type="button"
-            onClick={() => navigate(`/organizations/${orgId}/sales/customers`)}
+            onClick={() => navigate(-1)}
             style={{
               padding: '6px 20px',
               background: 'white',

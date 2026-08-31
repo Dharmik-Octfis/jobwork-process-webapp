@@ -203,14 +203,14 @@ export function CreateCompositeItemPage({
             qtyPerUnit: Number(c.qtyPerUnit) || 1,
           })),
       } as CreateCompositeItemDto),
-    onSuccess: async (createdItem) => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['compositeItems', orgId] });
-      const itemId = createdItem.id;
+      const itemId = data.id;
 
       if (isModal && onSuccess) {
         onSuccess(itemId);
       } else {
-        navigate(`/organizations/${orgId}/composite-items`);
+        navigate(`/organizations/${orgId}/composite-items?id=${data.id}`);
       }
     },
     onError: (error: unknown) => {

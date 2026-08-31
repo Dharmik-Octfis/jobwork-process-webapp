@@ -179,7 +179,10 @@ export function AddOpeningStockModal({
   const handleAddLocation = () => {
     setLocationRows([
       ...locationRows,
-      createEmptyLocation(),
+      {
+        ...createEmptyLocation(),
+        batches: isBatchTracked ? [createEmptyBatch(defaultSellingPrice, defaultMrp)] : [],
+      },
     ]);
   };
 

@@ -185,7 +185,7 @@ export function NewUserModal({
                   <input
                     id="nu-first"
                     className={`users-input ${errors.firstName ? 'error' : ''}`}
-                    placeholder="Priya"
+                    placeholder="James"
                     {...register('firstName')}
                   />
                   {errors.firstName && (
@@ -199,7 +199,7 @@ export function NewUserModal({
                   <input
                     id="nu-last"
                     className={`users-input ${errors.lastName ? 'error' : ''}`}
-                    placeholder="Shah"
+                    placeholder="Walker"
                     {...register('lastName')}
                   />
                   {errors.lastName && <p className="users-error-msg">{errors.lastName.message}</p>}
@@ -251,9 +251,7 @@ export function NewUserModal({
                       />
                     )}
                   />
-                  {errors.roleId && (
-                    <p className="users-error-msg">{errors.roleId.message}</p>
-                  )}
+                  {errors.roleId && <p className="users-error-msg">{errors.roleId.message}</p>}
                 </div>
                 <div>
                   <label className="users-field-label required" htmlFor="nu-permissions">

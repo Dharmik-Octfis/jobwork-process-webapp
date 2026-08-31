@@ -138,12 +138,12 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
         }
       }
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
-      const itemId = createdItem.id;
-
+      queryClient.invalidateQueries({ queryKey: ['item-number-preference', orgId] });
+      
       if (isModal && onSuccess) {
-        onSuccess(itemId);
+        onSuccess(createdItem.id);
       } else {
-        navigate(`/organizations/${orgId}/items`);
+        navigate(`/organizations/${orgId}/items?id=${createdItem.id}`);
       }
     },
     onError: (error: unknown) => {

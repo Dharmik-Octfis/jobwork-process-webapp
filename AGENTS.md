@@ -1,4 +1,11 @@
-# ANTIGRAVITY.md
+# AGENTS.md
+
+> **This file and `CLAUDE.md` are the same document**, kept byte-identical below the title so every
+> agent reads the same rules whichever filename its tool looks for. **Edit both, or neither.** They
+> were allowed to drift once: `AGENTS.md` went on recommending `npm run db:migrate` for months after
+> that command became a guard that exits 1 — an agent following the stale copy would have reached for
+> `prisma migrate dev` against a shared dev database that drifts routinely. A half-updated rule here
+> is worse than no rule, because it is followed with confidence.
 
 Multi-tenant SaaS (production monitoring / inventory). **Express 5 + TypeScript** modular monolith,
 **React 19 + Vite** front end, **PostgreSQL 18 via Prisma 7**, deployed to **Zoho Catalyst AppSail**.
@@ -9,8 +16,67 @@ expensive when you do.
 
 ---
 
-### 🔴 CRITICAL COMMAND RESTRICTION
-**NEVER RUN `npx prisma db push --force-reset`**. Do not use this command under any circumstances. It is strictly forbidden.
+## 🔴 Three middlewares, three questions — all required
+
+| Middleware          | Question it answers                         | How                                        | Checked live?    |
+| ------------------- | ------------------------------------------- | ------------------------------------------ | ---------------- |
+| `authenticate`      | Was this token signed by us and unexpired?  | JWT verify — **no database access at all** | ❌ no            |
+| `tenantContext`     | Is the caller a current member of this org? | `memberships` where `isDeleted: false`     | ✅ every request |
+| `requirePermission` | May they perform this action?               | the caller's resolved permission set       | ✅ every request |
+
+A protected route missing any of these fails **open and silently** — same shape as a tenant table
+with no RLS policy. Mount them in that order; each needs what the one before it set.
+
+🔴 **`authenticate` proves the token, not the account.** A signature only proves the token was
+genuine _when it was minted_. It is never resolved against `refresh_tokens`, so for up to
+`JWT_ACCESS_TTL` (**15m**) an access token keeps working after its owner was deactivated,
+soft-deleted, or logged out, and after their session row was revoked. `sid` is a claim on this path,
+nothing more. **This is a deliberate throughput trade made 2026-07-24, not an oversight** — a
+per-request `sid` lookup was implemented and then removed. Do not "fix" it by reinstating an
+unconditional lookup; if the window ever needs closing, cache the lookup on `sid` with a short TTL so
+the staleness bound is tunable. `middlewares/authenticate.test.ts` pins the current behaviour, window
+included.
+
+**So revocation happens at the refresh boundary, and only there.** `auth.service.refresh` is the
+entire enforcement surface: row must exist, **must not be revoked**, belong to `sub`, be unexpired,
+and the user must satisfy `ACTIVE_USER` — and it revokes every session when that last check fails.
+Weaken it and a disabled account works **forever** instead of for 15 minutes. It is guarded by the
+second describe block in that test file.
+
+🔴 **The refresh token is NOT rotated (2026-07-31), and reintroducing rotation will log users out at
+random.** The old code deleted the presented token and created a replacement, committing that before
+the response could reach the browser — so any interrupted refresh (reload, dropped wifi, closed lid)
+left the browser holding a token the server had destroyed, which the next call read as theft and
+answered with `deleteMany WHERE userId`: every session on every device. It is not fixable by
+reordering; the DB write is durable before the response leaves the process. `refresh` now returns the
+same token and only mints a new access token. The trade — a stolen refresh token is not caught on
+reuse — is paid for by revocation being immediate and checked on every refresh. The regression guard
+is `authenticate.test.ts` → "accepts the same token twice".
+
+What is _not_ bounded by 15 minutes, because it is re-read on every request: **org membership**
+(removal takes effect immediately, on every device), **permissions**, and **row visibility**.
+
+**One definition of "usable account".** `ACTIVE_USER` (`lib/authGuards.ts`) is `{ isActive: true,
+isDeleted: false }` — put it in the `where`, or use `isUsableAccount(row)` where you already hold the
+row (`login` reads the user _before_ checking the password so a disabled account can't be told apart
+from a wrong one). Never spell the flags out inline: two flags means two chances to check only one,
+which is exactly how `isDeleted` came to be checked in zero places while `isActive` was checked in two.
+
+🔴 **Flipping `isActive → false` or `isDeleted → true` on a `User` must call `revokeUserSessions()`
+in the same transaction.** `onDelete: Cascade` on `refresh_tokens.user_id` only fires on a _hard_
+delete, and this codebase soft-deletes everywhere. Since nothing on the request path checks the
+account, this is what makes deactivation take effect at all — at the user's next refresh.
+
+🔴 **`refresh_tokens` rows are never deleted — ending a session stamps `revoked_at` + `revoked_reason`.**
+The table is also the login report (`created_at` = real login time, `last_used_at`, `user_agent`), so
+a delete destroys history. It therefore behaves like every soft-deleted table here: **a live-session
+read must filter `revokedAt: null`**, or a logged-out session keeps working. `GET /auth/me/sessions`
+returns the caller's own history. Nothing purges the table yet — decide a retention rule before it
+grows.
+
+**Tests:** suites run against the dev database **in parallel**, so a test that mutates a user it
+merely _found_ will break whatever another suite is doing with that user at that moment. Create your
+own fixtures and hard-delete them — see `middlewares/authenticate.test.ts`.
 
 ---
 
@@ -65,59 +131,54 @@ promotes it to `req.tenantId` after checking `memberships`. Everything downstrea
 
 ## 🔴 Database
 
-- **Never create or alter a table by hand.** Schema file → `npm run db:migrate` → commit the generated
-  SQL. `npm run db:check-drift` (exit 2 = drift) is the enforcement — run it in CI.
+- **Never create or alter a table by hand.** Schema file → `npm run db:draft -- <name>` → edit the
+  generated SQL → `npm run db:promote` → `npm run db:apply` → commit.
+  `npm run db:check-drift` (exit 2 = drift) is the enforcement — run it in CI.
+- 🔴 **`prisma db push` and `prisma migrate dev` are not used here — both delete data.** `db push`
+  ignores `prisma/migrations` entirely and issues whatever DDL makes the live database match your
+  schema files, so anything in the database but not in those files is something it removes; on
+  2026-07-25 a push from a branch with stale files cost every organization its owner
+  (`migrations/20260725140000_.../migration.sql:32`). `migrate dev` offers to **reset** whenever it
+  sees drift, and this shared dev database drifts routinely. `npm run db:push` / `npm run db:migrate`
+  are guards that explain this and exit 1. See `scripts/db-sync.ts`.
+  🔴 **`npx prisma db push --force-reset` is forbidden outright, under every circumstance.** It does
+  not ask and it does not diff — it drops the schema and rebuilds it empty. On a shared dev database
+  that is every organization's data, gone, with no prompt to say no to.
 - The app connects as **`jobwork_app`** — a non-owner, no `BYPASSRLS`, no DDL rights.
   **Never point `DATABASE_URL` at `postgres`.** The table owner bypasses every policy _silently_;
   RLS that does nothing looks exactly like RLS that works.
 - `MIGRATE_DATABASE_URL` (`postgres`) is for the Prisma CLI only — migrations need DDL.
 - Cross-tenant admin views need a **separate read-only role and client**, never the app's connection.
 
+## 🔴 Query shape — N+1 is a bug here, and `Promise.all` does not fix it
+
+**One grouped query, never one query per row.** A `findMany` followed by an `aggregate`/`findFirst`
+per element is N+1: it is invisible at three rows and it _is_ the response time at three hundred.
+Reach for `groupBy`, an `in` filter, or a single `include` — then index the result into a `Map` in
+memory. `stockLedger.service.ts` is the worked example both ways: `getBalance` answers about **one**
+batch, and `getBalanceByLocation` / `getBalancesByBatchAndLocation` exist precisely so callers with a
+list never loop over it.
+
+🔴 **`Promise.all` buys you nothing inside `runAsTenant`.** An interactive transaction holds **one**
+connection, so every query issued on `tx` is queued and executed by the engine one at a time.
+`Promise.all` changes when the promises are _created_ in JS; it does not reduce the number of round
+trips and it does not let Postgres work on two of them at once. Wrapping an N+1 in `Promise.all`
+makes it _look_ concurrent while running exactly as slowly as before — which is the trap
+`getJobOrderOverview` fell into (`d91fa73`): the loops became `Promise.all`, it did not help, and a
+`{ timeout: 15000 }` went on the transaction in the same commit to stop the `P2028` 500s. The
+timeout was removed 2026-08-27; the N+1 underneath it is the thing to fix.
+
+**So use `Promise.all` where it can actually overlap** — independent work that is _not_ sharing one
+transaction's connection: separate `runAsTenant` calls, a DB read alongside an HTTP call, unrelated
+`prisma` queries outside a transaction. Inside a transaction, collapse the queries instead.
+
+**Do not answer a slow query with a bigger `timeout`.** The budget is a net for work that is
+irreducibly large (`DOCUMENT_TX` in `jobwork.types.ts` — a document write whose per-row ledger
+validation cannot be skipped), not a place to hide a query shape that should have been one
+round trip. Raising it holds a pooled connection longer, and `maxWait` stays at its default, so the
+requests that queue behind the slow one fail on pool acquisition while the offender survives.
+
 ## Schema conventions — copy `prisma/schema/tenant.prisma`, not Prisma defaults
-
-**Every table MUST include these 5 audit fields:**
-
-```prisma
-  isDeleted      Boolean  @default(false) @map("is_deleted")
-  createdBy      String?  @map("created_by") @db.Uuid
-  updatedBy      String?  @map("updated_by") @db.Uuid
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-```
-
-When creating new tables and APIs, always consider these keys and take reference from old APIs and tables.
-
-**Every domain table also carries a `custom_fields` JSONB** — per-org dynamic fields live in one
-column, never extra tables or per-tenant columns (same exclusions as the 5 audit fields: no token
-or master-data reference tables):
-
-```prisma
-  customFields Json @default("{}") @map("custom_fields")
-```
-
-- **Migration time:** add the column when the table is first created (free on an empty table, a
-  midnight migration on a large one). Field _definitions_ live once in `custom_field_definitions`;
-  a new module needs **no new table** — only its `custom_fields` column and an `entityType` string.
-- **Validation time (create + update):** never trust the client's shape. Inside the same
-  `runAsTenant` tx, load the org's active definitions and validate through the engine, then persist
-  the cleaned object — copy `vendors.service.ts` / `items.service.ts`:
-  ```ts
-  const defs = await loadActiveDefinitions(tx, organizationId, 'vendor');
-  const customFields = validateCustomFields({
-    defs,
-    input: rawCustomFields,
-    mode: 'create' /* or 'update', existing */,
-  });
-  ```
-  The engine (`src/modules/custom-fields/customFields.engine.ts`) strips unknown keys, type-checks
-  values, stores decimals as strings + select/multi-select as option **ids**, and enforces required
-  **only on create, or on update when the field already had a value**. It throws `ApiError(400)` with
-  `details` keyed `customFields.<key>` — the controller **needs an `ApiError` branch** or those
-  become a 500.
-- **Read time:** unchanged — it's a column, so queries keep their shape. Accept
-  `customFields: z.record(z.string(), z.unknown()).optional()` on the module schema, and set the
-  **validated** value (never the raw input). Register new modules in `ENTITY_TYPES` (backend) +
-  `CUSTOM_FIELD_MODULES` (frontend); `helpText`/`defaultValue`/`options` live in the `config` JSONB.
 
 |                  | This repo                                                 | **Not**                                   |
 | ---------------- | --------------------------------------------------------- | ----------------------------------------- |
@@ -132,6 +193,100 @@ or master-data reference tables):
 and never sees `uuid` vs `text`. Postgres fails at runtime with `operator does not exist: uuid = text`,
 which reads like a query bug. **When you change a PK's native type, grep every FK that references it.**
 
+### Default columns — every domain table carries these five
+
+Added in `migrations/20260720120300_add_default_audit_columns`. Copy this block into
+every new **domain** table (business/tenant data). **Exclude** ephemeral token tables
+(`refresh_tokens`, `password_reset_tokens`) and master-data reference tables
+(`countries`, `states`, `cities`, `industries`, `app_modules`).
+
+`refresh_tokens` stays on that exclusion list, but it is no longer ephemeral: since 2026-07-31 it
+keeps its rows and carries its own lifecycle columns (`revoked_at`, `revoked_reason`, `last_used_at`,
+`user_agent`) instead of the five audit columns. There is no acting user to record on a session — the
+session _is_ the user's action — so `created_by`/`updated_by` would be noise, and `revoked_at` plays
+the `is_deleted` role.
+
+```prisma
+  isDeleted     Boolean  @default(false) @map("is_deleted")           // soft-delete flag
+  createdBy     String?  @map("created_by") @db.Uuid                  // acting user
+  updatedBy     String?  @map("updated_by") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  createdByUser User? @relation("<Model>CreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("<Model>UpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+```
+
+And the two back-relations on `User` (relation names must be globally unique):
+
+```prisma
+  created<Model>s <Model>[] @relation("<Model>CreatedBy")
+  updated<Model>s <Model>[] @relation("<Model>UpdatedBy")
+```
+
+- `createdBy`/`updatedBy` are **nullable** — migrations, `seed.ts`, and self-signup have
+  no acting user. `onDelete: SetNull` so deleting a user never cascades into business
+  data. FK checks bypass RLS in Postgres, so these are safe on tenant tables.
+- **Populate them in the service layer** from `req.user.id` — `createdBy` + `updatedBy` on
+  create, `updatedBy` on update. Never let the client send them; omit from the input type
+  (see `vendors.service.ts` `VendorInput`).
+- **Soft delete is enforced** — a "delete" is an `update`, not a `DELETE`:
+  ```ts
+  // deletes NEVER call tx.x.delete(...). They stamp the flag as an update:
+  tx.vendor.update({ where: { id }, data: { isDeleted: true, updatedBy: userId } });
+  ```
+  `createdBy` stays the original creator; `updatedBy`/`updatedAt` record who removed it, so
+  the row reads as "last modified by the deleter". **Every read must filter `isDeleted: false`**
+  — list queries, single-row fetches, and the existence check inside update/delete (a
+  soft-deleted row must 404, not resurrect). `tenantContext` also filters `organization.isDeleted`,
+  so a deleted org is unreachable through any tenant route even though the membership row remains.
+  See `vendors.service.ts`, `items.service.ts`, `organizations.controller.ts`.
+- ⚠️ **Unique constraints + soft delete:** a soft-deleted row still occupies its unique key
+  (`@@unique([organizationId, vendorNumber])`, `@@unique([userId, organizationId])`, …). If you
+  ever need to re-create a key a soft-deleted row holds, either reactivate that row
+  (`isDeleted: false`) or add a **partial unique index** (`WHERE is_deleted = false`). None are
+  needed today (vendor numbers come from a sequence; membership accept upserts the existing row).
+
+### Custom fields — every domain table also carries `custom_fields`
+
+Per-org dynamic fields live in **one JSONB column**, never extra tables or per-tenant columns.
+Copy this into every new **domain** table (same exclusions as the five audit columns above — no
+ephemeral token tables, no master-data reference tables):
+
+```prisma
+  customFields Json @default("{}") @map("custom_fields") // per-org dynamic fields
+```
+
+- **Migration time:** add the column when you first create the table. Empty JSONB on an empty
+  table is free; bolting it onto a million-row table later is a midnight migration. Field
+  _definitions_ live once in `custom_field_definitions` (`prisma/schema/customfields.prisma`), so a
+  new module needs **no new table** — only its `custom_fields` column and an `entityType` string.
+- **Validation time (create + update):** never trust the client's `customFields` shape. Inside the
+  **same `runAsTenant` tx**, load the org's active definitions and validate through the engine, then
+  persist the cleaned object — copy `vendors.service.ts` / `items.service.ts`:
+  ```ts
+  const defs = await loadActiveDefinitions(tx, organizationId, 'vendor');
+  const customFields = validateCustomFields({
+    defs,
+    input: rawCustomFields,
+    mode: 'create', // or 'update' with `existing: row.customFields`
+  });
+  ```
+  The engine (`src/modules/custom-fields/customFields.engine.ts`) strips unknown keys, type-checks
+  each value, stores decimals as **strings** and select/multi-select as option **ids**, preserves
+  hidden/archived values, and enforces required **only on create, or on update when the field
+  already held a value** (old records stay editable). It throws `ApiError(400)` with `details` keyed
+  `customFields.<key>` — so the controller **must have an `ApiError` branch** (the vendor/item
+  controllers do) or those field errors collapse into a generic 500.
+- **Read time:** nothing changes — `custom_fields` rides along like any column, so list/detail
+  queries keep their shape. Accept it on the module's create/update schema
+  (`customFields: z.record(z.string(), z.unknown()).optional()`), then destructure it out of the
+  Prisma write and set the **validated** value, never the raw input.
+- **Register a new module** in the allowlist both sides: backend `ENTITY_TYPES`
+  (`customFields.constants.ts`) and frontend `CUSTOM_FIELD_MODULES` (`customFields.schemas.ts`).
+  `helpText`, `defaultValue`, and dropdown `options` live inside the definition's `config` JSONB —
+  no migration to add or change them.
+
 ## Module conventions
 
 - **Copy `src/modules/invitations/`**: `.routes` / `.controller` / `.service` / `.schemas` / `.types`,
@@ -141,13 +296,29 @@ which reads like a query bug. **When you change a PK's native type, grep every F
 - Reuse `assertOrgAdmin` (`invitations.service.ts`) for admin-only actions.
 - Scope mutations: `updateMany({ where: { id, organizationId } })`, never `update({ where: { id } })`.
 - 🔴 **New module with protected routes? Two steps, both required.** (1) Register its resource in
-  `permissions.catalog.ts` `RESOURCES` — one line adds `<resource>:read/create/update/delete` to the
-  catalog, the role editor's grid, and the computed Owner role. (2) Gate **every** route with
+  `permissions.catalog.ts` `MODULE_GROUPS`, under the main module the sidebar files it beneath — one
+  line adds `<resource>:read/create/update/delete` to the catalog, the role editor's grid, and the
+  computed Owner role. (`read` is implied by the other three — `withImpliedRead`.) (2) Gate **every** route with
   `requirePermission('<resource>:<action>')`, mounted after `authenticate, tenantContext`. Forgetting
   step 1 fails **closed** (nobody can act — loud). Forgetting step 2 fails **open and silently** — the
   module has no gate, every member can do everything, and nothing warns you (same shape as a tenant
   table with no RLS policy). A module's routes are not done until each carries a `requirePermission`.
   Copy `src/modules/purchases/vendors/`. Full model in `docs/ROLES_AND_PERMISSIONS.md`.
+- 🔴 **A Role is NOT a permission set.** Since 2026-07-25 they are two independent things on a
+  Membership: `roleId` → `roles` is a **job title that grants nothing** (no middleware reads it),
+  and `permissionTemplateId` → `permission_templates` **is** the authorization. Same title with
+  different access, and one bundle across titles, are both normal. Never branch on a role name —
+  the check belongs in the catalog + `requirePermission`. Managing the two is separately grantable
+  (`role:*` vs `permission_template:*`): retitling staff is harmless, rewriting permissions is
+  privilege escalation.
+- 🔴 **`Membership.isOwner` is above the permission system, and there is only ONE gate below it.**
+  `tenantContext` resolves an owner to every permission _before_ reading a template, so no route
+  ever branches on ownership — `requirePermission` is a pure set check. `requireOwner` exists only
+  for what no template may grant (deleting the org; later ownership transfer), because anyone with
+  `permission_template:update` can self-grant every key. **Never write a bespoke membership lookup
+  in a service to authorize** — that was `assertOrgAdmin`, a second system that ignored the catalog
+  and left `member:create` holders unable to invite; it is gone. Mount `tenantContext` and add a
+  `requirePermission`.
 
 ## 🔴 API responses — one envelope, one error path
 
@@ -198,6 +369,18 @@ sendSuccess(res, null, 'Vendor deleted.'); // 200, no payload
 - Tenant pages live at `/organizations/:orgId/...` — the org comes from `useParams`, never localStorage.
   Query keys must include `orgId` or switching org serves the previous tenant's cache.
 - No UI library; hand-built controls. See `docs/UI_UX_PRINCIPLES.md`.
+- **Placeholders say "Select", never "Pick" or "Choose"** — `Select a batch…`, `Select a customer…`,
+  `Select a work centre…`. One verb across the whole app, matching `components/ui/Select.tsx`'s
+  default of `Select…`. Applies to input placeholders and to the empty option of a dropdown; prose
+  and headings are free to read however they read best.
+- **A dropdown inside a `Modal` must be portalled to `document.body` and positioned `fixed`.** The
+  dialog body is a scroll container and cards inside it set `overflow: hidden` for their rounded
+  corners, so a `position: absolute` menu is clipped to the card — it opens _inside_ the section and
+  most of it is unreachable. `issues/BatchPicker.tsx` is the worked example: measure the anchor in
+  `useLayoutEffect`, re-measure on `resize` and on `scroll` **in the capture phase** (scroll does not
+  bubble, so a `window` listener never hears the dialog body scrolling), flip upwards when the room
+  below runs out, and keep the menu element mounted while closed so downshift's `getMenuProps` ref
+  still tells an inside click from an outside one.
 - 🔴 **Tab navigation is mandatory and must be perfect — a control you cannot reach with Tab is not
   done.** Native elements (`input`, `textarea`, `select`, `button`, `a[href]`) are focusable for free;
   a `<div onClick>` is **not**. Tab skips straight past it, so the control is unreachable by keyboard
@@ -230,15 +413,49 @@ sendSuccess(res, null, 'Vendor deleted.'); // 200, no payload
     (`useCombobox`). Anything simpler — a static list of two or three options, a toggle, a menu of
     plain buttons — stays lightweight and plain.
 
+## Comments
+
+Comment sparingly. The code already says _what_; a comment earns its place only by saying _why_ — a
+non-obvious constraint, a trade-off, the bug it prevents. One short line, at the line that needs it.
+No banner headers, no restating the next statement, no JSDoc on self-explanatory functions. Match the
+file you are editing: if it has few comments, add few.
+
+```ts
+// filter here, not in RLS — memberships has no policy (read before a tenant exists)
+const rows = await tx.membership.findMany({ where: { userId, isDeleted: false } });
+```
+
 ## Commands
 
 ```bash
 # backend/
 npm run dev · typecheck · lint
-npm run db:migrate       # prisma migrate dev — authoring, YOUR machine only (can reset the DB)
+# Schema changes — `scripts/db-sync.ts`. Nothing here can reset the database.
+npm run db:status            # read-only: what is pending, what has drifted, what would destroy data
+npm run db:draft -- <name>   # drift → prisma/drafts/<ts>_<name>.sql. Applies NOTHING.
+                             # `migrate diff` renders a RENAME as drop+add, so the draft is a
+                             # starting point to edit, not an answer. Destructive lines are
+                             # annotated in the file.
+npm run db:promote           # draft → prisma/migrations, once reviewed. THE gate: past here,
+                             # plain `migrate deploy` applies it in CI and prod with no prompt.
+                             # Refuses destructive SQL unless the file carries
+                             # `-- @destructive-ok: <reason>`, which then lives in git.
+npm run db:apply             # pg_dump → migrate deploy → generate → re-check drift
+npm run db:backup            # pg_dump on demand → backend/backups (gitignored)
+
 npm run db:deploy        # prisma migrate deploy — every other environment, never resets
 npm run db:check-drift   # exit 0 = in sync, 2 = drift. Run in CI.
 npx vitest run
+
+# Deploy — staging and production are DIFFERENT Zoho accounts, so a deploy must name its target.
+npm run deploy:staging       # scripts/deploy.mjs — see docs/CATALYST_DEPLOYMENT_GUIDE.md §1.5b
+npm run deploy:production
+# 🔴 The logged-in Zoho account is machine-wide (%APPDATA%\zcatalyst-cli-nodejs\), NOT a repo file,
+# so it is the one thing the repo cannot get right for you. deploy.mjs reads the CLI's login and
+# refuses to run on a mismatch — never bypass it with a bare `catalyst deploy`, which skips that
+# check plus the env/project cross-check and the `.env`-parking that keeps dev secrets out of the
+# upload. `.catalystrc` and `backend/app-config.json` are GENERATED per target; the committed
+# sources are deploy/targets.json + deploy/<target>.catalystrc.json + backend/.env.<target>.
 
 # web/
 npx tsc -b               # ⚠️ THE typecheck. `tsc --noEmit` checks ZERO files
@@ -249,11 +466,15 @@ npx tsc -b               # ⚠️ THE typecheck. `tsc --noEmit` checks ZERO file
 
 ## Docs
 
-|                                                           |                                                              |
-| --------------------------------------------------------- | ------------------------------------------------------------ |
-| `docs/PRISMA.md` §8                                       | migrations, the RLS runbook, drift, why the DB was baselined |
-| `docs/ARCHITECTURE_AND_TECH_STACK.md`                     | every tech decision + rejected alternatives                  |
-| `docs/DYNAMIC_CUSTOM_FIELDS_EXPLAINED.md`                 | per-org custom fields — concepts                             |
-| `docs/DYNAMIC_CUSTOM_FIELDS_IMPLEMENTATION_PROMPT.md`     | …and the ordered build plan                                  |
-| `docs/ROLES_AND_PERMISSIONS.md`                           | permission templates, `requirePermission`, the code catalog  |
-| `docs/AUTHENTICATION.md` · `CATALYST_DEPLOYMENT_GUIDE.md` | auth model · deploy                                          |
+|                                                           |                                                                                           |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `docs/PRISMA.md` §8                                       | migrations, the RLS runbook, drift, why the DB was baselined                              |
+| `docs/ARCHITECTURE_AND_TECH_STACK.md`                     | every tech decision + rejected alternatives                                               |
+| `docs/DYNAMIC_CUSTOM_FIELDS_EXPLAINED.md`                 | per-org custom fields — concepts                                                          |
+| `docs/DYNAMIC_CUSTOM_FIELDS_IMPLEMENTATION_PROMPT.md`     | …and the ordered build plan                                                               |
+| `docs/ROLES_AND_PERMISSIONS.md`                           | permission templates, `requirePermission`, the code catalog                               |
+| `docs/CACHING.md`                                         | L1/L2 layers, what must never be cached, the invalidation rules                           |
+| `docs/AUTHENTICATION.md` · `CATALYST_DEPLOYMENT_GUIDE.md` | auth model · deploy                                                                       |
+| `docs/SSO_AND_IDENTITY.md`                                | **design, not built** — one login across every app: OIDC, the accounts service, migration |
+| **`docs/JOBWORK_CORE_WALKTHROUGH.md`**                    | **start here for jobwork** — every field's role, every table written, one worked example  |
+| `docs/JOBWORK_DOMAIN_AND_MODULE_MAP.md`                   | …and the design reasoning behind it: §5 boundaries, §6 the rules                          |

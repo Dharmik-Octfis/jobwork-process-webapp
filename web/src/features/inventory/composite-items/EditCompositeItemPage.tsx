@@ -396,7 +396,7 @@ export function EditCompositeItemPage() {
       <div style={{ padding: '16px 24px' }}>
         <button
           type="button"
-          onClick={() => navigate(`/organizations/${orgId}/composite-items`)}
+          onClick={() => navigate(-1)}
           style={{
             background: 'none',
             border: 'none',
@@ -1742,7 +1742,7 @@ export function EditCompositeItemPage() {
             <button
               type="button"
               disabled={updateMutation.isPending}
-              onClick={() => navigate(`/organizations/${orgId}/composite-items`)}
+              onClick={() => navigate(-1)}
               style={{
                 padding: '8px 24px',
                 background: 'white',

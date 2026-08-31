@@ -58,7 +58,7 @@ const ROUTE_MAP: Record<string, string> = {
   DASHBOARD: '',
   PURCHASES: '/purchases',
   VENDORS: '/purchases/vendors',
-  PO: '/purchases/po',
+  PO: '/purchases/purchase-orders',
   BILLS: '/purchases/bills',
   PURCHASE_ORDERS: '/purchases/purchase-orders',
   SALES: '/sales',
@@ -795,17 +795,28 @@ function ModuleNavGroup({
       );
     }
 
+    const handlePlusClick = (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (to !== '#') {
+        navigate(`${to}/new`);
+      }
+    };
+
     return (
       <NavLink
         to={to}
         end={module.code === 'DASHBOARD'}
         className="sidebar-nav-link"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
         style={({ isActive }) => ({
           display: 'flex',
           alignItems: 'center',
           padding: '8px 14px',
           paddingLeft: 14 + depth * 12,
-          justifyContent: 'flex-start',
+          paddingRight: '36px',
+          justifyContent: 'space-between',
           borderRadius: 'var(--radius-md)',
           textDecoration: 'none',
           color: isActive ? 'white' : 'rgba(255,255,255,0.7)',
@@ -813,21 +824,52 @@ function ModuleNavGroup({
           fontWeight: isActive ? 600 : 500,
           transition: 'all 0.2s ease',
           whiteSpace: 'nowrap',
+          position: 'relative',
+          overflow: 'hidden',
         })}
       >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--space-2)',
-            width: '100%',
-            justifyContent: 'flex-start',
-          }}
-        >
-          <div style={{ width: 16 }}></div>
-          {depth === 0 && <Icon size={16} />}
-          <span style={{ fontSize: 13, marginLeft: 4 }}>{module.name}</span>
-        </div>
+        {({ isActive }) => (
+          <>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-2)',
+                justifyContent: 'flex-start',
+              }}
+            >
+              <div style={{ width: 16 }}></div>
+              {depth === 0 && <Icon size={16} />}
+              <span style={{ fontSize: 13, marginLeft: 4 }}>{module.name}</span>
+            </div>
+            
+            {(isHovered || isActive) && (
+              <button
+                onClick={handlePlusClick}
+                title={`Create new ${module.name.toLowerCase()}`}
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: '32px',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: 'none',
+                  borderTopRightRadius: 'var(--radius-md)',
+                  borderBottomRightRadius: 'var(--radius-md)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')}
+              >
+                <Plus size={16} color="#fff" strokeWidth={2.5} />
+              </button>
+            )}
+          </>
+        )}
       </NavLink>
     );
   }
@@ -851,6 +893,7 @@ function ModuleNavGroup({
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '10px 16px',
+          paddingRight: '36px',
           textDecoration: 'none',
           color: isActive ? '#fff' : '#cbd5e1',
           background: isActive ? '#186337' : 'transparent',
@@ -859,6 +902,8 @@ function ModuleNavGroup({
           transition: 'all 0.2s ease',
           borderRadius: '4px',
           margin: '0 8px 4px 8px',
+          position: 'relative',
+          overflow: 'hidden',
         })}
         onMouseEnter={(e) => {
           if (e.currentTarget.style.background !== '#186337') {
@@ -874,19 +919,31 @@ function ModuleNavGroup({
         {({ isActive }) => (
           <>
             <span>{module.name}</span>
-            <button
-              onClick={handlePlusClick}
-              style={{
-                background: 'none',
-                border: 'none',
-                padding: 0,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-              }}
-            >
-              <Plus size={14} color={isActive ? '#fff' : 'rgba(255,255,255,0.4)'} />
-            </button>
+            {(isHovered || isActive) && (
+              <button
+                onClick={handlePlusClick}
+                title={`Create new ${module.name.toLowerCase()}`}
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: '32px',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: 'none',
+                  borderTopRightRadius: '4px',
+                  borderBottomRightRadius: '4px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')}
+              >
+                <Plus size={16} color="#fff" strokeWidth={2.5} />
+              </button>
+            )}
           </>
         )}
       </NavLink>

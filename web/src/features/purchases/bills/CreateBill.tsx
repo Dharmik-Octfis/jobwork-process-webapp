@@ -6,7 +6,6 @@ import { AxiosError } from 'axios';
 import {
   Plus,
   Trash2,
-  Settings,
   Mail,
   Phone,
   PlusCircle,
@@ -31,8 +30,6 @@ import {
   updateBill,
   fetchLocations,
   uploadBillAttachments,
-  fetchBillNumberPreference,
-  updateBillNumberPreference,
   type BillAttachment,
 } from './bills.api';
 import { fetchPurchaseOrderById } from '../purchase-orders/purchase-orders.api';
@@ -41,7 +38,7 @@ import { fetchPaymentTerms } from '../../sales/customers/payment-terms.api';
 import { fetchVendors } from '../vendors/vendors.api';
 import type { Location } from '../../configuration/locations/locations.api';
 import { fetchCustomers } from '../../sales/customers/customers.api';
-import { BillNumberConfigModal } from './BillNumberConfigModal';
+
 import { DeliveryAddressModal } from './DeliveryAddressModal';
 import { CreateVendorModal } from '../vendors/CreateVendorModal';
 import { PaymentTermModal } from '../../sales/customers/PaymentTermModal';
@@ -351,8 +348,7 @@ export function CreateBill() {
     }
   }, [watchPoDate, watchPaymentTerms, paymentTerms, setValue]);
 
-  const [poPrefix, setPoPrefix] = useState('PO-');
-  const [isNumberConfigOpen, setIsNumberConfigOpen] = useState(false);
+
 
   const [isDeliveryAddressModalOpen, setIsDeliveryAddressModalOpen] = useState(false);
   const [isPaymentTermModalOpen, setIsPaymentTermModalOpen] = useState(false);
@@ -447,37 +443,7 @@ export function CreateBill() {
     setValue('totalAmount', computedTotalAmount);
   }, [computedSubTotal, computedTotalAmount, setValue]);
 
-  const { data: preference } = useQuery({
-    queryKey: ['bill-number-preference', orgId],
-    queryFn: () => fetchBillNumberPreference(orgId!),
-    enabled: !!orgId,
-  });
 
-  const [lastPrefilledNumber, setLastPrefilledNumber] = useState('');
-
-  useEffect(() => {
-    if (preference && !isEdit) {
-      const generatedNumber = `${preference.prefix}${preference.nextNumber.toString().padStart(5, '0')}`;
-      const currentValue = watch('billNumber');
-
-      if (!currentValue || currentValue === lastPrefilledNumber) {
-        setValue('billNumber', generatedNumber);
-        setLastPrefilledNumber(generatedNumber);
-        setPoPrefix(preference.prefix);
-      }
-    }
-  }, [preference, setValue, watch, lastPrefilledNumber, isEdit]);
-
-  const updatePreferenceMutation = useMutation({
-    mutationFn: (data: { prefix: string; nextNumber: number }) =>
-      updateBillNumberPreference(orgId!, data),
-    onSuccess: (data) => {
-      queryClient.setQueryData(['bill-number-preference', orgId], data);
-      setValue('billNumber', `${data.prefix}${data.nextNumber.toString().padStart(5, '0')}`);
-      setPoPrefix(data.prefix);
-      setIsNumberConfigOpen(false);
-    },
-  });
 
   const mutation = useMutation({
     mutationFn: (data: CreateBillData) => {
@@ -486,7 +452,7 @@ export function CreateBill() {
       }
       return createBill(orgId!, data);
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
       if (id) {
         queryClient.invalidateQueries({ queryKey: ['bill', orgId, id] });
@@ -495,8 +461,8 @@ export function CreateBill() {
         queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId, fromPo] });
         queryClient.invalidateQueries({ queryKey: ['purchaseOrders', orgId] });
       }
-      queryClient.invalidateQueries({ queryKey: ['bill-number-preference', orgId] });
-      navigate(`/organizations/${orgId}/purchases/bills${isEdit && id ? `?id=${id}` : ''}`);
+
+      navigate(`/organizations/${orgId}/purchases/bills?id=${isEdit && id ? id : data?.id}`);
     },
     onError: (error: AxiosError<{ message?: string }>) => {
       console.error(
@@ -725,20 +691,6 @@ export function CreateBill() {
                   {...register('billNumber', { required: true })}
                   style={{ ...inputStyle, flex: 1 }}
                 />
-                <button
-                  type="button"
-                  onClick={() => setIsNumberConfigOpen(true)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#888',
-                    cursor: 'pointer',
-                    padding: '4px',
-                    display: 'flex',
-                  }}
-                >
-                  <Settings size={18} />
-                </button>
               </div>
               {errors.billNumber && (
                 <div style={{ color: '#e54d4d', fontSize: '12px', marginTop: '4px' }}>
@@ -1668,25 +1620,7 @@ export function CreateBill() {
         </div>
       </form>
 
-      <BillNumberConfigModal
-        isOpen={isNumberConfigOpen}
-        onClose={() => setIsNumberConfigOpen(false)}
-        initialPrefix={preference?.prefix || poPrefix}
-        initialNextNumber={
-          preference?.nextNumber !== undefined
-            ? preference.nextNumber.toString().padStart(5, '0')
-            : watch('billNumber')
-              ? watch('billNumber').replace(poPrefix, '')
-              : '00001'
-        }
-        onSave={(newPrefix, newNextNumberStr) => {
-          const parsed = parseInt(newNextNumberStr, 10);
-          updatePreferenceMutation.mutate({
-            prefix: newPrefix,
-            nextNumber: isNaN(parsed) ? 1 : parsed,
-          });
-        }}
-      />
+
 
       <DeliveryAddressModal
         isOpen={isDeliveryAddressModalOpen}

@@ -36,11 +36,9 @@ export function CreateJobOrder() {
 
   const mutation = useMutation({
     mutationFn: (data: CreateJobOrderData) => createJobOrder(orgId!, data),
-    onSuccess: (created) => {
-      queryClient.invalidateQueries({ queryKey: ['job-orders', orgId] });
-      // Straight to the Overview, not back to the list: the next thing anyone
-      // does with a new job order is issue material against step 1.
-      navigate(`/organizations/${orgId}/jobwork/job-orders/${created.id}`);
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['jobOrders', orgId] });
+      navigate(`/organizations/${orgId}/jobwork/job-orders/${data.id}`);
     },
     onError: (error: AxiosError<{ message?: string; details?: Record<string, string> }>) => {
       setFieldErrors(error.response?.data?.details ?? {});
@@ -62,7 +60,7 @@ export function CreateJobOrder() {
         }}
       >
         <BackButton
-          onClick={() => navigate(`/organizations/${orgId}/jobwork/job-orders`)}
+          onClick={() => navigate(-1)}
           label="Back to job orders"
         />
         <h1 style={{ fontSize: 18, fontWeight: 600, color: '#000', margin: 0 }}>

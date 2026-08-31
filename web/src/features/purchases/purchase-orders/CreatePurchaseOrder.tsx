@@ -414,14 +414,14 @@ export function CreatePurchaseOrder() {
       }
       return createPurchaseOrder(orgId!, data);
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['purchaseOrders', orgId] });
       if (id) {
         queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId, id] });
       }
       queryClient.invalidateQueries({ queryKey: ['po-number-preference', orgId] });
       navigate(
-        `/organizations/${orgId}/purchases/purchase-orders${isEdit && id ? `?id=${id}` : ''}`,
+        `/organizations/${orgId}/purchases/purchase-orders?id=${isEdit && id ? id : data?.id}`,
       );
     },
     onError: (error: AxiosError<{ message?: string }>) => {

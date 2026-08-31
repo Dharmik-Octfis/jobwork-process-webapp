@@ -1449,7 +1449,7 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
     let inHandQty = new Prisma.Decimal(0);
     let inHandValue = new Prisma.Decimal(0);
     const batchBalances = await Promise.all(
-      batches.map((batch) => getBalance(tx, { organizationId, batchId: batch.id }))
+      batches.map((batch) => getBalance(tx, { organizationId, batchId: batch.id })),
     );
     for (const balance of batchBalances) {
       inHandQty = inHandQty.plus(balance.qty);
@@ -1542,7 +1542,7 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
           // Visible once something is out there to come back.
           canReceive: outstanding.greaterThan(0),
         };
-      })
+      }),
     );
 
     const firstStep = order.steps[0];
@@ -1599,7 +1599,7 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
       },
       steps,
     };
-  }, { timeout: 15000 });
+  });
 }
 
 type StepWithRows = Prisma.JobOrderStepGetPayload<{ include: typeof STEP_INCLUDE }>;

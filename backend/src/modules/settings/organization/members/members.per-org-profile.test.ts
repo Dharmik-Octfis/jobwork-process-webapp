@@ -97,8 +97,8 @@ beforeAll(async () => {
   outsiderId = await makeUser('outsider');
 
   // The same person, in two organizations, under two different names.
-  membershipAId = await makeMembership(userId, orgAId, 'Priya', 'Shah', { createdBy: adminId });
-  membershipBId = await makeMembership(userId, orgBId, 'P', 'S');
+  membershipAId = await makeMembership(userId, orgAId, 'James', 'Walker', { createdBy: adminId });
+  membershipBId = await makeMembership(userId, orgBId, 'J', 'W');
 
   // Someone to act as the editing admin in org A.
   adminMembershipAId = await makeMembership(adminId, orgAId, 'Asha', 'Admin');
@@ -127,16 +127,16 @@ describe('a member profile belongs to one organization', () => {
       prisma.user.findUnique({ where: { id: userId }, select: { fullName: true } }),
     ]);
 
-    expect(a?.fullName).toBe('Priya Shah');
-    expect(b?.fullName).toBe('P S');
+    expect(a?.fullName).toBe('James Walker');
+    expect(b?.fullName).toBe('J W');
     // The account name is a third, independent value — not a copy of either.
     expect(account?.fullName).toBe('Account Name');
   });
 
   it('an admin renaming someone in org A changes neither org B nor the account', async () => {
     await updateMember(adminId, orgAId, membershipAId, {
-      firstName: 'Priyanka',
-      lastName: 'Shah-Patel',
+      firstName: 'Jones',
+      lastName: 'Walker-Jonas',
     });
 
     const [a, b, account] = await Promise.all([
@@ -145,14 +145,14 @@ describe('a member profile belongs to one organization', () => {
       prisma.user.findUnique({ where: { id: userId }, select: { fullName: true } }),
     ]);
 
-    expect(a?.fullName).toBe('Priyanka Shah-Patel');
+    expect(a?.fullName).toBe('Jones Walker-Jonas');
     // 🔴 The two assertions this whole feature exists for.
-    expect(b?.fullName, 'renaming in org A leaked into org B').toBe('P S');
+    expect(b?.fullName, 'renaming in org A leaked into org B').toBe('J W');
     expect(account?.fullName, 'renaming in org A leaked into the account').toBe('Account Name');
   });
 
   it('a member renaming themselves changes only that org, not the account', async () => {
-    await updateMyProfile(userId, orgBId, { firstName: 'Pri', lastName: 'Shah' });
+    await updateMyProfile(userId, orgBId, { firstName: 'Jam', lastName: 'Walker' });
 
     const [a, b, account] = await Promise.all([
       prisma.membership.findUnique({ where: { id: membershipAId }, select: { fullName: true } }),
@@ -160,24 +160,24 @@ describe('a member profile belongs to one organization', () => {
       prisma.user.findUnique({ where: { id: userId }, select: { fullName: true } }),
     ]);
 
-    expect(b?.fullName).toBe('Pri Shah');
-    expect(a?.fullName, 'self-rename in org B leaked into org A').toBe('Priyanka Shah-Patel');
+    expect(b?.fullName).toBe('Jam Walker');
+    expect(a?.fullName, 'self-rename in org B leaked into org A').toBe('Jones Walker-Jonas');
     expect(account?.fullName, 'self-rename leaked into the account').toBe('Account Name');
   });
 
   it('keeps the derived fullName in step with its parts', async () => {
     // `fullName` is denormalized, so a partial update that touched only one part
     // could leave it stale — which is exactly what nobody would notice.
-    await updateMember(adminId, orgAId, membershipAId, { lastName: 'Mehta' });
+    await updateMember(adminId, orgAId, membershipAId, { lastName: 'Muller' });
 
     const row = await prisma.membership.findUnique({
       where: { id: membershipAId },
       select: { firstName: true, lastName: true, fullName: true },
     });
 
-    expect(row?.firstName).toBe('Priyanka');
-    expect(row?.lastName).toBe('Mehta');
-    expect(row?.fullName).toBe('Priyanka Mehta');
+    expect(row?.firstName).toBe('Jones');
+    expect(row?.lastName).toBe('Muller');
+    expect(row?.fullName).toBe('Jones Muller');
   });
 
   it('shares phone and address across organizations — they live on the account', async () => {
@@ -225,7 +225,7 @@ describe('a member profile belongs to one organization', () => {
     expect(account?.fullName).toBe('Account Name');
 
     // Put it back so it doesn't break subsequent tests
-    await updateMember(adminId, orgAId, membershipAId, { firstName: 'Priyanka' });
+    await updateMember(adminId, orgAId, membershipAId, { firstName: 'Jones' });
   });
 
   it('refuses to let an admin edit their own role or access through the admin route', async () => {
@@ -244,8 +244,8 @@ describe('createdBy / updatedBy resolve to a name in the acting organization', (
     const dirB = await getMemberDirectory(orgBId);
 
     // Same user id, two organizations, two answers.
-    expect(dirA.actorName(userId)).toBe('Priyanka Mehta');
-    expect(dirB.actorName(userId)).toBe('Pri Shah');
+    expect(dirA.actorName(userId)).toBe('Jones Muller');
+    expect(dirB.actorName(userId)).toBe('Jam Walker');
   });
 
   it('renders "System" when no actor was recorded', async () => {
@@ -276,7 +276,7 @@ describe('createdBy / updatedBy resolve to a name in the acting organization', (
     await invalidateMemberDirectory(orgAId);
 
     const dir = await getMemberDirectory(orgAId);
-    expect(dir.actorName(userId)).toBe('Priyanka Mehta');
+    expect(dir.actorName(userId)).toBe('Jones Muller');
 
     // Put it back so ordering between these tests cannot matter.
     await prisma.membership.update({

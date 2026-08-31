@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  ArrowLeft,
   CheckCircle2,
   ChevronDown,
   CircleSlash,
@@ -11,6 +10,7 @@ import {
   RotateCcw,
   Send,
   Truck,
+  X,
 } from 'lucide-react';
 import type { AxiosError } from 'axios';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
@@ -572,26 +572,6 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
           }}
         >
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', minWidth: 0 }}>
-            <button
-              type="button"
-              onClick={() => (onClose ? onClose() : navigate(listPath))}
-              aria-label={onClose ? 'Close job order' : 'Back to job orders'}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 30,
-                height: 30,
-                border: '1px solid #e2e8f0',
-                borderRadius: 4,
-                background: '#fff',
-                cursor: 'pointer',
-                color: '#64748b',
-                flexShrink: 0,
-              }}
-            >
-              <ArrowLeft size={15} />
-            </button>
             <div style={{ minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <h1 style={{ fontSize: 18, fontWeight: 600, color: '#000', margin: 0 }}>
@@ -700,6 +680,27 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                 },
               ]}
             />
+
+            <button
+              type="button"
+              onClick={() => (onClose ? onClose() : navigate(listPath))}
+              aria-label={onClose ? 'Close job order' : 'Back to job orders'}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 30,
+                height: 30,
+                border: '1px solid #e2e8f0',
+                borderRadius: 4,
+                background: '#fff',
+                cursor: 'pointer',
+                color: '#64748b',
+                marginLeft: 8,
+              }}
+            >
+              <X size={15} />
+            </button>
           </div>
         </div>
       </header>
