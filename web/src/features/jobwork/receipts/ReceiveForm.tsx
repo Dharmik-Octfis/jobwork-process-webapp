@@ -4,7 +4,6 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { DateInput } from '../../../components/ui/DateInput';
-import { Modal } from '../../../components/ui/Modal';
 import { Select } from '../../../components/ui/Select';
 import { fetchLocations } from '../../configuration/locations/locations.api';
 import { fetchStockLocations } from '../batches/batches.api';

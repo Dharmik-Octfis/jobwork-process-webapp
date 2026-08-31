@@ -94,7 +94,7 @@ export function LocalComboBox({
         setInputValue(newSelectedItem.label);
       }
     },
-    stateReducer: (state, actionAndChanges) => {
+    stateReducer: (_state, actionAndChanges) => {
       const { type, changes } = actionAndChanges;
       switch (type) {
         case useCombobox.stateChangeTypes.InputClick:
