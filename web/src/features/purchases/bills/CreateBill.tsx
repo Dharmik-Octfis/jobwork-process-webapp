@@ -333,6 +333,7 @@ export function CreateBill() {
   const watchLocationId = watch('locationId');
   const watchPoDate = watch('billDate');
   const watchPaymentTerms = watch('paymentTerms');
+  const watchStatus = watch('status');
 
   useEffect(() => {
     if (watchPoDate && watchPaymentTerms && paymentTerms) {
@@ -1582,7 +1583,7 @@ export function CreateBill() {
               fontSize: '13px',
             }}
           >
-            {mutation.isPending ? 'Saving...' : 'Save as Draft'}
+            {mutation.isPending && watchStatus === 'Draft' ? 'Saving...' : 'Save as Draft'}
           </button>
           <button
             type="submit"
@@ -1599,7 +1600,7 @@ export function CreateBill() {
               fontSize: '13px',
             }}
           >
-            {mutation.isPending ? 'Saving...' : 'Save as Open'}
+            {mutation.isPending && watchStatus === 'Open' ? 'Saving...' : 'Save as Open'}
           </button>
           <button
             type="button"
