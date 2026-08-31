@@ -123,7 +123,6 @@ export function OpeningStockPage() {
       toast.success('Opening stock saved');
       navigate(`/organizations/${orgId}/items?id=${itemId}`);
     },
-    onError: () => toast.error('Failed to save opening stock'),
   });
 
   const isSaving = saveOpeningStockMutation.isPending;

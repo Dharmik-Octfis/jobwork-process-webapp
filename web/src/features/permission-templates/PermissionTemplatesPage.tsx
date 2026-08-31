@@ -34,7 +34,7 @@ import { PermissionTemplateDetail } from './PermissionTemplateDetail';
  * screen keeps the chrome every other list has.
  */
 
-/** "Priya Shah · 20/07/2026, 14:32" — who and when, read together or not at all. */
+/** "James Walker · 20/07/2026, 14:32" — who and when, read together or not at all. */
 function formatActor(name: string, iso: string): string {
   const at = new Date(iso);
   return `${name} · ${at.toLocaleDateString()}, ${at.toLocaleTimeString(undefined, {
@@ -431,7 +431,7 @@ export function PermissionTemplatesPage() {
 
       <ConfirmDialog
         isOpen={!!toDelete}
-        title={toDelete && toDelete.memberCount > 0 ? "Cannot delete profile" : "Delete profile"}
+        title={toDelete && toDelete.memberCount > 0 ? 'Cannot delete profile' : 'Delete profile'}
         message={
           toDelete && toDelete.memberCount > 0
             ? `"${toDelete.name}" is assigned to ${toDelete.memberCount} member(s). Move them to another profile first.`
@@ -439,7 +439,7 @@ export function PermissionTemplatesPage() {
         }
         confirmText={
           toDelete && toDelete.memberCount > 0
-            ? "Got it"
+            ? 'Got it'
             : deleteMutation.isPending
               ? 'Deleting...'
               : 'Delete'
