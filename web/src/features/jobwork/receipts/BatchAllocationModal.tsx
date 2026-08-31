@@ -394,6 +394,7 @@ export function BatchAllocationModal({
       onClose={onClose}
       title={kind === 'accepted' ? `Add ${plural}` : `Add Rework ${plural}`}
       width={1240}
+      position="fullScreen"
       footer={
         <>
           <button
