@@ -13,8 +13,16 @@ import type { ActivityEvent, OverviewStep } from './jobOrders.schemas';
 
 interface Props {
   step: OverviewStep;
-  /** This step's documents only — the caller has already filtered by `stepId`. */
+  /**
+   * This step's documents only — the SERVER filtered by `stepId`, and this is
+   * one page of the result, oldest-first. It is no longer the whole history:
+   * `hasOlderActivity` says whether there is more behind it.
+   */
   activity: ActivityEvent[];
+  activityLoading?: boolean;
+  hasOlderActivity?: boolean;
+  isLoadingOlderActivity?: boolean;
+  onLoadOlderActivity?: () => void;
   onIssue: (step: OverviewStep) => void;
   onReceive: (step: OverviewStep) => void;
   onComplete?: (step: OverviewStep) => void;
@@ -67,14 +75,16 @@ const columnLabel: React.CSSProperties = {
 export function JobOrderStepDetail({
   step,
   activity,
+  activityLoading = false,
+  hasOlderActivity = false,
+  isLoadingOlderActivity = false,
+  onLoadOlderActivity,
   onIssue,
   onReceive,
   onComplete,
   onOpenDocument,
 }: Props) {
-
   const meta = statusMeta(STEP_STATUS_META, step.status);
-
 
   // The principal input's and primary output's units, read off the two lists —
   // the four scalars that used to mirror them went with Migration B (2026-08-12).
@@ -238,7 +248,9 @@ export function JobOrderStepDetail({
                 qty: qtyWithUnit(row.issuedQty, row.uomSymbol),
                 muted: toNumber(row.issuedQty) === 0,
                 planned: row.plannedQty ? qtyWithUnit(row.plannedQty, row.uomSymbol) : undefined,
-                remaining: row.remainingQty ? qtyWithUnit(row.remainingQty, row.uomSymbol) : undefined,
+                remaining: row.remainingQty
+                  ? qtyWithUnit(row.remainingQty, row.uomSymbol)
+                  : undefined,
               }))}
               empty="Nothing issued yet."
             />
@@ -255,24 +267,73 @@ export function JobOrderStepDetail({
                 qty: qtyWithUnit(row.receivedQty, row.uomSymbol),
                 muted: toNumber(row.receivedQty) === 0,
                 planned: row.expectedQty ? qtyWithUnit(row.expectedQty, row.uomSymbol) : undefined,
-                remaining: row.remainingQty ? qtyWithUnit(row.remainingQty, row.uomSymbol) : undefined,
+                remaining: row.remainingQty
+                  ? qtyWithUnit(row.remainingQty, row.uomSymbol)
+                  : undefined,
               }))}
               empty="Nothing back yet."
             />
           </div>
         </div>
-
-
       </div>
 
       <div style={{ padding: '14px 16px', borderTop: '1px solid #eef0f3', background: '#fcfcfd' }}>
-        <ActivityTabs events={activity} onOpen={onOpenDocument} />
+        {hasOlderActivity && onLoadOlderActivity && (
+          <ShowEarlierActivity onClick={onLoadOlderActivity} isLoading={isLoadingOlderActivity} />
+        )}
+        {activityLoading ? (
+          <div style={{ fontSize: 13, color: '#64748b' }}>Loading activity…</div>
+        ) : (
+          <ActivityTabs events={activity} onOpen={onOpenDocument} />
+        )}
       </div>
     </section>
   );
 }
 
-export function ActivityTabs({ events, onOpen }: { events: ActivityEvent[], onOpen: (event: ActivityEvent) => void }) {
+/**
+ * Sits ABOVE the feed, because that is where the events it loads appear — the
+ * feed is paged from the newest end, so "earlier" means further up.
+ *
+ * A real `<button>`, so it is in the tab order and answers Enter and Space
+ * without a keydown handler (CLAUDE.md, "Tab navigation is mandatory").
+ */
+export function ShowEarlierActivity({
+  onClick,
+  isLoading,
+}: {
+  onClick: () => void;
+  isLoading: boolean;
+}) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', padding: '0 0 10px 0' }}>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={isLoading}
+        style={{
+          border: '1px solid #e2e8f0',
+          background: '#fff',
+          borderRadius: 999,
+          padding: '5px 14px',
+          fontSize: 12,
+          color: '#475569',
+          cursor: isLoading ? 'default' : 'pointer',
+        }}
+      >
+        {isLoading ? 'Loading…' : 'Show earlier activity'}
+      </button>
+    </div>
+  );
+}
+
+export function ActivityTabs({
+  events,
+  onOpen,
+}: {
+  events: ActivityEvent[];
+  onOpen: (event: ActivityEvent) => void;
+}) {
   const [activeTab, setActiveTab] = useState<'issue' | 'receipt' | null>(null);
   const issues = events.filter((e) => e.kind === 'issue');
   const receipts = events.filter((e) => e.kind === 'receipt');
@@ -289,7 +350,14 @@ export function ActivityTabs({ events, onOpen }: { events: ActivityEvent[], onOp
 
   return (
     <div style={{ border: '1px solid #eef0f3', borderRadius: 6, background: '#fff' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'stretch', borderBottom: activeTab ? '1px solid #eef0f3' : '1px solid transparent' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'stretch',
+          borderBottom: activeTab ? '1px solid #eef0f3' : '1px solid transparent',
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'stretch' }}>
           <button
             type="button"
@@ -310,11 +378,20 @@ export function ActivityTabs({ events, onOpen }: { events: ActivityEvent[], onOp
             }}
           >
             Issues
-            <span style={{ fontSize: 12, background: '#f1f5f9', color: '#3b82f6', padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>
+            <span
+              style={{
+                fontSize: 12,
+                background: '#f1f5f9',
+                color: '#3b82f6',
+                padding: '2px 8px',
+                borderRadius: 12,
+                fontWeight: 600,
+              }}
+            >
               {issues.length}
             </span>
           </button>
-          
+
           <div style={{ width: 2, background: '#e2e8f0', margin: '12px 0', borderRadius: 2 }} />
 
           <button
@@ -336,7 +413,16 @@ export function ActivityTabs({ events, onOpen }: { events: ActivityEvent[], onOp
             }}
           >
             Receives
-            <span style={{ fontSize: 12, background: '#f1f5f9', color: '#3b82f6', padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>
+            <span
+              style={{
+                fontSize: 12,
+                background: '#f1f5f9',
+                color: '#3b82f6',
+                padding: '2px 8px',
+                borderRadius: 12,
+                fontWeight: 600,
+              }}
+            >
               {receipts.length}
             </span>
           </button>
@@ -362,23 +448,47 @@ export function ActivityTabs({ events, onOpen }: { events: ActivityEvent[], onOp
             fill="none"
             style={{
               transform: activeTab ? 'rotate(180deg)' : 'rotate(0deg)',
-              transition: 'transform 0.2s'
+              transition: 'transform 0.2s',
             }}
           >
-            <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path
+              d="M1 1L5 5L9 1"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </button>
       </div>
-      
+
       {activeTab && (
         <div style={{ padding: '0 16px 16px 16px' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 12 }}>
             <thead>
               <tr>
-                <th style={{ textAlign: 'left', fontSize: 12, color: '#64748b', paddingBottom: 8, fontWeight: 500, borderBottom: '1px solid #eef0f3' }}>
+                <th
+                  style={{
+                    textAlign: 'left',
+                    fontSize: 12,
+                    color: '#64748b',
+                    paddingBottom: 8,
+                    fontWeight: 500,
+                    borderBottom: '1px solid #eef0f3',
+                  }}
+                >
                   Date
                 </th>
-                <th style={{ textAlign: 'left', fontSize: 12, color: '#64748b', paddingBottom: 8, fontWeight: 500, borderBottom: '1px solid #eef0f3' }}>
+                <th
+                  style={{
+                    textAlign: 'left',
+                    fontSize: 12,
+                    color: '#64748b',
+                    paddingBottom: 8,
+                    fontWeight: 500,
+                    borderBottom: '1px solid #eef0f3',
+                  }}
+                >
                   {activeTab === 'issue' ? 'Issue Number' : 'Receive Number'}
                 </th>
               </tr>
@@ -386,10 +496,19 @@ export function ActivityTabs({ events, onOpen }: { events: ActivityEvent[], onOp
             <tbody>
               {activeEvents.map((event) => (
                 <tr key={event.id}>
-                  <td style={{ padding: '12px 0', fontSize: 13, color: '#334155', borderBottom: '1px solid #f8fafc' }}>
+                  <td
+                    style={{
+                      padding: '12px 0',
+                      fontSize: 13,
+                      color: '#334155',
+                      borderBottom: '1px solid #f8fafc',
+                    }}
+                  >
                     {formatDate(event.date)}
                   </td>
-                  <td style={{ padding: '12px 0', fontSize: 13, borderBottom: '1px solid #f8fafc' }}>
+                  <td
+                    style={{ padding: '12px 0', fontSize: 13, borderBottom: '1px solid #f8fafc' }}
+                  >
                     <button
                       type="button"
                       onClick={() => onOpen(event)}
@@ -412,7 +531,15 @@ export function ActivityTabs({ events, onOpen }: { events: ActivityEvent[], onOp
               ))}
               {activeEvents.length === 0 && (
                 <tr>
-                  <td colSpan={2} style={{ padding: '24px 0', textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>
+                  <td
+                    colSpan={2}
+                    style={{
+                      padding: '24px 0',
+                      textAlign: 'center',
+                      fontSize: 13,
+                      color: '#94a3b8',
+                    }}
+                  >
                     No {activeTab === 'issue' ? 'issues' : 'receives'} found.
                   </td>
                 </tr>
@@ -477,13 +604,38 @@ function MovementList({
               <div style={{ fontSize: 12, color: '#334155', fontWeight: 500 }}>{row.name}</div>
               <div style={{ fontSize: 10, color: '#94a3b8' }}>{row.note}</div>
             </td>
-            <td style={{ padding: '6px 8px 6px 0', verticalAlign: 'top', textAlign: 'center', fontSize: 12, color: '#475569' }}>
+            <td
+              style={{
+                padding: '6px 8px 6px 0',
+                verticalAlign: 'top',
+                textAlign: 'center',
+                fontSize: 12,
+                color: '#475569',
+              }}
+            >
               {row.planned || '—'}
             </td>
-            <td style={{ padding: '6px 8px 6px 0', verticalAlign: 'top', textAlign: 'center', fontSize: 12, color: row.muted ? '#cbd5e1' : '#475569', whiteSpace: 'nowrap' }}>
+            <td
+              style={{
+                padding: '6px 8px 6px 0',
+                verticalAlign: 'top',
+                textAlign: 'center',
+                fontSize: 12,
+                color: row.muted ? '#cbd5e1' : '#475569',
+                whiteSpace: 'nowrap',
+              }}
+            >
               {row.qty}
             </td>
-            <td style={{ padding: '6px 0', verticalAlign: 'top', textAlign: 'center', fontSize: 12, color: '#475569' }}>
+            <td
+              style={{
+                padding: '6px 0',
+                verticalAlign: 'top',
+                textAlign: 'center',
+                fontSize: 12,
+                color: '#475569',
+              }}
+            >
               {row.remaining || '—'}
             </td>
           </tr>
@@ -492,5 +644,3 @@ function MovementList({
     </table>
   );
 }
-
-

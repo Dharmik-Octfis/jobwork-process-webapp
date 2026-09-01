@@ -261,5 +261,10 @@ model StockLedgerEntry {
   /// guarantee away.
   @@index([organizationId, itemId, batchId, locationId])
   @@index([organizationId, locationId, postedAt])
+  /// "Which rows did this document write?" — the consumed-per-receipt read, and
+  /// every reversal and drill-down after it. Neither index above starts with a
+  /// column those queries constrain, so they fall back to scanning the org's
+  /// whole ledger, which is the fastest-growing table here.
+  @@index([organizationId, sourceDocType, sourceDocId])
   @@map("stock_ledger")
 }

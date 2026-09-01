@@ -11,6 +11,7 @@ import {
   deleteJobOrderById,
   getJobOrderById,
   getJobOrderWithStepsById,
+  getJobOrderActivity,
   getJobOrderNumberPreference,
   getJobOrderOverview,
   getJobOrdersList,
@@ -20,6 +21,7 @@ import {
   updateJobOrderNumberPreference,
 } from './jobOrders.service.ts';
 import {
+  activityQuerySchema,
   appendJobOrderStepsSchema,
   createJobOrderSchema,
   shortCloseSchema,
@@ -96,9 +98,18 @@ openApiRegistry.registerPath({
   path: '/organizations/{orgId}/jobwork/job-orders/{id}/overview',
   tags: ['Job Orders'],
   summary:
-    'The Overview page: stepper, per-step totals, live stock balance and the order’s issue/receipt history',
+    'The Overview page: stepper, per-step totals and live stock balance. The issue/receipt history is a separate call — see /overview/activity',
   request: { params: orgParam.extend({ id: z.string() }) },
   responses: { 200: { description: 'Overview' }, 404: { description: 'Not found' } },
+});
+
+openApiRegistry.registerPath({
+  method: 'get',
+  path: '/organizations/{orgId}/jobwork/job-orders/{id}/overview/activity',
+  tags: ['Job Orders'],
+  summary: 'The order’s issue/receipt history, paged from the newest end and returned oldest-first',
+  request: { params: orgParam.extend({ id: z.string() }), query: activityQuerySchema },
+  responses: { 200: { description: 'Activity page' }, 404: { description: 'Not found' } },
 });
 
 openApiRegistry.registerPath({
@@ -176,6 +187,12 @@ export const getJobOrderWithSteps = async (req: Request, res: Response) => {
  * different table and four round trips would render four different moments. */
 export const getOverview = async (req: Request, res: Response) => {
   sendSuccess(res, await getJobOrderOverview(req.tenantId!, req.params.id as string));
+};
+
+export const getOverviewActivity = async (req: Request, res: Response) => {
+  const parsed = activityQuerySchema.safeParse(req.query);
+  if (!parsed.success) throw ApiError.badRequest('Invalid activity parameters.');
+  sendSuccess(res, await getJobOrderActivity(req.tenantId!, req.params.id as string, parsed.data));
 };
 
 export const updateJobOrder = async (req: Request, res: Response) => {

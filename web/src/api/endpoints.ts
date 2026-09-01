@@ -108,9 +108,21 @@ export const endpoints = {
     /** The prefix + next number new job orders are numbered from. */
     jobOrderPreferences: (orgId: string) =>
       `/organizations/${orgId}/jobwork/job-orders/preferences/number-sequence`,
-    /** The stepper page — one request, so every tile describes the same moment. */
+    /**
+     * The stepper page: header, steps, totals, balances. Everything above the
+     * fold, in one request, so every tile describes the same moment.
+     */
     jobOrderOverview: (orgId: string, id: string) =>
       `/organizations/${orgId}/jobwork/job-orders/${id}/overview`,
+    /**
+     * …and the document history under it, paged. Split from the call above
+     * because it is the only part of the page whose size grows with the order's
+     * AGE — a six-month order carries hundreds of challans and receipts, each
+     * with its lines, outputs and batches, and the stepper was waiting on all of
+     * it before it could paint.
+     */
+    jobOrderActivity: (orgId: string, id: string) =>
+      `/organizations/${orgId}/jobwork/job-orders/${id}/overview/activity`,
     issues: (orgId: string) => `/organizations/${orgId}/jobwork/issues`,
     receipts: (orgId: string) => `/organizations/${orgId}/jobwork/receipts`,
     /** The Receive dialog's opening state: mode, open challans, per-taka rows. */

@@ -11,6 +11,7 @@ import { createNewRoute, updateRouteById } from './process-routes/processRoutes.
 import {
   appendJobOrderSteps,
   createNewJobOrder,
+  getJobOrderActivity,
   getJobOrderById,
   getJobOrderOverview,
   shortCloseJobOrder,
@@ -2233,5 +2234,136 @@ describe('jobwork — one challan, one location', () => {
     });
     expect(issue.lines).toHaveLength(1);
     expect(issue.lines[0]!.sourceLocationId).toBe(loneA.id);
+  });
+});
+
+/**
+ * 🔴 THE FEED IS TWO TABLES MERGED, AND IT IS PAGED FROM THE NEWEST END.
+ *
+ * Both halves of that sentence are things a plausible implementation gets wrong
+ * without failing loudly, so both are pinned here:
+ *
+ *   • `skip` cannot be pushed into either table. Skipping 2 issues and 2 receipts
+ *     does not skip the 2 oldest EVENTS, and the bug only shows once a receipt
+ *     falls between two challans — which is exactly the shape below.
+ *   • The window is taken from the RECENT end (page 1 is what just happened) but
+ *     each page still reads oldest-first, because the feed is a story. Reverse
+ *     one of those two and the page is quietly backwards.
+ */
+describe('jobwork — the activity feed', { timeout: 120_000 }, () => {
+  let stepId: string;
+  let jobOrderId: string;
+  let expected: string[];
+
+  beforeAll(async () => {
+    const process = await createNewProcess(orgId, { name: `Feed paging ${unique()}` });
+    const batch = await seedStock(greyId, 500);
+
+    // An UNTRACKED output, so the receipt below needs no batch labels — this
+    // suite is about paging a feed, not about batch identity.
+    const outputId = await runAsTenant(orgId, async (tx) => {
+      const item = await tx.item.create({
+        data: {
+          organizationId: orgId,
+          name: 'Feed Output',
+          sku: `FLOW-FEEDOUT-${unique()}`,
+          unit: 'Metre',
+          stockingUomId: metreId,
+          inventoryTracking: 'none',
+        },
+        select: { id: true },
+      });
+      return item.id;
+    });
+
+    const jobOrder = await createNewJobOrder(orgId, {
+      steps: [
+        {
+          processId: process.id,
+          processorId: dyerId,
+          inputs: [{ itemId: greyId, plannedQty: 500 }],
+          outputs: [{ itemId: outputId, isPrimary: true }],
+        },
+      ],
+    });
+    jobOrderId = jobOrder.id;
+    stepId = jobOrder.steps[0]!.id;
+
+    const issueOn = (day: string) =>
+      createNewJobIssue(orgId, {
+        jobOrderStepId: stepId,
+        sourceLocationId: godownId,
+        issueDate: new Date(`2026-01-0${day}T00:00:00.000Z`),
+        lines: [{ itemId: greyId, batchId: batch.id, qty: 10 }],
+      });
+
+    const first = await issueOn('1');
+    const second = await issueOn('2');
+    // Dated BETWEEN two challans on purpose — the one event that proves the two
+    // tables are merged before the page is cut, not after.
+    const receipt = await createNewJobReceipt(orgId, {
+      jobOrderStepId: stepId,
+      issueIds: [first.id],
+      locationId: godownId,
+      receiptDate: new Date('2026-01-03T00:00:00.000Z'),
+      lines: [{ itemId: greyId, issuedQty: 10, receivedQty: 0 }],
+      outputs: [{ itemId: outputId, isPrimary: true, receivedQty: 10, acceptedQty: 10 }],
+    });
+    const third = await issueOn('4');
+    const fourth = await issueOn('5');
+
+    // Oldest first — the order the feed reads in.
+    expected = [
+      first.challanNumber,
+      second.challanNumber,
+      receipt.receiptNumber,
+      third.challanNumber,
+      fourth.challanNumber,
+    ];
+    // Eight document transactions; the 10s hook default is not enough for them.
+  }, 60_000);
+
+  it('cuts page 1 off the newest end, and still reads it forwards', async () => {
+    const page = await getJobOrderActivity(orgId, jobOrderId, { page: 1, perPage: 2 });
+
+    expect(page.results.map((event) => event.number)).toEqual(expected.slice(3));
+    expect(page.pageContext).toMatchObject({ page: 1, perPage: 2, hasMore: true });
+  });
+
+  it('walks back through the older pages, receipt in its place between two challans', async () => {
+    const second = await getJobOrderActivity(orgId, jobOrderId, { page: 2, perPage: 2 });
+    // 🔴 The receipt sits here, between challan 2 and challan 3 — where the DATES
+    // put it, not where either table's own pagination would have.
+    expect(second.results.map((event) => event.number)).toEqual(expected.slice(1, 3));
+    expect(second.results[1]!.kind).toBe('receipt');
+    expect(second.pageContext.hasMore).toBe(true);
+
+    const third = await getJobOrderActivity(orgId, jobOrderId, { page: 3, perPage: 2 });
+    expect(third.results.map((event) => event.number)).toEqual(expected.slice(0, 1));
+    // Nothing older — the last page says so instead of offering an empty one.
+    expect(third.pageContext.hasMore).toBe(false);
+  });
+
+  it('reassembles into exactly the unpaged feed, oldest first', async () => {
+    const pages = [];
+    for (let page = 1; page <= 3; page++) {
+      pages.push(await getJobOrderActivity(orgId, jobOrderId, { page, perPage: 2 }));
+    }
+    // Older pages go ABOVE, which is what the client's "show earlier" does.
+    const rebuilt = pages.reverse().flatMap((p) => p.results.map((event) => event.number));
+    expect(rebuilt).toEqual(expected);
+  });
+
+  it('narrows to one step, and 404s an order that is not there', async () => {
+    const mine = await getJobOrderActivity(orgId, jobOrderId, { page: 1, perPage: 50, stepId });
+    expect(mine.results).toHaveLength(expected.length);
+    expect(mine.results.every((event) => event.stepId === stepId)).toBe(true);
+
+    await expect(
+      getJobOrderActivity(orgId, '00000000-0000-0000-0000-000000000000', {
+        page: 1,
+        perPage: 20,
+      }),
+    ).rejects.toMatchObject({ status: 404 });
   });
 });

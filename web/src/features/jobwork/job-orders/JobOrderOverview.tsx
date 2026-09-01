@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   CheckCircle2,
@@ -17,7 +17,7 @@ import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
 
 import { JobOrderFlow } from './JobOrderFlow';
-import { ActivityTabs } from './JobOrderStepDetail';
+import { ActivityTabs, ShowEarlierActivity } from './JobOrderStepDetail';
 import { formatDate } from '../../../lib/formatDate';
 import {
   JOB_ORDER_STATUS_META,
@@ -29,6 +29,7 @@ import {
 } from '../jobwork.schemas';
 import {
   deleteJobOrder,
+  fetchJobOrderActivity,
   fetchJobOrderOverview,
   shortCloseJobOrder,
   completeJobOrderStep,
@@ -329,25 +330,26 @@ function currentPosition(data: JobOrderOverviewData, steps: OverviewStep[]): Pos
   const rework = toNumber(front.totals.reworkQty);
 
   // When it went out, off the step's own last issue — "out since" is the fact
-  // people chase a processor with, and it is not derivable from a total.
-  const lastIssue = [...data.activity]
-    .reverse()
-    .find((event) => event.kind === 'issue' && event.stepId === front.id);
+  // people chase a processor with, and it is not derivable from a total. The
+  // server sends it as a field now: the feed it used to be scanned out of is
+  // paged, so the challan this looks for may well be on a page nobody loaded.
+  const lastIssueDate = front.lastIssueDate;
 
   if (outstanding > 0) {
     // 🔴 HOW LONG it has been out, not just when it went. "Sent on the 12th" is
     // a date somebody then has to subtract from today; "out 9 days" is the fact
     // they were going to work out anyway, and it is what a processor gets
     // chased on.
-    const days = lastIssue ? daysSince(lastIssue.date) : null;
+    const days = lastIssueDate ? daysSince(lastIssueDate) : null;
     const age =
       days === null ? null : days === 0 ? 'sent today' : `out ${days} day${days === 1 ? '' : 's'}`;
     return {
       icon: <Truck size={18} color="#1d4ed8" />,
       headline: `${qtyWithUnit(outstanding, unit)} out at ${party}`,
-      detail: lastIssue
-        ? `${where} · ${age}, last sent ${formatDate(lastIssue.date)} on ${lastIssue.number}`
-        : where,
+      detail:
+        lastIssueDate && front.lastIssueNumber
+          ? `${where} · ${age}, last sent ${formatDate(lastIssueDate)} on ${front.lastIssueNumber}`
+          : where,
       tint: '#eff6ff',
       border: '#bfdbfe',
       step: front,
@@ -414,6 +416,64 @@ interface Props {
   onClose?: () => void;
 }
 
+/** One page of history. Twenty documents is a screenful and a small payload. */
+const ACTIVITY_PAGE_SIZE = 20;
+
+/**
+ * One view's slice of the document history, newest page first, older pages
+ * appended on request.
+ *
+ * The server pages from the RECENT end — page 1 is what just happened — but each
+ * page reads oldest-first inside itself, because the feed is a story and a story
+ * is read forwards. So the pages are reversed before they are flattened: page 2
+ * is the stretch BEFORE page 1 and belongs above it.
+ */
+function useActivityFeed(
+  orgId: string | undefined,
+  id: string | undefined,
+  stepId: string | undefined,
+  enabled: boolean,
+) {
+  const query = useInfiniteQuery({
+    /**
+     * 🔴 A CHILD OF THE OVERVIEW'S KEY, deliberately.
+     *
+     * Eight places across Issues, Receipts and Job Orders already invalidate
+     * `['job-order-overview', orgId, id]` after a write, and React Query matches
+     * keys by PREFIX — so nesting under it means raising a challan refreshes the
+     * feed too, with no call site changed and none left to forget. A sibling key
+     * like `['job-order-activity', …]` would have gone stale behind fresh totals,
+     * which on this page reads as a document that was saved and vanished.
+     *
+     * `stepId` is the last segment: the step tab and the full history are two
+     * different feeds, not two filters of one.
+     */
+    queryKey: ['job-order-overview', orgId, id, 'activity', stepId ?? 'all'],
+    queryFn: ({ pageParam }) =>
+      fetchJobOrderActivity(orgId!, id!, {
+        page: pageParam,
+        perPage: ACTIVITY_PAGE_SIZE,
+        stepId,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (last) => (last.pageContext.hasMore ? last.pageContext.page + 1 : undefined),
+    enabled: Boolean(orgId && id && enabled),
+  });
+
+  const events = useMemo(
+    () => [...(query.data?.pages ?? [])].reverse().flatMap((page) => page.results),
+    [query.data],
+  );
+
+  return {
+    events,
+    isLoading: query.isLoading,
+    hasOlder: query.hasNextPage,
+    isLoadingOlder: query.isFetchingNextPage,
+    loadOlder: query.fetchNextPage,
+  };
+}
+
 export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -436,7 +496,6 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   });
 
   const steps = useMemo(() => data?.steps ?? [], [data]);
-  const activity = useMemo(() => data?.activity ?? [], [data]);
 
   const position = useMemo(() => (data ? currentPosition(data, steps) : null), [data, steps]);
 
@@ -452,26 +511,45 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
     return position?.step ?? steps[steps.length - 1]!;
   }, [steps, pickedStepId, position]);
 
-  const stepActivity = useMemo(
-    () => activity.filter((event) => event.stepId === selectedStep?.id),
-    [activity, selectedStep],
-  );
-
-
+  /**
+   * 🔴 THE FEED IS ASKED FOR, NOT FILTERED FOR.
+   *
+   * It used to be one array on the overview payload that both views sliced. Now
+   * it is paged, so a client-side `filter(e => e.stepId === …)` would show
+   * whatever documents happened to fall on the pages already loaded and silently
+   * call that the step's history. Each view asks the server for its own feed
+   * instead, and only the view being looked at asks at all.
+   */
+  /**
+   * ⚠️ NOT gated on `selectedStep`, deliberately — measured, 2026-09-01.
+   *
+   * Gating it (`view === 'step' && Boolean(selectedStep)`) stops the unscoped
+   * feed request that fires before the overview resolves, which reads like a
+   * free win: one fewer query per page load. It measured 300–400ms SLOWER on the
+   * real page, so the request that looks wasted is evidently paying for
+   * something — a warmed connection, or the step query landing a render earlier.
+   * Leave it firing. If you want the wasted query gone, measure the page after,
+   * not the query count.
+   */
+  const stepFeed = useActivityFeed(orgId, id, selectedStep?.id, view === 'step');
+  const historyFeed = useActivityFeed(orgId, id, undefined, view === 'history');
 
   const shortClose = useMutation({
     mutationFn: () => shortCloseJobOrder(orgId!, id!, shortCloseReason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] });
-      queryClient.setQueriesData({ queryKey: ['job-orders', orgId], type: 'active' }, (old: JobOrdersPage | undefined) => {
-        if (!old || !old.results) return old;
-        return {
-          ...old,
-          results: old.results.map((item: JobOrder) =>
-            item.id === id ? { ...item, status: 'short_closed' } : item
-          ),
-        };
-      });
+      queryClient.setQueriesData(
+        { queryKey: ['job-orders', orgId], type: 'active' },
+        (old: JobOrdersPage | undefined) => {
+          if (!old || !old.results) return old;
+          return {
+            ...old,
+            results: old.results.map((item: JobOrder) =>
+              item.id === id ? { ...item, status: 'short_closed' } : item,
+            ),
+          };
+        },
+      );
       queryClient.invalidateQueries({ queryKey: ['job-orders', orgId], type: 'inactive' });
       setShortCloseOpen(false);
       setShortCloseReason('');
@@ -482,15 +560,18 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
     mutationFn: (stepId: string) => completeJobOrderStep(orgId!, id!, stepId),
     onSuccess: (updated) => {
       queryClient.setQueryData(['job-order-overview', orgId, id], updated);
-      queryClient.setQueriesData({ queryKey: ['job-orders', orgId], type: 'active' }, (old: JobOrdersPage | undefined) => {
-        if (!old || !old.results) return old;
-        return {
-          ...old,
-          results: old.results.map((item: JobOrder) =>
-            item.id === id ? { ...item, status: updated.jobOrder.status } : item
-          ),
-        };
-      });
+      queryClient.setQueriesData(
+        { queryKey: ['job-orders', orgId], type: 'active' },
+        (old: JobOrdersPage | undefined) => {
+          if (!old || !old.results) return old;
+          return {
+            ...old,
+            results: old.results.map((item: JobOrder) =>
+              item.id === id ? { ...item, status: updated.jobOrder.status } : item,
+            ),
+          };
+        },
+      );
       queryClient.invalidateQueries({ queryKey: ['job-orders', orgId], type: 'inactive' });
       setCompleteStepTarget(null);
     },
@@ -540,8 +621,6 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   ).length;
   const donePct = steps.length > 0 ? Math.round((doneSteps / steps.length) * 100) : 0;
 
-
-
   // Late only while there is still work to do — a finished order is not overdue,
   // it is finished.
   const isLate =
@@ -558,8 +637,18 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   };
 
   return (
-    <div style={{ background: '#f8fafc', minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
-      <header style={{ background: '#fff', borderBottom: '1px solid #eef0f3', position: 'sticky', top: 0, zIndex: 10 }}>
+    <div
+      style={{ background: '#f8fafc', minHeight: '100%', display: 'flex', flexDirection: 'column' }}
+    >
+      <header
+        style={{
+          background: '#fff',
+          borderBottom: '1px solid #eef0f3',
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+        }}
+      >
         <div
           style={{
             display: 'flex',
@@ -603,7 +692,15 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                   </span>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: 14, whiteSpace: 'nowrap', overflow: 'hidden', marginTop: 5 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 14,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  marginTop: 5,
+                }}
+              >
                 <span style={metaItem}>
                   {jobOrder.inputItem?.name ?? 'No item yet'}
                   {jobOrder.inputQty !== null && ` · ${formatQty(jobOrder.inputQty)} ${unit}`}
@@ -704,41 +801,41 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
         </div>
       </header>
 
-        {/* 🔴 THE ANSWER FIRST. The sentence on the left is what the page is for;
+      {/* 🔴 THE ANSWER FIRST. The sentence on the left is what the page is for;
             the four numbers on the right are what somebody checks once they have
             read it. Putting the tiles above this was the old order, and it made
             every reader derive the sentence themselves. */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 24,
-            flexWrap: 'wrap',
-            padding: '12px 24px',
-            background: position.tint,
-            borderTop: `1px solid ${position.border}`,
-            borderBottom: '1px solid #eef0f3',
-          }}
-        >
-          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', minWidth: 260 }}>
-            <span style={{ marginTop: 1, flexShrink: 0 }}>{position.icon}</span>
-            <div>
-              <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#111' }}>
-                {position.headline}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 24,
+          flexWrap: 'wrap',
+          padding: '12px 24px',
+          background: position.tint,
+          borderTop: `1px solid ${position.border}`,
+          borderBottom: '1px solid #eef0f3',
+        }}
+      >
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', minWidth: 260 }}>
+          <span style={{ marginTop: 1, flexShrink: 0 }}>{position.icon}</span>
+          <div>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#111' }}>
+              {position.headline}
+            </p>
+            {position.detail && (
+              <p style={{ margin: '2px 0 0 0', fontSize: 12, color: '#475569' }}>
+                {position.detail}
               </p>
-              {position.detail && (
-                <p style={{ margin: '2px 0 0 0', fontSize: 12, color: '#475569' }}>
-                  {position.detail}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 26, flexWrap: 'wrap' }}>
-            <Tile label="Issued" value={formatQty(summary.issuedQty)} unit={unit} />
+            )}
           </div>
         </div>
+
+        <div style={{ display: 'flex', gap: 26, flexWrap: 'wrap' }}>
+          <Tile label="Issued" value={formatQty(summary.issuedQty)} unit={unit} />
+        </div>
+      </div>
 
       <div style={{ padding: '18px 24px' }}>
         {/* 🔴 The scale and the position, ALWAYS visible. A twelve-step route
@@ -816,16 +913,30 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
               <ViewTab
                 isActive={view === 'history'}
                 onClick={() => setView('history')}
-                label={`Full history (${activity.length})`}
+                // The count rides on the overview payload, so the tab is labelled
+                // correctly before its feed has been asked for.
+                label={`Full history (${data.activityCount})`}
               />
             </div>
 
             {view === 'step' && selectedStep && (
               <JobOrderStepDetail
                 step={selectedStep}
-                activity={stepActivity}
-                onIssue={(step) => navigate(`/organizations/${orgId}/jobwork/issues/new?jobOrderId=${id}&stepId=${step.id}`)}
-                onReceive={(step) => navigate(`/organizations/${orgId}/jobwork/receipts/new?jobOrderId=${id}&stepId=${step.id}`)}
+                activity={stepFeed.events}
+                activityLoading={stepFeed.isLoading}
+                hasOlderActivity={stepFeed.hasOlder}
+                isLoadingOlderActivity={stepFeed.isLoadingOlder}
+                onLoadOlderActivity={stepFeed.loadOlder}
+                onIssue={(step) =>
+                  navigate(
+                    `/organizations/${orgId}/jobwork/issues/new?jobOrderId=${id}&stepId=${step.id}`,
+                  )
+                }
+                onReceive={(step) =>
+                  navigate(
+                    `/organizations/${orgId}/jobwork/receipts/new?jobOrderId=${id}&stepId=${step.id}`,
+                  )
+                }
                 onComplete={setCompleteStepTarget}
                 onOpenDocument={openDocument}
               />
@@ -844,10 +955,19 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                     above answers "what is happening here"; this answers "what has
                     this order been through" — and the two orders of the same
                     documents are genuinely different readings. */}
-                <ActivityTabs
-                  events={activity}
-                  onOpen={openDocument}
-                />
+                {historyFeed.hasOlder && (
+                  <ShowEarlierActivity
+                    onClick={() => void historyFeed.loadOlder()}
+                    isLoading={historyFeed.isLoadingOlder}
+                  />
+                )}
+                {historyFeed.isLoading ? (
+                  <div style={{ padding: '10px 2px', fontSize: 13, color: '#64748b' }}>
+                    Loading history…
+                  </div>
+                ) : (
+                  <ActivityTabs events={historyFeed.events} onOpen={openDocument} />
+                )}
               </div>
             )}
           </>
@@ -866,15 +986,18 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
             // The list too: appending to a completed order reopens it as
             // in_progress, and the row would otherwise keep saying "Completed".
             queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] });
-            queryClient.setQueriesData({ queryKey: ['job-orders', orgId], type: 'active' }, (old: JobOrdersPage | undefined) => {
-              if (!old || !old.results) return old;
-              return {
-                ...old,
-                results: old.results.map((item: JobOrder) =>
-                  item.id === id ? { ...item, status: 'in_progress' } : item
-                ),
-              };
-            });
+            queryClient.setQueriesData(
+              { queryKey: ['job-orders', orgId], type: 'active' },
+              (old: JobOrdersPage | undefined) => {
+                if (!old || !old.results) return old;
+                return {
+                  ...old,
+                  results: old.results.map((item: JobOrder) =>
+                    item.id === id ? { ...item, status: 'in_progress' } : item,
+                  ),
+                };
+              },
+            );
             queryClient.invalidateQueries({ queryKey: ['job-orders', orgId], type: 'inactive' });
           }}
         />

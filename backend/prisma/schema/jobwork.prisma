@@ -705,6 +705,10 @@ model JobIssue {
 
   @@unique([organizationId, challanNumber])
   @@index([organizationId, jobOrderStepId])
+  /// The Overview reads an order's whole feed by `jobOrderId`, not step by step.
+  /// Without this the only usable prefix is `organization_id` and the read scans
+  /// the org's every challan — free at 58 rows, the page at 100k.
+  @@index([organizationId, jobOrderId])
   @@map("job_issues")
 }
 
@@ -897,6 +901,8 @@ model JobReceipt {
 
   @@unique([organizationId, receiptNumber])
   @@index([organizationId, jobOrderStepId])
+  /// Same reason as `job_issues` — the Overview's feed is per ORDER.
+  @@index([organizationId, jobOrderId])
   @@map("job_receipts")
 }
 

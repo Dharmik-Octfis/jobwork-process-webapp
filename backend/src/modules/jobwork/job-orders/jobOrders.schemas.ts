@@ -243,3 +243,19 @@ export const shortCloseSchema = openApiRegistry.register(
 );
 
 export type ShortCloseInput = z.infer<typeof shortCloseSchema>;
+
+/**
+ * Query for the Overview's activity feed. Not `listQuerySchema` — the feed has
+ * no free-text search and no saved views, and `perPage` is capped an order of
+ * magnitude lower because each row carries a document's lines, outputs and
+ * output batches. Twenty of those is a page; five hundred is the payload the
+ * feed was split out to avoid.
+ */
+export const activityQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  perPage: z.coerce.number().int().positive().max(50).default(20),
+  /** Narrows the feed to one step — the step tab reads its own page. */
+  stepId: z.string().uuid().optional(),
+});
+
+export type ActivityQuery = z.infer<typeof activityQuerySchema>;

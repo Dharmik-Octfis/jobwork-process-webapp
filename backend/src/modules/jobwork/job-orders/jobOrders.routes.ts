@@ -19,6 +19,7 @@ import {
   getJobOrders,
   getNumberPreferenceRoute,
   getOverview,
+  getOverviewActivity,
   numberPreferenceSchema,
   shortClose,
   updateJobOrder,
@@ -61,6 +62,9 @@ router.get('/:id/with-steps', requirePermission('job_order:read'), getJobOrderWi
 // The stepper page. A read, so it is gated on `read` — the Issue and Receive
 // buttons it renders are gated separately by their own modules' routes.
 router.get('/:id/overview', requirePermission('job_order:read'), getOverview);
+// Same page, same authority — the feed is only the rest of the Overview, split
+// off because it is the part whose size grows with the order's age.
+router.get('/:id/overview/activity', requirePermission('job_order:read'), getOverviewActivity);
 router.put(
   '/:id',
   requirePermission('job_order:update'),
@@ -90,11 +94,7 @@ router.post(
   shortClose,
 );
 
-router.post(
-  '/:id/steps/:stepId/complete',
-  requirePermission('job_order:update'),
-  completeStep,
-);
+router.post('/:id/steps/:stepId/complete', requirePermission('job_order:update'), completeStep);
 
 router.delete('/:id', requirePermission('job_order:delete'), deleteJobOrder);
 

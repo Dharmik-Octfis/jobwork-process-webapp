@@ -8,7 +8,7 @@ import {
   setNumberPreference,
 } from '../../../lib/numberSequence.ts';
 import { getMemberDirectory, type MemberDirectory } from '../../../lib/memberDirectory.ts';
-import {  pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
+import { pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import {
   loadActiveDefinitions,
@@ -64,7 +64,6 @@ import type {
  */
 
 const DUPLICATE_NUMBER = 'A job order with this number already exists in this organization.';
-
 
 function jobOrderListWhere(organizationId: string, opts: ListQuery): Prisma.JobOrderWhereInput {
   const baseWhere = {
@@ -848,7 +847,6 @@ const STEP_OVERVIEW_INCLUDE = {
   workCentre: { select: { id: true, name: true } },
 } satisfies Prisma.JobOrderStepInclude;
 
-
 export const JOB_ORDER_OVERVIEW_INCLUDE = {
   inputItem: { select: { id: true, name: true, sku: true, inventoryTracking: true } },
   inputUom: { select: { id: true, unitName: true, symbol: true } },
@@ -1503,11 +1501,6 @@ export async function shortCloseJobOrder(
  * after the last metre of it has left (§10).
  */
 export async function getJobOrderOverview(organizationId: string, id: string) {
-  // Outside the transaction, and before it — `memberships` has no RLS policy, so
-  // this is a plain probe, and taking it here keeps it off a second pooled
-  // connection held open by the tenant tx (`lib/memberDirectory.ts`).
-  const directory = await getMemberDirectory(organizationId);
-
   return runAsTenant(organizationId, async (tx) => {
     const order = await tx.jobOrder.findFirst({
       where: { id, organizationId, isDeleted: false },
@@ -1536,25 +1529,82 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
       order.steps as { id: string; seq: number; processNameSnapshot: string; status: string }[],
     );
 
-    const balances = principalItemIds.length > 0
-      ? await tx.stockLedgerEntry.groupBy({
-          by: ['itemId'],
-          where: {
-            organizationId,
-            itemId: { in: principalItemIds },
-            ownership: order.ownership as Ownership,
-          },
-          _sum: { qtyIn: true, qtyOut: true },
-        })
-      : [];
+    const balances =
+      principalItemIds.length > 0
+        ? await tx.stockLedgerEntry.groupBy({
+            by: ['itemId'],
+            where: {
+              organizationId,
+              itemId: { in: principalItemIds },
+              ownership: order.ownership as Ownership,
+            },
+            _sum: { qtyIn: true, qtyOut: true },
+          })
+        : [];
 
-    const activity = await buildActivity(tx, organizationId, id, directory);
+    /**
+     * 🔴 The two facts the page needs FROM the feed without loading the feed.
+     *
+     * The activity feed moved to its own paginated endpoint (`getJobOrderActivity`),
+     * because it is the half of this page that grows without bound — every challan
+     * and receipt an order ever had, each with its lines, outputs and output
+     * batches. Two things above the fold were derived from it, so they are read
+     * here as aggregates instead: `_max(issueDate)` answers "out how long" and the
+     * counts label the history tab. Two flat, indexed queries in place of sixteen
+     * nested ones.
+     *
+     * `isDeleted` only — NOT `status: { not: 'cancelled' }`. The feed shows
+     * cancelled documents (they happened, and the ledger carries their reversal),
+     * so counting them here is what keeps the tab's number equal to the number of
+     * rows the feed actually renders.
+     */
+    const issueStamps = await tx.jobIssue.findMany({
+      where: { organizationId, jobOrderId: id, isDeleted: false },
+      // Same tie-break the feed sorts by, so "latest" means the same thing in
+      // both places: the dates are DATES, and a day can hold several challans.
+      orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }],
+      select: { jobOrderStepId: true, issueDate: true, challanNumber: true },
+    });
+    const receiptAgg = await tx.jobReceipt.groupBy({
+      by: ['jobOrderStepId'],
+      where: { organizationId, jobOrderId: id, isDeleted: false },
+      _count: { _all: true },
+    });
+
+    // Four scalar columns per challan, not a groupBy, because the header prints
+    // the challan NUMBER as well as the date ("last sent 12 Aug on JC-0042") and
+    // no aggregate carries the number of the row it took the max from. Ordered
+    // desc, so the first row seen for a step is that step's latest.
+    const lastIssueByStep = new Map<string, { date: Date; number: string }>();
+    const activityCountByStep = new Map<string, number>();
+    for (const row of issueStamps) {
+      if (!lastIssueByStep.has(row.jobOrderStepId)) {
+        lastIssueByStep.set(row.jobOrderStepId, {
+          date: row.issueDate,
+          number: row.challanNumber,
+        });
+      }
+      activityCountByStep.set(
+        row.jobOrderStepId,
+        (activityCountByStep.get(row.jobOrderStepId) ?? 0) + 1,
+      );
+    }
+    for (const row of receiptAgg) {
+      activityCountByStep.set(
+        row.jobOrderStepId,
+        (activityCountByStep.get(row.jobOrderStepId) ?? 0) + row._count._all,
+      );
+    }
+    const activityCount = [...activityCountByStep.values()].reduce((a, b) => a + b, 0);
 
     const firstStep = order.steps[0];
     const firstTotals = firstStep ? allTotalsMap.get(firstStep.id) : null;
 
     const availableQtyMap = new Map<string, Prisma.Decimal>();
-    for (const row of balances as { itemId: string; _sum: { qtyIn: Prisma.Decimal | null; qtyOut: Prisma.Decimal | null } }[]) {
+    for (const row of balances as {
+      itemId: string;
+      _sum: { qtyIn: Prisma.Decimal | null; qtyOut: Prisma.Decimal | null };
+    }[]) {
       const inD = row._sum.qtyIn ?? new Prisma.Decimal(0);
       const outD = row._sum.qtyOut ?? new Prisma.Decimal(0);
       availableQtyMap.set(row.itemId, inD.minus(outD));
@@ -1587,102 +1637,112 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
           })
         : [];
 
-  const unplannedById = new Map<
-    string,
-    { name: string; stockingUom: { symbol: string | null; unitName: string } | null }
-  >(
-    unplannedItems.map((item) => [
-      item.id,
-      item as { name: string; stockingUom: { symbol: string | null; unitName: string } | null },
-    ]),
-  );
+    const unplannedById = new Map<
+      string,
+      { name: string; stockingUom: { symbol: string | null; unitName: string } | null }
+    >(
+      unplannedItems.map((item) => [
+        item.id,
+        item as { name: string; stockingUom: { symbol: string | null; unitName: string } | null },
+      ]),
+    );
 
-  const steps = order.steps.map((step) => {
-    const totals = allTotalsMap.get(step.id)!;
+    const steps = order.steps.map((step) => {
+      const totals = allTotalsMap.get(step.id)!;
 
-    // The issue button is enabled by AVAILABILITY, not by status: a step can be
-    // ready on paper and have nothing to send. Measured on the PRINCIPAL input
-    // — the first consumed row, which is what the step is fundamentally about.
-    const principalInput = step.inputs[0] ?? null;
-    let availableQty = new Prisma.Decimal(0);
-    if (principalInput) {
-      availableQty = availableQtyMap.get(principalInput.itemId) ?? new Prisma.Decimal(0);
-    }
+      // The issue button is enabled by AVAILABILITY, not by status: a step can be
+      // ready on paper and have nothing to send. Measured on the PRINCIPAL input
+      // — the first consumed row, which is what the step is fundamentally about.
+      const principalInput = step.inputs[0] ?? null;
+      let availableQty = new Prisma.Decimal(0);
+      if (principalInput) {
+        availableQty = availableQtyMap.get(principalInput.itemId) ?? new Prisma.Decimal(0);
+      }
 
-    const blockedReason = allChainBlockedMap.get(step.id) ?? null;
+      const blockedReason = allChainBlockedMap.get(step.id) ?? null;
 
-    // 🔴 Issued MINUS CONSUMED, both in the input's unit. Subtracting
-    // `receivedQty` would mix metres and pieces on any step where the item
-    // changes (jobOrders.status.ts).
-    const issuedD = totals.issuedQty;
-    const consumedD = totals.consumedQty;
-    const outstanding = issuedD.minus(consumedD);
-    return {
-      ...step,
-      totals: {
-        issuedQty: totals.issuedQty.toString(),
-        consumedQty: totals.consumedQty.toString(),
-        receivedQty: totals.receivedQty.toString(),
-        acceptedQty: totals.acceptedQty.toString(),
-        reworkQty: totals.reworkQty.toString(),
-        scrapQty: totals.scrapQty.toString(),
-        returnedQty: totals.returnedQty.toString(),
-        outstandingQty: outstanding.toString(),
-        issueCount: totals.issueCount,
-        receiptCount: totals.receiptCount,
-      },
-      /**
-       * 🔴 THE PAGE'S REAL NUMBERS (§5.7 + §6.5). The six totals above are the
-       * principal input's and the primary output's; these are every item's,
-       * each in its own unit, and they are what the Overview renders.
-       *
-       * Both lists include items the PLAN never named — a step can be issued
-       * something nobody listed, and a receipt can return something nobody
-       * expected. Showing only the planned rows would hide exactly the
-       * movements somebody needs to look at.
-       */
-      itemTotals: buildItemTotals(step, totals, unplannedById),
-      availableQty: availableQty.toString(),
-      /**
-       * ⚠️ TEMPORARY — enabled whenever the step has something to issue, NOT
-       * by the ledger.
-       *
-       * It used to require a positive balance, which is the right rule and
-       * will be again. Material In was retired before Purchase Received and
-       * Opening Stock exist, so today there is no way to put stock on the
-       * books at all — and a button that can never light up makes the whole
-       * loop untestable. The Issue dialog creates a zero-valued batch for an
-       * item with no stock and says so on screen (`jobIssues.service.ts`).
-       *
-       * 🔴 Restore `availableQty.greaterThan(0)` the day Purchase Received
-       * lands. Issuing what you do not have is a real defect, not a feature.
-       *
-       * The ONE thing the scaffold does not relax is the chain — see
-       * `blockedReason` below.
-       */
-      canIssue: step.inputs.length > 0 && !blockedReason,
-      /**
-       * 🔴 A STEP FED BY AN EARLIER ONE CANNOT ISSUE UNTIL THAT STEP DELIVERS.
-       *
-       * Step 2 consumes what step 1 produced. If step 1 has returned nothing,
-       * there is physically nothing to send — and the no-stock scaffold would
-       * otherwise happily invent a batch of dyed fabric nobody ever dyed, which
-       * is the one thing it must never do. Raw material can be conjured while
-       * Purchase Received is missing; work in progress cannot.
-       *
-       * Items drawn from stock are unaffected: thread comes from the godown,
-       * not from the operation above.
-       */
-      blockedReason,
-      // Visible once something is out there to come back.
-      canReceive: outstanding.greaterThan(0),
-    };
-  });
+      // 🔴 Issued MINUS CONSUMED, both in the input's unit. Subtracting
+      // `receivedQty` would mix metres and pieces on any step where the item
+      // changes (jobOrders.status.ts).
+      const issuedD = totals.issuedQty;
+      const consumedD = totals.consumedQty;
+      const outstanding = issuedD.minus(consumedD);
+      return {
+        ...step,
+        totals: {
+          issuedQty: totals.issuedQty.toString(),
+          consumedQty: totals.consumedQty.toString(),
+          receivedQty: totals.receivedQty.toString(),
+          acceptedQty: totals.acceptedQty.toString(),
+          reworkQty: totals.reworkQty.toString(),
+          scrapQty: totals.scrapQty.toString(),
+          returnedQty: totals.returnedQty.toString(),
+          outstandingQty: outstanding.toString(),
+          issueCount: totals.issueCount,
+          receiptCount: totals.receiptCount,
+        },
+        /**
+         * 🔴 THE PAGE'S REAL NUMBERS (§5.7 + §6.5). The six totals above are the
+         * principal input's and the primary output's; these are every item's,
+         * each in its own unit, and they are what the Overview renders.
+         *
+         * Both lists include items the PLAN never named — a step can be issued
+         * something nobody listed, and a receipt can return something nobody
+         * expected. Showing only the planned rows would hide exactly the
+         * movements somebody needs to look at.
+         */
+        itemTotals: buildItemTotals(step, totals, unplannedById),
+        availableQty: availableQty.toString(),
+        /**
+         * ⚠️ TEMPORARY — enabled whenever the step has something to issue, NOT
+         * by the ledger.
+         *
+         * It used to require a positive balance, which is the right rule and
+         * will be again. Material In was retired before Purchase Received and
+         * Opening Stock exist, so today there is no way to put stock on the
+         * books at all — and a button that can never light up makes the whole
+         * loop untestable. The Issue dialog creates a zero-valued batch for an
+         * item with no stock and says so on screen (`jobIssues.service.ts`).
+         *
+         * 🔴 Restore `availableQty.greaterThan(0)` the day Purchase Received
+         * lands. Issuing what you do not have is a real defect, not a feature.
+         *
+         * The ONE thing the scaffold does not relax is the chain — see
+         * `blockedReason` below.
+         */
+        canIssue: step.inputs.length > 0 && !blockedReason,
+        /**
+         * 🔴 A STEP FED BY AN EARLIER ONE CANNOT ISSUE UNTIL THAT STEP DELIVERS.
+         *
+         * Step 2 consumes what step 1 produced. If step 1 has returned nothing,
+         * there is physically nothing to send — and the no-stock scaffold would
+         * otherwise happily invent a batch of dyed fabric nobody ever dyed, which
+         * is the one thing it must never do. Raw material can be conjured while
+         * Purchase Received is missing; work in progress cannot.
+         *
+         * Items drawn from stock are unaffected: thread comes from the godown,
+         * not from the operation above.
+         */
+        blockedReason,
+        // Visible once something is out there to come back.
+        canReceive: outstanding.greaterThan(0),
+        /**
+         * When this step last sent something out, and on which challan — the fact
+         * "out 9 days, last sent 12 Aug on JC-0042" is built from. It is a DATE,
+         * not a total, so no sum can replace it, and the header needs it before
+         * the (paged) feed has loaded.
+         */
+        lastIssueDate: lastIssueByStep.get(step.id)?.date.toISOString() ?? null,
+        lastIssueNumber: lastIssueByStep.get(step.id)?.number ?? null,
+        /** Documents on this step, cancelled included — the step tab's number. */
+        activityCount: activityCountByStep.get(step.id) ?? 0,
+      };
+    });
 
     return {
       jobOrder: order,
       batches,
-      activity,
+      activityCount,
       summary: {
         issuedQty: firstTotals ? firstTotals.issuedQty.toString() : '0',
       },
@@ -1704,7 +1764,10 @@ type StepWithRows = Prisma.JobOrderStepGetPayload<{ include: typeof STEP_OVERVIE
 function buildItemTotals(
   step: StepWithRows,
   totals: StepTotals,
-  unplannedById: Map<string, { name: string; stockingUom: { symbol: string | null; unitName: string } | null }>,
+  unplannedById: Map<
+    string,
+    { name: string; stockingUom: { symbol: string | null; unitName: string } | null }
+  >,
 ) {
   const issuedByItem = new Map<string, ItemFlow>(
     totals.perItem.map((row) => [row.itemId, row] as const),
@@ -1810,99 +1873,152 @@ function buildItemTotals(
  * went out on the 3rd and was cancelled on the 5th is a thing that happened, and
  * the ledger carries its reversal either way (§10); hiding it leaves a gap
  * between two numbers that no longer explain each other.
+ *
+ * 🔴 ITS OWN ENDPOINT, AND PAGED FROM THE NEWEST END. This is the only part of
+ * the Overview whose size tracks the order's AGE rather than its shape: a
+ * six-month order carries hundreds of documents, each with lines, outputs and
+ * output batches, and it was being loaded in full before the page could paint.
+ * The header, the steps and the totals no longer wait for it.
+ *
+ * The feed still READS oldest-first — it is a story, and a story is read
+ * forwards — but it is PAGED newest-first, because page one of a story nobody
+ * has time to re-read is the part that just happened. So the window is taken
+ * from the recent end and reversed for display; "show earlier" prepends.
+ *
+ * 🔴 `page * perPage + 1` FROM EACH TABLE, not `perPage`. Two tables merge into
+ * one timeline, and `skip` cannot be pushed down into either half — skipping 20
+ * issues and 20 receipts does not skip the 20 oldest EVENTS. Taking the top K of
+ * each is what makes the merged top K correct, because any event in the merged
+ * top K is in the top K of its own table. K stays small: page 1 of 20 is 21 rows
+ * a side.
  */
+export async function getJobOrderActivity(
+  organizationId: string,
+  jobOrderId: string,
+  { page, perPage, stepId }: { page: number; perPage: number; stepId?: string },
+) {
+  // Outside the transaction, and before it — `memberships` has no RLS policy, so
+  // this is a plain probe, and taking it here keeps it off a second pooled
+  // connection held open by the tenant tx (`lib/memberDirectory.ts`).
+  const directory = await getMemberDirectory(organizationId);
+
+  return runAsTenant(organizationId, async (tx) => {
+    const order = await tx.jobOrder.findFirst({
+      where: { id: jobOrderId, organizationId, isDeleted: false },
+      select: { id: true },
+    });
+    if (!order) throw ApiError.notFound('Job order not found');
+
+    return buildActivity(tx, organizationId, jobOrderId, directory, { page, perPage, stepId });
+  });
+}
+
 async function buildActivity(
   tx: TenantClient,
   organizationId: string,
   jobOrderId: string,
   directory: MemberDirectory,
+  { page, perPage, stepId }: { page: number; perPage: number; stepId?: string },
 ) {
   const unitOf = (uom: { symbol: string | null; unitName: string } | null | undefined) =>
     uom ? (uom.symbol ?? uom.unitName) : null;
 
+  // The whole window up to and including this page, per table — see the note above.
+  const window = page * perPage + 1;
+  const scope = {
+    organizationId,
+    jobOrderId,
+    isDeleted: false,
+    ...(stepId ? { jobOrderStepId: stepId } : {}),
+  };
+
   const issues = await tx.jobIssue.findMany({
-      where: { organizationId, jobOrderId, isDeleted: false },
-      select: {
-        id: true,
-        jobOrderStepId: true,
-        challanNumber: true,
-        issueDate: true,
-        status: true,
-        remarks: true,
-        isRework: true,
-        attemptNo: true,
-        totalQty: true,
-        processorNameSnapshot: true,
-        createdBy: true,
-        createdAt: true,
-        destination: { select: { name: true } },
-        lines: {
-          where: { isDeleted: false },
-          select: {
-            id: true,
-            itemId: true,
-            qty: true,
-            item: { select: { name: true } },
-            uom: { select: { symbol: true, unitName: true } },
-            // 🔴 The LABEL, never `batchNumber` (2026-08-14) — internal key.
-            batch: { select: { supplierBatchRef: true } },
-          },
+    where: scope,
+    orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }],
+    take: window,
+    select: {
+      id: true,
+      jobOrderStepId: true,
+      challanNumber: true,
+      issueDate: true,
+      status: true,
+      remarks: true,
+      isRework: true,
+      attemptNo: true,
+      totalQty: true,
+      processorNameSnapshot: true,
+      createdBy: true,
+      createdAt: true,
+      destination: { select: { name: true } },
+      lines: {
+        where: { isDeleted: false },
+        select: {
+          id: true,
+          itemId: true,
+          qty: true,
+          item: { select: { name: true } },
+          uom: { select: { symbol: true, unitName: true } },
+          // 🔴 The LABEL, never `batchNumber` (2026-08-14) — internal key.
+          batch: { select: { supplierBatchRef: true } },
         },
       },
-    });
-    const receipts = await tx.jobReceipt.findMany({
-      where: { organizationId, jobOrderId, isDeleted: false },
-      select: {
-        id: true,
-        jobOrderStepId: true,
-        receiptNumber: true,
-        receiptDate: true,
-        status: true,
-        remarks: true,
-        totalIssuedQty: true,
-        totalReturnedQty: true,
-        processorNameSnapshot: true,
-        createdBy: true,
-        createdAt: true,
-        location: { select: { name: true } },
-        // Only the challan each line closes — the per-line quantities are the
-        // consumption side and the disposition lives on `outputs`, so carrying
-        // the whole line here would be a second copy of neither.
-        lines: {
-          where: { isDeleted: false },
-          select: { jobIssue: { select: { challanNumber: true } } },
-        },
-        outputs: {
-          where: { isDeleted: false },
-          orderBy: { seq: 'asc' },
-          select: {
-            id: true,
-            itemId: true,
-            receivedQty: true,
-            acceptedQty: true,
-            reworkQty: true,
-            scrapQty: true,
-            isPrimary: true,
-            remarks: true,
-            item: { select: { name: true } },
-            uom: { select: { symbol: true, unitName: true } },
-            reason: { select: { name: true } },
-            // 🔴 The child table, not `outputBatch`/`reworkBatch` — those name
-            // only the FIRST of each kind, and a split delivery has more.
-            batches: {
-              where: { isDeleted: false },
-              orderBy: [{ kind: 'asc' }, { seq: 'asc' }],
-              select: {
-                kind: true,
-                qty: true,
-                isNewBatch: true,
-                batch: { select: { supplierBatchRef: true } },
-              },
+    },
+  });
+  const receipts = await tx.jobReceipt.findMany({
+    where: scope,
+    orderBy: [{ receiptDate: 'desc' }, { createdAt: 'desc' }],
+    take: window,
+    select: {
+      id: true,
+      jobOrderStepId: true,
+      receiptNumber: true,
+      receiptDate: true,
+      status: true,
+      remarks: true,
+      totalIssuedQty: true,
+      totalReturnedQty: true,
+      processorNameSnapshot: true,
+      createdBy: true,
+      createdAt: true,
+      location: { select: { name: true } },
+      // Only the challan each line closes — the per-line quantities are the
+      // consumption side and the disposition lives on `outputs`, so carrying
+      // the whole line here would be a second copy of neither.
+      lines: {
+        where: { isDeleted: false },
+        select: { jobIssue: { select: { challanNumber: true } } },
+      },
+      outputs: {
+        where: { isDeleted: false },
+        orderBy: { seq: 'asc' },
+        select: {
+          id: true,
+          itemId: true,
+          receivedQty: true,
+          acceptedQty: true,
+          reworkQty: true,
+          scrapQty: true,
+          isPrimary: true,
+          remarks: true,
+          item: { select: { name: true } },
+          uom: { select: { symbol: true, unitName: true } },
+          reason: { select: { name: true } },
+          // 🔴 The child table, not `outputBatch`/`reworkBatch` — those name
+          // only the FIRST of each kind, and a split delivery has more.
+          batches: {
+            where: { isDeleted: false },
+            orderBy: [{ kind: 'asc' }, { seq: 'asc' }],
+            select: {
+              kind: true,
+              qty: true,
+              isNewBatch: true,
+              batch: { select: { supplierBatchRef: true } },
             },
           },
         },
       },
-    });
+    },
+  });
 
   const issueEvents = issues.map((issue) => ({
     kind: 'issue' as const,
@@ -1974,15 +2090,33 @@ async function buildActivity(
   }));
 
   /**
-   * Oldest first — this is a story, and a story is read forwards.
+   * Newest first HERE, to cut the page off the recent end.
    *
    * `createdAt` breaks the tie because the document dates are DATES: everything
    * raised on one day would otherwise sort arbitrarily, and a receipt printed
    * above the challan it closes reads as a receipt of goods that never left.
    */
-  return [...issueEvents, ...receiptEvents]
-    .sort((a, b) => a.at - b.at || a.recordedAt - b.recordedAt)
-    .map(({ at: _at, recordedAt: _recordedAt, ...event }) => event);
+  const merged = [...issueEvents, ...receiptEvents].sort(
+    (a, b) => b.at - a.at || b.recordedAt - a.recordedAt,
+  );
+
+  // `merged` holds every event down to this page; the page itself is its tail.
+  // A row beyond the window is what proves there is an older page — the same
+  // "fetch one more" trick as `pageSlice`, which cannot be reused directly
+  // because the extra row has to survive the merge before it can be counted.
+  const start = (page - 1) * perPage;
+  const hasMore = merged.length > page * perPage;
+  const pageRows = merged.slice(start, start + perPage);
+
+  /**
+   * Reversed back to oldest-first for rendering. The feed is a story and a story
+   * is read forwards; only the PAGING runs backwards, so page 1 is what just
+   * happened and "show earlier activity" prepends page 2 above it.
+   */
+  return {
+    results: pageRows.reverse().map(({ at: _at, recordedAt: _recordedAt, ...event }) => event),
+    pageContext: { page, perPage, hasMore },
+  };
 }
 
 /** Re-derive an order's status after something downstream changed it. */

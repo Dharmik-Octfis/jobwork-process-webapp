@@ -3,6 +3,7 @@ import { apiClient } from '../../../api/client';
 import { endpoints } from '../../../api/endpoints';
 import type { PageParams } from '../../../lib/pagination';
 import {
+  jobOrderActivitySchema,
   jobOrderOverviewSchema,
   jobOrderSchema,
   jobOrdersPageSchema,
@@ -10,6 +11,7 @@ import {
   jobOrderWithStepsSchema,
   type JobOrder,
   type JobOrderWithSteps,
+  type JobOrderActivityData,
   type JobOrderOverviewData,
   type JobOrdersPage,
   type JobOrderStepData,
@@ -34,7 +36,10 @@ export async function fetchJobOrderById(orgId: string, id: string): Promise<JobO
   return jobOrderSchema.parse(response.data);
 }
 
-export async function fetchJobOrderWithStepsById(orgId: string, id: string): Promise<JobOrderWithSteps> {
+export async function fetchJobOrderWithStepsById(
+  orgId: string,
+  id: string,
+): Promise<JobOrderWithSteps> {
   const response = await apiClient.get(`${endpoints.jobwork.jobOrders(orgId)}/${id}/with-steps`);
   return jobOrderWithStepsSchema.parse(response.data);
 }
@@ -47,6 +52,22 @@ export async function fetchJobOrderOverview(
 ): Promise<JobOrderOverviewData> {
   const response = await apiClient.get(endpoints.jobwork.jobOrderOverview(orgId, id));
   return jobOrderOverviewSchema.parse(response.data);
+}
+
+/**
+ * One page of the order's document history. Separate from the call above on
+ * purpose: the tiles must not wait on a feed whose size grows with the order's
+ * age. `stepId` narrows it to a single step, which is what the step tab asks for
+ * — filtering a paged feed on the client would silently drop the steps whose
+ * documents fell on a page nobody loaded.
+ */
+export async function fetchJobOrderActivity(
+  orgId: string,
+  id: string,
+  params: { page?: number; perPage?: number; stepId?: string } = {},
+): Promise<JobOrderActivityData> {
+  const response = await apiClient.get(endpoints.jobwork.jobOrderActivity(orgId, id), { params });
+  return jobOrderActivitySchema.parse(response.data);
 }
 
 export async function createJobOrder(orgId: string, data: CreateJobOrderData): Promise<JobOrder> {

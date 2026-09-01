@@ -85,14 +85,16 @@ export type JobOrder = z.infer<typeof jobOrderSchema>;
 
 export const jobOrderWithStepsSchema = z.object({
   id: z.string(),
-  steps: z.array(
-    z.object({
-      id: z.string(),
-      seq: z.number(),
-      processNameSnapshot: z.string(),
-      processorNameSnapshot: z.string().nullable(),
-    })
-  ).default([]),
+  steps: z
+    .array(
+      z.object({
+        id: z.string(),
+        seq: z.number(),
+        processNameSnapshot: z.string(),
+        processorNameSnapshot: z.string().nullable(),
+      }),
+    )
+    .default([]),
 });
 
 export type JobOrderWithSteps = z.infer<typeof jobOrderWithStepsSchema>;
@@ -159,6 +161,16 @@ export const overviewStepSchema = jobOrderStepSchema.extend({
   /** Why the Issue button is off, in words. Null when it is on. */
   blockedReason: z.string().nullable().default(null),
   canReceive: z.boolean(),
+  /**
+   * When this step last sent something out. The header turns it into "out 9
+   * days", which is the fact a processor gets chased on — and it has to be
+   * there before the (paged, separately fetched) feed arrives.
+   */
+  lastIssueDate: z.string().nullable().default(null),
+  /** The challan that date belongs to, printed beside it. */
+  lastIssueNumber: z.string().nullable().default(null),
+  /** Documents on this step, cancelled included — the step tab's number. */
+  activityCount: z.number().default(0),
 });
 
 export type OverviewStep = z.infer<typeof overviewStepSchema>;
@@ -253,10 +265,30 @@ export type ActivityEvent = z.infer<typeof activityEventSchema>;
 export type ActivityIssue = z.infer<typeof activityIssueSchema>;
 export type ActivityReceipt = z.infer<typeof activityReceiptSchema>;
 
+/**
+ * One page of the activity feed. Oldest-first WITHIN the page, but paged from
+ * the newest end — so page 1 is what just happened, and page 2 is the stretch
+ * before it, prepended above. See `getJobOrderActivity` on the server.
+ */
+export const jobOrderActivitySchema = z.object({
+  results: z.array(activityEventSchema).default([]),
+  pageContext: z.object({
+    page: z.number(),
+    perPage: z.number(),
+    hasMore: z.boolean(),
+  }),
+});
+
+export type JobOrderActivityData = z.infer<typeof jobOrderActivitySchema>;
+
 export const jobOrderOverviewSchema = z.object({
   jobOrder: jobOrderSchema,
-  /** Oldest first, across every step — the client filters by `stepId`. */
-  activity: z.array(activityEventSchema).default([]),
+  /**
+   * How many documents the feed holds, cancelled included — the history tab's
+   * number. The feed itself is a separate, paged request (`fetchJobOrderActivity`),
+   * so this count is what lets the tab be labelled before it has loaded.
+   */
+  activityCount: z.number().default(0),
   batches: z.array(
     z.object({
       id: z.string(),
