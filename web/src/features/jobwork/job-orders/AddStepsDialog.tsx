@@ -150,6 +150,7 @@ export function AddStepsDialog({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
+      position="fullScreen"
       title={`Add work to ${jobOrderNumber}`}
       footer={
         <>
