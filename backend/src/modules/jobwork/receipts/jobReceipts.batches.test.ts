@@ -1033,3 +1033,99 @@ describe('receipt — the batch picker', { timeout: 60_000 }, () => {
     expect(row.byLocation.find((location) => location.isExternal)!.qty).toBe('400');
   });
 });
+
+/**
+ * 🔴 TWO ALLOCATIONS, ONE BATCH — the case that decides how the consume loop may
+ * be written (2026-09-01).
+ *
+ * `createJobReceipt` used to ask `getBalance` per allocation: a round trip per row
+ * on the transaction's single connection. It now reads every balance in one query
+ * and decrements its copy as each consume is posted. Those two are the same thing
+ * ONLY because the decrement is there — reading once and pricing every allocation
+ * against that one answer is the obvious version of the change, and this is the
+ * test that says why it is wrong.
+ */
+describe('receipt — a second allocation on the same batch', { timeout: 60_000 }, () => {
+  it('prices it against what the first one left, not against the opening balance', async () => {
+    // 1000 m at 10/m, sent to the dyer on TWO challans of 500 — the SAME batch on
+    // both, which is what makes one receipt allocate against it twice.
+    const inputBatch = await seedStock(greyId, 1000, 10000);
+    const jobOrder = await createNewJobOrder(orgId, {
+      steps: [
+        {
+          processId,
+          processorType: 'vendor',
+          processorId: dyerId,
+          rate: 10,
+          rateBasis: 'per_issued_unit',
+          inputs: [{ itemId: greyId }],
+          outputs: [{ itemId: dyedId, isPrimary: true }],
+          plannedInputQty: 1000,
+        },
+      ],
+    });
+    const step = jobOrder.steps[0]!;
+    const first = await createNewJobIssue(orgId, {
+      jobOrderStepId: step.id,
+      sourceLocationId: godownId,
+      lines: [{ itemId: greyId, batchId: inputBatch.id, qty: 500 }],
+    });
+    const second = await createNewJobIssue(orgId, {
+      jobOrderStepId: step.id,
+      sourceLocationId: godownId,
+      lines: [{ itemId: greyId, batchId: inputBatch.id, qty: 500 }],
+    });
+    const dyerLocationId = first.destinationLocationId;
+
+    /* Half of what is at the dyer's is written off before the receipt — a loss at
+       the processor. The batch now holds 500 there while the two challans still
+       have 1000 outstanding between them, and that gap is what separates the two
+       implementations: priced against ONE up-front read both allocations bill at
+       10/m and take 10,000 out of a batch that had 5,000 left. */
+    await runAsDocument(orgId, (tx) =>
+      postMovement(tx, {
+        organizationId: orgId,
+        batchId: inputBatch.id,
+        locationId: dyerLocationId,
+        movementType: 'adjustment',
+        qtyOut: 500,
+        valueOut: 5000,
+        sourceDocType: SOURCE_DOC_TYPES.jobOrderMaterialIn,
+        sourceDocId: inputBatch.id,
+      }),
+    );
+
+    const receipt = await createNewJobReceipt(orgId, {
+      jobOrderStepId: step.id,
+      issueIds: [first.id, second.id],
+      locationId: godownId,
+      lines: [{ itemId: greyId, issuedQty: 1000, receivedQty: 0 }],
+      outputs: [
+        {
+          itemId: dyedId,
+          isPrimary: true,
+          receivedQty: 1000,
+          acceptedQty: 1000,
+          batches: [{ batchReference: `TWO-ALLOC-${unique()}`, qty: 1000 }],
+        },
+      ],
+    });
+
+    const consumes = await runAsTenant(orgId, (tx) =>
+      tx.stockLedgerEntry.findMany({
+        where: { organizationId: orgId, sourceDocId: receipt.id, movementType: 'consume' },
+        orderBy: { createdAt: 'asc' },
+        select: { qtyOut: true, valueOut: true },
+      }),
+    );
+
+    expect(consumes.map((row) => Number(row.qtyOut))).toEqual([500, 500]);
+    // The first allocation takes everything the batch was worth; the second finds
+    // it empty. Priced against one up-front read this second figure is 5000.
+    expect(consumes.map((row) => Number(row.valueOut))).toEqual([5000, 0]);
+
+    // …so the batch is never left owing value it did not have.
+    const after = await balanceOf(inputBatch.id, dyerLocationId);
+    expect(Number(after.value)).toBe(0);
+  });
+});

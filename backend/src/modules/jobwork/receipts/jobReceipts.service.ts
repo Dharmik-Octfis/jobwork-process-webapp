@@ -9,11 +9,14 @@ import {
   validateCustomFields,
 } from '../../settings/customization/custom-fields/customFields.engine.ts';
 import {
+  asResolvedBatch,
   createBatch,
-  getBalance,
+  getBalancesByBatch,
   getBalancesByBatchAndLocation,
   postMovement,
+  resolveBatchesForPosting,
   type Ownership,
+  type ResolvedBatches,
 } from '../../inventory/stock-ledger/stockLedger.service.ts';
 import {
   assertItemsBelongToOrg,
@@ -161,6 +164,34 @@ export async function getReceiptsForStep(organizationId: string, jobOrderStepId:
 }
 
 /**
+ * How much of each issue line has already been received.
+ *
+ * 🔴 ONE grouped query, never one per line. This was a `jobReceiptLine.aggregate`
+ * inside the loop in three places — invisible on a two-line challan and the whole
+ * response on a fifty-line one. `Promise.all` could not have rescued it either:
+ * every query on `tx` shares one connection and runs in turn.
+ */
+async function closedQtyByIssueLine(
+  tx: TenantClient,
+  organizationId: string,
+  lineIds: readonly string[],
+): Promise<Map<string, Prisma.Decimal>> {
+  if (lineIds.length === 0) return new Map();
+  const grouped = await tx.jobReceiptLine.groupBy({
+    by: ['jobIssueLineId'],
+    where: { organizationId, jobIssueLineId: { in: [...lineIds] }, isDeleted: false },
+    _sum: { issuedQty: true },
+  });
+  // `jobIssueLineId` is nullable — a bulk receipt spanning several challans points
+  // at no single line — so the null group is dropped rather than keyed on.
+  return new Map(
+    grouped.flatMap((row) =>
+      row.jobIssueLineId ? [[row.jobIssueLineId, row._sum.issuedQty ?? ZERO] as const] : [],
+    ),
+  );
+}
+
+/**
  * What the Receive dialog needs before anyone types anything: the open challans
  * and what is still outstanding on each.
  *
@@ -218,15 +249,17 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
     });
 
     // Outstanding per issue LINE, so a partly-received challan does not offer the
-    // same taka twice.
+    // same taka twice. One read for every line between them, not one per line.
+    const closedByLine = await closedQtyByIssueLine(
+      tx,
+      organizationId,
+      issues.flatMap((issue) => issue.lines.map((line) => line.id)),
+    );
+
     const rows = [];
     for (const issue of issues) {
       for (const line of issue.lines) {
-        const closed = await tx.jobReceiptLine.aggregate({
-          where: { organizationId, jobIssueLineId: line.id, isDeleted: false },
-          _sum: { issuedQty: true },
-        });
-        const outstanding = line.qty.minus(closed._sum.issuedQty ?? ZERO);
+        const outstanding = line.qty.minus(closedByLine.get(line.id) ?? ZERO);
         if (outstanding.lessThanOrEqualTo(0)) continue;
 
         rows.push({
@@ -1090,13 +1123,14 @@ async function allocateConsumption(
     },
   });
 
+  const closedByLine = await closedQtyByIssueLine(
+    tx,
+    organizationId,
+    issueLines.map((line) => line.id),
+  );
   const outstanding = new Map<string, Prisma.Decimal>();
   for (const line of issueLines) {
-    const closed = await tx.jobReceiptLine.aggregate({
-      where: { organizationId, jobIssueLineId: line.id, isDeleted: false },
-      _sum: { issuedQty: true },
-    });
-    outstanding.set(line.id, line.qty.minus(closed._sum.issuedQty ?? ZERO));
+    outstanding.set(line.id, line.qty.minus(closedByLine.get(line.id) ?? ZERO));
   }
 
   const allocations: ConsumeAllocation[] = [];
@@ -1450,30 +1484,61 @@ export async function createNewJobReceipt(
      * location. The value that leaves here is what the output batch inherits, which
      * is how cost follows material through the chain without anyone storing it.
      */
+    /**
+     * 🔴 ONE balance query for every allocation, then the running balance is kept
+     * IN MEMORY as each consume is posted (2026-09-01). This was a `getBalance`
+     * per allocation: a round trip per row, on the one connection this
+     * transaction holds.
+     *
+     * The decrement below is NOT bookkeeping, it is the semantics. Two allocations
+     * can name the same batch — the same batch issued on two challans of one step
+     * — and the second one's unit value has to see what the first one took out.
+     * Pricing both against a single up-front read is the tempting version of this
+     * change and it is wrong: it values material the first allocation already
+     * consumed, and prices a batch as though it were full when the first
+     * allocation drained it to nothing.
+     */
+    const consumedBatchIds = [...new Set(allocations.map((allocation) => allocation.batchId))];
+    const balances = await getBalancesByBatch(tx, {
+      organizationId,
+      locationId: processorLocationId,
+      batchIds: consumedBatchIds,
+    });
+    // The same hoist for the batch rows each post copies its item and owner off.
+    const consumedBatches = await resolveBatchesForPosting(tx, organizationId, consumedBatchIds);
+
     let consumedValue = ZERO;
     const parentBatchIds = new Set<string>();
     for (const allocation of allocations) {
-      const balance = await getBalance(tx, {
-        organizationId,
-        batchId: allocation.batchId,
-        locationId: processorLocationId,
-      });
+      const balance = balances.get(allocation.batchId) ?? { qty: ZERO, value: ZERO };
       const unitValue = balance.qty.greaterThan(0) ? balance.value.dividedBy(balance.qty) : ZERO;
       const lineValue = unitValue.times(allocation.qty).toDecimalPlaces(4);
       consumedValue = consumedValue.plus(lineValue);
       parentBatchIds.add(allocation.batchId);
 
-      await postMovement(tx, {
-        organizationId,
-        batchId: allocation.batchId,
-        locationId: processorLocationId,
-        movementType: 'consume',
-        qtyOut: allocation.qty,
-        valueOut: lineValue,
-        sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
-        sourceDocId: receipt.id,
-        postedAt: receiptDate,
-        userId,
+      const posted = await postMovement(
+        tx,
+        {
+          organizationId,
+          batchId: allocation.batchId,
+          locationId: processorLocationId,
+          movementType: 'consume',
+          qtyOut: allocation.qty,
+          valueOut: lineValue,
+          sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+          sourceDocId: receipt.id,
+          postedAt: receiptDate,
+          userId,
+        },
+        consumedBatches,
+      );
+
+      /* Taken from the row actually WRITTEN, never from `lineValue`.
+         `postMovement` zeroes value on customer-owned stock (§5.3), so re-deriving
+         what it stored is how this copy and the ledger drift apart. */
+      balances.set(allocation.batchId, {
+        qty: balance.qty.minus(posted.qtyOut),
+        value: balance.value.minus(posted.valueOut),
       });
     }
 
@@ -1537,6 +1602,10 @@ export async function createNewJobReceipt(
         const share = shares[index] ?? ZERO;
         let batchId: string;
         let isNewBatch: boolean;
+        /* Both branches already hold the batch row — `existingBatches` read it,
+           or `createBatch` just returned it — so the post below has no reason to
+           read it again. */
+        let postableBatch: ResolvedBatches;
 
         if (plan.batchId) {
           /**
@@ -1552,6 +1621,7 @@ export async function createNewJobReceipt(
           const existing = existingBatches.get(plan.batchId)!;
           batchId = existing.id;
           isNewBatch = false;
+          postableBatch = asResolvedBatch(existing);
 
           // 🔴 Genealogy is APPENDED, never replaced (inventory.prisma). This
           // delivery may have consumed batches the first one did not, and a
@@ -1588,22 +1658,27 @@ export async function createNewJobReceipt(
           });
           batchId = batch.id;
           isNewBatch = true;
+          postableBatch = asResolvedBatch(batch);
         }
 
-        await postMovement(tx, {
-          organizationId,
-          batchId,
-          locationId: header.locationId,
-          movementType: 'produce',
-          qtyIn: plan.qty,
-          valueIn: share,
-          sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
-          sourceDocId: receipt.id,
-          remarks:
-            kind === 'rework' ? 'Rework — to be re-issued against the same step.' : undefined,
-          postedAt: receiptDate,
-          userId,
-        });
+        await postMovement(
+          tx,
+          {
+            organizationId,
+            batchId,
+            locationId: header.locationId,
+            movementType: 'produce',
+            qtyIn: plan.qty,
+            valueIn: share,
+            sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+            sourceDocId: receipt.id,
+            remarks:
+              kind === 'rework' ? 'Rework — to be re-issued against the same step.' : undefined,
+            postedAt: receiptDate,
+            userId,
+          },
+          postableBatch,
+        );
 
         posted.push({ kind, batchId, qty: plan.qty, isNewBatch });
       }
@@ -1747,20 +1822,42 @@ export async function createNewJobReceipt(
       data: { outputBatchId, reworkBatchId },
     });
 
-    // Close the challans this receipt fully accounted for.
+    /**
+     * Close the challans this receipt fully accounted for.
+     *
+     * Two reads for every challan between them, where this was a `findMany` per
+     * challan and an `aggregate` per line of it. Both must still run HERE, after
+     * the `jobReceiptLine` rows above are written — they are what "already
+     * received" now counts.
+     */
+    const closingLines = await tx.jobIssueLine.findMany({
+      where: {
+        organizationId,
+        jobIssueId: { in: issues.map((issue) => issue.id) },
+        isDeleted: false,
+      },
+      select: { id: true, jobIssueId: true, qty: true },
+    });
+    const closedByLine = await closedQtyByIssueLine(
+      tx,
+      organizationId,
+      closingLines.map((line) => line.id),
+    );
+
+    const outstandingByIssue = new Map<string, Prisma.Decimal>();
+    for (const line of closingLines) {
+      outstandingByIssue.set(
+        line.jobIssueId,
+        (outstandingByIssue.get(line.jobIssueId) ?? ZERO).plus(
+          line.qty.minus(closedByLine.get(line.id) ?? ZERO),
+        ),
+      );
+    }
+
     for (const issue of issues) {
-      const issueLines = await tx.jobIssueLine.findMany({
-        where: { organizationId, jobIssueId: issue.id, isDeleted: false },
-        select: { id: true, qty: true },
-      });
-      let outstanding = ZERO;
-      for (const line of issueLines) {
-        const closed = await tx.jobReceiptLine.aggregate({
-          where: { organizationId, jobIssueLineId: line.id, isDeleted: false },
-          _sum: { issuedQty: true },
-        });
-        outstanding = outstanding.plus(line.qty.minus(closed._sum.issuedQty ?? ZERO));
-      }
+      // A challan with no live lines has nothing outstanding, and closes — which
+      // is what the per-issue loop did when its `findMany` came back empty.
+      const outstanding = outstandingByIssue.get(issue.id) ?? ZERO;
       await tx.jobIssue.update({
         where: { id: issue.id },
         data: { status: outstanding.lessThanOrEqualTo(0) ? 'closed' : 'partially_received' },
@@ -1880,23 +1977,36 @@ export async function cancelJobReceipt(
       },
     });
 
+    // Every row this receipt posted is reversed, and a receipt touches the same
+    // handful of batches over and over — so the batch rows are read once here
+    // rather than once per reversal.
+    const reversedBatches = await resolveBatchesForPosting(
+      tx,
+      organizationId,
+      posted.map((row) => row.batchId),
+    );
+
     const now = new Date();
     for (const row of posted) {
-      await postMovement(tx, {
-        organizationId,
-        batchId: row.batchId,
-        locationId: row.locationId,
-        movementType: 'reversal',
-        qtyIn: row.qtyOut,
-        qtyOut: row.qtyIn,
-        valueIn: row.valueOut,
-        valueOut: row.valueIn,
-        sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
-        sourceDocId: id,
-        remarks: `Cancelled: ${reason.trim()}`,
-        postedAt: now,
-        userId,
-      });
+      await postMovement(
+        tx,
+        {
+          organizationId,
+          batchId: row.batchId,
+          locationId: row.locationId,
+          movementType: 'reversal',
+          qtyIn: row.qtyOut,
+          qtyOut: row.qtyIn,
+          valueIn: row.valueOut,
+          valueOut: row.valueIn,
+          sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+          sourceDocId: id,
+          remarks: `Cancelled: ${reason.trim()}`,
+          postedAt: now,
+          userId,
+        },
+        reversedBatches,
+      );
     }
 
     const updated = await tx.jobReceipt.update({

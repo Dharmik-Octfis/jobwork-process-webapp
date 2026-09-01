@@ -105,6 +105,38 @@ export async function fetchAvailableBatches(
 }
 
 /**
+ * The same picker query for SEVERAL items at once — the Issue dialog's opening
+ * load (2026-09-01).
+ *
+ * 🔴 Why this exists: the dialog used to call `fetchAvailableBatches` once per
+ * input item. Each of those paid a membership read, its own `runAsTenant`
+ * transaction and its own pooled connection, so a five-item step held five
+ * connections to answer one dialog — and the dev database's ceiling is 79.
+ *
+ * `limit` is still PER ITEM on the server, so adding items never shrinks any one
+ * item's picker. Rows come back FLAT and carry `itemId`; the caller groups them.
+ *
+ * There is deliberately no `search` here: each item has its own search box, so a
+ * search is a one-item question and stays on `fetchAvailableBatches` — which also
+ * keeps this cached answer alive while the user types in one row.
+ */
+export async function fetchAvailableBatchesForItems(
+  orgId: string,
+  params: { itemIds: string[]; locationId?: string; ownership?: string; limit?: number },
+): Promise<AvailableBatch[]> {
+  if (params.itemIds.length === 0) return [];
+  const response = await apiClient.get(endpoints.inventory.availableBatches(orgId), {
+    params: {
+      itemIds: params.itemIds.join(','),
+      locationId: params.locationId,
+      ownership: params.ownership,
+      limit: params.limit,
+    },
+  });
+  return z.array(availableBatchSchema).parse(response.data);
+}
+
+/**
  * 🔴 Also a ledger query, not a location list: offering a godown that holds none
  * of these items is how users get stuck on the Issue dialog (§5.1).
  *

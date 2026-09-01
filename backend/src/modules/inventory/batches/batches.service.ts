@@ -95,7 +95,17 @@ export async function getBatchById(organizationId: string, id: string) {
 }
 
 export interface AvailabilityQuery {
-  itemId: string;
+  itemId?: string;
+  /**
+   * 🔴 THE STEP'S WHOLE CONSUMES LIST IN ONE REQUEST (2026-09-01), which is what
+   * the Issue dialog opens with. It used to ask once per item, and each of those
+   * asks paid a membership read, a transaction and a pooled connection of its own
+   * — a five-item step held five connections to answer one dialog.
+   *
+   * `limit` stays PER ITEM here, so one item with hundreds of live batches cannot
+   * starve the rest (`getAvailableBatches`).
+   */
+  itemIds?: readonly string[];
   locationId?: string;
   /**
    * 🔴 NOT OPTIONAL IN PRACTICE. The Issue dialog always passes the job order's
@@ -109,7 +119,9 @@ export interface AvailabilityQuery {
    * that way; otherwise it is a query per batch returning nothing. */
   withPackages?: boolean;
   /** What the user typed into the picker's batch box — matched against the batch
-   * number and the supplier's own reference. */
+   * number and the supplier's own reference. Each item has its own search box, so
+   * a searching caller asks about that ONE item; the multi-item form above is the
+   * dialog's opening load, before anyone has typed. */
   search?: string;
   /** A ceiling on rows, so an item with hundreds of live batches still answers. */
   limit?: number;
@@ -132,6 +144,9 @@ export interface AvailabilityQuery {
  * hundred.
  */
 export async function getAvailableStock(organizationId: string, query: AvailabilityQuery) {
+  const itemIds = query.itemIds?.length ? [...query.itemIds] : query.itemId ? [query.itemId] : [];
+  if (itemIds.length === 0) return [];
+
   return runAsTenant(organizationId, async (tx) => {
     /**
      * 🔴 EXACTLY THE GODOWN ASKED FOR (2026-08-19) — this replaced the
@@ -148,7 +163,9 @@ export async function getAvailableStock(organizationId: string, query: Availabil
      */
     const batches = await getAvailableBatches(tx, {
       organizationId,
-      itemId: query.itemId,
+      // A single-element `itemIds` still collapses to one item downstream: the
+      // database-side `take` stays, and the `in` is an equality to Postgres.
+      itemIds,
       // No location asked for means no location filter — an org-wide question,
       // which the job-order planner asks and the issue picker never does.
       locationId: query.locationId,
@@ -170,12 +187,13 @@ export async function getAvailableStock(organizationId: string, query: Availabil
     });
     const locationNameById = new Map(locations.map((row) => [row.id, row.name]));
 
-    // Every row here is the same item, so its tracking mode is one read, not one
-    // per batch.
-    const item = await tx.item.findFirst({
-      where: { id: query.itemId, organizationId, isDeleted: false },
-      select: { inventoryTracking: true },
+    // One read for every item asked about — not one per item, and never one per
+    // batch.
+    const items = await tx.item.findMany({
+      where: { id: { in: itemIds }, organizationId, isDeleted: false },
+      select: { id: true, inventoryTracking: true },
     });
+    const trackingByItem = new Map(items.map((row) => [row.id, row.inventoryTracking]));
 
     return batches.map((batch) => ({
       batchId: batch.batchId,
@@ -214,7 +232,7 @@ export async function getAvailableStock(organizationId: string, query: Availabil
       costPerUnit: batch.availableQty.greaterThan(0)
         ? batch.value.dividedBy(batch.availableQty).toDecimalPlaces(4).toString()
         : null,
-      inventoryTracking: item?.inventoryTracking ?? 'none',
+      inventoryTracking: trackingByItem.get(batch.itemId) ?? 'none',
     }));
   });
 }

@@ -273,35 +273,36 @@ async function getItemFlows(
 /**
  * The step status these totals imply.
  *
- * 🔴 PER ITEM, AND ON THE INPUT SIDE (§6.5). Two rules, and the first one only
- * appeared with §5.7.
+ * 🔴 `completed` IS NOT COMPUTED — it is `is_completed`, a flag a human sets from
+ * the step's screen (2026-08-24, `4f70306`). Arithmetic decides everything below
+ * it and nothing above: a step whose paperwork balances is still only
+ * `partially_received`, because "every metre is accounted for" and "we are
+ * finished with this operation" are different claims, and a processor may yet
+ * send more against the same challan. `manuallyCompleteStep` is the one way in,
+ * and `STICKY_STEP_STATUSES` is what stops this function walking it back.
  *
- * **Per item.** The step is `completed` when EVERY item it has issued has been
- * fully accounted for. Three items in three units cannot collapse into one pair
- * of totals, and a step whose panels are back but whose thread is still at the
- * stitcher is not finished — summing them would say it was.
+ * 🔴 PER ITEM, AND ON THE INPUT SIDE (§6.5) — which still governs the rest.
+ *
+ * **Per item.** `pending` and `issued` are judged over every item the step has
+ * moved. Three items in three units cannot collapse into one pair of totals, and
+ * a step whose panels are back but whose thread is still at the stitcher has not
+ * gone quiet — summing them would say it had.
  *
  * **On the input side** — consumed against issued, never received against
- * issued. Both of those are in the input's own unit, so the comparison means
- * something for every step. Judging by `receivedQty` would work for dyeing
- * (metres in, metres out) and be nonsense for cutting (metres in, pieces out),
- * where a perfectly complete step would sit at `partially_received` forever
- * because 2,850 is less than 4,800.
+ * issued. Both are in the input's own unit, so the comparison means something for
+ * every step. Judging by `receivedQty` would work for dyeing (metres in, metres
+ * out) and be nonsense for cutting (metres in, pieces out), where 2,850 pieces
+ * against 4,800 metres reads as a shortfall that is not there.
  *
- * "Consumed" counts EVERY disposition, including scrap and the pieces handed
- * straight back at the gate. The question a status answers is "is anything still
- * sitting at the processor", and a scrapped metre is not sitting anywhere — it
- * has been accounted for. Judging by accepted quantity alone would leave every
- * step with any wastage permanently `partially_received`, which is most of them.
+ * "Consumed" counts EVERY disposition, scrap and gate-returns included: the
+ * question is whether anything is still sitting at the processor, and a scrapped
+ * metre is not sitting anywhere.
  */
 export function stepStatusFrom(totals: StepTotals, isCompleted: boolean): JobOrderStepStatus {
   if (isCompleted) return 'completed';
   const moved = totals.perItem.filter((row) => row.issuedQty.greaterThan(0));
   if (moved.length === 0) return 'pending';
   if (moved.every((row) => row.consumedQty.lessThanOrEqualTo(0))) return 'issued';
-
-  // We no longer automatically return 'completed'. If it has received something,
-  // it is partially_received until manually completed.
   return 'partially_received';
 }
 
@@ -472,46 +473,57 @@ export async function getAllStepTotals(
   const issueIds = allIssues.map((i) => i.id);
   const receiptIds = allReceipts.map((r) => r.id);
 
-  const allLines = issueIds.length > 0 ? await tx.jobIssueLine.findMany({
-    where: { organizationId, jobIssueId: { in: issueIds }, isDeleted: false },
-    select: { qty: true, itemId: true, jobIssueId: true },
-  }) : [];
+  const allLines =
+    issueIds.length > 0
+      ? await tx.jobIssueLine.findMany({
+          where: { organizationId, jobIssueId: { in: issueIds }, isDeleted: false },
+          select: { qty: true, itemId: true, jobIssueId: true },
+        })
+      : [];
 
-  const allConsumed = receiptIds.length > 0 ? await tx.stockLedgerEntry.groupBy({
-    by: ['itemId', 'sourceDocId'],
-    where: {
-      organizationId,
-      sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
-      sourceDocId: { in: receiptIds },
-      movementType: 'consume',
-    },
-    _sum: { qtyOut: true },
-  }) : [];
+  const allConsumed =
+    receiptIds.length > 0
+      ? await tx.stockLedgerEntry.groupBy({
+          by: ['itemId', 'sourceDocId'],
+          where: {
+            organizationId,
+            sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+            sourceDocId: { in: receiptIds },
+            movementType: 'consume',
+          },
+          _sum: { qtyOut: true },
+        })
+      : [];
 
-  const allOutputs = receiptIds.length > 0 ? await tx.jobReceiptOutput.groupBy({
-    by: ['itemId', 'jobReceiptId'],
-    where: { organizationId, jobReceiptId: { in: receiptIds }, isDeleted: false },
-    _sum: {
-      receivedQty: true,
-      acceptedQty: true,
-      reworkQty: true,
-      scrapQty: true,
-      returnedQty: true,
-    },
-  }) : [];
+  const allOutputs =
+    receiptIds.length > 0
+      ? await tx.jobReceiptOutput.groupBy({
+          by: ['itemId', 'jobReceiptId'],
+          where: { organizationId, jobReceiptId: { in: receiptIds }, isDeleted: false },
+          _sum: {
+            receivedQty: true,
+            acceptedQty: true,
+            reworkQty: true,
+            scrapQty: true,
+            returnedQty: true,
+          },
+        })
+      : [];
 
   const sum = (rows: { [k: string]: unknown }[], key: string) =>
     rows.reduce((acc, row) => acc.plus(new Prisma.Decimal(String(row[key] ?? 0))), ZERO);
 
   for (const stepId of stepIds) {
-    const stepIssues = allIssues.filter(i => i.jobOrderStepId === stepId);
-    const stepReceipts = allReceipts.filter(r => r.jobOrderStepId === stepId);
-    const stepIssueIds = new Set(stepIssues.map(i => i.id));
-    const stepReceiptIds = new Set(stepReceipts.map(r => r.id));
+    const stepIssues = allIssues.filter((i) => i.jobOrderStepId === stepId);
+    const stepReceipts = allReceipts.filter((r) => r.jobOrderStepId === stepId);
+    const stepIssueIds = new Set(stepIssues.map((i) => i.id));
+    const stepReceiptIds = new Set(stepReceipts.map((r) => r.id));
 
-    const stepLines = allLines.filter(l => l.jobIssueId && stepIssueIds.has(l.jobIssueId));
-    const stepConsumed = allConsumed.filter(c => c.sourceDocId && stepReceiptIds.has(c.sourceDocId));
-    const stepOutputs = allOutputs.filter(o => stepReceiptIds.has(o.jobReceiptId));
+    const stepLines = allLines.filter((l) => l.jobIssueId && stepIssueIds.has(l.jobIssueId));
+    const stepConsumed = allConsumed.filter(
+      (c) => c.sourceDocId && stepReceiptIds.has(c.sourceDocId),
+    );
+    const stepOutputs = allOutputs.filter((o) => stepReceiptIds.has(o.jobReceiptId));
 
     const flows = new Map<string, ItemFlow>();
     const of = (itemId: string) => {
@@ -535,7 +547,14 @@ export async function getAllStepTotals(
     const outOf = (itemId: string) => {
       const existing = outFlows.get(itemId);
       if (existing) return existing;
-      const created = { itemId, receivedQty: ZERO, acceptedQty: ZERO, reworkQty: ZERO, scrapQty: ZERO, returnedQty: ZERO };
+      const created = {
+        itemId,
+        receivedQty: ZERO,
+        acceptedQty: ZERO,
+        reworkQty: ZERO,
+        scrapQty: ZERO,
+        returnedQty: ZERO,
+      };
       outFlows.set(itemId, created);
       return created;
     };
@@ -579,30 +598,38 @@ export async function getAllChainNotReady(
   const result = new Map<string, string | null>();
   if (steps.length === 0) return result;
 
-  const previousIds = steps.filter(s => s.seq > 1).map(s => {
-    // Find the immediately preceding step
-    const prevs = steps.filter(p => p.seq < s.seq).sort((a, b) => b.seq - a.seq);
-    return prevs[0]?.id;
-  }).filter(Boolean) as string[];
+  const previousIds = steps
+    .filter((s) => s.seq > 1)
+    .map((s) => {
+      // Find the immediately preceding step
+      const prevs = steps.filter((p) => p.seq < s.seq).sort((a, b) => b.seq - a.seq);
+      return prevs[0]?.id;
+    })
+    .filter(Boolean) as string[];
 
-  const returned = previousIds.length > 0 ? await tx.jobReceipt.groupBy({
-    by: ['jobOrderStepId'],
-    where: {
-      organizationId,
-      jobOrderStepId: { in: previousIds },
-      isDeleted: false,
-      status: { not: 'cancelled' },
-    },
-    _sum: { totalReceivedQty: true },
-  }) : [];
-  const returnedByStep = new Map(returned.map(r => [r.jobOrderStepId, r._sum.totalReceivedQty ?? ZERO]));
+  const returned =
+    previousIds.length > 0
+      ? await tx.jobReceipt.groupBy({
+          by: ['jobOrderStepId'],
+          where: {
+            organizationId,
+            jobOrderStepId: { in: previousIds },
+            isDeleted: false,
+            status: { not: 'cancelled' },
+          },
+          _sum: { totalReceivedQty: true },
+        })
+      : [];
+  const returnedByStep = new Map(
+    returned.map((r) => [r.jobOrderStepId, r._sum.totalReceivedQty ?? ZERO]),
+  );
 
   for (const step of steps) {
     if (step.seq <= 1) {
       result.set(step.id, null);
       continue;
     }
-    const prevs = steps.filter(p => p.seq < step.seq).sort((a, b) => b.seq - a.seq);
+    const prevs = steps.filter((p) => p.seq < step.seq).sort((a, b) => b.seq - a.seq);
     const previous = prevs[0];
     if (!previous) {
       result.set(step.id, null);
@@ -617,7 +644,10 @@ export async function getAllChainNotReady(
       result.set(step.id, null);
       continue;
     }
-    result.set(step.id, `Nothing has come back from step ${previous.seq} (${previous.processNameSnapshot}) yet, so there is nothing to send on.`);
+    result.set(
+      step.id,
+      `Nothing has come back from step ${previous.seq} (${previous.processNameSnapshot}) yet, so there is nothing to send on.`,
+    );
   }
   return result;
 }

@@ -8,8 +8,9 @@ import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 // creates any. The scaffold that did was deleted with FIFO allocation.
 import {
   getAvailableBatches,
-  getBalance,
+  getBalancesByBatch,
   postMovement,
+  resolveBatchesForPosting,
   type Ownership,
 } from '../../inventory/stock-ledger/stockLedger.service.ts';
 import { assertLocationsBelongToOrg, resolveProcessorName } from '../jobwork.refs.ts';
@@ -402,15 +403,16 @@ async function resolveLines(
   const availableByKey = new Map<string, AvailableRow>();
   const keyOf = (batchId: string, locationId: string) => `${batchId}@${locationId}`;
 
-  for (const itemId of itemIds) {
-    for (const row of await getAvailableBatches(tx, {
-      organizationId,
-      itemId,
-      locationId: context.locationId,
-      ownership: context.ownership,
-    })) {
-      availableByKey.set(keyOf(row.batchId, row.locationId), row);
-    }
+  // Every item of the challan in one query, not one per item (2026-09-01). The
+  // map is keyed by batch and location, so a flat answer indexes exactly as the
+  // per-item calls did between them.
+  for (const row of await getAvailableBatches(tx, {
+    organizationId,
+    itemIds: [...itemIds],
+    locationId: context.locationId,
+    ownership: context.ownership,
+  })) {
+    availableByKey.set(keyOf(row.batchId, row.locationId), row);
   }
 
   /**
@@ -840,6 +842,38 @@ export async function createNewJobIssue(
       }),
     );
 
+    // Two posts per line, both against the line's own batch — so the batch rows
+    // are read once for the whole challan rather than twice per taka.
+    const issuedBatches = await resolveBatchesForPosting(
+      tx,
+      organizationId,
+      resolvedLines.map((line) => line.batchId),
+    );
+
+    /**
+     * 🔴 Every line's opening balance in ONE read per source location — one, under
+     * the one-location rule — where this was a `getBalance` per line (2026-09-01).
+     *
+     * Grouped by location rather than assuming the header's, because a line
+     * carries its own `sourceLocationId` on purpose: the ledger posts from that
+     * pair, and a copy that cannot disagree is the point of keeping it.
+     */
+    const balanceKey = (batchId: string, locationId: string) => `${batchId}@${locationId}`;
+    const batchIdsByLocation = new Map<string, string[]>();
+    for (const line of resolvedLines) {
+      batchIdsByLocation.set(line.sourceLocationId, [
+        ...(batchIdsByLocation.get(line.sourceLocationId) ?? []),
+        line.batchId,
+      ]);
+    }
+    const balances = new Map<string, { qty: Prisma.Decimal; value: Prisma.Decimal }>();
+    for (const [locationId, batchIds] of batchIdsByLocation) {
+      const atLocation = await getBalancesByBatch(tx, { organizationId, locationId, batchIds });
+      for (const [batchId, balance] of atLocation) {
+        balances.set(balanceKey(batchId, locationId), balance);
+      }
+    }
+
     for (const line of resolvedLines) {
       const created = await tx.jobIssueLine.create({
         data: {
@@ -869,42 +903,58 @@ export async function createNewJobIssue(
       // 🔴 Valued at the godown it is leaving, not the header's. Cost per unit is
       // a per-location figure — the same batch can sit in two racks at different
       // values once transfers have moved parts of it around.
-      const batchValue = await getBalance(tx, {
-        organizationId,
-        batchId: line.batchId,
-        locationId: line.sourceLocationId,
-      });
+      const key = balanceKey(line.batchId, line.sourceLocationId);
+      const batchValue = balances.get(key) ?? { qty: ZERO, value: ZERO };
       const unitValue = batchValue.qty.greaterThan(0)
         ? batchValue.value.dividedBy(batchValue.qty)
         : new Prisma.Decimal(0);
       const lineValue = unitValue.times(line.qty).toDecimalPlaces(4);
 
-      await postMovement(tx, {
-        organizationId,
-        batchId: line.batchId,
-        locationId: line.sourceLocationId,
-        movementType: 'transfer_out',
-        qtyOut: line.qty,
-        valueOut: lineValue,
-        sourceDocType: SOURCE_DOC_TYPES.jobIssue,
-        sourceDocId: issue.id,
-        sourceDocLineId: created.id,
-        postedAt: issueDate,
-        userId,
+      const out = await postMovement(
+        tx,
+        {
+          organizationId,
+          batchId: line.batchId,
+          locationId: line.sourceLocationId,
+          movementType: 'transfer_out',
+          qtyOut: line.qty,
+          valueOut: lineValue,
+          sourceDocType: SOURCE_DOC_TYPES.jobIssue,
+          sourceDocId: issue.id,
+          sourceDocLineId: created.id,
+          postedAt: issueDate,
+          userId,
+        },
+        issuedBatches,
+      );
+
+      /* 🔴 What a SECOND line on this batch at this godown would have re-read —
+         two lines may legitimately draw on one batch, which is why the overdraw
+         guard above sums per (batch, location). Only the `transfer_out` moves
+         this balance; the `transfer_in` below lands somewhere else. Taken from
+         the row written, because `postMovement` zeroes value on customer-owned
+         stock (§5.3). */
+      balances.set(key, {
+        qty: batchValue.qty.minus(out.qtyOut),
+        value: batchValue.value.minus(out.valueOut),
       });
-      await postMovement(tx, {
-        organizationId,
-        batchId: line.batchId,
-        locationId: destinationLocationId,
-        movementType: 'transfer_in',
-        qtyIn: line.qty,
-        valueIn: lineValue,
-        sourceDocType: SOURCE_DOC_TYPES.jobIssue,
-        sourceDocId: issue.id,
-        sourceDocLineId: created.id,
-        postedAt: issueDate,
-        userId,
-      });
+      await postMovement(
+        tx,
+        {
+          organizationId,
+          batchId: line.batchId,
+          locationId: destinationLocationId,
+          movementType: 'transfer_in',
+          qtyIn: line.qty,
+          valueIn: lineValue,
+          sourceDocType: SOURCE_DOC_TYPES.jobIssue,
+          sourceDocId: issue.id,
+          sourceDocLineId: created.id,
+          postedAt: issueDate,
+          userId,
+        },
+        issuedBatches,
+      );
     }
 
     await recomputeStep(tx, organizationId, step.id);
@@ -1013,32 +1063,74 @@ export async function cancelJobIssue(
       );
     }
 
+    // Every line reverses two rows against its own batch, and a challan carries the
+    // same few batches — so they are read once for the cancellation, not twice a line.
+    const reversedBatches = await resolveBatchesForPosting(
+      tx,
+      organizationId,
+      issue.lines.map((line) => line.batchId),
+    );
+
+    /**
+     * Everything this challan posted, in ONE read — this was a `findMany` per
+     * line (2026-09-01).
+     *
+     * Reversal pairs: back out of the processor, back in at the source. Value is
+     * not recomputed — the reversal must undo exactly what was posted, and a
+     * fresh valuation would leave a residue behind.
+     */
+    const postedRows = await tx.stockLedgerEntry.findMany({
+      where: {
+        organizationId,
+        sourceDocLineId: { in: issue.lines.map((line) => line.id) },
+        movementType: { not: 'reversal' },
+      },
+      // Ordered so the reversals are written in the order the originals were.
+      // The per-line reads left this to the planner.
+      orderBy: { createdAt: 'asc' },
+      select: {
+        sourceDocLineId: true,
+        locationId: true,
+        qtyIn: true,
+        qtyOut: true,
+        valueIn: true,
+        valueOut: true,
+      },
+    });
+    const postedByLine = new Map<string, typeof postedRows>();
+    for (const row of postedRows) {
+      // `sourceDocLineId` is nullable on the ledger, but the `in` filter above
+      // already means every row here carries one.
+      if (!row.sourceDocLineId) continue;
+      postedByLine.set(row.sourceDocLineId, [
+        ...(postedByLine.get(row.sourceDocLineId) ?? []),
+        row,
+      ]);
+    }
+
     const now = new Date();
     for (const line of issue.lines) {
-      // Reversal pairs: back out of the processor, back in at the source. Value
-      // is not recomputed — the reversal must undo exactly what was posted, and a
-      // fresh valuation would leave a residue behind.
-      const posted = await tx.stockLedgerEntry.findMany({
-        where: { organizationId, sourceDocLineId: line.id, movementType: { not: 'reversal' } },
-        select: { locationId: true, qtyIn: true, qtyOut: true, valueIn: true, valueOut: true },
-      });
-      for (const row of posted) {
-        await postMovement(tx, {
-          organizationId,
-          batchId: line.batchId,
-          locationId: row.locationId,
-          movementType: 'reversal',
-          qtyIn: row.qtyOut,
-          qtyOut: row.qtyIn,
-          valueIn: row.valueOut,
-          valueOut: row.valueIn,
-          sourceDocType: SOURCE_DOC_TYPES.jobIssue,
-          sourceDocId: issue.id,
-          sourceDocLineId: line.id,
-          remarks: `Cancelled: ${reason.trim()}`,
-          postedAt: now,
-          userId,
-        });
+      for (const row of postedByLine.get(line.id) ?? []) {
+        await postMovement(
+          tx,
+          {
+            organizationId,
+            batchId: line.batchId,
+            locationId: row.locationId,
+            movementType: 'reversal',
+            qtyIn: row.qtyOut,
+            qtyOut: row.qtyIn,
+            valueIn: row.valueOut,
+            valueOut: row.valueIn,
+            sourceDocType: SOURCE_DOC_TYPES.jobIssue,
+            sourceDocId: issue.id,
+            sourceDocLineId: line.id,
+            remarks: `Cancelled: ${reason.trim()}`,
+            postedAt: now,
+            userId,
+          },
+          reversedBatches,
+        );
       }
     }
 

@@ -16,7 +16,7 @@ import {
   loadActiveDefinitions,
   validateCustomFields,
 } from '../../settings/customization/custom-fields/customFields.engine.ts';
-import { createBatch, postMovement } from '../stock-ledger/stockLedger.service.ts';
+import { asResolvedBatch, createBatch, postMovement } from '../stock-ledger/stockLedger.service.ts';
 
 export function toComponentResponse(row: Record<string, unknown>) {
   let componentObj = row.component as Record<string, unknown> | undefined;
@@ -267,17 +267,22 @@ export class CompositeItemsService {
             userId,
           });
 
-          await postMovement(tx, {
-            organizationId,
-            batchId: batch.id,
-            locationId: primaryLoc.id,
-            movementType: 'opening',
-            qtyIn: declaredQty,
-            valueIn: valuePerUnit ? declaredQty.times(valuePerUnit) : 0,
-            sourceDocType: 'item_opening_stock',
-            sourceDocId: item.id,
-            userId,
-          });
+          await postMovement(
+            tx,
+            {
+              organizationId,
+              batchId: batch.id,
+              locationId: primaryLoc.id,
+              movementType: 'opening',
+              qtyIn: declaredQty,
+              valueIn: valuePerUnit ? declaredQty.times(valuePerUnit) : 0,
+              sourceDocType: 'item_opening_stock',
+              sourceDocId: item.id,
+              userId,
+            },
+            // `createBatch` just returned this row — no reason to read it back.
+            asResolvedBatch(batch),
+          );
         }
       }
 

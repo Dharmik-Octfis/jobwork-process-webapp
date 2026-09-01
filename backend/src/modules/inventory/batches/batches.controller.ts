@@ -15,26 +15,42 @@ import {
 
 const orgParam = z.object({ orgId: z.string() });
 
-/** Query for the picker. `itemId` is required — an availability query with no
- * item is a full table scan pretending to be a dropdown. */
-const availabilityQuerySchema = z.object({
-  itemId: z.string().uuid(),
-  locationId: z.string().uuid().optional(),
-  ownership: z.enum(OWNERSHIPS).optional(),
-  withPackages: z
-    .enum(['true', 'false'])
-    .optional()
-    .transform((v) => v === 'true'),
-  /** The picker narrows by typing rather than paging: a batch is looked up by the
-   * number on its tag, and nobody walks page 7 of a batch list. */
-  search: z.string().trim().min(1).max(100).optional(),
-  /**
-   * A ceiling, and it has a default on purpose. An item with three hundred live
-   * batches is normal in a mill, and the picker that renders them is inside a
-   * dialog — so the answer is bounded here and narrowed with `search`.
-   */
-  limit: z.coerce.number().int().positive().max(500).default(200),
-});
+/** Query for the picker. One of `itemId` / `itemIds` is required — an availability
+ * query with no item is a full table scan pretending to be a dropdown. */
+const availabilityQuerySchema = z
+  .object({
+    itemId: z.string().uuid().optional(),
+    /**
+     * Several items in one request (2026-09-01) — the Issue dialog's opening load,
+     * which asks about every input item of the step at once instead of paying a
+     * membership read, a transaction and a pooled connection per item.
+     *
+     * Comma-separated, matching `/batches/locations`, and capped: this answers a
+     * step's CONSUMES list, not a catalogue. `limit` stays per item.
+     */
+    itemIds: z
+      .string()
+      .optional()
+      .transform((value) => (value ? value.split(',').filter(Boolean) : undefined))
+      .pipe(z.array(z.string().uuid()).min(1).max(50).optional()),
+    locationId: z.string().uuid().optional(),
+    ownership: z.enum(OWNERSHIPS).optional(),
+    withPackages: z
+      .enum(['true', 'false'])
+      .optional()
+      .transform((v) => v === 'true'),
+    /** The picker narrows by typing rather than paging: a batch is looked up by the
+     * number on its tag, and nobody walks page 7 of a batch list. */
+    search: z.string().trim().min(1).max(100).optional(),
+    /**
+     * A ceiling, and it has a default on purpose. An item with three hundred live
+     * batches is normal in a mill, and the picker that renders them is inside a
+     * dialog — so the answer is bounded here and narrowed with `search`. Applied
+     * PER ITEM, so adding items to `itemIds` never shrinks any one item's picker.
+     */
+    limit: z.coerce.number().int().positive().max(500).default(200),
+  })
+  .refine((query) => Boolean(query.itemId ?? query.itemIds?.length));
 
 openApiRegistry.registerPath({
   method: 'get',
@@ -44,7 +60,8 @@ openApiRegistry.registerPath({
   request: {
     params: orgParam,
     query: z.object({
-      itemId: z.string(),
+      itemId: z.string().optional(),
+      itemIds: z.string().optional(),
       locationId: z.string().optional(),
       ownership: z.string().optional(),
       withPackages: z.string().optional(),

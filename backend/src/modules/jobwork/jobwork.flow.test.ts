@@ -13,6 +13,7 @@ import {
   createNewJobOrder,
   getJobOrderById,
   getJobOrderOverview,
+  manuallyCompleteStep,
   shortCloseJobOrder,
   updateJobOrderById,
 } from './job-orders/jobOrders.service.ts';
@@ -504,8 +505,21 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
      * came back against 4,800 metres.
      */
     expect(Number(overview.steps[0]!.totals.outstandingQty)).toBe(50);
-    expect(overview.steps[1]!.status).toBe('completed');
     expect(overview.jobOrder.status).toBe('in_progress');
+
+    /**
+     * 🔴 A STEP DOES NOT COMPLETE ITSELF (2026-08-24, `4f70306`).
+     *
+     * Everything step 2 issued has been accounted for, and it is still
+     * `partially_received` — arithmetic no longer decides this. `is_completed` is
+     * a flag a human sets from the step's own screen, because "the paperwork
+     * balances" and "we are finished with this operation" are different claims,
+     * and only the second one closes a step.
+     */
+    expect(overview.steps[1]!.status).toBe('partially_received');
+
+    const afterComplete = await manuallyCompleteStep(orgId, jobOrder.id, step2.id, undefined);
+    expect(afterComplete.steps[1]!.status).toBe('completed');
 
     // ---------------------------------------------------------------------
     // Closing short — the one status a human sets, and it is sticky
@@ -1368,10 +1382,18 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     expect(Number(receipt.totalReceivedQty)).toBe(92);
     expect(Number(receipt.totalIssuedQty)).toBe(100);
 
-    // 🔴 Every input accounted for → the step is finished. Had the thread been
-    // left out, it would still be `partially_received` (§6.5).
+    /**
+     * Every input is accounted for — and the step is still `partially_received`,
+     * because completing one is a decision, not a sum (2026-08-24, `4f70306`).
+     * What the arithmetic decides is everything BELOW `completed`: had the thread
+     * been left out this would read the same, so the per-item rule of §6.5 is
+     * checked through `totals.perItem` rather than through the status.
+     */
     const overview = await getJobOrderOverview(orgId, jobOrder.id);
-    expect(overview.steps[0]!.status).toBe('completed');
+    expect(overview.steps[0]!.status).toBe('partially_received');
+
+    const completed = await manuallyCompleteStep(orgId, jobOrder.id, step.id, undefined);
+    expect(completed.steps[0]!.status).toBe('completed');
   });
 
   it('refuses by-products worth more than the whole operation', async () => {

@@ -9,7 +9,12 @@ import { blurOnWheel } from '../../../components/ui/blurOnWheel';
 import { fetchVendors } from '../../purchases/vendors/vendors.api';
 import { fetchCustomers } from '../../sales/customers/customers.api';
 import { fetchLocations } from '../../configuration/locations/locations.api';
-import { fetchAvailableBatches, fetchStockLocations } from '../batches/batches.api';
+import {
+  fetchAvailableBatches,
+  fetchAvailableBatchesForItems,
+  fetchStockLocations,
+  type AvailableBatch,
+} from '../batches/batches.api';
 import { formatQty, toNumber } from '../jobwork.schemas';
 import type { JobOrder, OverviewStep } from '../job-orders/jobOrders.schemas';
 import { createJobIssue } from './jobIssues.api';
@@ -87,7 +92,6 @@ const lineCell: React.CSSProperties = {
   alignItems: 'center',
   minHeight: 32,
 };
-
 
 const lineCellCenter: React.CSSProperties = { ...lineCell, justifyContent: 'center' };
 
@@ -171,8 +175,6 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
    * Null when nothing is pending. Holds the location the user is moving TO.
    */
   const [pendingLocationId, setPendingLocationId] = useState<string | null>(null);
-
-
 
   // A query per keystroke would be one round trip per letter of a batch number.
   useEffect(() => {
@@ -351,7 +353,43 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
   }, [locations, effectiveSourceId]);
 
   /**
-   * One availability query PER ITEM, at the challan's single source location.
+   * Availability for EVERY input item in one request, at the challan's single
+   * source location (2026-09-01).
+   *
+   * 🔴 This was one request per item. Each carried its own membership read, its
+   * own `runAsTenant` transaction and its own pooled connection, so a five-item
+   * step held five connections to open one dialog — an N+1 across HTTP rather
+   * than inside a transaction, but the same shape and the same cost.
+   *
+   * The server caps `limit` per item, so this returns exactly what the per-item
+   * calls returned between them: adding items never shrinks any one picker.
+   */
+  const itemIds = useMemo(() => inputItems.map((input) => input.itemId), [inputItems]);
+  const baseQuery = useQuery({
+    queryKey: [
+      'available-batches',
+      orgId,
+      itemIds.join(','),
+      effectiveSourceId,
+      jobOrder.ownership,
+    ],
+    queryFn: () =>
+      fetchAvailableBatchesForItems(orgId!, {
+        itemIds,
+        locationId: effectiveSourceId,
+        // 🔴 Not optional. Without it one customer's goods can be issued into
+        // another customer's job order (§5.2).
+        ownership: jobOrder.ownership,
+        limit: BATCH_LIMIT,
+      }),
+    enabled: Boolean(orgId && effectiveSourceId && itemIds.length),
+  });
+
+  /**
+   * …and one request per item that has a LIVE SEARCH, which stays per item on
+   * purpose. Each row has its own search box, so a keystroke in one must not
+   * refetch the other six — and `baseQuery` above stays cached while the user
+   * types, so clearing the box is instant rather than another round trip.
    *
    * `useQueries` rather than a loop of `useQuery`, because the number of inputs
    * is data — a step can have one or seven — and hooks cannot be called in a
@@ -361,29 +399,58 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
    * in a mill, so the picker narrows on the server rather than shipping the lot
    * and filtering in the browser.
    */
-  const batchQueries = useQueries({
-    queries: inputItems.map((input) => ({
-      queryKey: [
-        'available-batches',
-        orgId,
-        input.itemId,
-        effectiveSourceId,
-        jobOrder.ownership,
-        debouncedSearch[input.itemId] ?? '',
-      ],
-      queryFn: () =>
-        fetchAvailableBatches(orgId!, {
-          itemId: input.itemId,
-          locationId: effectiveSourceId,
-          // 🔴 Not optional. Without it one customer's goods can be issued into
-          // another customer's job order (§5.2).
-          ownership: jobOrder.ownership,
-          search: debouncedSearch[input.itemId] || undefined,
-          limit: BATCH_LIMIT,
-        }),
-      enabled: Boolean(orgId && effectiveSourceId),
-    })),
+  const searchQueries = useQueries({
+    queries: inputItems.map((input) => {
+      const search = (debouncedSearch[input.itemId] ?? '').trim();
+      return {
+        queryKey: [
+          'available-batches',
+          orgId,
+          input.itemId,
+          effectiveSourceId,
+          jobOrder.ownership,
+          search,
+        ],
+        queryFn: () =>
+          fetchAvailableBatches(orgId!, {
+            itemId: input.itemId,
+            locationId: effectiveSourceId,
+            ownership: jobOrder.ownership,
+            search,
+            limit: BATCH_LIMIT,
+          }),
+        enabled: Boolean(orgId && effectiveSourceId && search),
+      };
+    }),
   });
+
+  /**
+   * One entry per input item, whichever query answered it — so everything
+   * downstream still reads `batchQueries[index]` and neither knows nor cares
+   * which request the rows came from.
+   *
+   * 🔴 `data` stays `undefined` while loading, never `[]`. The plan seed below
+   * reads an empty array as "nothing is on offer" and marks the item seeded, so
+   * handing it `[]` early would drop every planned batch in silence.
+   */
+  const batchQueries = useMemo(() => {
+    const byItem = new Map<string, AvailableBatch[]>();
+    for (const row of baseQuery.data ?? []) {
+      byItem.set(row.itemId, [...(byItem.get(row.itemId) ?? []), row]);
+    }
+    return inputItems.map((input, index) => {
+      if ((debouncedSearch[input.itemId] ?? '').trim()) {
+        return {
+          data: searchQueries[index]?.data,
+          isLoading: searchQueries[index]?.isLoading ?? false,
+        };
+      }
+      return {
+        data: baseQuery.data ? (byItem.get(input.itemId) ?? []) : undefined,
+        isLoading: baseQuery.isLoading,
+      };
+    });
+  }, [inputItems, debouncedSearch, baseQuery.data, baseQuery.isLoading, searchQueries]);
 
   /**
    * 🔴 SEED FROM THE JOB ORDER'S PLAN, ONCE PER ITEM.
@@ -799,7 +866,6 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
         </p>
       )}
 
-
       {/* 🔴 THE CONFIRM, INLINE — not a nested dialog.
           A Modal inside a Modal fights over the focus trap and Esc, and this
           question is about the field three rows below it, so it belongs on the
@@ -1097,8 +1163,11 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
                           The plan places{' '}
                           {planUnmatched[input.itemId]!.elsewhere.map((at, i, all) => (
                             <span key={at.name}>
-                              {at.count} {at.count === 1 ? trackingLabel.singular.toLowerCase() : trackingLabel.plural.toLowerCase()} at{' '}
-                              <strong>{at.name}</strong>
+                              {at.count}{' '}
+                              {at.count === 1
+                                ? trackingLabel.singular.toLowerCase()
+                                : trackingLabel.plural.toLowerCase()}{' '}
+                              at <strong>{at.name}</strong>
                               {i < all.length - 1 ? ', ' : ''}
                             </span>
                           ))}
@@ -1116,8 +1185,10 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
                           }}
                         >
                           {planUnmatched[input.itemId]!.gone} planned{' '}
-                          {planUnmatched[input.itemId]!.gone === 1 ? `${trackingLabel.singular.toLowerCase()} is` : `${trackingLabel.plural.toLowerCase()} are`} no
-                          longer available here — nothing was reserved. Pick replacements.
+                          {planUnmatched[input.itemId]!.gone === 1
+                            ? `${trackingLabel.singular.toLowerCase()} is`
+                            : `${trackingLabel.plural.toLowerCase()} are`}{' '}
+                          no longer available here — nothing was reserved. Pick replacements.
                         </div>
                       )}
                     </td>
@@ -1142,7 +1213,9 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
 
                     <td style={{ ...lineTd, textAlign: 'center', color: '#0f172a' }}>
                       <div style={lineCellCenter}>
-                        {input.plannedQty === null ? '—' : formatQty(Math.max(0, input.plannedQty - input.issuedQty))}
+                        {input.plannedQty === null
+                          ? '—'
+                          : formatQty(Math.max(0, input.plannedQty - input.issuedQty))}
                       </div>
                     </td>
 
@@ -1307,7 +1380,6 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
           information where it belongs. The ceiling is enforced per item by the
           server, and its message names the item it refused.
         */}
-
       </section>
 
       {/* Keyed and mounted only while open — `AddBatchesModal` seeds its grid once,
@@ -1361,7 +1433,22 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
         />
       )}
 
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', position: 'sticky', bottom: 0, height: 44, boxSizing: 'border-box', padding: '0 24px', margin: 'auto -24px -24px -24px', background: '#fff', borderTop: '1px solid #eef0f3', zIndex: 10 }}>
+      <div
+        style={{
+          display: 'flex',
+          gap: 12,
+          alignItems: 'center',
+          position: 'sticky',
+          bottom: 0,
+          height: 44,
+          boxSizing: 'border-box',
+          padding: '0 24px',
+          margin: 'auto -24px -24px -24px',
+          background: '#fff',
+          borderTop: '1px solid #eef0f3',
+          zIndex: 10,
+        }}
+      >
         <button
           type="button"
           onClick={() => mutation.mutate()}
@@ -1403,7 +1490,6 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
               } on this challan`}
         </span>
       </div>
-
     </div>
   );
 }

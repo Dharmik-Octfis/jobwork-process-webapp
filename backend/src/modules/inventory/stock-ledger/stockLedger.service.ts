@@ -106,18 +106,80 @@ function toDecimal(value: Prisma.Decimal | number | string | undefined): Prisma.
   return new Prisma.Decimal(value);
 }
 
+/** The five fields a ledger row copies off its batch. */
+interface PostableBatch {
+  id: string;
+  itemId: string;
+  uomId: string | null;
+  ownership: string;
+  ownerPartyId: string | null;
+}
+
+/**
+ * Batches already read, for a caller about to post a run of movements.
+ *
+ * 🔴 THIS IS A READ THE CALLER HOISTED, NOT VALUES THE CALLER SUPPLIED. It can
+ * only be built by `resolveBatchesForPosting` or from a row `createBatch` just
+ * returned, so the four copied fields still come from the batch itself — which is
+ * the whole invariant `postMovement` exists to hold.
+ */
+export type ResolvedBatches = ReadonlyMap<string, PostableBatch>;
+
+/**
+ * The batches a run of movements will post against, in ONE query.
+ *
+ * 🔴 `postMovement` reads its batch on every call, so posting 50 takas was 50
+ * reads of a handful of rows on the transaction's single connection — the N+1
+ * `postMovements` warned about in its own comment (2026-09-01). Hoist the read
+ * with this and hand the result to each post.
+ *
+ * ⚠️ Resolve IMMEDIATELY BEFORE the run and never across a batch mutation. A
+ * batch soft-deleted after it was resolved is still in the map, and posting
+ * against it would walk straight past the `isDeleted` guard below —
+ * `items.service` really does soft-delete a batch mid-transaction. A batch the
+ * query does not find is simply absent, and the post falls back to reading it.
+ */
+export async function resolveBatchesForPosting(
+  tx: TenantClient,
+  organizationId: string,
+  batchIds: readonly string[],
+): Promise<ResolvedBatches> {
+  const ids = [...new Set(batchIds)];
+  if (ids.length === 0) return new Map();
+
+  const rows = await tx.batch.findMany({
+    where: { id: { in: ids }, organizationId, isDeleted: false },
+    select: { id: true, itemId: true, uomId: true, ownership: true, ownerPartyId: true },
+  });
+  return new Map(rows.map((row) => [row.id, row]));
+}
+
+/** One batch just returned by `createBatch`, as a map for a single post — the
+ * common shape, where a batch is created and immediately posted into. */
+export function asResolvedBatch(batch: PostableBatch): ResolvedBatches {
+  return new Map([[batch.id, batch]]);
+}
+
 /**
  * 🔴 Post one movement.
  *
- * The batch is re-read here rather than trusted from the caller, and `itemId`,
- * `uomId`, `ownership` and `ownerPartyId` are copied off it. A ledger row that
- * claims a different item or a different owner from its own batch is not a number
- * that can be corrected later — it is a row no report can interpret. Making the
- * batch the single source for those four fields means a caller cannot get them
- * wrong, only the batch can, and the batch is written in exactly one place
- * (`createBatch`).
+ * `itemId`, `uomId`, `ownership` and `ownerPartyId` are copied off the BATCH, never
+ * taken from the caller. A ledger row that claims a different item or a different
+ * owner from its own batch is not a number that can be corrected later — it is a
+ * row no report can interpret. Making the batch the single source for those four
+ * means a caller cannot get them wrong, only the batch can, and the batch is
+ * written in exactly one place (`createBatch`).
+ *
+ * `batches` only changes WHERE that row was read, never that it was read: a
+ * caller with a run of movements resolves them once (`resolveBatchesForPosting`)
+ * instead of paying a query per post. A miss falls through to the read, so an
+ * incomplete map costs a query and cannot produce a wrong row.
  */
-export async function postMovement(tx: TenantClient, input: PostMovementInput) {
+export async function postMovement(
+  tx: TenantClient,
+  input: PostMovementInput,
+  batches?: ResolvedBatches,
+) {
   const qtyIn = toDecimal(input.qtyIn);
   const qtyOut = toDecimal(input.qtyOut);
   let valueIn = toDecimal(input.valueIn);
@@ -144,10 +206,12 @@ export async function postMovement(tx: TenantClient, input: PostMovementInput) {
     throw ApiError.badRequest('Value must move in the same direction as quantity.');
   }
 
-  const batch = await tx.batch.findFirst({
-    where: { id: input.batchId, organizationId: input.organizationId, isDeleted: false },
-    select: { id: true, itemId: true, uomId: true, ownership: true, ownerPartyId: true },
-  });
+  const batch =
+    batches?.get(input.batchId) ??
+    (await tx.batch.findFirst({
+      where: { id: input.batchId, organizationId: input.organizationId, isDeleted: false },
+      select: { id: true, itemId: true, uomId: true, ownership: true, ownerPartyId: true },
+    }));
   if (!batch) throw ApiError.notFound('Batch not found.');
 
   // §5.3: customer-owned stock appears in quantity reports and NEVER in
@@ -185,21 +249,39 @@ export async function postMovement(tx: TenantClient, input: PostMovementInput) {
 }
 
 /**
- * Post several movements in order. A thin loop, not a `createMany`: every row
- * still goes through `postMovement`'s validation and batch read, so a batch cannot
- * smuggle past the checks a single post has to satisfy. Issuing 50 takas is 50
- * rows; if that ever becomes a measured problem, the fix is caching the batch reads
- * inside this function, not bypassing them.
+ * Post several movements in order. Still a loop, not a `createMany`: every row goes
+ * through `postMovement`'s validation, so a batch cannot smuggle past the checks a
+ * single post has to satisfy. What is no longer per-row is the BATCH READ —
+ * resolved once here (2026-09-01), which is the caching this comment used to say
+ * was the fix if 50 takas ever became a measured problem.
  */
 export async function postMovements(tx: TenantClient, inputs: readonly PostMovementInput[]) {
+  if (inputs.length === 0) return [];
+
+  // One tenant per transaction, so one resolve covers the run. If a caller ever
+  // mixed organizations, the odd one out simply misses the map and reads itself.
+  const batches = await resolveBatchesForPosting(
+    tx,
+    inputs[0]!.organizationId,
+    inputs.map((input) => input.batchId),
+  );
+
   const rows = [];
-  for (const input of inputs) rows.push(await postMovement(tx, input));
+  for (const input of inputs) rows.push(await postMovement(tx, input, batches));
   return rows;
 }
 
 export interface BalanceFilter {
   organizationId: string;
   itemId?: string;
+  /**
+   * Several items at once — one step's whole CONSUMES list (2026-09-01). The Issue
+   * dialog asks about every input item together rather than once per item, which
+   * turned N transactions and N pooled connections into one.
+   *
+   * Ignored when `itemId` is set; a caller that names one item means it.
+   */
+  itemIds?: readonly string[];
   batchId?: string;
   locationId?: string;
   /**
@@ -227,7 +309,11 @@ function balanceWhere(filter: BalanceFilter): Prisma.StockLedgerEntryWhereInput 
   return {
     // The `where` is what the query means; RLS is the net under it. Both stay.
     organizationId: filter.organizationId,
-    ...(filter.itemId ? { itemId: filter.itemId } : {}),
+    ...(filter.itemId
+      ? { itemId: filter.itemId }
+      : filter.itemIds
+        ? { itemId: { in: [...filter.itemIds] } }
+        : {}),
     ...(filter.batchId ? { batchId: filter.batchId } : {}),
     ...(filter.locationId
       ? { locationId: filter.locationId }
@@ -344,6 +430,43 @@ export async function getBalancesByBatchAndLocation(
   return byBatch;
 }
 
+/**
+ * The balance of each of several batches AT ONE LOCATION — quantity AND value, in
+ * one query, keyed by `batchId`.
+ *
+ * 🔴 The value is what separates this from `getBalancesByBatchAndLocation` above,
+ * which sums quantity alone. A caller that prices what it consumes needs both, and
+ * getting them with a `getBalance` per batch is one round trip per row on a
+ * transaction's single connection — `jobReceipts.createJobReceipt` was doing
+ * exactly that (2026-09-01).
+ *
+ * A batch the ledger has never touched at this location is simply absent; the
+ * caller reads that as a zero balance, which is what `getBalance` returned for it.
+ */
+export async function getBalancesByBatch(
+  tx: TenantClient,
+  filter: Omit<BalanceFilter, 'batchId'> & { batchIds: readonly string[] },
+): Promise<Map<string, { qty: Prisma.Decimal; value: Prisma.Decimal }>> {
+  if (filter.batchIds.length === 0) return new Map();
+
+  const grouped = await tx.stockLedgerEntry.groupBy({
+    by: ['batchId'],
+    where: { ...balanceWhere(filter), batchId: { in: [...filter.batchIds] } },
+    _sum: { qtyIn: true, qtyOut: true, valueIn: true, valueOut: true },
+  });
+
+  const zero = new Prisma.Decimal(0);
+  return new Map(
+    grouped.map((row) => [
+      row.batchId,
+      {
+        qty: (row._sum.qtyIn ?? zero).minus(row._sum.qtyOut ?? zero),
+        value: (row._sum.valueIn ?? zero).minus(row._sum.valueOut ?? zero),
+      },
+    ]),
+  );
+}
+
 export interface MultiAxisBalance {
   physicalQty: Prisma.Decimal;
   accountingQty: Prisma.Decimal;
@@ -426,7 +549,8 @@ export interface AvailableBatch {
 }
 
 /**
- * What is actually available to issue, at one location, for one item.
+ * What is actually available to issue, at one location, for one item — or, since
+ * 2026-09-01, for SEVERAL items in one round trip.
  *
  * 🔴 This reads the LEDGER, not the `batches` table. A batch row exists from the
  * moment it is created and goes on existing after every last metre of it has been
@@ -447,12 +571,18 @@ export interface AvailableBatch {
  * groupBy runs over everything, and the two only bound the batch rows hydrated for
  * a picker. So a limited result is a limited view of a complete answer, and no
  * total anywhere shifts because someone typed in a search box.
+ *
+ * 🔴 `limit` IS PER ITEM, which is what forces the two capping paths below. A
+ * single `take` across several items would let one item with three hundred live
+ * batches eat the whole ceiling and hand the rest an empty picker.
  */
 export async function getAvailableBatches(
   tx: TenantClient,
   filter: {
     organizationId: string;
-    itemId: string;
+    itemId?: string;
+    /** Several items in one query. Ignored when `itemId` is set. */
+    itemIds?: readonly string[];
     locationId?: string;
     /** A whole dispatch site — every godown one challan may draw from. Rows come
      * back per (batch, location), so the caller knows where each balance is. */
@@ -495,6 +625,10 @@ export async function getAvailableBatches(
 
   if (positive.length === 0) return [];
 
+  // One item asked about means the cap can go into the database, where a ceiling
+  // belongs. Several means it cannot — see the note on `limit` above.
+  const oneItem = Boolean(filter.itemId) || filter.itemIds?.length === 1;
+
   const batches = await tx.batch.findMany({
     where: {
       id: { in: positive.map((row) => row.batchId) },
@@ -516,7 +650,7 @@ export async function getAvailableBatches(
     // and, worse, the `take` then kept the LOWEST-numbered rows rather than the
     // oldest, so a capped list dropped exactly the stock FIFO wants issued first.
     orderBy: { createdAt: 'asc' },
-    ...(filter.limit ? { take: filter.limit } : {}),
+    ...(filter.limit && oneItem ? { take: filter.limit } : {}),
     select: {
       id: true,
       batchNumber: true,
@@ -534,10 +668,20 @@ export async function getAvailableBatches(
     },
   });
 
+  // The multi-item path's cap, applied to rows the database already ordered
+  // oldest-first — so it keeps exactly the batches FIFO wants issued first,
+  // which is what the database-side `take` keeps for one item.
+  const capped =
+    filter.limit && !oneItem
+      ? keepPerItem(batches, filter.limit)
+      : new Set(batches.map((b) => b.id));
+
   // Driven by the BALANCE rows, not the batch rows: a batch with stock in two
   // godowns of one site is two offers, and iterating batches would collapse it
   // back to one.
-  const batchById = new Map(batches.map((batch) => [batch.id, batch]));
+  const batchById = new Map(
+    batches.filter((batch) => capped.has(batch.id)).map((batch) => [batch.id, batch]),
+  );
   return positive.flatMap((balance) => {
     const batch = batchById.get(balance.batchId);
     return batch
@@ -552,6 +696,19 @@ export async function getAvailableBatches(
         ]
       : [];
   });
+}
+
+/** The first `limit` rows of each item, taking `rows` in the order given. */
+function keepPerItem(rows: readonly { id: string; itemId: string }[], limit: number): Set<string> {
+  const kept = new Set<string>();
+  const taken = new Map<string, number>();
+  for (const row of rows) {
+    const count = taken.get(row.itemId) ?? 0;
+    if (count >= limit) continue;
+    taken.set(row.itemId, count + 1);
+    kept.add(row.id);
+  }
+  return kept;
 }
 
 export interface CreateBatchInput {

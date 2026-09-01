@@ -10,10 +10,13 @@ import { Prisma } from '../../../generated/prisma/client.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../lib/pagination.ts';
 import { filterWhere } from '../settings/list-views/listFilters.catalog.ts';
 import {
+  asResolvedBatch,
   createBatch,
   getBalance,
   getBalanceByLocation,
+  getBalancesByBatch,
   postMovement,
+  type ResolvedBatches,
 } from '../inventory/stock-ledger/stockLedger.service.ts';
 import type { ItemOpeningStockDto } from './items.schemas.ts';
 
@@ -181,11 +184,30 @@ export class ItemsService {
       valuePerUnit: Prisma.Decimal | null;
       userId?: string;
     },
+    /**
+     * The batches still safe to post against, owned by the caller — see where it
+     * is built. A batch absent from it (soft-deleted before this run, or during
+     * it) falls through to `postMovement`'s own read and fails there, which is
+     * exactly what happens without this argument at all.
+     */
+    batches?: ResolvedBatches,
+    /**
+     * The live quantity at each (batch, location), also owned by the caller — the
+     * read the guard below would otherwise make per shrinking position.
+     *
+     * 🔴 It is kept RUNNING: every post here writes its effect back, so a second
+     * settle of the same position sees what the first one did. Two payload rows
+     * can name one batch, and the guard is meaningless against a stale figure.
+     * A key that is missing falls back to reading, so an incomplete map costs a
+     * query and never a wrong answer.
+     */
+    balances?: Map<string, Prisma.Decimal>,
   ) {
     const delta = desiredQty.minus(position.qty);
     if (delta.isZero()) return;
 
     const { organizationId, itemId, valuePerUnit, userId } = context;
+    const balanceKey = `${position.batchId}@${position.locationId}`;
     // The value already riding on this position, per unit — used when the form
     // states no value of its own, so a top-up is worth what the rest of it is.
     const existingUnitValue = position.qty.greaterThan(0)
@@ -194,52 +216,69 @@ export class ItemsService {
 
     if (delta.greaterThan(0)) {
       const unit = valuePerUnit ?? existingUnitValue;
-      await postMovement(tx, {
-        organizationId,
-        batchId: position.batchId,
-        locationId: position.locationId,
-        movementType: 'opening',
-        qtyIn: delta,
-        valueIn: delta.times(unit),
-        sourceDocType: 'item_opening_stock',
-        sourceDocId: itemId,
-        userId,
-      });
+      const posted = await postMovement(
+        tx,
+        {
+          organizationId,
+          batchId: position.batchId,
+          locationId: position.locationId,
+          movementType: 'opening',
+          qtyIn: delta,
+          valueIn: delta.times(unit),
+          sourceDocType: 'item_opening_stock',
+          sourceDocId: itemId,
+          userId,
+        },
+        batches,
+      );
+      // Only if the caller is already tracking this one — reading it here just to
+      // seed the figure would add the query this argument exists to remove.
+      const known = balances?.get(balanceKey);
+      if (known) balances?.set(balanceKey, known.plus(posted.qtyIn));
       return;
     }
 
     const remove = delta.negated();
-    const balance = await getBalance(tx, {
-      organizationId,
-      batchId: position.batchId,
-      locationId: position.locationId,
-    });
-    if (remove.greaterThan(balance.qty)) {
-      const floor = position.qty.minus(balance.qty);
+    const availableQty =
+      balances?.get(balanceKey) ??
+      (
+        await getBalance(tx, {
+          organizationId,
+          batchId: position.batchId,
+          locationId: position.locationId,
+        })
+      ).qty;
+    if (remove.greaterThan(availableQty)) {
+      const floor = position.qty.minus(availableQty);
       // The reference, not the internal number — the user has to find this row on
       // their own screen, where the number does not appear.
       const label = position.batch.supplierBatchRef ?? 'This batch';
       throw ApiError.badRequest(
-        `Batch ${label} has already moved — only ${balance.qty.toString()} of it is ` +
+        `Batch ${label} has already moved — only ${availableQty.toString()} of it is ` +
           `still here, so its opening stock cannot go below ${floor.toString()}. ` +
           'Cancel the documents that moved it first, or leave this batch as it is.',
         { batches: `${label} cannot go below ${floor.toString()}.` },
       );
     }
 
-    await postMovement(tx, {
-      organizationId,
-      batchId: position.batchId,
-      locationId: position.locationId,
-      movementType: 'reversal',
-      qtyOut: remove,
-      // Proportional, not the whole value — a partial reduction that wrote off the
-      // full value would leave the remainder costing nothing.
-      valueOut: remove.times(existingUnitValue),
-      sourceDocType: 'item_opening_stock',
-      sourceDocId: itemId,
-      userId,
-    });
+    const posted = await postMovement(
+      tx,
+      {
+        organizationId,
+        batchId: position.batchId,
+        locationId: position.locationId,
+        movementType: 'reversal',
+        qtyOut: remove,
+        // Proportional, not the whole value — a partial reduction that wrote off the
+        // full value would leave the remainder costing nothing.
+        valueOut: remove.times(existingUnitValue),
+        sourceDocType: 'item_opening_stock',
+        sourceDocId: itemId,
+        userId,
+      },
+      batches,
+    );
+    balances?.set(balanceKey, availableQty.minus(posted.qtyOut));
   }
 
   /**
@@ -383,24 +422,21 @@ export class ItemsService {
         const filters = JSON.parse(opts.fieldFilters) as Record<string, string>;
         Object.entries(filters).forEach(([key, value]) => {
           if (!value) return;
-          
+
           if (key.startsWith('cf_')) {
             const cfKey = key.replace('cf_', '');
             const vals = value.split(',').filter(Boolean);
-            
+
             customFieldsWhere.push({
               OR: [
                 { customFields: { path: [cfKey], equals: value } },
-                ...vals.map(v => ({
-                  customFields: { path: [cfKey], array_contains: v }
-                }))
-              ]
+                ...vals.map((v) => ({
+                  customFields: { path: [cfKey], array_contains: v },
+                })),
+              ],
             });
           } else if (key === 'type') {
-             directFilters.OR = [
-               { itemType: value },
-               { itemStructure: value }
-             ];
+            directFilters.OR = [{ itemType: value }, { itemStructure: value }];
           } else if (key === 'name') {
             directFilters.name = { contains: value, mode: 'insensitive' };
           } else if (key === 'sku') {
@@ -654,17 +690,22 @@ export class ItemsService {
             userId,
           });
 
-          await postMovement(tx, {
-            organizationId,
-            batchId: batch.id,
-            locationId: primaryLoc.id,
-            movementType: 'opening',
-            qtyIn: declaredQty,
-            valueIn: valuePerUnit ? declaredQty.times(valuePerUnit) : 0,
-            sourceDocType: 'item_opening_stock',
-            sourceDocId: item.id,
-            userId,
-          });
+          await postMovement(
+            tx,
+            {
+              organizationId,
+              batchId: batch.id,
+              locationId: primaryLoc.id,
+              movementType: 'opening',
+              qtyIn: declaredQty,
+              valueIn: valuePerUnit ? declaredQty.times(valuePerUnit) : 0,
+              sourceDocType: 'item_opening_stock',
+              sourceDocId: item.id,
+              userId,
+            },
+            // `createBatch` just returned this row — no reason to read it back.
+            asResolvedBatch(batch),
+          );
         }
       }
 
@@ -1038,6 +1079,56 @@ export class ItemsService {
       const claimed = new Set<string>();
       const key = (batchId: string, locationId: string) => `${batchId}_${locationId}`;
 
+      /**
+       * 🔴 THE BATCHES STILL SAFE TO POST AGAINST — and it costs NOTHING.
+       *
+       * `settleOpening` posted one movement per position and `postMovement` read
+       * the batch back on every one of them, when `openingPositions` had already
+       * loaded every one of those rows (`include: { batch: true }`). So this is
+       * the same read, hoisted, with no query behind it (2026-09-01).
+       *
+       * 🔴 A soft-deleted batch is LEFT OUT, and section 4 below DELETES from this
+       * map the moment it soft-deletes one. That is the whole reason this is a
+       * mutable map the caller owns rather than something resolved once up front:
+       * this function deletes batches WHILE it is still settling positions, and
+       * the same batch can hold a position at a second location. Posting against
+       * a batch that has just been deleted must go on failing exactly as it does
+       * today — by missing this map and falling through to `postMovement`'s own
+       * `isDeleted: false` read.
+       */
+      const settleBatches = new Map(
+        [...positions.values()]
+          .filter((position) => !position.batch.isDeleted)
+          .map((position) => [position.batchId, position.batch] as const),
+      );
+
+      /**
+       * …and the live quantity behind each of them, one read per LOCATION rather
+       * than one per shrinking position (2026-09-01).
+       *
+       * Only the reduction path consults it — the guard that refuses to take a
+       * batch below what has already left — but a save that clears rows off the
+       * grid reduces every one of them, so "only on reduction" is most of a run.
+       *
+       * `settleOpening` keeps it running as it posts. Nothing else in this
+       * function writes to these pairs: sections 2 and 3 mint NEW batches, which
+       * by definition hold no position here.
+       */
+      const settleBalances = new Map<string, Prisma.Decimal>();
+      const batchIdsByLocation = new Map<string, string[]>();
+      for (const position of positions.values()) {
+        batchIdsByLocation.set(position.locationId, [
+          ...(batchIdsByLocation.get(position.locationId) ?? []),
+          position.batchId,
+        ]);
+      }
+      for (const [locationId, batchIds] of batchIdsByLocation) {
+        const atLocation = await getBalancesByBatch(tx, { organizationId, locationId, batchIds });
+        for (const [batchId, balance] of atLocation) {
+          settleBalances.set(`${batchId}@${locationId}`, balance.qty);
+        }
+      }
+
       // Soft delete, not a wipe: the row carries who declared what and when.
       await tx.itemOpeningStockRow.updateMany({
         where: { organizationId, itemId, isDeleted: false },
@@ -1132,6 +1223,8 @@ export class ItemsService {
             position,
             new Prisma.Decimal(detail.quantityIn === '' ? 0 : (detail.quantityIn ?? 0)),
             settleContext,
+            settleBatches,
+            settleBalances,
           );
 
           await tx.batch.update({
@@ -1176,17 +1269,21 @@ export class ItemsService {
             userId,
           });
 
-          await postMovement(tx, {
-            organizationId,
-            batchId: batch.id,
-            locationId: locRow.locationId,
-            movementType: 'opening',
-            qtyIn: qty,
-            valueIn: valuePerUnit ? qty.times(valuePerUnit) : 0,
-            sourceDocType: 'item_opening_stock',
-            sourceDocId: itemId,
-            userId,
-          });
+          await postMovement(
+            tx,
+            {
+              organizationId,
+              batchId: batch.id,
+              locationId: locRow.locationId,
+              movementType: 'opening',
+              qtyIn: qty,
+              valueIn: valuePerUnit ? qty.times(valuePerUnit) : 0,
+              sourceDocType: 'item_opening_stock',
+              sourceDocId: itemId,
+              userId,
+            },
+            asResolvedBatch(batch),
+          );
         }
 
         // ── 3. No batch rows at all: an `inventoryTracking = 'none'` item, which
@@ -1209,7 +1306,14 @@ export class ItemsService {
           if (remaining.greaterThan(0)) {
             const top = here[0];
             if (top) {
-              await this.settleOpening(tx, top, top.qty.plus(remaining), settleContext);
+              await this.settleOpening(
+                tx,
+                top,
+                top.qty.plus(remaining),
+                settleContext,
+                settleBatches,
+                settleBalances,
+              );
             } else if (declaredQty.greaterThan(0)) {
               const batch = await createBatch(tx, {
                 organizationId,
@@ -1238,7 +1342,14 @@ export class ItemsService {
             for (const position of here) {
               if (remaining.greaterThanOrEqualTo(0)) break;
               const take = Prisma.Decimal.min(remaining.negated(), position.qty);
-              await this.settleOpening(tx, position, position.qty.minus(take), settleContext);
+              await this.settleOpening(
+                tx,
+                position,
+                position.qty.minus(take),
+                settleContext,
+                settleBatches,
+                settleBalances,
+              );
               remaining = remaining.plus(take);
             }
           }
@@ -1255,12 +1366,19 @@ export class ItemsService {
       for (const position of positions.values()) {
         if (claimed.has(key(position.batchId, position.locationId))) continue;
         if (position.qty.lessThanOrEqualTo(0)) continue;
-        await this.settleOpening(tx, position, new Prisma.Decimal(0), {
-          organizationId,
-          itemId,
-          valuePerUnit: null,
-          userId,
-        });
+        await this.settleOpening(
+          tx,
+          position,
+          new Prisma.Decimal(0),
+          {
+            organizationId,
+            itemId,
+            valuePerUnit: null,
+            userId,
+          },
+          settleBatches,
+          settleBalances,
+        );
 
         // Soft delete the batch if it has no other movements
         const otherMovements = await tx.stockLedgerEntry.count({
@@ -1274,6 +1392,10 @@ export class ItemsService {
             where: { id: position.batchId },
             data: { isDeleted: true, updatedBy: userId ?? null },
           });
+          // 🔴 Out of the map the instant it is deleted — see where it is built.
+          // The same batch may hold a position at another location, and settling
+          // that one must now fail rather than post against a deleted batch.
+          settleBatches.delete(position.batchId);
         }
       }
 

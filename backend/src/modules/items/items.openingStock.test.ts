@@ -249,6 +249,110 @@ describe('opening stock — re-declaring is a delta, not a rewrite', () => {
     expect(Number((await balanceOf(rollFour, godownId)).qty)).toBe(0);
   });
 
+  /**
+   * 🔴 TWO ROWS NAMING ONE BATCH — the case that decides how the settle loop may
+   * read its BALANCES (2026-09-01).
+   *
+   * The guard above ("only N of it is still here") used to re-read the balance on
+   * every reduction. Those reads are now hoisted into a map the caller owns, and
+   * the map is kept RUNNING as each reversal is posted — because both rows settle
+   * the same position, and the second one has to be judged against what the first
+   * one already took out. Against a figure read once and left alone the second
+   * reduction sails through and drives the batch negative in silence, which is the
+   * exact defect `settleOpening`'s own header says it exists to prevent.
+   */
+  it('judges a repeated row against what the first one already reversed', async () => {
+    const itemId = await freshItem('batch');
+    const saved = await itemsService.saveOpeningStock(itemId, orgId, {
+      locationRows: [
+        {
+          locationId: godownId,
+          openingStock: 100,
+          openingStockValue: 2,
+          batches: [{ batchReference: 'ROLL-7', quantityIn: 100 }],
+        },
+      ],
+    });
+    const rollSeven = saved[0]!.batches[0]!.id!;
+
+    /* The same batch twice, each asking to end at 40 — so each settles the one
+       position from 100 down to 40, a 60 reduction, twice. The declared total
+       stays at 100 so the "batches exceed the location total" check upstream
+       lets this through and the balance guard is the thing under test. */
+    await expect(
+      itemsService.saveOpeningStock(itemId, orgId, {
+        locationRows: [
+          {
+            locationId: godownId,
+            openingStock: 100,
+            openingStockValue: 2,
+            batches: [
+              { id: rollSeven, batchReference: 'ROLL-7', quantityIn: 40 },
+              { id: rollSeven, batchReference: 'ROLL-7', quantityIn: 40 },
+            ],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+
+    // Refused whole, so the batch is untouched — never driven below zero.
+    expect(Number((await balanceOf(rollSeven, godownId)).qty)).toBe(100);
+  });
+
+  /**
+   * 🔴 ONE BATCH, A POSITION AT TWO LOCATIONS — the case that decides how the
+   * settle loop may read its batches (2026-09-01).
+   *
+   * `settleOpening` posted one movement per position and `postMovement` read the
+   * batch back on each; those reads are now hoisted into a map the caller owns.
+   * The map is MUTABLE for exactly this reason: section 4 soft-deletes a batch
+   * while it is still settling positions, and a batch deleted for its godown
+   * position must not then be posted against for its processor one. Drop the
+   * `settleBatches.delete(...)` and this save quietly succeeds, writing a
+   * reversal against a batch that no longer exists.
+   */
+  it('does not post against a batch it soft-deleted moments earlier', async () => {
+    const itemId = await freshItem('batch');
+    const saved = await itemsService.saveOpeningStock(itemId, orgId, {
+      locationRows: [
+        {
+          locationId: godownId,
+          openingStock: 100,
+          openingStockValue: 2,
+          batches: [{ batchReference: 'ROLL-9', quantityIn: 100 }],
+        },
+      ],
+    });
+    const rollNine = saved[0]!.batches[0]!.id!;
+
+    // A second OPENING position for the same batch, at the processor. Contrived
+    // on purpose — it is the shape that makes the two implementations differ,
+    // and `openingPositions` keys on (batch, location) precisely because it can.
+    await runAsTenant(orgId, (tx) =>
+      postMovement(tx, {
+        organizationId: orgId,
+        batchId: rollNine,
+        locationId: processorId,
+        movementType: 'opening',
+        qtyIn: 25,
+        sourceDocType: 'item_opening_stock',
+        sourceDocId: itemId,
+      }),
+    );
+
+    /* Dropping every row makes section 4 settle both positions. The godown one
+       goes first and takes the batch with it, so the processor one has nothing
+       left to post against — and the save is refused rather than writing it.
+       Asserting the refusal, not the message: this is the existing `isDeleted`
+       guard surfacing, and it is what must not be lost. */
+    await expect(
+      itemsService.saveOpeningStock(itemId, orgId, { locationRows: [] }),
+    ).rejects.toMatchObject({ status: 404 });
+
+    // The whole save rolled back, so the batch is still there and still whole.
+    expect(Number((await balanceOf(rollNine, godownId)).qty)).toBe(100);
+  });
+
   it('reconciles a bulk quantity for an untracked item without minting a batch each save', async () => {
     const bulkItemId = await freshItem('none');
     await itemsService.saveOpeningStock(bulkItemId, orgId, {
