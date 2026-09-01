@@ -165,11 +165,11 @@ export async function countJobOrders(organizationId: string, opts: ListQuery): P
   );
 }
 
-export async function getJobOrderById(organizationId: string, id: string) {
+export async function getJobOrderById(organizationId: string, id: string, light = false) {
   return runAsTenant(organizationId, (tx) =>
     tx.jobOrder.findFirst({
       where: { id, organizationId, isDeleted: false },
-      include: JOB_ORDER_INCLUDE,
+      include: light ? JOB_ORDER_LIST_INCLUDE : JOB_ORDER_INCLUDE,
     }),
   );
 }
@@ -1502,40 +1502,73 @@ export async function shortCloseJobOrder(
  * to issue" — with the ledger, not the `batches` table. A batch goes on existing long
  * after the last metre of it has left (§10).
  */
-export async function getJobOrderOverview(organizationId: string, id: string) {
+export async function getJobOrderOverview(organizationId: string, id: string, filterStepId?: string) {
   // Outside the transaction, and before it — `memberships` has no RLS policy, so
   // this is a plain probe, and taking it here keeps it off a second pooled
   // connection held open by the tenant tx (`lib/memberDirectory.ts`).
   const directory = await getMemberDirectory(organizationId);
 
-  return runAsTenant(organizationId, async (tx) => {
+  const activityPromise = filterStepId
+    ? Promise.resolve([])
+    : runAsTenant(organizationId, (tx) => buildActivity(tx, organizationId, id, directory, filterStepId));
+
+  const mainOverviewPromise = runAsTenant(organizationId, async (tx) => {
+    const includeQuery = filterStepId
+      ? {
+          ...JOB_ORDER_OVERVIEW_INCLUDE,
+          steps: {
+            ...JOB_ORDER_OVERVIEW_INCLUDE.steps,
+            where: { ...JOB_ORDER_OVERVIEW_INCLUDE.steps?.where, id: filterStepId },
+          },
+        }
+      : JOB_ORDER_OVERVIEW_INCLUDE;
+
+    console.time('order');
     const order = await tx.jobOrder.findFirst({
       where: { id, organizationId, isDeleted: false },
-      include: JOB_ORDER_OVERVIEW_INCLUDE,
+      include: includeQuery,
     });
+    console.timeEnd('order');
 
     if (!order) throw ApiError.notFound('Job order not found');
 
+    if (filterStepId) {
+      order.steps = order.steps.filter((s) => s.id === filterStepId);
+    }
+
+    console.time('batches');
     const batches = await tx.batch.findMany({
       where: { organizationId, isDeleted: false, sourceDocId: id },
       // 🔴 No `batchNumber` (2026-08-14) — internal key, never leaves the server.
       select: { id: true, supplierBatchRef: true, itemId: true },
     });
+    console.timeEnd('batches');
 
     const stepIds = order.steps.map((s) => s.id);
     const principalItemIds = [
       ...new Set(order.steps.map((s) => s.inputs[0]?.itemId).filter(Boolean)),
     ] as string[];
 
+    console.time('allTotalsMap');
     const allTotalsMap = await getAllStepTotals(tx, organizationId, stepIds);
+    console.timeEnd('allTotalsMap');
 
+    const allStepsLightweight = await tx.jobOrderStep.findMany({
+      where: { organizationId, jobOrderId: id, isDeleted: false },
+      select: { id: true, seq: true, processNameSnapshot: true, status: true },
+      orderBy: { seq: 'asc' },
+    });
+
+    console.time('allChainBlockedMap');
     const allChainBlockedMap = await getAllChainNotReady(
       tx,
       organizationId,
       id,
-      order.steps as { id: string; seq: number; processNameSnapshot: string; status: string }[],
+      allStepsLightweight,
     );
+    console.timeEnd('allChainBlockedMap');
 
+    console.time('balances');
     const balances = principalItemIds.length > 0
       ? await tx.stockLedgerEntry.groupBy({
           by: ['itemId'],
@@ -1547,8 +1580,9 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
           _sum: { qtyIn: true, qtyOut: true },
         })
       : [];
+    console.timeEnd('balances');
 
-    const activity = await buildActivity(tx, organizationId, id, directory);
+
 
     const firstStep = order.steps[0];
     const firstTotals = firstStep ? allTotalsMap.get(firstStep.id) : null;
@@ -1575,6 +1609,7 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
       }
     }
 
+    console.time('unplannedItems');
     const unplannedItems =
       allUnplannedIds.size > 0
         ? await tx.item.findMany({
@@ -1586,6 +1621,7 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
             },
           })
         : [];
+    console.timeEnd('unplannedItems');
 
   const unplannedById = new Map<
     string,
@@ -1682,13 +1718,19 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
     return {
       jobOrder: order,
       batches,
-      activity,
       summary: {
         issuedQty: firstTotals ? firstTotals.issuedQty.toString() : '0',
       },
       steps,
     };
   });
+
+  const [activity, mainOverview] = await Promise.all([activityPromise, mainOverviewPromise]);
+
+  return {
+    ...mainOverview,
+    activity,
+  };
 }
 
 type StepWithRows = Prisma.JobOrderStepGetPayload<{ include: typeof STEP_OVERVIEW_INCLUDE }>;
@@ -1816,12 +1858,18 @@ async function buildActivity(
   organizationId: string,
   jobOrderId: string,
   directory: MemberDirectory,
+  filterStepId?: string,
 ) {
   const unitOf = (uom: { symbol: string | null; unitName: string } | null | undefined) =>
     uom ? (uom.symbol ?? uom.unitName) : null;
 
   const issues = await tx.jobIssue.findMany({
-      where: { organizationId, jobOrderId, isDeleted: false },
+      where: { 
+        organizationId, 
+        jobOrderId, 
+        isDeleted: false,
+        ...(filterStepId ? { jobOrderStepId: filterStepId } : {}),
+      },
       select: {
         id: true,
         jobOrderStepId: true,
@@ -1851,7 +1899,12 @@ async function buildActivity(
       },
     });
     const receipts = await tx.jobReceipt.findMany({
-      where: { organizationId, jobOrderId, isDeleted: false },
+      where: { 
+        organizationId, 
+        jobOrderId, 
+        isDeleted: false,
+        ...(filterStepId ? { jobOrderStepId: filterStepId } : {}),
+      },
       select: {
         id: true,
         jobOrderStepId: true,

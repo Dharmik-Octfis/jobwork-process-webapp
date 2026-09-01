@@ -41,8 +41,8 @@ export function CreateIssuePage() {
 
   // 2b. Fetch heavy Job Order Overview ONLY when a Step is selected
   const { data: jobOrderData, isLoading: isLoadingJobOrderOverview } = useQuery({
-    queryKey: ['job-order-overview', orgId, effectiveJobOrderId],
-    queryFn: () => fetchJobOrderOverview(orgId!, effectiveJobOrderId!),
+    queryKey: ['job-order-overview', orgId, effectiveJobOrderId, effectiveStepId],
+    queryFn: () => fetchJobOrderOverview(orgId!, effectiveJobOrderId!, effectiveStepId || undefined),
     enabled: Boolean(orgId && effectiveJobOrderId && effectiveStepId),
   });
 
@@ -78,10 +78,11 @@ export function CreateIssuePage() {
                 <JobOrderComboBox
                   orgId={orgId!}
                   value={effectiveJobOrderId || ''}
-                  onChange={(val) => {
-                     setSelectedJobOrderId(val);
-                     setSelectedStepId(null);
+                  onChange={(id) => {
+                    setSelectedJobOrderId(id);
+                    setSelectedStepId(null);
                   }}
+                  initialJobOrder={jobOrderData?.jobOrder}
                   placeholder="Select Job Order..."
                 />
               </div>
@@ -100,7 +101,7 @@ export function CreateIssuePage() {
           </div>
 
         {isLoadingLightweightJobOrder && effectiveJobOrderId && <Spinner size={24} label="Loading job order details..." />}
-        {isLoadingJobOrderOverview && effectiveStepId && <Spinner size={24} label="Loading step details..." />}
+        {!isLoadingLightweightJobOrder && isLoadingJobOrderOverview && effectiveStepId && <Spinner size={24} label="Loading step details..." />}
 
         {jobOrderData && selectedStep && (
           <IssueForm

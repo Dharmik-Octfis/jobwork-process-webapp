@@ -29,8 +29,10 @@ export async function fetchJobOrderCount(orgId: string, params: PageParams = {})
   return z.object({ total: z.number() }).parse(response.data).total;
 }
 
-export async function fetchJobOrderById(orgId: string, id: string): Promise<JobOrder> {
-  const response = await apiClient.get(`${endpoints.jobwork.jobOrders(orgId)}/${id}`);
+export async function fetchJobOrderById(orgId: string, id: string, light = false): Promise<JobOrder> {
+  const response = await apiClient.get(`${endpoints.jobwork.jobOrders(orgId)}/${id}`, {
+    params: light ? { light: 'true' } : undefined,
+  });
   return jobOrderSchema.parse(response.data);
 }
 
@@ -44,8 +46,10 @@ export async function fetchJobOrderWithStepsById(orgId: string, id: string): Pro
 export async function fetchJobOrderOverview(
   orgId: string,
   id: string,
+  stepId?: string,
 ): Promise<JobOrderOverviewData> {
-  const response = await apiClient.get(endpoints.jobwork.jobOrderOverview(orgId, id));
+  const params = stepId ? { stepId } : undefined;
+  const response = await apiClient.get(endpoints.jobwork.jobOrderOverview(orgId, id), { params });
   return jobOrderOverviewSchema.parse(response.data);
 }
 

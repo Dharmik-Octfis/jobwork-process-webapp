@@ -97,7 +97,10 @@ openApiRegistry.registerPath({
   tags: ['Job Orders'],
   summary:
     'The Overview page: stepper, per-step totals, live stock balance and the order’s issue/receipt history',
-  request: { params: orgParam.extend({ id: z.string() }) },
+  request: { 
+    params: orgParam.extend({ id: z.string() }),
+    query: z.object({ stepId: z.string().optional() }),
+  },
   responses: { 200: { description: 'Overview' }, 404: { description: 'Not found' } },
 });
 
@@ -161,7 +164,8 @@ export const createJobOrder = async (req: Request, res: Response) => {
 };
 
 export const getJobOrder = async (req: Request, res: Response) => {
-  const found = await getJobOrderById(req.tenantId!, req.params.id as string);
+  const light = req.query.light === 'true';
+  const found = await getJobOrderById(req.tenantId!, req.params.id as string, light);
   if (!found) throw ApiError.notFound('Job order not found');
   sendSuccess(res, found);
 };
@@ -175,7 +179,8 @@ export const getJobOrderWithSteps = async (req: Request, res: Response) => {
 /** The stepper page. One request, because every tile on it is derived from a
  * different table and four round trips would render four different moments. */
 export const getOverview = async (req: Request, res: Response) => {
-  sendSuccess(res, await getJobOrderOverview(req.tenantId!, req.params.id as string));
+  const stepId = typeof req.query.stepId === 'string' ? req.query.stepId : undefined;
+  sendSuccess(res, await getJobOrderOverview(req.tenantId!, req.params.id as string, stepId));
 };
 
 export const updateJobOrder = async (req: Request, res: Response) => {

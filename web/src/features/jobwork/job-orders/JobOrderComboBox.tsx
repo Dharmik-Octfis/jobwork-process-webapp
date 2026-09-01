@@ -2,7 +2,7 @@ import { Check, Loader2, X } from 'lucide-react';
 import { useCombobox } from 'downshift';
 import { useState, useMemo, useEffect, useId, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { fetchJobOrders, fetchJobOrderById } from './jobOrders.api';
 import type { JobOrder } from './jobOrders.schemas';
 
@@ -22,6 +22,7 @@ interface JobOrderComboBoxProps {
   onBlur?: () => void;
   name?: string;
   portal?: boolean;
+  initialJobOrder?: JobOrder | null;
 }
 
 export function JobOrderComboBox({
@@ -36,6 +37,7 @@ export function JobOrderComboBox({
   onBlur,
   name,
   portal = false,
+  initialJobOrder,
 }: JobOrderComboBoxProps) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState<React.CSSProperties>({ visibility: 'hidden' });
@@ -45,7 +47,7 @@ export function JobOrderComboBox({
   const [debouncedValue, setDebouncedValue] = useState(inputValue);
   const isInternalChange = useRef(false);
   const [isInteracted, setIsInteracted] = useState(false);
-  const [selectedJobOrder, setSelectedJobOrder] = useState<JobOrder | null>(null);
+  const [selectedJobOrder, setSelectedJobOrder] = useState<JobOrder | null>(initialJobOrder || null);
 
   const handleOnChange = (newVal: JobOrder | null) => {
     isInternalChange.current = true;
@@ -95,41 +97,50 @@ export function JobOrderComboBox({
     return jobOrdersData?.pages.flatMap((page) => page.results) || [];
   }, [jobOrdersData]);
 
+  const { data: initialJobOrderQuery } = useQuery({
+    queryKey: ['job-order', orgId, value, 'light'],
+    queryFn: () => fetchJobOrderById(orgId, value!, true),
+    enabled: Boolean(value && selectedJobOrder?.id !== value && !fetchedOptions.find(o => o.id === value)),
+    staleTime: Infinity,
+  });
+
   const [prevValue, setPrevValue] = useState(value);
   const [prevFetchedOptions, setPrevFetchedOptions] = useState(fetchedOptions);
+  const [prevInitialJobOrder, setPrevInitialJobOrder] = useState(initialJobOrder);
+  const [prevInitialJobOrderQuery, setPrevInitialJobOrderQuery] = useState(initialJobOrderQuery);
 
-  if (value !== prevValue || fetchedOptions !== prevFetchedOptions) {
+  if (
+    value !== prevValue ||
+    fetchedOptions !== prevFetchedOptions ||
+    initialJobOrder !== prevInitialJobOrder ||
+    initialJobOrderQuery !== prevInitialJobOrderQuery
+  ) {
     setPrevValue(value);
     setPrevFetchedOptions(fetchedOptions);
+    setPrevInitialJobOrder(initialJobOrder);
+    setPrevInitialJobOrderQuery(initialJobOrderQuery);
 
     if (!value) {
-      setSelectedJobOrder(null);
+      if (selectedJobOrder !== null) {
+        setSelectedJobOrder(null);
+      }
     } else {
       const found = fetchedOptions.find((opt) => opt.id === value);
-      if (found && selectedJobOrder?.id !== found.id) {
-        setSelectedJobOrder(found);
+      if (found) {
+        if (selectedJobOrder?.id !== found.id) {
+          setSelectedJobOrder(found);
+        }
+      } else if (initialJobOrder && initialJobOrder.id === value) {
+        if (selectedJobOrder?.id !== initialJobOrder.id) {
+          setSelectedJobOrder(initialJobOrder);
+        }
+      } else if (initialJobOrderQuery && initialJobOrderQuery.id === value) {
+        if (selectedJobOrder?.id !== initialJobOrderQuery.id) {
+          setSelectedJobOrder(initialJobOrderQuery);
+        }
       }
     }
   }
-
-  useEffect(() => {
-    let ignore = false;
-
-    if (value && selectedJobOrder?.id !== value) {
-      const found = fetchedOptions.find((opt) => opt.id === value);
-      if (!found) {
-        fetchJobOrderById(orgId, value)
-          .then((jo) => {
-            if (!ignore) setSelectedJobOrder(jo);
-          })
-          .catch(() => {});
-      }
-    }
-
-    return () => {
-      ignore = true;
-    };
-  }, [value, fetchedOptions, orgId, selectedJobOrder?.id]);
 
   useEffect(() => {
     if (!isInternalChange.current) {
