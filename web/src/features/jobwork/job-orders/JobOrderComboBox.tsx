@@ -23,6 +23,7 @@ interface JobOrderComboBoxProps {
   name?: string;
   portal?: boolean;
   initialJobOrder?: JobOrder | null;
+  filter?: string;
 }
 
 export function JobOrderComboBox({
@@ -38,6 +39,7 @@ export function JobOrderComboBox({
   name,
   portal = false,
   initialJobOrder,
+  filter = 'all_orders',
 }: JobOrderComboBoxProps) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState<React.CSSProperties>({ visibility: 'hidden' });
@@ -78,13 +80,13 @@ export function JobOrderComboBox({
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['job-orders-search', orgId, debouncedValue],
+    queryKey: ['job-orders-search', orgId, debouncedValue, filter],
     queryFn: ({ pageParam }) =>
       fetchJobOrders(orgId, {
         search: debouncedValue || undefined,
         perPage: 10,
         page: pageParam,
-        filter: 'in_progress',
+        filter,
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
@@ -265,8 +267,9 @@ export function JobOrderComboBox({
             },
             style: {
               width: '100%',
-              padding: '6px 28px 6px 8px',
-              fontSize: '13px',
+              padding: '8px 28px 8px 12px',
+              fontSize: '14px',
+              minHeight: '38px',
               border: `1px solid ${hasError ? 'var(--color-danger, #ef4444)' : 'var(--color-border, #d1d5db)'}`,
               borderRadius: '4px',
               boxSizing: 'border-box',

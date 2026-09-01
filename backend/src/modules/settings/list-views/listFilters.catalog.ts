@@ -97,6 +97,7 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
       where: { status: { in: ['draft', 'in_progress'] } },
     },
     { key: 'all_orders', label: 'All Job Orders', where: {} },
+    { key: 'issued', label: 'Issued (Not Draft)', where: { status: { not: 'draft' } } },
     { key: 'draft', label: 'Draft', where: { status: 'draft' } },
     { key: 'in_progress', label: 'In Progress', where: { status: 'in_progress' } },
     { key: 'completed', label: 'Completed', where: { status: 'completed' } },

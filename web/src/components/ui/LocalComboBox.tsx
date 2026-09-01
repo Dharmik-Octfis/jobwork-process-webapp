@@ -170,8 +170,9 @@ export function LocalComboBox({
             },
             style: {
               width: '100%',
-              padding: '6px 28px 6px 8px',
-              fontSize: '13px',
+              padding: '8px 28px 8px 12px',
+              fontSize: '14px',
+              minHeight: '38px',
               border: `1px solid ${hasError ? 'var(--color-danger, #ef4444)' : 'var(--color-border, #d1d5db)'}`,
               borderRadius: '4px',
               boxSizing: 'border-box',

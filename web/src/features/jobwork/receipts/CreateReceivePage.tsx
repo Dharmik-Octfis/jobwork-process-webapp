@@ -94,6 +94,7 @@ export function CreateReceivePage() {
                   }}
                   initialJobOrder={jobOrderData?.jobOrder}
                   placeholder="Select Job Order..."
+                  filter="issued"
                 />
               </div>
               <div style={{ width: 320, minWidth: 250 }}>
