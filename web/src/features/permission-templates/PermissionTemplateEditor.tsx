@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronRight, X } from 'lucide-react';
 import { toApiErrorMessage } from '../../api/client';
 import { permissionTemplatesApi, type PermissionTemplate } from './permissionTemplates.api';
 import '../organizations/CreateOrganizationForm.css';
@@ -163,28 +163,27 @@ export function PermissionTemplateEditor({ orgId, template, onDone, onCancel }: 
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: 'var(--space-6) var(--space-5)' }}>
-      <button
-        onClick={onCancel}
-        style={{
-          background: 'none',
-          border: 'none',
-          color: 'var(--color-text-muted)',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 4,
-          fontSize: 13,
-          fontWeight: 500,
-          padding: 0,
-          marginBottom: 'var(--space-4)',
-        }}
-      >
-        <ChevronLeft size={16} /> Back to permissions
-      </button>
-
-      <h2 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 var(--space-5) 0' }}>
-        {template ? `Edit "${template.name}"` : 'New permission template'}
-      </h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-5)' }}>
+        <h2 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>
+          {template ? `Edit "${template.name}"` : 'New permission template'}
+        </h2>
+        <button
+          onClick={onCancel}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'var(--color-text-muted)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '4px',
+            borderRadius: '4px',
+          }}
+        >
+          <X size={20} />
+        </button>
+      </div>
 
       {error && (
         <div

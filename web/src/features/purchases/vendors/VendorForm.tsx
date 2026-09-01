@@ -3,7 +3,7 @@ import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Plus, Trash2, Settings } from 'lucide-react';
+import { Plus, Trash2, Settings, X } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createVendorSchema, type CreateVendorData } from './vendors.schemas';
 import { fetchVendorNumberPreference, updateVendorNumberPreference } from './vendors.api';
@@ -234,10 +234,30 @@ export function VendorForm({
       }}
     >
       {/* Header */}
-      <div style={{ padding: '24px 32px' }}>
+      <div style={{ padding: '24px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h1 style={{ fontSize: '22px', fontWeight: 400, margin: 0, color: '#000' }}>
           {isEdit ? 'Edit Vendor' : 'New Vendor'}
         </h1>
+        <button
+          type="button"
+          onClick={() => {
+            if (onCancel) onCancel();
+            else navigate(`/organizations/${orgId}/purchases/vendors`);
+          }}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#64748b',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '4px',
+            borderRadius: '4px',
+          }}
+        >
+          <X size={24} />
+        </button>
       </div>
 
       <form onSubmit={handleSubmit((data) => {

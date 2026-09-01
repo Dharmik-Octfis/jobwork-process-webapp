@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery} from '@tanstack/react-query';
-import { ChevronLeft } from 'lucide-react';
+import { X } from 'lucide-react';
 import { fetchJobOrderOverview, fetchJobOrderWithStepsById } from '../job-orders/jobOrders.api';
 import { Spinner } from '../../../components/ui/Spinner';
 import { LocalComboBox } from '../../../components/ui/LocalComboBox';
@@ -52,7 +52,8 @@ export function CreateReceivePage() {
 
   return (
     <div style={{ background: '#fff', minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
-      <header style={{ background: '#fff', borderBottom: '1px solid #eef0f3', padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
+      <header style={{ background: '#fff', borderBottom: '1px solid #eef0f3', padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+        <h1 style={{ fontSize: 18, fontWeight: 600, color: '#111', margin: 0 }}>Receive Goods</h1>
         <button
           type="button"
           onClick={() => {
@@ -62,11 +63,20 @@ export function CreateReceivePage() {
                navigate(`/organizations/${orgId}/jobwork/receipts`);
              }
           }}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, border: '1px solid #e2e8f0', borderRadius: 4, background: '#fff', cursor: 'pointer', color: '#64748b' }}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#64748b',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '4px',
+            borderRadius: '4px',
+          }}
         >
-          <ChevronLeft size={16} />
+          <X size={20} />
         </button>
-        <h1 style={{ fontSize: 18, fontWeight: 600, color: '#111', margin: 0 }}>Receive Goods</h1>
       </header>
 
       <div style={{ padding: 24, width: '100%', flex: 1, display: 'flex', flexDirection: 'column' }}>

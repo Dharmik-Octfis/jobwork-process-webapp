@@ -550,7 +550,7 @@ export function CreateBill() {
       }}
     >
       {/* Header */}
-      <div style={{ padding: '24px 32px' }}>
+      <div style={{ padding: '24px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h1 style={{ fontSize: '22px', fontWeight: 400, margin: 0, color: '#000' }}>
           {isEdit
             ? `Edit Bill (${existingPo?.billNumber || ''})`
@@ -558,6 +558,23 @@ export function CreateBill() {
               ? 'Clone Bill'
               : 'New Bill'}
         </h1>
+        <button
+          type="button"
+          onClick={() => navigate(`/organizations/${orgId}/purchases/bills`)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#64748b',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '4px',
+            borderRadius: '4px',
+          }}
+        >
+          <X size={24} />
+        </button>
       </div>
 
       <form

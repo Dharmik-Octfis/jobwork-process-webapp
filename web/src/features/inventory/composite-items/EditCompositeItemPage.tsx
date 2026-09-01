@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
+import { X } from 'lucide-react';
 import { compositeItemsApi } from './compositeItems.api';
 import type { UpdateCompositeItemDto, CompositeComponent } from './compositeItems.api';
 import type { ItemFormData } from '../../items/items.schemas';
@@ -394,29 +394,27 @@ export function EditCompositeItemPage() {
         }
       `}</style>
       <div style={{ padding: '16px 24px' }}>
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#0062ff',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: 0,
-            marginBottom: '12px',
-            fontSize: 12,
-            fontWeight: 500,
-          }}
-        >
-          <ArrowLeft size={14} /> Back to Composite Items
-        </button>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h1 style={{ fontSize: '22px', fontWeight: 400, margin: 0, color: '#000' }}>
             Edit Composite Item
           </h1>
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#64748b',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px',
+              borderRadius: '4px',
+            }}
+          >
+            <X size={20} />
+          </button>
         </div>
       </div>
 

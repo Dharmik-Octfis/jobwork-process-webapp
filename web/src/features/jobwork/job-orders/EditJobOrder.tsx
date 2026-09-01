@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
-import { BackButton } from '../../../components/ui/BackButton';
+import { X } from 'lucide-react';
 import { Spinner } from '../../../components/ui/Spinner';
 import { fetchJobOrderById, updateJobOrder } from './jobOrders.api';
 import type { UpdateJobOrderData } from './jobOrders.schemas';
@@ -115,12 +115,29 @@ export function EditJobOrder() {
           gap: 12,
           padding: '16px 24px',
           borderBottom: '1px solid #eef0f3',
+          justifyContent: 'space-between',
         }}
       >
-        <BackButton onClick={() => navigate(backPath)} label="Back to the job order" />
         <h1 style={{ fontSize: 18, fontWeight: 600, color: '#000', margin: 0 }}>
           {jobOrder.jobOrderNumber}
         </h1>
+        <button
+          type="button"
+          onClick={() => navigate(backPath)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#64748b',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '4px',
+            borderRadius: '4px',
+          }}
+        >
+          <X size={20} />
+        </button>
       </header>
       {message && (
         <p

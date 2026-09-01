@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
-import { BackButton } from '../../../components/ui/BackButton';
+import { X } from 'lucide-react';
 import { Spinner } from '../../../components/ui/Spinner';
 import { createJobOrder, fetchJobOrderById } from './jobOrders.api';
 import type { CreateJobOrderData } from './jobOrders.schemas';
@@ -57,20 +57,36 @@ export function CreateJobOrder() {
           gap: 12,
           padding: '16px 24px',
           borderBottom: '1px solid #eef0f3',
+          justifyContent: 'space-between',
         }}
       >
-        <BackButton
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <h1 style={{ fontSize: 18, fontWeight: 600, color: '#000', margin: 0 }}>
+            {cloneFrom ? 'Clone Job Order' : 'New Job Order'}
+          </h1>
+          {source && (
+            <span style={{ fontSize: 12, color: '#64748b' }}>
+              Copied from {source.jobOrderNumber} — it gets its own number, and the dates start blank.
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
           onClick={() => navigate(-1)}
-          label="Back to job orders"
-        />
-        <h1 style={{ fontSize: 18, fontWeight: 600, color: '#000', margin: 0 }}>
-          {cloneFrom ? 'Clone Job Order' : 'New Job Order'}
-        </h1>
-        {source && (
-          <span style={{ fontSize: 12, color: '#64748b' }}>
-            Copied from {source.jobOrderNumber} — it gets its own number, and the dates start blank.
-          </span>
-        )}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#64748b',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '4px',
+            borderRadius: '4px',
+          }}
+        >
+          <X size={20} />
+        </button>
       </header>
       {cloneFailed && (
         <p
