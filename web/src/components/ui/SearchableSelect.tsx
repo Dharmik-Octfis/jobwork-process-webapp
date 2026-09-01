@@ -73,8 +73,8 @@ export function SearchableSelect({
 
   const filteredOptions = options.filter(
     (opt) =>
-      opt.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      opt.value.toLowerCase().includes(searchTerm.toLowerCase()),
+      String(opt.label).toLowerCase().includes(String(searchTerm).toLowerCase()) ||
+      String(opt.value).toLowerCase().includes(String(searchTerm).toLowerCase()),
   );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -301,7 +301,7 @@ export function SearchableSelect({
               {filteredOptions.length > 0 ? (
                 filteredOptions.map((opt, idx) => (
                   <div
-                    key={opt.value}
+                    key={`${opt.value}-${idx}`}
                     onClick={() => {
                       if (opt.disabled) return;
                       onChange(opt.value);
