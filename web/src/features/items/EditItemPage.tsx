@@ -305,7 +305,7 @@ export function EditItemPage() {
             <div
               style={{
                 flex: 1,
-                minWidth: '480px',
+                minWidth: 'min(100%, 480px)',
                 maxWidth: '640px',
                 background: '#f8fafc',
                 padding: '24px',
@@ -763,7 +763,7 @@ export function EditItemPage() {
               gap: '16px',
             }}
           >
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+            <div className="form-field-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
               {/* Sales Information */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <label
@@ -1018,8 +1018,8 @@ export function EditItemPage() {
                 </div>
 
                 {formData.inventoryTracking === 'none' && (
-                  <div style={{ display: 'flex', gap: 24, marginTop: 12 }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
                       <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
                         Opening Stock
                       </label>
@@ -1039,7 +1039,7 @@ export function EditItemPage() {
                         }}
                       />
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
                       <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
                         Value of Opening Stock (per quantity)
                       </label>
@@ -1100,12 +1100,12 @@ export function EditItemPage() {
           )}
 
           <div
+            className="form-actions-footer page-footer"
             style={{
               height: '44px',
               boxSizing: 'border-box',
               position: 'fixed',
               bottom: 0,
-              left: 220,
               right: 0,
               background: '#fff',
               padding: '0 24px',

@@ -126,6 +126,7 @@ export function CustomFieldsSection({
 
   return (
     <div
+      className="form-field-grid"
       style={{
         display: 'grid',
         gridTemplateColumns: '200px 1fr',

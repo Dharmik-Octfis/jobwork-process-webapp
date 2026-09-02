@@ -83,7 +83,7 @@ export function PermissionTemplateDetail({ orgId, templateId, onClose, onDelete 
       {/* Header */}
       <div className="detail-page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
+          <h2 className="detail-title" style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
             {template.name}
           </h2>
           {template.isSystem && (
@@ -127,7 +127,7 @@ export function PermissionTemplateDetail({ orgId, templateId, onClose, onDelete 
               >
                 <Users size={14} /> Assigned Members
               </button>
-              <button
+              <button className="action-btn"
                 onClick={() =>
                   navigate(`/organizations/${orgId}/settings/permissions/${templateId}/edit`, { state: { returnUrl: location.pathname + location.search } })
                 }
@@ -143,7 +143,7 @@ export function PermissionTemplateDetail({ orgId, templateId, onClose, onDelete 
                   gap: '4px',
                 }}
               >
-                <Edit size={14} /> Edit
+                <Edit size={14} /> <span className="action-btn-text">Edit</span>
               </button>
               <button
                 onClick={() => onDelete(template)}
@@ -206,7 +206,7 @@ export function PermissionTemplateDetail({ orgId, templateId, onClose, onDelete 
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ padding: '16px 20px', borderBottom: '1px solid #eef0f3', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#0f172a' }}>{template.name} — Assigned Members</h3>
+              <h3 className="detail-title" style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#0f172a' }}>{template.name} — Assigned Members</h3>
               <button onClick={() => setIsMembersModalOpen(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }}>
                 <X size={18} />
               </button>

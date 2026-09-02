@@ -390,7 +390,7 @@ export function JobOrderForm({
       <section style={{ marginBottom: 32 }}>
         <h2 style={sectionHeading}>Order</h2>
 
-        <div
+        <div className="form-field-grid"
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
@@ -570,12 +570,12 @@ export function JobOrderForm({
       )}
 
       <div
+        className="form-actions-footer page-footer"
         style={{
           height: 44,
           boxSizing: 'border-box',
-          position: 'fixed',
+          position: 'sticky',
           bottom: 0,
-          left: 220,
           right: 0,
           background: '#fff',
           padding: '0 24px',

@@ -234,7 +234,7 @@ export function ProcessForm({ initialData, onSubmit, isPending, onCancel }: Proc
         */}
       </section>
 
-      <div
+      <div className="form-actions-footer"
         style={{
           height: 44,
           boxSizing: 'border-box',

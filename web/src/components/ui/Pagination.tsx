@@ -87,7 +87,7 @@ export function Pagination({
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         {!hidePerPage && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div className="pagination-per-page" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Select
               value={String(perPage)}
               onChange={(v) => onPerPageChange(Number(v))}

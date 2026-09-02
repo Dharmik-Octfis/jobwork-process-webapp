@@ -53,7 +53,7 @@ export function CreateIssuePage() {
 
   return (
     <div style={{ background: '#fff', minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
-      <header style={{ background: '#fff', borderBottom: '1px solid #eef0f3', padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+      <header className="detail-page-header" style={{ background: '#fff', borderBottom: '1px solid #eef0f3', padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
         <h1 style={{ fontSize: 18, fontWeight: 600, color: '#111', margin: 0 }}>Create Material Issue</h1>
         <button
           type="button"

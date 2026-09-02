@@ -134,8 +134,8 @@ export function ReceiptsList() {
         flexDirection: 'column',
       }}
     >
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
-        <div
+      <div className={`master-detail-container ${selectedId ? 'has-selection' : ''}`} style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+        <div className="master-pane"
           style={{
             flex: selectedId ? '0 0 320px' : 1,
             borderRight: selectedId ? '1px solid #eef0f3' : 'none',
@@ -390,7 +390,7 @@ export function ReceiptsList() {
         </div>
 
         {selectedId && (
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
             <ReceiptDetail
               receiptId={selectedId}
               onClose={() => {

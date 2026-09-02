@@ -274,7 +274,7 @@ export function CustomerForm({
         onSubmit(cleanedData);
       })} style={{ padding: '32px' }}>
         {/* Main Details Section */}
-        <div
+        <div className="form-field-grid"
           style={{
             display: 'grid',
             gridTemplateColumns: '200px 1fr',
@@ -501,7 +501,7 @@ export function CustomerForm({
         <div style={{ marginBottom: '60px', minHeight: '300px' }}>
           {/* Other Details Tab */}
           {activeTab === 'other' && (
-            <div
+            <div className="form-field-grid"
               style={{
                 display: 'grid',
                 gridTemplateColumns: '200px 1fr',
@@ -961,12 +961,12 @@ export function CustomerForm({
         </div>
 
         <div
+          className="form-actions-footer page-footer"
           style={{
             height: '44px',
             boxSizing: 'border-box',
-            position: 'fixed',
+            position: 'sticky',
             bottom: 0,
-            left: 220,
             right: 0,
             background: '#fff',
             padding: '0 24px',

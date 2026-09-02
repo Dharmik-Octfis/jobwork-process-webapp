@@ -8,6 +8,7 @@ import {
   Coins,
   LayoutGrid,
   ChevronRight,
+  ChevronLeft,
   ShieldCheck,
   IdCard,
   MapPin,
@@ -26,7 +27,6 @@ export function SettingsLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const onModulesRoute = location.pathname.includes('/settings/modules');
-  const [modulesOpen, setModulesOpen] = useState(onModulesRoute);
 
   const onOrgRoute =
     location.pathname === `/organizations/${orgId}/settings` ||
@@ -55,14 +55,19 @@ export function SettingsLayout() {
     return null;
   });
 
+  const [modulesOpen, setModulesOpen] = useState(onModulesRoute);
+
   const orgOpen = openSection === 'org';
   const inventoryOpen = openSection === 'inventory';
   const configOpen = openSection === 'config';
   const jobworkOpen = openSection === 'jobwork';
   const customizationOpen = openSection === 'customization';
+  const isRootSettings = location.pathname === `/organizations/${orgId}/settings` || location.pathname === `/organizations/${orgId}/settings/`;
+  const hasSelection = !isRootSettings || location.search.includes('view=company');
 
   return (
     <div
+      className={`master-detail-container ${hasSelection ? 'has-selection' : ''}`}
       style={{
         display: 'flex',
         height: '100%',
@@ -72,6 +77,7 @@ export function SettingsLayout() {
     >
       {/* Settings Sidebar */}
       <aside
+        className="master-pane"
         style={{
           width: 250,
           background: 'white',
@@ -184,20 +190,22 @@ export function SettingsLayout() {
               }}
             >
               <NavLink
-                to={`/organizations/${orgId}/settings`}
-                end
-                style={({ isActive }) => ({
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-3)',
-                  padding: '8px 12px',
-                  borderRadius: 'var(--radius-md)',
-                  textDecoration: 'none',
-                  color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
-                  background: isActive ? 'var(--primary-50)' : 'transparent',
-                  fontWeight: isActive ? 600 : 500,
-                  transition: 'all 0.2s ease',
-                })}
+                to={`/organizations/${orgId}/settings?view=company`}
+                style={() => {
+                  const isActive = isRootSettings;
+                  return {
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-3)',
+                    padding: '8px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    textDecoration: 'none',
+                    color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
+                    background: isActive ? 'var(--primary-50)' : 'transparent',
+                    fontWeight: isActive ? 600 : 500,
+                    transition: 'all 0.2s ease',
+                  };
+                }}
               >
                 <Building2 size={18} />
                 <span style={{ fontSize: 14 }}>Company Setting</span>
@@ -692,12 +700,36 @@ export function SettingsLayout() {
 
       {/* Main Settings Content */}
       <main
+        className="detail-pane"
         style={{
           flex: 1,
           overflowY: 'auto',
           background: 'var(--color-bg)',
+          display: 'flex',
+          flexDirection: 'column'
         }}
       >
+        {hasSelection && (
+          <div className="settings-mobile-header">
+            <button
+              onClick={() => navigate(`/organizations/${orgId}/settings`)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: 'none',
+                border: 'none',
+                color: '#3b82f6',
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: 'pointer',
+                padding: 0
+              }}
+            >
+              <ChevronLeft size={16} /> Back to Settings
+            </button>
+          </div>
+        )}
         {/* Same reasoning as AppLayout — the settings nav stays put while a
             lazily-loaded settings page loads. */}
         <Suspense fallback={<RouteFallback />}>

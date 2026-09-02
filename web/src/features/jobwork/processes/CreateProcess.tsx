@@ -30,7 +30,7 @@ export function CreateProcess() {
     <div
       style={{ background: '#fff', minHeight: '100%', display: 'flex', flexDirection: 'column' }}
     >
-      <header
+      <header className="detail-page-header"
         style={{
           display: 'flex',
           alignItems: 'center',

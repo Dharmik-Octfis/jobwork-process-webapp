@@ -46,13 +46,13 @@ export function ProcessDetail({ processId, onClose }: Props) {
     <div style={{ background: '#fff', minHeight: '100%' }}>
       <header className="detail-page-header">
         <div>
-          <h2 style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}>
+          <h2 className="detail-title" style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}>
             {process.name}
           </h2>
           {process.code && <span style={{ fontSize: 12, color: '#64748b' }}>{process.code}</span>}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button
+          <button className="action-btn"
             type="button"
             onClick={() =>
               navigate(`/organizations/${orgId}/settings/jobwork/processes/${process.id}/edit`, { state: { returnUrl: location.pathname + location.search } })
@@ -70,7 +70,7 @@ export function ProcessDetail({ processId, onClose }: Props) {
               color: '#333',
             }}
           >
-            <Pencil size={14} /> Edit
+            <Pencil size={14} /> <span className="action-btn-text">Edit</span>
           </button>
           <button
             type="button"
@@ -101,7 +101,8 @@ export function ProcessDetail({ processId, onClose }: Props) {
           </p>
         )}
 
-        <table style={{ borderCollapse: 'collapse' }}>
+        <div className="responsive-table-wrapper">
+<table style={{ borderCollapse: 'collapse' }}>
           <tbody>
             <tr>
               <td style={rowLabel}>Rate basis</td>
@@ -133,6 +134,7 @@ export function ProcessDetail({ processId, onClose }: Props) {
                 longer a custom-field module. */}
           </tbody>
         </table>
+</div>
       </div>
     </div>
   );

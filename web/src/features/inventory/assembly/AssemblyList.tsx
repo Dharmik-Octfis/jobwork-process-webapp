@@ -144,14 +144,15 @@ export function AssemblyList() {
         flexDirection: 'column',
       }}
     >
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
-        <div
+      <div className={`master-detail-container ${selectedId ? 'has-selection' : ''}`} style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+        <div className="master-pane"
           style={{
             flex: selectedId ? '0 0 320px' : 1,
             borderRight: selectedId ? '1px solid #eef0f3' : 'none',
             display: 'flex',
             flexDirection: 'column',
             background: '#fff',
+            minWidth: 0,
           }}
         >
           {!selectedId && selectedIds.length > 0 ? (
@@ -439,7 +440,7 @@ export function AssemblyList() {
         </div>
 
         {selectedId && (
-          <div
+          <div className="detail-pane"
             style={{
               flex: 1,
               borderLeft: '1px solid #eef0f3',

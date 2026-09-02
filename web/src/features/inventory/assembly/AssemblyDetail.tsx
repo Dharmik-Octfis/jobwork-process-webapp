@@ -137,13 +137,14 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#fff' }}>
       <div className="detail-page-header">
-        <h2 style={{ fontSize: 20, fontWeight: 600, color: '#1e293b', margin: 0 }}>
+        <h2 className="detail-title" style={{ fontWeight: 600, color: '#1e293b', margin: 0 }}>
           {assembly.assemblyNumber}
         </h2>
         <div style={{ display: 'flex', gap: 12 }}>
           <div style={{ position: 'relative' }} ref={moreMenuRef}>
             <button
               onClick={() => setIsMoreOpen(!isMoreOpen)}
+              className="action-btn"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -158,7 +159,7 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
                 fontWeight: 500,
               }}
             >
-              More
+              <span className="action-btn-text">More</span>
               <ChevronDown size={14} />
             </button>
             {isMoreOpen && (
@@ -524,6 +525,7 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
                 <h4 style={{ fontSize: 16, fontWeight: 500, color: '#1e293b', margin: '0 0 16px' }}>
                   Items
                 </h4>
+                <div className="responsive-table-wrapper">
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                   <thead>
                     <tr
@@ -611,6 +613,7 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
                     </tr>
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
 
@@ -619,6 +622,7 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
                 <h4 style={{ fontSize: 16, fontWeight: 500, color: '#1e293b', margin: '0 0 16px' }}>
                   Services
                 </h4>
+                <div className="responsive-table-wrapper">
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                   <thead>
                     <tr
@@ -706,6 +710,7 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
                     </tr>
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
           </>

@@ -595,7 +595,7 @@ export function CreateBill() {
             boxSizing: 'border-box',
           }}
         >
-          <div
+          <div className="form-field-grid"
             style={{
               display: 'grid',
               gridTemplateColumns: '200px 1fr',
@@ -810,7 +810,8 @@ export function CreateBill() {
           >
             <span>Item Details</span>
           </div>
-          <table
+          <div className="responsive-table-wrapper">
+<table
             style={{
               width: '100%',
               tableLayout: 'fixed',
@@ -1285,6 +1286,7 @@ export function CreateBill() {
               })}
             </tbody>
           </table>
+</div>
 
           <div
             style={{
@@ -1399,7 +1401,7 @@ export function CreateBill() {
         </div>
 
         {/* Terms & Conditions and File Upload Section */}
-        <div
+        <div className="form-field-grid"
           style={{
             marginTop: '32px',
             background: '#f8fafc',
@@ -1566,12 +1568,12 @@ export function CreateBill() {
 
         {/* Fixed Bottom Action Bar */}
         <div
+          className="form-actions-footer page-footer"
           style={{
             height: '44px',
             boxSizing: 'border-box',
-            position: 'fixed',
+            position: 'sticky',
             bottom: 0,
-            left: 220,
             right: 0,
             background: '#fff',
             padding: '0 24px',
