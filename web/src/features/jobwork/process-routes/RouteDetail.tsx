@@ -80,14 +80,14 @@ export function RouteDetail({ routeId, onClose }: Props) {
     <div style={{ background: '#fff', minHeight: '100%' }}>
       <header className="detail-page-header">
         <div>
-          <h2 style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}>{route.name}</h2>
+          <h2 className="detail-title" style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}>{route.name}</h2>
           <span style={{ fontSize: 12, color: '#64748b' }}>
             {route.code ? `${route.code} · ` : ''}
             {route.steps.length} step{route.steps.length === 1 ? '' : 's'}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button
+          <button className="action-btn"
             type="button"
             onClick={() =>
               navigate(`/organizations/${orgId}/settings/jobwork/routes/${route.id}/edit`, { state: { returnUrl: location.pathname + location.search } })
@@ -105,7 +105,7 @@ export function RouteDetail({ routeId, onClose }: Props) {
               color: '#333',
             }}
           >
-            <Pencil size={14} /> Edit
+            <Pencil size={14} /> <span className="action-btn-text">Edit</span>
           </button>
           <button
             type="button"

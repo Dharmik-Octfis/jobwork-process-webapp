@@ -12,7 +12,7 @@ import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 
 export function LocationsList() {
   const navigate = useNavigate();
-  const location = useLocation();
+  const currentLocation = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
 
@@ -194,7 +194,7 @@ export function LocationsList() {
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button
                 onClick={() =>
-                  navigate(`/organizations/${orgId}/settings/locations/${location.id}/edit`, { state: { returnUrl: location.pathname + location.search } })
+                  navigate(`/organizations/${orgId}/settings/locations/${location.id}/edit`, { state: { returnUrl: currentLocation.pathname + currentLocation.search } })
                 }
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
                 title="Edit Location"
@@ -282,7 +282,7 @@ export function LocationsList() {
               Add a new location to start tracking operations in different places.
             </p>
             <button
-              onClick={() => navigate(`/organizations/${orgId}/settings/locations/new`, { state: { returnUrl: location.pathname + location.search } })}
+              onClick={() => navigate(`/organizations/${orgId}/settings/locations/new`, { state: { returnUrl: currentLocation.pathname + currentLocation.search } })}
               style={{
                 background: '#0062ff',
                 color: 'white',

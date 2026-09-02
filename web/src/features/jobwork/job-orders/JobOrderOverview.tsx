@@ -560,6 +560,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
     <div style={{ background: '#f8fafc', minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
       <header style={{ background: '#fff', borderBottom: '1px solid #eef0f3', position: 'sticky', top: 0, zIndex: 10 }}>
         <div
+          className="detail-page-header"
           style={{
             display: 'flex',
             alignItems: 'flex-start',
@@ -627,7 +628,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                 left, which is the same line `isClosed` already draws for Add
                 work and Close short. */}
             {!isClosed && (
-              <button
+              <button className="action-btn"
                 type="button"
                 onClick={() => navigate(`${listPath}/${jobOrder.id}/edit`)}
                 style={{
@@ -643,7 +644,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                   color: '#333',
                 }}
               >
-                <Pencil size={14} /> Edit
+                <Pencil size={14} /> <span className="action-btn-text">Edit</span>
               </button>
             )}
             {/* Clone and Delete apply to a closed order too — the first is the

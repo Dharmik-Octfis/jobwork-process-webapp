@@ -787,7 +787,7 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel }: Props) {
       {prefill && (
           <>
             <section style={{ marginBottom: 20 }}>
-              <div
+              <div className="form-field-grid"
                 style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
@@ -1216,7 +1216,7 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel }: Props) {
           onSave={(rows) => saveAllocation(allocating.key, allocating.kind, rows)}
         />
       )}
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', position: 'sticky', bottom: 0, height: 44, boxSizing: 'border-box', padding: '0 24px', margin: 'auto -24px -24px -24px', background: '#fff', borderTop: '1px solid #eef0f3', zIndex: 10 }}>
+      <div className="form-actions-footer" style={{ display: 'flex', gap: 12, alignItems: 'center', position: 'sticky', bottom: 0, height: 44, boxSizing: 'border-box', padding: '0 24px', margin: 'auto -24px -24px -24px', background: '#fff', borderTop: '1px solid #eef0f3', zIndex: 10 }}>
         <button
           type="button"
           onClick={() => mutation.mutate()}

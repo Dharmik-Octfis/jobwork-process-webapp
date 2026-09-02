@@ -943,7 +943,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
       )}
 
       <section style={{ marginBottom: 20 }}>
-        <div
+        <div className="form-field-grid"
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
@@ -1430,7 +1430,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
         />
       )}
 
-      <div
+      <div className="form-actions-footer"
         style={{
           display: 'flex',
           gap: 12,

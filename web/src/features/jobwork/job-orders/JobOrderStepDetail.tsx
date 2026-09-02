@@ -109,7 +109,7 @@ export function JobOrderStepDetail({
             {step.seq}
           </span>
           <div>
-            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#111', margin: 0 }}>
+            <h3 className="detail-title" style={{ fontSize: 14, fontWeight: 600, color: '#111', margin: 0 }}>
               {step.processNameSnapshot}
             </h3>
             <span style={{ fontSize: 12, color: '#64748b' }}>
@@ -127,7 +127,7 @@ export function JobOrderStepDetail({
               {step.blockedReason ?? 'This step has nothing listed to issue.'}
             </span>
           )}
-          <button
+          <button className="action-btn"
             type="button"
             onClick={() => onIssue(step)}
             disabled={!step.canIssue}
@@ -139,10 +139,10 @@ export function JobOrderStepDetail({
               cursor: step.canIssue ? 'pointer' : 'not-allowed',
             }}
           >
-            <Send size={14} /> Issue
+            <Send size={14} /> <span className="action-btn-text">Issue</span>
           </button>
           {step.canReceive && (
-            <button
+            <button className="action-btn"
               type="button"
               onClick={() => onReceive(step)}
               style={{
@@ -152,7 +152,7 @@ export function JobOrderStepDetail({
                 border: '1px solid #186337',
               }}
             >
-              <PackageCheck size={14} /> Receive
+              <PackageCheck size={14} /> <span className="action-btn-text">Receive</span>
             </button>
           )}
           {!settled && onComplete && (
@@ -206,13 +206,7 @@ export function JobOrderStepDetail({
           remaining and the tolerance ceiling at the moment somebody decides how
           much to send.
         */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr auto 1fr',
-            gap: 24,
-          }}
-        >
+        <div className="step-movement-grid">
           <div>
             <span style={columnLabel}>Material Issue</span>
             <MovementList
@@ -362,7 +356,8 @@ export function ActivityTabs({ events, onOpen }: { events: ActivityEvent[], onOp
       
       {activeTab && (
         <div style={{ padding: '0 16px 16px 16px' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 12 }}>
+          <div className="responsive-table-wrapper">
+<table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 12 }}>
             <thead>
               <tr>
                 <th style={{ textAlign: 'left', fontSize: 12, color: '#64748b', paddingBottom: 8, fontWeight: 500, borderBottom: '1px solid #eef0f3' }}>
@@ -409,6 +404,7 @@ export function ActivityTabs({ events, onOpen }: { events: ActivityEvent[], onOp
               )}
             </tbody>
           </table>
+</div>
         </div>
       )}
     </div>
@@ -451,7 +447,8 @@ function MovementList({
   };
 
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8 }}>
+    <div className="responsive-table-wrapper">
+<table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8 }}>
       <thead>
         <tr>
           <th style={{ ...thStyle, textAlign: 'left' }}>Item</th>
@@ -480,6 +477,7 @@ function MovementList({
         ))}
       </tbody>
     </table>
+</div>
   );
 }
 

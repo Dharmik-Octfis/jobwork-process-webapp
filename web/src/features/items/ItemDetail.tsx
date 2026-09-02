@@ -150,7 +150,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
       {/* Header */}
       <div className="detail-page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
+          <h2 className="detail-title" style={{ fontWeight: 600, color: '#1e293b', margin: 0 }}>
             {item.name}
           </h2>
           <span
@@ -186,8 +186,9 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                 gap: '4px',
                 fontWeight: 500,
               }}
+              className="action-btn"
             >
-              Create Assembly
+              <span className="action-btn-text">Create Assembly</span>
             </button>
           )}
           <button
@@ -209,8 +210,9 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
               alignItems: 'center',
               gap: '4px',
             }}
+            className="action-btn"
           >
-            <Edit size={14} /> Edit
+            <Edit size={14} /> <span className="action-btn-text">Edit</span>
           </button>
 
           <div style={{ position: 'relative' }} ref={moreMenuRef}>

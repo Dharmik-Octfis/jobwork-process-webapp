@@ -316,7 +316,7 @@ function GlobalSearch() {
   };
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', width: 320 }}>
+    <div ref={containerRef} style={{ position: 'relative', width: 320 }} className="global-search-container">
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
         <Search
           size={16}
@@ -484,7 +484,7 @@ export function AppLayout() {
     <div
       style={{
         display: 'flex',
-        height: '100vh',
+        height: '100dvh', // Use dynamic viewport height to prevent mobile browser UI from cutting off the bottom
         overflow: 'hidden',
         background: 'var(--color-bg)',
       }}
@@ -629,9 +629,10 @@ export function AppLayout() {
             top: 0,
             zIndex: 50,
           }}
+          className="app-topbar"
         >
           {/* Global Search — one box, context-aware per module (see GlobalSearch) */}
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center' }} className="topbar-search-area">
             <button 
               className="mobile-header-menu-btn" 
               onClick={() => setIsMobileMenuOpen(true)}
@@ -642,12 +643,14 @@ export function AppLayout() {
             <GlobalSearch />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
-            <OrgDropdown
-              organizations={organizations || []}
-              activeOrgId={effectiveOrgId ?? null}
-              onSelectOrg={switchOrg}
-            />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }} className="topbar-right-controls">
+            <div className="topbar-org-dropdown">
+              <OrgDropdown
+                organizations={organizations || []}
+                activeOrgId={effectiveOrgId ?? null}
+                onSelectOrg={switchOrg}
+              />
+            </div>
             <ProfileDropdown
               user={user}
               logoutMutation={logoutMutation}
@@ -1375,16 +1378,14 @@ function OrgDropdown({
           fontWeight: 500,
           cursor: 'pointer',
           color: 'var(--color-text)',
+          whiteSpace: 'nowrap',
+          maxWidth: '100%',
         }}
       >
-        <span>
-          {activeOrg?.name
-            ? activeOrg.name.length > 15
-              ? activeOrg.name.substring(0, 15) + '...'
-              : activeOrg.name
-            : 'Select Organization'}
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+          {activeOrg?.name || 'Select Organization'}
         </span>
-        <span style={{ fontSize: 10 }}>▼</span>
+        <span style={{ fontSize: 10, flexShrink: 0 }}>▼</span>
       </button>
 
       {isOpen && (

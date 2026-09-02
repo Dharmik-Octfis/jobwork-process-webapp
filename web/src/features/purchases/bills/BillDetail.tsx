@@ -194,7 +194,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
       {/* Header */}
       <div className="detail-page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
+          <h2 className="detail-title" style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
             {po.billNumber}
           </h2>
           <span
@@ -233,7 +233,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
             </button>
           )}
 
-          <button
+          <button className="action-btn"
             onClick={() => navigate(`/organizations/${orgId}/purchases/bills/${poId}/edit`, { state: { returnUrl: location.pathname + location.search } })}
             style={{
               padding: '6px 12px',
@@ -247,11 +247,11 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
               gap: '4px',
             }}
           >
-            <Edit size={14} /> Edit
+            <Edit size={14} /> <span className="action-btn-text">Edit</span>
           </button>
 
           <div style={{ position: 'relative' }} ref={moreMenuRef}>
-            <button
+            <button className="action-btn"
               onClick={() => setIsMoreOpen(!isMoreOpen)}
               style={{
                 padding: '6px 12px',
@@ -265,7 +265,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                 gap: '4px',
               }}
             >
-              More <ChevronDown size={14} />
+              <span className="action-btn-text">More</span> <ChevronDown size={14} />
             </button>
 
             {isMoreOpen && (
@@ -379,7 +379,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
 
         {/* PDF / Print Dropdown next to Activity tab */}
         <div style={{ position: 'relative' }} ref={pdfMenuRef}>
-          <button
+          <button className="action-btn"
             onClick={() => setIsPdfMenuOpen(!isPdfMenuOpen)}
             style={{
               padding: '4px 8px',
@@ -397,7 +397,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
             onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           >
-            <FileText size={16} /> PDF/Print <ChevronDown size={14} />
+            <FileText size={16} /> PDF/<span className="action-btn-text">Print</span> <ChevronDown size={14} />
           </button>
 
           {isPdfMenuOpen && (
@@ -579,15 +579,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
               }}
             >
               {/* Header Title & Addresses */}
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  marginBottom: '28px',
-                  borderBottom: '1px solid #f1f5f9',
-                  paddingBottom: '20px',
-                }}
-              >
+              <div className="detail-top-section">
                 <div>
                   <h1
                     style={{
@@ -604,7 +596,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '48px' }}>
+                <div className="detail-top-right">
                   <div>
                     <div
                       style={{
@@ -737,7 +729,8 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
               </div>
 
               {/* Line Items Table */}
-              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
+              <div className="responsive-table-wrapper">
+<table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
                     <th
@@ -909,6 +902,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                   })}
                 </tbody>
               </table>
+</div>
 
 
 
@@ -1062,7 +1056,8 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                 >
                   <h3 style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{trackingLabel.singular.toUpperCase()} DETAILS</h3>
                   <div style={{ border: '1px solid #e2e8f0', borderRadius: '6px', overflow: 'hidden' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                    <div className="responsive-table-wrapper">
+<table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                       <thead>
                         <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                           <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', width: '20%' }}>ITEM</th>
@@ -1099,6 +1094,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                         })}
                       </tbody>
                     </table>
+</div>
                   </div>
                 </div>
               )}
@@ -1123,7 +1119,8 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
               }}
             >
               {/* PDF Header Table Grid */}
-              <table
+              <div className="responsive-table-wrapper">
+<table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
@@ -1183,7 +1180,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                         textAlign: 'right',
                       }}
                     >
-                      <h2
+                      <h2 className="detail-title"
                         style={{
                           fontSize: '26px',
                           fontWeight: 800,
@@ -1198,9 +1195,11 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                   </tr>
                 </tbody>
               </table>
+</div>
 
               {/* PDF Bill Meta Table */}
-              <table
+              <div className="responsive-table-wrapper">
+<table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
@@ -1233,9 +1232,11 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                   </tr>
                 </tbody>
               </table>
+</div>
 
               {/* Vendor & Delivery Address Grid */}
-              <table
+              <div className="responsive-table-wrapper">
+<table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
@@ -1282,9 +1283,11 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                   </tr>
                 </tbody>
               </table>
+</div>
 
               {/* PDF Items Table */}
-              <table
+              <div className="responsive-table-wrapper">
+<table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
@@ -1437,11 +1440,13 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                   })}
                 </tbody>
               </table>
+</div>
 
 
 
               {/* PDF Totals & Signatures Grid */}
-              <table
+              <div className="responsive-table-wrapper">
+<table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
@@ -1534,12 +1539,14 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                   </tr>
                 </tbody>
               </table>
+</div>
 
               {/* PDF Batch Details Section */}
               {(po.lineItems || []).some(item => item.batches && item.batches.length > 0) && (
                 <div style={{ marginTop: '16px', marginBottom: '8px' }}>
                   <div style={{ fontSize: '11px', fontWeight: 800, color: '#000', marginBottom: '6px' }}>{trackingLabel.singular.toUpperCase()} DETAILS</div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #000', fontSize: '10px' }}>
+                  <div className="responsive-table-wrapper">
+<table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #000', fontSize: '10px' }}>
                     <thead>
                       <tr style={{ background: '#f8fafc', borderBottom: '1px solid #000' }}>
                         <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #000', width: '25%' }}>Item</th>
@@ -1572,6 +1579,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                       })}
                     </tbody>
                   </table>
+</div>
                 </div>
               )}
             </div>

@@ -208,7 +208,7 @@ function ExpandableCompositeItemRow({
                           borderTop: '1px solid #cbd5e1',
                         }}
                       />
-                      <div style={{ flex: 1 }}>
+                      <div className="master-pane" style={{ flex: 1 }}>
                         {comp.component?.name || 'Unknown Item'} ( {comp.qtyPerUnit}{' '}
                         {comp.component?.unit || ''} ){' '}
                         {comp.component?.sku ? `| SKU : ${comp.component.sku}` : ''}
@@ -340,14 +340,20 @@ export function CompositeItemsPage() {
       }}
     >
       {/* Main Content Area */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+      <div
+        className={`master-detail-container ${selectedItemId ? 'has-selection' : ''}`}
+        style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}
+      >
+        {/* Left Panel - List */}
         <div
+          className="master-pane"
           style={{
             flex: selectedItemId ? '0 0 320px' : 1,
             borderRight: selectedItemId ? '1px solid #eef0f3' : 'none',
             display: 'flex',
             flexDirection: 'column',
             background: '#fff',
+            minWidth: 0,
           }}
         >
           {/* Page Header */}
@@ -597,7 +603,7 @@ export function CompositeItemsPage() {
 
         {/* Right Panel - Detail */}
         {selectedItemId && (
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="detail-pane" style={{ overflowY: 'auto' }}>
             <ItemDetail itemId={selectedItemId} onClose={() => setSearchParams({})} />
           </div>
         )}

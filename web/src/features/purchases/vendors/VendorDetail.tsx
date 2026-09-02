@@ -474,7 +474,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
       {/* Header */}
       <div className="detail-page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
+          <h2 className="detail-title" style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
             {vendor.contactName}
           </h2>
           <span
@@ -497,7 +497,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button
+          <button className="action-btn"
             onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/${vendorId}/edit`, { state: { returnUrl: location.pathname + location.search } })}
             style={{
               padding: '6px 12px',
@@ -511,11 +511,11 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
               gap: '4px',
             }}
           >
-            <Edit size={14} /> Edit
+            <Edit size={14} /> <span className="action-btn-text">Edit</span>
           </button>
 
           <div style={{ position: 'relative' }} ref={moreMenuRef}>
-            <button
+            <button className="action-btn"
               onClick={() => setIsMoreOpen(!isMoreOpen)}
               style={{
                 padding: '6px 12px',
@@ -529,7 +529,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                 gap: '4px',
               }}
             >
-              More <ChevronDown size={14} />
+              <span className="action-btn-text">More</span> <ChevronDown size={14} />
             </button>
 
             {isMoreOpen && (
@@ -654,15 +654,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
             paddingBottom: '120px',
           }}
         >
-          <div
-            style={{
-              display: 'flex',
-              gap: '0px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-              borderRadius: '8px',
-              border: '1px solid #eef0f3',
-            }}
-          >
+          <div className="detail-content-layout">
             {/* Left Column */}
             <div
               style={{
@@ -783,7 +775,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                         }}
                         onMouseLeave={() => setHoveredContactSetting('Edit')}
                       >
-                        <button
+                        <button className="action-btn"
                           style={{
                             display: 'block',
                             width: '100%',
@@ -803,7 +795,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                             setIsContactSettingsOpen(false);
                           }}
                         >
-                          Edit
+                          <span className="action-btn-text">Edit</span>
                         </button>
                         <button
                           style={{
@@ -1319,7 +1311,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                                       overflow: 'hidden',
                                     }}
                                   >
-                                    <button
+                                    <button className="action-btn"
                                       onMouseEnter={() => setHoveredContactPersonSetting('Edit')}
                                       onClick={() => {
                                         setContactPersonEditIndex(index);
@@ -1345,7 +1337,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                                         borderRadius: '4px',
                                       }}
                                     >
-                                      Edit
+                                      <span className="action-btn-text">Edit</span>
                                     </button>
                                     <button
                                       onMouseEnter={() =>

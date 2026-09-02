@@ -69,6 +69,8 @@ export function ItemLocations({ orgId, itemId, isBatchTracked: _isBatchTracked =
           alignItems: 'center',
           justifyContent: 'space-between',
           marginBottom: '24px',
+          flexWrap: 'wrap',
+          gap: '16px',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -198,10 +200,10 @@ export function ItemLocations({ orgId, itemId, isBatchTracked: _isBatchTracked =
       </div>
 
       <div
+        className="responsive-table-wrapper"
         style={{
           border: '1px solid #eef0f3',
           borderRadius: '6px',
-          overflow: 'hidden',
           background: '#fff',
         }}
       >

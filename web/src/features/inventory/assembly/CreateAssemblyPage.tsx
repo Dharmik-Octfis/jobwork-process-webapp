@@ -245,7 +245,7 @@ export function CreateAssemblyPage() {
           style={{ maxWidth: '900px' }}
         >
           {/* Header Form */}
-          <div
+          <div className="form-field-grid"
             style={{
               display: 'grid',
               gridTemplateColumns: '200px 1fr',
@@ -296,7 +296,7 @@ export function CreateAssemblyPage() {
               userSelect: compositeItemId ? 'auto' : 'none',
             }}
           >
-            <div
+            <div className="form-field-grid"
               style={{
                 display: 'grid',
                 gridTemplateColumns: '200px 1fr',
@@ -1254,12 +1254,12 @@ export function CreateAssemblyPage() {
 
       {/* Footer Actions */}
       <div
+        className="form-actions-footer page-footer"
         style={{
           height: '44px',
           boxSizing: 'border-box',
-          position: 'fixed',
+          position: 'sticky',
           bottom: 0,
-          left: 220,
           right: 0,
           background: '#fff',
           padding: '0 24px',

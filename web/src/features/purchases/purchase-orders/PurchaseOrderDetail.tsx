@@ -214,7 +214,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
       {/* Header */}
       <div className="detail-page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
+          <h2 className="detail-title" style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
             {po.poNumber}
           </h2>
           <span
@@ -233,7 +233,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button
+          <button className="action-btn"
             onClick={() =>
               navigate(`/organizations/${orgId}/purchases/purchase-orders/${poId}/edit`, { state: { returnUrl: location.pathname + location.search } })
             }
@@ -249,11 +249,11 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               gap: '4px',
             }}
           >
-            <Edit size={14} /> Edit
+            <Edit size={14} /> <span className="action-btn-text">Edit</span>
           </button>
 
           <div style={{ position: 'relative' }} ref={moreMenuRef}>
-            <button
+            <button className="action-btn"
               onClick={() => setIsMoreOpen(!isMoreOpen)}
               style={{
                 padding: '6px 12px',
@@ -267,7 +267,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                 gap: '4px',
               }}
             >
-              More <ChevronDown size={14} />
+              <span className="action-btn-text">More</span> <ChevronDown size={14} />
             </button>
 
             {isMoreOpen && (
@@ -384,7 +384,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
         {/* PDF / Print Dropdown next to Activity tab */}
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div ref={pdfMenuRef}>
-            <button
+            <button className="action-btn"
               onClick={() => setIsPdfMenuOpen(!isPdfMenuOpen)}
               style={{
                 padding: '4px 8px',
@@ -402,7 +402,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
               onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             >
-              <FileText size={16} /> PDF/Print <ChevronDown size={14} />
+              <FileText size={16} /> PDF/<span className="action-btn-text">Print</span> <ChevronDown size={14} />
             </button>
           </div>
 
@@ -666,7 +666,8 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                 overflow: 'hidden',
               }}
             >
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <div className="responsive-table-wrapper">
+<table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                     <th
@@ -802,6 +803,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   ))}
                 </tbody>
               </table>
+</div>
             </div>
           )}
 
@@ -817,15 +819,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               }}
             >
               {/* Header Title & Addresses */}
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  marginBottom: '28px',
-                  borderBottom: '1px solid #f1f5f9',
-                  paddingBottom: '20px',
-                }}
-              >
+              <div className="detail-top-section">
                 <div>
                   <h1
                     style={{
@@ -843,7 +837,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '48px' }}>
+                <div className="detail-top-right">
                   <div>
                     <div
                       style={{
@@ -985,7 +979,8 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               </div>
 
               {/* Line Items Table */}
-              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
+              <div className="responsive-table-wrapper">
+<table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
                     <th
@@ -1147,6 +1142,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   })}
                 </tbody>
               </table>
+</div>
 
               {/* Totals & Notes Section */}
               <div
@@ -1308,7 +1304,8 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               }}
             >
               {/* PDF Header Table Grid */}
-              <table
+              <div className="responsive-table-wrapper">
+<table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
@@ -1368,7 +1365,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         textAlign: 'right',
                       }}
                     >
-                      <h2
+                      <h2 className="detail-title"
                         style={{
                           fontSize: '26px',
                           fontWeight: 800,
@@ -1383,9 +1380,11 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   </tr>
                 </tbody>
               </table>
+</div>
 
               {/* PDF PO Meta Table */}
-              <table
+              <div className="responsive-table-wrapper">
+<table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
@@ -1418,9 +1417,11 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   </tr>
                 </tbody>
               </table>
+</div>
 
               {/* Vendor & Delivery Address Grid */}
-              <table
+              <div className="responsive-table-wrapper">
+<table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
@@ -1471,9 +1472,11 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   </tr>
                 </tbody>
               </table>
+</div>
 
               {/* PDF Items Table */}
-              <table
+              <div className="responsive-table-wrapper">
+<table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
@@ -1594,9 +1597,11 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   ))}
                 </tbody>
               </table>
+</div>
 
               {/* PDF Totals & Signatures Grid */}
-              <table
+              <div className="responsive-table-wrapper">
+<table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
@@ -1677,6 +1682,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   </tr>
                 </tbody>
               </table>
+</div>
             </div>
           )}
         </div>

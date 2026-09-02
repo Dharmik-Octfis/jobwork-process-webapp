@@ -259,7 +259,8 @@ export function PermissionTemplateEditor({ orgId, template, onDone, onCancel }: 
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <div className="responsive-table-wrapper">
+<table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
                 <tr style={{ background: 'var(--color-bg)' }}>
                   <th style={thStyle('left')}>Module</th>
@@ -485,6 +486,7 @@ export function PermissionTemplateEditor({ orgId, template, onDone, onCancel }: 
                 })}
               </tbody>
             </table>
+</div>
           </div>
         )}
       </section>

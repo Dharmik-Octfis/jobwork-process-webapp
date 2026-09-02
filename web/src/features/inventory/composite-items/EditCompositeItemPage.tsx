@@ -436,7 +436,7 @@ export function EditCompositeItemPage() {
             <div
               style={{
                 flex: 1,
-                minWidth: '480px',
+                minWidth: 'min(100%, 480px)',
                 background: '#f8fafc',
                 padding: '24px',
                 borderRadius: '8px',
@@ -1248,7 +1248,7 @@ export function EditCompositeItemPage() {
               gap: '16px',
             }}
           >
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+            <div className="form-field-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
               {/* Sales Information */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div
@@ -1670,7 +1670,7 @@ export function EditCompositeItemPage() {
             </div>
           )}
 
-          <div
+          <div className="form-actions-footer"
             style={{
               height: '44px',
               boxSizing: 'border-box',

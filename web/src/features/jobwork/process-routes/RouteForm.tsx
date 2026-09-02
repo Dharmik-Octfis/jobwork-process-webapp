@@ -189,7 +189,7 @@ export function RouteForm({ initialData, onSubmit, isPending, onCancel, fieldErr
         <StepsGrid steps={steps} onChange={setSteps} errors={fieldErrors} showInputQty />
       </section>
 
-      <div
+      <div className="form-actions-footer"
         style={{
           height: 44,
           boxSizing: 'border-box',

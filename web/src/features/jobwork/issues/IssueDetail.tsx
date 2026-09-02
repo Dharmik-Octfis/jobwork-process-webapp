@@ -117,7 +117,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
       <header className="detail-page-header">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}>
+            <h2 className="detail-title" style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}>
               {issue.challanNumber}
             </h2>
             <span
@@ -143,7 +143,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button
+          <button className="action-btn"
             type="button"
             onClick={() => {
               const opened = printChallan(issue, orgName, trackingLabel.singular);
@@ -166,10 +166,10 @@ export function IssueDetail({ issueId, onClose }: Props) {
               color: '#333',
             }}
           >
-            <Printer size={14} /> Print challan
+            <Printer size={14} /> <span className="action-btn-text"><span className="action-btn-text">Print</span> challan</span>
           </button>
           {issue.status !== 'cancelled' && (
-            <button
+            <button className="action-btn"
               type="button"
               onClick={() => setCancelOpen(true)}
               style={{
@@ -182,7 +182,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
                 color: '#b91c1c',
               }}
             >
-              Cancel
+              <span className="action-btn-text">Cancel</span>
             </button>
           )}
           <button
@@ -224,7 +224,8 @@ export function IssueDetail({ issueId, onClose }: Props) {
       )}
 
       <div style={{ padding: '20px 24px' }}>
-        <table style={{ borderCollapse: 'collapse', marginBottom: 20 }}>
+        <div className="responsive-table-wrapper">
+<table style={{ borderCollapse: 'collapse', marginBottom: 20 }}>
           <tbody>
             <tr>
               <td style={rowLabel}>Job order</td>
@@ -288,9 +289,11 @@ export function IssueDetail({ issueId, onClose }: Props) {
             )}
           </tbody>
         </table>
+</div>
 
         <div style={{ border: '1px solid #eef0f3', borderRadius: 4, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div className="responsive-table-wrapper">
+<table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
                 {/*
@@ -328,6 +331,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
               ))}
             </tbody>
           </table>
+</div>
         </div>
       </div>
 
