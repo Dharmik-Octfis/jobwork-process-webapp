@@ -313,7 +313,14 @@ export function OpeningStockPage() {
         <h1 style={{ fontSize: '20px', fontWeight: 600, color: '#0f172a', margin: 0 }}>{itemName || 'Opening Stock'}</h1>
         <button
           type="button"
-          onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
+          onClick={() => {
+            const state = location.state as { returnUrl?: string } | null;
+            if (state?.returnUrl) {
+              navigate(state.returnUrl);
+            } else {
+              navigate(-1);
+            }
+          }}
           style={{
             background: 'transparent',
             border: 'none',
@@ -1091,7 +1098,7 @@ export function OpeningStockPage() {
       <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '12px', padding: '8px 24px', borderTop: '1px solid #eef0f3', position: 'sticky', bottom: 0, background: '#fff', zIndex: 10 }}>
         <button
           type="button"
-          onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
+          onClick={() => (location.state as { returnUrl?: string })?.returnUrl ? navigate((location.state as { returnUrl?: string }).returnUrl!) : navigate(-1)}
           style={{
             padding: '8px 16px',
             border: '1px solid #cbd5e1',
