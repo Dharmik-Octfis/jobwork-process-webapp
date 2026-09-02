@@ -485,7 +485,8 @@ export function CreateAssemblyPage() {
                 </div>
               </div>
 
-              <table
+              <div className="responsive-table-wrapper">
+                    <table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
@@ -903,6 +904,7 @@ export function CreateAssemblyPage() {
                   })}
                 </tbody>
               </table>
+                  </div>
               <button
                 type="button"
                 onClick={handleAddExtraItem}
@@ -939,7 +941,8 @@ export function CreateAssemblyPage() {
                 <div style={{ fontSize: '13px', fontWeight: 500, color: '#dc2626' }}>
                   Associate Services*
                 </div>
-                <table
+                <div className="responsive-table-wrapper">
+                    <table
                   style={{
                     width: '100%',
                     borderCollapse: 'collapse',
@@ -1209,6 +1212,7 @@ export function CreateAssemblyPage() {
                     })}
                   </tbody>
                 </table>
+                  </div>
               </div>
             )}
 
@@ -1287,7 +1291,14 @@ export function CreateAssemblyPage() {
         <button
           type="button"
           disabled={createMutation.isPending}
-          onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
+          onClick={() => {
+            const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
+            if (returnUrl) {
+              navigate(returnUrl);
+            } else {
+              navigate(-1);
+            }
+          }}
           style={{
             padding: '6px 20px',
             background: 'white',

@@ -275,3 +275,178 @@ input[type='number'] {
 
 .sidebar-nav-link:hover { background-color: rgba(255,255,255,0.08) !important; }
 .sidebar-nav-link.active:hover { background-color: #186337 !important; }
+
+/* Responsive Sidebar & AppLayout Styles */
+.mobile-header-menu-btn {
+  display: none;
+}
+
+.mobile-sidebar-overlay {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* Show hamburger menu on mobile */
+  .mobile-header-menu-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--color-text);
+    padding: 8px;
+    margin-right: 8px;
+  }
+
+  /* Make the sidebar a drawer on mobile */
+  .app-sidebar {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 100 !important;
+    transform: translateX(-100%);
+    width: 260px !important;
+  }
+
+  .app-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  /* The overlay backdrop when sidebar is open */
+  .mobile-sidebar-overlay {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 90;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+
+  .mobile-sidebar-overlay.mobile-open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* Responsive Master-Detail Layouts */
+.master-detail-container {
+  display: flex;
+  overflow: hidden;
+  background: #f8fafc;
+  flex: 1;
+}
+
+.master-pane {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+}
+
+.detail-pane {
+  flex: 1;
+  background: #fff;
+  overflow-y: auto;
+  position: relative;
+}
+
+/* Responsive Table Wrapper */
+.responsive-table-wrapper {
+  overflow-x: auto;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  /* When detail is open on mobile, hide the master list */
+  .master-detail-container.has-selection .master-pane {
+    display: none !important;
+  }
+  
+  /* When no selection on mobile, hide the detail pane */
+  .master-detail-container:not(.has-selection) .detail-pane {
+    display: none !important;
+  }
+
+  /* Make sure the master pane takes full width when visible */
+  .master-pane {
+    flex: 1 !important;
+    border-right: none !important;
+  }
+}
+
+/* Detail Page Internal Layouts */
+.detail-page-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid #eef0f3;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap; /* Allows wrapping on mobile */
+}
+
+.detail-page-tabs {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #eef0f3;
+  padding: 0 24px;
+  gap: 16px;
+  overflow-x: auto;
+  scrollbar-width: none; /* Hide scrollbar for clean look */
+  -ms-overflow-style: none;
+}
+.detail-page-tabs::-webkit-scrollbar {
+  display: none;
+}
+.detail-page-tabs > div {
+  white-space: nowrap; /* Prevent tabs from wrapping text on mobile */
+}
+
+.detail-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 32px;
+  justify-content: start;
+}
+
+/* Forms */
+.form-field-grid {
+  /* Inherit template-columns from inline style on desktop, override on mobile */
+  display: grid;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Pagination */
+.pagination-bar {
+  height: 44px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 20px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 768px) {
+  .form-field-grid {
+    grid-template-columns: 1fr !important;
+    align-items: start !important;
+  }
+  
+  .pagination-bar {
+    height: auto !important;
+    padding: 12px 20px !important;
+    flex-wrap: wrap;
+  }
+}

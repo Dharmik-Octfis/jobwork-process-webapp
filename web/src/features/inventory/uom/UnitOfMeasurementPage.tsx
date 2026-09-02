@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useLocation, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { Plus, Edit2, Trash2, ChevronDown, Package } from 'lucide-react';
 import { useUoms, useDeleteUom } from './uom.api';
 import { UomFormModal } from './UomFormModal';
@@ -198,7 +198,8 @@ export function UnitOfMeasurementPage() {
               </div>
             ) : (
               <div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                   <thead>
                     <tr
                       style={{
@@ -259,6 +260,7 @@ export function UnitOfMeasurementPage() {
                     ))}
                   </tbody>
                 </table>
+                  </div>
               </div>
             )}
           </div>

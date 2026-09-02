@@ -11,9 +11,7 @@ import { PermissionTemplateEditor } from './PermissionTemplateEditor';
  * openable on its own: a bookmarked or refreshed edit page still works.
  */
 export function EditPermissionTemplate() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const queryClient = useQueryClient();
+  const navigate = useNavigate();  const queryClient = useQueryClient();
   const { orgId, id } = useParams<{ orgId: string; id: string }>();
 
   const { data: template, isLoading } = useQuery({

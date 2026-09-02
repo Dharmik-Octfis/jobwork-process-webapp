@@ -44,15 +44,7 @@ export function ProcessDetail({ processId, onClose }: Props) {
 
   return (
     <div style={{ background: '#fff', minHeight: '100%' }}>
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '16px 24px',
-          borderBottom: '1px solid #eef0f3',
-        }}
-      >
+      <header className="detail-page-header">
         <div>
           <h2 style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}>
             {process.name}

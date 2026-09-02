@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
+import { toast } from 'react-hot-toast';
 import { Copy, Check } from 'lucide-react';
-import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { useNavigate,useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { toast } from 'react-hot-toast';
 import { updateOrganizationSchema, type UpdateOrganizationData } from './organizations.schemas';
 import { organizationsApi } from './organizations.api';
 import { toApiErrorMessage } from '../../api/client';
@@ -24,9 +24,7 @@ type MasterData = {
 
 export function OrganizationSettingsPage() {
   const { orgId: id } = useParams<{ orgId: string }>();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const queryClient = useQueryClient();
+  const navigate = useNavigate();  const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
 
   const {
@@ -113,6 +111,7 @@ export function OrganizationSettingsPage() {
       setServerError(null);
       await organizationsApi.updateOrganization(id, data);
       await queryClient.invalidateQueries({ queryKey: ['organizations'] });
+      toast.success('Organization updated successfully');
     } catch (err) {
       setServerError(toApiErrorMessage(err));
     }
@@ -155,6 +154,7 @@ export function OrganizationSettingsPage() {
       await organizationsApi.deleteLogo(id);
       setLogoPreview(null);
       await queryClient.invalidateQueries({ queryKey: ['organizations'] });
+      toast.success('Organization logo removed');
     } catch (err) {
       setServerError(toApiErrorMessage(err));
     } finally {
@@ -180,6 +180,7 @@ export function OrganizationSettingsPage() {
         setLogoPreview(updated.logo_url);
       }
       await queryClient.invalidateQueries({ queryKey: ['organizations'] });
+      toast.success('Organization logo uploaded');
     } catch (err) {
       setServerError(toApiErrorMessage(err));
     } finally {

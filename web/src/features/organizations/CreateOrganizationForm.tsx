@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -19,9 +20,7 @@ type MasterData = {
 };
 
 export function CreateOrganizationForm() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const logoutMutation = useLogout();
+  const navigate = useNavigate();  const logoutMutation = useLogout();
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -121,7 +120,7 @@ export function CreateOrganizationForm() {
       const submitData = data;
       const createdOrg = await organizationsApi.createOrganization(submitData);
       const targetOrgId = createdOrg.organizationId || (createdOrg as unknown as { id?: string }).id;
-      
+
       if (logoFile && targetOrgId) {
         await organizationsApi.uploadLogo(targetOrgId, logoFile);
       }
@@ -131,12 +130,13 @@ export function CreateOrganizationForm() {
       }
 
       await queryClient.invalidateQueries({ queryKey: ['organizations'] });
-      
+
       if (targetOrgId) {
         navigate(`/organizations/${targetOrgId}`);
       } else {
         navigate('/');
       }
+      toast.success('Organization created successfully');
     } catch (err) {
       setServerError(toApiErrorMessage(err));
     }

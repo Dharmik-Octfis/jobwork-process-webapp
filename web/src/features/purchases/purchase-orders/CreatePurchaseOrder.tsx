@@ -524,7 +524,7 @@ export function CreatePurchaseOrder() {
         </h1>
         <button
           type="button"
-          onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/purchases/purchase-orders`)}
+          onClick={() => navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/purchases/purchase-orders`)}
           style={{
             background: 'none',
             border: 'none',
@@ -1809,7 +1809,14 @@ export function CreatePurchaseOrder() {
           </button>
           <button
             type="button"
-            onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
+            onClick={() => {
+              const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
+              if (returnUrl) {
+                navigate(returnUrl);
+              } else {
+                navigate(-1);
+              }
+            }}
             style={{
               padding: '6px 20px',
               background: 'white',

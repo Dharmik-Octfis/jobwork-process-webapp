@@ -415,9 +415,7 @@ interface Props {
 }
 
 export function JobOrderOverview({ jobOrderId, onClose }: Props) {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const queryClient = useQueryClient();
+  const navigate = useNavigate();  const queryClient = useQueryClient();
   const { orgId, id: routeId } = useParams<{ orgId: string; id: string }>();
   const id = jobOrderId ?? routeId;
 

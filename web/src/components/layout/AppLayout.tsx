@@ -31,6 +31,7 @@ import {
   Plus,
   Copy,
   Check,
+  Menu,
 } from 'lucide-react';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useAuth } from '../../providers/auth-context';
@@ -424,6 +425,7 @@ export function AppLayout() {
   const [logoError, setLogoError] = useState(false);
   const [prevOrgId, setPrevOrgId] = useState(activeOrgId);
   const [prevLogoUrl, setPrevLogoUrl] = useState(activeOrg?.logo_url);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   if (activeOrgId !== prevOrgId) {
     setPrevOrgId(activeOrgId);
@@ -438,6 +440,7 @@ export function AppLayout() {
   if (location.pathname !== prevPathname || modules.length !== prevModulesLength) {
     setPrevPathname(location.pathname);
     setPrevModulesLength(modules.length);
+    if (isMobileMenuOpen) setIsMobileMenuOpen(false);
     const effectiveOrgId = activeOrgId || localStorage.getItem(LAST_ORG_KEY) || undefined;
     const activeModule = modules.find((m) =>
       m.children?.some((c) => {
@@ -486,8 +489,15 @@ export function AppLayout() {
         background: 'var(--color-bg)',
       }}
     >
+      {/* Mobile Overlay */}
+      <div 
+        className={`mobile-sidebar-overlay ${isMobileMenuOpen ? 'mobile-open' : ''}`} 
+        onClick={() => setIsMobileMenuOpen(false)}
+      />
+
       {/* Sidebar */}
       <aside
+        className={`app-sidebar ${isMobileMenuOpen ? 'mobile-open' : ''}`}
         style={{
           width: isSidebarCollapsed ? 72 : 220,
           transition: 'width 0.3s ease',
@@ -622,6 +632,13 @@ export function AppLayout() {
         >
           {/* Global Search — one box, context-aware per module (see GlobalSearch) */}
           <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+            <button 
+              className="mobile-header-menu-btn" 
+              onClick={() => setIsMobileMenuOpen(true)}
+              aria-label="Open menu"
+            >
+              <Menu size={20} />
+            </button>
             <GlobalSearch />
           </div>
 

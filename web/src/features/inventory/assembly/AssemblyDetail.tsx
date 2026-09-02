@@ -136,15 +136,7 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#fff' }}>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '16px 24px',
-          borderBottom: '1px solid #eef0f3',
-        }}
-      >
+      <div className="detail-page-header">
         <h2 style={{ fontSize: 20, fontWeight: 600, color: '#1e293b', margin: 0 }}>
           {assembly.assemblyNumber}
         </h2>

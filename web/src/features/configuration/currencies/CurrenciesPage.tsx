@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import '../../users/Users.css';
@@ -246,7 +246,8 @@ export function CurrenciesPage() {
                 )}
               </div>
             ) : (
-              <table
+              <div className="responsive-table-wrapper">
+                    <table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
@@ -509,6 +510,7 @@ export function CurrenciesPage() {
                   ))}
                 </tbody>
               </table>
+                  </div>
             )}
           </div>
         </div>

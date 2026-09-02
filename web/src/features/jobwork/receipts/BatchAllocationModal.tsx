@@ -516,7 +516,8 @@ export function BatchAllocationModal({
           of these hold date and money inputs that have a floor below which they
           are unusable, and a percentage grid squeezes them past it on a laptop. */}
       <div style={{ overflowX: 'auto', marginTop: 14 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1180 }}>
+        <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1180 }}>
           <colgroup>
             <col style={{ width: 210 }} />
             <col style={{ width: 150 }} />
@@ -748,6 +749,7 @@ export function BatchAllocationModal({
             })}
           </tbody>
         </table>
+                  </div>
       </div>
 
       <div

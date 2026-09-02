@@ -413,14 +413,10 @@ export function ManageCategoriesModal({
                 gap: '20px',
               }}
             >
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 13, color: '#ef4444' }}>Category Name*</label>
                 <div style={{ width: '100%', maxWidth: 320 }}>
                   <input
@@ -443,14 +439,10 @@ export function ManageCategoriesModal({
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 13, color: '#475569' }}>Parent Category</label>
                 <div style={{ width: '100%', maxWidth: 320 }}>
                   <Controller

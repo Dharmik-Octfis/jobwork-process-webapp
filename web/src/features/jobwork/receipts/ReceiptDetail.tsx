@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useLocation, useParams } from 'react-router-dom';
+import {useParams } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
@@ -173,15 +173,7 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
 
   return (
     <div style={{ background: '#fff', minHeight: '100%' }}>
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '16px 24px',
-          borderBottom: '1px solid #eef0f3',
-        }}
-      >
+      <header className="detail-page-header">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h2 style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}>

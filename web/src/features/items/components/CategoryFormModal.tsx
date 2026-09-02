@@ -10,7 +10,7 @@ import {
 } from '../../inventory/item-categories/item-categories.api';
 import type { ItemCategory } from '../../inventory/item-categories/item-categories.api';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
-import { useLocation, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 
 const categorySchema = z.object({
   name: z.string().min(1, 'Category name is required').max(200, 'Too long'),

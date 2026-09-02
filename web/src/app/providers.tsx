@@ -7,11 +7,11 @@ import { Toaster } from 'react-hot-toast';
 /** Wraps the app in its global providers (server state + auth). */
 export function AppProviders({ children }: { children: ReactNode }) {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        {children}
-        <Toaster position="top-center" />
-      </AuthProvider>
-    </QueryClientProvider>
+    <>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>{children}</AuthProvider>
+      </QueryClientProvider>
+      <Toaster position="top-center" />
+    </>
   );
 }

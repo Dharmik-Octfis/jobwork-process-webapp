@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Printer, X } from 'lucide-react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
@@ -32,9 +32,7 @@ const th: React.CSSProperties = {
 const td: React.CSSProperties = { padding: '8px 12px', fontSize: 13, color: '#333' };
 
 export function IssueDetail({ issueId, onClose }: Props) {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const queryClient = useQueryClient();
+  const navigate = useNavigate();  const queryClient = useQueryClient();
   const { orgId } = useParams<{ orgId: string }>();
   const trackingLabel = useTrackingLabel();
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -116,15 +114,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
 
   return (
     <div style={{ background: '#fff', minHeight: '100%' }}>
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '16px 24px',
-          borderBottom: '1px solid #eef0f3',
-        }}
-      >
+      <header className="detail-page-header">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h2 style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}>

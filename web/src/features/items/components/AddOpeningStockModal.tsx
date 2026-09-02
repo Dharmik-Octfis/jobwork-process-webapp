@@ -381,7 +381,8 @@ export function AddOpeningStockModal({
     >
       <div style={{ overflowX: 'auto', minHeight: '500px' }}>
         {!isBatchTracked ? (
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
+          <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
                 <th
@@ -555,8 +556,10 @@ export function AddOpeningStockModal({
               ))}
             </tbody>
           </table>
+                  </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1200px' }}>
+          <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1200px' }}>
             <thead>
               <tr>
                 <th
@@ -1109,6 +1112,7 @@ export function AddOpeningStockModal({
               </tbody>
             ))}
           </table>
+                  </div>
         )}
         <div style={{ padding: '16px 8px' }}>
           <button

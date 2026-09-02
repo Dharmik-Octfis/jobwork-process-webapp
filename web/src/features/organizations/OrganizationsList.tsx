@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useLocation, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { organizationsApi } from './organizations.api';
 import type { Organization } from './organizations.schemas';
 import { PendingInvitationsPanel } from '../invitations/PendingInvitationsPanel';

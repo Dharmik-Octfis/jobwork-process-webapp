@@ -230,9 +230,7 @@ function ExpandableCompositeItemRow({
 }
 
 export function CompositeItemsPage() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const { orgId } = useParams<{ orgId: string }>();
+  const navigate = useNavigate();  const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedItemId = searchParams.get('id');
 
@@ -536,7 +534,8 @@ export function CompositeItemsPage() {
                     ))}
                   </div>
                 ) : (
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                     <thead>
                       <tr
                         style={{
@@ -575,6 +574,7 @@ export function CompositeItemsPage() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 )}
               </div>
             )}

@@ -277,7 +277,7 @@ export function EditItemPage() {
           <h1 style={{ fontSize: '22px', fontWeight: 400, margin: 0, color: '#000' }}>Edit Item</h1>
           <button
             type="button"
-            onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
+            onClick={() => (location.state as { returnUrl?: string })?.returnUrl ? navigate((location.state as { returnUrl?: string }).returnUrl!) : navigate(-1)}
             style={{
               background: 'none',
               border: 'none',
@@ -316,14 +316,10 @@ export function EditItemPage() {
                 gap: '14px',
               }}
             >
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Name*</label>
                 <div>
                   <input
@@ -348,14 +344,10 @@ export function EditItemPage() {
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Type</label>
                 <div style={{ display: 'flex', gap: 16 }}>
                   <label
@@ -397,14 +389,10 @@ export function EditItemPage() {
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>SKU</label>
                 <div>
                   <input
@@ -425,14 +413,10 @@ export function EditItemPage() {
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Category</label>
                 <CategorySelectDropdown
                   value={formData.category || null}
@@ -441,14 +425,10 @@ export function EditItemPage() {
                 />
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Unit</label>
                 <div>
                   <div
@@ -544,14 +524,10 @@ export function EditItemPage() {
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>HSN Code</label>
                 <input
                   name="hsnCode"
@@ -992,14 +968,10 @@ export function EditItemPage() {
                   borderTop: '1px solid #e2e8f0',
                 }}
               >
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '160px 1fr',
+                <div className="form-field-grid" style={{ gridTemplateColumns: '160px 1fr',
                     alignItems: 'center',
                     gap: 12,
-                  }}
-                >
+                   }}>
                   <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
                     Inventory Tracking
                   </label>
@@ -1164,7 +1136,7 @@ export function EditItemPage() {
             <button
               type="button"
               disabled={updateMutation.isPending}
-              onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
+              onClick={() => (location.state as { returnUrl?: string })?.returnUrl ? navigate((location.state as { returnUrl?: string }).returnUrl!) : navigate(-1)}
               style={{
                 padding: '6px 20px',
                 background: 'white',

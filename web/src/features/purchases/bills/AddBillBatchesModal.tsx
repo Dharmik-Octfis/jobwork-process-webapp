@@ -321,7 +321,8 @@ export function AddBillBatchesModal({
       </div>
 
       <div style={{ overflowX: 'auto', marginTop: '14px', minHeight: '350px' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
+        <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
           <thead>
             <tr>
               <th
@@ -629,6 +630,7 @@ export function AddBillBatchesModal({
             ))}
           </tbody>
         </table>
+                  </div>
       </div>
 
       <div

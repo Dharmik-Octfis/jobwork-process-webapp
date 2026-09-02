@@ -61,7 +61,7 @@ export function CreateReceivePage() {
              if (jobOrderIdParam) {
                navigate(`/organizations/${orgId}/jobwork/job-orders/${jobOrderIdParam}`);
              } else {
-               (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/jobwork/receipts`);
+               navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/jobwork/receipts`);
              }
           }}
           style={{
@@ -123,14 +123,14 @@ export function CreateReceivePage() {
               if (jobOrderIdParam) {
                 navigate(`/organizations/${orgId}/jobwork/job-orders/${jobOrderIdParam}`);
               } else {
-                (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/jobwork/receipts`);
+                navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/jobwork/receipts`);
               }
             }}
             onCancel={() => {
               if (jobOrderIdParam) {
                 navigate(`/organizations/${orgId}/jobwork/job-orders/${jobOrderIdParam}`);
               } else {
-                (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/jobwork/receipts`);
+                navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/jobwork/receipts`);
               }
             }}
           />

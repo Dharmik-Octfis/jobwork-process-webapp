@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { useQuery } from '@tanstack/react-query';
 import { fetchLocations, type Location, type CreateLocationData } from './locations.api';
-import { useLocation, useParams } from 'react-router-dom';
+import {useParams } from 'react-router-dom';
 import { ParentLocationDropdown } from './ParentLocationDropdown';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import { organizationsApi } from '../../organizations/organizations.api';
@@ -64,7 +64,7 @@ export function LocationForm({ initialData, onSubmit, isPending, onCancel }: Loc
   const watchState = watch('state');
 
   const countryOptions = seedData?.countries?.map((c: SeedCountry) => ({ label: c.name, value: c.name })) || [];
-  
+
   const selectedCountryObj = seedData?.countries?.find((c: SeedCountry) => c.name === watchCountry);
   const stateOptions = seedData?.states
     ?.filter((s: SeedState) => !selectedCountryObj || s.countryCode === selectedCountryObj.code)
@@ -123,7 +123,7 @@ export function LocationForm({ initialData, onSubmit, isPending, onCancel }: Loc
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', rowGap: '20px', alignItems: 'center', marginBottom: '24px' }}>
+      <div className="form-field-grid" style={{ gridTemplateColumns: '180px 1fr', rowGap: '20px', alignItems: 'center', marginBottom: '24px'  }}>
         {watchType === 'Business' && (
           <>
             <label style={labelStyle}>Logo</label>
@@ -183,7 +183,7 @@ export function LocationForm({ initialData, onSubmit, isPending, onCancel }: Loc
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', rowGap: '12px', alignItems: 'start' }}>
+      <div className="form-field-grid" style={{ gridTemplateColumns: '180px 1fr', rowGap: '12px', alignItems: 'start'  }}>
         <label style={{ ...labelStyle, marginTop: '8px' }}>Address</label>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <input type="text" {...register('street1')} style={inputStyle} placeholder="Street 1" />

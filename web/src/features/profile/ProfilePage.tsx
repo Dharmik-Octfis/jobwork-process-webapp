@@ -1,5 +1,5 @@
-import { toast } from 'react-hot-toast';
 import { useAuth } from '../../providers/auth-context';
+import { toast } from 'react-hot-toast';
 import { Trash2, User, UploadCloud } from 'lucide-react';
 import { useState, useRef } from 'react';
 import { useUpdateProfile } from '../auth/useUpdateProfile';
@@ -39,6 +39,7 @@ export function ProfilePage() {
           if (data.user.avatarUrl) {
             setLogoPreview(data.user.avatarUrl);
           }
+          toast.success('Profile picture updated');
         },
         onError: (err) => {
           setUploadError(toApiErrorMessage(err));
@@ -53,6 +54,7 @@ export function ProfilePage() {
       { firstName, lastName },
       {
         onSuccess: () => {
+          toast.success('Profile updated successfully');
         },
       },
     );
@@ -226,7 +228,10 @@ export function ProfilePage() {
                     type="button"
                     onClick={() => {
                       deleteAvatarMutation.mutate(undefined, {
-                        onSuccess: () => setLogoPreview(null),
+                        onSuccess: () => {
+                          setLogoPreview(null);
+                          toast.success('Profile picture removed');
+                        },
                       });
                     }}
                     disabled={deleteAvatarMutation.isPending}

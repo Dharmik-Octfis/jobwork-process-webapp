@@ -298,7 +298,8 @@ export function LocationsList() {
             </button>
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+          <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead>
               <tr style={{ background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
                 <th style={headerStyle}>NAME</th>
@@ -309,6 +310,7 @@ export function LocationsList() {
             </thead>
             <tbody>{rootLocations.map((loc) => renderLocationRow(loc, 0))}</tbody>
           </table>
+                  </div>
         )}
       </div>
 

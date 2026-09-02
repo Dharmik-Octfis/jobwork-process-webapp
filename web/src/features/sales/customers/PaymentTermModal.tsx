@@ -97,14 +97,10 @@ export function PaymentTermModal({ orgId, isOpen, onClose, onSuccess }: PaymentT
           style={{ padding: '24px' }}
         >
           <div style={{ display: 'grid', gap: '20px' }}>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '120px 1fr',
+            <div className="form-field-grid" style={{ gridTemplateColumns: '120px 1fr',
                 alignItems: 'center',
                 gap: '16px',
-              }}
-            >
+               }}>
               <label style={{ fontSize: '14px', color: '#ef4444' }}>Term Name*</label>
               <div>
                 <input
@@ -126,14 +122,10 @@ export function PaymentTermModal({ orgId, isOpen, onClose, onSuccess }: PaymentT
               </div>
             </div>
 
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '120px 1fr',
+            <div className="form-field-grid" style={{ gridTemplateColumns: '120px 1fr',
                 alignItems: 'center',
                 gap: '16px',
-              }}
-            >
+               }}>
               <label style={{ fontSize: '14px', color: '#ef4444' }}>Due After*</label>
               <div>
                 <div style={{ display: 'flex' }}>

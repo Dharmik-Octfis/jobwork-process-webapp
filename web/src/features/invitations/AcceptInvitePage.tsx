@@ -33,9 +33,7 @@ type SignupValues = z.infer<typeof signupSchema>;
 export function AcceptInvitePage() {
   const [params] = useSearchParams();
   const token = params.get('token') ?? '';
-  const navigate = useNavigate();
-  const location = useLocation();
-  const { user, isAuthenticated, isLoading: authLoading, setSession } = useAuth();
+  const navigate = useNavigate();  const { user, isAuthenticated, isLoading: authLoading, setSession } = useAuth();
   const autoAcceptStarted = useRef(false);
 
   const lookup = useQuery({

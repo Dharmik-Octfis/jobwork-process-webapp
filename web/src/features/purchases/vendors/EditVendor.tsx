@@ -8,9 +8,7 @@ import { VendorForm } from './VendorForm';
 
 export function EditVendor() {
   const { id, orgId } = useParams<{ id: string; orgId: string }>();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const queryClient = useQueryClient();
+  const navigate = useNavigate();  const queryClient = useQueryClient();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const { data: vendor, isLoading: isFetching } = useQuery({

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useLocation, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Modal } from '../../../components/ui/Modal';
@@ -170,7 +170,8 @@ export function RejectionReasonsList() {
             hole, stain.
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
                 <th style={th} scope="col">
@@ -250,6 +251,7 @@ export function RejectionReasonsList() {
               ))}
             </tbody>
           </table>
+                  </div>
         )}
       </div>
 

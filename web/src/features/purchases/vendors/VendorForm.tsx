@@ -243,7 +243,7 @@ export function VendorForm({
           type="button"
           onClick={() => {
             if (onCancel) onCancel();
-            else (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/purchases/vendors`);
+            else navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/purchases/vendors`);
           }}
           style={{
             background: 'none',
@@ -517,16 +517,12 @@ export function VendorForm({
                 <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '24px' }}>
                   BILLING ADDRESS
                 </h3>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '140px 1fr',
+                <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                     rowGap: '16px',
                     columnGap: '16px',
                     alignItems: 'start',
                     fontSize: '13px',
-                  }}
-                >
+                   }}>
                   <label style={labelStyle}>Attention</label>
                   <input {...register('billingAttention')} style={inputStyle} />
 
@@ -654,16 +650,12 @@ export function VendorForm({
                     ( ↓ Copy billing address )
                   </button>
                 </h3>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '140px 1fr',
+                <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                     rowGap: '16px',
                     columnGap: '16px',
                     alignItems: 'start',
                     fontSize: '13px',
-                  }}
-                >
+                   }}>
                   <label style={labelStyle}>Attention</label>
                   <input {...register('shippingAttention')} style={inputStyle} />
 
@@ -768,7 +760,8 @@ export function VendorForm({
           {/* Contact Persons Tab */}
           {activeTab === 'contact' && (
             <div>
-              <table
+              <div className="responsive-table-wrapper">
+                    <table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
@@ -884,6 +877,7 @@ export function VendorForm({
                   )}
                 </tbody>
               </table>
+                  </div>
 
               <button
                 type="button"
@@ -976,7 +970,18 @@ export function VendorForm({
           </button>
           <button
             type="button"
-            onClick={() => (onCancel ? onCancel() : (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1))}
+            onClick={() => {
+              if (onCancel) {
+                onCancel();
+              } else {
+                const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
+                if (returnUrl) {
+                  navigate(returnUrl);
+                } else {
+                  navigate(-1);
+                }
+              }
+            }}
             style={{
               padding: '6px 20px',
               background: 'white',

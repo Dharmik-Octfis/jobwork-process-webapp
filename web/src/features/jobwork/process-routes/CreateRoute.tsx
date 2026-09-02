@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { X } from 'lucide-react';
 import { createRoute } from './processRoutes.api';
@@ -8,9 +8,7 @@ import type { CreateRouteData } from './processRoutes.schemas';
 import { RouteForm } from './RouteForm';
 
 export function CreateRoute() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const queryClient = useQueryClient();
+  const navigate = useNavigate();  const queryClient = useQueryClient();
   const { orgId } = useParams<{ orgId: string }>();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);

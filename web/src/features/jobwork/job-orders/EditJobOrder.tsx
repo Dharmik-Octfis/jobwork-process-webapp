@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { useNavigate,  useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { X } from 'lucide-react';
 import { Spinner } from '../../../components/ui/Spinner';
@@ -25,9 +25,7 @@ import { JobOrderForm } from './JobOrderForm';
  * refuses a stale form, so this page never has to be the thing that is right.
  */
 export function EditJobOrder() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const queryClient = useQueryClient();
+  const navigate = useNavigate();  const queryClient = useQueryClient();
   const { orgId, id } = useParams<{ orgId: string; id: string }>();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);

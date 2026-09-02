@@ -72,9 +72,7 @@ function renderTemplateCell(template: PermissionTemplate, key: string): string {
 }
 
 export function PermissionTemplatesPage() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const { orgId } = useParams<{ orgId: string }>();
+  const navigate = useNavigate();  const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
 
@@ -341,7 +339,8 @@ export function PermissionTemplatesPage() {
                 ))}
               </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr
                     style={{
@@ -388,6 +387,7 @@ export function PermissionTemplatesPage() {
                   ))}
                 </tbody>
               </table>
+                  </div>
             )}
           </div>
 

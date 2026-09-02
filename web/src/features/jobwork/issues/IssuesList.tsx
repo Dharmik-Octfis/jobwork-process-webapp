@@ -329,7 +329,8 @@ export function IssuesList() {
                 ))}
               </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr
                     style={{
@@ -391,6 +392,7 @@ export function IssuesList() {
                   ))}
                 </tbody>
               </table>
+                  </div>
             )}
           </div>
 

@@ -61,7 +61,7 @@ export function CreateIssuePage() {
              if (jobOrderIdParam) {
                navigate(`/organizations/${orgId}/jobwork/job-orders/${jobOrderIdParam}`);
              } else {
-               (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/jobwork/issues`);
+               navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/jobwork/issues`);
              }
           }}
           style={{
@@ -122,14 +122,14 @@ export function CreateIssuePage() {
               if (jobOrderIdParam) {
                 navigate(`/organizations/${orgId}/jobwork/job-orders/${jobOrderIdParam}`);
               } else {
-                (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/jobwork/issues`);
+                navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/jobwork/issues`);
               }
             }}
             onCancel={() => {
               if (jobOrderIdParam) {
                 navigate(`/organizations/${orgId}/jobwork/job-orders/${jobOrderIdParam}`);
               } else {
-                (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/jobwork/issues`);
+                navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/jobwork/issues`);
               }
             }}
           />

@@ -92,7 +92,7 @@ export function ModuleFieldsPage() {
     >
       <header style={{ padding: '16px 24px 0', borderBottom: '1px solid #eef0f3' }}>
         <button
-          onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/settings/modules`)}
+          onClick={() => navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/settings/modules`)}
           style={{
             background: 'none',
             border: 'none',
@@ -209,7 +209,8 @@ export function ModuleFieldsPage() {
                 </button>
               </div>
             ) : (
-              <table
+              <div className="responsive-table-wrapper">
+                    <table
                 style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #eef0f3' }}
               >
                 <thead>
@@ -298,6 +299,7 @@ export function ModuleFieldsPage() {
                   ))}
                 </tbody>
               </table>
+                  </div>
             )}
           </div>
         )}

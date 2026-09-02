@@ -89,17 +89,7 @@ export function JobOrderStepDetail({
 
   return (
     <section style={{ border: '1px solid #eef0f3', borderRadius: 10, background: '#fff' }}>
-      <header
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 16,
-          flexWrap: 'wrap',
-          padding: '12px 16px',
-          borderBottom: '1px solid #eef0f3',
-        }}
-      >
+      <header className="detail-page-header">
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <span
             style={{

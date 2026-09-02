@@ -268,7 +268,7 @@ export function EditCompositeItemPage() {
       queryClient.removeQueries({ queryKey: ['item', orgId, id] });
       queryClient.removeQueries({ queryKey: ['compositeComponents', orgId, id] });
       queryClient.invalidateQueries({ queryKey: ['itemActivities', orgId, id] });
-      (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/composite-items`);
+      navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/composite-items`);
     },
     onError: (error) => {
       const err = error as {
@@ -401,7 +401,14 @@ export function EditCompositeItemPage() {
           </h1>
           <button
             type="button"
-            onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
+            onClick={() => {
+              const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
+              if (returnUrl) {
+                navigate(returnUrl);
+              } else {
+                navigate(-1);
+              }
+            }}
             style={{
               background: 'none',
               border: 'none',
@@ -439,14 +446,10 @@ export function EditCompositeItemPage() {
                 gap: '14px',
               }}
             >
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 524px',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Name*</label>
                 <div>
                   <input
@@ -472,14 +475,10 @@ export function EditCompositeItemPage() {
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 524px',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
                   alignItems: 'flex-start',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label
                   style={{ fontSize: 13, color: '#ef4444', fontWeight: 500, paddingTop: '2px' }}
                 >
@@ -557,14 +556,10 @@ export function EditCompositeItemPage() {
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 524px',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>SKU*</label>
                 <div>
                   <input
@@ -586,14 +581,10 @@ export function EditCompositeItemPage() {
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 524px',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Category</label>
                 <CategorySelectDropdown
                   value={formData.category || null}
@@ -602,14 +593,10 @@ export function EditCompositeItemPage() {
                 />
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 524px',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Unit*</label>
                 <div>
                   <div
@@ -693,14 +680,10 @@ export function EditCompositeItemPage() {
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 524px',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>HSN Code</label>
                 <input
                   name="hsnCode"
@@ -736,7 +719,8 @@ export function EditCompositeItemPage() {
               <div style={{ fontSize: 14, fontWeight: 600, color: '#ef4444' }}>
                 Associate Items*
               </div>
-              <table
+              <div className="responsive-table-wrapper">
+                    <table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
@@ -957,6 +941,7 @@ export function EditCompositeItemPage() {
                   </tr>
                 </tfoot>
               </table>
+                  </div>
               <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
                 <button
                   type="button"
@@ -1013,7 +998,8 @@ export function EditCompositeItemPage() {
                 <div style={{ fontSize: 14, fontWeight: 600, color: '#ef4444' }}>
                   Associate Services*
                 </div>
-                <table
+                <div className="responsive-table-wrapper">
+                    <table
                   style={{
                     width: '100%',
                     borderCollapse: 'collapse',
@@ -1246,6 +1232,7 @@ export function EditCompositeItemPage() {
                     </tr>
                   </tfoot>
                 </table>
+                  </div>
               </div>
             )}
           </div>
@@ -1291,14 +1278,10 @@ export function EditCompositeItemPage() {
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '130px 1fr',
+                  <div className="form-field-grid" style={{ gridTemplateColumns: '130px 1fr',
                       alignItems: 'center',
                       gap: 12,
-                    }}
-                  >
+                     }}>
                     <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>
                       Selling Price*
                     </label>
@@ -1350,14 +1333,10 @@ export function EditCompositeItemPage() {
                       </span>
                     )}
                   </div>
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '130px 1fr',
+                  <div className="form-field-grid" style={{ gridTemplateColumns: '130px 1fr',
                       alignItems: 'flex-start',
                       gap: 12,
-                    }}
-                  >
+                     }}>
                     <label
                       style={{ fontSize: 12, color: '#4b5563', fontWeight: 500, paddingTop: '8px' }}
                     >
@@ -1417,14 +1396,10 @@ export function EditCompositeItemPage() {
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '130px 1fr',
+                  <div className="form-field-grid" style={{ gridTemplateColumns: '130px 1fr',
                       alignItems: 'center',
                       gap: 12,
-                    }}
-                  >
+                     }}>
                     <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>
                       Cost Price*
                     </label>
@@ -1476,14 +1451,10 @@ export function EditCompositeItemPage() {
                       </span>
                     )}
                   </div>
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '130px 1fr',
+                  <div className="form-field-grid" style={{ gridTemplateColumns: '130px 1fr',
                       alignItems: 'flex-start',
                       gap: 12,
-                    }}
-                  >
+                     }}>
                     <label
                       style={{ fontSize: 12, color: '#4b5563', fontWeight: 500, paddingTop: '8px' }}
                     >
@@ -1566,14 +1537,10 @@ export function EditCompositeItemPage() {
                   borderTop: '1px solid #e2e8f0',
                 }}
               >
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '160px 1fr',
+                <div className="form-field-grid" style={{ gridTemplateColumns: '160px 1fr',
                     alignItems: 'center',
                     gap: 12,
-                  }}
-                >
+                   }}>
                   <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
                     Inventory Tracking
                   </label>
@@ -1740,7 +1707,14 @@ export function EditCompositeItemPage() {
             <button
               type="button"
               disabled={updateMutation.isPending}
-              onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
+              onClick={() => {
+                const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
+                if (returnUrl) {
+                  navigate(returnUrl);
+                } else {
+                  navigate(-1);
+                }
+              }}
               style={{
                 padding: '6px 20px',
                 background: 'white',

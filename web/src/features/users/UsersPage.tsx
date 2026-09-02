@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, SlidersHorizontal, Users as UsersIcon, Info } from 'lucide-react';
 import { organizationsApi } from '../organizations/organizations.api';
@@ -471,7 +471,8 @@ export function UsersPage() {
                 ))}
               </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', tableLayout: 'fixed' }}>
+              <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', tableLayout: 'fixed' }}>
                 <thead>
                   <tr
                     style={{
@@ -535,6 +536,7 @@ export function UsersPage() {
                   ))}
                 </tbody>
               </table>
+                  </div>
             )}
           </div>
 

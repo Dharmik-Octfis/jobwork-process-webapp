@@ -126,8 +126,9 @@ export function PurchaseOrdersList() {
         flexDirection: 'column',
       }}
     >
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+      <div className={`master-detail-container ${selectedPoId ? 'has-selection' : ''}`} style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
         <div
+          className="master-pane"
           style={{
             flex: selectedPoId ? '0 0 320px' : 1,
             borderRight: selectedPoId ? '1px solid #eef0f3' : 'none',
@@ -300,7 +301,8 @@ export function PurchaseOrdersList() {
                     ))}
                   </div>
                 ) : (
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                     <thead>
                       <tr
                         style={{
@@ -366,6 +368,7 @@ export function PurchaseOrdersList() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 )}
               </div>
             )}
@@ -388,7 +391,7 @@ export function PurchaseOrdersList() {
 
         {/* Right Panel - Detail */}
         {selectedPoId && (
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
             <PurchaseOrderDetail poId={selectedPoId} onClose={() => setSearchParams({})} />
           </div>
         )}

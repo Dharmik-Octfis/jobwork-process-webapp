@@ -6,8 +6,6 @@ import { CUSTOM_FIELD_MODULES } from './customFields.schemas';
 export function ModulesListPage() {
   const { orgId } = useParams<{ orgId: string }>();
   const navigate = useNavigate();
-  const location = useLocation();
-
   return (
     <div
       style={{

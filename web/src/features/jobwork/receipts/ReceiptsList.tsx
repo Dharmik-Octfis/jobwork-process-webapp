@@ -308,7 +308,8 @@ export function ReceiptsList() {
                 ))}
               </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr
                     style={{
@@ -370,6 +371,7 @@ export function ReceiptsList() {
                   ))}
                 </tbody>
               </table>
+                  </div>
             )}
           </div>
 

@@ -1,5 +1,5 @@
 import { useState, Fragment } from 'react';
-import { useLocation, Link, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, Lock, Users, ShieldCheck, X, SlidersHorizontal, Info} from 'lucide-react';
 import { toApiErrorMessage } from '../../api/client';
@@ -599,7 +599,8 @@ export function RolesPage() {
                 No roles yet besides the built-in one. Create the job titles your team uses.
               </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', tableLayout: 'fixed' }}>
+              <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', tableLayout: 'fixed' }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f9f9fb' }}>
                   <tr
                     style={{
@@ -616,6 +617,7 @@ export function RolesPage() {
                   {rootRoles.map((role) => renderRoleRow(role, 0))}
                 </tbody>
               </table>
+                  </div>
             )}
           </div>
         </div>

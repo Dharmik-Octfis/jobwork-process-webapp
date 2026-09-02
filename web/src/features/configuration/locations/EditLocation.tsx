@@ -6,7 +6,7 @@ import { LocationForm } from './LocationForm';
 export function EditLocation() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { orgId, id } = useParams<{ orgId: string; id: string }>();
+const { orgId, id } = useParams<{ orgId: string; id: string }>();
   const queryClient = useQueryClient();
 
   const { data: location, isLoading } = useQuery({
@@ -19,7 +19,7 @@ export function EditLocation() {
     mutationFn: (data: CreateLocationData) => updateLocation({ orgId: orgId!, id: id!, data }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['locations', orgId] });
-      (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/settings/locations`);
+      navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/settings/locations`);
     },
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { message?: string } }; message?: string };
@@ -45,7 +45,7 @@ export function EditLocation() {
           initialData={location}
           onSubmit={(data) => mutation.mutate(data)}
           isPending={mutation.isPending}
-          onCancel={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/settings/locations`)}
+          onCancel={() => navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/settings/locations`)}
         />
       </div>
     </div>

@@ -318,14 +318,10 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                 gap: '14px',
               }}
             >
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Name*</label>
                 <div>
                   <input
@@ -350,14 +346,10 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Type</label>
                 <div style={{ display: 'flex', gap: 16 }}>
                   <label
@@ -399,14 +391,10 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>SKU</label>
                 <div>
                   <input
@@ -427,14 +415,10 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Category</label>
                 <CategorySelectDropdown
                   value={formData.category || null}
@@ -443,14 +427,10 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                 />
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Unit</label>
                 <div>
                   <div
@@ -546,14 +526,10 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>HSN Code</label>
                 <input
                   name="hsnCode"
@@ -994,14 +970,10 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                   borderTop: '1px solid #e2e8f0',
                 }}
               >
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '160px 1fr',
+                <div className="form-field-grid" style={{ gridTemplateColumns: '160px 1fr',
                     alignItems: 'center',
                     gap: 12,
-                  }}
-                >
+                   }}>
                   <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
                     Inventory Tracking
                   </label>
@@ -1168,7 +1140,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
               type="button"
               disabled={createMutation.isPending}
               onClick={() =>
-                isModal && onCancel ? onCancel() : (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/items`)
+                isModal && onCancel ? onCancel() : navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/items`)
               }
               style={{
                 padding: '6px 20px',

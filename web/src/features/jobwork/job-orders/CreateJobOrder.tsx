@@ -73,7 +73,14 @@ export function CreateJobOrder() {
         </div>
         <button
           type="button"
-          onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
+          onClick={() => {
+            const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
+            if (returnUrl) {
+              navigate(returnUrl);
+            } else {
+              navigate(-1);
+            }
+          }}
           style={{
             background: 'none',
             border: 'none',
@@ -138,7 +145,7 @@ export function CreateJobOrder() {
               mutation.mutate(data);
             }}
             isPending={mutation.isPending}
-            onCancel={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/jobwork/job-orders`)}
+            onCancel={() => navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/jobwork/job-orders`)}
             fieldErrors={fieldErrors}
           />
         )}

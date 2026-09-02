@@ -156,8 +156,9 @@ export function CustomersList() {
       }}
     >
       {/* Main Content Area */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+      <div className={`master-detail-container ${selectedCustomerId ? 'has-selection' : ''}`} style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
         <div
+          className="master-pane"
           style={{
             flex: selectedCustomerId ? '0 0 320px' : 1,
             borderRight: selectedCustomerId ? '1px solid #eef0f3' : 'none',
@@ -352,7 +353,8 @@ export function CustomersList() {
                     ))}
                   </div>
                 ) : (
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                     <thead>
                       <tr
                         style={{
@@ -438,6 +440,7 @@ export function CustomersList() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 )}
               </div>
             )}
@@ -460,7 +463,7 @@ export function CustomersList() {
 
         {/* Right Panel - Detail */}
         {selectedCustomerId && (
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
             <CustomerDetail customerId={selectedCustomerId} onClose={() => setSearchParams({})} />
           </div>
         )}

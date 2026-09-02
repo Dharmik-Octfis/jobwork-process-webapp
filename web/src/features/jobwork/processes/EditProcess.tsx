@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { useNavigate,useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { X } from 'lucide-react';
 import { Spinner } from '../../../components/ui/Spinner';
@@ -8,9 +8,7 @@ import type { UpdateProcessData } from './processes.schemas';
 import { ProcessForm } from './ProcessForm';
 
 export function EditProcess() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const queryClient = useQueryClient();
+  const navigate = useNavigate();  const queryClient = useQueryClient();
   const { orgId, id } = useParams<{ orgId: string; id: string }>();
 
   const listPath = `/organizations/${orgId}/settings/jobwork/processes`;

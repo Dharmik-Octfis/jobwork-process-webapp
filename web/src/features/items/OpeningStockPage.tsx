@@ -342,7 +342,8 @@ export function OpeningStockPage() {
 
       <div style={{ overflowX: 'auto', flex: 1, padding: '24px' }}>
         {!isBatchTracked ? (
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
+          <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
                 <th
@@ -516,8 +517,10 @@ export function OpeningStockPage() {
               ))}
             </tbody>
           </table>
+                  </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1200px' }}>
+          <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1200px' }}>
             <thead>
               <tr>
                 <th
@@ -1070,6 +1073,7 @@ export function OpeningStockPage() {
               </tbody>
             ))}
           </table>
+                  </div>
         )}
         <div style={{ padding: '16px 8px' }}>
           <button

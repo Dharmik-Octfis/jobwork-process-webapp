@@ -192,15 +192,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
       }}
     >
       {/* Header */}
-      <div
-        style={{
-          padding: '16px 24px',
-          borderBottom: '1px solid #eef0f3',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
+      <div className="detail-page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
             {po.billNumber}

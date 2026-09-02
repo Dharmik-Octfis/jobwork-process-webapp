@@ -1,7 +1,7 @@
 import { blurOnWheel } from '../../../components/ui/blurOnWheel';
 import { useEffect, useMemo, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useLocation, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { DateInput } from '../../../components/ui/DateInput';
 import { Select } from '../../../components/ui/Select';
@@ -921,7 +921,8 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel }: Props) {
                 Type what arrived and what goes back for rework. Everything else is worked out.
               </p>
               <div style={{ border: '1px solid #eef0f3', borderRadius: 4 }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                   {/* 🔴 Fixed widths that ADD UP TO 100%, so the grid can never be
                       wider than the dialog. Content-sized columns plus a `minWidth`
                       floor is what put a horizontal scrollbar under a dialog that
@@ -1088,6 +1089,7 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel }: Props) {
                     })}
                   </tbody>
                 </table>
+                  </div>
               </div>
 
               {brokenRows.length > 0 && (

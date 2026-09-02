@@ -55,21 +55,7 @@ export function Pagination({
   const canNext = pageContext.hasMore;
 
   return (
-    <div
-      style={{
-        height: '44px',
-        boxSizing: 'border-box',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 16,
-        padding: '0 20px',
-        borderTop: '1px solid var(--color-border)',
-        background: 'var(--color-surface)',
-        fontSize: 13,
-        color: 'var(--color-text-muted)',
-      }}
-    >
+    <div className="pagination-bar">
       {hideTotal ? (
         <div />
       ) : (

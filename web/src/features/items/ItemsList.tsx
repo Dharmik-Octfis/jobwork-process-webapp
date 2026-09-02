@@ -201,8 +201,9 @@ export function ItemsList() {
       }}
     >
       {/* Main Content Area */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+      <div className={`master-detail-container ${selectedItemId ? 'has-selection' : ''}`} style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
         <div
+          className="master-pane"
           style={{
             flex: selectedItemId ? '0 0 320px' : 1,
             borderRight: selectedItemId ? '1px solid #eef0f3' : 'none',
@@ -401,7 +402,8 @@ export function ItemsList() {
                     ))}
                   </div>
                 ) : (
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                     <thead>
                       <tr
                         style={{
@@ -468,6 +470,7 @@ export function ItemsList() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 )}
               </div>
             )}
@@ -490,7 +493,7 @@ export function ItemsList() {
 
         {/* Right Panel - Detail */}
         {selectedItemId && (
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
             <ItemDetail itemId={selectedItemId} onClose={() => setSearchParams({})} />
           </div>
         )}

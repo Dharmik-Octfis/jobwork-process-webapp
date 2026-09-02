@@ -148,15 +148,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
       }}
     >
       {/* Header */}
-      <div
-        style={{
-          padding: '16px 24px',
-          borderBottom: '1px solid #eef0f3',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
+      <div className="detail-page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
             {item.name}
@@ -319,15 +311,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
       </div>
 
       {/* Tabs */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          borderBottom: '1px solid #eef0f3',
-          padding: '0 24px',
-          gap: '16px',
-        }}
-      >
+      <div className="detail-page-tabs">
         {[
           'Overview',
           ...(isInventoryTracked ? ['Locations'] : []),
@@ -368,14 +352,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
             <CompositeItemsList itemId={itemId} />
           </div>
         ) : effectiveActiveTab === 'Overview' ? (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '400px 380px',
-              gap: '32px',
-              justifyContent: 'start',
-            }}
-          >
+          <div className="detail-overview-grid">
             {/* Primary Info (Left) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
               <div>

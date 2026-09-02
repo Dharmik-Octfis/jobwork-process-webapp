@@ -247,7 +247,7 @@ export function CustomerForm({
         </h1>
         <button
           type="button"
-          onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/sales/customers`)}
+          onClick={() => navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/sales/customers`)}
           style={{
             background: 'none',
             border: 'none',
@@ -543,16 +543,12 @@ export function CustomerForm({
                 <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '24px' }}>
                   BILLING ADDRESS
                 </h3>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '140px 1fr',
+                <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                     rowGap: '16px',
                     columnGap: '16px',
                     alignItems: 'start',
                     fontSize: '13px',
-                  }}
-                >
+                   }}>
                   <label style={labelStyle}>Attention</label>
                   <input {...register('billingAttention')} style={inputStyle} />
 
@@ -680,16 +676,12 @@ export function CustomerForm({
                     ( ↓ Copy billing address )
                   </button>
                 </h3>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '140px 1fr',
+                <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                     rowGap: '16px',
                     columnGap: '16px',
                     alignItems: 'start',
                     fontSize: '13px',
-                  }}
-                >
+                   }}>
                   <label style={labelStyle}>Attention</label>
                   <input {...register('shippingAttention')} style={inputStyle} />
 
@@ -794,7 +786,8 @@ export function CustomerForm({
           {/* Contact Persons Tab */}
           {activeTab === 'contact' && (
             <div>
-              <table
+              <div className="responsive-table-wrapper">
+                    <table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
@@ -910,6 +903,7 @@ export function CustomerForm({
                   )}
                 </tbody>
               </table>
+                  </div>
 
               <button
                 type="button"
@@ -1001,7 +995,14 @@ export function CustomerForm({
           </button>
           <button
             type="button"
-            onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
+            onClick={() => {
+              const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
+              if (returnUrl) {
+                navigate(returnUrl);
+              } else {
+                navigate(-1);
+              }
+            }}
             style={{
               padding: '6px 20px',
               background: 'white',

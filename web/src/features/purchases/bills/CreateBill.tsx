@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { useEffect, useState } from 'react';
 import { useForm, useFieldArray, useWatch, Controller } from 'react-hook-form';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AxiosError } from 'axios';
 import {
   Plus,
@@ -561,7 +561,7 @@ export function CreateBill() {
         </h1>
         <button
           type="button"
-          onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/purchases/bills`)}
+          onClick={() => navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/purchases/bills`)}
           style={{
             background: 'none',
             border: 'none',
@@ -1618,7 +1618,14 @@ export function CreateBill() {
           </button>
           <button
             type="button"
-            onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
+            onClick={() => {
+              const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
+              if (returnUrl) {
+                navigate(returnUrl);
+              } else {
+                navigate(-1);
+              }
+            }}
             style={{
               padding: '6px 20px',
               background: 'white',

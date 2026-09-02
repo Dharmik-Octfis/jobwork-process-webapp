@@ -1134,7 +1134,8 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
           is in the same place on every row.
         */}
         <div style={{ border: '1px solid #eef0f3', borderRadius: 6, overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+          <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
             <thead>
               <tr style={{ background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
                 <th style={lineTh} scope="col">
@@ -1420,6 +1421,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
               })}
             </tbody>
           </table>
+                  </div>
         </div>
 
         {/*

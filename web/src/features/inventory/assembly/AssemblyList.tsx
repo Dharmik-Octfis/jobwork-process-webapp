@@ -323,7 +323,8 @@ export function AssemblyList() {
                 )}
               </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
                   <tr>
                     <th style={{ width: 48, ...headerStyle, paddingRight: 0, textAlign: 'center', borderBottom: '1px solid #eef0f3' }}>
@@ -419,6 +420,7 @@ export function AssemblyList() {
                   )}
                 </tbody>
               </table>
+                  </div>
             )}
           </div>
 

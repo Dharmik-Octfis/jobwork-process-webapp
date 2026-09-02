@@ -383,7 +383,8 @@ export function AddBatchesModal({
       {/* The grid is wider than most dialogs — it scrolls sideways inside its own
           box rather than making the page do it. */}
       <div style={{ overflowX: 'auto', marginTop: 14 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 980 }}>
+        <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 980 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid #eef0f3' }}>
               <th style={{ ...th, width: 220, color: '#b91c1c' }} scope="col">
@@ -524,6 +525,7 @@ export function AddBatchesModal({
             ))}
           </tbody>
         </table>
+                  </div>
       </div>
 
       <div

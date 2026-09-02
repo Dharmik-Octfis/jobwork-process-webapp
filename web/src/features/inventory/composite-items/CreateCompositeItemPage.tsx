@@ -398,14 +398,10 @@ export function CreateCompositeItemPage({
                 gap: '14px',
               }}
             >
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 524px',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Name*</label>
                 <div>
                   <input
@@ -431,14 +427,10 @@ export function CreateCompositeItemPage({
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 524px',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
                   alignItems: 'flex-start',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label
                   style={{ fontSize: 13, color: '#ef4444', fontWeight: 500, paddingTop: '2px' }}
                 >
@@ -516,14 +508,10 @@ export function CreateCompositeItemPage({
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 524px',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>SKU*</label>
                 <div>
                   <input
@@ -545,14 +533,10 @@ export function CreateCompositeItemPage({
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 524px',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Category</label>
                 <CategorySelectDropdown
                   value={formData.category || null}
@@ -561,14 +545,10 @@ export function CreateCompositeItemPage({
                 />
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 524px',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <div />
                 <label
                   style={{
@@ -597,14 +577,10 @@ export function CreateCompositeItemPage({
                 </label>
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 524px',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Unit*</label>
                 <div>
                   <div
@@ -702,14 +678,10 @@ export function CreateCompositeItemPage({
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 524px',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
+                 }}>
                 <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>HSN Code</label>
                 <input
                   name="hsnCode"
@@ -745,7 +717,8 @@ export function CreateCompositeItemPage({
               <div style={{ fontSize: 14, fontWeight: 600, color: '#ef4444' }}>
                 Associate Items*
               </div>
-              <table
+              <div className="responsive-table-wrapper">
+                    <table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
@@ -966,6 +939,7 @@ export function CreateCompositeItemPage({
                   </tr>
                 </tfoot>
               </table>
+                  </div>
               <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
                 <button
                   type="button"
@@ -1022,7 +996,8 @@ export function CreateCompositeItemPage({
                 <div style={{ fontSize: 14, fontWeight: 600, color: '#ef4444' }}>
                   Associate Services*
                 </div>
-                <table
+                <div className="responsive-table-wrapper">
+                    <table
                   style={{
                     width: '100%',
                     borderCollapse: 'collapse',
@@ -1255,6 +1230,7 @@ export function CreateCompositeItemPage({
                     </tr>
                   </tfoot>
                 </table>
+                  </div>
               </div>
             )}
           </div>
@@ -1300,14 +1276,10 @@ export function CreateCompositeItemPage({
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '130px 1fr',
+                  <div className="form-field-grid" style={{ gridTemplateColumns: '130px 1fr',
                       alignItems: 'center',
                       gap: 12,
-                    }}
-                  >
+                     }}>
                     <label
                       style={{
                         fontSize: 12,
@@ -1365,14 +1337,10 @@ export function CreateCompositeItemPage({
                       </span>
                     )}
                   </div>
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '130px 1fr',
+                  <div className="form-field-grid" style={{ gridTemplateColumns: '130px 1fr',
                       alignItems: 'center',
                       gap: 12,
-                    }}
-                  >
+                     }}>
                     <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>MRP</label>
                     <input
                       type="number"
@@ -1402,14 +1370,10 @@ export function CreateCompositeItemPage({
                     />
                   </div>
 
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '130px 1fr',
+                  <div className="form-field-grid" style={{ gridTemplateColumns: '130px 1fr',
                       alignItems: 'flex-start',
                       gap: 12,
-                    }}
-                  >
+                     }}>
                     <label
                       style={{ fontSize: 12, color: '#4b5563', fontWeight: 500, paddingTop: '8px' }}
                     >
@@ -1469,14 +1433,10 @@ export function CreateCompositeItemPage({
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '130px 1fr',
+                  <div className="form-field-grid" style={{ gridTemplateColumns: '130px 1fr',
                       alignItems: 'center',
                       gap: 12,
-                    }}
-                  >
+                     }}>
                     <label
                       style={{
                         fontSize: 12,
@@ -1535,14 +1495,10 @@ export function CreateCompositeItemPage({
                     )}
                   </div>
 
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '130px 1fr',
+                  <div className="form-field-grid" style={{ gridTemplateColumns: '130px 1fr',
                       alignItems: 'flex-start',
                       gap: 12,
-                    }}
-                  >
+                     }}>
                     <label
                       style={{ fontSize: 12, color: '#4b5563', fontWeight: 500, paddingTop: '8px' }}
                     >
@@ -1790,7 +1746,7 @@ export function CreateCompositeItemPage({
               type="button"
               disabled={createMutation.isPending}
               onClick={() =>
-                isModal && onCancel ? onCancel() : (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/composite-items`)
+                isModal && onCancel ? onCancel() : (location.state as { returnUrl?: string })?.returnUrl ? navigate((location.state as { returnUrl?: string }).returnUrl!) : navigate(`/organizations/${orgId}/composite-items`)
               }
               style={{
                 padding: '6px 20px',

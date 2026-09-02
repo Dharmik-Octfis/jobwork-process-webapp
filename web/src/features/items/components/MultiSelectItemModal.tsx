@@ -591,7 +591,8 @@ export function MultiSelectItemModal({
 
             {/* Table */}
             <div style={{ flex: 1, overflow: 'auto', borderTop: '1px solid #eef0f3' }}>
-              <table
+              <div className="responsive-table-wrapper">
+                    <table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
@@ -911,6 +912,7 @@ export function MultiSelectItemModal({
                   )}
                 </tbody>
               </table>
+                  </div>
             </div>
 
             {/* Footer */}
@@ -991,7 +993,8 @@ export function MultiSelectItemModal({
           <>
             {/* Values Table */}
             <div style={{ flex: 1, overflow: 'auto', borderTop: '1px solid #eef0f3' }}>
-              <table
+              <div className="responsive-table-wrapper">
+                    <table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
@@ -1166,6 +1169,7 @@ export function MultiSelectItemModal({
                   ))}
                 </tbody>
               </table>
+                  </div>
             </div>
 
             {/* Footer */}

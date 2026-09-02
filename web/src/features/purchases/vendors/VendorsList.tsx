@@ -155,8 +155,9 @@ export function VendorsList() {
       }}
     >
       {/* Main Content Area */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+      <div className={`master-detail-container ${selectedVendorId ? 'has-selection' : ''}`} style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
         <div
+          className="master-pane"
           style={{
             flex: selectedVendorId ? '0 0 320px' : 1,
             borderRight: selectedVendorId ? '1px solid #eef0f3' : 'none',
@@ -350,7 +351,8 @@ export function VendorsList() {
                     ))}
                   </div>
                 ) : (
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                     <thead>
                       <tr
                         style={{
@@ -432,6 +434,7 @@ export function VendorsList() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 )}
               </div>
             )}
@@ -454,7 +457,7 @@ export function VendorsList() {
 
         {/* Right Panel - Detail */}
         {selectedVendorId && (
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
             <VendorDetail vendorId={selectedVendorId} onClose={() => setSearchParams({})} />
           </div>
         )}
