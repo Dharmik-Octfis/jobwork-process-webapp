@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { compositeItemsApi } from './compositeItems.api.ts';
 import { Plus, Package, SlidersHorizontal, Folder, FolderOpen } from 'lucide-react';
-import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
 import { ItemDetail } from '../../items/ItemDetail';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
