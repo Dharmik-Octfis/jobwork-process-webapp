@@ -1,7 +1,7 @@
 import { X } from 'lucide-react';
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import { VendorForm } from './VendorForm';
 import { createVendor } from './vendors.api';
 import type { CreateVendorData } from './vendors.schemas';

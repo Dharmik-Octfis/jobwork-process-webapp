@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { ChevronLeft, Plus, Edit2, Archive, GripVertical } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import {
@@ -28,6 +28,7 @@ const td: React.CSSProperties = { padding: '10px 16px', fontSize: 13, color: '#1
 export function ModuleFieldsPage() {
   const { orgId, entityType } = useParams<{ orgId: string; entityType: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const known = CUSTOM_FIELD_MODULES.some((m) => m.entityType === entityType);
 
@@ -91,7 +92,7 @@ export function ModuleFieldsPage() {
     >
       <header style={{ padding: '16px 24px 0', borderBottom: '1px solid #eef0f3' }}>
         <button
-          onClick={() => navigate(`/organizations/${orgId}/settings/modules`)}
+          onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/settings/modules`)}
           style={{
             background: 'none',
             border: 'none',

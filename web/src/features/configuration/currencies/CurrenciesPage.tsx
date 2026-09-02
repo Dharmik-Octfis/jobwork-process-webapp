@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import '../../users/Users.css';

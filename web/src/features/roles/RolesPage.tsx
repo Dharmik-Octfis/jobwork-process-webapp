@@ -1,5 +1,5 @@
 import { useState, Fragment } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useLocation, Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, Lock, Users, ShieldCheck, X, SlidersHorizontal, Info} from 'lucide-react';
 import { toApiErrorMessage } from '../../api/client';

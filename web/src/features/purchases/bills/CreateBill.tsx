@@ -110,6 +110,7 @@ function ItemImage({
 
 export function CreateBill() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId, id } = useParams<{ orgId: string; id?: string }>();
   const [searchParams] = useSearchParams();
   const cloneFrom = searchParams.get('cloneFrom');
@@ -560,7 +561,7 @@ export function CreateBill() {
         </h1>
         <button
           type="button"
-          onClick={() => navigate(`/organizations/${orgId}/purchases/bills`)}
+          onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/purchases/bills`)}
           style={{
             background: 'none',
             border: 'none',
@@ -1617,7 +1618,7 @@ export function CreateBill() {
           </button>
           <button
             type="button"
-            onClick={() => navigate(-1)}
+            onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
             style={{
               padding: '6px 20px',
               background: 'white',

@@ -12,7 +12,7 @@ import {
   type CustomerAddress,
   type CustomerContactPerson,
 } from './customers.schemas';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, ChevronUp, Pencil, Trash, Settings, User, Plus } from 'lucide-react';
 import { useState, useRef, useEffect, Fragment } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
@@ -29,6 +29,7 @@ interface CustomerDetailProps {
 export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
   const { orgId } = useParams<{ orgId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('Overview');
   const [isMoreOpen, setIsMoreOpen] = useState(false);
@@ -447,7 +448,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
       contactNumber: '',
     };
 
-    navigate(`/organizations/${orgId}/sales/customers/new`, { state: { customerToClone } });
+    navigate(`/organizations/${orgId}/sales/customers/new`, { state: { customerToClone , returnUrl: location.pathname + location.search } });
   };
 
   if (isLoading) {
@@ -542,7 +543,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
-            onClick={() => navigate(`/organizations/${orgId}/sales/customers/${customerId}/edit`)}
+            onClick={() => navigate(`/organizations/${orgId}/sales/customers/${customerId}/edit`, { state: { returnUrl: location.pathname + location.search } })}
             style={{
               padding: '6px 12px',
               border: '1px solid #d1d5db',

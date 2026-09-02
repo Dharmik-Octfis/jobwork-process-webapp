@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Printer, X } from 'lucide-react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
@@ -33,6 +33,7 @@ const td: React.CSSProperties = { padding: '8px 12px', fontSize: 13, color: '#33
 
 export function IssueDetail({ issueId, onClose }: Props) {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const { orgId } = useParams<{ orgId: string }>();
   const trackingLabel = useTrackingLabel();

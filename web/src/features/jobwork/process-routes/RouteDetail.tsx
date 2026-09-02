@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Pencil, X } from 'lucide-react';
 import { Spinner } from '../../../components/ui/Spinner';
 import { rateBasisLabel } from '../processes/processes.schemas';
@@ -55,6 +55,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 export function RouteDetail({ routeId, onClose }: Props) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
 
   const { data: route, isLoading } = useQuery({
@@ -97,7 +98,7 @@ export function RouteDetail({ routeId, onClose }: Props) {
           <button
             type="button"
             onClick={() =>
-              navigate(`/organizations/${orgId}/settings/jobwork/routes/${route.id}/edit`)
+              navigate(`/organizations/${orgId}/settings/jobwork/routes/${route.id}/edit`, { state: { returnUrl: location.pathname + location.search } })
             }
             style={{
               display: 'flex',

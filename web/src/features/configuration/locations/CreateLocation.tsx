@@ -1,10 +1,11 @@
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createLocation, type CreateLocationData } from './locations.api';
 import { LocationForm } from './LocationForm';
 
 export function CreateLocation() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
 
@@ -12,7 +13,7 @@ export function CreateLocation() {
     mutationFn: (data: CreateLocationData) => createLocation(orgId!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['locations', orgId] });
-      navigate(`/organizations/${orgId}/settings/locations`);
+      (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/settings/locations`);
     },
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { message?: string } }; message?: string };
@@ -29,7 +30,7 @@ export function CreateLocation() {
         <LocationForm
           onSubmit={(data) => mutation.mutate(data)}
           isPending={mutation.isPending}
-          onCancel={() => navigate(`/organizations/${orgId}/settings/locations`)}
+          onCancel={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/settings/locations`)}
         />
       </div>
     </div>

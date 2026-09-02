@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { toApiErrorMessage } from '../../api/client';
 import { useAuth } from '../../providers/auth-context';
 import { Button } from '../../components/ui/Button';
@@ -34,6 +34,7 @@ export function AcceptInvitePage() {
   const [params] = useSearchParams();
   const token = params.get('token') ?? '';
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isAuthenticated, isLoading: authLoading, setSession } = useAuth();
   const autoAcceptStarted = useRef(false);
 

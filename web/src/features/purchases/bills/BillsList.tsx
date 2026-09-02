@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchBills, fetchBillCount, deleteBill } from './bills.api';
 import { fetchPaymentTerms, type PaymentTerm } from './payment-terms.api';
 import { Plus, SlidersHorizontal, FileText } from 'lucide-react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { BillDetail } from './BillDetail';
@@ -41,6 +41,7 @@ function renderBillCell(po: Bill, key: string, _paymentTerms: PaymentTerm[] = []
 
 export function BillsList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedPoId = searchParams.get('id');
@@ -186,7 +187,7 @@ export function BillsList() {
                 )}
 
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/purchases/bills/new`)}
+                  onClick={() => navigate(`/organizations/${orgId}/purchases/bills/new`, { state: { returnUrl: location.pathname + location.search } })}
                   style={{
                     background: '#186337',
                     color: 'white',
@@ -252,7 +253,7 @@ export function BillsList() {
                   {search ? `No bills match "${search}".` : "You haven't created any bills yet."}
                 </p>
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/purchases/bills/new`)}
+                  onClick={() => navigate(`/organizations/${orgId}/purchases/bills/new`, { state: { returnUrl: location.pathname + location.search } })}
                   style={{
                     background: '#28a745',
                     color: 'white',

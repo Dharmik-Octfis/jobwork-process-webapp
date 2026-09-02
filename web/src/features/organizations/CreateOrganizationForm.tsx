@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -20,6 +20,7 @@ type MasterData = {
 
 export function CreateOrganizationForm() {
   const navigate = useNavigate();
+  const location = useLocation();
   const logoutMutation = useLogout();
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);

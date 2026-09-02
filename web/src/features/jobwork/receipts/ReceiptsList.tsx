@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { PackageCheck, Plus, SlidersHorizontal } from 'lucide-react';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
@@ -73,6 +73,7 @@ function renderCell(
 
 export function ReceiptsList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
@@ -207,7 +208,7 @@ export function ReceiptsList() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => navigate(`/organizations/${orgId}/jobwork/receipts/new`)}
+                  onClick={() => navigate(`/organizations/${orgId}/jobwork/receipts/new`, { state: { returnUrl: location.pathname + location.search } })}
                   style={{
                     background: '#186337',
                     color: 'white',

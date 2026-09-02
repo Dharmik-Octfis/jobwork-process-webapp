@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { itemsApi } from './items.api.ts';
@@ -18,6 +18,7 @@ import { useTrackingLabel } from '../../hooks/useTrackingLabel.ts';
 export function EditItemPage() {
   const { id, orgId } = useParams<{ id: string; orgId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const { data: uoms = [] } = useUoms(orgId!);
   const { data: customFields = [] } = useActiveCustomFields(orgId!, 'item');
@@ -276,7 +277,7 @@ export function EditItemPage() {
           <h1 style={{ fontSize: '22px', fontWeight: 400, margin: 0, color: '#000' }}>Edit Item</h1>
           <button
             type="button"
-            onClick={() => navigate(-1)}
+            onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
             style={{
               background: 'none',
               border: 'none',
@@ -1163,7 +1164,7 @@ export function EditItemPage() {
             <button
               type="button"
               disabled={updateMutation.isPending}
-              onClick={() => navigate(-1)}
+              onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
               style={{
                 padding: '6px 20px',
                 background: 'white',

@@ -24,7 +24,7 @@ import {
 import { fetchPaymentTerms } from './payment-terms.api';
 import { deleteBill } from '../bills/bills.api';
 import { organizationsApi } from '../../organizations/organizations.api';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer } from 'lucide-react';
 import { useState, useRef, useEffect, Fragment } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
@@ -62,6 +62,7 @@ function POAttachmentLink({ orgId, attachment }: { orgId: string; attachment: PO
 export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: () => void }) {
   const { orgId } = useParams<{ orgId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('Overview');
   const [activeSubTab, setActiveSubTab] = useState<'Bills' | 'Receives'>('Bills');
@@ -242,7 +243,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
             onClick={() =>
-              navigate(`/organizations/${orgId}/purchases/purchase-orders/${poId}/edit`)
+              navigate(`/organizations/${orgId}/purchases/purchase-orders/${poId}/edit`, { state: { returnUrl: location.pathname + location.search } })
             }
             style={{
               padding: '6px 12px',

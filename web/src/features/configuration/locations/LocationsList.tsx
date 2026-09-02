@@ -1,6 +1,6 @@
 import { useState, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Plus, Edit2, Trash2, Star } from 'lucide-react';
 import {
   fetchLocations,
@@ -12,6 +12,7 @@ import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 
 export function LocationsList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
 
@@ -193,7 +194,7 @@ export function LocationsList() {
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button
                 onClick={() =>
-                  navigate(`/organizations/${orgId}/settings/locations/${location.id}/edit`)
+                  navigate(`/organizations/${orgId}/settings/locations/${location.id}/edit`, { state: { returnUrl: location.pathname + location.search } })
                 }
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
                 title="Edit Location"
@@ -248,7 +249,7 @@ export function LocationsList() {
       >
         <h1 style={{ fontSize: '18px', fontWeight: 600, color: '#000', margin: 0 }}>Locations</h1>
         <button
-          onClick={() => navigate(`/organizations/${orgId}/settings/locations/new`)}
+          onClick={() => navigate(`/organizations/${orgId}/settings/locations/new`, { state: { returnUrl: location.pathname + location.search } })}
           style={{
             background: '#186337',
             color: 'white',
@@ -281,7 +282,7 @@ export function LocationsList() {
               Add a new location to start tracking operations in different places.
             </p>
             <button
-              onClick={() => navigate(`/organizations/${orgId}/settings/locations/new`)}
+              onClick={() => navigate(`/organizations/${orgId}/settings/locations/new`, { state: { returnUrl: location.pathname + location.search } })}
               style={{
                 background: '#0062ff',
                 color: 'white',

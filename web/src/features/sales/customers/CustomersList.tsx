@@ -6,7 +6,7 @@ import {
   updateCustomer,
 } from './customers.api';
 import { Plus, Building2, SlidersHorizontal } from 'lucide-react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
 import { CustomerDetail } from './CustomerDetail';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
@@ -42,6 +42,7 @@ function renderCustomerCell(customer: Customer, key: string): string {
 
 export function CustomersList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedCustomerId = searchParams.get('id');
@@ -215,7 +216,7 @@ export function CustomersList() {
                   </button>
                 )}
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/sales/customers/new`)}
+                  onClick={() => navigate(`/organizations/${orgId}/sales/customers/new`, { state: { returnUrl: location.pathname + location.search } })}
                   style={{
                     background: '#186337',
                     color: 'white',
@@ -282,7 +283,7 @@ export function CustomersList() {
                   purchase orders and bills.
                 </p>
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/sales/customers/new`)}
+                  onClick={() => navigate(`/organizations/${orgId}/sales/customers/new`, { state: { returnUrl: location.pathname + location.search } })}
                   style={{
                     background: '#28a745',
                     color: 'white',

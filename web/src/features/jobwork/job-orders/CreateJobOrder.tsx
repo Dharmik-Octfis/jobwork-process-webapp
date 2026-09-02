@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { X } from 'lucide-react';
 import { Spinner } from '../../../components/ui/Spinner';
@@ -10,6 +10,7 @@ import { JobOrderForm } from './JobOrderForm';
 
 export function CreateJobOrder() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const { orgId } = useParams<{ orgId: string }>();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -72,7 +73,7 @@ export function CreateJobOrder() {
         </div>
         <button
           type="button"
-          onClick={() => navigate(-1)}
+          onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
           style={{
             background: 'none',
             border: 'none',
@@ -137,7 +138,7 @@ export function CreateJobOrder() {
               mutation.mutate(data);
             }}
             isPending={mutation.isPending}
-            onCancel={() => navigate(`/organizations/${orgId}/jobwork/job-orders`)}
+            onCancel={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/jobwork/job-orders`)}
             fieldErrors={fieldErrors}
           />
         )}

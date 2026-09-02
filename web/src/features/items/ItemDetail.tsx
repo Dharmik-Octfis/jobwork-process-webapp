@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { itemsApi } from './items.api';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, Building2, HelpCircle } from 'lucide-react';
 import { useState, useRef, useEffect, Fragment, useMemo } from 'react';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -20,6 +20,7 @@ interface ItemDetailProps {
 export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
   const { orgId } = useParams<{ orgId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -117,7 +118,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
       name: `Copy of ${item.name}`,
     };
 
-    navigate(`/organizations/${orgId}/items/new`, { state: { itemToClone } });
+    navigate(`/organizations/${orgId}/items/new`, { state: { itemToClone , returnUrl: location.pathname + location.search } });
   };
 
   if (isLoading) {
@@ -200,9 +201,9 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
           <button
             onClick={() => {
               if (item.itemStructure === 'composite') {
-                navigate(`/organizations/${orgId}/composite-items/${itemId}/edit`);
+                navigate(`/organizations/${orgId}/composite-items/${itemId}/edit`, { state: { returnUrl: location.pathname + location.search } });
               } else {
-                navigate(`/organizations/${orgId}/items/${itemId}/edit`);
+                navigate(`/organizations/${orgId}/items/${itemId}/edit`, { state: { returnUrl: location.pathname + location.search } });
               }
             }}
             style={{

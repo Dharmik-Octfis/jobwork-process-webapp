@@ -1168,7 +1168,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
               type="button"
               disabled={createMutation.isPending}
               onClick={() =>
-                isModal && onCancel ? onCancel() : navigate(`/organizations/${orgId}/items`)
+                isModal && onCancel ? onCancel() : (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/items`)
               }
               style={{
                 padding: '6px 20px',

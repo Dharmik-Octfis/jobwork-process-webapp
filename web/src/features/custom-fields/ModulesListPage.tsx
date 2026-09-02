@@ -1,4 +1,4 @@
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { ChevronRight, LayoutGrid } from 'lucide-react';
 import { CUSTOM_FIELD_MODULES } from './customFields.schemas';
 
@@ -6,6 +6,7 @@ import { CUSTOM_FIELD_MODULES } from './customFields.schemas';
 export function ModulesListPage() {
   const { orgId } = useParams<{ orgId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
 
   return (
     <div

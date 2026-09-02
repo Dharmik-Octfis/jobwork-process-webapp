@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { Plus, Send, SlidersHorizontal } from 'lucide-react';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
@@ -93,6 +93,7 @@ function renderCell(issue: JobIssue, key: string): React.ReactNode {
  */
 export function IssuesList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
@@ -228,7 +229,7 @@ export function IssuesList() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => navigate(`/organizations/${orgId}/jobwork/issues/new`)}
+                  onClick={() => navigate(`/organizations/${orgId}/jobwork/issues/new`, { state: { returnUrl: location.pathname + location.search } })}
                   style={{
                     background: '#186337',
                     color: 'white',

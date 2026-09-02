@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, SlidersHorizontal, Users as UsersIcon, Info } from 'lucide-react';
 import { organizationsApi } from '../organizations/organizations.api';

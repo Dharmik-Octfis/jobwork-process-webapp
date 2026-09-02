@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Edit, Lock, X, Users } from 'lucide-react';
 import { permissionTemplatesApi } from './permissionTemplates.api';
@@ -24,6 +24,7 @@ interface Props {
  */
 export function PermissionTemplateDetail({ orgId, templateId, onClose, onDelete }: Props) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState<'Overview' | 'Permissions'>('Overview');
   const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
 
@@ -136,7 +137,7 @@ export function PermissionTemplateDetail({ orgId, templateId, onClose, onDelete 
               </button>
               <button
                 onClick={() =>
-                  navigate(`/organizations/${orgId}/settings/permissions/${templateId}/edit`)
+                  navigate(`/organizations/${orgId}/settings/permissions/${templateId}/edit`, { state: { returnUrl: location.pathname + location.search } })
                 }
                 style={{
                   padding: '6px 12px',

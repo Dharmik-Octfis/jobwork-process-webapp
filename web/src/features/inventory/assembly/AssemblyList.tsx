@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Plus, SlidersHorizontal, Settings } from 'lucide-react';
 import { assembliesApi, type ItemAssembly } from './assemblies.api';
@@ -70,6 +70,7 @@ function renderAssemblyCell(assembly: ItemAssembly, colKey: string) {
 
 export function AssemblyList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
@@ -203,7 +204,7 @@ export function AssemblyList() {
                 )}
                 <button
                   type="button"
-                  onClick={() => navigate(`/organizations/${orgId}/inventory/assembly/new`)}
+                  onClick={() => navigate(`/organizations/${orgId}/inventory/assembly/new`, { state: { returnUrl: location.pathname + location.search } })}
                   style={{
                     display: 'flex',
                     alignItems: 'center',

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { compositeItemsApi } from './compositeItems.api';
@@ -29,6 +29,7 @@ interface ComponentRow {
 export function EditCompositeItemPage() {
   const { id, orgId } = useParams<{ id: string; orgId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const { data: uoms = [] } = useUoms(orgId!);
   const { data: customFields = [] } = useActiveCustomFields(orgId!, 'item');
@@ -267,7 +268,7 @@ export function EditCompositeItemPage() {
       queryClient.removeQueries({ queryKey: ['item', orgId, id] });
       queryClient.removeQueries({ queryKey: ['compositeComponents', orgId, id] });
       queryClient.invalidateQueries({ queryKey: ['itemActivities', orgId, id] });
-      navigate(`/organizations/${orgId}/composite-items`);
+      (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/composite-items`);
     },
     onError: (error) => {
       const err = error as {
@@ -400,7 +401,7 @@ export function EditCompositeItemPage() {
           </h1>
           <button
             type="button"
-            onClick={() => navigate(-1)}
+            onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
             style={{
               background: 'none',
               border: 'none',
@@ -1739,7 +1740,7 @@ export function EditCompositeItemPage() {
             <button
               type="button"
               disabled={updateMutation.isPending}
-              onClick={() => navigate(-1)}
+              onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
               style={{
                 padding: '6px 20px',
                 background: 'white',

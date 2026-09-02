@@ -17,7 +17,7 @@ interface Html2PdfOptions {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchBillById, getBillSignedUrl, deleteBill, updateBill, type BillAttachment } from './bills.api';
 import { organizationsApi } from '../../organizations/organizations.api';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer } from 'lucide-react';
 import { useState, useRef, useEffect, Fragment } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
@@ -56,6 +56,7 @@ function BillAttachmentLink({ orgId, attachment }: { orgId: string; attachment: 
 export function BillDetail({ poId, onClose }: { poId: string; onClose: () => void }) {
   const { orgId } = useParams<{ orgId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const trackingLabel = useTrackingLabel();
   const [activeTab, setActiveTab] = useState('Overview');
@@ -241,7 +242,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
           )}
 
           <button
-            onClick={() => navigate(`/organizations/${orgId}/purchases/bills/${poId}/edit`)}
+            onClick={() => navigate(`/organizations/${orgId}/purchases/bills/${poId}/edit`, { state: { returnUrl: location.pathname + location.search } })}
             style={{
               padding: '6px 12px',
               border: '1px solid #d1d5db',

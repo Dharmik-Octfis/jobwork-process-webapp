@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Pencil, X } from 'lucide-react';
 import { Spinner } from '../../../components/ui/Spinner';
 import { fetchProcessById } from './processes.api';
@@ -21,6 +21,7 @@ function Flag({ on, yes, no }: { on: boolean; yes: string; no: string }) {
 
 export function ProcessDetail({ processId, onClose }: Props) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
 
   const { data: process, isLoading } = useQuery({
@@ -62,7 +63,7 @@ export function ProcessDetail({ processId, onClose }: Props) {
           <button
             type="button"
             onClick={() =>
-              navigate(`/organizations/${orgId}/settings/jobwork/processes/${process.id}/edit`)
+              navigate(`/organizations/${orgId}/settings/jobwork/processes/${process.id}/edit`, { state: { returnUrl: location.pathname + location.search } })
             }
             style={{
               display: 'flex',

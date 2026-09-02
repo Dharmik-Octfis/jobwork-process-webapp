@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchVendors, fetchVendorCount, deleteVendor, updateVendor } from './vendors.api';
 import { Plus, Building2, SlidersHorizontal } from 'lucide-react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
 import { VendorDetail } from './VendorDetail';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
@@ -48,6 +48,7 @@ function renderVendorCell(vendor: Vendor, key: string): string {
 
 export function VendorsList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedVendorId = searchParams.get('id');
@@ -214,7 +215,7 @@ export function VendorsList() {
                   </button>
                 )}
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/new`)}
+                  onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/new`, { state: { returnUrl: location.pathname + location.search } })}
                   style={{
                     background: '#186337',
                     color: 'white',
@@ -281,7 +282,7 @@ export function VendorsList() {
                   purchase orders and bills.
                 </p>
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/new`)}
+                  onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/new`, { state: { returnUrl: location.pathname + location.search } })}
                   style={{
                     background: '#28a745',
                     color: 'white',

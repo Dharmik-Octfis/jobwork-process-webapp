@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { Plus, SlidersHorizontal, Trash2, Workflow } from 'lucide-react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
@@ -53,6 +53,7 @@ const headerStyle: React.CSSProperties = {
 
 export function ProcessesList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
@@ -166,7 +167,7 @@ export function ProcessesList() {
               )}
               <button
                 type="button"
-                onClick={() => navigate(`/organizations/${orgId}/settings/jobwork/processes/new`)}
+                onClick={() => navigate(`/organizations/${orgId}/settings/jobwork/processes/new`, { state: { returnUrl: location.pathname + location.search } })}
                 style={{
                   background: '#186337',
                   color: 'white',
@@ -233,7 +234,7 @@ export function ProcessesList() {
                 </p>
                 <button
                   type="button"
-                  onClick={() => navigate(`/organizations/${orgId}/settings/jobwork/processes/new`)}
+                  onClick={() => navigate(`/organizations/${orgId}/settings/jobwork/processes/new`, { state: { returnUrl: location.pathname + location.search } })}
                   style={{
                     background: '#28a745',
                     color: 'white',

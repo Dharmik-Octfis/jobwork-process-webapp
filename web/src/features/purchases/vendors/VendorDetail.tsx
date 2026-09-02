@@ -7,7 +7,7 @@ import {
   type VendorContactPerson,
   type VendorsPage,
 } from './vendors.schemas';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, ChevronUp, Pencil, Trash, User, Settings, Plus } from 'lucide-react';
 import { useState, useRef, useEffect, Fragment } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
@@ -24,6 +24,7 @@ interface VendorDetailProps {
 export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
   const { orgId } = useParams<{ orgId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('Overview');
   const [isMoreOpen, setIsMoreOpen] = useState(false);
@@ -407,7 +408,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
       contactNumber: '',
     };
 
-    navigate(`/organizations/${orgId}/purchases/vendors/new`, { state: { vendorToClone } });
+    navigate(`/organizations/${orgId}/purchases/vendors/new`, { state: { vendorToClone , returnUrl: location.pathname + location.search } });
   };
 
   if (isLoading) {
@@ -505,7 +506,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
-            onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/${vendorId}/edit`)}
+            onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/${vendorId}/edit`, { state: { returnUrl: location.pathname + location.search } })}
             style={{
               padding: '6px 12px',
               border: '1px solid #d1d5db',

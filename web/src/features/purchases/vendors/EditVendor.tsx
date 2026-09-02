@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { type CreateVendorData } from './vendors.schemas';
 import { updateVendor, fetchVendorById } from './vendors.api';
 import type { AxiosError } from 'axios';
@@ -9,6 +9,7 @@ import { VendorForm } from './VendorForm';
 export function EditVendor() {
   const { id, orgId } = useParams<{ id: string; orgId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 

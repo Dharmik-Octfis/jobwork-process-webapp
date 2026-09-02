@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { fetchJobOrderOverview, fetchJobOrderWithStepsById } from '../job-orders/jobOrders.api';
@@ -12,6 +12,7 @@ export function CreateIssuePage() {
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const jobOrderIdParam = searchParams.get('jobOrderId');
   const stepIdParam = searchParams.get('stepId');
@@ -60,7 +61,7 @@ export function CreateIssuePage() {
              if (jobOrderIdParam) {
                navigate(`/organizations/${orgId}/jobwork/job-orders/${jobOrderIdParam}`);
              } else {
-               navigate(`/organizations/${orgId}/jobwork/issues`);
+               (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/jobwork/issues`);
              }
           }}
           style={{
@@ -121,14 +122,14 @@ export function CreateIssuePage() {
               if (jobOrderIdParam) {
                 navigate(`/organizations/${orgId}/jobwork/job-orders/${jobOrderIdParam}`);
               } else {
-                navigate(`/organizations/${orgId}/jobwork/issues`);
+                (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/jobwork/issues`);
               }
             }}
             onCancel={() => {
               if (jobOrderIdParam) {
                 navigate(`/organizations/${orgId}/jobwork/job-orders/${jobOrderIdParam}`);
               } else {
-                navigate(`/organizations/${orgId}/jobwork/issues`);
+                (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/jobwork/issues`);
               }
             }}
           />

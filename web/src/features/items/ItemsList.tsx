@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { itemsApi } from './items.api.ts';
 import { Plus, Package, SlidersHorizontal, ShoppingBag } from 'lucide-react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
 import { ItemDetail } from './ItemDetail';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -90,6 +90,7 @@ function renderItemCell(
 
 export function ItemsList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedItemId = searchParams.get('id');
@@ -261,7 +262,7 @@ export function ItemsList() {
                   </button>
                 )}
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/items/new`)}
+                  onClick={() => navigate(`/organizations/${orgId}/items/new`, { state: { returnUrl: location.pathname + location.search } })}
                   style={{
                     background: '#186337',
                     color: 'white',
@@ -328,7 +329,7 @@ export function ItemsList() {
                   transactions.
                 </p>
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/items/new`)}
+                  onClick={() => navigate(`/organizations/${orgId}/items/new`, { state: { returnUrl: location.pathname + location.search } })}
                   style={{
                     background: '#28a745',
                     color: 'white',

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { X } from 'lucide-react';
 import { Spinner } from '../../../components/ui/Spinner';
@@ -10,6 +10,7 @@ import { RouteForm } from './RouteForm';
 
 export function EditRoute() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const { orgId, id } = useParams<{ orgId: string; id: string }>();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});

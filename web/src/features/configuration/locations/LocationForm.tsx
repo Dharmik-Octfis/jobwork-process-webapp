@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { useQuery } from '@tanstack/react-query';
 import { fetchLocations, type Location, type CreateLocationData } from './locations.api';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import { ParentLocationDropdown } from './ParentLocationDropdown';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import { organizationsApi } from '../../organizations/organizations.api';

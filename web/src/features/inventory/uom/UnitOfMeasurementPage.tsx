@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import { Plus, Edit2, Trash2, ChevronDown, Package } from 'lucide-react';
 import { useUoms, useDeleteUom } from './uom.api';
 import { UomFormModal } from './UomFormModal';

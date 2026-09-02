@@ -4,7 +4,7 @@ import { DateInput } from '../../components/ui/DateInput';
 import { Select } from '../../components/ui/Select';
 import { Trash2, Plus, X } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { fetchLocations } from '../configuration/locations/locations.api';
 import { itemsApi } from './items.api';
 import { useTrackingLabel } from '../../hooks/useTrackingLabel';
@@ -100,6 +100,7 @@ const toFormRows = (
 export function OpeningStockPage() {
   const { orgId, id: itemId } = useParams<{ orgId: string; id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const { singular, plural } = useTrackingLabel();
 
@@ -312,7 +313,7 @@ export function OpeningStockPage() {
         <h1 style={{ fontSize: '20px', fontWeight: 600, color: '#0f172a', margin: 0 }}>{itemName || 'Opening Stock'}</h1>
         <button
           type="button"
-          onClick={() => navigate(-1)}
+          onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
           style={{
             background: 'transparent',
             border: 'none',
@@ -1090,7 +1091,7 @@ export function OpeningStockPage() {
       <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '12px', padding: '8px 24px', borderTop: '1px solid #eef0f3', position: 'sticky', bottom: 0, background: '#fff', zIndex: 10 }}>
         <button
           type="button"
-          onClick={() => navigate(-1)}
+          onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
           style={{
             padding: '8px 16px',
             border: '1px solid #cbd5e1',

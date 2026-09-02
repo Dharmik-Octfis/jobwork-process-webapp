@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Plus, Trash2, Settings, X } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createVendorSchema, type CreateVendorData } from './vendors.schemas';
@@ -51,6 +51,7 @@ export function VendorForm({
   onCancel,
 }: VendorFormProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const { data: customFields = [] } = useActiveCustomFields(orgId!, 'vendor');
   const [activeTab, setActiveTab] = useState('other');
@@ -242,7 +243,7 @@ export function VendorForm({
           type="button"
           onClick={() => {
             if (onCancel) onCancel();
-            else navigate(`/organizations/${orgId}/purchases/vendors`);
+            else (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/purchases/vendors`);
           }}
           style={{
             background: 'none',
@@ -975,7 +976,7 @@ export function VendorForm({
           </button>
           <button
             type="button"
-            onClick={() => (onCancel ? onCancel() : navigate(-1))}
+            onClick={() => (onCancel ? onCancel() : (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1))}
             style={{
               padding: '6px 20px',
               background: 'white',

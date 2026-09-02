@@ -1,4 +1,4 @@
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { permissionTemplatesApi } from './permissionTemplates.api';
 import { PermissionTemplateEditor } from './PermissionTemplateEditor';
@@ -12,6 +12,7 @@ import { PermissionTemplateEditor } from './PermissionTemplateEditor';
  */
 export function EditPermissionTemplate() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const { orgId, id } = useParams<{ orgId: string; id: string }>();
 

@@ -1,7 +1,7 @@
  
 import { useEffect, useState } from 'react';
 import { useForm, useFieldArray, useWatch, Controller } from 'react-hook-form';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { AxiosError } from 'axios';
 import {
   Plus,
@@ -107,6 +107,7 @@ function ItemImage({
 
 export function CreatePurchaseOrder() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId, id } = useParams<{ orgId: string; id?: string }>();
   const [searchParams] = useSearchParams();
   const cloneFrom = searchParams.get('cloneFrom');
@@ -523,7 +524,7 @@ export function CreatePurchaseOrder() {
         </h1>
         <button
           type="button"
-          onClick={() => navigate(`/organizations/${orgId}/purchases/purchase-orders`)}
+          onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/purchases/purchase-orders`)}
           style={{
             background: 'none',
             border: 'none',
@@ -1808,7 +1809,7 @@ export function CreatePurchaseOrder() {
           </button>
           <button
             type="button"
-            onClick={() => navigate(-1)}
+            onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
             style={{
               padding: '6px 20px',
               background: 'white',

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Plus, Trash2, Settings, X } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createCustomerSchema, type CreateCustomerData } from './customers.schemas';
@@ -49,6 +49,7 @@ export function CustomerForm({
   customFieldErrors,
 }: CustomerFormProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const { data: customFields = [] } = useActiveCustomFields(orgId!, 'customer');
   const [activeTab, setActiveTab] = useState('other');
@@ -246,7 +247,7 @@ export function CustomerForm({
         </h1>
         <button
           type="button"
-          onClick={() => navigate(`/organizations/${orgId}/sales/customers`)}
+          onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(`/organizations/${orgId}/sales/customers`)}
           style={{
             background: 'none',
             border: 'none',
@@ -1000,7 +1001,7 @@ export function CustomerForm({
           </button>
           <button
             type="button"
-            onClick={() => navigate(-1)}
+            onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
             style={{
               padding: '6px 20px',
               background: 'white',

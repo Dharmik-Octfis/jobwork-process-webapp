@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Settings, Info, Image as ImageIcon, Plus, Trash2 } from 'lucide-react';
 import { useForm, Controller, useWatch, type FieldErrors } from 'react-hook-form';
@@ -20,6 +20,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 export function CreateAssemblyPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams] = useSearchParams();
   const defaultItemId = searchParams.get('itemId');
@@ -1286,7 +1287,7 @@ export function CreateAssemblyPage() {
         <button
           type="button"
           disabled={createMutation.isPending}
-          onClick={() => navigate(-1)}
+          onClick={() => (location.state as any)?.returnUrl ? navigate((location.state as any).returnUrl) : navigate(-1)}
           style={{
             padding: '6px 20px',
             background: 'white',
