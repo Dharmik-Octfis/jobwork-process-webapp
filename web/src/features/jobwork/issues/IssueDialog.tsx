@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
-import { toast } from 'react-hot-toast';
 import { DateInput } from '../../../components/ui/DateInput';
 import { Modal } from '../../../components/ui/Modal';
 import { Select } from '../../../components/ui/Select';
@@ -671,6 +670,7 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
         toleranceOverrideReason: overrideReason.trim() || null,
         remarks: remarks.trim() || null,
       }),
+    meta: { suppressToast: true },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, jobOrder.id] });
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
@@ -698,15 +698,10 @@ export function IssueDialog({ isOpen, onClose, jobOrder, step, onIssued }: Props
       const best = [...coverage.values()].sort((a, b) => b.items.length - a.items.length)[0];
 
       if (best) {
-        const issued = inputItems.filter((input) => (qtyByItem.get(input.itemId) ?? 0) > 0);
-        const issuedItemNames = issued.map((i) => i.name);
-
         resetAllocations(best.id);
-        toast.success(`Challan raised for ${issuedItemNames.join(', ')}`);
         return;
       }
 
-      toast.success('Challan raised successfully');
       onClose();
     },
     onError: (err: AxiosError<{ message?: string; details?: Record<string, string> }>) => {

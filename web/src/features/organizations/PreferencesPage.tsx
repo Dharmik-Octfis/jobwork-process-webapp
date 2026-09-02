@@ -68,7 +68,6 @@ export function PreferencesPage() {
     try {
       await organizationsApi.updateOrganization(id, data);
       await queryClient.invalidateQueries({ queryKey: ['organizations'] });
-      toast.success('Preferences updated successfully');
     } catch (err: unknown) {
       toast.error(toApiErrorMessage(err));
     }

@@ -15,7 +15,8 @@ export const queryClient = new QueryClient({
     onError: (error, _variables, _context, mutation) => {
       // Allow specific mutations to opt out of global toasts via meta
       if (mutation.meta?.suppressToast) return;
-      toast.error(toApiErrorMessage(error));
+      const errorMessage = toApiErrorMessage(error);
+      toast.error(errorMessage, { id: errorMessage });
     },
   }),
 });

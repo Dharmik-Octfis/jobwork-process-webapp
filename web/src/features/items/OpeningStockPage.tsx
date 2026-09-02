@@ -120,7 +120,6 @@ export function OpeningStockPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['itemOpeningStock', orgId, itemId] });
       await queryClient.invalidateQueries({ queryKey: ['item', orgId, itemId] });
-      toast.success('Opening stock saved');
       navigate(`/organizations/${orgId}/items?id=${itemId}`);
     },
   });

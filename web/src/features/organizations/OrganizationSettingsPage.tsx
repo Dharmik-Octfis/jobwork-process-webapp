@@ -112,7 +112,6 @@ export function OrganizationSettingsPage() {
       setServerError(null);
       await organizationsApi.updateOrganization(id, data);
       await queryClient.invalidateQueries({ queryKey: ['organizations'] });
-      toast.success('Organization updated successfully');
     } catch (err) {
       setServerError(toApiErrorMessage(err));
     }

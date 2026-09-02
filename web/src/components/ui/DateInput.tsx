@@ -103,16 +103,21 @@ export function DateInput({
 
   const [timeState, setTimeState] = useState(() => parseTime(value));
 
+  const initializedRef = useRef(false);
+
   // Apply defaultToCurrent logic during initialization if value is empty
   useEffect(() => {
-    if (defaultToCurrent && !value) {
-      const today = new Date();
-      if (type === 'datetime') {
-        const hh = String(today.getHours()).padStart(2, '0');
-        const mm = String(today.getMinutes()).padStart(2, '0');
-        onChange(`${format(today, ISO)}T${hh}:${mm}`);
-      } else {
-        onChange(format(today, ISO));
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      if (defaultToCurrent && !value) {
+        const today = new Date();
+        if (type === 'datetime') {
+          const hh = String(today.getHours()).padStart(2, '0');
+          const mm = String(today.getMinutes()).padStart(2, '0');
+          onChange(`${format(today, ISO)}T${hh}:${mm}`);
+        } else {
+          onChange(format(today, ISO));
+        }
       }
     }
   }, [defaultToCurrent, value, onChange, type]);

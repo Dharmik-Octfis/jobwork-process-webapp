@@ -53,7 +53,6 @@ export function ProfilePage() {
       { firstName, lastName },
       {
         onSuccess: () => {
-          toast.success('Profile updated successfully.');
         },
       },
     );
