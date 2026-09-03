@@ -206,6 +206,8 @@ export function AddBillBatchesModal({
   const [unitsFor, setUnitsFor] = useState<string | null>(null);
   /** That batch's packages as the dialog opened, so Cancel can put them back. */
   const [unitsSnapshot, setUnitsSnapshot] = useState<BillBatchUnitRow[]>([]);
+  /** …and the overwrite choice, which the dialog shares rather than copies. */
+  const [overwriteSnapshot, setOverwriteSnapshot] = useState(false);
 
   const allocated = useMemo(
     () => batches.reduce((sum, b) => sum + (parseFloat(b.quantityIn) || 0), 0),
@@ -261,6 +263,10 @@ export function AddBillBatchesModal({
   const openUnits = (batchRowId: string) => {
     const batch = batches.find((b) => b.id === batchRowId);
     setUnitsSnapshot(batch ? [...batch.units] : []);
+    // The overwrite box inside the dialog drives the SAME flag as the one on this
+    // grid, so Cancel has to put that back too — otherwise ticking it in there and
+    // backing out leaves the line quietly armed to be rewritten.
+    setOverwriteSnapshot(overwrite);
     if (!batch?.units.length) handleAddUnit(batchRowId);
     setUnitsFor(batchRowId);
   };
@@ -272,6 +278,7 @@ export function AddBillBatchesModal({
       setBatches((prev) =>
         prev.map((b) => (b.id === unitsFor ? { ...b, units: [...restore] } : b)),
       );
+      setOverwrite(overwriteSnapshot);
     }
     setUnitsFor(null);
   };

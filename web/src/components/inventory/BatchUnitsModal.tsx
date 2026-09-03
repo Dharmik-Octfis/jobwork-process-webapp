@@ -130,7 +130,11 @@ export function BatchUnitsModal({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      /* 🔴 Escape and the ✕ CANCEL, they do not commit — the same answer
+         `IssueUnitsModal` gives, and the one a dialog with a Cancel button owes
+         its user. Wired to `onClose` they silently kept a half-typed grid, so the
+         two ways out of the same dialog disagreed about what happened to it. */
+      onClose={onCancel}
       title={`${plural} in ${heading}`}
       /* The rule the user is most likely to trip: name one package and they must
          all be named. Said here, before they type, rather than by a red readout
