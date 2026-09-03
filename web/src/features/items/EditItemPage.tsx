@@ -400,7 +400,7 @@ export function EditItemPage() {
                   )}
                 </div>
               </div>
- 
+
               <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
                   gap: '16px',
@@ -462,6 +462,7 @@ export function EditItemPage() {
                             ? [{ value: '', label: `${formData.unit} — no stocking unit set` }]
                             : []),
                         ]}
+                        buttonClassName="no-global-focus"
                         buttonStyle={{ border: 'none', height: '100%', padding: '0 12px', fontSize: 13 }}
                         actionItem={
                           <button
@@ -549,7 +550,7 @@ export function EditItemPage() {
                     onClick={() => frontImageRef.current?.click()}
                     style={{
                       width: '100%',
-                      padding: '16px 8px',
+                      padding: '18px 16px',
                       border: '1px dashed #cbd5e1',
                       borderRadius: '6px',
                       background: '#ffffff',
@@ -606,7 +607,7 @@ export function EditItemPage() {
                     onClick={() => rearImageRef.current?.click()}
                     style={{
                       width: '100%',
-                      padding: '16px 8px',
+                      padding: '32px 16px',
                       border: '1px dashed #cbd5e1',
                       borderRadius: '6px',
                       background: '#ffffff',
@@ -666,8 +667,8 @@ export function EditItemPage() {
                   style={{
                     width: '100%',
                     flex: 1,
-                    minHeight: '110px',
-                    padding: '12px 8px',
+                    minHeight: '180px',
+                    padding: '24px 16px',
                     border: '1px dashed #cbd5e1',
                     borderRadius: '6px',
                     background: '#ffffff',

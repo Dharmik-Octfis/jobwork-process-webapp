@@ -371,271 +371,286 @@ export function JobOrderForm({
 
   return (
     <>
-    <div className="page-body">
-    <form id="joborder-form" onSubmit={submit} noValidate style={{ padding: '12px 16px', paddingBottom: 120 }}>
-      {localError && (
-        <p
-          style={{
-            fontSize: 13,
-            color: '#b91c1c',
-            background: '#fef2f2',
-            border: '1px solid #fecaca',
-            borderRadius: 4,
-            padding: '8px 12px',
-            margin: '0 0 20px 0',
-            maxWidth: 900,
-          }}
-          role="alert"
+      <div className="page-body">
+        <form
+          id="joborder-form"
+          onSubmit={submit}
+          noValidate
+          style={{ padding: '12px 16px', paddingBottom: 120 }}
         >
-          {localError}
-        </p>
-      )}
+          {localError && (
+            <p
+              style={{
+                fontSize: 13,
+                color: '#b91c1c',
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                borderRadius: 4,
+                padding: '8px 12px',
+                margin: '0 0 20px 0',
+                maxWidth: 900,
+              }}
+              role="alert"
+            >
+              {localError}
+            </p>
+          )}
 
-      <section style={{ marginBottom: 32 }}>
-        <h2 style={sectionHeading}>Order</h2>
+          <section style={{ marginBottom: 32 }}>
+            <h2 style={sectionHeading}>Order</h2>
 
-        <div className="form-field-grid"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: 16,
-            maxWidth: 1200,
-          }}
-        >
-          <div>
-            <label style={labelStyle} htmlFor="jo-number">
-              Job Order Number
-            </label>
-            {isEdit ? (
-              <input
-                id="jo-number"
-                type="text"
-                value={initialData?.jobOrderNumber ?? ''}
-                readOnly
-                style={readOnlyStyle}
-              />
-            ) : (
-              /* The gear belongs TO this field — it configures the number in it —
+            <div
+              className="form-field-grid"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: 16,
+                maxWidth: 1200,
+              }}
+            >
+              <div>
+                <label style={labelStyle} htmlFor="jo-number">
+                  Job Order Number
+                </label>
+                {isEdit ? (
+                  <input
+                    id="jo-number"
+                    type="text"
+                    value={initialData?.jobOrderNumber ?? ''}
+                    readOnly
+                    style={readOnlyStyle}
+                  />
+                ) : (
+                  /* The gear belongs TO this field — it configures the number in it —
                  so it sits inside the box rather than floating beside it as a
                  second control. Still a real <button>, so Tab reaches it right
                  after the input (CLAUDE.md's tab rule). */
-              <div style={{ position: 'relative' }}>
-                <input
-                  id="jo-number"
-                  type="text"
-                  value={jobOrderNumber}
-                  onChange={(e) => setTypedNumber(e.target.value)}
-                  placeholder="(auto)"
-                  style={{ ...inputStyle, padding: '6px 34px 6px 8px', boxSizing: 'border-box' }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setIsNumberConfigOpen(true)}
-                  title="Configure job order numbering"
-                  aria-label="Configure job order numbering"
-                  style={{
-                    position: 'absolute',
-                    right: 3,
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: 26,
-                    height: 26,
-                    border: 'none',
-                    borderRadius: 3,
-                    background: 'transparent',
-                    color: '#64748b',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <Settings size={15} />
-                </button>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      id="jo-number"
+                      type="text"
+                      value={jobOrderNumber}
+                      onChange={(e) => setTypedNumber(e.target.value)}
+                      placeholder="(auto)"
+                      style={{
+                        ...inputStyle,
+                        padding: '6px 34px 6px 8px',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setIsNumberConfigOpen(true)}
+                      title="Configure job order numbering"
+                      aria-label="Configure job order numbering"
+                      style={{
+                        position: 'absolute',
+                        right: 3,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 26,
+                        height: 26,
+                        border: 'none',
+                        borderRadius: 3,
+                        background: 'transparent',
+                        color: '#64748b',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Settings size={15} />
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          <div>
-            <label style={labelStyle} htmlFor="jo-date">
-              Date
-            </label>
-            <DateInput id="jo-date" value={orderDate} onChange={setOrderDate} style={inputStyle} />
-          </div>
+              <div>
+                <label style={labelStyle} htmlFor="jo-date">
+                  Date
+                </label>
+                <DateInput
+                  id="jo-date"
+                  value={orderDate}
+                  onChange={setOrderDate}
+                  style={inputStyle}
+                />
+              </div>
 
-          <div>
-            <label style={labelStyle} htmlFor="jo-target">
-              Target date
-            </label>
-            <DateInput
-              id="jo-target"
-              value={targetDate}
-              onChange={setTargetDate}
-              style={inputStyle}
-            />
-          </div>
+              <div>
+                <label style={labelStyle} htmlFor="jo-target">
+                  Target date
+                </label>
+                <DateInput
+                  id="jo-target"
+                  value={targetDate}
+                  onChange={setTargetDate}
+                  style={inputStyle}
+                />
+              </div>
 
-          <div>
-            <label style={labelStyle}>Route</label>
-            <Select
-              value={routeId}
-              onChange={(value) => void applyRoute(value)}
-              options={[
-                { value: '', label: 'No route — build steps by hand' },
-                ...routes.map((r) => ({ value: r.id, label: r.name })),
-              ]}
-              ariaLabel="Route"
-              fullWidth
-            />
-          </div>
+              <div>
+                <label style={labelStyle}>Route</label>
+                <Select
+                  value={routeId}
+                  onChange={(value) => void applyRoute(value)}
+                  options={[
+                    { value: '', label: 'No route — build steps by hand' },
+                    ...routes.map((r) => ({ value: r.id, label: r.name })),
+                  ]}
+                  ariaLabel="Route"
+                  fullWidth
+                />
+              </div>
 
-          <div>
-            <label style={labelStyle}>Material belongs to</label>
-            <Select
-              value={ownership}
-              onChange={(value) => {
-                setOwnership(value);
-                if (value !== 'customer') setOwnerPartyId(null);
-              }}
-              options={[...OWNERSHIP_OPTIONS]}
-              ariaLabel="Ownership"
-              fullWidth
-            />
-          </div>
+              <div>
+                <label style={labelStyle}>Material belongs to</label>
+                <Select
+                  value={ownership}
+                  onChange={(value) => {
+                    setOwnership(value);
+                    if (value !== 'customer') setOwnerPartyId(null);
+                  }}
+                  options={[...OWNERSHIP_OPTIONS]}
+                  ariaLabel="Ownership"
+                  fullWidth
+                />
+              </div>
 
-          {ownership === 'customer' && (
-            <div>
-              <label style={{ ...labelStyle, color: '#ef4444' }}>Customer*</label>
-              <Select
-                value={ownerPartyId ?? ''}
-                onChange={(value) => setOwnerPartyId(value || null)}
-                options={[
-                  { value: '', label: 'Select a customer…' },
-                  ...customers.map((c) => ({
-                    value: c.id,
-                    label: c.companyName || c.contactName,
-                  })),
-                ]}
-                ariaLabel="Owning customer"
-                fullWidth
+              {ownership === 'customer' && (
+                <div>
+                  <label style={{ ...labelStyle, color: '#ef4444' }}>Customer*</label>
+                  <Select
+                    value={ownerPartyId ?? ''}
+                    onChange={(value) => setOwnerPartyId(value || null)}
+                    options={[
+                      { value: '', label: 'Select a customer…' },
+                      ...customers.map((c) => ({
+                        value: c.id,
+                        label: c.companyName || c.contactName,
+                      })),
+                    ]}
+                    ariaLabel="Owning customer"
+                    fullWidth
+                  />
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginTop: 16, maxWidth: 620 }}>
+              <label style={labelStyle} htmlFor="jo-remarks">
+                Remarks
+              </label>
+              <textarea
+                id="jo-remarks"
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+                style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }}
               />
             </div>
-          )}
-        </div>
+          </section>
 
-        <div style={{ marginTop: 16, maxWidth: 620 }}>
-          <label style={labelStyle} htmlFor="jo-remarks">
-            Remarks
-          </label>
-          <textarea
-            id="jo-remarks"
-            value={remarks}
-            onChange={(e) => setRemarks(e.target.value)}
-            style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }}
-          />
-        </div>
-      </section>
+          <section style={{ marginBottom: 32 }}>
+            <h2 style={sectionHeading}>Steps</h2>
 
-      <section style={{ marginBottom: 32 }}>
-        <h2 style={sectionHeading}>Steps</h2>
-
-        <StepsGrid
-          steps={steps}
-          onChange={setSteps}
-          errors={fieldErrors}
-          showPlannedQty
-          /* 🔴 Job orders only — never on a route. A route is a template reused
+            <StepsGrid
+              steps={steps}
+              onChange={setSteps}
+              errors={fieldErrors}
+              showPlannedQty
+              /* 🔴 Job orders only — never on a route. A route is a template reused
              across runs and a batch is a specific roll that will be gone by the
              next one, so a route naming batches would be wrong the second time it
              was used, and silently. */
-          allowPlannedBatches
-          /* Decides which batches may even be offered: one customer's goods must
+              allowPlannedBatches
+              /* Decides which batches may even be offered: one customer's goods must
              never be planned into another's order (§5.3). */
-          ownership={ownership}
-          lockedCount={lockedCount}
-        />
-      </section>
+              ownership={ownership}
+              lockedCount={lockedCount}
+            />
+          </section>
 
-      {customFieldDefs.length > 0 && (
-        <section style={{ maxWidth: 900, marginBottom: 32 }}>
-          <h2 style={sectionHeading}>Custom Fields</h2>
-          {/* Same wrapping grid as the Order section above, so custom fields read
+          {customFieldDefs.length > 0 && (
+            <section style={{ maxWidth: 900, marginBottom: 32 }}>
+              <h2 style={sectionHeading}>Custom Fields</h2>
+              {/* Same wrapping grid as the Order section above, so custom fields read
               as more fields on this form rather than a panel bolted to the end. */}
-          <CustomFieldsSection
-            orgId={orgId!}
-            entityType="job_order"
-            values={customFields}
-            onChange={setCustomFields}
-            errors={fieldErrors}
-            applyDefaults={!isEdit}
-            layout="grid"
-          />
-        </section>
-      )}
+              <CustomFieldsSection
+                orgId={orgId!}
+                entityType="job_order"
+                values={customFields}
+                onChange={setCustomFields}
+                errors={fieldErrors}
+                applyDefaults={!isEdit}
+                layout="grid"
+              />
+            </section>
+          )}
 
-      {isNumberConfigOpen && (
-        <JobOrderNumberConfigModal
-          onClose={() => setIsNumberConfigOpen(false)}
-          isSaving={savePreference.isPending}
-          initialPrefix={numberPreference?.prefix}
-          initialNextNumber={
-            numberPreference ? String(numberPreference.nextNumber).padStart(5, '0') : undefined
-          }
-          onSave={(prefix, nextNumber) =>
-            savePreference.mutate({ prefix, nextNumber: parseInt(nextNumber, 10) || 1 })
-          }
-        />
-      )}
-    </form>
-    </div>
-    <div
-      className="page-footer form-actions-footer"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '16px 32px',
-        background: '#fff',
-        borderTop: '1px solid #eef0f3',
-        position: 'sticky',
-        bottom: 0,
-        zIndex: 100,
-      }}
-    >
-      <button
-        form="joborder-form"
-        type="submit"
-        disabled={isPending}
+          {isNumberConfigOpen && (
+            <JobOrderNumberConfigModal
+              onClose={() => setIsNumberConfigOpen(false)}
+              isSaving={savePreference.isPending}
+              initialPrefix={numberPreference?.prefix}
+              initialNextNumber={
+                numberPreference ? String(numberPreference.nextNumber).padStart(5, '0') : undefined
+              }
+              onSave={(prefix, nextNumber) =>
+                savePreference.mutate({ prefix, nextNumber: parseInt(nextNumber, 10) || 1 })
+              }
+            />
+          )}
+        </form>
+      </div>
+      <div
+        className="page-footer form-actions-footer"
         style={{
-          padding: '6px 20px',
-          background: '#0062ff',
-          color: 'white',
-          border: 'none',
-          borderRadius: 4,
-          cursor: 'pointer',
-          fontWeight: 500,
-          fontSize: 13,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '16px 32px',
+          background: '#fff',
+          borderTop: '1px solid #eef0f3',
+          position: 'sticky',
+          bottom: 0,
+          zIndex: 100,
         }}
       >
-        {isPending ? 'Saving…' : 'Save'}
-      </button>
-      <button
-        type="button"
-        onClick={onCancel}
-        style={{
-          padding: '6px 20px',
-          background: 'white',
-          color: '#333',
-          border: '1px solid #d1d5db',
-          borderRadius: 4,
-          cursor: 'pointer',
-          fontWeight: 500,
-          fontSize: 13,
-        }}
-      >
-        Cancel
-      </button>
-    </div>
+        <button
+          form="joborder-form"
+          type="submit"
+          disabled={isPending}
+          style={{
+            padding: '6px 20px',
+            background: '#0062ff',
+            color: 'white',
+            border: 'none',
+            borderRadius: 4,
+            cursor: 'pointer',
+            fontWeight: 500,
+            fontSize: 13,
+          }}
+        >
+          {isPending ? 'Saving…' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          style={{
+            padding: '6px 20px',
+            background: 'white',
+            color: '#333',
+            border: '1px solid #d1d5db',
+            borderRadius: 4,
+            cursor: 'pointer',
+            fontWeight: 500,
+            fontSize: 13,
+          }}
+        >
+          Cancel
+        </button>
+      </div>
     </>
   );
 }

@@ -356,6 +356,7 @@ export function SearchableSelect({
                   />
                   <input
                     ref={searchInputRef}
+                    className="no-global-focus"
                     type="text"
                     placeholder="Search"
                     value={searchTerm}
@@ -373,8 +374,6 @@ export function SearchableSelect({
                       outline: 'none',
                       boxSizing: 'border-box',
                     }}
-                    onFocus={(e) => (e.target.style.borderColor = 'var(--color-primary)')}
-                    onBlur={(e) => (e.target.style.borderColor = 'var(--color-border)')}
                     autoFocus
                   />
                 </div>

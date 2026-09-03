@@ -83,8 +83,6 @@ export function CategorySelectDropdown({ value, onChange, error }: CategorySelec
     stateReducer: (state, actionAndChanges) => {
       const { type, changes } = actionAndChanges;
       switch (type) {
-        case useCombobox.stateChangeTypes.InputBlur:
-          return { ...changes, isOpen: state.isOpen };
         case useCombobox.stateChangeTypes.ItemClick:
         case useCombobox.stateChangeTypes.InputKeyDownEnter:
           return { ...changes, inputValue: '' };

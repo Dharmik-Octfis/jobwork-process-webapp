@@ -30,6 +30,7 @@ export function Select({
   actionItem,
   menuWidth,
   portal = false,
+  buttonClassName,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -43,6 +44,7 @@ export function Select({
   ariaLabel?: string;
   containerStyle?: React.CSSProperties;
   buttonStyle?: React.CSSProperties;
+  buttonClassName?: string;
   actionItem?: React.ReactNode;
   menuWidth?: number | string;
   /**
@@ -148,6 +150,7 @@ export function Select({
     >
       <button
         type="button"
+        className={buttonClassName}
         {...getToggleButtonProps({
           disabled,
           'aria-label': ariaLabel,

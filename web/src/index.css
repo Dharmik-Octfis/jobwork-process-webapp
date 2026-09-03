@@ -162,6 +162,34 @@ textarea {
   font-family: inherit;
 }
 
+input:not(.no-global-focus),
+select:not(.no-global-focus),
+textarea:not(.no-global-focus),
+button[aria-haspopup='listbox']:not(.no-global-focus),
+button[role='combobox']:not(.no-global-focus) {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input:not(.no-global-focus):hover:not(:disabled),
+textarea:not(.no-global-focus):hover:not(:disabled),
+select:not(.no-global-focus):hover:not(:disabled),
+button[aria-haspopup='listbox']:not(.no-global-focus):hover:not(:disabled),
+button[role='combobox']:not(.no-global-focus):hover:not(:disabled) {
+  border-color: var(--color-primary) !important;
+}
+
+input:not(.no-global-focus):focus:not(:disabled),
+textarea:not(.no-global-focus):focus:not(:disabled),
+select:not(.no-global-focus):focus:not(:disabled),
+button[aria-haspopup='listbox']:not(.no-global-focus):focus:not(:disabled),
+button[role='combobox']:not(.no-global-focus):focus:not(:disabled),
+button[aria-expanded='true']:not(.no-global-focus):not(:disabled) {
+  outline: none !important;
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 3px rgba(28, 124, 140, 0.15) !important;
+  border-radius: var(--radius-sm);
+}
+
 h1,
 h2,
 h3 {
