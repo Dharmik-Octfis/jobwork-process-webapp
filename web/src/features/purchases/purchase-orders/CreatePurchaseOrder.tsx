@@ -502,20 +502,10 @@ export function CreatePurchaseOrder() {
   }
 
   return (
-    <div
-      style={{
-        padding: 0,
-        margin: 0,
-        background: '#fff',
-        width: '100%',
-        minHeight: '100vh',
-        display: 'block',
-        paddingBottom: '80px',
-      }}
-    >
+    <div className="page-container">
       {/* Header */}
-      <div style={{ padding: '24px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1 style={{ fontSize: '22px', fontWeight: 400, margin: 0, color: '#000' }}>
+      <div className="page-header">
+        <h1 style={{ fontSize: '20px', fontWeight: 600, margin: 0, color: '#1e293b' }}>
           {isEdit
             ? `Edit Purchase Order (${existingPo?.poNumber || ''})`
             : isClone
@@ -537,15 +527,16 @@ export function CreatePurchaseOrder() {
             borderRadius: '4px',
           }}
         >
-          <X size={24} />
+          <X size={20} />
         </button>
       </div>
 
-      <form
-        onSubmit={handleSubmit(onSubmit, (errs) => console.log('Validation errors:', errs))}
-        style={{ padding: '32px' }}
-        noValidate
-      >
+      <div className="page-body">
+        <form
+          id="create-po-form"
+          onSubmit={handleSubmit(onSubmit, (errs) => console.log('Validation errors:', errs))}
+          noValidate
+        >
         {/* Main Details Section */}
         <div
           style={{
@@ -1775,66 +1766,52 @@ export function CreatePurchaseOrder() {
             </div>
           </div>
         </div>
+      </form>
+      </div>
 
-        {/* Fixed Bottom Action Bar */}
-        <div
-          className="form-actions-footer page-footer"
+      {/* Fixed Bottom Action Bar */}
+      <div className="form-actions-footer page-footer">
+        <button
+          form="create-po-form"
+          type="submit"
+          disabled={mutation.isPending}
           style={{
-            height: '44px',
-            boxSizing: 'border-box',
-            position: 'sticky',
-            bottom: 0,
-            right: 0,
-            background: '#fff',
-            padding: '0 24px',
-            borderTop: '1px solid #eef0f3',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            zIndex: 100,
+            padding: '6px 20px',
+            background: '#0062ff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 500,
+            fontSize: '13px',
           }}
         >
-          <button
-            type="submit"
-            disabled={mutation.isPending}
-            style={{
-              padding: '6px 20px',
-              background: '#0062ff',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 500,
-              fontSize: '13px',
-            }}
-          >
-            {mutation.isPending ? 'Saving...' : 'Save'}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
-              if (returnUrl) {
-                navigate(returnUrl);
-              } else {
-                navigate(-1);
-              }
-            }}
-            style={{
-              padding: '6px 20px',
-              background: 'white',
-              color: '#333',
-              border: '1px solid #d1d5db',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 500,
-              fontSize: '13px',
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
+          {mutation.isPending ? 'Saving...' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
+            if (returnUrl) {
+              navigate(returnUrl);
+            } else {
+              navigate(-1);
+            }
+          }}
+          style={{
+            padding: '6px 20px',
+            background: 'white',
+            color: '#333',
+            border: '1px solid #d1d5db',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 500,
+            fontSize: '13px',
+          }}
+        >
+          Cancel
+        </button>
+      </div>
 
       <PurchaseOrderNumberConfigModal
         isOpen={isNumberConfigOpen}

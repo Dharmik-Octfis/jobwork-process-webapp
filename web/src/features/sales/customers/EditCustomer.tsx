@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { type CreateCustomerData } from './customers.schemas';
 import { updateCustomer, fetchCustomerById } from './customers.api';
 import type { AxiosError } from 'axios';
@@ -49,7 +49,7 @@ export function EditCustomer() {
   }
 
   return (
-    <div>
+    <>
       {customer && (
         <CustomerForm
           initialData={customer as unknown as CreateCustomerData} // mapping handles identical schema structure
@@ -59,6 +59,6 @@ export function EditCustomer() {
           customFieldErrors={fieldErrors}
         />
       )}
-    </div>
+    </>
   );
 }

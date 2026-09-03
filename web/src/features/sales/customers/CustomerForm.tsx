@@ -39,6 +39,7 @@ interface CustomerFormProps {
   isSubmitting: boolean;
   isEdit?: boolean;
   customFieldErrors?: Record<string, string>;
+  isModal?: boolean;
 }
 
 export function CustomerForm({
@@ -47,6 +48,7 @@ export function CustomerForm({
   isSubmitting,
   isEdit = false,
   customFieldErrors,
+  isModal = false,
 }: CustomerFormProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -228,43 +230,35 @@ export function CustomerForm({
   });
 
   return (
-    <div
-      className="customer-form-container"
-      style={{
-        padding: 0,
-        margin: 0,
-        background: '#fff',
-        width: '100%',
-        minHeight: '100vh',
-        display: 'block',
-        paddingBottom: '80px',
-      }}
-    >
+    <div className={isModal ? '' : 'page-container'} style={isModal ? { background: '#fff' } : undefined}>
       {/* Header */}
-      <div style={{ padding: '24px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1 style={{ fontSize: '22px', fontWeight: 400, margin: 0, color: '#000' }}>
-          {isEdit ? 'Edit Customer' : 'New Customer'}
-        </h1>
-        <button
-          type="button"
-          onClick={() => navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/sales/customers`)}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#64748b',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '4px',
-            borderRadius: '4px',
-          }}
-        >
-          <X size={24} />
-        </button>
-      </div>
+      {!isModal && (
+        <div className="page-header">
+          <h1 style={{ fontSize: '20px', fontWeight: 600, margin: 0, color: '#1e293b' }}>
+            {isEdit ? 'Edit Customer' : 'New Customer'}
+          </h1>
+          <button
+            type="button"
+            onClick={() => navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/sales/customers`)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#64748b',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px',
+              borderRadius: '4px',
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
+      )}
 
-      <form onSubmit={handleSubmit((data) => {
+      <div className={isModal ? '' : 'page-body'}>
+      <form id="customer-form" style={{ maxWidth: '900px' }} onSubmit={handleSubmit((data) => {
         const cleanedData = {
           ...data,
           contactPersons: data.contactPersons?.filter(cp => 
@@ -272,7 +266,7 @@ export function CustomerForm({
           )
         };
         onSubmit(cleanedData);
-      })} style={{ padding: '32px' }}>
+      })}>
         {/* Main Details Section */}
         <div className="form-field-grid"
           style={{
@@ -959,65 +953,51 @@ export function CustomerForm({
             </div>
           )}
         </div>
+      </form>
+      </div>
 
-        <div
-          className="form-actions-footer page-footer"
+      <div className={`form-actions-footer ${isModal ? '' : 'page-footer'}`} style={isModal ? { position: 'sticky', bottom: 0, backgroundColor: '#fff', padding: '16px 20px', borderTop: '1px solid #e2e8f0', zIndex: 10, margin: '0 -20px -20px -20px' } : undefined}>
+        <button
+          form="customer-form"
+          type="submit"
+          disabled={isSubmitting}
           style={{
-            height: '44px',
-            boxSizing: 'border-box',
-            position: 'sticky',
-            bottom: 0,
-            right: 0,
-            background: '#fff',
-            padding: '0 24px',
-            borderTop: '1px solid #eef0f3',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            zIndex: 100,
+            padding: '6px 20px',
+            background: '#0062ff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 500,
+            fontSize: '13px',
           }}
         >
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            style={{
-              padding: '6px 20px',
-              background: '#0062ff',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 500,
-              fontSize: '13px',
-            }}
-          >
-            {isSubmitting ? 'Saving...' : 'Save'}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
-              if (returnUrl) {
-                navigate(returnUrl);
-              } else {
-                navigate(-1);
-              }
-            }}
-            style={{
-              padding: '6px 20px',
-              background: 'white',
-              color: '#333',
-              border: '1px solid #d1d5db',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 500,
-              fontSize: '13px',
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
+          {isSubmitting ? 'Saving...' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
+            if (returnUrl) {
+              navigate(returnUrl);
+            } else {
+              navigate(-1);
+            }
+          }}
+          style={{
+            padding: '6px 20px',
+            background: 'white',
+            color: '#333',
+            border: '1px solid #d1d5db',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 500,
+            fontSize: '13px',
+          }}
+        >
+          Cancel
+        </button>
+      </div>
 
       <CustomerNumberConfigModal
         isOpen={isNumberConfigOpen}

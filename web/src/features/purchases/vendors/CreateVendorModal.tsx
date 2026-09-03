@@ -117,6 +117,7 @@ export function CreateVendorModal({ isOpen, onClose, onSuccess }: CreateVendorMo
             isEdit={false}
             customFieldErrors={fieldErrors}
             onCancel={onClose}
+            isModal={true}
           />
         </div>
       </div>

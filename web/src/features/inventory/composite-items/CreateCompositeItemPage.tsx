@@ -325,15 +325,15 @@ export function CreateCompositeItemPage({
 
   return (
     <div
-      style={{
+      className={isModal ? '' : 'page-container'}
+      style={isModal ? {
         padding: 0,
         margin: 0,
         background: '#fff',
         width: '100%',
-        minHeight: isModal ? 'auto' : '100vh',
+        minHeight: 'auto',
         display: 'block',
-        paddingBottom: isModal ? '0' : '80px',
-      }}
+      } : undefined}
     >
       <style>{`
         .composite-item-row {
@@ -360,22 +360,22 @@ export function CreateCompositeItemPage({
           background-color: #ffffff;
         }
       `}</style>
+      
       <div
-        style={{
-          padding: isModal ? '20px' : '24px 32px 24px',
-          maxWidth: isModal ? '100%' : '1200px',
-          margin: isModal ? '0' : '0 auto',
+        className={isModal ? '' : 'page-header'}
+        style={isModal ? {
+          padding: '20px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-        }}
+        } : undefined}
       >
         <h1
           style={{
-            fontSize: isModal ? '20px' : '24px',
+            fontSize: isModal ? '20px' : '20px',
             fontWeight: 600,
-            color: '#1e293b',
             margin: 0,
+            color: '#1e293b',
           }}
         >
           New Composite Item
@@ -396,15 +396,16 @@ export function CreateCompositeItemPage({
               borderRadius: '4px',
             }}
           >
-            <X size={24} />
+            <X size={20} />
           </button>
         )}
       </div>
 
-      <div>
+      <div className={isModal ? '' : 'page-body'} style={isModal ? { padding: '0 20px 20px' } : undefined}>
         <form
+          id="create-composite-item-form"
           onSubmit={handleSubmit}
-          style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}
+          style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '900px' }}
         >
           {/* Top Section: Basic Info & Images */}
           <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -740,7 +741,7 @@ export function CreateCompositeItemPage({
               <div style={{ fontSize: 14, fontWeight: 600, color: '#ef4444' }}>
                 Associate Items*
               </div>
-              <div style={{ width: '100%', overflowX: 'auto' }}>
+              <div style={{ width: '100%', overflow: 'visible' }}>
                     <table
                 style={{
                   width: '100%',
@@ -1019,7 +1020,7 @@ export function CreateCompositeItemPage({
                 <div style={{ fontSize: 14, fontWeight: 600, color: '#ef4444' }}>
                   Associate Services*
                 </div>
-                <div style={{ width: '100%', overflowX: 'auto' }}>
+                <div style={{ width: '100%', overflow: 'visible' }}>
                     <table
                   style={{
                     width: '100%',
@@ -1730,62 +1731,69 @@ export function CreateCompositeItemPage({
               />
             </div>
           )}
-
-          <div
-            className={`form-actions-footer ${isModal ? 'modal-footer' : 'page-footer'}`}
-            style={{
-              height: '44px',
-              boxSizing: 'border-box',
-              position: 'sticky',
-              bottom: 0,
-              right: 0,
-              background: '#fff',
-              padding: isModal ? '0 20px' : '0 24px',
-              borderTop: '1px solid #eef0f3',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              zIndex: 100,
-            }}
-          >
-            <button
-              type="submit"
-              disabled={createMutation.isPending}
-              style={{
-                padding: '6px 20px',
-                background: '#0062ff',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: createMutation.isPending ? 'not-allowed' : 'pointer',
-                fontWeight: 500,
-                fontSize: '13px',
-                opacity: createMutation.isPending ? 0.7 : 1,
-              }}
-            >
-              {createMutation.isPending ? 'Saving...' : 'Save'}
-            </button>
-            <button
-              type="button"
-              disabled={createMutation.isPending}
-              onClick={() =>
-                isModal && onCancel ? onCancel() : (location.state as { returnUrl?: string })?.returnUrl ? navigate((location.state as { returnUrl?: string }).returnUrl!) : navigate(`/organizations/${orgId}/composite-items`)
-              }
-              style={{
-                padding: '6px 20px',
-                background: 'white',
-                color: createMutation.isPending ? '#94a3b8' : '#333',
-                border: '1px solid #d1d5db',
-                borderRadius: '4px',
-                cursor: createMutation.isPending ? 'not-allowed' : 'pointer',
-                fontWeight: 500,
-                fontSize: '13px',
-              }}
-            >
-              Cancel
-            </button>
-          </div>
         </form>
+      </div>
+
+      <div
+        className={isModal ? 'modal-footer' : 'form-actions-footer page-footer'}
+        style={isModal ? {
+          padding: '16px 20px',
+          borderTop: '1px solid #eef0f3',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          position: 'sticky',
+          bottom: 0,
+          background: '#fff',
+          zIndex: 100,
+        } : undefined}
+      >
+        <button
+          form="create-composite-item-form"
+          type="submit"
+          disabled={createMutation.isPending}
+          style={{
+            padding: '6px 20px',
+            background: '#0062ff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: createMutation.isPending ? 'not-allowed' : 'pointer',
+            fontWeight: 500,
+            fontSize: '13px',
+            opacity: createMutation.isPending ? 0.7 : 1,
+          }}
+        >
+          {createMutation.isPending ? 'Saving...' : 'Save'}
+        </button>
+        <button
+          type="button"
+          disabled={createMutation.isPending}
+          onClick={() => {
+            if (isModal && onCancel) {
+              onCancel();
+            } else {
+              const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
+              if (returnUrl) {
+                navigate(returnUrl);
+              } else {
+                navigate(-1);
+              }
+            }
+          }}
+          style={{
+            padding: '6px 20px',
+            background: 'white',
+            color: createMutation.isPending ? '#94a3b8' : '#333',
+            border: '1px solid #d1d5db',
+            borderRadius: '4px',
+            cursor: createMutation.isPending ? 'not-allowed' : 'pointer',
+            fontWeight: 500,
+            fontSize: '13px',
+          }}
+        >
+          Cancel
+        </button>
       </div>
 
       <MultiSelectItemModal

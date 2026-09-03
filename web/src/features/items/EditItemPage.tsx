@@ -261,44 +261,33 @@ export function EditItemPage() {
   }
 
   return (
-    <div
-      style={{
-        padding: 0,
-        margin: 0,
-        background: '#fff',
-        width: '100%',
-        minHeight: '100vh',
-        display: 'block',
-        paddingBottom: '80px',
-      }}
-    >
-      <div style={{ padding: '16px 24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h1 style={{ fontSize: '22px', fontWeight: 400, margin: 0, color: '#000' }}>Edit Item</h1>
-          <button
-            type="button"
-            onClick={() => navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/items`)}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#64748b',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '4px',
-              borderRadius: '4px',
-            }}
-          >
-            <X size={20} />
-          </button>
-        </div>
+    <div className="page-container">
+      <div className="page-header">
+        <h1 style={{ fontSize: '20px', fontWeight: 600, margin: 0, color: '#1e293b' }}>Edit Item</h1>
+        <button
+          type="button"
+          onClick={() => navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/items`)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#64748b',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '4px',
+            borderRadius: '4px',
+          }}
+        >
+          <X size={20} />
+        </button>
       </div>
 
-      <div style={{ padding: '0 32px 32px' }}>
+      <div className="page-body">
         <form
+          id="edit-item-form"
           onSubmit={handleSubmit}
-          style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}
+          style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '900px' }}
         >
           {/* Top Section: Basic Info & Images */}
           <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -1098,60 +1087,45 @@ export function EditItemPage() {
               />
             </div>
           )}
-
-          <div
-            className="form-actions-footer page-footer"
-            style={{
-              height: '44px',
-              boxSizing: 'border-box',
-              position: 'fixed',
-              bottom: 0,
-              right: 0,
-              background: '#fff',
-              padding: '0 24px',
-              borderTop: '1px solid #eef0f3',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              zIndex: 100,
-            }}
-          >
-            <button
-              type="submit"
-              disabled={updateMutation.isPending}
-              style={{
-                padding: '6px 20px',
-                background: '#0062ff',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: updateMutation.isPending ? 'not-allowed' : 'pointer',
-                fontWeight: 500,
-                fontSize: '13px',
-                opacity: updateMutation.isPending ? 0.7 : 1,
-              }}
-            >
-              {updateMutation.isPending ? 'Saving...' : 'Save'}
-            </button>
-            <button
-              type="button"
-              disabled={updateMutation.isPending}
-              onClick={() => (location.state as { returnUrl?: string })?.returnUrl ? navigate((location.state as { returnUrl?: string }).returnUrl!) : navigate(-1)}
-              style={{
-                padding: '6px 20px',
-                background: 'white',
-                color: updateMutation.isPending ? '#94a3b8' : '#333',
-                border: '1px solid #d1d5db',
-                borderRadius: '4px',
-                cursor: updateMutation.isPending ? 'not-allowed' : 'pointer',
-                fontWeight: 500,
-                fontSize: '13px',
-              }}
-            >
-              Cancel
-            </button>
-          </div>
         </form>
+      </div>
+
+      <div className="form-actions-footer page-footer">
+        <button
+          form="edit-item-form"
+          type="submit"
+          disabled={updateMutation.isPending}
+          style={{
+            padding: '6px 20px',
+            background: '#0062ff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: updateMutation.isPending ? 'not-allowed' : 'pointer',
+            fontWeight: 500,
+            fontSize: '13px',
+            opacity: updateMutation.isPending ? 0.7 : 1,
+          }}
+        >
+          {updateMutation.isPending ? 'Saving...' : 'Save'}
+        </button>
+        <button
+          type="button"
+          disabled={updateMutation.isPending}
+          onClick={() => (location.state as { returnUrl?: string })?.returnUrl ? navigate((location.state as { returnUrl?: string }).returnUrl!) : navigate(-1)}
+          style={{
+            padding: '6px 20px',
+            background: 'white',
+            color: updateMutation.isPending ? '#94a3b8' : '#333',
+            border: '1px solid #d1d5db',
+            borderRadius: '4px',
+            cursor: updateMutation.isPending ? 'not-allowed' : 'pointer',
+            fontWeight: 500,
+            fontSize: '13px',
+          }}
+        >
+          Cancel
+        </button>
       </div>
       <UomFormModal
         orgId={orgId!}

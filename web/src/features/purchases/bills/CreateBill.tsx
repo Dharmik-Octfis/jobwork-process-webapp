@@ -539,20 +539,10 @@ export function CreateBill() {
   }
 
   return (
-    <div
-      style={{
-        padding: 0,
-        margin: 0,
-        background: '#fff',
-        width: '100%',
-        minHeight: '100vh',
-        display: 'block',
-        paddingBottom: '80px',
-      }}
-    >
+    <div className="page-container">
       {/* Header */}
-      <div style={{ padding: '24px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1 style={{ fontSize: '22px', fontWeight: 400, margin: 0, color: '#000' }}>
+      <div className="page-header">
+        <h1 style={{ fontSize: '20px', fontWeight: 600, margin: 0, color: '#1e293b' }}>
           {isEdit
             ? `Edit Bill (${existingPo?.billNumber || ''})`
             : isClone
@@ -574,15 +564,16 @@ export function CreateBill() {
             borderRadius: '4px',
           }}
         >
-          <X size={24} />
+          <X size={20} />
         </button>
       </div>
 
-      <form
-        onSubmit={handleSubmit(onSubmit, (errs) => console.log('Validation errors:', errs))}
-        style={{ padding: '32px' }}
-        noValidate
-      >
+      <div className="page-body">
+        <form
+          id="create-bill-form"
+          onSubmit={handleSubmit(onSubmit, (errs) => console.log('Validation errors:', errs))}
+          noValidate
+        >
         {/* Main Details Section */}
         <div
           style={{
@@ -1566,86 +1557,71 @@ export function CreateBill() {
             </div>
           </div>
         </div>
+      </form>
+      </div>
 
-        {/* Fixed Bottom Action Bar */}
-        <div
-          className="form-actions-footer page-footer"
+      {/* Fixed Bottom Action Bar */}
+      <div className="form-actions-footer page-footer">
+        <button
+          form="create-bill-form"
+          type="submit"
+          onClick={() => setValue('status', 'Draft')}
+          disabled={mutation.isPending}
           style={{
-            height: '44px',
-            boxSizing: 'border-box',
-            position: 'fixed',
-            bottom: 0,
-            left: '250px', // Assuming standard sidebar width, or you can just leave it as 0 if the layout handles it
-            right: 0,
-            background: '#fff',
-            padding: '0 24px',
-            borderTop: '1px solid #eef0f3',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'flex-start',
-            gap: '12px',
-            zIndex: 100,
+            padding: '6px 20px',
+            background: '#f8fafc',
+            color: '#0f172a',
+            border: '1px solid #cbd5e1',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 500,
+            fontSize: '13px',
           }}
         >
-          <button
-            type="submit"
-            onClick={() => setValue('status', 'Draft')}
-            disabled={mutation.isPending}
-            style={{
-              padding: '6px 20px',
-              background: '#f8fafc',
-              color: '#0f172a',
-              border: '1px solid #cbd5e1',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 500,
-              fontSize: '13px',
-            }}
-          >
-            {mutation.isPending && watchStatus === 'Draft' ? 'Saving...' : 'Save as Draft'}
-          </button>
-          <button
-            type="submit"
-            onClick={() => setValue('status', 'Open')}
-            disabled={mutation.isPending}
-            style={{
-              padding: '6px 20px',
-              background: '#15803d',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 500,
-              fontSize: '13px',
-            }}
-          >
-            {mutation.isPending && watchStatus === 'Open' ? 'Saving...' : 'Save as Open'}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
-              if (returnUrl) {
-                navigate(returnUrl);
-              } else {
-                navigate(-1);
-              }
-            }}
-            style={{
-              padding: '6px 20px',
-              background: 'white',
-              color: '#333',
-              border: '1px solid #d1d5db',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 500,
-              fontSize: '13px',
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
+          {mutation.isPending && watchStatus === 'Draft' ? 'Saving...' : 'Save as Draft'}
+        </button>
+        <button
+          form="create-bill-form"
+          type="submit"
+          onClick={() => setValue('status', 'Open')}
+          disabled={mutation.isPending}
+          style={{
+            padding: '6px 20px',
+            background: '#15803d',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 500,
+            fontSize: '13px',
+          }}
+        >
+          {mutation.isPending && watchStatus === 'Open' ? 'Saving...' : 'Save as Open'}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
+            if (returnUrl) {
+              navigate(returnUrl);
+            } else {
+              navigate(-1);
+            }
+          }}
+          style={{
+            padding: '6px 20px',
+            background: 'white',
+            color: '#333',
+            border: '1px solid #d1d5db',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 500,
+            fontSize: '13px',
+          }}
+        >
+          Cancel
+        </button>
+      </div>
 
       <DeliveryAddressModal
         isOpen={isDeliveryAddressModalOpen}

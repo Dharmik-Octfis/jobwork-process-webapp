@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { type CreateVendorData } from './vendors.schemas';
 import { updateVendor, fetchVendorById } from './vendors.api';
 import type { AxiosError } from 'axios';
@@ -49,7 +49,7 @@ export function EditVendor() {
   }
 
   return (
-    <div>
+    <>
       {vendor && (
         <VendorForm
           initialData={vendor as unknown as CreateVendorData} // mapping handles identical schema structure
@@ -59,6 +59,6 @@ export function EditVendor() {
           customFieldErrors={fieldErrors}
         />
       )}
-    </div>
+    </>
   );
 }

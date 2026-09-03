@@ -322,17 +322,9 @@ export function CreateAssemblyPage() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#fff' }}>
+    <div className="page-container">
       {/* Header */}
-      <div
-        style={{
-          padding: '16px 24px',
-          borderBottom: '1px solid #eef0f3',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
+      <div className="page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <PackageIcon />
           <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 600, color: '#1e293b' }}>
@@ -358,7 +350,7 @@ export function CreateAssemblyPage() {
         </button>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+      <div className="page-body">
         <form
           id="create-assembly-form"
           onSubmit={handleSubmit(onSubmit, onValidationError)}
@@ -1432,23 +1424,7 @@ export function CreateAssemblyPage() {
       </div>
 
       {/* Footer Actions */}
-      <div
-        className="form-actions-footer page-footer"
-        style={{
-          height: '44px',
-          boxSizing: 'border-box',
-          position: 'sticky',
-          bottom: 0,
-          right: 0,
-          background: '#fff',
-          padding: '0 24px',
-          borderTop: '1px solid #eef0f3',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          zIndex: 100,
-        }}
-      >
+      <div className="form-actions-footer page-footer">
         <button
           type="submit"
           form="create-assembly-form"
