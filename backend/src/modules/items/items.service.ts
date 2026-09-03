@@ -11,10 +11,13 @@ import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../lib/p
 import { filterWhere } from '../settings/list-views/listFilters.catalog.ts';
 import {
   asResolvedBatch,
+  autoUnitLabel,
   createBatch,
+  createBatchUnits,
+  getAvailableBatchUnits,
   getBalance,
   getBalanceByLocation,
-  getBalancesByBatch,
+  getBalancesByBatchUnit,
   postMovement,
   type ResolvedBatches,
 } from '../inventory/stock-ledger/stockLedger.service.ts';
@@ -106,14 +109,112 @@ export function normalizeItemDto<T extends Record<string, unknown>>(rawData: T):
   return copy as T;
 }
 
-/** What this document currently declares for one batch at one location. */
+/**
+ * A package row the user actually meant, as opposed to a blank one the grid left
+ * behind.
+ *
+ * 🔴 It used to be "has a label", and stopped being that on 2026-09-03 when the
+ * label became optional: an unnamed package is now the ordinary case and is
+ * auto-named `#seq` at the write. `id` counts on its own so a package already on
+ * the books is still SETTLED when its quantity is cleared to zero — dropping it
+ * here would leave its stock behind instead of removing it.
+ */
+const isDeclaredUnit = (unit: {
+  id?: string | undefined;
+  label?: string | null | undefined;
+  quantityIn?: string | number | null | undefined;
+}) =>
+  Boolean(unit.id) ||
+  (unit.label ?? '').trim() !== '' ||
+  Number(unit.quantityIn === '' ? 0 : (unit.quantityIn ?? 0)) > 0;
+
+/**
+ * What this document currently declares for one batch — or one PACKAGE inside a
+ * batch — at one location.
+ *
+ * 🔴 `batchUnitId` is part of the identity, not a detail hanging off it. A batch
+ * holding three takas and a loose remainder is FOUR positions at that location,
+ * each settled on its own, because each is a separate thing the user can edit,
+ * delete, or have already issued. Keying on the batch alone would net them into
+ * one number and make "delete T-2" indistinguishable from "reduce the batch".
+ */
 interface OpeningPosition {
   batchId: string;
+  /** Null on the batch's untagged remainder — which is a position in its own
+   * right, and the only one an item with no unit level ever has. */
+  batchUnitId: string | null;
   locationId: string;
   batch: Awaited<ReturnType<TenantClient['batch']['findFirstOrThrow']>>;
+  /** The package's label, for the error messages and the read-back. */
+  unitLabel: string | null;
+  unitSeq: number | null;
   qty: Prisma.Decimal;
   value: Prisma.Decimal;
   postedAt: Date;
+}
+
+/** The identity of a position, as a map key. */
+function positionKey(batchId: string, batchUnitId: string | null, locationId: string) {
+  return `${batchId}_${batchUnitId ?? ''}_${locationId}`;
+}
+
+/**
+ * 🔴 POSITIONS AT ONE LOCATION, FOLDED BACK INTO THE BATCH ROWS THE FORM SHOWS.
+ *
+ * The ledger holds one position per package plus one for the untagged remainder;
+ * the grid shows one row per BATCH with its packages nested underneath. So a
+ * batch's `quantityIn` is the sum of all its positions here — packages included —
+ * which is what makes the number on the batch row keep meaning "how much of this
+ * batch is here", exactly as it did before the level existed.
+ *
+ * Both ids round-trip. The batch id is what lets the writer tell "this batch,
+ * edited" from "a new batch"; the unit id does the same one level down, and
+ * without it deleting a package and renaming one would be the same request.
+ */
+function toBatchRows(positions: readonly OpeningPosition[]) {
+  const byBatch = new Map<
+    string,
+    {
+      id: string;
+      batchReference: string | null;
+      manufacturerBatch: string | null;
+      manufacturedDate: Date | null;
+      expiryDate: Date | null;
+      sellingPrice: number | null;
+      mrp: number | null;
+      quantityIn: number;
+      units: { id: string; label: string; seq: number; quantityIn: number }[];
+    }
+  >();
+
+  for (const entry of positions) {
+    const row = byBatch.get(entry.batchId) ?? {
+      id: entry.batch.id,
+      // 🔴 No `batchNumber` (2026-08-14) — internal, and a field in the payload
+      // is a field somebody renders. `id` is the round-trip handle.
+      batchReference: entry.batch.supplierBatchRef,
+      manufacturerBatch: entry.batch.manufacturerBatch,
+      manufacturedDate: entry.batch.manufacturedDate,
+      expiryDate: entry.batch.expiryDate,
+      sellingPrice: entry.batch.sellingPrice !== null ? Number(entry.batch.sellingPrice) : null,
+      mrp: entry.batch.mrp !== null ? Number(entry.batch.mrp) : null,
+      quantityIn: 0,
+      units: [],
+    };
+    row.quantityIn += Number(entry.qty);
+    if (entry.batchUnitId) {
+      row.units.push({
+        id: entry.batchUnitId,
+        label: entry.unitLabel ?? '',
+        seq: entry.unitSeq ?? 0,
+        quantityIn: Number(entry.qty),
+      });
+    }
+    byBatch.set(entry.batchId, row);
+  }
+
+  for (const row of byBatch.values()) row.units.sort((a, b) => a.seq - b.seq);
+  return [...byBatch.values()];
 }
 
 export class ItemsService {
@@ -134,17 +235,20 @@ export class ItemsService {
   ): Promise<Map<string, OpeningPosition>> {
     const rows = await tx.stockLedgerEntry.findMany({
       where: { organizationId, itemId, sourceDocType: 'item_opening_stock' },
-      include: { batch: true },
+      include: { batch: true, batchUnit: { select: { label: true, seq: true } } },
       orderBy: { postedAt: 'asc' },
     });
 
     const positions = new Map<string, OpeningPosition>();
     for (const row of rows) {
-      const key = `${row.batchId}_${row.locationId}`;
+      const key = positionKey(row.batchId, row.batchUnitId, row.locationId);
       const current = positions.get(key) ?? {
         batchId: row.batchId,
+        batchUnitId: row.batchUnitId,
         locationId: row.locationId,
         batch: row.batch,
+        unitLabel: row.batchUnit?.label ?? null,
+        unitSeq: row.batchUnit?.seq ?? null,
         qty: new Prisma.Decimal(0),
         value: new Prisma.Decimal(0),
         postedAt: row.postedAt,
@@ -207,7 +311,7 @@ export class ItemsService {
     if (delta.isZero()) return;
 
     const { organizationId, itemId, valuePerUnit, userId } = context;
-    const balanceKey = `${position.batchId}@${position.locationId}`;
+    const balanceKey = positionKey(position.batchId, position.batchUnitId, position.locationId);
     // The value already riding on this position, per unit — used when the form
     // states no value of its own, so a top-up is worth what the rest of it is.
     const existingUnitValue = position.qty.greaterThan(0)
@@ -221,6 +325,7 @@ export class ItemsService {
         {
           organizationId,
           batchId: position.batchId,
+          batchUnitId: position.batchUnitId,
           locationId: position.locationId,
           movementType: 'opening',
           qtyIn: delta,
@@ -245,18 +350,28 @@ export class ItemsService {
         await getBalance(tx, {
           organizationId,
           batchId: position.batchId,
+          // 🔴 Scoped to THIS position, which for the untagged one means the
+          // untagged rows alone. Asking about the whole batch would let a
+          // reduction of the loose remainder be waived through on the strength
+          // of stock that is spoken for by a package — and `postMovement`'s own
+          // invariant would then refuse the post, further down, with a message
+          // about a rule the user never saw.
+          batchUnitId: position.batchUnitId,
           locationId: position.locationId,
         })
       ).qty;
     if (remove.greaterThan(availableQty)) {
       const floor = position.qty.minus(availableQty);
       // The reference, not the internal number — the user has to find this row on
-      // their own screen, where the number does not appear.
-      const label = position.batch.supplierBatchRef ?? 'This batch';
+      // their own screen, where the number does not appear. A package says so by
+      // name, because "batch JV2" is not enough to find a row three levels down.
+      const label = position.unitLabel
+        ? `${position.unitLabel} (in batch ${position.batch.supplierBatchRef ?? 'unnamed'})`
+        : (position.batch.supplierBatchRef ?? 'This batch');
       throw ApiError.badRequest(
-        `Batch ${label} has already moved — only ${availableQty.toString()} of it is ` +
+        `${label} has already moved — only ${availableQty.toString()} of it is ` +
           `still here, so its opening stock cannot go below ${floor.toString()}. ` +
-          'Cancel the documents that moved it first, or leave this batch as it is.',
+          'Cancel the documents that moved it first, or leave this row as it is.',
         { batches: `${label} cannot go below ${floor.toString()}.` },
       );
     }
@@ -266,6 +381,7 @@ export class ItemsService {
       {
         organizationId,
         batchId: position.batchId,
+        batchUnitId: position.batchUnitId,
         locationId: position.locationId,
         movementType: 'reversal',
         qtyOut: remove,
@@ -387,21 +503,7 @@ export class ItemsService {
         stockOnHand: Number(balance.qty),
         committedStock: 0,
         availableForSale: Number(balance.qty),
-        batches: mine.map((entry) => ({
-          // 🔴 The batch's real id, and the client sends it back on save — that is
-          // what lets the writer tell "this batch, edited" from "a new batch", and
-          // therefore what lets it adjust instead of reverse-and-recreate.
-          id: entry.batch.id,
-          // 🔴 No `batchNumber` (2026-08-14) — internal, and a field in the
-          // payload is a field somebody renders. `id` is the round-trip handle.
-          batchReference: entry.batch.supplierBatchRef,
-          manufacturerBatch: entry.batch.manufacturerBatch,
-          manufacturedDate: entry.batch.manufacturedDate,
-          expiryDate: entry.batch.expiryDate,
-          sellingPrice: entry.batch.sellingPrice !== null ? Number(entry.batch.sellingPrice) : null,
-          mrp: entry.batch.mrp !== null ? Number(entry.batch.mrp) : null,
-          quantityIn: Number(entry.qty),
-        })),
+        batches: toBatchRows(mine),
       });
     }
     return out;
@@ -995,6 +1097,43 @@ export class ItemsService {
       });
       const usedBatchIds = new Set(usedBatchIdsResult.map((e) => e.batchId));
 
+      /**
+       * 🔴 WHERE EACH PACKAGE IS — plan §8's first question, answered on the
+       * screen where it is actually asked.
+       *
+       * "What is in B-1, how much in each, and where" is this grid one level
+       * down, so the packages hang off the (batch, location) rows it already
+       * builds rather than needing a report of their own. A roll sitting at the
+       * dyer's shows under the dyer's row, which is what makes "where is T-1"
+       * answerable at a glance.
+       *
+       * ONE grouped query for every batch on the page, never one per batch — the
+       * trap this file's own `getBalanceByLocation` comment describes. Positive
+       * balances only, matching the row behaviour above: a roll that has wholly
+       * left a location is not in that location.
+       *
+       * Not gated on the org setting, and deliberately: a batch with no packages
+       * returns an empty array either way, so the flag would buy nothing but a
+       * second thing to keep in step. What decides whether the level is VISIBLE
+       * is the client, which already knows.
+       */
+      const unitsByKey = new Map<
+        string,
+        { batchUnitId: string; seq: number; label: string; availableQty: number }[]
+      >();
+      for (const unit of await getAvailableBatchUnits(tx, { organizationId, batchIds })) {
+        const key = `${unit.batchId}@${unit.locationId}`;
+        unitsByKey.set(key, [
+          ...(unitsByKey.get(key) ?? []),
+          {
+            batchUnitId: unit.batchUnitId,
+            seq: unit.seq,
+            label: unit.label,
+            availableQty: Number(unit.availableQty),
+          },
+        ]);
+      }
+
       const results = [];
       const todayStr = new Date().toISOString().substring(0, 10);
 
@@ -1015,6 +1154,11 @@ export class ItemsService {
 
         const expDate = b.expiryDate ? String(b.expiryDate).split('T')[0] : null;
         const isExpired = !!(expDate && expDate < todayStr);
+        // Ordered by the batch's own `seq`, so T-1 comes before T-2 wherever the
+        // two are — the numbering is the only order a roll has.
+        const units = (unitsByKey.get(`${g.batchId}@${g.locationId}`) ?? []).sort(
+          (a, c) => a.seq - c.seq,
+        );
 
         results.push({
           id: b.id,
@@ -1029,6 +1173,16 @@ export class ItemsService {
           sellingPrice: b.sellingPrice !== null ? Number(b.sellingPrice) : null,
           mrp: b.mrp !== null ? Number(b.mrp) : null,
           isExpired,
+          /** The packages of this batch AT THIS LOCATION, and what is left of
+           * each. Empty for a batch that has none, which is every batch in an org
+           * that never turned the level on. */
+          units,
+          /** 🔴 What is here but in no package — the batch's untagged remainder at
+           * this location. Real, issuable, and printed so it never reads as stock
+           * the system lost. */
+          untaggedQty: Number(
+            (qtyAvailable - units.reduce((sum, unit) => sum + unit.availableQty, 0)).toFixed(4),
+          ),
         });
       }
       return results;
@@ -1077,7 +1231,7 @@ export class ItemsService {
        */
       const positions = await this.openingPositions(tx, itemId, organizationId);
       const claimed = new Set<string>();
-      const key = (batchId: string, locationId: string) => `${batchId}_${locationId}`;
+      const key = positionKey;
 
       /**
        * 🔴 THE BATCHES STILL SAFE TO POST AGAINST — and it costs NOTHING.
@@ -1111,8 +1265,13 @@ export class ItemsService {
        * grid reduces every one of them, so "only on reduction" is most of a run.
        *
        * `settleOpening` keeps it running as it posts. Nothing else in this
-       * function writes to these pairs: sections 2 and 3 mint NEW batches, which
-       * by definition hold no position here.
+       * function writes to these pairs: sections 2 and 3 mint NEW batches and NEW
+       * packages, which by definition hold no position here.
+       *
+       * 🔴 Keyed per POSITION, so per package as well as per batch — the same key
+       * `settleOpening` looks up. `getBalancesByBatchUnit` returns the untagged
+       * remainder under a `null` key, which is exactly the untagged position, so
+       * one grouped query per location still covers every row.
        */
       const settleBalances = new Map<string, Prisma.Decimal>();
       const batchIdsByLocation = new Map<string, string[]>();
@@ -1123,9 +1282,15 @@ export class ItemsService {
         ]);
       }
       for (const [locationId, batchIds] of batchIdsByLocation) {
-        const atLocation = await getBalancesByBatch(tx, { organizationId, locationId, batchIds });
-        for (const [batchId, balance] of atLocation) {
-          settleBalances.set(`${batchId}@${locationId}`, balance.qty);
+        const atLocation = await getBalancesByBatchUnit(tx, {
+          organizationId,
+          locationId,
+          batchIds,
+        });
+        for (const [batchId, byUnit] of atLocation) {
+          for (const [batchUnitId, qty] of byUnit) {
+            settleBalances.set(key(batchId, batchUnitId, locationId), qty);
+          }
         }
       }
 
@@ -1147,6 +1312,64 @@ export class ItemsService {
           }
         }
         const batchTotal = rows.reduce((sum, b) => sum + Number(b.quantityIn), 0);
+
+        /**
+         * 🔴 The package rules, beside the write — not only in the zod schema,
+         * which runs on the HTTP route alone and would let a script, an import or
+         * a test declare a batch whose packages do not account for it.
+         *
+         * 🔴 NAMING PACKAGES IS OPTIONAL; NAMING SOME OF THEM IS NOT. A batch with
+         * none skips this loop entirely (`named` is empty) and declares its whole
+         * quantity untagged, exactly as it did before the level existed. Name one,
+         * and they must add up to the batch — see the equality below.
+         */
+        for (const b of rows) {
+          const named = (b.units ?? []).filter(
+            (u) => (u.label ?? '').trim() !== '' || Number(u.quantityIn ?? 0) > 0,
+          );
+          if (named.length === 0) continue;
+          const rowName = b.batchReference || 'this batch';
+
+          const seen = new Set<string>();
+          for (const u of named) {
+            // 🔴 A LABEL IS OPTIONAL SINCE 2026-09-03 — blank means "this roll
+            // carries no tag" and `createBatchUnits` names it `#seq`. So blanks
+            // are skipped by the duplicate check rather than rejected: two
+            // unnamed packages are two packages, not a collision.
+            const label = (u.label ?? '').trim();
+            if (label) {
+              // A label is a physical tag; two rows carrying the same one cannot
+              // be told apart on any screen or on the goods themselves.
+              if (seen.has(label.toLowerCase())) {
+                throw ApiError.badRequest(`${rowName} names the unit ${label} twice.`, {
+                  batches: `${rowName}: ${label} is used twice.`,
+                });
+              }
+              seen.add(label.toLowerCase());
+            }
+            if (!(Number(u.quantityIn ?? 0) > 0)) {
+              const name = label || 'a unit';
+              throw ApiError.badRequest(`Unit ${name} needs a quantity greater than zero.`, {
+                batches: `${rowName}: ${name} needs a quantity greater than zero.`,
+              });
+            }
+          }
+
+          // 🔴 An EQUALITY since 2026-09-02: naming any package commits to naming
+          // them all, so a batch is broken down completely or not at all. Naming
+          // NONE stays legal — `named` is empty and this block does not run.
+          const unitTotal = named.reduce((sum, u) => sum + Number(u.quantityIn ?? 0), 0);
+          const batchQtyIn = Number(b.quantityIn ?? 0);
+          if (Math.abs(unitTotal - batchQtyIn) > 0.00005) {
+            throw ApiError.badRequest(
+              `The units inside ${rowName} add up to ${unitTotal}, not the ${batchQtyIn} ` +
+                'the batch itself holds.',
+              {
+                batches: `${rowName}: its units must account for the whole batch, or name none at all.`,
+              },
+            );
+          }
+        }
 
         const declaredQty =
           locRow.openingStock !== null &&
@@ -1214,21 +1437,135 @@ export class ItemsService {
         //       printed on a tag stuck to a roll, and re-creating it would strand
         //       whatever has already been issued out of the original.
         for (const detail of rows) {
-          const position = detail.id ? positions.get(key(detail.id, locRow.locationId)) : undefined;
-          if (!position) continue;
-          claimed.add(key(position.batchId, position.locationId));
+          // A batch this document holds shows up as at least one position, but
+          // WHICH one is not knowable from the batch id alone once packages
+          // exist — so identity is "any position of this batch here".
+          const here = detail.id
+            ? [...positions.values()].filter(
+                (p) => p.batchId === detail.id && p.locationId === locRow.locationId,
+              )
+            : [];
+          if (here.length === 0) continue;
+          const batchId = detail.id!;
 
+          const batchQty = new Prisma.Decimal(
+            detail.quantityIn === '' ? 0 : (detail.quantityIn ?? 0),
+          );
+          const named = (detail.units ?? []).filter(isDeclaredUnit);
+
+          /**
+           * 🔴 PACKAGES FIRST, THE REMAINDER LAST — and the order is load-bearing,
+           * not tidiness.
+           *
+           * `postMovement` refuses an untagged outward row that would leave the
+           * packages claiming more than the batch holds. Settling a package moves
+           * BOTH sides of that inequality by the same amount, so it can never
+           * break it; settling the remainder moves only the batch side. Doing the
+           * remainder first would make a save that shrinks both — the ordinary
+           * "this batch was smaller than I thought" edit — fail against a state
+           * that only exists halfway through its own transaction.
+           */
+          const existingUnits = new Map(
+            here.filter((p) => p.batchUnitId).map((p) => [p.batchUnitId!, p] as const),
+          );
+
+          for (const u of named) {
+            const position = u.id ? existingUnits.get(u.id) : undefined;
+            const qty = new Prisma.Decimal(u.quantityIn === '' ? 0 : (u.quantityIn ?? 0));
+            if (!position) continue;
+            claimed.add(key(batchId, position.batchUnitId, locRow.locationId));
+            await this.settleOpening(
+              tx,
+              position,
+              qty,
+              settleContext,
+              settleBatches,
+              settleBalances,
+            );
+            // The tag may have been re-typed — the package is the same physical
+            // thing, so this is a rename, not a new package.
+            //
+            // 🔴 CLEARING the box does not blank the label, it restores the
+            // automatic one. A `batch_units.label` is NOT NULL and every picker,
+            // challan and error message reads it, so an empty string would leave a
+            // package the user cannot pick out of a list — "no name" and
+            // "auto-named" are the same thing here, and the second is the one that
+            // still prints.
+            const typed = (u.label ?? '').trim();
+            const label = typed || autoUnitLabel(position.unitSeq ?? 0);
+            if (label !== position.unitLabel) {
+              await tx.batchUnit.update({
+                where: { id: position.batchUnitId! },
+                data: { label, updatedBy: userId ?? null },
+              });
+            }
+          }
+
+          // Packages the user added to a batch that already existed — the top-up
+          // case. `createBatchUnits` continues the batch's own `seq`.
+          const fresh = named.filter((u) => !u.id || !existingUnits.has(u.id));
+          if (fresh.length > 0) {
+            const created = await createBatchUnits(tx, {
+              organizationId,
+              batchId,
+              units: fresh.map((u) => ({
+                label: (u.label ?? '').trim(),
+                qty: u.quantityIn === '' ? 0 : (u.quantityIn ?? 0),
+              })),
+              uomId: item.stockingUomId,
+              sourceDocType: 'item_opening_stock',
+              sourceDocId: itemId,
+              userId,
+            });
+            for (const unit of created) {
+              claimed.add(key(batchId, unit.id, locRow.locationId));
+              await postMovement(tx, {
+                organizationId,
+                batchId,
+                batchUnitId: unit.id,
+                locationId: locRow.locationId,
+                movementType: 'opening',
+                qtyIn: unit.qty,
+                valueIn: valuePerUnit ? unit.qty.times(valuePerUnit) : 0,
+                sourceDocType: 'item_opening_stock',
+                sourceDocId: itemId,
+                userId,
+              });
+            }
+          }
+
+          // …and finally the untagged remainder: what the batch holds, less
+          // everything now spoken for by a package.
+          const unitTotal = named.reduce(
+            (sum, u) => sum.plus(new Prisma.Decimal(u.quantityIn === '' ? 0 : (u.quantityIn ?? 0))),
+            new Prisma.Decimal(0),
+          );
+          const loose = Prisma.Decimal.max(batchQty.minus(unitTotal), new Prisma.Decimal(0));
+          const loosePosition =
+            here.find((p) => p.batchUnitId === null) ??
+            ({
+              batchId,
+              batchUnitId: null,
+              locationId: locRow.locationId,
+              batch: here[0]!.batch,
+              unitLabel: null,
+              unitSeq: null,
+              qty: new Prisma.Decimal(0),
+              value: new Prisma.Decimal(0),
+              postedAt: here[0]!.postedAt,
+            } satisfies OpeningPosition);
+          claimed.add(key(batchId, null, locRow.locationId));
           await this.settleOpening(
             tx,
-            position,
-            new Prisma.Decimal(detail.quantityIn === '' ? 0 : (detail.quantityIn ?? 0)),
+            loosePosition,
+            loose,
             settleContext,
             settleBatches,
             settleBalances,
           );
 
           await tx.batch.update({
-            where: { id: position.batchId },
+            where: { id: batchId },
             data: {
               supplierBatchRef: detail.batchReference || null,
               manufacturerBatch: detail.manufacturerBatch || null,
@@ -1243,7 +1580,12 @@ export class ItemsService {
 
         // ── 2. Rows naming no batch of ours: genuinely new.
         for (const detail of rows) {
-          if (detail.id && positions.has(key(detail.id, locRow.locationId))) continue;
+          const alreadyHandled =
+            detail.id &&
+            [...positions.values()].some(
+              (p) => p.batchId === detail.id && p.locationId === locRow.locationId,
+            );
+          if (alreadyHandled) continue;
 
           const qty = new Prisma.Decimal(detail.quantityIn === '' ? 0 : (detail.quantityIn ?? 0));
 
@@ -1269,21 +1611,67 @@ export class ItemsService {
             userId,
           });
 
-          await postMovement(
-            tx,
-            {
-              organizationId,
-              batchId: batch.id,
-              locationId: locRow.locationId,
-              movementType: 'opening',
-              qtyIn: qty,
-              valueIn: valuePerUnit ? qty.times(valuePerUnit) : 0,
-              sourceDocType: 'item_opening_stock',
-              sourceDocId: itemId,
-              userId,
-            },
-            asResolvedBatch(batch),
-          );
+          const named = (detail.units ?? []).filter(isDeclaredUnit);
+          const created =
+            named.length > 0
+              ? await createBatchUnits(tx, {
+                  organizationId,
+                  batchId: batch.id,
+                  units: named.map((u) => ({
+                    label: (u.label ?? '').trim(),
+                    qty: u.quantityIn === '' ? 0 : (u.quantityIn ?? 0),
+                  })),
+                  uomId: item.stockingUomId,
+                  sourceDocType: 'item_opening_stock',
+                  sourceDocId: itemId,
+                  userId,
+                })
+              : [];
+
+          // One movement per package, then one for whatever was not tagged. The
+          // batch's total is their sum — there is no second number to keep in step.
+          const postable = asResolvedBatch(batch, created.length);
+          let tagged = new Prisma.Decimal(0);
+          for (const unit of created) {
+            tagged = tagged.plus(unit.qty);
+            await postMovement(
+              tx,
+              {
+                organizationId,
+                batchId: batch.id,
+                batchUnitId: unit.id,
+                locationId: locRow.locationId,
+                movementType: 'opening',
+                qtyIn: unit.qty,
+                valueIn: valuePerUnit ? unit.qty.times(valuePerUnit) : 0,
+                sourceDocType: 'item_opening_stock',
+                sourceDocId: itemId,
+                userId,
+              },
+              postable,
+            );
+          }
+
+          const loose = qty.minus(tagged);
+          // A batch broken up entirely leaves nothing behind, and a zero-quantity
+          // movement is one `postMovement` refuses by design.
+          if (loose.greaterThan(0)) {
+            await postMovement(
+              tx,
+              {
+                organizationId,
+                batchId: batch.id,
+                locationId: locRow.locationId,
+                movementType: 'opening',
+                qtyIn: loose,
+                valueIn: valuePerUnit ? loose.times(valuePerUnit) : 0,
+                sourceDocType: 'item_opening_stock',
+                sourceDocId: itemId,
+                userId,
+              },
+              postable,
+            );
+          }
         }
 
         // ── 3. No batch rows at all: an `inventoryTracking = 'none'` item, which
@@ -1295,10 +1683,21 @@ export class ItemsService {
           const here = [...positions.values()]
             .filter(
               (p) =>
-                p.locationId === locRow.locationId && !claimed.has(key(p.batchId, p.locationId)),
+                p.locationId === locRow.locationId &&
+                !claimed.has(key(p.batchId, p.batchUnitId, p.locationId)) &&
+                // 🔴 Untagged positions only. This branch is the bulk-quantity
+                // shape an `inventoryTracking = 'none'` item takes, and such an
+                // item never shows a batch field, so it never shows a package one
+                // either (visibility is inherited, not configured per item). A
+                // package reaching here would mean a batch-tracked item saved
+                // with no batch rows — which section 4 settles to zero, correctly,
+                // rather than having its quantity silently reassigned as bulk.
+                p.batchUnitId === null,
             )
             .sort((a, b) => b.postedAt.getTime() - a.postedAt.getTime());
-          for (const position of here) claimed.add(key(position.batchId, position.locationId));
+          for (const position of here) {
+            claimed.add(key(position.batchId, position.batchUnitId, position.locationId));
+          }
 
           const current = here.reduce((sum, p) => sum.plus(p.qty), new Prisma.Decimal(0));
           let remaining = declaredQty.minus(current);
@@ -1363,8 +1762,22 @@ export class ItemsService {
        *       that has already been issued refuses by name rather than going
        *       negative in silence.
        */
-      for (const position of positions.values()) {
-        if (claimed.has(key(position.batchId, position.locationId))) continue;
+      /**
+       * 🔴 PACKAGES BEFORE THE REMAINDERS THEY SIT INSIDE — the same ordering rule
+       * as section 1, for the same reason. Zeroing a batch that still holds
+       * packages means zeroing four positions; take the untagged one out first and
+       * `postMovement` refuses it, because at that instant the packages claim more
+       * than the batch holds.
+       */
+      const orphans = [...positions.values()].sort((a, b) =>
+        a.batchUnitId === b.batchUnitId ? 0 : a.batchUnitId ? -1 : 1,
+      );
+      /** What this run took to zero, for the cleanup pass below. */
+      const emptied = new Set<string>();
+      const emptiedUnits = new Set<string>();
+
+      for (const position of orphans) {
+        if (claimed.has(key(position.batchId, position.batchUnitId, position.locationId))) continue;
         if (position.qty.lessThanOrEqualTo(0)) continue;
         await this.settleOpening(
           tx,
@@ -1380,22 +1793,59 @@ export class ItemsService {
           settleBalances,
         );
 
-        // Soft delete the batch if it has no other movements
+        emptied.add(position.batchId);
+        if (position.batchUnitId) emptiedUnits.add(position.batchUnitId);
+      }
+
+      /**
+       * 🔴 THE ROWS BEHIND WHAT WAS JUST EMPTIED — cleaned up in a SECOND PASS,
+       * after every settle, and never inside the loop above.
+       *
+       * It used to sit in that loop, which was sound while a batch had exactly one
+       * position per location. It no longer does: a batch holding three packages
+       * and a remainder is four positions, so soft-deleting the batch the moment
+       * the first one hit zero would delete it out from under the three still
+       * waiting to be settled — and `settleBatches.delete` would then make each of
+       * those fail, on a save that was doing nothing wrong.
+       */
+      for (const batchUnitId of emptiedUnits) {
+        const stillMoved = await tx.stockLedgerEntry.count({
+          where: { batchUnitId, movementType: { notIn: ['opening', 'reversal'] } },
+        });
+        // A package that some other document has moved keeps its row: the ledger
+        // rows naming it are permanent, and they have to stay interpretable.
+        if (stillMoved === 0) {
+          await tx.batchUnit.update({
+            where: { id: batchUnitId },
+            data: { isDeleted: true, updatedBy: userId ?? null },
+          });
+        }
+      }
+
+      for (const batchId of emptied) {
+        // Still declared somewhere? A batch can sit at two locations and only one
+        // of them was cleared.
+        const stillDeclared = [...positions.values()].some(
+          (p) =>
+            p.batchId === batchId &&
+            claimed.has(key(p.batchId, p.batchUnitId, p.locationId)) &&
+            p.qty.greaterThan(0),
+        );
+        if (stillDeclared) continue;
+
         const otherMovements = await tx.stockLedgerEntry.count({
-          where: {
-            batchId: position.batchId,
-            movementType: { notIn: ['opening', 'reversal'] },
-          },
+          where: { batchId, movementType: { notIn: ['opening', 'reversal'] } },
         });
         if (otherMovements === 0) {
           await tx.batch.update({
-            where: { id: position.batchId },
+            where: { id: batchId },
             data: { isDeleted: true, updatedBy: userId ?? null },
           });
-          // 🔴 Out of the map the instant it is deleted — see where it is built.
-          // The same batch may hold a position at another location, and settling
-          // that one must now fail rather than post against a deleted batch.
-          settleBatches.delete(position.batchId);
+          // Nothing posts after this point, so removing it from the map is
+          // belt-and-braces rather than the load-bearing guard it was while the
+          // delete happened mid-run — kept so the invariant reads the same either
+          // way: what is not in this map is not safe to post against.
+          settleBatches.delete(batchId);
         }
       }
 

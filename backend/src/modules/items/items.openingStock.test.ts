@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma, runAsTenant } from '../../db/prisma.ts';
+import { deleteTestOrganization, uniqueOrgCode } from '../../db/testTenant.ts';
 import { getBalance, postMovement } from '../inventory/stock-ledger/stockLedger.service.ts';
 import { itemsService } from './items.service.ts';
 
@@ -60,7 +61,7 @@ async function freshItem(inventoryTracking: 'batch' | 'none') {
 
 beforeAll(async () => {
   const org = await prisma.organization.create({
-    data: { name: `opening-stock-test-${unique()}`, orgCode: String(Date.now()).slice(-10) },
+    data: { name: `opening-stock-test-${unique()}`, orgCode: uniqueOrgCode() },
     select: { id: true },
   });
   orgId = org.id;
@@ -92,13 +93,15 @@ afterAll(async () => {
   await runAsTenant(orgId, async (tx) => {
     await tx.stockLedgerEntry.deleteMany({ where: { organizationId: orgId } });
     await tx.itemOpeningStockRow.deleteMany({ where: { organizationId: orgId } });
+    // Packages before batches — a package points at its batch with a RESTRICT key.
+    await tx.batchUnit.deleteMany({ where: { organizationId: orgId } });
     await tx.batch.deleteMany({ where: { organizationId: orgId } });
     await tx.item.deleteMany({ where: { organizationId: orgId } });
     await tx.location.deleteMany({ where: { organizationId: orgId } });
     await tx.unitOfMeasurement.deleteMany({ where: { organizationId: orgId } });
     await tx.numberSequence.deleteMany({ where: { organizationId: orgId } });
   });
-  await prisma.organization.deleteMany({ where: { id: orgId } });
+  await deleteTestOrganization(orgId);
 });
 
 /** Send `qty` of a batch off to the processor, the way an issue does. */
@@ -300,18 +303,25 @@ describe('opening stock — re-declaring is a delta, not a rewrite', () => {
   });
 
   /**
-   * 🔴 ONE BATCH, A POSITION AT TWO LOCATIONS — the case that decides how the
-   * settle loop may read its batches (2026-09-01).
+   * 🔴 ONE BATCH, A POSITION AT TWO LOCATIONS — the case that decides WHEN a
+   * batch may be soft-deleted.
    *
-   * `settleOpening` posted one movement per position and `postMovement` read the
-   * batch back on each; those reads are now hoisted into a map the caller owns.
-   * The map is MUTABLE for exactly this reason: section 4 soft-deletes a batch
-   * while it is still settling positions, and a batch deleted for its godown
-   * position must not then be posted against for its processor one. Drop the
-   * `settleBatches.delete(...)` and this save quietly succeeds, writing a
-   * reversal against a batch that no longer exists.
+   * Until 2026-09-01 the delete happened inside the settle loop, so clearing this
+   * item took the batch out at its godown position and then FAILED on its
+   * processor one, 404, on a save that was doing nothing wrong. The guard was
+   * real — nothing may post against a deleted batch — but it was catching a
+   * problem the loop had created for itself.
+   *
+   * A package level makes that untenable rather than merely unfortunate: a batch
+   * holding three takas and a loose remainder is four positions at ONE location,
+   * so a mid-run delete would break every ordinary save. The delete is now a
+   * second pass, after every settle, and the hazard is gone by construction
+   * instead of by a guard.
+   *
+   * What must stay true is the outcome: both positions reversed, the batch gone
+   * once, and no movement anywhere against a deleted batch.
    */
-  it('does not post against a batch it soft-deleted moments earlier', async () => {
+  it('clears every position of one batch, then soft-deletes it exactly once', async () => {
     const itemId = await freshItem('batch');
     const saved = await itemsService.saveOpeningStock(itemId, orgId, {
       locationRows: [
@@ -340,17 +350,28 @@ describe('opening stock — re-declaring is a delta, not a rewrite', () => {
       }),
     );
 
-    /* Dropping every row makes section 4 settle both positions. The godown one
-       goes first and takes the batch with it, so the processor one has nothing
-       left to post against — and the save is refused rather than writing it.
-       Asserting the refusal, not the message: this is the existing `isDeleted`
-       guard surfacing, and it is what must not be lost. */
-    await expect(
-      itemsService.saveOpeningStock(itemId, orgId, { locationRows: [] }),
-    ).rejects.toMatchObject({ status: 404 });
+    // Dropping every row settles both positions.
+    await itemsService.saveOpeningStock(itemId, orgId, { locationRows: [] });
 
-    // The whole save rolled back, so the batch is still there and still whole.
-    expect(Number((await balanceOf(rollNine, godownId)).qty)).toBe(100);
+    expect(Number((await balanceOf(rollNine, godownId)).qty)).toBe(0);
+    expect(Number((await balanceOf(rollNine, processorId)).qty)).toBe(0);
+
+    const batch = await runAsTenant(orgId, (tx) =>
+      tx.batch.findFirstOrThrow({ where: { id: rollNine } }),
+    );
+    expect(batch.isDeleted).toBe(true);
+
+    /* 🔴 And nothing was written against it after it went. Every row this batch
+       carries is an `opening` or a `reversal` from before the delete; a movement
+       posted afterwards is the failure this ordering exists to prevent. */
+    const rows = await runAsTenant(orgId, (tx) =>
+      tx.stockLedgerEntry.findMany({
+        where: { organizationId: orgId, batchId: rollNine },
+        orderBy: { createdAt: 'asc' },
+        select: { createdAt: true, movementType: true },
+      }),
+    );
+    expect(rows.every((row) => row.createdAt <= batch.updatedAt)).toBe(true);
   });
 
   it('reconciles a bulk quantity for an untracked item without minting a batch each save', async () => {

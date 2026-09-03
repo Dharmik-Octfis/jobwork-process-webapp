@@ -123,6 +123,8 @@ model User {
   updatedProcesses              Process[]               @relation("ProcessUpdatedBy")
   createdBatches                Batch[]                 @relation("BatchCreatedBy")
   updatedBatches                Batch[]                 @relation("BatchUpdatedBy")
+  createdBatchUnits             BatchUnit[]             @relation("BatchUnitCreatedBy")
+  updatedBatchUnits             BatchUnit[]             @relation("BatchUnitUpdatedBy")
   /// No `updatedStockLedgerEntries` — a ledger row is never edited. See
   /// inventory.prisma.
   createdStockLedgerEntries     StockLedgerEntry[]      @relation("StockLedgerCreatedBy")
@@ -294,6 +296,7 @@ model Organization {
   itemCategories         ItemCategory[]
   processes              Process[]
   batches                Batch[]
+  batchUnits             BatchUnit[]
   stockLedgerEntries     StockLedgerEntry[]
   routes                 Route[]
   routeSteps             RouteStep[]

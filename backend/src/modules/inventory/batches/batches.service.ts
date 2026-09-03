@@ -4,6 +4,7 @@ import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../li
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import {
   getAvailableBatches,
+  getAvailableBatchUnits,
   getBalance,
   type Ownership,
 } from '../stock-ledger/stockLedger.service.ts';
@@ -115,9 +116,17 @@ export interface AvailabilityQuery {
    * missing tenant filter (§5.2).
    */
   ownership?: Ownership;
-  /** Include each batch's takas. Only worth asking for when the item is tracked
-   * that way; otherwise it is a query per batch returning nothing. */
-  withPackages?: boolean;
+  /**
+   * Include each batch's PACKAGES — the takas, rolls or bales inside it — and its
+   * untagged remainder.
+   *
+   * Off by default and asked for only by the pickers that can render the level,
+   * because it costs one extra grouped query. Was a dead `withPackages` flag left
+   * behind by the package tracking removed on 2026-08-12; it accepted a value and
+   * did nothing. Renamed with the level that gives it meaning again, so nothing
+   * reads as the old feature come back.
+   */
+  withUnits?: boolean;
   /** What the user typed into the picker's batch box — matched against the batch
    * number and the supplier's own reference. Each item has its own search box, so
    * a searching caller asks about that ONE item; the multi-item form above is the
@@ -195,6 +204,42 @@ export async function getAvailableStock(organizationId: string, query: Availabil
     });
     const trackingByItem = new Map(items.map((row) => [row.id, row.inventoryTracking]));
 
+    /**
+     * 🔴 EVERY PACKAGE OF EVERY RETURNED BATCH IN ONE GROUPED QUERY, never one per
+     * batch. A picker showing a dozen batches each holding several rolls is fifty
+     * round trips asked row by row — invisible at three and the whole response
+     * time at three hundred, which is the same trap `getAvailableBatches`
+     * documents one level up.
+     *
+     * Keyed by (batch, location) because that pair is what a row here IS: one
+     * batch can hold packages in two racks, and the challan takes them out of
+     * exactly one.
+     */
+    const unitsByBatchLocation = new Map<
+      string,
+      { batchUnitId: string; seq: number; label: string; availableQty: string }[]
+    >();
+    if (query.withUnits) {
+      const units = await getAvailableBatchUnits(tx, {
+        organizationId,
+        batchIds: [...new Set(batches.map((row) => row.batchId))],
+        locationId: query.locationId,
+        ownership: query.ownership,
+      });
+      for (const unit of units) {
+        const key = `${unit.batchId}@${unit.locationId}`;
+        unitsByBatchLocation.set(key, [
+          ...(unitsByBatchLocation.get(key) ?? []),
+          {
+            batchUnitId: unit.batchUnitId,
+            seq: unit.seq,
+            label: unit.label,
+            availableQty: unit.availableQty.toString(),
+          },
+        ]);
+      }
+    }
+
     return batches.map((batch) => ({
       batchId: batch.batchId,
       /* 🔴 Sent back on the line. A row is a batch AT A GODOWN, and the challan
@@ -233,6 +278,32 @@ export async function getAvailableStock(organizationId: string, query: Availabil
         ? batch.value.dividedBy(batch.availableQty).toDecimalPlaces(4).toString()
         : null,
       inventoryTracking: trackingByItem.get(batch.itemId) ?? 'none',
+
+      /**
+       * The packages inside this batch AT THIS LOCATION, and what is left of each.
+       * Empty when the org runs no package level, when the caller did not ask, and
+       * when the batch simply has none — all three are the same answer to the
+       * picker: show the batch as it always was.
+       */
+      units: unitsByBatchLocation.get(`${batch.batchId}@${batch.locationId}`) ?? [],
+      /**
+       * 🔴 WHAT MAY LEAVE WITHOUT NAMING A PACKAGE — the batch's balance less
+       * everything its packages hold.
+       *
+       * Sent because the picker cannot compute it: it must not subtract the
+       * packages it can SEE from the batch total, since a limit or a search could
+       * have trimmed the list. And it is the exact figure `postMovement`'s
+       * invariant measures against, so a row offering more than this is a row the
+       * save would refuse.
+       */
+      untaggedQty: batch.availableQty
+        .minus(
+          (unitsByBatchLocation.get(`${batch.batchId}@${batch.locationId}`) ?? []).reduce(
+            (sum, unit) => sum.plus(unit.availableQty),
+            new Prisma.Decimal(0),
+          ),
+        )
+        .toString(),
     }));
   });
 }

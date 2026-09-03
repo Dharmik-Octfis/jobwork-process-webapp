@@ -270,7 +270,22 @@ export async function updateOrganization(req: Request, res: Response, next: Next
     }
 
     if (data.settings !== undefined) {
-      updateData.settings = data.settings;
+      // MERGED, not replaced. `settings` is one JSONB bag shared by every
+      // preference the org has — terminology today, more later — and a form that
+      // owns one key would otherwise wipe the ones it does not render. The
+      // Preferences page sends every key it knows about, so a top-level merge
+      // loses nothing and stops the next screen from being the one that does.
+      const current = await prisma.organization.findFirst({
+        where: { id: orgId, isDeleted: false },
+        select: { settings: true },
+      });
+      const existing =
+        current?.settings &&
+        typeof current.settings === 'object' &&
+        !Array.isArray(current.settings)
+          ? (current.settings as Record<string, unknown>)
+          : {};
+      updateData.settings = { ...existing, ...data.settings };
     }
 
     updateData.updatedBy = userId;
@@ -281,11 +296,7 @@ export async function updateOrganization(req: Request, res: Response, next: Next
       include: { industry: { select: { name: true } } },
     });
 
-    res.status(200).json({
-      code: 0,
-      message: 'success',
-      organization: await mapToZohoFormat(updatedOrg),
-    });
+    sendSuccess(res, await mapToZohoFormat(updatedOrg), 'Organization updated successfully.');
   } catch (error) {
     next(error);
   }

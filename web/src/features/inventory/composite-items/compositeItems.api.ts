@@ -13,7 +13,7 @@ export interface CreateCompositeItemDto extends Omit<
 }
 export type UpdateCompositeItemDto = Partial<CreateCompositeItemDto>;
 
-/* eslint-disable @typescript-eslint/naming-convention */
+ 
 export interface CompositeComponent {
   id: string;
   compositeItemId: string;
@@ -33,6 +33,11 @@ export interface CompositeComponent {
     unit: string;
     stockingUomId: string | null;
     type: string;
+    /** 🔴 `batch` means this component gets a batch picker on the assembly form;
+     * anything else is allocated FIFO by the server. Same rule as everywhere
+     * else — the picker appears exactly where a batch is visible. */
+    inventoryTracking?: string | null;
+    trackInventory?: boolean;
     sellingPrice?: number | null;
     costPrice?: number | null;
     stockOnHand?: number;
@@ -49,7 +54,7 @@ export interface CreateCompositeComponentDto {
 }
 
 export type UpdateCompositeComponentDto = Partial<CreateCompositeComponentDto>;
-/* eslint-enable @typescript-eslint/naming-convention */
+ 
 
 export const compositeItemsApi = {
   getItems: async (orgId: string, params: PageParams = {}): Promise<CompositeItemsPage> => {

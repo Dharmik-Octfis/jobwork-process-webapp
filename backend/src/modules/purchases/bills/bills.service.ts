@@ -10,10 +10,185 @@ import {
   asResolvedBatch,
   postMovement,
   createBatch,
+  createBatchUnits,
+  resolveExistingBatchUnits,
   type ResolvedBatches,
 } from '../../inventory/stock-ledger/stockLedger.service.ts';
+import type { TenantClient } from '../../../db/prisma.ts';
 
 const DUPLICATE_NUMBER = 'A bill with this number already exists.';
+
+/** Same tolerance `assertAllocationsBalance` uses one level up: an exact
+ * comparison rejects `3 × 33.3333` for being a billionth off. */
+const QTY_EPSILON = 0.00005;
+
+type BillBatchPayload = NonNullable<BillItemPayload['batches']>[number];
+
+/**
+ * 🔴 RECEIVE ONE BATCH OF ONE BILL LINE — the single place both `createBill` and
+ * `updateBill` go through.
+ *
+ * It was two copies until 2026-09-01, and they had already started to drift
+ * (`Number(...)` coercions on one side only). Adding a second level underneath
+ * would have made that two copies of the unit rules as well, so the two are one
+ * function now: a rule fixed here is fixed on both paths, by construction.
+ *
+ * WHAT IT POSTS, and why it is more than one row. A batch with named packages is
+ * one ledger row PER PACKAGE — that is what makes a package's quantity a `SUM`
+ * over its own rows rather than a number stored on it and kept in step by hand —
+ * plus one final untagged row for whatever was not tagged.
+ *
+ * Value rides along proportionally at the line's rate, so the batch's total value
+ * is identical whether or not it was broken into packages. That is what keeps
+ * this change out of valuation entirely: a package carries no value of its own,
+ * it inherits its batch's weighted average.
+ */
+async function receiveBillBatch(
+  tx: TenantClient,
+  args: {
+    organizationId: string;
+    userId: string | null;
+    itemId: string;
+    billId: string;
+    lineId: string;
+    locationId: string;
+    rate: number;
+    batch: BillBatchPayload;
+  },
+) {
+  const { organizationId, userId, itemId, billId, lineId, locationId, rate, batch } = args;
+  const quantity = Number(batch.quantity);
+
+  let batchId = batch.batchId;
+  /* Only set when WE created the batch. A batch the payload named is left to
+     `postMovement` to read, which is what validates that it exists and belongs
+     to this organization. */
+  let resolved: ResolvedBatches | undefined;
+  let uomId: string | null = null;
+  if (!batchId) {
+    const created = await createBatch(tx, {
+      organizationId,
+      itemId,
+      supplierBatchRef: batch.supplierBatchRef,
+      manufacturerBatch: batch.manufacturerBatch,
+      manufacturedDate: batch.manufacturedDate,
+      expiryDate: batch.expiryDate,
+      mrp: batch.mrp,
+      sellingPrice: batch.sellingPrice,
+      sourceDocType: 'bill',
+      sourceDocId: billId,
+      userId: userId || undefined,
+    });
+    batchId = created.id;
+    uomId = created.uomId;
+    resolved = asResolvedBatch(created);
+  }
+
+  const units = batch.units ?? [];
+  const unitTotal = units.reduce((sum, unit) => sum + Number(unit.quantity), 0);
+
+  // 🔴 The business rule, beside the write — NOT only in the zod schema, which
+  // runs on the HTTP route alone and would let a script, an import or a test post
+  // a bill whose packages do not account for the batch they are inside.
+  //
+  // 🔴 AN EQUALITY SINCE 2026-09-02, not an inequality. Naming any package commits
+  // to naming them all: a batch is broken down completely or not at all. A batch
+  // with NO packages is untouched by this, which is what keeps every org that does
+  // not run the level — and every bill posted before it existed — working.
+  if (units.length > 0 && Math.abs(unitTotal - quantity) > QTY_EPSILON) {
+    const label = batch.supplierBatchRef || 'this batch';
+    throw ApiError.badRequest(
+      `The units named inside ${label} add up to ${unitTotal}, not the ${quantity} ` +
+        'being received into it.',
+      {
+        batches:
+          `${label}: its units must account for the whole quantity received, ` +
+          'or name none at all.',
+      },
+    );
+  }
+
+  /**
+   * 🔴 Two kinds of package row, and they take different paths. A row with NO
+   * `batchUnitId` is a roll arriving for the first time and is CREATED — named or
+   * not, since a blank label is auto-filled; a row naming a `batchUnitId` is more
+   * of a roll we already hold and is only RESOLVED, because `createBatchUnits`
+   * refuses a label the batch already carries. Both then post the same movement.
+   */
+  const newUnits = units.filter((unit) => !unit.batchUnitId);
+  const topUps = units.filter((unit) => unit.batchUnitId);
+
+  // Guarded here as well as in the schema: a batch born on this bill cannot have
+  // packages that predate it, and only the schema runs on the HTTP route.
+  if (topUps.length && !batch.batchId) {
+    throw ApiError.badRequest('A batch being created has no existing units to add to.', {
+      batches: 'Pick an existing batch before adding to one of its units.',
+    });
+  }
+
+  const postableUnits = [
+    ...(newUnits.length
+      ? await createBatchUnits(tx, {
+          organizationId,
+          batchId,
+          units: newUnits.map((unit) => ({ label: unit.label ?? '', qty: unit.quantity })),
+          uomId,
+          sourceDocType: 'bill',
+          sourceDocId: billId,
+          userId,
+        })
+      : []),
+    ...(topUps.length
+      ? await resolveExistingBatchUnits(tx, {
+          organizationId,
+          batchId,
+          units: topUps.map((unit) => ({ batchUnitId: unit.batchUnitId!, qty: unit.quantity })),
+        })
+      : []),
+  ];
+
+  for (const unit of postableUnits) {
+    await postMovement(
+      tx,
+      {
+        organizationId,
+        batchId,
+        batchUnitId: unit.id,
+        locationId,
+        movementType: 'receipt',
+        qtyIn: unit.qty,
+        valueIn: unit.qty.times(rate || 0),
+        sourceDocType: 'bill',
+        sourceDocId: billId,
+        sourceDocLineId: lineId,
+        userId: userId || undefined,
+      },
+      resolved,
+    );
+  }
+
+  const untagged = quantity - unitTotal;
+  // A batch fully broken into packages leaves nothing behind, and a zero-quantity
+  // movement is one `postMovement` refuses by design — one direction per row.
+  if (untagged > QTY_EPSILON) {
+    await postMovement(
+      tx,
+      {
+        organizationId,
+        batchId,
+        locationId,
+        movementType: 'receipt',
+        qtyIn: untagged,
+        valueIn: untagged * (rate || 0),
+        sourceDocType: 'bill',
+        sourceDocId: billId,
+        sourceDocLineId: lineId,
+        userId: userId || undefined,
+      },
+      resolved,
+    );
+  }
+}
 
 function billListWhere(organizationId: string, opts: ListQuery): Prisma.BillWhereInput {
   return {
@@ -48,6 +223,33 @@ export async function countBills(organizationId: string, opts: ListQuery): Promi
   );
 }
 
+/** One batch as the bill form reads it back, seeded from its first ledger row.
+ * Quantity and `units` are then accumulated across that batch's other rows. */
+function toBatchReadback(m: {
+  batchId: string;
+  qtyIn: Prisma.Decimal;
+  batch: {
+    supplierBatchRef: string | null;
+    manufacturerBatch: string | null;
+    manufacturedDate: Date | null;
+    expiryDate: Date | null;
+    mrp: Prisma.Decimal | null;
+    sellingPrice: Prisma.Decimal | null;
+  } | null;
+}) {
+  return {
+    batchId: m.batchId,
+    supplierBatchRef: m.batch?.supplierBatchRef || undefined,
+    manufacturerBatch: m.batch?.manufacturerBatch || undefined,
+    manufacturedDate: m.batch?.manufacturedDate || undefined,
+    expiryDate: m.batch?.expiryDate || undefined,
+    quantity: Number(m.qtyIn) || 0,
+    mrp: m.batch?.mrp != null ? Number(m.batch.mrp) : undefined,
+    sellingPrice: m.batch?.sellingPrice != null ? Number(m.batch.sellingPrice) : undefined,
+    units: [] as { batchUnitId: string; label: string; quantity: number }[],
+  };
+}
+
 export async function getBillById(orgId: string, id: string) {
   return runAsTenant(orgId, async (tx) => {
     const bill = await tx.bill.findFirst({
@@ -73,7 +275,11 @@ export async function getBillById(orgId: string, id: string) {
       },
       include: {
         batch: true,
+        // The package this row is, when the org runs a unit level. Null on the
+        // untagged remainder and on every row written before the level existed.
+        batchUnit: { select: { id: true, seq: true, label: true } },
       },
+      orderBy: { postedAt: 'asc' },
     });
 
     const movementsByLineId = movements.reduce(
@@ -89,16 +295,33 @@ export async function getBillById(orgId: string, id: string) {
 
     const lineItemsWithBatches = bill.lineItems.map((li) => {
       const liMovements = movementsByLineId[li.id] || [];
-      const batches = liMovements.map((m) => ({
-        batchId: m.batchId,
-        supplierBatchRef: m.batch?.supplierBatchRef || undefined,
-        manufacturerBatch: m.batch?.manufacturerBatch || undefined,
-        manufacturedDate: m.batch?.manufacturedDate || undefined,
-        expiryDate: m.batch?.expiryDate || undefined,
-        quantity: Number(m.qtyIn) || 0,
-        mrp: m.batch?.mrp !== null ? Number(m.batch?.mrp) : undefined,
-        sellingPrice: m.batch?.sellingPrice !== null ? Number(m.batch?.sellingPrice) : undefined,
-      }));
+
+      /**
+       * 🔴 GROUPED BY BATCH, because one batch is no longer one row.
+       *
+       * A batch broken into packages posts one movement per package plus one for
+       * the untagged remainder, so the flat map this used to be would render the
+       * same batch three times, each showing a slice of its quantity — the dialog
+       * would then send those slices back as three separate batches on the next
+       * save. The batch's quantity is the SUM of its rows; the packages are the
+       * rows that name one.
+       */
+      const byBatch = new Map<string, ReturnType<typeof toBatchReadback>>();
+      for (const m of liMovements) {
+        const existing = byBatch.get(m.batchId);
+        const row = existing ?? toBatchReadback(m);
+        if (existing) row.quantity += Number(m.qtyIn) || 0;
+        if (m.batchUnit) {
+          row.units.push({
+            batchUnitId: m.batchUnit.id,
+            label: m.batchUnit.label,
+            quantity: Number(m.qtyIn) || 0,
+          });
+        }
+        byBatch.set(m.batchId, row);
+      }
+
+      const batches = [...byBatch.values()];
       return {
         ...li,
         batches: batches.length > 0 ? batches : undefined,
@@ -222,46 +445,18 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
         if (item?.trackInventory && item.inventoryTracking !== 'none') {
           const batches = payload.batches?.length
             ? payload.batches
-            : [{ quantity: payload.quantity } as NonNullable<BillItemPayload['batches']>[number]];
+            : [{ quantity: payload.quantity } as BillBatchPayload];
           for (const b of batches) {
-            let batchId = b.batchId;
-            /* Only set when WE created the batch. A batch the payload named is
-               left to `postMovement` to read, which is what validates that it
-               exists and belongs to this organization. */
-            let created: ResolvedBatches | undefined;
-            if (!batchId) {
-              const batch = await createBatch(tx, {
-                organizationId: orgId,
-                itemId: item.id,
-                supplierBatchRef: b.supplierBatchRef,
-                manufacturerBatch: b.manufacturerBatch,
-                manufacturedDate: b.manufacturedDate,
-                expiryDate: b.expiryDate,
-                mrp: b.mrp,
-                sellingPrice: b.sellingPrice,
-                sourceDocType: 'bill',
-                sourceDocId: createdBill.id,
-                userId: userId || undefined,
-              });
-              batchId = batch.id;
-              created = asResolvedBatch(batch);
-            }
-            await postMovement(
-              tx,
-              {
-                organizationId: orgId,
-                batchId: batchId,
-                locationId: createdBill.locationId,
-                movementType: 'receipt',
-                qtyIn: b.quantity,
-                valueIn: (payload.rate || 0) * b.quantity,
-                sourceDocType: 'bill',
-                sourceDocId: createdBill.id,
-                sourceDocLineId: lineRecord.id,
-                userId: userId || undefined,
-              },
-              created,
-            );
+            await receiveBillBatch(tx, {
+              organizationId: orgId,
+              userId: userId || null,
+              itemId: item.id,
+              billId: createdBill.id,
+              lineId: lineRecord.id,
+              locationId: createdBill.locationId,
+              rate: Number(payload.rate || 0),
+              batch: b,
+            });
           }
         } else if (item?.trackInventory && item.inventoryTracking === 'none') {
           const batch = await createBatch(tx, {
@@ -377,6 +572,22 @@ export async function updateBill(
       },
     });
 
+    /**
+     * 🔴 EACH PAYLOAD LINE PAIRED WITH THE ROW IT ACTUALLY CREATED.
+     *
+     * This used to re-read the lines afterwards and pair them to the payload BY
+     * ARRAY INDEX, on the stated assumption that `orderBy: { createdAt: 'asc' }`
+     * returns them in the order they were written. It does not: `created_at`
+     * defaults to `CURRENT_TIMESTAMP`, which in Postgres is the TRANSACTION's
+     * start time — so every line of one bill carries the identical timestamp and
+     * the sort has nothing to order by. The pairing was then whatever the planner
+     * felt like, and a mismatched pair files a line's stock movements (and now
+     * its packages) under a different line's id.
+     *
+     * Keeping the rows the writes returned removes the guess entirely.
+     */
+    const writtenLines: { payload: BillItemPayload; lineId: string }[] = [];
+
     if (lineItems) {
       // Delete all old lines and create new ones (simplest approach for full replace)
       await tx.billItem.updateMany({
@@ -385,7 +596,7 @@ export async function updateBill(
       });
 
       for (const item of lineItems) {
-        await tx.billItem.create({
+        const created = await tx.billItem.create({
           data: {
             billId: id,
             itemId: item.itemId,
@@ -398,7 +609,16 @@ export async function updateBill(
             createdBy: userId,
             updatedBy: userId,
           },
+          select: { id: true },
         });
+        writtenLines.push({ payload: item, lineId: created.id });
+      }
+    } else {
+      // No lines in the payload: the rows already on the bill ARE the lines, so
+      // each one pairs with itself and no ordering question arises. They carry no
+      // `batches`, which is what makes the whole-line fallback below apply.
+      for (const row of existing.lineItems) {
+        writtenLines.push({ payload: row as unknown as BillItemPayload, lineId: row.id });
       }
     }
 
@@ -409,67 +629,52 @@ export async function updateBill(
       billData.status?.toLowerCase() === 'open' &&
       effectiveLocationId
     ) {
-      const newLines = await tx.billItem.findMany({
-        where: { billId: id, isDeleted: false },
-        orderBy: { createdAt: 'asc' },
+      /**
+       * 🔴 POST ONCE, EVER — the guard that makes an Open → Draft → Open cycle
+       * safe.
+       *
+       * `updateBillSchema` is `.partial()`, so a bill can be set back to Draft and
+       * forward to Open again, and this block would post a SECOND full set of
+       * receipt rows: the stock, and its value, doubled. Nothing checked, because
+       * `createBill` and this branch each only knew about their own posting.
+       *
+       * Now the ledger itself is the record of whether it has happened. It is the
+       * right thing to ask — a document's movements are exactly the rows carrying
+       * its id, and they are never deleted, so the answer survives anything the
+       * bill's own columns are edited into.
+       */
+      const alreadyPosted = await tx.stockLedgerEntry.count({
+        where: { organizationId: orgId, sourceDocType: 'bill', sourceDocId: id },
       });
 
-      const effectiveLineItems = lineItems || existing.lineItems || [];
-      const itemIds = effectiveLineItems.map((li: { itemId: string }) => li.itemId);
+      const itemIds = writtenLines.map((line) => line.payload.itemId);
       const items = await tx.item.findMany({
         where: { id: { in: itemIds }, organizationId: orgId },
         select: { id: true, inventoryTracking: true, trackInventory: true },
       });
       const itemsById = new Map(items.map((i) => [i.id, i]));
 
-      for (let i = 0; i < effectiveLineItems.length; i++) {
-        const payload = effectiveLineItems[i] as BillItemPayload;
-        if (!payload) continue;
-        const lineRecord = newLines[i];
-        if (!lineRecord) continue;
+      const toPost = alreadyPosted > 0 ? [] : writtenLines;
+      for (const line of toPost) {
+        const payload = line.payload;
+        const lineRecord = { id: line.lineId };
         const item = itemsById.get(payload.itemId);
 
         if (item?.trackInventory && item.inventoryTracking !== 'none') {
           const batches = payload.batches?.length
             ? payload.batches
-            : [{ quantity: Number(payload.quantity) }];
+            : [{ quantity: Number(payload.quantity) } as BillBatchPayload];
           for (const b of batches) {
-            let batchId = b.batchId;
-            // Only when WE created it — see the note on the create path above.
-            let created: ResolvedBatches | undefined;
-            if (!batchId) {
-              const batch = await createBatch(tx, {
-                organizationId: orgId,
-                itemId: item.id,
-                supplierBatchRef: b.supplierBatchRef,
-                manufacturerBatch: b.manufacturerBatch,
-                manufacturedDate: b.manufacturedDate,
-                expiryDate: b.expiryDate,
-                mrp: b.mrp,
-                sellingPrice: b.sellingPrice,
-                sourceDocType: 'bill',
-                sourceDocId: id,
-                userId: userId || undefined,
-              });
-              batchId = batch.id;
-              created = asResolvedBatch(batch);
-            }
-            await postMovement(
-              tx,
-              {
-                organizationId: orgId,
-                batchId: batchId,
-                locationId: effectiveLocationId,
-                movementType: 'receipt',
-                qtyIn: Number(b.quantity),
-                valueIn: Number(payload.rate || 0) * Number(b.quantity),
-                sourceDocType: 'bill',
-                sourceDocId: id,
-                sourceDocLineId: lineRecord.id,
-                userId: userId || undefined,
-              },
-              created,
-            );
+            await receiveBillBatch(tx, {
+              organizationId: orgId,
+              userId: userId || null,
+              itemId: item.id,
+              billId: id,
+              lineId: lineRecord.id,
+              locationId: effectiveLocationId,
+              rate: Number(payload.rate || 0),
+              batch: b,
+            });
           }
         } else if (item?.trackInventory && item.inventoryTracking === 'none') {
           const batch = await createBatch(tx, {

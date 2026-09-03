@@ -1,6 +1,6 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { Fragment, useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, ChevronDown, SlidersHorizontal } from 'lucide-react';
+import { Search, ChevronDown, ChevronRight, SlidersHorizontal } from 'lucide-react';
 import { format } from 'date-fns';
 import { itemsApi } from '../items.api';
 import { fetchLocations } from '../../configuration/locations/locations.api';
@@ -8,7 +8,7 @@ import '../../users/Users.css'; // For users-tooltip-wrapper classes
 import { AddOpeningStockModal } from './AddOpeningStockModal';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { Select, type SelectOption } from '../../../components/ui/Select';
-import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
+import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingLabel';
 import type { ItemOpeningStockLocationRowDto, ItemBatchDto } from '../items.schemas';
 
 interface ItemBatchDetailsProps {
@@ -60,6 +60,21 @@ export function ItemBatchDetails({
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
 
   const [inactiveBatchIds, setInactiveBatchIds] = useState<Record<string, boolean>>({});
+  /**
+   * Which rows have their package breakdown OPEN — closed is the default here,
+   * the opposite of the entry dialogs. This is a list to scan: a batch is one
+   * line, and printing every roll of every batch inline turned a ten-batch table
+   * into forty rows of numbers nobody had asked to see.
+   */
+  const [expandedUnitRows, setExpandedUnitRows] = useState<Set<string>>(() => new Set());
+  const unitsOpen = (rowId: string) => expandedUnitRows.has(rowId);
+  const toggleUnits = (rowId: string) =>
+    setExpandedUnitRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowId)) next.delete(rowId);
+      else next.add(rowId);
+      return next;
+    });
   const [menuCoords, setMenuCoords] = useState<{
     top?: number;
     right?: number;
@@ -67,24 +82,42 @@ export function ItemBatchDetails({
   } | null>(null);
 
   const { singular, plural, getPlaceholder } = useTrackingLabel();
+  /** The level below a batch, for the per-row package breakdown. */
+  const unitLabel = useBatchUnitLabel();
 
-  const allColumns: ColumnDef[] = useMemo(() => [
-    { key: 'batchReference', label: `${singular.toUpperCase()} REFERENCE#`, align: 'left', width: '180px' },
-    { key: 'manufacturerBatch', label: `MANUFACTURER ${singular.toUpperCase()} #`, align: 'left', width: '180px' },
-    { key: 'manufacturedDate', label: 'MANUFACTURED DATE', align: 'left', width: '150px' },
-    { key: 'expiryDate', label: 'EXPIRY DATE', align: 'left', width: '150px' },
-    { key: 'quantityIn', label: 'QUANTITY IN', align: 'right', width: '130px' },
-    { key: 'quantityAvailable', label: 'QUANTITY AVAILABLE', align: 'right', width: '160px' },
-    { key: 'sellingPrice', label: 'SELLING PRICE', align: 'right', width: '140px' },
-  ], [singular]);
+  const allColumns: ColumnDef[] = useMemo(
+    () => [
+      {
+        key: 'batchReference',
+        label: `${singular.toUpperCase()} REFERENCE#`,
+        align: 'left',
+        width: '180px',
+      },
+      {
+        key: 'manufacturerBatch',
+        label: `MANUFACTURER ${singular.toUpperCase()} #`,
+        align: 'left',
+        width: '180px',
+      },
+      { key: 'manufacturedDate', label: 'MANUFACTURED DATE', align: 'left', width: '150px' },
+      { key: 'expiryDate', label: 'EXPIRY DATE', align: 'left', width: '150px' },
+      { key: 'quantityIn', label: 'QUANTITY IN', align: 'right', width: '130px' },
+      { key: 'quantityAvailable', label: 'QUANTITY AVAILABLE', align: 'right', width: '160px' },
+      { key: 'sellingPrice', label: 'SELLING PRICE', align: 'right', width: '140px' },
+    ],
+    [singular],
+  );
 
-  const statusOptions: SelectOption[] = useMemo(() => [
-    { value: 'all', label: `All ${plural}` },
-    { value: 'active', label: `Active ${plural}` },
-    { value: 'inactive', label: `Inactive ${plural}` },
-    { value: 'empty', label: `Empty ${plural}` },
-    { value: 'expired', label: `Expired ${plural}` },
-  ], [plural]);
+  const statusOptions: SelectOption[] = useMemo(
+    () => [
+      { value: 'all', label: `All ${plural}` },
+      { value: 'active', label: `Active ${plural}` },
+      { value: 'inactive', label: `Inactive ${plural}` },
+      { value: 'empty', label: `Empty ${plural}` },
+      { value: 'expired', label: `Expired ${plural}` },
+    ],
+    [plural],
+  );
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState<string[]>(() =>
@@ -164,6 +197,8 @@ export function ItemBatchDetails({
         mrp: b.mrp !== null && b.mrp !== undefined ? Number(b.mrp) : null,
         isExpired: !!b.isExpired,
         isInactive,
+        units: b.units ?? [],
+        untaggedQty: b.untaggedQty ?? 0,
       };
     });
   }, [itemBatches, inactiveBatchIds]);
@@ -374,262 +409,401 @@ export function ItemBatchDetails({
                 const isHovered = hoveredRowId === uniqueRowId;
                 const isMenuOpen = activeMenuBatchId === uniqueRowId;
 
+                /* Packages only appear where there are some. A batch with none —
+                   every batch in an org that never turned the level on — renders
+                   exactly the row it always did. */
+                const showUnits = unitLabel.enabled && b.units.length > 0;
+
                 return (
-                  <tr
-                    key={uniqueRowId}
-                    onMouseEnter={() => setHoveredRowId(uniqueRowId)}
-                    onMouseLeave={() => setHoveredRowId(null)}
-                    style={{
-                      borderBottom: '1px solid #eef0f3',
-                      background:
-                        isHovered || isMenuOpen ? '#f8fafc' : b.isInactive ? '#f8fafc' : '#ffffff',
-                      opacity: b.isInactive ? 0.75 : 1,
-                      transition: 'background 0.15s, opacity 0.15s',
-                    }}
-                  >
-                    {activeColumns.map((col) => {
-                      if (col.key === 'batchReference') {
-                        return (
-                          <td
-                            key={col.key}
-                            style={{
-                              padding: '12px 16px',
-                              color: b.isInactive ? '#64748b' : '#0062ff',
-                              fontWeight: 500,
-                              whiteSpace: 'nowrap',
-                              textDecoration: b.isInactive ? 'line-through' : 'none',
-                            }}
-                          >
-                            {/* No `batchNumber` fallback (2026-08-14) — it is an
+                  <Fragment key={uniqueRowId}>
+                    <tr
+                      onMouseEnter={() => setHoveredRowId(uniqueRowId)}
+                      onMouseLeave={() => setHoveredRowId(null)}
+                      style={{
+                        borderBottom: showUnits ? 'none' : '1px solid #eef0f3',
+                        background:
+                          isHovered || isMenuOpen
+                            ? '#f8fafc'
+                            : b.isInactive
+                              ? '#f8fafc'
+                              : '#ffffff',
+                        opacity: b.isInactive ? 0.75 : 1,
+                        transition: 'background 0.15s, opacity 0.15s',
+                      }}
+                    >
+                      {activeColumns.map((col) => {
+                        if (col.key === 'batchReference') {
+                          return (
+                            <td
+                              key={col.key}
+                              style={{
+                                padding: '12px 16px',
+                                color: b.isInactive ? '#64748b' : '#0062ff',
+                                fontWeight: 500,
+                                whiteSpace: 'nowrap',
+                                textDecoration: b.isInactive ? 'line-through' : 'none',
+                              }}
+                            >
+                              {/* No `batchNumber` fallback (2026-08-14) — it is an
                                 internal key, and falling back to it puts the one
                                 identifier the user cannot act on into the column
                                 they identify batches by. */}
-                            {b.batchReference || '-'}
-                            {b.isInactive && (
-                              <span
-                                style={{
-                                  marginLeft: '8px',
-                                  fontSize: '10px',
-                                  background: '#e2e8f0',
-                                  color: '#475569',
-                                  padding: '2px 6px',
-                                  borderRadius: '4px',
-                                  fontWeight: 500,
-                                  textDecoration: 'none',
-                                  display: 'inline-block',
-                                }}
-                              >
-                                Inactive
-                              </span>
-                            )}
-                          </td>
-                        );
-                      }
-                      if (col.key === 'manufacturerBatch') {
-                        return (
-                          <td
-                            key={col.key}
-                            style={{ padding: '12px 16px', color: '#334155', whiteSpace: 'nowrap' }}
-                          >
-                            {b.manufacturerBatch || '-'}
-                          </td>
-                        );
-                      }
-                      if (col.key === 'manufacturedDate') {
-                        return (
-                          <td
-                            key={col.key}
-                            style={{ padding: '12px 16px', color: '#334155', whiteSpace: 'nowrap' }}
-                          >
-                            {b.manufacturedDate
-                              ? format(new Date(b.manufacturedDate), 'dd-MM-yyyy')
-                              : '-'}
-                          </td>
-                        );
-                      }
-                      if (col.key === 'expiryDate') {
-                        return (
-                          <td
-                            key={col.key}
-                            style={{
-                              padding: '12px 16px',
-                              color: b.isExpired ? '#ef4444' : '#334155',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {b.expiryDate ? format(new Date(b.expiryDate), 'dd-MM-yyyy') : '-'}
-                            {b.isExpired && (
-                              <span
-                                style={{
-                                  marginLeft: '6px',
-                                  fontSize: '10px',
-                                  background: '#fef2f2',
-                                  color: '#ef4444',
-                                  padding: '2px 6px',
-                                  borderRadius: '4px',
-                                  fontWeight: 600,
-                                }}
-                              >
-                                Expired
-                              </span>
-                            )}
-                          </td>
-                        );
-                      }
-                      if (col.key === 'quantityIn') {
-                        return (
-                          <td
-                            key={col.key}
-                            style={{
-                              padding: '12px 16px',
-                              textAlign: 'right',
-                              color: '#334155',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {b.quantityIn}
-                          </td>
-                        );
-                      }
-                      if (col.key === 'quantityAvailable') {
-                        return (
-                          <td
-                            key={col.key}
-                            style={{
-                              padding: '12px 16px',
-                              textAlign: 'right',
-                              color: b.quantityAvailable <= 0 ? '#64748b' : '#0f172a',
-                              fontWeight: b.quantityAvailable > 0 ? 500 : 400,
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {b.quantityAvailable}
-                          </td>
-                        );
-                      }
-                      if (col.key === 'sellingPrice') {
-                        return (
-                          <td
-                            key={col.key}
-                            style={{
-                              padding: '12px 16px',
-                              textAlign: 'right',
-                              color: '#334155',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {b.sellingPrice !== null && b.sellingPrice !== undefined
-                              ? `₹${Number(b.sellingPrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
-                              : '-'}
-                          </td>
-                        );
-                      }
-                      return null;
-                    })}
+                              {b.batchReference || '-'}
+                              {b.isInactive && (
+                                <span
+                                  style={{
+                                    marginLeft: '8px',
+                                    fontSize: '10px',
+                                    background: '#e2e8f0',
+                                    color: '#475569',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    fontWeight: 500,
+                                    textDecoration: 'none',
+                                    display: 'inline-block',
+                                  }}
+                                >
+                                  Inactive
+                                </span>
+                              )}
+                            </td>
+                          );
+                        }
+                        if (col.key === 'manufacturerBatch') {
+                          return (
+                            <td
+                              key={col.key}
+                              style={{
+                                padding: '12px 16px',
+                                color: '#334155',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {b.manufacturerBatch || '-'}
+                            </td>
+                          );
+                        }
+                        if (col.key === 'manufacturedDate') {
+                          return (
+                            <td
+                              key={col.key}
+                              style={{
+                                padding: '12px 16px',
+                                color: '#334155',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {b.manufacturedDate
+                                ? format(new Date(b.manufacturedDate), 'dd-MM-yyyy')
+                                : '-'}
+                            </td>
+                          );
+                        }
+                        if (col.key === 'expiryDate') {
+                          return (
+                            <td
+                              key={col.key}
+                              style={{
+                                padding: '12px 16px',
+                                color: b.isExpired ? '#ef4444' : '#334155',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {b.expiryDate ? format(new Date(b.expiryDate), 'dd-MM-yyyy') : '-'}
+                              {b.isExpired && (
+                                <span
+                                  style={{
+                                    marginLeft: '6px',
+                                    fontSize: '10px',
+                                    background: '#fef2f2',
+                                    color: '#ef4444',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  Expired
+                                </span>
+                              )}
+                            </td>
+                          );
+                        }
+                        if (col.key === 'quantityIn') {
+                          return (
+                            <td
+                              key={col.key}
+                              style={{
+                                padding: '12px 16px',
+                                textAlign: 'right',
+                                color: '#334155',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {b.quantityIn}
+                            </td>
+                          );
+                        }
+                        if (col.key === 'quantityAvailable') {
+                          return (
+                            <td
+                              key={col.key}
+                              style={{
+                                padding: '12px 16px',
+                                textAlign: 'right',
+                                color: b.quantityAvailable <= 0 ? '#64748b' : '#0f172a',
+                                fontWeight: b.quantityAvailable > 0 ? 500 : 400,
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {b.quantityAvailable}
+                            </td>
+                          );
+                        }
+                        if (col.key === 'sellingPrice') {
+                          return (
+                            <td
+                              key={col.key}
+                              style={{
+                                padding: '12px 16px',
+                                textAlign: 'right',
+                                color: '#334155',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {b.sellingPrice !== null && b.sellingPrice !== undefined
+                                ? `₹${Number(b.sellingPrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+                                : '-'}
+                            </td>
+                          );
+                        }
+                        return null;
+                      })}
 
-                    {/* Fixed Action Button Column - Reserved 44px Space */}
-                    <td
-                      style={{
-                        padding: '12px 8px',
-                        textAlign: 'center',
-                        position: 'relative',
-                        width: '44px',
-                        minWidth: '44px',
-                        maxWidth: '44px',
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (isMenuOpen) {
-                            setActiveMenuBatchId(null);
-                          } else {
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            const isNearBottom = rect.bottom > window.innerHeight - 150;
-                            setMenuCoords({
-                              right: window.innerWidth - rect.right,
-                              ...(isNearBottom
-                                ? { bottom: window.innerHeight - rect.top + 4 }
-                                : { top: rect.bottom + 4 }),
-                            });
-                            setActiveMenuBatchId(uniqueRowId);
-                          }
-                        }}
+                      {/* Fixed Action Button Column - Reserved 44px Space */}
+                      <td
                         style={{
-                          width: '20px',
-                          height: '20px',
-                          borderRadius: '50%',
-                          background: '#15803d',
-                          border: 'none',
-                          color: '#ffffff',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          cursor: 'pointer',
-                          boxShadow: '0 2px 4px rgba(0,0,0,0.12)',
-                          visibility: isHovered || isMenuOpen ? 'visible' : 'hidden',
-                          transition: 'opacity 0.15s',
+                          padding: '12px 8px',
+                          textAlign: 'center',
+                          position: 'relative',
+                          width: '44px',
+                          minWidth: '44px',
+                          maxWidth: '44px',
                         }}
                       >
-                        <ChevronDown size={12} />
-                      </button>
-
-                      {isMenuOpen && (
-                        <>
-                          <div
-                            style={{ position: 'fixed', inset: 0, zIndex: 999 }}
-                            onClick={(e) => {
-                              e.stopPropagation();
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isMenuOpen) {
                               setActiveMenuBatchId(null);
-                            }}
-                          />
-                          <div
-                            ref={menuRef}
-                            style={{
-                              position: 'fixed',
-                              right: menuCoords?.right,
-                              top: menuCoords?.top,
-                              bottom: menuCoords?.bottom,
-                              width: '160px',
-                              background: '#ffffff',
-                              borderRadius: '8px',
-                              boxShadow:
-                                '0 10px 25px -5px rgba(0,0,0,0.15), 0 8px 10px -6px rgba(0,0,0,0.1)',
-                              border: '1px solid #cbd5e1',
-                              zIndex: 1000,
-                              padding: '4px 0',
-                              textAlign: 'left',
-                              overflow: 'hidden',
-                            }}
-                          >
+                            } else {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const isNearBottom = rect.bottom > window.innerHeight - 150;
+                              setMenuCoords({
+                                right: window.innerWidth - rect.right,
+                                ...(isNearBottom
+                                  ? { bottom: window.innerHeight - rect.top + 4 }
+                                  : { top: rect.bottom + 4 }),
+                              });
+                              setActiveMenuBatchId(uniqueRowId);
+                            }
+                          }}
+                          style={{
+                            width: '20px',
+                            height: '20px',
+                            borderRadius: '50%',
+                            background: '#15803d',
+                            border: 'none',
+                            color: '#ffffff',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.12)',
+                            visibility: isHovered || isMenuOpen ? 'visible' : 'hidden',
+                            transition: 'opacity 0.15s',
+                          }}
+                        >
+                          <ChevronDown size={12} />
+                        </button>
+
+                        {isMenuOpen && (
+                          <>
+                            <div
+                              style={{ position: 'fixed', inset: 0, zIndex: 999 }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveMenuBatchId(null);
+                              }}
+                            />
+                            <div
+                              ref={menuRef}
+                              style={{
+                                position: 'fixed',
+                                right: menuCoords?.right,
+                                top: menuCoords?.top,
+                                bottom: menuCoords?.bottom,
+                                width: '160px',
+                                background: '#ffffff',
+                                borderRadius: '8px',
+                                boxShadow:
+                                  '0 10px 25px -5px rgba(0,0,0,0.15), 0 8px 10px -6px rgba(0,0,0,0.1)',
+                                border: '1px solid #cbd5e1',
+                                zIndex: 1000,
+                                padding: '4px 0',
+                                textAlign: 'left',
+                                overflow: 'hidden',
+                              }}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => handleToggleInactive(b)}
+                                style={{
+                                  width: '100%',
+                                  padding: '8px 16px',
+                                  border: 'none',
+                                  background: 'transparent',
+                                  color: '#334155',
+                                  fontSize: '13px',
+                                  fontWeight: 400,
+                                  textAlign: 'left',
+                                  cursor: 'pointer',
+                                  display: 'block',
+                                }}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                                onMouseLeave={(e) =>
+                                  (e.currentTarget.style.background = 'transparent')
+                                }
+                              >
+                                {b.isInactive ? 'Mark as Active' : 'Mark as Inactive'}
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+
+                    {/* ── WHERE EACH PACKAGE IS ──────────────────────────────────
+                      🔴 Plan §8's first question — "what is in B-1, how much in
+                      each, and where" — answered on the row that already says
+                      where the batch is. A roll standing at the dyer's appears
+                      under the dyer's row, which is what makes it findable
+                      without a report of its own. */}
+                    {showUnits && (
+                      <tr style={{ borderBottom: '1px solid #eef0f3', background: '#fbfcfd' }}>
+                        <td colSpan={activeColumns.length + 1} style={{ padding: '0 16px 10px' }}>
+                          {/* 🔴 The toggle sits in a BLOCK of its own and the panel
+                            in another. Both were inline-level before, so opening
+                            put the panel on the same line and the taller box
+                            dragged the button off its baseline — the chevron
+                            jumped every time it was clicked. */}
+                          <div>
                             <button
                               type="button"
-                              onClick={() => handleToggleInactive(b)}
+                              onClick={() => toggleUnits(uniqueRowId)}
+                              aria-expanded={unitsOpen(uniqueRowId)}
                               style={{
-                                width: '100%',
-                                padding: '8px 16px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                background: 'none',
                                 border: 'none',
-                                background: 'transparent',
-                                color: '#334155',
-                                fontSize: '13px',
-                                fontWeight: 400,
-                                textAlign: 'left',
+                                padding: '4px 2px',
+                                borderRadius: 4,
                                 cursor: 'pointer',
-                                display: 'block',
+                                color: '#0062ff',
+                                fontSize: 12,
+                                fontWeight: 500,
                               }}
-                              onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                              onMouseLeave={(e) =>
-                                (e.currentTarget.style.background = 'transparent')
-                              }
                             >
-                              {b.isInactive ? 'Mark as Active' : 'Mark as Inactive'}
+                              {unitsOpen(uniqueRowId) ? (
+                                <ChevronDown size={13} />
+                              ) : (
+                                <ChevronRight size={13} />
+                              )}
+                              {b.units.length}{' '}
+                              {(b.units.length === 1
+                                ? unitLabel.singular
+                                : unitLabel.plural
+                              ).toLowerCase()}
                             </button>
                           </div>
-                        </>
-                      )}
-                    </td>
-                  </tr>
+
+                          {unitsOpen(uniqueRowId) && (
+                            <div
+                              style={{
+                                // `fit-content` on a BLOCK: the card is only as wide
+                                // as its two columns, without going inline-level and
+                                // reintroducing the jump.
+                                width: 'fit-content',
+                                marginTop: 4,
+                                marginLeft: 17,
+                                background: '#ffffff',
+                                border: '1px solid #eef0f3',
+                                borderRadius: 4,
+                                padding: '6px 10px',
+                              }}
+                            >
+                              <table style={{ borderCollapse: 'collapse', fontSize: 12 }}>
+                                <tbody>
+                                  {b.units.map((unit) => (
+                                    <tr key={unit.batchUnitId}>
+                                      <td
+                                        style={{
+                                          padding: '2px 20px 2px 0',
+                                          color: '#334155',
+                                          fontWeight: 500,
+                                          whiteSpace: 'nowrap',
+                                        }}
+                                      >
+                                        {unit.label}
+                                      </td>
+                                      <td
+                                        style={{
+                                          padding: '2px 0',
+                                          color: '#64748b',
+                                          textAlign: 'right',
+                                          whiteSpace: 'nowrap',
+                                        }}
+                                      >
+                                        {unit.availableQty}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                  {/* 🔴 The loose remainder, named. It is real stock
+                                    and issuable; leaving the reader to subtract
+                                    makes it look like something went missing. */}
+                                  {b.untaggedQty > 0.00005 && (
+                                    <tr>
+                                      <td
+                                        style={{
+                                          padding: '2px 20px 2px 0',
+                                          color: '#94a3b8',
+                                          whiteSpace: 'nowrap',
+                                        }}
+                                      >
+                                        Not in a {unitLabel.singular.toLowerCase()}
+                                      </td>
+                                      <td
+                                        style={{
+                                          padding: '2px 0',
+                                          color: '#94a3b8',
+                                          textAlign: 'right',
+                                          whiteSpace: 'nowrap',
+                                        }}
+                                      >
+                                        {b.untaggedQty}
+                                      </td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })
             )}

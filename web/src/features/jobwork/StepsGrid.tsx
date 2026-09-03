@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { fetchAvailableBatches } from './batches/batches.api';
 import { AddBatchesModal } from './issues/AddBatchesModal';
-import { rowKey } from './issues/batchSelection';
+import { selectionKey } from './issues/batchSelection';
 import { ItemComboBox } from '../../components/ui/ItemComboBox';
 import { Select } from '../../components/ui/Select';
 import { useUoms } from '../inventory/uom/uom.api';
@@ -16,7 +16,7 @@ import { fetchCustomers } from '../sales/customers/customers.api';
 import { fetchLocations } from '../configuration/locations/locations.api';
 import { ProcessSelect } from './processes/ProcessSelect';
 import { RATE_BASIS_OPTIONS } from './processes/processes.schemas';
-import { useTrackingLabel } from '../../hooks/useTrackingLabel';
+import { useTrackingLabel, useBatchUnitLabel } from '../../hooks/useTrackingLabel';
 import {
   PROCESSOR_TYPE_OPTIONS,
   derivedExpectedQty,
@@ -628,7 +628,9 @@ function ItemList({
                     {(row.plannedBatches?.length ?? 0) === 0
                       ? `Add ${trackingLabel.plural}`
                       : `${row.plannedBatches!.length} ${
-                          row.plannedBatches!.length === 1 ? trackingLabel.singular.toLowerCase() : trackingLabel.plural.toLowerCase()
+                          row.plannedBatches!.length === 1
+                            ? trackingLabel.singular.toLowerCase()
+                            : trackingLabel.plural.toLowerCase()
                         } planned`}
                   </button>
                 )}
@@ -758,12 +760,12 @@ export function StepsGrid<T extends StepGridRow>({
   const { data: vendorsPage } = useQuery({
     queryKey: ['vendors', orgId, 'processors'],
     queryFn: () => fetchVendors(orgId!, { perPage: 500 }),
-    enabled: Boolean(orgId) && steps.some(s => s.processorType !== 'internal'),
+    enabled: Boolean(orgId) && steps.some((s) => s.processorType !== 'internal'),
   });
   const { data: customersPage } = useQuery({
     queryKey: ['customers', orgId],
     queryFn: () => fetchCustomers(orgId!, { perPage: 500 }),
-    enabled: Boolean(orgId) && steps.some(s => s.processorType === 'customer'),
+    enabled: Boolean(orgId) && steps.some((s) => s.processorType === 'customer'),
   });
 
   const { data: locations = [] } = useQuery({
@@ -779,6 +781,10 @@ export function StepsGrid<T extends StepGridRow>({
    * `update(stepIndex, …)`, which only this component owns.
    */
   const [planning, setPlanning] = useState<{ stepIndex: number; rowIndex: number } | null>(null);
+  /** 🔴 Gates the package level in the planner's grid. A plan may now name a
+   * roll, not just a batch — still a NOTE, holding nothing, exactly as the batch
+   * note holds nothing. */
+  const unitLabel = useBatchUnitLabel();
   const [planSearch, setPlanSearch] = useState('');
   const [planSearchDebounced, setPlanSearchDebounced] = useState('');
   // A query per keystroke would be one round trip per letter of a batch reference.
@@ -813,6 +819,10 @@ export function StepsGrid<T extends StepGridRow>({
       ownership,
       planSearchDebounced,
       'plan',
+      // 🔴 Part of the KEY. Turning the level on has to invalidate this, or the
+      // planner serves a cached answer with no packages and every batch looks as
+      // though it has none.
+      unitLabel.enabled,
     ],
     queryFn: () =>
       fetchAvailableBatches(orgId!, {
@@ -820,6 +830,7 @@ export function StepsGrid<T extends StepGridRow>({
         ownership,
         search: planSearchDebounced || undefined,
         limit: PLAN_BATCH_LIMIT,
+        withUnits: unitLabel.enabled,
       }),
     enabled: Boolean(orgId && planningRow?.itemId),
   });
@@ -1064,12 +1075,14 @@ export function StepsGrid<T extends StepGridRow>({
                               label: c.companyName || c.contactName,
                             }))
                           : (vendorsPage?.results ?? [])
-                              .filter((v) => !v.vendorTypes?.length || v.vendorTypes.includes('job_worker'))
+                              .filter(
+                                (v) =>
+                                  !v.vendorTypes?.length || v.vendorTypes.includes('job_worker'),
+                              )
                               .map((v) => ({
                                 value: v.id,
                                 label: v.companyName || v.contactName,
-                              }))
-                        ),
+                              }))),
                       ]}
                       disabled={readOnly}
                       ariaLabel={`Step ${stepNo} processor`}
@@ -1298,7 +1311,20 @@ export function StepsGrid<T extends StepGridRow>({
               // is nothing to render or check a quantity against — the row drops
               // and the user re-picks. Silently keeping it would show a plan
               // against stock that no longer exists.
-              return batch ? [[rowKey(batch), { batch, qty: planned.qty }] as const] : [];
+              if (!batch) return [];
+              /* The package the plan named, matched back against what is on offer
+                 now. A roll that has since been consumed drops the same way its
+                 batch would — the plan is a note about stock that may be gone. */
+              const unit = planned.batchUnitId
+                ? (batch.units.find((u) => u.batchUnitId === planned.batchUnitId) ?? null)
+                : null;
+              if (planned.batchUnitId && !unit) return [];
+              return [
+                [
+                  selectionKey(batch, unit?.batchUnitId ?? null),
+                  { batch, unit, qty: planned.qty },
+                ] as const,
+              ];
             }),
           )}
           onSave={(rows, overwriteQty) => {
@@ -1310,6 +1336,9 @@ export function StepsGrid<T extends StepGridRow>({
               ...(overwriteQty !== null ? { plannedQty: overwriteQty } : {}),
               plannedBatches: Object.values(rows).map((sel) => ({
                 batchId: sel.batch.batchId,
+                /* Which roll was ticked, when one was. The picker already keys
+                   its selection per package, so this is a straight copy. */
+                batchUnitId: sel.unit?.batchUnitId ?? null,
                 locationId: sel.batch.locationId,
                 qty: sel.qty,
               })),

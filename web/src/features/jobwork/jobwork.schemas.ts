@@ -167,9 +167,13 @@ export interface StepItemRow {
   plannedBatches?: PlannedBatchWrite[];
 }
 
-/** What the form sends for one planned batch. A row is a batch AT A LOCATION. */
+/** What the form sends for one planned batch. A row is a batch AT A LOCATION —
+ * and, once the org runs a unit level, optionally ONE PACKAGE of it. */
 export interface PlannedBatchWrite {
   batchId: string;
+  /** Which roll the planner meant, when they ticked one. Null is the batch
+   * generally, which is what every plan meant before the level existed. */
+  batchUnitId?: string | null;
   locationId: string;
   qty: number;
 }

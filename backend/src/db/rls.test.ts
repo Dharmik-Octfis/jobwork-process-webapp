@@ -51,6 +51,12 @@ const TENANT_TABLES = [
   'processes',
   'batches',
   'stock_ledger',
+  // The optional level below a batch — a taka/roll/bale — added in
+  // 20260901120700_add_batch_units. It carries its own `organization_id`
+  // (denormalised from the parent batch) precisely so it can hold its own
+  // policy: a unit is reachable directly by the picker's balance query, which
+  // never joins through `batches`.
+  'batch_units',
   // Sprints 2–4, added in 20260805070926_jobwork_sprints_2_to_4. The LINE tables
   // each carry their own `organizationId` and their own policy rather than being
   // scoped through their header, so a query that reads one directly is still

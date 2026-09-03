@@ -142,6 +142,10 @@ model Batch {
 
   ledgerEntries StockLedgerEntry[]
 
+  /// The packages inside this batch, when the org runs a unit level. Empty is
+  /// normal and always legal — the level is optional per §2.4.
+  batchUnits BatchUnit[]
+
   issueLines JobIssueLine[] @relation("JobIssueLineBatch")
 
   /// Job orders that PLAN to use this batch. A note, not a hold — see the model.
@@ -179,6 +183,99 @@ model Batch {
   @@map("batches")
 }
 
+/// One physical package inside a batch — a taka, roll, bale, coil, plate, bundle.
+/// The level is switched on once per organization (`organizations.settings`
+/// → `batchUnit.enabled`) and its NAME is per-org too, exactly as "Batch" is.
+///
+/// 🔴 NO `qty` COLUMN, and that is the whole design. Quantity is
+/// `SUM(qty_in − qty_out)` off `stock_ledger` filtered by `batch_unit_id`, exactly
+/// as a batch's is. A stored copy would have to be updated by every path that
+/// moves stock — issue, receipt, three cancellations, assembly, `settleOpening`,
+/// scrap, adjustment — and would be silently wrong the first time one forgot,
+/// while the batch total stayed perfectly correct. Same trap as the
+/// `item_location_stocks` cache deleted 2026-08-13.
+///
+/// 🔴 No `location_id` either — a unit has no location of its own, for the same
+/// reason a batch has none. Location lives on the movement, which is what lets a
+/// unit be sitting at the dyer's.
+///
+/// 🔴 No `state` column. "Is any of it left" is a balance, not a flag.
+model BatchUnit {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  /// Denormalised from the parent batch so this table carries its OWN RLS
+  /// policy, exactly like `job_issue_lines`.
+  organizationId String @map("organization_id") @db.Uuid
+  batchId        String @map("batch_id") @db.Uuid
+
+  /// Position inside the parent batch, 1-based. Restarts at 1 in every batch —
+  /// correct here and nowhere else, because a unit has exactly one parent batch,
+  /// can never merge across batches, and cannot exist without one.
+  ///
+  /// 🔴 Also what an UNNAMED unit is CALLED, since 2026-09-03 — see `label`.
+  seq Int
+
+  /// What is printed on the physical tag. Free text — "T-1", or the supplier's own
+  /// taka number.
+  ///
+  /// 🔴 OPTIONAL TO TYPE since 2026-09-03, and still NOT NULL. Leave it blank and
+  /// `createBatchUnits` fills in `#seq`, this unit's position in the batch. The
+  /// column stays non-null because every picker, challan and error message reads
+  /// it — a package nobody can name is one nobody can pick out of a list — and
+  /// because nothing about TRACKING ever depended on it: quantity and value are
+  /// both sums over `stock_ledger.batch_unit_id`, which is a uuid. What a label
+  /// buys is the match to a physical tag, which is real but is the user's to
+  /// decide.
+  label String @db.VarChar(60)
+
+  /// Snapshot of the batch's uom, same reasoning as `Batch.uomId`.
+  uomId String? @map("uom_id") @db.Uuid
+
+  /// Unit genealogy — set only when the operation preserves packaging (dyeing:
+  /// the same roll returns; cutting: rolls are destroyed, so this stays null).
+  ///
+  /// 🔴 Present from the FIRST migration even though nothing writes it yet.
+  /// Genealogy cannot be reconstructed from history that was never recorded; the
+  /// column costs nothing empty and retrofitting it costs everything.
+  parentBatchUnitId String? @map("parent_batch_unit_id") @db.Uuid
+
+  sourceDocType String? @map("source_doc_type") @db.VarChar(40)
+  sourceDocId   String? @map("source_doc_id") @db.Uuid
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  batch           Batch              @relation(fields: [batchId], references: [id])
+  uom             UnitOfMeasurement? @relation("BatchUnitUom", fields: [uomId], references: [id])
+  parentBatchUnit BatchUnit?         @relation("BatchUnitGenealogy", fields: [parentBatchUnitId], references: [id])
+  childBatchUnits BatchUnit[]        @relation("BatchUnitGenealogy")
+  createdByUser   User?              @relation("BatchUnitCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser   User?              @relation("BatchUnitUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  ledgerEntries StockLedgerEntry[]
+
+  /// The challan lines that sent this package out. Several, over its life — a
+  /// roll can go to the dyer, come back, and go to the printer.
+  issueLines JobIssueLine[] @relation("JobIssueLineBatchUnit")
+
+  /// Job orders that PLAN to use this package. A note, not a hold — see the model.
+  plannedForStepInputs JobOrderStepInputBatch[] @relation("JobOrderStepInputBatchUnit")
+
+  /// The assembly lines that consumed material off this package. Several over its
+  /// life, and PARTIAL: an assembly cuts what it needs off a roll rather than
+  /// taking the whole thing, unlike a job issue.
+  assemblyLines ItemAssemblyLine[] @relation("ItemAssemblyLineBatchUnit")
+
+  @@unique([batchId, seq])
+  @@index([organizationId, batchId])
+  @@map("batch_units")
+}
+
 /// 🔴 EVERY MOVEMENT OF EVERY QUANTITY. Append-only.
 ///
 /// There is no `stock_balance` table and there will not be one. Availability is
@@ -197,6 +294,12 @@ model StockLedgerEntry {
 
   itemId  String @map("item_id") @db.Uuid
   batchId String @map("batch_id") @db.Uuid
+
+  /// WHICH PACKAGE inside the batch this movement is. Nullable, and the null is
+  /// load-bearing: an item with no unit level, and the untagged remainder of a
+  /// batch that has one, both post null here. So `SUM(units) ≤ batch` is an
+  /// inequality — the loose remainder is legal, and every picker shows it.
+  batchUnitId String? @map("batch_unit_id") @db.Uuid
 
   /// WHERE the stock is. Goods at a processor are OUR stock at THEIR location
   /// (§5.4) — one axis, not a location plus a separate "with-processor" state, so
@@ -252,6 +355,7 @@ model StockLedgerEntry {
   organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   item          Item               @relation(fields: [itemId], references: [id])
   batch         Batch              @relation(fields: [batchId], references: [id])
+  batchUnit     BatchUnit?         @relation(fields: [batchUnitId], references: [id])
   location      Location           @relation("StockLedgerLocation", fields: [locationId], references: [id])
   uom           UnitOfMeasurement? @relation("StockLedgerUom", fields: [uomId], references: [id])
   createdByUser User?              @relation("StockLedgerCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
@@ -261,5 +365,19 @@ model StockLedgerEntry {
   /// guarantee away.
   @@index([organizationId, itemId, batchId, locationId])
   @@index([organizationId, locationId, postedAt])
+  /// Unit balances: "what is in B-1", "where is T-1", the unit picker, and the
+  /// §2.5 invariant `postMovement` checks on every outward row.
+  @@index([organizationId, batchId, batchUnitId, locationId])
+  /// 🔴 MISSING UNTIL 2026-09-01 AND NEEDED REGARDLESS OF UNITS. Every document
+  /// read-back and every CANCELLATION filtered on these columns with no index
+  /// behind them: `cancelJobReceipt` on (source_doc_type, source_doc_id),
+  /// `cancelJobIssue` on source_doc_line_id. Invisible at today's volume; a unit
+  /// level multiplies ledger rows ~50×, and that is 50 sequential scans inside
+  /// one transaction holding one pooled connection.
+  ///
+  /// Kept FULL, never partial: Prisma cannot express a `WHERE` on an index, so a
+  /// hand-written partial one reads as permanent drift to `db:check-drift`.
+  @@index([organizationId, sourceDocType, sourceDocId])
+  @@index([organizationId, sourceDocLineId])
   @@map("stock_ledger")
 }

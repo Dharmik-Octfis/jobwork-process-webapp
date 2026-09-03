@@ -125,6 +125,7 @@ model UnitOfMeasurement {
 
   stockedItems  Item[]             @relation("ItemStockingUom")
   batches       Batch[]            @relation("BatchUom")
+  batchUnits    BatchUnit[]        @relation("BatchUnitUom")
   ledgerEntries StockLedgerEntry[] @relation("StockLedgerUom")
 
   jobOrderInputUoms JobOrder[] @relation("JobOrderInputUom")

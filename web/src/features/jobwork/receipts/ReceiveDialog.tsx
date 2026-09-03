@@ -14,7 +14,8 @@ import type { JobOrder, OverviewStep } from '../job-orders/jobOrders.schemas';
 import { createJobReceipt, fetchReceiptBatchOptions, fetchReceivePrefill } from './jobReceipts.api';
 import type { JobReceiptBatchAllocationData, JobReceiptLineData } from './jobReceipts.schemas';
 import { BatchAllocationModal, type BatchAllocation } from './BatchAllocationModal';
-import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
+import { isExistingUnit, isSubmittableUnit } from '../../../components/inventory/batchUnits';
+import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingLabel';
 
 interface Props {
   isOpen: boolean;
@@ -176,6 +177,9 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
   const trackingLabel = useTrackingLabel();
+  /** Only asked for when the org runs the level — the batch picker's packages
+   * exist to let an allocation row add to one. */
+  const unitLabel = useBatchUnitLabel();
 
   /**
    * `null` means "everything that is open" — every challan pre-ticked, which is
@@ -438,6 +442,9 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
       step.id,
       allocatingRow?.itemId,
       debouncedBatchSearch,
+      // In the key: without it the two variants share a cache entry, and turning
+      // the level on serves back the answer that carries no packages.
+      unitLabel.enabled,
     ],
     queryFn: ({ pageParam }) =>
       fetchReceiptBatchOptions(orgId!, {
@@ -445,6 +452,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
         itemId: allocatingRow!.itemId,
         search: debouncedBatchSearch || undefined,
         cursor: pageParam ?? undefined,
+        withUnits: unitLabel.enabled,
       }),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.otherNextCursor,
@@ -833,127 +841,127 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
       )}
 
       {prefill && (
-          <>
-            <section style={{ marginBottom: 20 }}>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                  gap: 14,
-                }}
-              >
-                <div>
-                  <label style={labelStyle} htmlFor="receipt-date">
-                    Date
-                  </label>
-                  <DateInput
-                    id="receipt-date"
-                    value={receiptDate}
-                    onChange={setReceiptDate}
-                    style={inputStyle}
-                    portal
-                  />
-                </div>
+        <>
+          <section style={{ marginBottom: 20 }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: 14,
+              }}
+            >
+              <div>
+                <label style={labelStyle} htmlFor="receipt-date">
+                  Date
+                </label>
+                <DateInput
+                  id="receipt-date"
+                  value={receiptDate}
+                  onChange={setReceiptDate}
+                  style={inputStyle}
+                  portal
+                />
+              </div>
 
-                <div>
-                  <label style={labelStyle}>Received into</label>
-                  <Select
-                    value={effectiveLocationId}
-                    onChange={setLocationId}
-                    options={godowns.map((l) => ({ value: l.id, label: l.name }))}
-                    placeholder={isLoadingLocations ? 'Loading…' : 'Select a location…'}
-                    disabled={godowns.length === 0}
-                    ariaLabel="Received into location"
-                    fullWidth
-                    portal
-                  />
-                  {/* 🔴 SAY WHY IT IS EMPTY. A dropdown with nothing in it and no
+              <div>
+                <label style={labelStyle}>Received into</label>
+                <Select
+                  value={effectiveLocationId}
+                  onChange={setLocationId}
+                  options={godowns.map((l) => ({ value: l.id, label: l.name }))}
+                  placeholder={isLoadingLocations ? 'Loading…' : 'Select a location…'}
+                  disabled={godowns.length === 0}
+                  ariaLabel="Received into location"
+                  fullWidth
+                  portal
+                />
+                {/* 🔴 SAY WHY IT IS EMPTY. A dropdown with nothing in it and no
                       note beside it is indistinguishable from a broken screen, and
                       it blocks the save — so each reason it can be empty is spelled
                       out where the operator is looking, and they are different
                       problems with different fixes. */}
-                  {!isLoadingLocations && godowns.length === 0 && (
-                    <p style={{ fontSize: 11.5, color: '#b91c1c', margin: '5px 0 0 0' }}>
-                      {knownLocations.length > 0
-                        ? 'Every location set up is a processor, in-transit or customer site. Goods cannot be received into any of those — add a warehouse under Configuration → Locations.'
-                        : locationsError
-                          ? 'Locations could not be loaded — this needs the Locations read permission.'
-                          : 'No location has been set up yet. Add one under Configuration → Locations.'}
-                    </p>
-                  )}
-                </div>
+                {!isLoadingLocations && godowns.length === 0 && (
+                  <p style={{ fontSize: 11.5, color: '#b91c1c', margin: '5px 0 0 0' }}>
+                    {knownLocations.length > 0
+                      ? 'Every location set up is a processor, in-transit or customer site. Goods cannot be received into any of those — add a warehouse under Configuration → Locations.'
+                      : locationsError
+                        ? 'Locations could not be loaded — this needs the Locations read permission.'
+                        : 'No location has been set up yet. Add one under Configuration → Locations.'}
+                  </p>
+                )}
+              </div>
 
-                {/* No single "Output item" here any more — a step can return
+              {/* No single "Output item" here any more — a step can return
                     any number of items, and they are listed in the Returned
                     grid below with their own quantities (§5.7). No "From"
                     either: it is in the subtitle, where a read-only fact belongs. */}
 
-                {/* Beside the other header facts, exactly where the issue dialog
+              {/* Beside the other header facts, exactly where the issue dialog
                     puts it. It is the one free-text note on the document, not a
                     footnote to the grids — sitting under three tables it read as
                     a comment on the last of them. */}
-                <div>
-                  <label style={labelStyle} htmlFor="receipt-remarks">
-                    Remarks
-                  </label>
+              <div>
+                <label style={labelStyle} htmlFor="receipt-remarks">
+                  Remarks
+                </label>
+                <input
+                  id="receipt-remarks"
+                  type="text"
+                  value={remarks}
+                  onChange={(e) => setRemarks(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+          </section>
+
+          <section style={{ marginBottom: 20 }}>
+            <h3 style={sectionHeading}>Challans being closed</h3>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              {prefill.issues.length === 0 && (
+                <span style={{ fontSize: 13, color: '#64748b' }}>
+                  Nothing is currently out against this step.
+                </span>
+              )}
+              {prefill.issues.map((issue) => (
+                <label
+                  key={issue.id}
+                  style={{
+                    display: 'flex',
+                    gap: 8,
+                    alignItems: 'center',
+                    padding: '6px 10px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: 4,
+                    fontSize: 13,
+                    color: '#334155',
+                    cursor: 'pointer',
+                  }}
+                >
                   <input
-                    id="receipt-remarks"
-                    type="text"
-                    value={remarks}
-                    onChange={(e) => setRemarks(e.target.value)}
-                    style={inputStyle}
+                    type="checkbox"
+                    checked={selectedIssueIds.includes(issue.id)}
+                    onChange={(e) =>
+                      // The first tick materialises the "all open" default
+                      // into a real list, and every one after edits it.
+                      setPickedIssueIds(
+                        e.target.checked
+                          ? [...selectedIssueIds, issue.id]
+                          : selectedIssueIds.filter((id) => id !== issue.id),
+                      )
+                    }
                   />
-                </div>
-              </div>
-            </section>
-
-            <section style={{ marginBottom: 20 }}>
-              <h3 style={sectionHeading}>Challans being closed</h3>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                {prefill.issues.length === 0 && (
-                  <span style={{ fontSize: 13, color: '#64748b' }}>
-                    Nothing is currently out against this step.
+                  {issue.challanNumber}
+                  <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                    {formatQty(issue.totalQty)} {inUnit}
+                    {issue.isRework ? ` · rework #${issue.attemptNo}` : ''}
                   </span>
-                )}
-                {prefill.issues.map((issue) => (
-                  <label
-                    key={issue.id}
-                    style={{
-                      display: 'flex',
-                      gap: 8,
-                      alignItems: 'center',
-                      padding: '6px 10px',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: 4,
-                      fontSize: 13,
-                      color: '#334155',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedIssueIds.includes(issue.id)}
-                      onChange={(e) =>
-                        // The first tick materialises the "all open" default
-                        // into a real list, and every one after edits it.
-                        setPickedIssueIds(
-                          e.target.checked
-                            ? [...selectedIssueIds, issue.id]
-                            : selectedIssueIds.filter((id) => id !== issue.id),
-                        )
-                      }
-                    />
-                    {issue.challanNumber}
-                    <span style={{ fontSize: 11, color: '#94a3b8' }}>
-                      {formatQty(issue.totalQty)} {inUnit}
-                      {issue.isRework ? ` · rework #${issue.attemptNo}` : ''}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </section>
+                </label>
+              ))}
+            </div>
+          </section>
 
-            {/*
+          {/*
               🔴 RETURNED — the step's Produces list plus whatever was actually
               sent to this step (§5.7, and see `returnedRows`). Cutting produces
               panels AND offcuts AND waste; stitching produces shirts AND rejects.
@@ -963,14 +971,14 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
               Type what arrived and what is wrong with it; Good is the arithmetic
               and the screen does it.
             */}
-            <section style={{ marginBottom: 20 }}>
-              <h3 style={sectionHeading}>What came back</h3>
-              <p style={{ fontSize: 12, color: '#64748b', margin: '-4px 0 10px 0' }}>
-                Type what arrived and what goes back for rework. Everything else is worked out.
-              </p>
-              <div style={{ border: '1px solid #eef0f3', borderRadius: 4 }}>
-                <div className="responsive-table-wrapper">
-                    <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+          <section style={{ marginBottom: 20 }}>
+            <h3 style={sectionHeading}>What came back</h3>
+            <p style={{ fontSize: 12, color: '#64748b', margin: '-4px 0 10px 0' }}>
+              Type what arrived and what goes back for rework. Everything else is worked out.
+            </p>
+            <div style={{ border: '1px solid #eef0f3', borderRadius: 4 }}>
+              <div className="responsive-table-wrapper">
+                <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                   {/* 🔴 Fixed widths that ADD UP TO 100%, so the grid can never be
                       wider than the dialog. Content-sized columns plus a `minWidth`
                       floor is what put a horizontal scrollbar under a dialog that
@@ -1137,26 +1145,26 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                     })}
                   </tbody>
                 </table>
-                  </div>
               </div>
+            </div>
 
-              {brokenRows.length > 0 && (
-                <p style={{ fontSize: 12, color: '#b91c1c', margin: '8px 0 0 0' }}>
-                  Rework cannot be more than what came back.
-                </p>
-              )}
-              {/* Allocated here or nowhere — the batches have no other label, and
+            {brokenRows.length > 0 && (
+              <p style={{ fontSize: 12, color: '#b91c1c', margin: '8px 0 0 0' }}>
+                Rework cannot be more than what came back.
+              </p>
+            )}
+            {/* Allocated here or nowhere — the batches have no other label, and
                   they are the rows somebody has to find in the next step's picker. */}
-              {unallocatedRows.length > 0 && (
-                <p style={{ fontSize: 12, color: '#b91c1c', margin: '8px 0 0 0' }}>
-                  {unallocatedRows.length === 1
-                    ? `One batch-tracked item still needs its ${trackingLabel.plural.toLowerCase()} named — use Add ${trackingLabel.plural} on that row.`
-                    : `${unallocatedRows.length} batch-tracked items still need their ${trackingLabel.plural.toLowerCase()} named — use Add ${trackingLabel.plural} on those rows.`}
-                </p>
-              )}
-            </section>
+            {unallocatedRows.length > 0 && (
+              <p style={{ fontSize: 12, color: '#b91c1c', margin: '8px 0 0 0' }}>
+                {unallocatedRows.length === 1
+                  ? `One batch-tracked item still needs its ${trackingLabel.plural.toLowerCase()} named — use Add ${trackingLabel.plural} on that row.`
+                  : `${unallocatedRows.length} batch-tracked items still need their ${trackingLabel.plural.toLowerCase()} named — use Add ${trackingLabel.plural} on those rows.`}
+              </p>
+            )}
+          </section>
 
-            {/*
+          {/*
               🔴 WHAT THIS RECEIPT CONSUMES — nothing here asks for it.
 
               On the ordinary step the item that went out is the item that comes
@@ -1172,7 +1180,7 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
               already offers. The typed consumption grid for a TRANSFORMING step
               only ever appeared behind that checkbox, so it went too.
             */}
-            {/* 🔴 PROCESS LOSS ONLY — where the Scrap box went. Stated as a
+          {/* 🔴 PROCESS LOSS ONLY — where the Scrap box went. Stated as a
                 consequence of the two typed numbers rather than as a question, so
                 it can never disagree with them.
 
@@ -1182,38 +1190,38 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
                 report, measured over a step's whole life, not over the one
                 consignment standing in front of the operator. It is on the job
                 order overview, where it can be read against every receipt. */}
-            {lossByItem.length > 0 && (
-              <div
-                style={{
-                  display: 'flex',
-                  gap: 20,
-                  flexWrap: 'wrap',
-                  marginBottom: 20,
-                  padding: '10px 14px',
-                  background: '#f8fafc',
-                  borderRadius: 4,
-                  fontSize: 12,
-                  color: '#475569',
-                }}
-              >
-                {lossByItem.map((row) => (
-                  <span key={`loss-strip-${row.itemId}`}>
-                    Process loss ({row.name}):{' '}
-                    <strong style={{ color: '#b45309' }}>
-                      {formatQty(row.qty)} {row.unit}
-                    </strong>
-                  </span>
-                ))}
-              </div>
-            )}
+          {lossByItem.length > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                gap: 20,
+                flexWrap: 'wrap',
+                marginBottom: 20,
+                padding: '10px 14px',
+                background: '#f8fafc',
+                borderRadius: 4,
+                fontSize: 12,
+                color: '#475569',
+              }}
+            >
+              {lossByItem.map((row) => (
+                <span key={`loss-strip-${row.itemId}`}>
+                  Process loss ({row.name}):{' '}
+                  <strong style={{ color: '#b45309' }}>
+                    {formatQty(row.qty)} {row.unit}
+                  </strong>
+                </span>
+              ))}
+            </div>
+          )}
 
-            {/* No "Additional fields" block here. The gate is the wrong place for
+          {/* No "Additional fields" block here. The gate is the wrong place for
                 per-org custom fields: this dialog is already two grids deep and
                 the operator is standing at a delivery. `job_receipt` keeps its
                 `custom_fields` column and its definitions — they belong on the
                 receipt's detail screen, not between the goods and the ledger.
                 Remarks is a header field and sits with the other header facts. */}
-          </>
+        </>
       )}
 
       {/**
@@ -1283,8 +1291,29 @@ export function ReceiveDialog({ isOpen, onClose, jobOrder, step, onReceived }: P
  * emptiness is tested before the conversion, never after.
  */
 function toBatchPayload(batch: BatchAllocation): JobReceiptBatchAllocationData {
+  /**
+   * 🔴 PACKAGES RIDE ON BOTH KINDS OF ROW, where the five attributes ride on
+   * neither an existing one. The asymmetry is the server's rule: an existing
+   * batch is never RESTAMPED from inside a receipt, but three more rolls arriving
+   * into it is new goods, not a correction.
+   *
+   * Omitted entirely when nothing was named, so a receipt from an org that runs
+   * no package level posts exactly the payload it always did.
+   */
+  const units = batch.units
+    .filter(isSubmittableUnit)
+    // A picked package posts its ID; a new one posts its label, or nothing at all
+    // — blank is legal since 2026-09-03 and the server names it `#seq`. Never both,
+    // which is what the server's refine enforces.
+    .map((unit) =>
+      isExistingUnit(unit)
+        ? { batchUnitId: unit.batchUnitId!, qty: Number(unit.quantity) }
+        : { label: unit.label.trim() || undefined, qty: Number(unit.quantity) },
+    );
+  const withUnits = units.length > 0 ? { units } : {};
+
   if (batch.batchId) {
-    return { batchId: batch.batchId, batchReference: null, qty: batch.qty };
+    return { batchId: batch.batchId, batchReference: null, qty: batch.qty, ...withUnits };
   }
   const price = (value: string) => (value.trim() === '' ? null : Number(value));
   return {
@@ -1296,6 +1325,7 @@ function toBatchPayload(batch: BatchAllocation): JobReceiptBatchAllocationData {
     expiryDate: batch.expiryDate || null,
     sellingPrice: price(batch.sellingPrice),
     mrp: price(batch.mrp),
+    ...withUnits,
   };
 }
 
@@ -1368,7 +1398,9 @@ function AllocationButton({
           color: '#0062ff',
         }}
       >
-        {rows.length === 0 ? label : `${rows.length} ${rows.length === 1 ? trackingLabel.singular.toLowerCase() : trackingLabel.plural.toLowerCase()}`}
+        {rows.length === 0
+          ? label
+          : `${rows.length} ${rows.length === 1 ? trackingLabel.singular.toLowerCase() : trackingLabel.plural.toLowerCase()}`}
       </button>
       {/* Why this row is holding the receipt up, beside the control that fixes
           it — the same place the issue dialog puts it. Only ever a shortfall:
