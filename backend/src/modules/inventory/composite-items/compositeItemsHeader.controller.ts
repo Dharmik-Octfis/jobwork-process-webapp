@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { compositeItemsService } from './compositeItems.service.ts';
 import { itemsService } from '../../items/items.service.ts';
 import { sendSuccess } from '../../../lib/apiResponse.ts';
+import { ApiError } from '../../../lib/apiError.ts';
 import type { CreateCompositeItemDto, UpdateCompositeItemDto } from './compositeItems.schemas.ts';
 import { listQuerySchema } from '../../../lib/pagination.ts';
 
@@ -14,6 +15,12 @@ export class CompositeItemsHeaderController {
     ]);
 
     sendSuccess(res, { ...results, count });
+  }
+
+  async getItemCount(req: Request, res: Response) {
+    const parsed = listQuerySchema.safeParse(req.query);
+    if (!parsed.success) throw ApiError.badRequest('Invalid search parameters.');
+    sendSuccess(res, { total: await compositeItemsService.countItems(req.tenantId!, parsed.data) });
   }
 
   async getItem(req: Request, res: Response) {

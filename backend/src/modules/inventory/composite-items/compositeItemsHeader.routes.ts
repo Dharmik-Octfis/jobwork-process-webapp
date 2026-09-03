@@ -11,7 +11,7 @@ const router = Router({ mergeParams: true });
 router.use(authenticate, tenantContext);
 
 router.get('/', requirePermission('composite_item:read'), compositeItemsHeaderController.getItems);
-router.get('/count', requirePermission('composite_item:read'), compositeItemsHeaderController.getItems); // Count uses getItems but with ?count=1
+router.get('/count', requirePermission('composite_item:read'), compositeItemsHeaderController.getItemCount);
 
 router.post(
   '/',
