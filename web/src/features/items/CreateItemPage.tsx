@@ -330,10 +330,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                 flex: 1,
                 minWidth: 'min(100%, 480px)',
                 maxWidth: '640px',
-                background: '#f8fafc',
-                padding: '24px',
-                borderRadius: '8px',
-                border: '1px solid #e2e8f0',
+                // No background or border to match Zoho style
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '14px',
@@ -341,9 +338,9 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
             >
               <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
-                  gap: '12px',
+                  gap: '16px',
                  }}>
-                <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Name*</label>
+                <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>Name*</label>
                 <div>
                   <input
                     name="name"
@@ -351,10 +348,11 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                     onChange={handleChange}
                     style={{
                       width: '100%',
-                      padding: '6px 10px',
+                      height: '36px',
+                      padding: '8px 12px',
                       borderRadius: '4px',
                       border: errors.name ? '1px solid #ef4444' : '1px solid #d1d5db',
-                      fontSize: 12,
+                      fontSize: 13,
                     }}
                   />
                   {errors.name && (
@@ -369,16 +367,16 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
 
               <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
-                  gap: '12px',
+                  gap: '16px',
                  }}>
-                <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Type</label>
+                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>Type</label>
                 <div style={{ display: 'flex', gap: 16 }}>
                   <label
                     style={{
                       display: 'flex',
                       alignItems: 'center',
                       gap: 6,
-                      fontSize: 12,
+                      fontSize: 13,
                       cursor: 'pointer',
                     }}
                   >
@@ -396,7 +394,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       display: 'flex',
                       alignItems: 'center',
                       gap: 6,
-                      fontSize: 12,
+                      fontSize: 13,
                       cursor: 'pointer',
                     }}
                   >
@@ -414,9 +412,9 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
 
               <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
-                  gap: '12px',
+                  gap: '16px',
                  }}>
-                <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>SKU</label>
+                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>SKU</label>
                 <div>
                   <input
                     name="sku"
@@ -424,10 +422,11 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                     onChange={handleChange}
                     style={{
                       width: '100%',
-                      padding: '6px 10px',
+                      height: '36px',
+                      padding: '8px 12px',
                       borderRadius: '4px',
                       border: errors.sku ? '1px solid #ef4444' : '1px solid #d1d5db',
-                      fontSize: 12,
+                      fontSize: 13,
                     }}
                   />
                   {errors.sku && (
@@ -435,12 +434,12 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                   )}
                 </div>
               </div>
-
+ 
               <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
-                  gap: '12px',
+                  gap: '16px',
                  }}>
-                <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Category</label>
+                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>Category</label>
                 <CategorySelectDropdown
                   value={formData.category || null}
                   onChange={(val) => handleSelectChange('category', val)}
@@ -450,9 +449,9 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
 
               <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
-                  gap: '12px',
+                  gap: '16px',
                  }}>
-                <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Unit</label>
+                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>Unit</label>
                 <div>
                   <div
                     style={{
@@ -460,16 +459,17 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       border: errors.unit ? '1px solid #ef4444' : '1px solid #d1d5db',
                       borderRadius: '4px',
                       width: '100%',
+                      height: '36px',
                     }}
                   >
                     <div
                       style={{
-                        padding: '6px 12px',
+                        padding: '8px 12px',
                         borderRight: '1px solid #d1d5db',
                         borderTopLeftRadius: '3px',
                         borderBottomLeftRadius: '3px',
                         background: '#f1f5f9',
-                        fontSize: 12,
+                        fontSize: 13,
                         color: '#475569',
                         display: 'flex',
                         alignItems: 'center',
@@ -479,7 +479,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                     >
                       Unit
                     </div>
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
                       <Select
                         value={formData.stockingUomId ?? ''}
                         /**
@@ -510,7 +510,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                             ? [{ value: '', label: `${formData.unit} — no stocking unit set` }]
                             : []),
                         ]}
-                        buttonStyle={{ border: 'none' }}
+                        buttonStyle={{ border: 'none', height: '100%', padding: '0 12px', fontSize: 13 }}
                         actionItem={
                           <button
                             type="button"
@@ -549,19 +549,20 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
 
               <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
-                  gap: '12px',
+                  gap: '16px',
                  }}>
-                <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>HSN Code</label>
+                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>HSN Code</label>
                 <input
                   name="hsnCode"
                   value={formData.hsnCode || ''}
                   onChange={handleChange}
                   style={{
                     width: '100%',
-                    padding: '6px 10px',
+                    height: '36px',
+                    padding: '8px 12px',
                     borderRadius: '4px',
                     border: '1px solid #d1d5db',
-                    fontSize: 12,
+                    fontSize: 13,
                   }}
                 />
               </div>
@@ -571,17 +572,17 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
             <div
               style={{
                 width: '360px',
-                border: '1px solid #e2e8f0',
+                border: '1px solid #e5e7eb',
                 borderRadius: '8px',
                 padding: '16px',
                 display: 'flex',
                 gap: '12px',
-                background: '#f8fafc',
+                background: '#ffffff',
               }}
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
                 <div>
-                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>
+                  <div style={{ fontSize: 12, marginBottom: 6, color: '#4b5563' }}>
                     Front View
                   </div>
                   <input
@@ -610,22 +611,18 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                   >
                     <div
                       style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: '50%',
-                        background: '#0062ff',
-                        color: 'white',
+                        color: '#0062ff',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        fontSize: 12,
+                        fontSize: 16,
+                        fontWeight: 'bold',
                       }}
                     >
                       ↑
                     </div>
                     <div
                       style={{
-                        fontWeight: 500,
                         fontSize: 12,
                         color: '#1e293b',
                         textAlign: 'center',
@@ -642,7 +639,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                   </button>
                 </div>
                 <div>
-                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>
+                  <div style={{ fontSize: 12, marginBottom: 6, color: '#4b5563' }}>
                     Rear View
                   </div>
                   <input
@@ -671,22 +668,18 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                   >
                     <div
                       style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: '50%',
-                        background: '#0062ff',
-                        color: 'white',
+                        color: '#0062ff',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        fontSize: 12,
+                        fontSize: 16,
+                        fontWeight: 'bold',
                       }}
                     >
                       ↑
                     </div>
                     <div
                       style={{
-                        fontWeight: 500,
                         fontSize: 12,
                         color: '#1e293b',
                         textAlign: 'center',
@@ -704,7 +697,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                 </div>
               </div>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>
+                <div style={{ fontSize: 12, marginBottom: 6, color: '#4b5563' }}>
                   Other Images
                 </div>
                 <input
@@ -745,13 +738,14 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       alignItems: 'center',
                       justifyContent: 'center',
                       fontSize: 12,
+                      marginBottom: 4,
                     }}
                   >
                     ↑
                   </div>
                   <div
                     style={{
-                      fontWeight: 500,
+                      fontWeight: 600,
                       fontSize: 12,
                       color: '#1e293b',
                       textAlign: 'center',
@@ -762,10 +756,10 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       ? `${otherImageFiles.length} new files selected`
                       : formData.images && formData.images.length > 0
                         ? `${formData.images.length} existing image(s)`
-                        : 'Drag & Drop Images (Max 3)'}
+                        : 'Drag & Drop Images'}
                   </div>
                   <div
-                    style={{ fontSize: 10, color: '#64748b', textAlign: 'center', lineHeight: 1.3 }}
+                    style={{ fontSize: 10, color: '#64748b', textAlign: 'center', lineHeight: 1.4, marginTop: 4 }}
                   >
                     You can add up to 3 images, each not exceeding 2 MB.
                   </div>
@@ -778,9 +772,11 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
           <div
             style={{
               background: '#f8fafc',
-              padding: '24px',
-              borderRadius: '8px',
-              border: '1px solid #e2e8f0',
+              padding: '24px 0',
+              width: '100%',
+              borderRadius: 0,
+              borderTop: '1px solid #e2e8f0',
+              borderBottom: '1px solid #e2e8f0',
               display: 'flex',
               flexDirection: 'column',
               gap: '16px',
@@ -944,11 +940,12 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
           {/* Inventory Tracking */}
           <div
             style={{
-              maxWidth: '640px',
               background: '#f8fafc',
-              padding: '24px',
-              borderRadius: '8px',
-              border: '1px solid #e2e8f0',
+              padding: '24px 0',
+              width: '100%',
+              borderRadius: 0,
+              borderTop: '1px solid #e2e8f0',
+              borderBottom: '1px solid #e2e8f0',
               display: 'flex',
               flexDirection: 'column',
               gap: '16px',
@@ -1092,11 +1089,12 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
           {orgId && (
             <div
               style={{
-                maxWidth: '640px',
                 background: '#f8fafc',
-                padding: '24px',
-                borderRadius: '8px',
-                border: '1px solid #e2e8f0',
+                padding: '24px 0',
+                width: '100%',
+                borderRadius: 0,
+                borderTop: '1px solid #e2e8f0',
+                borderBottom: '1px solid #e2e8f0',
               }}
             >
               <h3

@@ -413,10 +413,7 @@ export function CreateCompositeItemPage({
               style={{
                 flex: 1,
                 minWidth: 'min(100%, 480px)',
-                background: '#f8fafc',
-                padding: '24px',
-                borderRadius: '8px',
-                border: '1px solid #e2e8f0',
+                // No background or border to match Zoho style
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '14px',
@@ -424,9 +421,9 @@ export function CreateCompositeItemPage({
             >
               <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
-                  gap: '12px',
+                  gap: '16px',
                  }}>
-                <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Name*</label>
+                <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>Name*</label>
                 <div>
                   <input
                     name="name"
@@ -434,11 +431,11 @@ export function CreateCompositeItemPage({
                     onChange={handleChange}
                     style={{
                       width: '100%',
-                      height: '34px',
-                      padding: '6px 10px',
+                      height: '36px',
+                      padding: '8px 12px',
                       borderRadius: '4px',
                       border: errors.name ? '1px solid #ef4444' : '1px solid #d1d5db',
-                      fontSize: 12,
+                      fontSize: 13,
                     }}
                   />
                   {errors.name && (
@@ -453,7 +450,7 @@ export function CreateCompositeItemPage({
 
               <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
                   alignItems: 'flex-start',
-                  gap: '12px',
+                  gap: '16px',
                  }}>
                 <label
                   style={{ fontSize: 13, color: '#ef4444', fontWeight: 500, paddingTop: '2px' }}
@@ -534,9 +531,9 @@ export function CreateCompositeItemPage({
 
               <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
-                  gap: '12px',
+                  gap: '16px',
                  }}>
-                <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>SKU*</label>
+                <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>SKU*</label>
                 <div>
                   <input
                     name="sku"
@@ -544,11 +541,11 @@ export function CreateCompositeItemPage({
                     onChange={handleChange}
                     style={{
                       width: '100%',
-                      height: '34px',
-                      padding: '6px 10px',
+                      height: '36px',
+                      padding: '8px 12px',
                       borderRadius: '4px',
                       border: errors.sku ? '1px solid #ef4444' : '1px solid #d1d5db',
-                      fontSize: 12,
+                      fontSize: 13,
                     }}
                   />
                   {errors.sku && (
@@ -556,12 +553,12 @@ export function CreateCompositeItemPage({
                   )}
                 </div>
               </div>
-
+ 
               <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
-                  gap: '12px',
+                  gap: '16px',
                  }}>
-                <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Category</label>
+                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>Category</label>
                 <CategorySelectDropdown
                   value={formData.category || null}
                   onChange={(val) => handleSelectChange('category', val)}
@@ -571,7 +568,7 @@ export function CreateCompositeItemPage({
 
               <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
-                  gap: '12px',
+                  gap: '16px',
                  }}>
                 <div />
                 <label
@@ -579,7 +576,7 @@ export function CreateCompositeItemPage({
                     display: 'flex',
                     alignItems: 'center',
                     gap: 6,
-                    fontSize: 12,
+                    fontSize: 13,
                     cursor: 'pointer',
                     color: '#4b5563',
                   }}
@@ -603,9 +600,9 @@ export function CreateCompositeItemPage({
 
               <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
-                  gap: '12px',
+                  gap: '16px',
                  }}>
-                <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Unit*</label>
+                <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>Unit*</label>
                 <div>
                   <div
                     style={{
@@ -613,17 +610,17 @@ export function CreateCompositeItemPage({
                       border: errors.unit ? '1px solid #ef4444' : '1px solid #d1d5db',
                       borderRadius: '4px',
                       width: '100%',
-                      height: '34px',
+                      height: '36px',
                     }}
                   >
                     <div
                       style={{
-                        padding: '6px 12px',
+                        padding: '8px 12px',
                         borderRight: '1px solid #d1d5db',
                         borderTopLeftRadius: '3px',
                         borderBottomLeftRadius: '3px',
                         background: '#f1f5f9',
-                        fontSize: 12,
+                        fontSize: 13,
                         color: '#475569',
                         display: 'flex',
                         alignItems: 'center',
@@ -633,7 +630,7 @@ export function CreateCompositeItemPage({
                     >
                       Unit
                     </div>
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
                       <Select
                         value={formData.stockingUomId ?? ''}
                         /**
@@ -664,7 +661,7 @@ export function CreateCompositeItemPage({
                             ? [{ value: '', label: `${formData.unit} — no stocking unit set` }]
                             : []),
                         ]}
-                        buttonStyle={{ border: 'none' }}
+                        buttonStyle={{ border: 'none', height: '100%', padding: '0 12px', fontSize: 13 }}
                         actionItem={
                           <button
                             type="button"
@@ -678,7 +675,6 @@ export function CreateCompositeItemPage({
                               alignItems: 'center',
                               gap: '8px',
                               width: '100%',
-                              height: '34px',
                               padding: '8px 12px',
                               color: '#0062ff',
                               background: 'transparent',
@@ -704,20 +700,20 @@ export function CreateCompositeItemPage({
 
               <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
                   alignItems: 'center',
-                  gap: '12px',
+                  gap: '16px',
                  }}>
-                <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>HSN Code</label>
+                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>HSN Code</label>
                 <input
                   name="hsnCode"
                   value={formData.hsnCode || ''}
                   onChange={handleChange}
                   style={{
                     width: '100%',
-                    height: '34px',
-                    padding: '6px 10px',
+                    height: '36px',
+                    padding: '8px 12px',
                     borderRadius: '4px',
                     border: '1px solid #d1d5db',
-                    fontSize: 12,
+                    fontSize: 13,
                   }}
                 />
               </div>
@@ -1262,9 +1258,11 @@ export function CreateCompositeItemPage({
           <div
             style={{
               background: '#f8fafc',
-              padding: '24px',
-              borderRadius: '8px',
-              border: '1px solid #e2e8f0',
+              padding: '24px 0',
+              width: '100%',
+              borderRadius: 0,
+              borderTop: '1px solid #e2e8f0',
+              borderBottom: '1px solid #e2e8f0',
               display: 'flex',
               flexDirection: 'column',
               gap: '16px',
@@ -1558,11 +1556,12 @@ export function CreateCompositeItemPage({
           {/* Inventory Tracking */}
           <div
             style={{
-              maxWidth: '640px',
               background: '#f8fafc',
-              padding: '24px',
-              borderRadius: '8px',
-              border: '1px solid #e2e8f0',
+              padding: '24px 0',
+              width: '100%',
+              borderRadius: 0,
+              borderTop: '1px solid #e2e8f0',
+              borderBottom: '1px solid #e2e8f0',
               display: 'flex',
               flexDirection: 'column',
               gap: '16px',
@@ -1701,11 +1700,12 @@ export function CreateCompositeItemPage({
           {orgId && (
             <div
               style={{
-                maxWidth: '640px',
                 background: '#f8fafc',
-                padding: '24px',
-                borderRadius: '8px',
-                border: '1px solid #e2e8f0',
+                padding: '24px 0',
+                width: '100%',
+                borderRadius: 0,
+                borderTop: '1px solid #e2e8f0',
+                borderBottom: '1px solid #e2e8f0',
               }}
             >
               <h3

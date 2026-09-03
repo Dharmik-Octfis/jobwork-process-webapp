@@ -541,11 +541,12 @@ export function CreatePurchaseOrder() {
         <div
           style={{
             background: '#f8fafc',
-            border: '1px solid #e2e8f0',
-            borderRadius: '8px',
-            padding: '24px 28px',
+            padding: '24px 24px',
+            margin: '0 -24px',
+            width: 'calc(100% + 48px)',
+            borderRadius: 0,
+            borderBottom: '1px solid #e2e8f0',
             marginBottom: '32px',
-            width: '100%',
             boxSizing: 'border-box',
           }}
         >
@@ -652,7 +653,28 @@ export function CreatePurchaseOrder() {
               }}
               style={searchableSelectStyle}
             />
+          </div>
+        </div>
 
+        {/* Rest of Main Details */}
+        <div
+          style={{
+            padding: '24px 0',
+            width: '100%',
+            marginBottom: '32px',
+            boxSizing: 'border-box',
+          }}
+        >
+          <div className="form-field-grid"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '200px 1fr',
+              rowGap: '20px',
+              columnGap: '16px',
+              alignItems: 'center',
+              fontSize: '13px',
+            }}
+          >
             <label style={{ ...labelStyle, alignSelf: 'flex-start', color: '#ef4444' }}>
               Delivery Address*
             </label>
@@ -1604,15 +1626,18 @@ export function CreatePurchaseOrder() {
         {/* Terms & Conditions and File Upload Section */}
         <div className="form-field-grid"
           style={{
-            marginTop: '32px',
             background: '#f8fafc',
-            border: '1px solid #e2e8f0',
-            borderRadius: '8px',
-            padding: '24px 28px',
+            padding: '24px 24px',
+            margin: '32px -24px 0 -24px',
+            width: 'calc(100% + 48px)',
+            borderRadius: 0,
+            borderTop: '1px solid #e2e8f0',
+            borderBottom: '1px solid #e2e8f0',
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
             gap: '32px',
             position: 'relative',
+            boxSizing: 'border-box',
           }}
         >
           {/* Terms & Conditions */}
