@@ -19,7 +19,7 @@ import type { JobOrder, OverviewStep } from '../job-orders/jobOrders.schemas';
 import { createJobIssue } from './jobIssues.api';
 import type { JobIssueLineData } from './jobIssues.schemas';
 import { AddBatchesModal } from './AddBatchesModal';
-import { rowKey, type BatchSelection } from './batchSelection';
+import { selectionKey, type BatchSelection } from './batchSelection';
 import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingLabel';
 
 interface Props {
@@ -508,7 +508,23 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
       let gone = 0;
       const elsewhere = new Map<string, number>();
 
+      /**
+       * 🔴 THE CEILING IS WHAT IS STILL TO BE ISSUED, not what was planned.
+       *
+       * A step is issued in several challans, and the plan does not shrink as they
+       * go out. Seeding the planned figures again on the second challan offered to
+       * send the whole step a second time — the user's only clue being a number
+       * they had to notice was too big. It is spent down batch by batch, so the
+       * earlier planned rows fill first and the later ones get what is left, which
+       * is the same order the planner wrote them in.
+       *
+       * A step with no planned quantity states no target, so nothing caps it.
+       */
+      let toBeIssued =
+        input.plannedQty === null ? Infinity : Math.max(0, input.plannedQty - input.issuedQty);
+
       for (const planned of input.plannedBatches) {
+        if (toBeIssued <= 0) break;
         /* Planned somewhere this challan does not go out of. Counted BEFORE the
            availability lookup, which would only report it as missing stock and
            send the user hunting for a problem that does not exist. */
@@ -526,16 +542,32 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
           gone += 1;
           continue;
         }
-        // Never seed more than the batch actually still holds — the plan is old
-        // and the ceiling is now.
-        const qty = Math.min(Number(planned.qty), toNumber(batch.availableQty));
+
+        /**
+         * 🔴 The roll the plan named, matched back against what is on offer NOW.
+         * A plan may name one (2026-09-03) and it is the more precise answer, so
+         * it is honoured; a roll that has since been consumed drops exactly as its
+         * batch would, because nothing was ever reserved.
+         */
+        const unit = planned.batchUnitId
+          ? (batch.units.find((u) => u.batchUnitId === planned.batchUnitId) ?? null)
+          : null;
+        if (planned.batchUnitId && !unit) {
+          gone += 1;
+          continue;
+        }
+
+        // Never seed more than is actually there — the plan is old, and the
+        // ceiling is the roll's own balance once the plan names one.
+        const ceiling = unit ? toNumber(unit.availableQty) : toNumber(batch.availableQty);
+        const qty = Math.min(Number(planned.qty), ceiling, toBeIssued);
         if (qty <= 0) {
           gone += 1;
           continue;
         }
-        // A plan names a batch, never a roll — so it seeds the untagged pool.
-        seeded[rowKey(batch)] = { batch, unit: null, qty };
+        seeded[selectionKey(batch, unit?.batchUnitId ?? null)] = { batch, unit, qty };
         matchedQty += qty;
+        toBeIssued -= qty;
       }
 
       if (Object.keys(seeded).length > 0) {

@@ -476,6 +476,13 @@ export const namedRefSchema = z.object({ id: z.string(), name: z.string() });
 export const plannedBatchReadSchema = z.object({
   id: z.string(),
   batchId: z.string(),
+  /**
+   * 🔴 Which package the plan named, when it named one. It was missing from this
+   * schema while the WRITE shape carried it, so a planned roll survived the save
+   * and then vanished on the way back — the Issue screen could not pre-fill it and
+   * editing the job order wrote the plan back without it.
+   */
+  batchUnitId: z.string().nullable().optional(),
   locationId: z.string(),
   qty: decimalString,
   batch: z

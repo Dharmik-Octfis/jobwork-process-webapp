@@ -215,7 +215,12 @@ export function Modal({
           display: 'flex',
           flexDirection: 'column',
           maxHeight: position === 'right' ? 'calc(100vh - 32px)' : '100vh',
-          height: position === 'right' ? 'calc(100vh - 32px)' : position === 'fullScreen' ? '100%' : undefined,
+          height:
+            position === 'right'
+              ? 'calc(100vh - 32px)'
+              : position === 'fullScreen'
+                ? '100%'
+                : undefined,
           outline: 'none',
           overflow: 'hidden',
         }}
@@ -232,10 +237,14 @@ export function Modal({
         >
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}>{title}</h2>
+            {/* A `div`, not a `p` — the prop is a ReactNode and callers pass real
+                blocks into it (the takas dialog puts its figures and its overwrite
+                box here). A `div` inside a `p` is invalid nesting the browser
+                silently unwinds, which breaks the layout rather than the build. */}
             {subtitle && (
-              <p style={{ fontSize: 12, color: '#64748b', margin: '4px 0 0 0', lineHeight: 1.5 }}>
+              <div style={{ fontSize: 12, color: '#64748b', margin: '4px 0 0 0', lineHeight: 1.5 }}>
                 {subtitle}
-              </p>
+              </div>
             )}
           </div>
           <button

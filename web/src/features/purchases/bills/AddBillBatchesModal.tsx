@@ -400,81 +400,84 @@ export function AddBillBatchesModal({
     <>
       <Modal
         isOpen={isOpen}
-      onClose={onClose}
-      title={`Add ${trackingLabel.plural}`}
-      position="fullScreen"
-      footer={
-        <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '12px', width: '100%' }}>
-          <button
-            type="button"
-            onClick={handleSave}
-            style={{
-              padding: '8px 24px',
-              border: 'none',
-              background: '#0062ff',
-              color: '#fff',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 500,
-              fontSize: '14px',
-            }}
+        onClose={onClose}
+        title={`Add ${trackingLabel.plural}`}
+        position="fullScreen"
+        footer={
+          <div
+            style={{ display: 'flex', justifyContent: 'flex-start', gap: '12px', width: '100%' }}
           >
-            Save
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: '8px 16px',
-              border: '1px solid #d1d5db',
-              background: '#fff',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 500,
-              fontSize: '14px',
-              color: '#374151',
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-      }
-    >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '8px 12px',
-          background: '#f8fafc',
-          border: '1px solid #eef0f3',
-          borderRadius: 4,
-          fontSize: 13,
-          color: '#334155',
-          marginBottom: 16,
-        }}
-      >
-        <Warehouse size={16} color="#64748b" />
-        <span style={{ color: '#94a3b8' }}>Location :</span>
-        <span style={{ fontWeight: 500 }}>{locationName || 'N/A'}</span>
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
-          <h3 style={{ margin: '0 0 4px 0', fontSize: 14, color: '#0f172a' }}>{itemName}</h3>
-          {sku && <div style={{ fontSize: 12, color: '#94a3b8' }}>SKU: {sku}</div>}
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 12.5, color: '#64748b' }}>
-            Total Quantity : <span style={{ fontWeight: 600, color: '#334155' }}>{formatQty(allocated)} {uomLabel}</span>
-            <span style={{ margin: '0 8px', color: '#cbd5e1' }}>|</span>
-            Quantity to be added :{' '}
-            <span
-              style={{ fontWeight: 600, color: matches ? '#16a34a' : '#ea580c' }}
+            <button
+              type="button"
+              onClick={handleSave}
+              style={{
+                padding: '8px 24px',
+                border: 'none',
+                background: '#0062ff',
+                color: '#fff',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: 500,
+                fontSize: '14px',
+              }}
             >
-              {formatQty(lineQty)} {uomLabel}
-            </span>
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                padding: '8px 16px',
+                border: '1px solid #d1d5db',
+                background: '#fff',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: 500,
+                fontSize: '14px',
+                color: '#374151',
+              }}
+            >
+              Cancel
+            </button>
           </div>
+        }
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '8px 12px',
+            background: '#f8fafc',
+            border: '1px solid #eef0f3',
+            borderRadius: 4,
+            fontSize: 13,
+            color: '#334155',
+            marginBottom: 16,
+          }}
+        >
+          <Warehouse size={16} color="#64748b" />
+          <span style={{ color: '#94a3b8' }}>Location :</span>
+          <span style={{ fontWeight: 500 }}>{locationName || 'N/A'}</span>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <h3 style={{ margin: '0 0 4px 0', fontSize: 14, color: '#0f172a' }}>{itemName}</h3>
+            {sku && <div style={{ fontSize: 12, color: '#94a3b8' }}>SKU: {sku}</div>}
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 12.5, color: '#64748b' }}>
+              Total Quantity :{' '}
+              <span style={{ fontWeight: 600, color: '#334155' }}>
+                {formatQty(allocated)} {uomLabel}
+              </span>
+              <span style={{ margin: '0 8px', color: '#cbd5e1' }}>|</span>
+              Quantity to be added :{' '}
+              <span style={{ fontWeight: 600, color: matches ? '#16a34a' : '#ea580c' }}>
+                {formatQty(lineQty)} {uomLabel}
+              </span>
+            </div>
 
             <label
               style={{
@@ -498,323 +501,334 @@ export function AddBillBatchesModal({
           </div>
         </div>
 
-      <div style={{ overflowX: 'auto', marginTop: '14px', minHeight: '350px' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
-          <thead>
-            <tr>
-              <th
-                style={{
-                  padding: '8px',
-                  borderBottom: '1px solid #eef0f3',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  color: '#ef4444',
-                  textTransform: 'uppercase',
-                  textAlign: 'left',
-                  minWidth: '130px',
-                }}
-              >
-                {trackingLabel.singular} Reference#*
-              </th>
-              <th
-                style={{
-                  padding: '8px',
-                  borderBottom: '1px solid #eef0f3',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  textAlign: 'left',
-                  minWidth: '130px',
-                }}
-              >
-                Manufacturer {trackingLabel.singular}#
-              </th>
-              <th
-                style={{
-                  padding: '8px',
-                  borderBottom: '1px solid #eef0f3',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  textAlign: 'left',
-                  minWidth: '140px',
-                }}
-              >
-                Manufactured Date
-              </th>
-              <th
-                style={{
-                  padding: '8px',
-                  borderBottom: '1px solid #eef0f3',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  textAlign: 'left',
-                  minWidth: '140px',
-                }}
-              >
-                Expiry Date
-              </th>
-              <th
-                style={{
-                  padding: '8px',
-                  borderBottom: '1px solid #eef0f3',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  color: '#ef4444',
-                  textTransform: 'uppercase',
-                  textAlign: 'right',
-                  minWidth: '100px',
-                }}
-              >
-                Selling Price*
-              </th>
-              <th
-                style={{
-                  padding: '8px',
-                  borderBottom: '1px solid #eef0f3',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  textAlign: 'right',
-                  minWidth: '90px',
-                }}
-              >
-                MRP
-              </th>
-              <th
-                style={{
-                  padding: '8px',
-                  borderBottom: '1px solid #eef0f3',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  color: '#ef4444',
-                  textTransform: 'uppercase',
-                  textAlign: 'right',
-                  minWidth: '100px',
-                }}
-              >
-                Quantity In*
-              </th>
-              <th
-                style={{
-                  padding: '8px',
-                  borderBottom: '1px solid #eef0f3',
-                  minWidth: '32px',
-                }}
-              />
-            </tr>
-          </thead>
-          <tbody>
-            {batches.map((batch) => (
-              <Fragment key={batch.id}>
-                <tr style={{ borderBottom: '1px solid #eef0f3' }}>
-                  <td style={{ padding: '8px' }}>
-                    {batch.isExisting ? (
-                    <SearchableSelect
-                      options={[
-                        {
-                          label:
-                            'Selling Price: ₹' +
-                            Number(defaultSellingPrice || 0).toLocaleString('en-IN', {
-                              minimumFractionDigits: 2,
-                            }) +
-                            ' | MRP: ₹' +
-                            Number(defaultMrp || 0).toLocaleString('en-IN', {
-                              minimumFractionDigits: 2,
-                            }),
-                          value: 'header',
-                          disabled: true,
-                        },
-                        ...availableBatches.map((b) => ({
-                          value: b.batchId,
-                          label: b.supplierBatchRef || b.manufacturerBatch || 'Stock',
-                          batch: b,
-                        })),
-                      ]}
-                      value={batch.batchId}
-                      dropdownWidth={300}
-                      onChange={(val) => {
-                        if (val === 'header') return;
-                        const b = availableBatches.find((x) => x.batchId === val);
-                        if (b) {
-                          updateBatchFields(batch.id, {
-                            batchId: b.batchId,
-                            supplierBatchRef: b.supplierBatchRef || '',
-                            manufacturerBatch: b.manufacturerBatch || '',
-                            manufacturedDate: b.manufacturedDate
-                              ? b.manufacturedDate.split('T')[0]
-                              : '',
-                            expiryDate: b.expiryDate ? b.expiryDate.split('T')[0] : '',
-                            sellingPrice:
-                              b.sellingPrice !== null && b.sellingPrice !== undefined
-                                ? String(b.sellingPrice)
-                                : defaultSellingPrice,
-                            mrp: b.mrp !== null && b.mrp !== undefined ? String(b.mrp) : defaultMrp,
-                          });
-                        }
-                      }}
-                      placeholder="Search"
-                      renderOption={(opt) => {
-                        if (opt.value === 'header') {
-                          return (
-                            <div
-                              style={{
-                                fontSize: '12px',
-                                fontWeight: 600,
-                                color: '#334155',
-                                padding: '4px 0',
-                              }}
-                            >
-                              {opt.label}
-                            </div>
-                          );
-                        }
-                        const b = (opt as unknown as { batch: { availableQty: number } }).batch;
-                        return (
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <div style={{ fontWeight: 500 }}>{opt.label}</div>
-                            <div style={{ fontSize: '11.5px', fontWeight: 500, color: '#64748b' }}>
-                              Balance in batch: {formatQty(b.availableQty)} {uomLabel}
-                            </div>
-                          </div>
-                        );
-                      }}
-                    />
-                  ) : (
-                    <input
-                      type="text"
-                      value={batch.supplierBatchRef}
-                      placeholder={`Enter ${trackingLabel.singular}#`}
-                      onChange={(e) => updateBatch(batch.id, 'supplierBatchRef', e.target.value)}
-                      style={inputStyle}
-                      onFocus={(e) => (e.target.style.borderColor = '#0062ff')}
-                      onBlur={(e) => (e.target.style.borderColor = '#cbd5e1')}
-                    />
-                  )}
-                </td>
-                <td style={{ padding: '8px' }}>
-                  <input
-                    type="text"
-                    value={batch.manufacturerBatch}
-                    placeholder={`Enter MFR ${trackingLabel.singular}#`}
-                    disabled={batch.isExisting}
-                    onChange={(e) => updateBatch(batch.id, 'manufacturerBatch', e.target.value)}
-                    style={{
-                      ...inputStyle,
-                      ...(batch.isExisting
-                        ? { background: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }
-                        : {}),
-                    }}
-                    onFocus={(e) => !batch.isExisting && (e.target.style.borderColor = '#0062ff')}
-                    onBlur={(e) => !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')}
-                  />
-                </td>
-                {/* `portal` — this grid is inside a Modal, which clips an
-                    absolutely-positioned calendar to the row. */}
-                      <td style={{ padding: '8px' }}>
-                        <DateInput
-                          value={batch.manufacturedDate}
-                          disabled={batch.isExisting}
-                          onChange={(next) => updateBatch(batch.id, 'manufacturedDate', next)}
-                          ariaLabel="Manufactured date"
-                          style={dateCellStyle(batch.isExisting)}
-                          portal
-                        />
-                      </td>
-                      <td style={{ padding: '8px' }}>
-                        <DateInput
-                          value={batch.expiryDate}
-                          disabled={batch.isExisting}
-                          onChange={(next) => updateBatch(batch.id, 'expiryDate', next)}
-                          ariaLabel="Expiry date"
-                          style={dateCellStyle(batch.isExisting)}
-                          portal
-                        />
-                      </td>
-                      <td style={{ padding: '8px' }}>
-                        <input
-                          type="number"
-                          step="any"
-                          value={batch.sellingPrice}
-                          placeholder="0"
-                          disabled={batch.isExisting}
-                          onChange={(e) => updateBatch(batch.id, 'sellingPrice', e.target.value)}
-                          style={{
-                            ...rightAlignStyle,
-                            ...(batch.isExisting
-                              ? { background: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }
-                              : {}),
+        <div style={{ overflowX: 'auto', marginTop: '14px', minHeight: '350px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
+            <thead>
+              <tr>
+                <th
+                  style={{
+                    padding: '8px',
+                    borderBottom: '1px solid #eef0f3',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: '#ef4444',
+                    textTransform: 'uppercase',
+                    textAlign: 'left',
+                    minWidth: '130px',
+                  }}
+                >
+                  {trackingLabel.singular} Reference#*
+                </th>
+                <th
+                  style={{
+                    padding: '8px',
+                    borderBottom: '1px solid #eef0f3',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: '#64748b',
+                    textTransform: 'uppercase',
+                    textAlign: 'left',
+                    minWidth: '130px',
+                  }}
+                >
+                  Manufacturer {trackingLabel.singular}#
+                </th>
+                <th
+                  style={{
+                    padding: '8px',
+                    borderBottom: '1px solid #eef0f3',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: '#64748b',
+                    textTransform: 'uppercase',
+                    textAlign: 'left',
+                    minWidth: '140px',
+                  }}
+                >
+                  Manufactured Date
+                </th>
+                <th
+                  style={{
+                    padding: '8px',
+                    borderBottom: '1px solid #eef0f3',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: '#64748b',
+                    textTransform: 'uppercase',
+                    textAlign: 'left',
+                    minWidth: '140px',
+                  }}
+                >
+                  Expiry Date
+                </th>
+                <th
+                  style={{
+                    padding: '8px',
+                    borderBottom: '1px solid #eef0f3',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: '#ef4444',
+                    textTransform: 'uppercase',
+                    textAlign: 'right',
+                    minWidth: '100px',
+                  }}
+                >
+                  Selling Price*
+                </th>
+                <th
+                  style={{
+                    padding: '8px',
+                    borderBottom: '1px solid #eef0f3',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: '#64748b',
+                    textTransform: 'uppercase',
+                    textAlign: 'right',
+                    minWidth: '90px',
+                  }}
+                >
+                  MRP
+                </th>
+                <th
+                  style={{
+                    padding: '8px',
+                    borderBottom: '1px solid #eef0f3',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: '#ef4444',
+                    textTransform: 'uppercase',
+                    textAlign: 'right',
+                    minWidth: '100px',
+                  }}
+                >
+                  Quantity In*
+                </th>
+                <th
+                  style={{
+                    padding: '8px',
+                    borderBottom: '1px solid #eef0f3',
+                    minWidth: '32px',
+                  }}
+                />
+              </tr>
+            </thead>
+            <tbody>
+              {batches.map((batch) => (
+                <Fragment key={batch.id}>
+                  <tr style={{ borderBottom: '1px solid #eef0f3' }}>
+                    <td style={{ padding: '8px' }}>
+                      {batch.isExisting ? (
+                        <SearchableSelect
+                          options={[
+                            {
+                              label:
+                                'Selling Price: ₹' +
+                                Number(defaultSellingPrice || 0).toLocaleString('en-IN', {
+                                  minimumFractionDigits: 2,
+                                }) +
+                                ' | MRP: ₹' +
+                                Number(defaultMrp || 0).toLocaleString('en-IN', {
+                                  minimumFractionDigits: 2,
+                                }),
+                              value: 'header',
+                              disabled: true,
+                            },
+                            ...availableBatches.map((b) => ({
+                              value: b.batchId,
+                              label: b.supplierBatchRef || b.manufacturerBatch || 'Stock',
+                              batch: b,
+                            })),
+                          ]}
+                          value={batch.batchId}
+                          dropdownWidth={300}
+                          onChange={(val) => {
+                            if (val === 'header') return;
+                            const b = availableBatches.find((x) => x.batchId === val);
+                            if (b) {
+                              updateBatchFields(batch.id, {
+                                batchId: b.batchId,
+                                supplierBatchRef: b.supplierBatchRef || '',
+                                manufacturerBatch: b.manufacturerBatch || '',
+                                manufacturedDate: b.manufacturedDate
+                                  ? b.manufacturedDate.split('T')[0]
+                                  : '',
+                                expiryDate: b.expiryDate ? b.expiryDate.split('T')[0] : '',
+                                sellingPrice:
+                                  b.sellingPrice !== null && b.sellingPrice !== undefined
+                                    ? String(b.sellingPrice)
+                                    : defaultSellingPrice,
+                                mrp:
+                                  b.mrp !== null && b.mrp !== undefined
+                                    ? String(b.mrp)
+                                    : defaultMrp,
+                              });
+                            }
                           }}
-                          onFocus={(e) =>
-                            !batch.isExisting && (e.target.style.borderColor = '#0062ff')
-                          }
-                          onBlur={(e) =>
-                            !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')
-                          }
-                        />
-                      </td>
-                      <td style={{ padding: '8px' }}>
-                        <input
-                          type="number"
-                          step="any"
-                          value={batch.mrp}
-                          placeholder="0"
-                          disabled={batch.isExisting}
-                          onChange={(e) => updateBatch(batch.id, 'mrp', e.target.value)}
-                          style={{
-                            ...rightAlignStyle,
-                            ...(batch.isExisting
-                              ? { background: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }
-                              : {}),
+                          placeholder="Search"
+                          renderOption={(opt) => {
+                            if (opt.value === 'header') {
+                              return (
+                                <div
+                                  style={{
+                                    fontSize: '12px',
+                                    fontWeight: 600,
+                                    color: '#334155',
+                                    padding: '4px 0',
+                                  }}
+                                >
+                                  {opt.label}
+                                </div>
+                              );
+                            }
+                            const b = (opt as unknown as { batch: { availableQty: number } }).batch;
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <div style={{ fontWeight: 500 }}>{opt.label}</div>
+                                <div
+                                  style={{ fontSize: '11.5px', fontWeight: 500, color: '#64748b' }}
+                                >
+                                  Balance in batch: {formatQty(b.availableQty)} {uomLabel}
+                                </div>
+                              </div>
+                            );
                           }}
-                          onFocus={(e) =>
-                            !batch.isExisting && (e.target.style.borderColor = '#0062ff')
-                          }
-                          onBlur={(e) =>
-                            !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')
-                          }
                         />
-                      </td>
-                      <td style={{ padding: '8px' }}>
+                      ) : (
                         <input
-                          type="number"
-                          step="any"
-                          value={batch.quantityIn}
-                          placeholder="0"
-                          onChange={(e) => updateBatch(batch.id, 'quantityIn', e.target.value)}
-                          style={rightAlignStyle}
+                          type="text"
+                          value={batch.supplierBatchRef}
+                          placeholder={`Enter ${trackingLabel.singular}#`}
+                          onChange={(e) =>
+                            updateBatch(batch.id, 'supplierBatchRef', e.target.value)
+                          }
+                          style={inputStyle}
                           onFocus={(e) => (e.target.style.borderColor = '#0062ff')}
                           onBlur={(e) => (e.target.style.borderColor = '#cbd5e1')}
                         />
-                      </td>
-                      <td style={{ padding: '8px', textAlign: 'center', verticalAlign: 'middle' }}>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteBatch(batch.id)}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            cursor: batches.length === 1 ? 'not-allowed' : 'pointer',
-                            color: batches.length === 1 ? '#cbd5e1' : '#ef4444',
-                            padding: '6px',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            borderRadius: '4px',
-                          }}
-                          disabled={batches.length === 1}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </td>
-                    </tr>
+                      )}
+                    </td>
+                    <td style={{ padding: '8px' }}>
+                      <input
+                        type="text"
+                        value={batch.manufacturerBatch}
+                        placeholder={`Enter MFR ${trackingLabel.singular}#`}
+                        disabled={batch.isExisting}
+                        onChange={(e) => updateBatch(batch.id, 'manufacturerBatch', e.target.value)}
+                        style={{
+                          ...inputStyle,
+                          ...(batch.isExisting
+                            ? { background: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }
+                            : {}),
+                        }}
+                        onFocus={(e) =>
+                          !batch.isExisting && (e.target.style.borderColor = '#0062ff')
+                        }
+                        onBlur={(e) =>
+                          !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')
+                        }
+                      />
+                    </td>
+                    {/* `portal` — this grid is inside a Modal, which clips an
+                    absolutely-positioned calendar to the row. */}
+                    <td style={{ padding: '8px' }}>
+                      <DateInput
+                        value={batch.manufacturedDate}
+                        disabled={batch.isExisting}
+                        onChange={(next) => updateBatch(batch.id, 'manufacturedDate', next)}
+                        ariaLabel="Manufactured date"
+                        style={dateCellStyle(batch.isExisting)}
+                        portal
+                      />
+                    </td>
+                    <td style={{ padding: '8px' }}>
+                      <DateInput
+                        value={batch.expiryDate}
+                        disabled={batch.isExisting}
+                        onChange={(next) => updateBatch(batch.id, 'expiryDate', next)}
+                        ariaLabel="Expiry date"
+                        style={dateCellStyle(batch.isExisting)}
+                        portal
+                      />
+                    </td>
+                    <td style={{ padding: '8px' }}>
+                      <input
+                        type="number"
+                        step="any"
+                        value={batch.sellingPrice}
+                        placeholder="0"
+                        disabled={batch.isExisting}
+                        onChange={(e) => updateBatch(batch.id, 'sellingPrice', e.target.value)}
+                        style={{
+                          ...rightAlignStyle,
+                          ...(batch.isExisting
+                            ? { background: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }
+                            : {}),
+                        }}
+                        onFocus={(e) =>
+                          !batch.isExisting && (e.target.style.borderColor = '#0062ff')
+                        }
+                        onBlur={(e) =>
+                          !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')
+                        }
+                      />
+                    </td>
+                    <td style={{ padding: '8px' }}>
+                      <input
+                        type="number"
+                        step="any"
+                        value={batch.mrp}
+                        placeholder="0"
+                        disabled={batch.isExisting}
+                        onChange={(e) => updateBatch(batch.id, 'mrp', e.target.value)}
+                        style={{
+                          ...rightAlignStyle,
+                          ...(batch.isExisting
+                            ? { background: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }
+                            : {}),
+                        }}
+                        onFocus={(e) =>
+                          !batch.isExisting && (e.target.style.borderColor = '#0062ff')
+                        }
+                        onBlur={(e) =>
+                          !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')
+                        }
+                      />
+                    </td>
+                    <td style={{ padding: '8px' }}>
+                      <input
+                        type="number"
+                        step="any"
+                        value={batch.quantityIn}
+                        placeholder="0"
+                        onChange={(e) => updateBatch(batch.id, 'quantityIn', e.target.value)}
+                        style={rightAlignStyle}
+                        onFocus={(e) => (e.target.style.borderColor = '#0062ff')}
+                        onBlur={(e) => (e.target.style.borderColor = '#cbd5e1')}
+                      />
+                    </td>
+                    <td style={{ padding: '8px', textAlign: 'center', verticalAlign: 'middle' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteBatch(batch.id)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: batches.length === 1 ? 'not-allowed' : 'pointer',
+                          color: batches.length === 1 ? '#cbd5e1' : '#ef4444',
+                          padding: '6px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderRadius: '4px',
+                        }}
+                        disabled={batches.length === 1}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </td>
+                  </tr>
 
-                    {/* ── The level BELOW this batch ──────────────────────────────────
+                  {/* ── The level BELOW this batch ──────────────────────────────────
                   A sub-grid, not extra columns: the packages of one batch are a
                   variable-length list, and flattening them into the row above
                   would make every batch as wide as its longest neighbour.
@@ -822,23 +836,23 @@ export function AddBillBatchesModal({
                   🔴 DOM order IS tab order, so this sits immediately after the
                   row it belongs to — Tab walks batch fields, then its packages,
                   then the next batch. */}
-                    {unitLabel.enabled && (
-                      <tr style={{ borderBottom: '1px solid #eef0f3' }}>
-                        <td colSpan={9} style={{ padding: '0 8px 10px' }}>
-                          <BatchUnitsTrigger
-                            count={batch.units.length}
-                            singular={unitLabel.singular}
-                            plural={unitLabel.plural}
-                            onOpen={() => openUnits(batch.id)}
-                          />
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                  {unitLabel.enabled && (
+                    <tr style={{ borderBottom: '1px solid #eef0f3' }}>
+                      <td colSpan={9} style={{ padding: '0 8px 10px' }}>
+                        <BatchUnitsTrigger
+                          count={batch.units.length}
+                          singular={unitLabel.singular}
+                          plural={unitLabel.plural}
+                          onOpen={() => openUnits(batch.id)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         <div
           style={{
@@ -897,7 +911,7 @@ export function AddBillBatchesModal({
         <BatchUnitsModal
           isOpen
           onClose={() => setUnitsFor(null)}
-          batchName={unitsBatch.supplierBatchRef?.trim() || trackingLabel.singular}
+          batchRef={unitsBatch.supplierBatchRef ?? null}
           batchSingular={trackingLabel.singular}
           singular={unitLabel.singular}
           plural={unitLabel.plural}

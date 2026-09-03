@@ -875,7 +875,34 @@ const STEP_OVERVIEW_INCLUDE = {
   inputs: {
     where: { isDeleted: false },
     orderBy: { seq: 'asc' },
-    include: ROW_OVERVIEW_INCLUDE,
+    include: {
+      ...ROW_OVERVIEW_INCLUDE,
+      /**
+       * 🔴 The plan rides along, or the Issue screen cannot pre-fill from it.
+       *
+       * That screen is reached from a step's Issue button and is fed by THIS
+       * payload, not by `STEP_INCLUDE` — so leaving the plan out here made the
+       * seeding effect in `IssueForm` dead code: `plannedBatches` arrived absent,
+       * the schema's `.default([])` turned it into an empty array, and the effect
+       * returned early on every item.
+       *
+       * SCALARS ONLY, unlike `STEP_INCLUDE`. The seeding matches on ids and takes
+       * its labels from the availability query it has already run, so hydrating
+       * the batch, package and godown here would be three more round trips for
+       * strings nothing reads.
+       */
+      plannedBatches: {
+        where: { isDeleted: false },
+        orderBy: { createdAt: 'asc' },
+        select: {
+          id: true,
+          batchId: true,
+          batchUnitId: true,
+          locationId: true,
+          qty: true,
+        },
+      },
+    },
   },
   outputs: {
     where: { isDeleted: false },

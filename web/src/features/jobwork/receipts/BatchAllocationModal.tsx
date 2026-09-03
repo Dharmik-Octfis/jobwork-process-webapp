@@ -961,7 +961,7 @@ export function BatchAllocationModal({
         <BatchUnitsModal
           isOpen
           onClose={() => setUnitsFor(null)}
-          batchName={unitsRow.batchReference.trim() || singular}
+          batchRef={unitsRow.batchReference}
           batchSingular={singular}
           singular={unitLabel.singular}
           plural={unitLabel.plural}

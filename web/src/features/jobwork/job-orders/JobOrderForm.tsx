@@ -96,6 +96,10 @@ function toInputRows(rows: StepItemRowRead[] = []): StepItemRow[] {
        schema rejects. */
     plannedBatches: (row.plannedBatches ?? []).map((planned) => ({
       batchId: planned.batchId,
+      /* 🔴 Carried back, or editing a job order silently un-plans every roll it
+         named: the write shape has always had this field, the read shape did not,
+         so the round trip dropped it. */
+      batchUnitId: planned.batchUnitId ?? null,
       locationId: planned.locationId,
       qty: Number(planned.qty),
     })),

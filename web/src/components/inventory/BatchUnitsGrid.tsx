@@ -139,6 +139,18 @@ export function BatchUnitsGrid({
         <table style={{ borderCollapse: 'collapse' }}>
           <thead>
             <tr>
+              {/* 🔴 POSITION, NOT IDENTITY — and the two are different on purpose.
+                  This counter is `index + 1`, derived at render and stored
+                  nowhere, so it always reads 1, 2, 3 with no gaps. The LABEL
+                  beside it is the package's permanent name, which DOES gap: `seq`
+                  is never reused, not even by a soft-deleted package, because the
+                  ledger rows and the printed challan naming it have to stay
+                  readable. Delete a package in the middle and this column recounts
+                  while the names stay put — the honest way round. Same pairing the
+                  challan already prints: a Sr No column beside a package column. */}
+              <th style={{ ...headerCellStyle, color: '#94a3b8', textAlign: 'right', width: 26 }}>
+                #
+              </th>
               {/* 🔴 No asterisk since 2026-09-03: the label is optional and the
                   quantity is not. The colour follows — a required-field red on a
                   field nobody has to fill is exactly the sort of thing that gets
@@ -160,8 +172,22 @@ export function BatchUnitsGrid({
             </tr>
           </thead>
           <tbody>
-            {units.map((unit) => (
+            {units.map((unit, index) => (
               <tr key={unit.id}>
+                {/* Plain text, never focusable — Tab still walks label → quantity
+                    → remove, one row at a time, exactly as it did. */}
+                <td
+                  style={{
+                    padding: '3px 8px 3px 0',
+                    textAlign: 'right',
+                    verticalAlign: 'middle',
+                    fontSize: 12,
+                    color: '#94a3b8',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {index + 1}
+                </td>
                 <td style={{ padding: '3px 6px 3px 0', verticalAlign: 'middle' }}>
                   {isExistingUnit(unit) ? (
                     /* 🔴 `portal` — this grid lives inside a Modal whose body
@@ -219,7 +245,11 @@ export function BatchUnitsGrid({
                          the user to fill in a box they do not have to. */
                       placeholder="Auto-numbered"
                       title={`Optional — leave blank and this ${singular.toLowerCase()} is numbered by its position in the ${batchSingular.toLowerCase()}.`}
-                      aria-label={`${singular} label (optional)`}
+                      /* 🔴 The POSITION is in every row's accessible name, because
+                         the label no longer is. With it optional, a batch of five
+                         unnamed packages gave a screen reader five controls called
+                         "Taka label" and no way to tell which row it was on. */
+                      aria-label={`${singular} ${index + 1} label (optional)`}
                       onChange={(e) => onChange(unit.id, 'label', e.target.value)}
                       style={inputStyle}
                       onFocus={(e) => (e.target.style.borderColor = '#0062ff')}
@@ -233,7 +263,7 @@ export function BatchUnitsGrid({
                     step="any"
                     value={unit.quantity}
                     placeholder="0"
-                    aria-label={`${singular} quantity`}
+                    aria-label={`${singular} ${index + 1} quantity`}
                     onChange={(e) => onChange(unit.id, 'quantity', e.target.value)}
                     style={{ ...inputStyle, textAlign: 'right' }}
                     onFocus={(e) => (e.target.style.borderColor = '#0062ff')}
@@ -244,7 +274,7 @@ export function BatchUnitsGrid({
                   <button
                     type="button"
                     onClick={() => onRemove(unit.id)}
-                    aria-label={`Remove ${unit.label || singular}`}
+                    aria-label={`Remove ${unit.label.trim() || `${singular} ${index + 1}`}`}
                     title={`Remove this ${singular.toLowerCase()}`}
                     style={{
                       background: 'none',

@@ -30,8 +30,12 @@ import {
 interface BatchUnitsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  /** How to name the batch in the heading — its reference, or the word "Batch". */
-  batchName: string;
+  /**
+   * The batch's REFERENCE, raw — not a display name, and never pre-fallen-back to
+   * the word "Batch". The heading pairs it with `batchSingular` itself ("Takas in
+   * Batch CF-B-01"), so a caller that substituted the word here got "Batch Batch".
+   */
+  batchRef: string | null;
   /** What this org calls a batch, so the prose reads in their own words. */
   batchSingular: string;
   /** Per-org name for the level, from `useBatchUnitLabel`. */
@@ -52,7 +56,7 @@ interface BatchUnitsModalProps {
 export function BatchUnitsModal({
   isOpen,
   onClose,
-  batchName,
+  batchRef,
   batchSingular,
   singular,
   plural,
@@ -69,16 +73,29 @@ export function BatchUnitsModal({
   const gap = Number((batchQty - unitsTotal(units)).toFixed(4));
   const balanced = Math.abs(gap) <= QTY_EPSILON;
 
+  /**
+   * 🔴 THE REFERENCE IS NAMED BY ITS LEVEL, in the org's own word for it —
+   * "Takas in Batch CF-B-01", never a bare "Takas in CF-B-01". A reference on its
+   * own is only recognisable to someone who already knows what CF-B-01 is, and
+   * this dialog opens two levels down from where that was picked. `batchSingular`
+   * comes from the tracking preference, so a Lot org reads "Takas in Lot CF-B-01".
+   */
+  const ref = batchRef?.trim();
+  const heading = ref ? `${batchSingular} ${ref}` : batchSingular;
+  /** The same thing at the head of a sentence, where an unnamed batch cannot just
+   * be the bare word. */
+  const subject = ref ? heading : `This ${batchSingular.toLowerCase()}`;
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={`${plural} in ${batchName}`}
+      title={`${plural} in ${heading}`}
       /* The rule the user is most likely to trip: name one package and they must
          all be named. Said here, before they type, rather than by a red readout
          after. */
       subtitle={
-        `${batchName} holds ${batchQty}${uomLabel ? ` ${uomLabel}` : ''}. ` +
+        `${subject} holds ${batchQty}${uomLabel ? ` ${uomLabel}` : ''}. ` +
         `Names are optional — leave one blank and it is numbered by its position. ` +
         `Add none at all and the whole ${batchSingular.toLowerCase()} stays untagged.`
       }

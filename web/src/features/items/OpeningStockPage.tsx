@@ -1389,7 +1389,7 @@ export function OpeningStockPage() {
         <BatchUnitsModal
           isOpen
           onClose={() => setUnitsFor(null)}
-          batchName={unitsBatch.batchReference?.trim() || singular}
+          batchRef={unitsBatch.batchReference ?? null}
           batchSingular={singular}
           singular={unitLabel.singular}
           plural={unitLabel.plural}
