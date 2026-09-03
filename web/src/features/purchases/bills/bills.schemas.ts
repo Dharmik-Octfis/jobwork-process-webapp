@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/naming-convention */
+ 
 import { z } from 'zod';
 import { paginatedSchema, type Paginated } from '../../../lib/pagination';
 
@@ -21,6 +21,10 @@ export const billItemSchema = z.object({
   batches: z
     .array(
       z.object({
+        /** Set when the row picked a batch that already exists rather than
+         * describing a new one — the server then posts INTO that batch instead
+         * of minting a second one under the same physical tag. */
+        batchId: z.string().optional(),
         supplierBatchRef: z.string().optional(),
         manufacturerBatch: z.string().nullable().optional(),
         manufacturedDate: z.string().nullable().optional(),
@@ -28,6 +32,16 @@ export const billItemSchema = z.object({
         mrp: z.number().or(z.string()).nullable().optional(),
         sellingPrice: z.number().or(z.string()).nullable().optional(),
         quantity: z.number().or(z.string()),
+        /** The packages inside this batch, when the org runs a unit level. May
+         * total LESS than `quantity` — the rest is the untagged remainder. */
+        units: z
+          .array(
+            z.object({
+              label: z.string(),
+              quantity: z.number().or(z.string()),
+            }),
+          )
+          .optional(),
       }),
     )
     .optional(),

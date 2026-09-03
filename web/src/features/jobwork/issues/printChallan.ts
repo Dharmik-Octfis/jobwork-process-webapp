@@ -39,7 +39,30 @@ function escapeHtml(value: string | null | undefined): string {
     .replace(/"/g, '&quot;');
 }
 
-export function buildChallanHtml(issue: JobIssue, orgName: string, batchLabel: string = 'Batch'): string {
+export function buildChallanHtml(
+  issue: JobIssue,
+  orgName: string,
+  batchLabel: string = 'Batch',
+  /**
+   * 🔴 What this org calls the level below a batch, and whether it runs one at
+   * all. Off, and the challan prints exactly the four columns it always did.
+   *
+   * Passed in rather than read from a hook: this builds a string for a print
+   * window, so it must stay callable outside React.
+   */
+  unitLabel: { enabled: boolean; singular: string } = { enabled: false, singular: 'Taka' },
+): string {
+  /**
+   * 🔴 THE PACKAGE COLUMN IS PRINTED ONLY WHEN SOMETHING IS IN IT.
+   *
+   * The challan is the goods' identity papers — it travels with the lorry and is
+   * read at a checkpoint and by the receiving processor. An always-present column
+   * of em dashes is a column that teaches people to ignore it, and on a document
+   * that has to be scanned in a yard that matters. So it appears when the org runs
+   * the level AND this challan actually names a package on some line.
+   */
+  const showUnits = unitLabel.enabled && issue.lines.some((line) => line.batchUnit);
+  const columnCount = showUnits ? 5 : 4;
   /**
    * 🔴 THE ITEM IS A COLUMN, and the unit comes off the LINE (§5.7).
    *
@@ -60,10 +83,17 @@ export function buildChallanHtml(issue: JobIssue, orgName: string, batchLabel: s
       // nowhere on screen and means nothing to the processor receiving this
       // challan. This document is the goods' identity papers, so it carries what
       // is written on the tag and nothing else.
+      /* 🔴 The package's LABEL, which is what is written on the roll's own tag —
+         the one thing the processor at the other end can match the goods
+         against. An em dash where a line drew the batch's untagged remainder:
+         that is a real answer ("no particular roll"), not a missing value, and a
+         blank cell reads as data nobody filled in. */
+      const unitCell = showUnits ? `<td>${escapeHtml(line.batchUnit?.label ?? '—')}</td>` : '';
       return `<tr>
         <td>${index + 1}</td>
         <td>${escapeHtml(line.item?.name ?? '')}</td>
         <td>${escapeHtml(line.batch?.supplierBatchRef ?? '')}</td>
+        ${unitCell}
         <td class="num">${formatQty(line.qty)} ${escapeHtml(unitOf(line))}</td>
       </tr>`;
     })
@@ -137,13 +167,18 @@ export function buildChallanHtml(issue: JobIssue, orgName: string, batchLabel: s
         <th style="width:36px">#</th>
         <th>Item</th>
         <th>${escapeHtml(batchLabel)}</th>
+        ${showUnits ? `<th>${escapeHtml(unitLabel.singular)}</th>` : ''}
         <th class="num">Quantity</th>
       </tr>
     </thead>
     <tbody>${rows}</tbody>
     <tfoot>
       <tr>
-        <td colspan="5">Total — ${issue.lines.length} line${issue.lines.length === 1 ? '' : 's'}</td>
+        <!-- 🔴 Spans every column BUT the quantity, computed rather than typed.
+             It was a hard-coded 5 against a 4-column table, so the footer grew a
+             phantom sixth cell and the totals sat one column right of the numbers
+             they totalled — on the row a checkpoint reads first. -->
+        <td colspan="${columnCount - 1}">Total — ${issue.lines.length} line${issue.lines.length === 1 ? '' : 's'}</td>
         <td class="num">${totalText}</td>
       </tr>
     </tfoot>
@@ -172,11 +207,16 @@ export function buildChallanHtml(issue: JobIssue, orgName: string, batchLabel: s
  * a Print button that silently does nothing is the worst possible outcome for a
  * document a truck is waiting on.
  */
-export function printChallan(issue: JobIssue, orgName: string, batchLabel: string = 'Batch'): boolean {
+export function printChallan(
+  issue: JobIssue,
+  orgName: string,
+  batchLabel: string = 'Batch',
+  unitLabel: { enabled: boolean; singular: string } = { enabled: false, singular: 'Taka' },
+): boolean {
   const win = window.open('', '_blank', 'width=900,height=1000');
   if (!win) return false;
 
-  win.document.write(buildChallanHtml(issue, orgName, batchLabel));
+  win.document.write(buildChallanHtml(issue, orgName, batchLabel, unitLabel));
   win.document.close();
   // `onload` rather than an immediate call: printing before layout settles gives
   // a blank first page in Safari and Firefox.

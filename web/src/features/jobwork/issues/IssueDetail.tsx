@@ -10,7 +10,7 @@ import { ISSUE_STATUS_META, formatQty, sharedUnit, statusMeta, toNumber } from '
 import { cancelJobIssue, fetchJobIssueById } from './jobIssues.api';
 import { printChallan } from './printChallan';
 import type { JobIssue, JobIssuesPage } from './jobIssues.schemas';
-import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
+import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingLabel';
 
 interface Props {
   issueId: string;
@@ -32,9 +32,12 @@ const th: React.CSSProperties = {
 const td: React.CSSProperties = { padding: '8px 12px', fontSize: 13, color: '#333' };
 
 export function IssueDetail({ issueId, onClose }: Props) {
-  const navigate = useNavigate();  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { orgId } = useParams<{ orgId: string }>();
   const trackingLabel = useTrackingLabel();
+  /** What this org calls the level below a batch, for the challan's own column. */
+  const unitLabel = useBatchUnitLabel();
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -57,15 +60,18 @@ export function IssueDetail({ issueId, onClose }: Props) {
   const cancelMutation = useMutation({
     mutationFn: () => cancelJobIssue(orgId!, issueId, cancelReason),
     onSuccess: () => {
-      queryClient.setQueriesData({ queryKey: ['job-issues', orgId], type: 'active' }, (old: JobIssuesPage | undefined) => {
-        if (!old || !old.results) return old;
-        return {
-          ...old,
-          results: old.results.map((item: JobIssue) =>
-            item.id === issueId ? { ...item, status: 'cancelled' } : item
-          ),
-        };
-      });
+      queryClient.setQueriesData(
+        { queryKey: ['job-issues', orgId], type: 'active' },
+        (old: JobIssuesPage | undefined) => {
+          if (!old || !old.results) return old;
+          return {
+            ...old,
+            results: old.results.map((item: JobIssue) =>
+              item.id === issueId ? { ...item, status: 'cancelled' } : item,
+            ),
+          };
+        },
+      );
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId], type: 'inactive' });
       queryClient.invalidateQueries({ queryKey: ['job-issue', orgId, issueId] });
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
@@ -117,7 +123,10 @@ export function IssueDetail({ issueId, onClose }: Props) {
       <header className="detail-page-header">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h2 className="detail-title" style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}>
+            <h2
+              className="detail-title"
+              style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}
+            >
               {issue.challanNumber}
             </h2>
             <span
@@ -143,10 +152,11 @@ export function IssueDetail({ issueId, onClose }: Props) {
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="action-btn"
+          <button
+            className="action-btn"
             type="button"
             onClick={() => {
-              const opened = printChallan(issue, orgName, trackingLabel.singular);
+              const opened = printChallan(issue, orgName, trackingLabel.singular, unitLabel);
               if (!opened) {
                 setError(
                   'The print window was blocked. Allow pop-ups for this site and try again.',
@@ -166,10 +176,14 @@ export function IssueDetail({ issueId, onClose }: Props) {
               color: '#333',
             }}
           >
-            <Printer size={14} /> <span className="action-btn-text"><span className="action-btn-text">Print</span> challan</span>
+            <Printer size={14} />{' '}
+            <span className="action-btn-text">
+              <span className="action-btn-text">Print</span> challan
+            </span>
           </button>
           {issue.status !== 'cancelled' && (
-            <button className="action-btn"
+            <button
+              className="action-btn"
               type="button"
               onClick={() => setCancelOpen(true)}
               style={{
@@ -225,78 +239,78 @@ export function IssueDetail({ issueId, onClose }: Props) {
 
       <div style={{ padding: '20px 24px' }}>
         <div className="responsive-table-wrapper">
-<table style={{ borderCollapse: 'collapse', marginBottom: 20 }}>
-          <tbody>
-            <tr>
-              <td style={rowLabel}>Job order</td>
-              <td style={rowValue}>
-                <button
-                  type="button"
-                  onClick={() =>
-                    navigate(`/organizations/${orgId}/jobwork/job-orders/${issue.jobOrderId}`)
-                  }
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    padding: 0,
-                    font: 'inherit',
-                    color: '#0062ff',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {issue.jobOrder?.jobOrderNumber ?? 'Open'}
-                </button>
-              </td>
-            </tr>
-            <tr>
-              <td style={rowLabel}>Step</td>
-              <td style={rowValue}>
-                {issue.step ? `${issue.step.seq}. ${issue.step.processNameSnapshot}` : '-'}
-              </td>
-            </tr>
-            <tr>
-              {/* One line per ITEM on the challan (§5.7), each in its own unit —
+          <table style={{ borderCollapse: 'collapse', marginBottom: 20 }}>
+            <tbody>
+              <tr>
+                <td style={rowLabel}>Job order</td>
+                <td style={rowValue}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(`/organizations/${orgId}/jobwork/job-orders/${issue.jobOrderId}`)
+                    }
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      font: 'inherit',
+                      color: '#0062ff',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {issue.jobOrder?.jobOrderNumber ?? 'Open'}
+                  </button>
+                </td>
+              </tr>
+              <tr>
+                <td style={rowLabel}>Step</td>
+                <td style={rowValue}>
+                  {issue.step ? `${issue.step.seq}. ${issue.step.processNameSnapshot}` : '-'}
+                </td>
+              </tr>
+              <tr>
+                {/* One line per ITEM on the challan (§5.7), each in its own unit —
                   they are never added together. There is no header item to fall
                   back to any more, and a challan with no lines carries nothing. */}
-              <td style={rowLabel}>Items</td>
-              <td style={rowValue}>
-                {issuedByItem.length === 0
-                  ? '-'
-                  : issuedByItem.map((row) => (
-                      <span key={row.name} style={{ display: 'block' }}>
-                        {row.name} · {formatQty(row.qty)} {row.unit}
-                      </span>
-                    ))}
-              </td>
-            </tr>
-            <tr>
-              <td style={rowLabel}>Moved</td>
-              <td style={rowValue}>
-                {issue.sourceLocation?.name ?? '-'} → {issue.destination?.name ?? '-'}
-              </td>
-            </tr>
-            {issue.toleranceOverrideReason && (
-              <tr>
-                <td style={rowLabel}>Tolerance override</td>
-                <td style={{ ...rowValue, color: '#b45309' }}>{issue.toleranceOverrideReason}</td>
+                <td style={rowLabel}>Items</td>
+                <td style={rowValue}>
+                  {issuedByItem.length === 0
+                    ? '-'
+                    : issuedByItem.map((row) => (
+                        <span key={row.name} style={{ display: 'block' }}>
+                          {row.name} · {formatQty(row.qty)} {row.unit}
+                        </span>
+                      ))}
+                </td>
               </tr>
-            )}
-            {issue.remarks && (
               <tr>
-                <td style={rowLabel}>Remarks</td>
-                <td style={{ ...rowValue, whiteSpace: 'pre-wrap' }}>{issue.remarks}</td>
+                <td style={rowLabel}>Moved</td>
+                <td style={rowValue}>
+                  {issue.sourceLocation?.name ?? '-'} → {issue.destination?.name ?? '-'}
+                </td>
               </tr>
-            )}
-          </tbody>
-        </table>
-</div>
+              {issue.toleranceOverrideReason && (
+                <tr>
+                  <td style={rowLabel}>Tolerance override</td>
+                  <td style={{ ...rowValue, color: '#b45309' }}>{issue.toleranceOverrideReason}</td>
+                </tr>
+              )}
+              {issue.remarks && (
+                <tr>
+                  <td style={rowLabel}>Remarks</td>
+                  <td style={{ ...rowValue, whiteSpace: 'pre-wrap' }}>{issue.remarks}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
         <div style={{ border: '1px solid #eef0f3', borderRadius: 4, overflow: 'hidden' }}>
           <div className="responsive-table-wrapper">
-<table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
-                {/*
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
+                  {/*
                   🔴 ITEM, not "Party ref" and "Taka".
 
                   A challan carries several items now (§5.7), so which item each
@@ -306,32 +320,32 @@ export function IssueDetail({ issueId, onClose }: Props) {
                   which nothing can capture until Purchase Received records it
                   (spec §4.5). Both come back with the features that fill them.
                 */}
-                <th style={th} scope="col">
-                  Item
-                </th>
-                <th style={th} scope="col">
-                  {trackingLabel.singular}
-                </th>
-                <th style={th} scope="col">
-                  Quantity
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {issue.lines.map((line) => (
-                <tr key={line.id} style={{ borderBottom: '1px solid #eef0f3' }}>
-                  <td style={{ ...td, fontWeight: 500, color: '#111' }}>
-                    {line.item?.name ?? '-'}
-                  </td>
-                  <td style={td}>{line.batch?.supplierBatchRef ?? '-'}</td>
-                  <td style={td}>
-                    {formatQty(line.qty)} {line.uom?.symbol ?? line.uom?.unitName ?? unit}
-                  </td>
+                  <th style={th} scope="col">
+                    Item
+                  </th>
+                  <th style={th} scope="col">
+                    {trackingLabel.singular}
+                  </th>
+                  <th style={th} scope="col">
+                    Quantity
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-</div>
+              </thead>
+              <tbody>
+                {issue.lines.map((line) => (
+                  <tr key={line.id} style={{ borderBottom: '1px solid #eef0f3' }}>
+                    <td style={{ ...td, fontWeight: 500, color: '#111' }}>
+                      {line.item?.name ?? '-'}
+                    </td>
+                    <td style={td}>{line.batch?.supplierBatchRef ?? '-'}</td>
+                    <td style={td}>
+                      {formatQty(line.qty)} {line.uom?.symbol ?? line.uom?.unitName ?? unit}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 

@@ -49,6 +49,15 @@ const nullableUuid = z.string().uuid().nullable().optional();
  */
 export const plannedBatchRowSchema = z.object({
   batchId: z.string().uuid({ message: 'Every planned batch row needs a batch.' }),
+  /**
+   * Which PACKAGE of it the planner meant — a taka, roll or bale — when the org
+   * runs a unit level. Omitted means the batch generally, which is what every
+   * plan written before the level existed means.
+   *
+   * 🔴 Still a note and not a hold: naming a roll reserves nothing, exactly as
+   * naming a batch reserves nothing. The issue picker warns; it never subtracts.
+   */
+  batchUnitId: z.string().uuid().nullable().optional(),
   locationId: z.string().uuid({ message: 'Every planned batch row needs a location.' }),
   qty: z.coerce.number().positive({ message: 'A planned batch needs a quantity above zero.' }),
 });

@@ -57,7 +57,15 @@ export async function fetchReceivePrefill(orgId: string, stepId: string): Promis
  */
 export async function fetchReceiptBatchOptions(
   orgId: string,
-  params: { stepId: string; itemId: string; search?: string; cursor?: string },
+  params: {
+    stepId: string;
+    itemId: string;
+    search?: string;
+    cursor?: string;
+    /** Ask for each batch's existing packages, so a row can add to one. Costs an
+     * extra grouped query, so only a caller that can render them sets it. */
+    withUnits?: boolean;
+  },
 ): Promise<ReceiptBatchOptions> {
   const response = await apiClient.get(endpoints.jobwork.receiptBatchOptions(orgId), { params });
   return receiptBatchOptionsSchema.parse(response.data);

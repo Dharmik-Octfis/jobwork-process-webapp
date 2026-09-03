@@ -35,7 +35,8 @@ const availabilityQuerySchema = z
       .pipe(z.array(z.string().uuid()).min(1).max(50).optional()),
     locationId: z.string().uuid().optional(),
     ownership: z.enum(OWNERSHIPS).optional(),
-    withPackages: z
+    /** Include each batch's packages and its untagged remainder — see the service. */
+    withUnits: z
       .enum(['true', 'false'])
       .optional()
       .transform((v) => v === 'true'),
@@ -64,7 +65,7 @@ openApiRegistry.registerPath({
       itemIds: z.string().optional(),
       locationId: z.string().optional(),
       ownership: z.string().optional(),
-      withPackages: z.string().optional(),
+      withUnits: z.string().optional(),
       search: z.string().optional(),
       limit: z.string().optional(),
     }),

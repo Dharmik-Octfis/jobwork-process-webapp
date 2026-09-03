@@ -29,12 +29,25 @@ const baseOrganizationSchema = z.object({
     .regex(/^(https?:\/\/)?([\w.-]+)\.([a-z]{2,})([/\w .-]*)*\/?$/i, 'Invalid website URL')
     .optional()
     .or(z.literal('')),
-  settings: z.object({
-    itemTrackingLabel: z.object({
-      singular: z.string().max(30).optional(),
-      plural: z.string().max(30).optional(),
-    }).optional()
-  }).optional(),
+  settings: z
+    .object({
+      itemTrackingLabel: z
+        .object({
+          singular: z.string().max(30).optional(),
+          plural: z.string().max(30).optional(),
+        })
+        .optional(),
+      /** The optional level below a batch — see the backend schema for why it
+       * lives in `settings` and why there is no per-item gate. */
+      batchUnit: z
+        .object({
+          enabled: z.boolean().optional(),
+          singular: z.string().max(30).optional(),
+          plural: z.string().max(30).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
 const phoneRefinement = (_data: { phone?: string; dialCode?: string }, _ctx: z.RefinementCtx) => {
@@ -79,6 +92,11 @@ export interface Organization {
   accountCreatedDate: string;
   settings?: {
     itemTrackingLabel?: {
+      singular?: string;
+      plural?: string;
+    };
+    batchUnit?: {
+      enabled?: boolean;
       singular?: string;
       plural?: string;
     };

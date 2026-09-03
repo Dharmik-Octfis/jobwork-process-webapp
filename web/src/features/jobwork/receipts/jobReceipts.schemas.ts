@@ -286,6 +286,24 @@ export interface JobReceiptBatchAllocationData {
   expiryDate?: string | null;
   sellingPrice?: number | null;
   mrp?: number | null;
+
+  /**
+   * The packages physically handed back inside this batch — takas, rolls, bales —
+   * when the org runs a unit level. Sent on BOTH kinds of row, unlike the five
+   * attributes above: an existing batch is never restamped, but three more rolls
+   * arriving into it is new goods, not a correction.
+   *
+   * May total LESS than `qty`; the rest is the batch's untagged remainder.
+   */
+  units?: (
+    /** A package arriving for the first time. `label` is OPTIONAL since
+     * 2026-09-03 — omit it and the server names it `#seq`, its position in the
+     * batch; only the quantity is required. */
+    | { label?: string; qty: number }
+    /** Adding to a package that already exists — the same roll returning again.
+     * Never both shapes on one row, which is what the server refines. */
+    | { batchUnitId: string; qty: number }
+  )[];
 }
 
 export interface CreateJobReceiptData {
@@ -348,6 +366,11 @@ export const receiptBatchOptionSchema = z.object({
   internalQty: decimalString,
   externalQty: decimalString,
   byLocation: z.array(batchLocationBalanceSchema).default([]),
+  /** The packages this batch already holds, so a row can add to one instead of
+   * naming a new one. Empty unless the request asked for `withUnits`. */
+  units: z
+    .array(z.object({ batchUnitId: z.string(), seq: z.number(), label: z.string() }))
+    .default([]),
 });
 
 export type ReceiptBatchOption = z.infer<typeof receiptBatchOptionSchema>;

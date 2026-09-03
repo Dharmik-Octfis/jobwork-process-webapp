@@ -2,6 +2,7 @@ import { Prisma } from '../../../../generated/prisma/client.ts';
 import { runAsTenant, type TenantClient } from '../../../db/prisma.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
 import { allocateNumber } from '../../../lib/numberSequence.ts';
+import { splitByQty } from '../../../lib/splitByQty.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import {
@@ -11,10 +12,12 @@ import {
 import {
   asResolvedBatch,
   createBatch,
+  createBatchUnits,
   getBalancesByBatch,
   getBalancesByBatchAndLocation,
   postMovement,
   resolveBatchesForPosting,
+  resolveExistingBatchUnits,
   type Ownership,
   type ResolvedBatches,
 } from '../../inventory/stock-ledger/stockLedger.service.ts';
@@ -145,12 +148,51 @@ export async function countJobReceipts(organizationId: string, opts: ListQuery):
 }
 
 export async function getJobReceiptById(organizationId: string, id: string) {
-  return runAsTenant(organizationId, (tx) =>
-    tx.jobReceipt.findFirst({
+  return runAsTenant(organizationId, async (tx) => {
+    const receipt = await tx.jobReceipt.findFirst({
       where: { id, organizationId, isDeleted: false },
       include: RECEIPT_INCLUDE,
-    }),
-  );
+    });
+    if (!receipt) return receipt;
+
+    /**
+     * The packages this receipt created, attached to the batch rows they belong
+     * to. Read HERE and not in `RECEIPT_INCLUDE`, on purpose: that include is
+     * shared with the list endpoint, and a fourth relation level would cost the
+     * list a round trip per page for something only the detail screen renders.
+     *
+     * Keyed on `sourceDocId`, so a top-up shows the rolls THIS delivery brought
+     * rather than everything the batch has ever held. One query for the whole
+     * receipt, indexed into a Map — never one per batch row.
+     */
+    const units = await tx.batchUnit.findMany({
+      where: {
+        organizationId,
+        sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+        sourceDocId: id,
+        isDeleted: false,
+      },
+      orderBy: { seq: 'asc' },
+      select: { id: true, batchId: true, seq: true, label: true },
+    });
+    if (units.length === 0) return receipt;
+
+    const byBatch = new Map<string, typeof units>();
+    for (const unit of units) {
+      byBatch.set(unit.batchId, [...(byBatch.get(unit.batchId) ?? []), unit]);
+    }
+
+    return {
+      ...receipt,
+      outputs: receipt.outputs.map((output) => ({
+        ...output,
+        batches: output.batches.map((row) => ({
+          ...row,
+          units: byBatch.get(row.batch.id) ?? [],
+        })),
+      })),
+    };
+  });
 }
 
 export async function getReceiptsForStep(organizationId: string, jobOrderStepId: string) {
@@ -179,7 +221,31 @@ async function closedQtyByIssueLine(
   if (lineIds.length === 0) return new Map();
   const grouped = await tx.jobReceiptLine.groupBy({
     by: ['jobIssueLineId'],
-    where: { organizationId, jobIssueLineId: { in: [...lineIds] }, isDeleted: false },
+    where: {
+      organizationId,
+      jobIssueLineId: { in: [...lineIds] },
+      isDeleted: false,
+      /**
+       * 🔴 A CANCELLED RECEIPT CLOSES NOTHING (2026-09-02).
+       *
+       * This counted every receipt line ever written, cancelled ones included, so
+       * cancelling a receipt reversed its stock and reopened its challans — and
+       * then left them permanently un-receivable. The challan showed as
+       * `partially_received` with ZERO outstanding, and a second attempt to
+       * receive the same goods was refused with "N more is being received than
+       * these challans still have outstanding."
+       *
+       * A cancellation is the document saying it never happened. The stock,
+       * the challan's status and the quantity it has left to account for all have
+       * to agree about that, and this was the one that did not.
+       *
+       * Found while adding the package level, which is why it is fixed here: a
+       * cancelled receipt now also has to give its package labels back, and
+       * re-entering it is exactly the flow that could not be tested until this
+       * was right.
+       */
+      jobReceipt: { status: { not: 'cancelled' } },
+    },
     _sum: { issuedQty: true },
   });
   // `jobIssueLineId` is nullable — a bulk receipt spanning several challans points
@@ -381,7 +447,13 @@ function decodeCursor(raw: string | undefined): { createdAt: Date; id: string } 
  */
 export async function getOutputBatchOptions(
   organizationId: string,
-  query: { jobOrderStepId: string; itemId: string; search?: string; cursor?: string },
+  query: {
+    jobOrderStepId: string;
+    itemId: string;
+    search?: string;
+    cursor?: string;
+    withUnits?: boolean;
+  },
 ) {
   return runAsTenant(organizationId, async (tx) => {
     const step = await tx.jobOrderStep.findFirst({
@@ -546,6 +618,30 @@ export async function getOutputBatchOptions(
     });
     const locationById = new Map(locations.map((row) => [row.id, row]));
 
+    /**
+     * The packages each listed batch already holds, so the dialog can offer "add
+     * to an existing one" without a round trip per row. One grouped query for the
+     * whole page, indexed into a Map — never one per batch.
+     *
+     * Opt-in via `withUnits`, spelled exactly as on the batches picker: it costs
+     * an extra query, and only an org running the unit level can render them.
+     * Off, `units` is an empty array and the dialog renders as it always did.
+     */
+    const unitsByBatch = new Map<string, { batchUnitId: string; seq: number; label: string }[]>();
+    if (query.withUnits) {
+      const unitRows = await tx.batchUnit.findMany({
+        where: { organizationId, batchId: { in: all.map((row) => row.id) }, isDeleted: false },
+        orderBy: { seq: 'asc' },
+        select: { id: true, batchId: true, seq: true, label: true },
+      });
+      for (const row of unitRows) {
+        unitsByBatch.set(row.batchId, [
+          ...(unitsByBatch.get(row.batchId) ?? []),
+          { batchUnitId: row.id, seq: row.seq, label: row.label },
+        ]);
+      }
+    }
+
     const shape = (batch: (typeof all)[number], source: 'this_job_order' | 'other') => {
       const byLocation = balances.get(batch.id) ?? new Map<string, Prisma.Decimal>();
       const rows = [...byLocation.entries()]
@@ -595,6 +691,7 @@ export async function getOutputBatchOptions(
         internalQty: total.minus(external).toString(),
         externalQty: external.toString(),
         byLocation: rows,
+        units: unitsByBatch.get(batch.id) ?? [],
       };
     };
 
@@ -655,6 +752,43 @@ interface OutputBatchPlan {
    * a `batchId`, because a batch that already exists is added to and never
    * restamped from inside a receipt. */
   attributes: OutputBatchAttributes;
+  /**
+   * The packages physically handed back inside this batch. Allowed on a top-up
+   * too — the second half of a split delivery is three more rolls, not a
+   * correction to the first half's. Empty, or totalling `qty` together with
+   * `existingUnits`: naming some but not all has been refused since 2026-09-02.
+   */
+  units: { label: string; qty: Prisma.Decimal }[];
+  /**
+   * Packages that ALREADY exist and are being added to — the same roll returning
+   * a second time. Separate from `units` because they take the other path: one is
+   * created, the other only resolved. Only ever set on a `batchId` row.
+   */
+  existingUnits: { batchUnitId: string; qty: Prisma.Decimal }[];
+}
+
+/** The packages a plan names, normalised and split by which path they take.
+ * Empty when the org runs no unit level, which is every receipt written before
+ * this feature existed. */
+function batchUnits(row: JobReceiptOutputBatchInput): { label: string; qty: Prisma.Decimal }[] {
+  return (row.units ?? [])
+    .filter((unit) => !unit.batchUnitId)
+    .map((unit) => ({
+      // Blank is legal — `createBatchUnits` auto-names it `#seq`.
+      label: (unit.label ?? '').trim(),
+      qty: new Prisma.Decimal(unit.qty),
+    }));
+}
+
+function existingBatchUnits(
+  row: JobReceiptOutputBatchInput,
+): { batchUnitId: string; qty: Prisma.Decimal }[] {
+  return (row.units ?? [])
+    .filter((unit) => unit.batchUnitId)
+    .map((unit) => ({
+      batchUnitId: unit.batchUnitId!,
+      qty: new Prisma.Decimal(unit.qty),
+    }));
 }
 
 /** What a NEW batch is stamped with at the gate. Every field means "not stated"
@@ -720,39 +854,6 @@ interface ResolvedOutput {
   /** The same for rework — always a DIFFERENT set of batches, so the re-issue can
    * send back only the pieces that failed. */
   reworkBatches: OutputBatchPlan[];
-}
-
-/**
- * 🔴 SPLIT A VALUE ACROSS PARTS BY QUANTITY, CONSERVING EVERY PAISA.
- *
- * The last part takes the REMAINDER rather than its own rounded share. Rounding
- * each share independently to four decimals loses fractions — three ways of
- * ₹100 is 33.3333 × 3 = ₹99.9999 — and the missing paisa is not a display
- * problem: the pot no longer equals what was posted, so "cost per metre" stops
- * reconciling with the ledger and no report can say why.
- *
- * Legitimate ONLY where every part is the same item in the same unit (§9.2.1).
- * Across items it would be the cross-unit ratio the domain refuses everywhere.
- */
-function splitByQty(total: Prisma.Decimal, parts: readonly Prisma.Decimal[]): Prisma.Decimal[] {
-  if (parts.length === 0) return [];
-  const sum = parts.reduce((acc, part) => acc.plus(part), ZERO);
-  // Nothing to weigh by — a value with no quantity behind it goes nowhere rather
-  // than being spread evenly over rows that measured zero.
-  if (sum.lessThanOrEqualTo(0)) return parts.map(() => ZERO);
-
-  const shares: Prisma.Decimal[] = [];
-  let assigned = ZERO;
-  for (const [index, part] of parts.entries()) {
-    if (index === parts.length - 1) {
-      shares.push(total.minus(assigned));
-      break;
-    }
-    const share = total.times(part).dividedBy(sum).toDecimalPlaces(4);
-    shares.push(share);
-    assigned = assigned.plus(share);
-  }
-  return shares;
 }
 
 /**
@@ -860,6 +961,8 @@ function resolveOutputs(
             batchReference: batch.batchReference?.trim() || null,
             qty: new Prisma.Decimal(batch.qty),
             attributes: batchAttributes(batch),
+            units: batchUnits(batch),
+            existingUnits: existingBatchUnits(batch),
           }))
         : singleBatchPlan(
             row.batchReference?.trim() || null,
@@ -871,6 +974,8 @@ function resolveOutputs(
             batchReference: batch.batchReference?.trim() || null,
             qty: new Prisma.Decimal(batch.qty),
             attributes: batchAttributes(batch),
+            units: batchUnits(batch),
+            existingUnits: existingBatchUnits(batch),
           }))
         : singleBatchPlan(
             row.reworkBatchReference?.trim() || null,
@@ -884,8 +989,17 @@ function resolveOutputs(
  * quantity. Empty when there is no quantity — an all-scrap row creates nothing. */
 function singleBatchPlan(batchReference: string | null, qty: Prisma.Decimal): OutputBatchPlan[] {
   if (qty.lessThanOrEqualTo(0)) return [];
-  // No attributes: the older shape had nowhere to state them.
-  return [{ batchId: null, batchReference, qty, attributes: NO_BATCH_ATTRIBUTES }];
+  // No attributes and no packages: the older shape had nowhere to state either.
+  return [
+    {
+      batchId: null,
+      batchReference,
+      qty,
+      attributes: NO_BATCH_ATTRIBUTES,
+      units: [],
+      existingUnits: [],
+    },
+  ];
 }
 
 /**
@@ -972,6 +1086,52 @@ function assertAllocationsBalance(outputs: readonly ResolvedOutput[]): void {
             [`outputs.${index}.${side.field}`]: `The batches must add up to the ${side.kind} quantity.`,
           },
         );
+      }
+
+      /**
+       * 🔴 THE SAME CHECK ONE LEVEL DOWN, and since 2026-09-02 it is an EQUALITY
+       * too — naming any package commits to naming them all, so a batch is broken
+       * down completely or not at all. Naming NONE stays legal, which is what
+       * keeps every org without the level, and every receipt posted before it
+       * existed, working exactly as before.
+       *
+       * 🔴 Top-ups count. `existingUnits` is quantity going onto a package the
+       * batch already holds, so leaving it out of the sum let a receipt name half
+       * the batch and pass — the bug this line closes.
+       *
+       * Beside the write, not only in the schema: `validateBody` runs on the HTTP
+       * route alone, and a script, an import or a test must not be able to post a
+       * receipt whose packages do not account for the batch they are inside.
+       */
+      for (const [batchIndex, plan] of side.plans.entries()) {
+        if (plan.units.length === 0 && plan.existingUnits.length === 0) continue;
+        const inUnits = [...plan.units, ...plan.existingUnits].reduce(
+          (sum, unit) => sum.plus(unit.qty),
+          ZERO,
+        );
+        if (inUnits.minus(plan.qty).abs().greaterThan(tolerance)) {
+          const label = plan.batchReference ?? 'the batch';
+          throw new ApiError(
+            400,
+            `Returned item ${index + 1}: the units inside ${label} add up to ` +
+              `${inUnits.toString()}, not the ${plan.qty.toString()} that came back into it.`,
+            {
+              [`outputs.${index}.${side.field}.${batchIndex}.units`]:
+                'The units must account for the whole batch, or name none at all.',
+            },
+          );
+        }
+
+        const labels = plan.units.map((unit) => unit.label.toLowerCase());
+        if (new Set(labels).size !== labels.length) {
+          throw new ApiError(
+            400,
+            `Returned item ${index + 1}: two units of one batch share a label. A label is a physical tag, so it has to be unique.`,
+            {
+              [`outputs.${index}.${side.field}.${batchIndex}.units`]: 'A label is used twice.',
+            },
+          );
+        }
       }
     }
 
@@ -1090,6 +1250,21 @@ interface ConsumeAllocation {
   jobIssueId: string;
   jobIssueLineId: string;
   batchId: string;
+  /**
+   * 🔴 WHICH PACKAGE went out on that challan line, so the consume can take it
+   * back out of the same one.
+   *
+   * Not optional decoration. A challan that sent a whole roll leaves the batch
+   * FULLY tagged at the processor, so an untagged consume against it is refused
+   * by `postMovement`'s invariant — the packages would claim more than the batch
+   * held. Carrying the package through is what makes a receipt against a
+   * package-wise challan possible at all.
+   *
+   * A PARTIAL consume of a package is fine and stays fine: taking quantity out of
+   * a package lowers both sides of that inequality equally, so what is left of
+   * the roll simply stays at the processor.
+   */
+  batchUnitId: string | null;
   /** Which item was consumed — the challan line's own (§5.7). It is what the
    * process charge is measured against when the rate is per issued unit. */
   itemId: string;
@@ -1118,6 +1293,7 @@ async function allocateConsumption(
       id: true,
       jobIssueId: true,
       batchId: true,
+      batchUnitId: true,
       qty: true,
       itemId: true,
     },
@@ -1159,6 +1335,7 @@ async function allocateConsumption(
         jobIssueId: issueLine.jobIssueId,
         jobIssueLineId: issueLine.id,
         batchId: issueLine.batchId,
+        batchUnitId: issueLine.batchUnitId,
         itemId: issueLine.itemId,
         qty: toConsume,
       });
@@ -1203,6 +1380,7 @@ async function allocateConsumption(
         jobIssueId: issueLine.jobIssueId,
         jobIssueLineId: issueLine.id,
         batchId: issueLine.batchId,
+        batchUnitId: issueLine.batchUnitId,
         itemId: issueLine.itemId,
         qty: take,
       });
@@ -1521,6 +1699,8 @@ export async function createNewJobReceipt(
         {
           organizationId,
           batchId: allocation.batchId,
+          // Back out of the package it went out in — see `ConsumeAllocation`.
+          batchUnitId: allocation.batchUnitId,
           locationId: processorLocationId,
           movementType: 'consume',
           qtyOut: allocation.qty,
@@ -1661,24 +1841,117 @@ export async function createNewJobReceipt(
           postableBatch = asResolvedBatch(batch);
         }
 
-        await postMovement(
-          tx,
-          {
-            organizationId,
-            batchId,
-            locationId: header.locationId,
-            movementType: 'produce',
-            qtyIn: plan.qty,
-            valueIn: share,
-            sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
-            sourceDocId: receipt.id,
-            remarks:
-              kind === 'rework' ? 'Rework — to be re-issued against the same step.' : undefined,
-            postedAt: receiptDate,
-            userId,
-          },
-          postableBatch,
-        );
+        /**
+         * 🔴 THE PACKAGES THE PROCESSOR HANDED BACK, created before anything is
+         * posted so each `produce` can name the one it belongs to.
+         *
+         * On a top-up this CONTINUES the batch's own `seq` rather than restarting
+         * — the first delivery's T-1..T-3 and this one's T-4..T-6 are six rolls of
+         * one batch, and two rolls both called "1" could not be told apart on the
+         * goods.
+         */
+        // Guarded beside the write as well as in the schema: a batch born on this
+        // receipt has no packages that predate it, and the schema runs on the
+        // HTTP route alone.
+        if (plan.existingUnits.length && isNewBatch) {
+          throw ApiError.badRequest('A batch being created has no existing units to add to.', {
+            outputs: 'Pick an existing batch before adding to one of its units.',
+          });
+        }
+
+        /**
+         * 🔴 Two kinds of package row, two paths. A `label` row is a roll handed
+         * back for the first time and is CREATED; a `batchUnitId` row is the same
+         * roll returning again and is only RESOLVED, because `createBatchUnits`
+         * refuses a label the batch already carries — a label is a physical tag.
+         * Both then produce the same movement.
+         */
+        const createdUnits = [
+          ...(plan.units.length
+            ? await createBatchUnits(tx, {
+                organizationId,
+                batchId,
+                units: plan.units,
+                uomId: output.uomId,
+                sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+                sourceDocId: receipt.id,
+                userId,
+              })
+            : []),
+          ...(plan.existingUnits.length
+            ? await resolveExistingBatchUnits(tx, {
+                organizationId,
+                batchId,
+                units: plan.existingUnits,
+              })
+            : []),
+        ];
+
+        /**
+         * The side's value is already this batch's share; it is now split again
+         * across the packages BY QUANTITY — legitimate here for the same reason it
+         * was one level up, because every package is the same item in the same
+         * unit. Through `splitByQty` so the last one takes the remainder and not a
+         * paisa of the batch's share goes missing.
+         *
+         * The untagged remainder is the final part of that split, which is what
+         * keeps the batch's total value identical to what it would have been with
+         * no packages at all. A package carries no value of its own (§2.2) — it
+         * inherits its batch's weighted average, and this is how.
+         */
+        const tagged = createdUnits.reduce((sum, unit) => sum.plus(unit.qty), ZERO);
+        const loose = plan.qty.minus(tagged);
+        const parts = [
+          ...createdUnits.map((unit) => unit.qty),
+          ...(loose.greaterThan(0) ? [loose] : []),
+        ];
+        const unitShares = splitByQty(share, parts);
+
+        const remarks =
+          kind === 'rework' ? 'Rework — to be re-issued against the same step.' : undefined;
+
+        for (const [unitIndex, unit] of createdUnits.entries()) {
+          await postMovement(
+            tx,
+            {
+              organizationId,
+              batchId,
+              batchUnitId: unit.id,
+              locationId: header.locationId,
+              movementType: 'produce',
+              qtyIn: unit.qty,
+              valueIn: unitShares[unitIndex] ?? ZERO,
+              sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+              sourceDocId: receipt.id,
+              remarks,
+              postedAt: receiptDate,
+              userId,
+            },
+            postableBatch,
+          );
+        }
+
+        // A batch broken up entirely leaves nothing behind, and a zero-quantity
+        // movement is one `postMovement` refuses by design.
+        if (loose.greaterThan(0)) {
+          await postMovement(
+            tx,
+            {
+              organizationId,
+              batchId,
+              locationId: header.locationId,
+              movementType: 'produce',
+              qtyIn: loose,
+              valueIn: unitShares[unitShares.length - 1] ?? ZERO,
+              sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+              sourceDocId: receipt.id,
+              remarks,
+              postedAt: receiptDate,
+              userId,
+            },
+            postableBatch,
+          );
+        }
 
         posted.push({ kind, batchId, qty: plan.qty, isNewBatch });
       }
@@ -1969,6 +2242,19 @@ export async function cancelJobReceipt(
       },
       select: {
         batchId: true,
+        /**
+         * 🔴 THE COLUMN THIS PATH MOST EASILY FORGETS, AND THE WORST ONE TO MISS.
+         *
+         * Every reversal below copies its identity off the row it undoes. Leave
+         * this out and the reversals post as UNTAGGED: the batch's balance comes
+         * back perfectly correct, so nothing on any screen looks wrong, while
+         * every package this receipt created keeps its quantity forever and an
+         * untagged negative appears beside it. There is no error, no warning, and
+         * no way to notice until someone asks where a roll went.
+         *
+         * `jobReceipts.batchUnits.test.ts` fails the moment this is dropped.
+         */
+        batchUnitId: true,
         locationId: true,
         qtyIn: true,
         qtyOut: true,
@@ -1993,6 +2279,7 @@ export async function cancelJobReceipt(
         {
           organizationId,
           batchId: row.batchId,
+          batchUnitId: row.batchUnitId,
           locationId: row.locationId,
           movementType: 'reversal',
           qtyIn: row.qtyOut,
@@ -2007,6 +2294,47 @@ export async function cancelJobReceipt(
         },
         reversedBatches,
       );
+    }
+
+    /**
+     * 🔴 THE PACKAGES THIS RECEIPT CREATED GO WITH IT — and unlike the batches,
+     * they have to.
+     *
+     * A cancelled receipt leaves its BATCHES behind at zero, deliberately: a batch
+     * reference is not unique (two suppliers both number from 1, and Zoho allows
+     * duplicates), so an empty one costs nothing and re-entering the receipt mints
+     * a fresh batch anyway.
+     *
+     * A package label IS unique inside its batch. So on the TOP-UP path — receipt
+     * 2 adds T-4..T-6 to a batch receipt 1 created — cancelling and re-entering
+     * would hit "T-4 already exists in this batch" and the user would be stuck
+     * with no way to say what they meant. Anything another document has moved
+     * keeps its row: those ledger rows name it forever and have to stay
+     * interpretable.
+     */
+    const created = await tx.batchUnit.findMany({
+      where: {
+        organizationId,
+        sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+        sourceDocId: id,
+        isDeleted: false,
+      },
+      select: { id: true },
+    });
+    for (const unit of created) {
+      const movedElsewhere = await tx.stockLedgerEntry.count({
+        where: {
+          organizationId,
+          batchUnitId: unit.id,
+          NOT: { sourceDocType: SOURCE_DOC_TYPES.jobReceipt, sourceDocId: id },
+        },
+      });
+      if (movedElsewhere === 0) {
+        await tx.batchUnit.update({
+          where: { id: unit.id },
+          data: { isDeleted: true, updatedBy: userId ?? null },
+        });
+      }
     }
 
     const updated = await tx.jobReceipt.update({

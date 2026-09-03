@@ -17,6 +17,16 @@ export const jobIssueLineSchema = z.object({
   /** 🔴 No `batchNumber` (2026-08-14) — it is an internal key and the server no
    * longer sends it. `id` is the handle; `supplierBatchRef` is the label. */
   batch: z.object({ id: z.string(), supplierBatchRef: z.string().nullable() }).optional(),
+  batchUnitId: z.string().nullable().optional(),
+  /**
+   * 🔴 WHICH PACKAGE this line sent, and it is what the CHALLAN PRINTS.
+   *
+   * The label is what is written on the roll's own tag — the one thing the
+   * processor at the other end can match the goods against. Null on a line
+   * drawing the batch's untagged remainder, and on every line written before the
+   * level existed; the challan prints an em dash there rather than a blank cell.
+   */
+  batchUnit: z.object({ id: z.string(), seq: z.number(), label: z.string() }).nullable().optional(),
 });
 
 export type JobIssueLine = z.infer<typeof jobIssueLineSchema>;
@@ -71,6 +81,19 @@ export interface JobIssueLineData {
    * FIFO out of the dispatch site's oldest stock. Required for a batch-tracked
    * item, which the server refuses without. */
   batchId?: string | null;
+  /**
+   * 🔴 WHICH PACKAGE of that batch — a taka, roll or bale — when the org runs a
+   * unit level and the user ticked one.
+   *
+   * Omitted, the line draws on the batch's UNTAGGED remainder, which is what
+   * every line meant before the level existed. Three ticked rolls are three
+   * lines, exactly as three batches are.
+   *
+   * The quantity that comes with it is the package's OWN balance: a package is
+   * atomic at issue, and the server refuses a line saying otherwise rather than
+   * rounding it to fit.
+   */
+  batchUnitId?: string | null;
   /** Which godown this row came from. The picker offers one row per (batch,
    * godown) because a challan may draw from a whole dispatch site. Omitted, the
    * header's dispatch location is assumed — which is what a single-godown site

@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useCombobox } from 'downshift';
 import { AlertTriangle, ChevronDown, Plus, Search, Truck, X } from 'lucide-react';
@@ -8,7 +8,14 @@ import { blurOnWheel } from '../../../components/ui/blurOnWheel';
 import { formatDate } from '../../../lib/formatDate';
 import { formatQty, toNumber } from '../jobwork.schemas';
 import type { ReceiptBatchOption } from './jobReceipts.schemas';
-import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
+import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingLabel';
+import { BatchUnitsModal, BatchUnitsTrigger } from '../../../components/inventory/BatchUnitsModal';
+import {
+  isSubmittableUnit,
+  validateBatchUnits,
+  type BatchUnitRow,
+  type ExistingBatchUnitOption,
+} from '../../../components/inventory/batchUnits';
 
 /**
  * ADD BATCHES (RECEIVE) — which batches the goods coming back land in.
@@ -92,6 +99,21 @@ export interface BatchAllocation {
   expiryDate: string;
   sellingPrice: string;
   mrp: string;
+
+  /**
+   * 🔴 THE PACKAGES THE PROCESSOR PHYSICALLY HANDED BACK — the takas, rolls or
+   * bales inside this batch, when the org runs a unit level.
+   *
+   * Allowed on an `existing` row too, unlike the five attributes above, and the
+   * asymmetry is the point: restamping an existing batch's expiry rewrites a fact
+   * about goods that already exist, whereas naming packages records goods that
+   * have just arrived. The second half of a split delivery is three more rolls,
+   * not a correction to the first half's.
+   *
+   * May total LESS than `qty`. The rest is the batch's untagged remainder, which
+   * is legal and posts as one movement with no package on it.
+   */
+  units: BatchUnitRow[];
 }
 
 /**
@@ -125,7 +147,14 @@ const EMPTY_ROW = {
   expiryDate: '',
   sellingPrice: '',
   mrp: '',
+  units: [],
 } satisfies Omit<DraftRow, 'id' | 'mode'>;
+
+const createEmptyUnit = (): BatchUnitRow => ({
+  id: crypto.randomUUID(),
+  label: '',
+  quantity: '',
+});
 
 let rowSeq = 0;
 const blankRow = (mode: RowMode): DraftRow => ({
@@ -368,7 +397,103 @@ export function BatchAllocationModal({
     return hits;
   }, [rows, options, otherOptions]);
 
-  const canSave = matches && unlabelled.length === 0 && duplicateIds.size === 0;
+  const noun = kind === 'accepted' ? 'accepted' : 'rework';
+  const { singular, plural } = useTrackingLabel();
+  /** 🔴 `enabled` gates the whole level: off, and this dialog renders exactly as
+   * it did before the feature existed. */
+  const unitLabel = useBatchUnitLabel();
+  /** Which allocation row's package DIALOG is open — one at a time, so an id and
+   * not a set. It was an expanding sub-grid until 2026-09-03; packages are now
+   * entered exactly the way the batches above them are. */
+  const [unitsFor, setUnitsFor] = useState<string | null>(null);
+
+  const addUnit = (rowId: string) => {
+    setRows((prev) =>
+      prev.map((row) =>
+        row.id === rowId ? { ...row, units: [...row.units, createEmptyUnit()] } : row,
+      ),
+    );
+  };
+
+  /** The same, for a package the batch already holds. A blank `batchUnitId` is
+   * what makes the row render a picker instead of a label box; it is filled in
+   * when the user picks, and the row is skipped on save until then. */
+  const addExistingUnit = (rowId: string) => {
+    setRows((prev) =>
+      prev.map((row) =>
+        row.id === rowId
+          ? { ...row, units: [...row.units, { ...createEmptyUnit(), batchUnitId: '' }] }
+          : row,
+      ),
+    );
+  };
+
+  /** Open one row's package dialog, giving an empty row its first package on the
+   * way in — a control that reads "Add {plural}" has to add one. */
+  const openUnits = (rowId: string) => {
+    if (!rows.find((row) => row.id === rowId)?.units.length) addUnit(rowId);
+    setUnitsFor(rowId);
+  };
+
+  const pickExistingUnit = (rowId: string, unitId: string, option: ExistingBatchUnitOption) =>
+    setRows((prev) =>
+      prev.map((row) =>
+        row.id === rowId
+          ? {
+              ...row,
+              units: row.units.map((u) =>
+                u.id === unitId
+                  ? { ...u, batchUnitId: option.batchUnitId, label: option.label }
+                  : u,
+              ),
+            }
+          : row,
+      ),
+    );
+
+  const removeUnit = (rowId: string, unitId: string) =>
+    setRows((prev) =>
+      prev.map((row) =>
+        row.id === rowId ? { ...row, units: row.units.filter((u) => u.id !== unitId) } : row,
+      ),
+    );
+
+  const changeUnit = (rowId: string, unitId: string, field: 'label' | 'quantity', value: string) =>
+    setRows((prev) =>
+      prev.map((row) =>
+        row.id === rowId
+          ? {
+              ...row,
+              units: row.units.map((u) => (u.id === unitId ? { ...u, [field]: value } : u)),
+            }
+          : row,
+      ),
+    );
+
+  /**
+   * The package rules, checked at the row so the dialog can refuse to save rather
+   * than letting the server answer with a 400 against a form the user can no
+   * longer see. The same rules are enforced beside the write — this dialog is not
+   * the only way a receipt can be posted.
+   */
+  const unitProblem = unitLabel.enabled
+    ? (rows
+        .filter((row) => isFilled(row) && row.qty > 0)
+        .map((row) =>
+          validateBatchUnits({
+            units: row.units,
+            batchQty: row.qty,
+            batchName: row.batchReference.trim() || singular,
+            singular: unitLabel.singular,
+            plural: unitLabel.plural,
+            uomLabel,
+          }),
+        )
+        .find(Boolean) ?? null)
+    : null;
+
+  const canSave =
+    matches && unlabelled.length === 0 && duplicateIds.size === 0 && unitProblem === null;
 
   const handleSave = () => {
     if (!canSave) return;
@@ -380,161 +505,175 @@ export function BatchAllocationModal({
         .map(({ id: _id, mode: _mode, ...allocation }) => ({
           ...allocation,
           batchReference: allocation.batchReference.trim(),
+          // Dropped entirely when the level is off, so a setting that was on and
+          // is now off cannot leave stale rows riding along in the payload.
+          units: unitLabel.enabled
+            ? // An "Existing" row is answered by picking; one nobody picked in is
+              // dropped exactly as an untouched new row is.
+              allocation.units.filter(isSubmittableUnit)
+            : [],
         })),
     );
     onClose();
   };
 
-  const noun = kind === 'accepted' ? 'accepted' : 'rework';
-  const { singular, plural } = useTrackingLabel();
+  /** The allocation row whose package dialog is open, re-read from state each
+   * render so the dialog shows live rows rather than a snapshot. */
+  const unitsRow = rows.find((row) => row.id === unitsFor) ?? null;
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={kind === 'accepted' ? `Add ${plural}` : `Add Rework ${plural}`}
-      width={1240}
-      position="fullScreen"
-      footer={
-        <>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={!canSave}
-            style={{
-              padding: '6px 20px',
-              background: canSave ? '#15803d' : '#f1f5f9',
-              color: canSave ? '#fff' : '#94a3b8',
-              border: 'none',
-              borderRadius: 4,
-              cursor: canSave ? 'pointer' : 'not-allowed',
-              fontWeight: 500,
-              fontSize: 13,
-            }}
-          >
-            Save
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: '6px 20px',
-              background: '#fff',
-              color: '#333',
-              border: '1px solid #d1d5db',
-              borderRadius: 4,
-              cursor: 'pointer',
-              fontWeight: 500,
-              fontSize: 13,
-            }}
-          >
-            Cancel
-          </button>
-          {!canSave && (
-            <span style={{ marginLeft: 'auto', fontSize: 12, color: '#b91c1c' }}>
-              {duplicateIds.size > 0
-                ? `A ${singular.toLowerCase()} is used twice, or is already taken by the other disposition.`
-                : unlabelled.length > 0
-                  ? `Every ${singular.toLowerCase()} of a tracked item needs a reference.`
-                  : definesTarget
-                    ? `Name at least one ${singular.toLowerCase()} and how much of it came back.`
-                    : `The ${plural.toLowerCase()} must add up to the ${noun} quantity.`}
-            </span>
-          )}
-        </>
-      }
-    >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '8px 12px',
-          background: '#f8fafc',
-          border: '1px solid #eef0f3',
-          borderRadius: 4,
-          fontSize: 13,
-          color: '#334155',
-        }}
+    <>
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title={kind === 'accepted' ? `Add ${plural}` : `Add Rework ${plural}`}
+        width={1240}
+        position="fullScreen"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={!canSave}
+              style={{
+                padding: '6px 20px',
+                background: canSave ? '#15803d' : '#f1f5f9',
+                color: canSave ? '#fff' : '#94a3b8',
+                border: 'none',
+                borderRadius: 4,
+                cursor: canSave ? 'pointer' : 'not-allowed',
+                fontWeight: 500,
+                fontSize: 13,
+              }}
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                padding: '6px 20px',
+                background: '#fff',
+                color: '#333',
+                border: '1px solid #d1d5db',
+                borderRadius: 4,
+                cursor: 'pointer',
+                fontWeight: 500,
+                fontSize: 13,
+              }}
+            >
+              Cancel
+            </button>
+            {!canSave && (
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: '#b91c1c' }}>
+                {duplicateIds.size > 0
+                  ? `A ${singular.toLowerCase()} is used twice, or is already taken by the other disposition.`
+                  : unlabelled.length > 0
+                    ? `Every ${singular.toLowerCase()} of a tracked item needs a reference.`
+                    : definesTarget
+                      ? `Name at least one ${singular.toLowerCase()} and how much of it came back.`
+                      : `The ${plural.toLowerCase()} must add up to the ${noun} quantity.`}
+              </span>
+            )}
+          </>
+        }
       >
-        <Truck size={14} color="#64748b" />
-        <span style={{ color: '#64748b' }}>Received into :</span>
-        <span style={{ fontWeight: 500 }}>{locationName ?? '—'}</span>
-        <span style={{ color: '#94a3b8', fontSize: 12 }}>
-          — every {singular.toLowerCase()} below lands here, whatever it already holds elsewhere.
-        </span>
-      </div>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '8px 12px',
+            background: '#f8fafc',
+            border: '1px solid #eef0f3',
+            borderRadius: 4,
+            fontSize: 13,
+            color: '#334155',
+          }}
+        >
+          <Truck size={14} color="#64748b" />
+          <span style={{ color: '#64748b' }}>Received into :</span>
+          <span style={{ fontWeight: 500 }}>{locationName ?? '—'}</span>
+          <span style={{ color: '#94a3b8', fontSize: 12 }}>
+            — every {singular.toLowerCase()} below lands here, whatever it already holds elsewhere.
+          </span>
+        </div>
 
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          gap: 20,
-          flexWrap: 'wrap',
-          padding: '14px 2px 16px',
-          borderBottom: '1px solid #eef0f3',
-        }}
-      >
-        <div>
-          <div style={{ fontSize: 15, color: '#111' }}>{itemName}</div>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
-            {kind === 'accepted' ? 'Accepted goods' : `Rework — kept in its own ${singular.toLowerCase()}`}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: 20,
+            flexWrap: 'wrap',
+            padding: '14px 2px 16px',
+            borderBottom: '1px solid #eef0f3',
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 15, color: '#111' }}>{itemName}</div>
+            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+              {kind === 'accepted'
+                ? 'Accepted goods'
+                : `Rework — kept in its own ${singular.toLowerCase()}`}
+            </div>
+          </div>
+          <div style={{ textAlign: 'right', fontSize: 13, color: '#334155' }}>
+            {definesTarget ? (
+              <>
+                <span style={{ color: '#64748b' }}>
+                  {kind === 'accepted' ? 'Accepted' : 'Rework'} quantity :
+                </span>{' '}
+                <span style={{ fontWeight: 600 }}>
+                  {formatQty(allocated)} {uomLabel}
+                </span>
+                <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 3 }}>
+                  Taken from the {plural.toLowerCase()} below — nothing was typed on the row yet.
+                </div>
+              </>
+            ) : (
+              <>
+                <span style={{ color: '#64748b' }}>
+                  {kind === 'accepted' ? 'Accepted' : 'Rework'} quantity :
+                </span>{' '}
+                {formatQty(targetQty)} {uomLabel}
+                <span style={{ color: '#e2e8f0', margin: '0 10px' }}>|</span>
+                <span style={{ color: '#64748b' }}>Still to allocate :</span>{' '}
+                <span style={{ color: matches ? '#15803d' : '#b45309', fontWeight: 600 }}>
+                  {formatQty(remaining)} {uomLabel}
+                </span>
+              </>
+            )}
           </div>
         </div>
-        <div style={{ textAlign: 'right', fontSize: 13, color: '#334155' }}>
-          {definesTarget ? (
-            <>
-              <span style={{ color: '#64748b' }}>
-                {kind === 'accepted' ? 'Accepted' : 'Rework'} quantity :
-              </span>{' '}
-              <span style={{ fontWeight: 600 }}>
-                {formatQty(allocated)} {uomLabel}
-              </span>
-              <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 3 }}>
-                Taken from the {plural.toLowerCase()} below — nothing was typed on the row yet.
-              </div>
-            </>
-          ) : (
-            <>
-              <span style={{ color: '#64748b' }}>
-                {kind === 'accepted' ? 'Accepted' : 'Rework'} quantity :
-              </span>{' '}
-              {formatQty(targetQty)} {uomLabel}
-              <span style={{ color: '#e2e8f0', margin: '0 10px' }}>|</span>
-              <span style={{ color: '#64748b' }}>Still to allocate :</span>{' '}
-              <span style={{ color: matches ? '#15803d' : '#b45309', fontWeight: 600 }}>
-                {formatQty(remaining)} {uomLabel}
-              </span>
-            </>
-          )}
-        </div>
-      </div>
 
-      {/* 🔴 NINE COLUMNS, so this one scrolls sideways INSIDE its own box rather
+        {/* 🔴 NINE COLUMNS, so this one scrolls sideways INSIDE its own box rather
           than making the dialog do it. Fixed pixel widths, not percentages: five
           of these hold date and money inputs that have a floor below which they
           are unusable, and a percentage grid squeezes them past it on a laptop. */}
-      <div style={{ overflowX: 'auto', marginTop: 14 }}>
-        <div className="responsive-table-wrapper">
-                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1180 }}>
-          <colgroup>
-            <col style={{ width: 210 }} />
-            <col style={{ width: 150 }} />
-            <col style={{ width: 145 }} />
-            <col style={{ width: 145 }} />
-            <col style={{ width: 130 }} />
-            <col style={{ width: 130 }} />
-            <col style={{ width: 130 }} />
-            <col style={{ width: 120 }} />
-            <col style={{ width: 40 }} />
-          </colgroup>
-          <thead>
-            <tr style={{ borderBottom: '1px solid #eef0f3' }}>
-              <th style={{ ...th, ...(requiresReference ? { color: '#b91c1c' } : {}) }} scope="col">
-                {singular} Reference{requiresReference ? '*' : ''}
-              </th>
-              {/* 🔴 THE FIVE ATTRIBUTES OF THE BATCH BEING BORN. Editable on a
+        <div style={{ overflowX: 'auto', marginTop: 14 }}>
+          <div className="responsive-table-wrapper">
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1180 }}>
+              <colgroup>
+                <col style={{ width: 210 }} />
+                <col style={{ width: 150 }} />
+                <col style={{ width: 145 }} />
+                <col style={{ width: 145 }} />
+                <col style={{ width: 130 }} />
+                <col style={{ width: 130 }} />
+                <col style={{ width: 130 }} />
+                <col style={{ width: 120 }} />
+                <col style={{ width: 40 }} />
+              </colgroup>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #eef0f3' }}>
+                  <th
+                    style={{ ...th, ...(requiresReference ? { color: '#b91c1c' } : {}) }}
+                    scope="col"
+                  >
+                    {singular} Reference{requiresReference ? '*' : ''}
+                  </th>
+                  {/* 🔴 THE FIVE ATTRIBUTES OF THE BATCH BEING BORN. Editable on a
                   `new` row, read-only facts about the picked batch on an
                   `existing` one — see the note on `BatchAllocation`.
 
@@ -542,244 +681,311 @@ export function BatchAllocationModal({
                   row is existing stock, so all five could only ever be grey text
                   restating the batch master. Here they are the only chance
                   anybody gets to state them. */}
-              <th style={th} scope="col">
-                Manufacturer {singular}#
-              </th>
-              <th style={th} scope="col">
-                Manufactured Date
-              </th>
-              <th style={th} scope="col">
-                Expiry Date
-              </th>
-              <th style={{ ...th, textAlign: 'right' }} scope="col">
-                Selling Price (₹)
-              </th>
-              <th style={{ ...th, textAlign: 'right' }} scope="col">
-                MRP (₹)
-              </th>
-              {/* No "Type" column: the control in the first cell is the answer, a
+                  <th style={th} scope="col">
+                    Manufacturer {singular}#
+                  </th>
+                  <th style={th} scope="col">
+                    Manufactured Date
+                  </th>
+                  <th style={th} scope="col">
+                    Expiry Date
+                  </th>
+                  <th style={{ ...th, textAlign: 'right' }} scope="col">
+                    Selling Price (₹)
+                  </th>
+                  <th style={{ ...th, textAlign: 'right' }} scope="col">
+                    MRP (₹)
+                  </th>
+                  {/* No "Type" column: the control in the first cell is the answer, a
                   box to type in or a dropdown to pick from, and a badge repeating
                   that was a column spent saying what was already on screen. */}
-              <th style={{ ...th, textAlign: 'right' }} scope="col">
-                Balance
-              </th>
-              <th style={{ ...th, textAlign: 'right', color: '#b91c1c' }} scope="col">
-                Quantity*
-              </th>
-              <th style={th} scope="col">
-                <span style={{ position: 'absolute', left: -9999 }}>Clear row</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const lookalike = lookalikes.get(row.id);
-              return (
-                <tr key={row.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ ...td, padding: '8px 10px 8px 0' }}>
-                    {row.mode === 'new' ? (
-                      /* A plain input — native, focusable, and nothing else to
+                  <th style={{ ...th, textAlign: 'right' }} scope="col">
+                    Balance
+                  </th>
+                  <th style={{ ...th, textAlign: 'right', color: '#b91c1c' }} scope="col">
+                    Quantity*
+                  </th>
+                  <th style={th} scope="col">
+                    <span style={{ position: 'absolute', left: -9999 }}>Clear row</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => {
+                  const lookalike = lookalikes.get(row.id);
+                  /* Only a row that has been ANSWERED can hold packages: a blank slot
+                 with no label and no batch is not a thing rolls can be inside. */
+                  const canHoldUnits = unitLabel.enabled && isFilled(row);
+                  return (
+                    <Fragment key={row.id}>
+                      <tr style={{ borderBottom: canHoldUnits ? 'none' : '1px solid #f1f5f9' }}>
+                        <td style={{ ...td, padding: '8px 10px 8px 0' }}>
+                          {row.mode === 'new' ? (
+                            /* A plain input — native, focusable, and nothing else to
                          learn. `downshift` earns its place on the dropdown beside
                          it, not on a text box (CLAUDE.md). */
-                      <input
-                        type="text"
-                        value={row.batchReference}
-                        onChange={(e) => typeReference(row.id, e.target.value)}
-                        placeholder={`Enter ${singular}#`}
-                        aria-label={`New ${singular.toLowerCase()} reference`}
-                        style={{
-                          width: '100%',
-                          padding: '7px 10px',
-                          fontSize: 13,
-                          border: `1px solid ${
-                            requiresReference && row.qty > 0 && !row.batchReference.trim()
-                              ? '#fca5a5'
-                              : '#d1d5db'
-                          }`,
-                          borderRadius: 4,
-                          minHeight: 34,
-                          boxSizing: 'border-box',
-                        }}
-                      />
-                    ) : (
-                      <ExistingBatchCell
-                        row={row}
-                        onPick={(option) => pickBatch(row.id, option)}
-                        focusAfterPickId={`alloc-qty-${row.id}`}
-                        options={options.filter(
-                          (option) =>
-                            !blockedBatchIds.includes(option.batchId) &&
-                            !rows.some(
-                              (other) => other.id !== row.id && other.batchId === option.batchId,
-                            ),
-                        )}
-                        otherOptions={otherOptions.filter(
-                          (option) =>
-                            !blockedBatchIds.includes(option.batchId) &&
-                            !rows.some(
-                              (other) => other.id !== row.id && other.batchId === option.batchId,
-                            ),
-                        )}
-                        hasMore={hasMore}
-                        onLoadMore={onLoadMore}
-                        isLoadingMore={isLoadingMore}
-                        uomLabel={uomLabel}
-                        search={search}
-                        onSearchChange={onSearchChange}
-                        isLoading={isLoading}
-                        isInvalid={duplicateIds.has(row.id)}
-                        singular={singular}
-                        plural={plural}
-                      />
-                    )}
-                    {lookalike && (
-                      <button
-                        type="button"
-                        onClick={() => pickBatch(row.id, lookalike)}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'flex-start',
-                          gap: 6,
-                          marginTop: 6,
-                          padding: '4px 6px',
-                          fontSize: 11.5,
-                          textAlign: 'left',
-                          color: '#92400e',
-                          background: '#fffbeb',
-                          border: '1px solid #fde68a',
-                          borderRadius: 4,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 1 }} />
-                        <span>A {singular.toLowerCase()} with this reference already exists. Add to it instead?</span>
-                      </button>
-                    )}
-                  </td>
+                            <input
+                              type="text"
+                              value={row.batchReference}
+                              onChange={(e) => typeReference(row.id, e.target.value)}
+                              placeholder={`Enter ${singular}#`}
+                              aria-label={`New ${singular.toLowerCase()} reference`}
+                              style={{
+                                width: '100%',
+                                padding: '7px 10px',
+                                fontSize: 13,
+                                border: `1px solid ${
+                                  requiresReference && row.qty > 0 && !row.batchReference.trim()
+                                    ? '#fca5a5'
+                                    : '#d1d5db'
+                                }`,
+                                borderRadius: 4,
+                                minHeight: 34,
+                                boxSizing: 'border-box',
+                              }}
+                            />
+                          ) : (
+                            <ExistingBatchCell
+                              row={row}
+                              onPick={(option) => pickBatch(row.id, option)}
+                              focusAfterPickId={`alloc-qty-${row.id}`}
+                              options={options.filter(
+                                (option) =>
+                                  !blockedBatchIds.includes(option.batchId) &&
+                                  !rows.some(
+                                    (other) =>
+                                      other.id !== row.id && other.batchId === option.batchId,
+                                  ),
+                              )}
+                              otherOptions={otherOptions.filter(
+                                (option) =>
+                                  !blockedBatchIds.includes(option.batchId) &&
+                                  !rows.some(
+                                    (other) =>
+                                      other.id !== row.id && other.batchId === option.batchId,
+                                  ),
+                              )}
+                              hasMore={hasMore}
+                              onLoadMore={onLoadMore}
+                              isLoadingMore={isLoadingMore}
+                              uomLabel={uomLabel}
+                              search={search}
+                              onSearchChange={onSearchChange}
+                              isLoading={isLoading}
+                              isInvalid={duplicateIds.has(row.id)}
+                              singular={singular}
+                              plural={plural}
+                            />
+                          )}
+                          {lookalike && (
+                            <button
+                              type="button"
+                              onClick={() => pickBatch(row.id, lookalike)}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'flex-start',
+                                gap: 6,
+                                marginTop: 6,
+                                padding: '4px 6px',
+                                fontSize: 11.5,
+                                textAlign: 'left',
+                                color: '#92400e',
+                                background: '#fffbeb',
+                                border: '1px solid #fde68a',
+                                borderRadius: 4,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 1 }} />
+                              <span>
+                                A {singular.toLowerCase()} with this reference already exists. Add
+                                to it instead?
+                              </span>
+                            </button>
+                          )}
+                        </td>
 
-                  <AttributeCell row={row} field="manufacturerBatch" onChange={setRow}>
-                    {row.option?.manufacturerBatch?.trim() || '—'}
-                  </AttributeCell>
-                  <AttributeCell row={row} field="manufacturedDate" type="date" onChange={setRow}>
-                    {displayDate(row.option?.manufacturedDate ?? null)}
-                  </AttributeCell>
-                  <AttributeCell row={row} field="expiryDate" type="date" onChange={setRow}>
-                    {displayDate(row.option?.expiryDate ?? null)}
-                  </AttributeCell>
-                  <AttributeCell row={row} field="sellingPrice" type="money" onChange={setRow}>
-                    {money(row.option?.sellingPrice ?? null)}
-                  </AttributeCell>
-                  <AttributeCell row={row} field="mrp" type="money" onChange={setRow}>
-                    {money(row.option?.mrp ?? null)}
-                  </AttributeCell>
+                        <AttributeCell row={row} field="manufacturerBatch" onChange={setRow}>
+                          {row.option?.manufacturerBatch?.trim() || '—'}
+                        </AttributeCell>
+                        <AttributeCell
+                          row={row}
+                          field="manufacturedDate"
+                          type="date"
+                          onChange={setRow}
+                        >
+                          {displayDate(row.option?.manufacturedDate ?? null)}
+                        </AttributeCell>
+                        <AttributeCell row={row} field="expiryDate" type="date" onChange={setRow}>
+                          {displayDate(row.option?.expiryDate ?? null)}
+                        </AttributeCell>
+                        <AttributeCell
+                          row={row}
+                          field="sellingPrice"
+                          type="money"
+                          onChange={setRow}
+                        >
+                          {money(row.option?.sellingPrice ?? null)}
+                        </AttributeCell>
+                        <AttributeCell row={row} field="mrp" type="money" onChange={setRow}>
+                          {money(row.option?.mrp ?? null)}
+                        </AttributeCell>
 
-                  <td style={{ ...td, textAlign: 'right', color: '#64748b' }}>
-                    {row.option ? (
-                      <>
-                        <div>
-                          {formatQty(row.option.internalQty)} {uomLabel}
-                        </div>
-                        {toNumber(row.option.externalQty) > 0 && (
-                          <div style={{ fontSize: 11.5, color: '#b45309' }}>
-                            +{formatQty(row.option.externalQty)} with a processor
-                          </div>
-                        )}
-                      </>
-                    ) : row.mode === 'new' && isFilled(row) ? (
-                      <span style={{ color: '#94a3b8' }}>New {singular.toLowerCase()}</span>
-                    ) : (
-                      '—'
-                    )}
-                  </td>
+                        <td style={{ ...td, textAlign: 'right', color: '#64748b' }}>
+                          {row.option ? (
+                            <>
+                              <div>
+                                {formatQty(row.option.internalQty)} {uomLabel}
+                              </div>
+                              {toNumber(row.option.externalQty) > 0 && (
+                                <div style={{ fontSize: 11.5, color: '#b45309' }}>
+                                  +{formatQty(row.option.externalQty)} with a processor
+                                </div>
+                              )}
+                            </>
+                          ) : row.mode === 'new' && isFilled(row) ? (
+                            <span style={{ color: '#94a3b8' }}>New {singular.toLowerCase()}</span>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
 
-                  <td style={{ ...td, textAlign: 'right' }}>
-                    <input
-                      id={`alloc-qty-${row.id}`}
-                      type="number"
-                      onWheel={blurOnWheel}
-                      step="0.0001"
-                      min="0"
-                      disabled={!isFilled(row)}
-                      value={row.qty || ''}
-                      onChange={(e) => setRow(row.id, { qty: Number(e.target.value) || 0 })}
-                      placeholder="0.00"
-                      aria-label={
-                        row.mode === 'existing' || row.batchReference.trim()
-                          ? `Quantity into ${singular.toLowerCase()} ${row.batchReference || `this ${singular.toLowerCase()}`}`
-                          : `Quantity — name or pick a ${singular.toLowerCase()} first`
-                      }
-                      style={{
-                        width: '100%',
-                        boxSizing: 'border-box',
-                        padding: '6px 8px',
-                        fontSize: 13,
-                        textAlign: 'right',
-                        border: '1px solid #d1d5db',
-                        borderRadius: 4,
-                        minHeight: 32,
-                        background: isFilled(row) ? '#fff' : '#f8fafc',
-                      }}
-                    />
-                  </td>
+                        <td style={{ ...td, textAlign: 'right' }}>
+                          <input
+                            id={`alloc-qty-${row.id}`}
+                            type="number"
+                            onWheel={blurOnWheel}
+                            step="0.0001"
+                            min="0"
+                            disabled={!isFilled(row)}
+                            value={row.qty || ''}
+                            onChange={(e) => setRow(row.id, { qty: Number(e.target.value) || 0 })}
+                            placeholder="0.00"
+                            aria-label={
+                              row.mode === 'existing' || row.batchReference.trim()
+                                ? `Quantity into ${singular.toLowerCase()} ${row.batchReference || `this ${singular.toLowerCase()}`}`
+                                : `Quantity — name or pick a ${singular.toLowerCase()} first`
+                            }
+                            style={{
+                              width: '100%',
+                              boxSizing: 'border-box',
+                              padding: '6px 8px',
+                              fontSize: 13,
+                              textAlign: 'right',
+                              border: '1px solid #d1d5db',
+                              borderRadius: 4,
+                              minHeight: 32,
+                              background: isFilled(row) ? '#fff' : '#f8fafc',
+                            }}
+                          />
+                        </td>
 
-                  <td style={td}>
-                    <button
-                      type="button"
-                      onClick={() => clearOrRemoveRow(row.id)}
-                      title={isFilled(row) ? 'Clear this row' : 'Remove this row'}
-                      aria-label={isFilled(row) ? 'Clear this row' : 'Remove this row'}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        width: 22,
-                        height: 22,
-                        border: 'none',
-                        borderRadius: '50%',
-                        background: 'transparent',
-                        color: '#cbd5e1',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <X size={14} />
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-                  </div>
-      </div>
+                        <td style={td}>
+                          <button
+                            type="button"
+                            onClick={() => clearOrRemoveRow(row.id)}
+                            title={isFilled(row) ? 'Clear this row' : 'Remove this row'}
+                            aria-label={isFilled(row) ? 'Clear this row' : 'Remove this row'}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: 22,
+                              height: 22,
+                              border: 'none',
+                              borderRadius: '50%',
+                              background: 'transparent',
+                              color: '#cbd5e1',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <X size={14} />
+                          </button>
+                        </td>
+                      </tr>
 
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 16,
-          flexWrap: 'wrap',
-          marginTop: 16,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <AddRowLink
-            label={`New ${singular}`}
-            onClick={() => setRows((prev) => [...prev, blankRow('new')])}
-            disabled={rows.length >= MAX_ROWS}
-          />
-          <span style={{ color: '#e2e8f0' }}>|</span>
-          <AddRowLink
-            label={`Existing ${singular}`}
-            onClick={() => setRows((prev) => [...prev, blankRow('existing')])}
-            disabled={rows.length >= MAX_ROWS}
-          />
+                      {/* ── The level BELOW this batch ────────────────────────────
+                    🔴 DOM order IS tab order, so this sits immediately after the
+                    allocation row it belongs to — Tab walks the batch's own
+                    fields, then its packages, then the next batch. */}
+                      {canHoldUnits && (
+                        <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td colSpan={8} style={{ padding: '0 0 10px' }}>
+                            <BatchUnitsTrigger
+                              count={row.units.length}
+                              singular={unitLabel.singular}
+                              plural={unitLabel.plural}
+                              onOpen={() => openUnits(row.id)}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
-        <span style={{ fontSize: 12, color: '#64748b' }}>
-          {plural} added: {filledRows.length}/{MAX_ROWS}
-        </span>
-      </div>
-    </Modal>
+
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 16,
+            flexWrap: 'wrap',
+            marginTop: 16,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <AddRowLink
+              label={`New ${singular}`}
+              onClick={() => setRows((prev) => [...prev, blankRow('new')])}
+              disabled={rows.length >= MAX_ROWS}
+            />
+            <span style={{ color: '#e2e8f0' }}>|</span>
+            <AddRowLink
+              label={`Existing ${singular}`}
+              onClick={() => setRows((prev) => [...prev, blankRow('existing')])}
+              disabled={rows.length >= MAX_ROWS}
+            />
+          </div>
+          <span style={{ fontSize: 12, color: '#64748b' }}>
+            {plural} added: {filledRows.length}/{MAX_ROWS}
+          </span>
+        </div>
+      </Modal>
+
+      {unitsRow && (
+        <BatchUnitsModal
+          isOpen
+          onClose={() => setUnitsFor(null)}
+          batchName={unitsRow.batchReference.trim() || singular}
+          batchSingular={singular}
+          singular={unitLabel.singular}
+          plural={unitLabel.plural}
+          batchQty={unitsRow.qty}
+          uomLabel={uomLabel}
+          units={unitsRow.units}
+          /* Only a batch that already exists has packages to add to, so a
+           "New {batch}" row offers none and the link disables itself. */
+          existingOptions={
+            unitsRow.mode === 'existing' && unitsRow.option
+              ? unitsRow.option.units.map((unit) => ({
+                  batchUnitId: unit.batchUnitId,
+                  label: unit.label,
+                }))
+              : []
+          }
+          onAdd={() => addUnit(unitsRow.id)}
+          onAddExisting={() => addExistingUnit(unitsRow.id)}
+          onChange={(unitId, field, value) => changeUnit(unitsRow.id, unitId, field, value)}
+          onPickExisting={(unitId, option) => pickExistingUnit(unitsRow.id, unitId, option)}
+          onRemove={(unitId) => removeUnit(unitsRow.id, unitId)}
+        />
+      )}
+    </>
   );
 }
 

@@ -120,6 +120,93 @@ const outputBatchAllocationSchema = z
      * would read as "free" instead of "not stated". */
     sellingPrice: z.coerce.number().min(0).nullable().optional(),
     mrp: z.coerce.number().min(0).nullable().optional(),
+
+    /**
+     * 🔴 THE PACKAGES INSIDE THIS BATCH — the takas, rolls or bales the processor
+     * physically handed back, when the org runs a unit level.
+     *
+     * Allowed on BOTH kinds of row, unlike the attributes above, and the asymmetry
+     * is deliberate: restamping an existing batch's expiry rewrites a fact about
+     * goods that already exist, whereas adding packages to it records goods that
+     * have just arrived. The second half of a split delivery is three more rolls,
+     * not a correction to the first half's.
+     *
+     * 🔴 Naming them is optional; naming SOME of them is not (2026-09-02). Name
+     * none and the whole batch comes back untagged, exactly as before the level
+     * existed. Name one and they must add up to `qty` — enforced here AND beside
+     * the write, since this schema runs on the HTTP route alone.
+     */
+    units: z
+      .array(
+        z
+          .object({
+            /**
+             * Set to TOP UP a package that already exists rather than name a new
+             * one — the same roll coming back a second time. Mutually exclusive
+             * with `label`, exactly as `batchId` and `batchReference` are one
+             * level up, and for the same reason: a label is a physical tag, so
+             * re-typing an existing one is a duplicate and not an addition.
+             */
+            batchUnitId: z.string().uuid().optional(),
+            /** 🔴 Optional since 2026-09-03 — a roll the processor handed back with
+             * no tag on it is auto-named `#seq`. Only the quantity is required. */
+            label: z.string().trim().max(60).optional(),
+            qty: z.coerce.number().positive('Every unit needs a quantity greater than zero.'),
+          })
+          /* 🔴 "Not BOTH", no longer "exactly one" — a row with NEITHER is now the
+             ordinary case: a package that arrived without a tag. */
+          .refine((unit) => !(unit.batchUnitId && unit.label?.trim()), {
+            message: 'A unit row is either an existing unit or a new one, not both.',
+            path: ['label'],
+          }),
+      )
+      .optional(),
+  })
+  .refine(
+    (row) => {
+      // 🔴 An EQUALITY since 2026-09-02: naming any package commits to naming
+      // them all, so a batch is broken down completely or not at all. Naming NONE
+      // stays legal, which is what keeps every org without the level working.
+      const units = row.units ?? [];
+      if (units.length === 0) return true;
+      const total = units.reduce((sum, unit) => sum + unit.qty, 0);
+      return Math.abs(total - row.qty) < 0.00005;
+    },
+    {
+      message:
+        'The units named inside a batch must add up to the batch itself — name all of them, or none.',
+      path: ['units'],
+    },
+  )
+  .refine(
+    (row) => {
+      const labels = (row.units ?? [])
+        .map((unit) => unit.label?.trim().toLowerCase())
+        .filter((label): label is string => Boolean(label));
+      return new Set(labels).size === labels.length;
+    },
+    {
+      message: 'Two units of one batch cannot share a label — a label is a physical tag.',
+      path: ['units'],
+    },
+  )
+  .refine(
+    (row) => {
+      // The same roll cannot be topped up twice on one receipt; the two rows
+      // would be indistinguishable and the user meant a single number.
+      const ids = (row.units ?? [])
+        .map((unit) => unit.batchUnitId)
+        .filter((id): id is string => Boolean(id));
+      return new Set(ids).size === ids.length;
+    },
+    {
+      message: 'The same unit is listed twice in this batch — combine the quantities.',
+      path: ['units'],
+    },
+  )
+  .refine((row) => row.batchId || !(row.units ?? []).some((unit) => unit.batchUnitId), {
+    message: 'A batch being created has no existing units to add to.',
+    path: ['units'],
   })
   .refine((row) => Boolean(row.batchId) !== Boolean(row.batchReference?.trim()), {
     message: 'A batch row is either an existing batch or a new one, not both and not neither.',

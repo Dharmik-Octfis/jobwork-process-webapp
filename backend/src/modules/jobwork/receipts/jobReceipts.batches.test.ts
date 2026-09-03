@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma, runAsTenant } from '../../../db/prisma.ts';
+import { deleteTestOrganization, uniqueOrgCode } from '../../../db/testTenant.ts';
 import {
   createBatch,
   getBalance,
@@ -117,7 +118,7 @@ const batchRowsOf = (receiptId: string) =>
 
 beforeAll(async () => {
   const org = await prisma.organization.create({
-    data: { name: `receipt-batches-${unique()}`, orgCode: String(Date.now()).slice(-10) },
+    data: { name: `receipt-batches-${unique()}`, orgCode: uniqueOrgCode() },
     select: { id: true },
   });
   orgId = org.id;
@@ -193,6 +194,8 @@ afterAll(async () => {
     await tx.jobOrderStep.deleteMany({ where: { organizationId: orgId } });
     await tx.jobOrder.deleteMany({ where: { organizationId: orgId } });
     await tx.stockLedgerEntry.deleteMany({ where: { organizationId: orgId } });
+    // Packages before batches — a package points at its batch with a RESTRICT key.
+    await tx.batchUnit.deleteMany({ where: { organizationId: orgId } });
     await tx.batch.deleteMany({ where: { organizationId: orgId } });
     await tx.process.deleteMany({ where: { organizationId: orgId } });
     await tx.item.deleteMany({ where: { organizationId: orgId } });
@@ -201,7 +204,7 @@ afterAll(async () => {
     await tx.unitOfMeasurement.deleteMany({ where: { organizationId: orgId } });
     await tx.numberSequence.deleteMany({ where: { organizationId: orgId } });
   });
-  await prisma.organization.deleteMany({ where: { id: orgId } });
+  await deleteTestOrganization(orgId);
 });
 
 describe('receipt — several batches from one delivery', { timeout: 60_000 }, () => {

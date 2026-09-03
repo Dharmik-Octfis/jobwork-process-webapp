@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Prisma } from '../../../../generated/prisma/client.ts';
-import { prisma, runAsTenant } from '../../../db/prisma.ts';
+import { runAsTenant } from '../../../db/prisma.ts';
+import { createTestOrganization, deleteTestOrganization } from '../../../db/testTenant.ts';
 import { ApiError } from '../../../lib/apiError.ts';
 import {
   createBatch,
@@ -47,16 +48,7 @@ let processorId: string;
 let customerId: string;
 
 beforeAll(async () => {
-  const org = await prisma.organization.create({
-    data: {
-      name: `ledger-test-${unique()}`,
-      // 10 digits, like the real generator. Unique per run so parallel suites
-      // never collide on it.
-      orgCode: String(Date.now()).slice(-10),
-    },
-    select: { id: true },
-  });
-  orgId = org.id;
+  orgId = await createTestOrganization('ledger-test');
 
   // Everything below is RLS-gated, so it has to be written inside a tenant
   // context — exactly like the app writes it. Doing this through raw SQL as the
@@ -121,7 +113,7 @@ afterAll(async () => {
     await tx.unitOfMeasurement.deleteMany({ where: { organizationId: orgId } });
     await tx.numberSequence.deleteMany({ where: { organizationId: orgId } });
   });
-  await prisma.organization.deleteMany({ where: { id: orgId } });
+  await deleteTestOrganization(orgId);
 });
 
 /** A fresh own-stock batch with `qty` already received into the godown. */

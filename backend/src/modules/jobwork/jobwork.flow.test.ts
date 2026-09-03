@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma, runAsTenant } from '../../db/prisma.ts';
+import { deleteTestOrganization, uniqueOrgCode } from '../../db/testTenant.ts';
 import {
   createBatch,
   getBalance,
@@ -101,7 +102,7 @@ let cutterId: string;
 
 beforeAll(async () => {
   const org = await prisma.organization.create({
-    data: { name: `jobwork-flow-${unique()}`, orgCode: String(Date.now()).slice(-10) },
+    data: { name: `jobwork-flow-${unique()}`, orgCode: uniqueOrgCode() },
     select: { id: true },
   });
   orgId = org.id;
@@ -219,7 +220,7 @@ afterAll(async () => {
     await tx.unitOfMeasurement.deleteMany({ where: { organizationId: orgId } });
     await tx.numberSequence.deleteMany({ where: { organizationId: orgId } });
   });
-  await prisma.organization.deleteMany({ where: { id: orgId } });
+  await deleteTestOrganization(orgId);
 });
 
 /**

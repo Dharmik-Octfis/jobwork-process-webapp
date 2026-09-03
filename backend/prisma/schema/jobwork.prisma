@@ -551,7 +551,17 @@ model JobOrderStepInputBatch {
   organizationId      String @map("organization_id") @db.Uuid
   jobOrderStepInputId String @map("job_order_step_input_id") @db.Uuid
 
-  batchId    String @map("batch_id") @db.Uuid
+  batchId String @map("batch_id") @db.Uuid
+
+  /// WHICH PACKAGE of that batch the planner meant — a taka, roll or bale — when
+  /// the org runs a unit level. Null means the batch generally, which is what
+  /// every plan written before the level existed means.
+  ///
+  /// 🔴 STILL A NOTE, NOT A RESERVATION. Naming a roll here holds nothing: the
+  /// same roll can be planned twice and issued once, exactly as a batch can. The
+  /// issue picker WARNS on it; it does not subtract it.
+  batchUnitId String? @map("batch_unit_id") @db.Uuid
+
   locationId String @map("location_id") @db.Uuid
 
   /// In the INPUT ROW's unit, which is the batch's stocking unit (§5.1). These sum
@@ -568,11 +578,23 @@ model JobOrderStepInputBatch {
   organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   stepInput     JobOrderStepInput @relation(fields: [jobOrderStepInputId], references: [id], onDelete: Cascade)
   batch         Batch             @relation("JobOrderStepInputBatchBatch", fields: [batchId], references: [id])
+  batchUnit     BatchUnit?        @relation("JobOrderStepInputBatchUnit", fields: [batchUnitId], references: [id])
   location      Location          @relation("JobOrderStepInputBatchLocation", fields: [locationId], references: [id])
   createdByUser User?             @relation("JobOrderStepInputBatchCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User?             @relation("JobOrderStepInputBatchUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
-  @@unique([jobOrderStepInputId, batchId, locationId])
+  /// 🔴 THE PACKAGE IS PART OF THE KEY, AND THE INDEX IS `NULLS NOT DISTINCT`.
+  ///
+  /// Adding a nullable column to a unique key is the trap the plan calls out
+  /// (§3.4): Postgres treats `NULL ≠ NULL`, so two untagged rows for one
+  /// (input, batch, location) would BOTH insert and the constraint would quietly
+  /// stop constraining exactly the case it was written for.
+  ///
+  /// The migration therefore builds this index by hand with `NULLS NOT DISTINCT`
+  /// (Postgres 15+, and this runs on 18). Prisma cannot express that clause, so
+  /// the declaration here is the column list only — which is all `migrate diff`
+  /// compares, so it reports no drift.
+  @@unique([jobOrderStepInputId, batchId, locationId, batchUnitId])
   @@index([organizationId, jobOrderStepInputId])
   /// "What else is planning to use this batch" — the issue picker's warning.
   @@index([organizationId, batchId])
@@ -732,6 +754,18 @@ model JobIssueLine {
 
   batchId String @map("batch_id") @db.Uuid
 
+  /// WHICH PACKAGE of that batch went — a taka, roll, bale — when the org runs a
+  /// unit level. Nullable, and the null is load-bearing: it is how the batch's
+  /// untagged remainder leaves, and it is what every line written before the
+  /// level existed means.
+  ///
+  /// 🔴 THREE PACKAGES OF ONE BATCH ARE THREE LINES, exactly as three batches are
+  /// three lines today. Each line carries its own `qty`, checked against what
+  /// that package still holds rather than against the batch — a roll already
+  /// broken into is exactly the one an operator sends the remainder of, so part
+  /// of a package is a real answer (plan §11, decided 2026-09-02).
+  batchUnitId String? @map("batch_unit_id") @db.Uuid
+
   /// 🔴 WHICH GODOWN THIS LINE PHYSICALLY LEFT (2026-08-14).
   ///
   /// The header's `sourceLocationId` is the DISPATCH POINT — the address printed
@@ -763,6 +797,7 @@ model JobIssueLine {
   item           Item               @relation("JobIssueLineItem", fields: [itemId], references: [id])
   uom            UnitOfMeasurement? @relation("JobIssueLineUom", fields: [uomId], references: [id])
   batch          Batch              @relation("JobIssueLineBatch", fields: [batchId], references: [id])
+  batchUnit      BatchUnit?         @relation("JobIssueLineBatchUnit", fields: [batchUnitId], references: [id])
   sourceLocation Location           @relation("JobIssueLineSource", fields: [sourceLocationId], references: [id])
   createdByUser  User?              @relation("JobIssueLineCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser  User?              @relation("JobIssueLineUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)

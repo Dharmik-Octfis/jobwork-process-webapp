@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma, runAsTenant } from '../../../db/prisma.ts';
+import { deleteTestOrganization, uniqueOrgCode } from '../../../db/testTenant.ts';
 import { createBatch, postMovement } from '../../inventory/stock-ledger/stockLedger.service.ts';
 import { SOURCE_DOC_TYPES, runAsDocument } from '../jobwork.types.ts';
 import { createNewProcess } from '../processes/processes.service.ts';
@@ -35,7 +36,7 @@ let processId: string;
 
 beforeAll(async () => {
   const org = await prisma.organization.create({
-    data: { name: `issue-value-${unique()}`, orgCode: String(Date.now()).slice(-10) },
+    data: { name: `issue-value-${unique()}`, orgCode: uniqueOrgCode() },
     select: { id: true },
   });
   orgId = org.id;
@@ -107,7 +108,7 @@ afterAll(async () => {
     await tx.unitOfMeasurement.deleteMany({ where: { organizationId: orgId } });
     await tx.numberSequence.deleteMany({ where: { organizationId: orgId } });
   });
-  await prisma.organization.deleteMany({ where: { id: orgId } });
+  await deleteTestOrganization(orgId);
 });
 
 describe('issue — two lines drawing on one batch', { timeout: 60_000 }, () => {

@@ -67,9 +67,22 @@ export const jobIssueLineSchema = z.object({
    */
   sourceLocationId: z.string().uuid().nullable().optional(),
   /**
-   * Set only for a package-granular issue. When it is set the quantity is the
-   * package's own measured quantity — ticking a taka takes ALL of it (§5.3), so
-   * `qty` is checked against the package rather than typed freely.
+   * 🔴 WHICH PACKAGE of the batch this line sends — a taka, roll or bale — when
+   * the org runs a unit level.
+   *
+   * Set only for a package-granular issue. Omitted, the line draws on the batch's
+   * UNTAGGED remainder, which is what every line written before the level existed
+   * means and what an item with no package grid always means.
+   *
+   * Three packages of one batch are three lines, exactly as three batches are.
+   */
+  batchUnitId: z.string().uuid().nullable().optional(),
+  /**
+   * When `batchUnitId` is set this is how much of THAT package goes — checked
+   * against what the package still holds, never against the batch.
+   *
+   * Part of a roll is a real answer: a roll already broken into is exactly the
+   * one an operator sends the remainder of.
    */
   qty: z.coerce.number().positive('Every line needs a quantity greater than zero.'),
 });

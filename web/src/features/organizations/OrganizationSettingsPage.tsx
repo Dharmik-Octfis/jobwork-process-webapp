@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
 import { Copy, Check } from 'lucide-react';
-import { useNavigate,useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -24,7 +24,8 @@ type MasterData = {
 
 export function OrganizationSettingsPage() {
   const { orgId: id } = useParams<{ orgId: string }>();
-  const navigate = useNavigate();  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
 
   const {
@@ -109,9 +110,10 @@ export function OrganizationSettingsPage() {
     if (!id) return;
     try {
       setServerError(null);
+      // No toast here — PUT /organizations/:id now returns the standard envelope,
+      // and api/client.ts toasts its `message` for every mutation.
       await organizationsApi.updateOrganization(id, data);
       await queryClient.invalidateQueries({ queryKey: ['organizations'] });
-      toast.success('Organization updated successfully');
     } catch (err) {
       setServerError(toApiErrorMessage(err));
     }

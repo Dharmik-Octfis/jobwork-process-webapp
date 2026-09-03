@@ -173,6 +173,17 @@ model ItemAssemblyLine {
   /// CONSUMED by an assemble (the user picks it), CREATED by a disassemble (written on post).
   batchId String @map("batch_id") @db.Uuid
 
+  /// WHICH PACKAGE of that batch was consumed — a taka, roll or bale — when the org runs a unit
+  /// level. Null means the batch's untagged remainder, which is what every line written before
+  /// the level existed means.
+  ///
+  /// 🔴 A PACKAGE IS **NOT** ATOMIC HERE, unlike on a job issue, and the difference is physical.
+  /// An issue sends the roll to the processor, so the whole roll travels; an assembly consumes
+  /// material where it stands, and cutting 20 m off a 100 m roll is the ordinary case. A recipe
+  /// requirement is a quantity, not a count of rolls — so this line carries its own `qty` and the
+  /// package simply says which roll it came off.
+  batchUnitId String? @map("batch_unit_id") @db.Uuid
+
   /// SNAPSHOT of the recipe at post time. Recipes change; a posted document must still be
   /// able to explain itself without re-reading a recipe that has moved on. Repeats across the
   /// several lines of one component.
@@ -197,6 +208,7 @@ model ItemAssemblyLine {
   item          Item               @relation("ItemAssemblyLineItem", fields: [itemId], references: [id])
   uom           UnitOfMeasurement? @relation("ItemAssemblyLineUom", fields: [uomId], references: [id])
   batch         Batch              @relation("ItemAssemblyLineBatch", fields: [batchId], references: [id])
+  batchUnit     BatchUnit?         @relation("ItemAssemblyLineBatchUnit", fields: [batchUnitId], references: [id])
   createdByUser User?              @relation("ItemAssemblyLineCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User?              @relation("ItemAssemblyLineUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 

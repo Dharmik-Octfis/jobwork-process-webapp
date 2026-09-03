@@ -110,6 +110,22 @@ export type Item = z.infer<typeof itemSchema>;
 export type CreateItemDto = z.infer<typeof createItemSchema>;
 export type UpdateItemDto = z.infer<typeof updateItemSchema>;
 
+/**
+ * One package inside a declared batch — a taka, roll, bale — when the org runs a
+ * unit level.
+ *
+ * `id` is the real `batch_units.id`, round-tripped by the form. A row carrying a
+ * known one is that package EDITED; a row without is a new package; and a package
+ * the payload never mentions was deleted. Exactly the contract `batchInfoSchema`'s
+ * own `id` has one level up, and for the same reason: without it the writer has to
+ * reverse everything and re-create, which is what made a re-save destructive.
+ */
+export const batchUnitInfoSchema = z.object({
+  id: z.string().optional(),
+  label: z.string().optional().nullable(),
+  quantityIn: z.union([z.string(), z.number()]).optional().nullable(),
+});
+
 export const batchInfoSchema = z.object({
   id: z.string().optional(),
   batchReference: z.string().optional().nullable(),
@@ -119,6 +135,10 @@ export const batchInfoSchema = z.object({
   sellingPrice: z.union([z.string(), z.number()]).optional().nullable(),
   mrp: z.union([z.string(), z.number()]).optional().nullable(),
   quantityIn: z.union([z.string(), z.number()]).optional().nullable(),
+  /** The packages inside this batch. Naming them is optional; naming SOME of them
+   * is not (2026-09-02) — name none and the whole batch is untagged, name one and
+   * they must add up to the batch. The service enforces it. */
+  units: z.array(batchUnitInfoSchema).optional(),
 });
 
 export const locationRowSchema = z.object({

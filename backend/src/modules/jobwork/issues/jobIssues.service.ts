@@ -8,6 +8,7 @@ import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 // creates any. The scaffold that did was deleted with FIFO allocation.
 import {
   getAvailableBatches,
+  getAvailableBatchUnits,
   getBalancesByBatch,
   postMovement,
   resolveBatchesForPosting,
@@ -71,6 +72,9 @@ const ISSUE_INCLUDE = {
       // 🔴 No `batchNumber` (2026-08-14). It is an internal key and must not leave
       // the server — a field in the payload is a field somebody renders.
       batch: { select: { id: true, supplierBatchRef: true } },
+      /** Which package this line sent, when the org runs a unit level. Null on
+       * the batch's untagged remainder and on every line written before it. */
+      batchUnit: { select: { id: true, seq: true, label: true } },
     },
   },
 } satisfies Prisma.JobIssueInclude;
@@ -206,6 +210,9 @@ async function resolveDestination(
 }
 
 const ZERO = new Prisma.Decimal(0);
+/** The tolerance every quantity comparison in this codebase uses — the columns'
+ * own precision, so 3 x 33.3333 is not rejected for being a billionth off. */
+const QTY_EPSILON = new Prisma.Decimal('0.00005');
 
 /**
  * 🔴 Guard 3 — the tolerance ceiling, one item at a time.
@@ -288,12 +295,18 @@ async function assertWithinTolerance(
 /** One row of the availability query — what the FIFO queue is made of. */
 type AvailableRow = Awaited<ReturnType<typeof getAvailableBatches>>[number];
 
+/** One package of one batch at one location, and what is left of it. */
+type AvailableUnitRow = Awaited<ReturnType<typeof getAvailableBatchUnits>>[number];
+
 /** A request line once its item is known. `batchId` is null when the item has no
  * stock on record — see the scaffold note in `resolveLines`. */
 interface ResolvedLineItem {
   itemId: string;
   uomId: string | null;
   batchId: string | null;
+  /** Which package of that batch, when the org runs a unit level. Null means the
+   * batch's untagged remainder. */
+  batchUnitId: string | null;
   /** The godown the client picked this row from. Null means the header's, which
    * since 2026-08-19 is the only location a line may name anyway. */
   sourceLocationId: string | null;
@@ -416,6 +429,43 @@ async function resolveLines(
   }
 
   /**
+   * 🔴 THE PACKAGES BEHIND THOSE BATCHES, in one grouped query for the whole
+   * challan — never one per batch, and never one per line.
+   *
+   * Two things are read off this and they are different questions:
+   *
+   *   · what a NAMED package still holds, which is the quantity a line taking it
+   *     must be for, because a package is atomic at issue (plan §2.3);
+   *   · what is UNTAGGED in a batch here, which is the ceiling on any line that
+   *     names no package. Without that second figure an untagged line passes the
+   *     batch-level guard below and is then refused deep inside `postMovement` by
+   *     the §2.5 invariant — a rule the user never saw, quoted at them after the
+   *     screen has already accepted their entry.
+   */
+  const unitsByKey = new Map<string, Map<string, AvailableUnitRow>>();
+  const taggedByKey = new Map<string, Prisma.Decimal>();
+  if (availableByKey.size > 0) {
+    for (const unit of await getAvailableBatchUnits(tx, {
+      organizationId,
+      batchIds: [...new Set([...availableByKey.values()].map((row) => row.batchId))],
+      locationId: context.locationId,
+      ownership: context.ownership,
+    })) {
+      const key = keyOf(unit.batchId, unit.locationId);
+      const forKey = unitsByKey.get(key) ?? new Map<string, AvailableUnitRow>();
+      forKey.set(unit.batchUnitId, unit);
+      unitsByKey.set(key, forKey);
+      taggedByKey.set(key, (taggedByKey.get(key) ?? ZERO).plus(unit.availableQty));
+    }
+  }
+
+  /** What may leave a batch at a location WITHOUT naming a package. Equal to the
+   * whole balance for every batch that has none, which is every batch in an org
+   * that never switched the level on. */
+  const untaggedAt = (key: string) =>
+    (availableByKey.get(key)?.availableQty ?? ZERO).minus(taggedByKey.get(key) ?? ZERO);
+
+  /**
    * 🔴 WHETHER A BATCH IS OPTIONAL IS THE ITEM'S DECISION, NOT THE DIALOG'S.
    *
    * `Item.inventoryTracking = 'batch'` is a promise that every metre of this item
@@ -521,7 +571,12 @@ async function resolveLines(
         if (remaining.lessThanOrEqualTo(0)) break;
         const key = keyOf(row.batchId, row.locationId);
         const already = takenByKey.get(key) ?? ZERO;
-        const spare = row.availableQty.minus(already);
+        /* 🔴 The UNTAGGED balance, not the whole one. This path serves an item
+           with no picker at all, which by inheritance has no packages either — so
+           the two figures are equal here today. Using the untagged one anyway
+           costs nothing and means FIFO can never queue a roll it has no way to
+           name, if the level ever reaches an item that also runs this path. */
+        const spare = untaggedAt(key).minus(already);
         if (spare.lessThanOrEqualTo(0)) continue;
 
         const take = remaining.lessThan(spare) ? remaining : spare;
@@ -542,7 +597,10 @@ async function resolveLines(
         // only place searched — saying "this site" would describe stock the rule
         // no longer lets this challan touch. The user never saw a batch here, so
         // an error about batches would describe machinery they have no view of.
-        const onHand = queue.reduce((sum, b) => sum.plus(b.availableQty), ZERO);
+        const onHand = queue.reduce(
+          (sum, b) => sum.plus(untaggedAt(keyOf(b.batchId, b.locationId))),
+          ZERO,
+        );
         throw new ApiError(
           400,
           `${item?.name ?? 'This item'} has ${onHand.toString()} available at ${locationName}, ` +
@@ -594,6 +652,39 @@ async function resolveLines(
       );
     }
 
+    /**
+     * 🔴 A NAMED PACKAGE IS TAKEN BY QUANTITY, NOT WHOLE — §11's open decision,
+     * taken 2026-09-02.
+     *
+     * It was atomic first: a package went out entire, on the reasoning that a
+     * roll physically travels to the processor. That is true of a full roll and
+     * wrong of every part-used one — a roll already broken into is exactly the
+     * one an operator sends the remainder of — so the quantity is typed on every
+     * screen and checked against what the package still holds.
+     *
+     * The allocator needs nothing extra for it: the per-package running total
+     * below already sums by (batch, location, unit), which is the same map an
+     * atomic pick used. Only this comparison changed, from `=` to `≤`.
+     */
+    if (line.batchUnitId) {
+      const unit = unitsByKey.get(keyOf(line.batchId, pickedLocationId))?.get(line.batchUnitId);
+      if (!unit) {
+        throw ApiError.badRequest(
+          'One of the selected units is not in that batch here, or none of it is left. ' +
+            'Re-open the picker so it can show what is actually available.',
+          { [`lines.${index}.batchUnitId`]: 'Not available here.' },
+        );
+      }
+      if (new Prisma.Decimal(line.qty).minus(unit.availableQty).greaterThan(QTY_EPSILON)) {
+        throw new ApiError(
+          400,
+          `${unit.label} has ${unit.availableQty.toString()} available here, but ${line.qty} ` +
+            'is being issued out of it.',
+          { [`lines.${index}.qty`]: `${unit.label} holds ${unit.availableQty.toString()}.` },
+        );
+      }
+    }
+
     resolved.push({
       ...line,
       batchId: line.batchId,
@@ -602,27 +693,65 @@ async function resolveLines(
     });
   }
 
-  // Totals per batch AND location, checked after the lines are gathered: two lines
-  // against the same batch in the same godown must not each pass on their own and
-  // overdraw it together. Keyed by location because the same batch in two racks
-  // holds two independent balances.
-  const perBatch = new Map<string, Prisma.Decimal>();
+  /**
+   * Totals checked after the lines are gathered: two lines against the same stock
+   * must not each pass on their own and overdraw it together. Keyed by location
+   * because the same batch in two racks holds two independent balances.
+   *
+   * 🔴 TWO SEPARATE SUMS NOW, not one. An untagged line and a line naming a
+   * package draw on DIFFERENT pools of the same batch — the whole point of the
+   * §2.5 invariant is that they cannot be added together and compared to the
+   * batch total, because that comparison passes while the packages are being
+   * overdrawn.
+   */
+  const perBatchUntagged = new Map<string, Prisma.Decimal>();
+  const perUnit = new Map<string, Prisma.Decimal>();
   for (const line of resolved) {
     const key = keyOf(line.batchId, line.sourceLocationId);
-    perBatch.set(key, (perBatch.get(key) ?? new Prisma.Decimal(0)).plus(line.qty));
+    if (line.batchUnitId) {
+      const unitKey = `${key}#${line.batchUnitId}`;
+      perUnit.set(unitKey, (perUnit.get(unitKey) ?? ZERO).plus(line.qty));
+    } else {
+      perBatchUntagged.set(key, (perBatchUntagged.get(key) ?? ZERO).plus(line.qty));
+    }
   }
-  for (const [key, wanted] of perBatch) {
+
+  for (const [key, wanted] of perBatchUntagged) {
     const batch = availableByKey.get(key);
     // A batch created for this very issue is not in the availability map and needs
     // no check — it holds exactly what is about to leave it.
     if (!batch) continue;
-    if (wanted.greaterThan(batch.availableQty)) {
+    const spare = untaggedAt(key);
+    if (wanted.greaterThan(spare)) {
       // Named by its reference, never by the internal number — an error message
       // is a user surface, and quoting a number nowhere on their screen tells
       // them nothing about which row to fix.
+      const label = batch.supplierBatchRef ?? 'selected';
+      // Two different failures, and telling them apart is the difference between
+      // "add more stock" and "tick the rolls" — which are not the same fix.
       throw ApiError.badRequest(
-        `Batch ${batch.supplierBatchRef ?? 'selected'} has ${batch.availableQty.toString()} ` +
-          `available, but ${wanted.toString()} is being issued.`,
+        spare.equals(batch.availableQty)
+          ? `Batch ${label} has ${spare.toString()} available, but ${wanted.toString()} is being issued.`
+          : `Batch ${label} holds ${batch.availableQty.toString()} here, of which ` +
+              `${(taggedByKey.get(key) ?? ZERO).toString()} is assigned to individual units. ` +
+              `Only ${spare.toString()} can go without naming one, but ${wanted.toString()} is ` +
+              'being issued. Pick the units to send instead.',
+      );
+    }
+  }
+
+  /** 🔴 Summed ACROSS lines, because two lines may legitimately draw on one
+   * package now that a package is taken by quantity. Each on its own can fit
+   * while the two together overdraw the roll, which is the whole reason this
+   * check is here rather than on the line. */
+  for (const [unitKey, wanted] of perUnit) {
+    const [key, batchUnitId] = unitKey.split('#') as [string, string];
+    const unit = unitsByKey.get(key)?.get(batchUnitId);
+    if (!unit) continue;
+    if (wanted.greaterThan(unit.availableQty)) {
+      throw ApiError.badRequest(
+        `${unit.label} has ${unit.availableQty.toString()} available, but ${wanted.toString()} ` +
+          'is being issued out of it.',
       );
     }
   }
@@ -711,9 +840,11 @@ export async function createNewJobIssue(
         itemId: lineItemId,
         uomId: row.uomId,
         batchId: line.batchId ?? null,
+        batchUnitId: line.batchUnitId ?? null,
         sourceLocationId: line.sourceLocationId ?? null,
-        // ⚠️ BATCH LEVEL ONLY. Anything a client sends here is dropped: material is
-        // issued as a quantity against the batch.
+        /* Checked against the package, not trusted: a named package goes out
+           WHOLE, so `resolveLines` refuses a quantity that is not the whole of
+           it rather than rounding to fit. */
         qty: line.qty,
       };
     });
@@ -884,6 +1015,8 @@ export async function createNewJobIssue(
           itemId: line.itemId,
           uomId: line.uomId,
           batchId: line.batchId,
+          // Three packages of one batch are three lines, as three batches are.
+          batchUnitId: line.batchUnitId,
           // The godown this line actually left — the header's, under the
           // one-location rule. Written per line because the ledger and every
           // stock-by-location read join through here, not through the header.
@@ -915,6 +1048,7 @@ export async function createNewJobIssue(
         {
           organizationId,
           batchId: line.batchId,
+          batchUnitId: line.batchUnitId,
           locationId: line.sourceLocationId,
           movementType: 'transfer_out',
           qtyOut: line.qty,
@@ -943,6 +1077,7 @@ export async function createNewJobIssue(
         {
           organizationId,
           batchId: line.batchId,
+          batchUnitId: line.batchUnitId,
           locationId: destinationLocationId,
           movementType: 'transfer_in',
           qtyIn: line.qty,
@@ -1090,6 +1225,19 @@ export async function cancelJobIssue(
       orderBy: { createdAt: 'asc' },
       select: {
         sourceDocLineId: true,
+        /**
+         * 🔴 THE COLUMN THIS PATH MOST EASILY FORGETS, AND THE WORST TO MISS.
+         *
+         * Every reversal below copies its identity off the row it undoes. Leave
+         * this out and the reversals post as UNTAGGED: the batch's balance comes
+         * back perfectly correct, so nothing on any screen looks wrong, while
+         * every roll this challan sent stays at the processor forever with an
+         * untagged surplus beside it at the godown. No error, no warning, and no
+         * way to notice until somebody asks where a roll went.
+         *
+         * `jobIssues.batchUnits.test.ts` fails the moment this is dropped.
+         */
+        batchUnitId: true,
         locationId: true,
         qtyIn: true,
         qtyOut: true,
@@ -1116,6 +1264,10 @@ export async function cancelJobIssue(
           {
             organizationId,
             batchId: line.batchId,
+            // Off the ROW being replayed, not off the line. They agree today, and
+            // taking it from the row is what keeps a reversal an exact undo of
+            // what was posted rather than a fresh derivation that can drift.
+            batchUnitId: row.batchUnitId,
             locationId: row.locationId,
             movementType: 'reversal',
             qtyIn: row.qtyOut,

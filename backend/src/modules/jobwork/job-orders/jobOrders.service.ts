@@ -108,6 +108,9 @@ const STEP_INCLUDE = {
         orderBy: { createdAt: 'asc' },
         include: {
           batch: { select: { id: true, supplierBatchRef: true, manufacturerBatch: true } },
+          /** Which package was planned, when the org runs a unit level. Null on
+           * every plan row written before it, and on one naming a batch generally. */
+          batchUnit: { select: { id: true, seq: true, label: true } },
           location: { select: { id: true, name: true } },
         },
       },
@@ -1064,6 +1067,34 @@ async function assertPlannedBatches(
   });
   const byId = new Map(batches.map((batch) => [batch.id, batch]));
 
+  /**
+   * The packages named across every plan row, read in ONE query and checked
+   * against the batch each was named under.
+   *
+   * 🔴 The same reason `postMovement` re-reads its own: a plan pointing at a
+   * package of a DIFFERENT batch — or a different organization — is not a number
+   * anyone can correct later, it is a row no screen can interpret. RLS is the net
+   * under this; the `batchId` comparison is what the query means.
+   */
+  const unitIds = [
+    ...new Set(
+      [...wanted.values()]
+        .flat()
+        .map((row) => row.batchUnitId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const unitsById = new Map(
+    unitIds.length === 0
+      ? []
+      : (
+          await tx.batchUnit.findMany({
+            where: { id: { in: unitIds }, organizationId, isDeleted: false },
+            select: { id: true, batchId: true, label: true },
+          })
+        ).map((unit) => [unit.id, unit]),
+  );
+
   for (const step of rows) {
     for (const input of step.inputs) {
       if (input.plannedBatches.length === 0) continue;
@@ -1077,6 +1108,36 @@ async function assertPlannedBatches(
             `Batch ${batch.supplierBatchRef ?? 'selected'} belongs to a different item than the row it is planned against.`,
           );
         }
+        if (planned.batchUnitId) {
+          const unit = unitsById.get(planned.batchUnitId);
+          if (!unit || unit.batchId !== planned.batchId) {
+            throw ApiError.badRequest(
+              `A planned unit is not in batch ${batch.supplierBatchRef ?? 'selected'}.`,
+              { plannedBatches: 'A planned unit does not belong to the batch beside it.' },
+            );
+          }
+        }
+      }
+
+      /**
+       * 🔴 THE SAME PACKAGE TWICE IN ONE ROW is a typo or two rows that should
+       * have been one — and since the unique index below now treats untagged rows
+       * as equal too, an unchecked duplicate would fail as a 500 from Postgres
+       * rather than a sentence the planner can act on.
+       */
+      const seen = new Set<string>();
+      for (const planned of input.plannedBatches) {
+        const key = `${planned.batchId}@${planned.locationId}#${planned.batchUnitId ?? ''}`;
+        if (seen.has(key)) {
+          const batch = byId.get(planned.batchId);
+          const unit = planned.batchUnitId ? unitsById.get(planned.batchUnitId) : null;
+          throw ApiError.badRequest(
+            `${unit?.label ?? `Batch ${batch?.supplierBatchRef ?? 'selected'}`} is planned twice on ` +
+              'one row. Combine the two into a single line.',
+            { plannedBatches: 'The same batch or unit is planned twice.' },
+          );
+        }
+        seen.add(key);
       }
 
       const total = roundQty(input.plannedBatches.reduce((sum, row) => sum + row.qty, 0));
@@ -1140,6 +1201,7 @@ async function writeSteps(
               create: input.plannedBatches.map((planned) => ({
                 organizationId,
                 batchId: planned.batchId,
+                batchUnitId: planned.batchUnitId ?? null,
                 locationId: planned.locationId,
                 qty: planned.qty,
                 createdBy: userId ?? null,

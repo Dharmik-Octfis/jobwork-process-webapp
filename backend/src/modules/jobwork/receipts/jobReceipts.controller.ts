@@ -87,6 +87,14 @@ const batchOptionsQuerySchema = z.object({
   search: z.string().trim().max(200).optional(),
   /** `otherNextCursor` from the previous page. Page one omits it. */
   cursor: z.string().max(200).optional(),
+  /** Include each batch's existing packages, so a row can add to one instead of
+   * naming a new one. Opt-in and spelled exactly as on the batches picker: it
+   * costs an extra grouped query, and only an org running the unit level can
+   * render them. */
+  withUnits: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => v === 'true'),
 });
 
 openApiRegistry.registerPath({
