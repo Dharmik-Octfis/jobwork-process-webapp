@@ -1573,14 +1573,16 @@ export function CreateBill() {
           style={{
             height: '44px',
             boxSizing: 'border-box',
-            position: 'sticky',
+            position: 'fixed',
             bottom: 0,
+            left: '250px', // Assuming standard sidebar width, or you can just leave it as 0 if the layout handles it
             right: 0,
             background: '#fff',
             padding: '0 24px',
             borderTop: '1px solid #eef0f3',
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'flex-start',
             gap: '12px',
             zIndex: 100,
           }}

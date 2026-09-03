@@ -82,7 +82,7 @@ export function BatchUnitsModal({
         `Names are optional — leave one blank and it is numbered by its position. ` +
         `Add none at all and the whole ${batchSingular.toLowerCase()} stays untagged.`
       }
-      width={640}
+      position="fullScreen"
       footer={
         <div
           style={{
