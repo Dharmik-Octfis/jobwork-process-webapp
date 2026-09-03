@@ -253,7 +253,7 @@ export function CompositeItemsPage() {
     total,
     isCounting,
     request: requestCount,
-  } = useListCount(['items-count', orgId, search, filter], () =>
+  } = useListCount(['composite-items-count', orgId, search, filter], () =>
     compositeItemsApi.getItemCount(orgId!, { search: search || undefined, filter }),
   );
 
