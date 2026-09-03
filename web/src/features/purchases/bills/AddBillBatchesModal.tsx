@@ -397,8 +397,9 @@ export function AddBillBatchesModal({
   const unitsBatch = batches.find((b) => b.id === unitsFor) ?? null;
 
   return (
-    <Modal
-      isOpen={isOpen}
+    <>
+      <Modal
+        isOpen={isOpen}
       onClose={onClose}
       title={`Add ${trackingLabel.plural}`}
       position="fullScreen"
@@ -610,9 +611,10 @@ export function AddBillBatchesModal({
           </thead>
           <tbody>
             {batches.map((batch) => (
-              <tr key={batch.id} style={{ borderBottom: '1px solid #eef0f3' }}>
-                <td style={{ padding: '8px' }}>
-                  {batch.isExisting ? (
+              <Fragment key={batch.id}>
+                <tr style={{ borderBottom: '1px solid #eef0f3' }}>
+                  <td style={{ padding: '8px' }}>
+                    {batch.isExisting ? (
                     <SearchableSelect
                       options={[
                         {
@@ -837,7 +839,6 @@ export function AddBillBatchesModal({
               </tbody>
             </table>
           </div>
-        </div>
 
         <div
           style={{
