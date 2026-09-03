@@ -27,7 +27,7 @@ import type { AvailableBatchUnit } from '../batches/batches.api';
  */
 
 /** One picked package. `id` is a local slot key, because the row exists from the
- * moment "+ Add {unit}" is pressed and before any package has been chosen. */
+ * moment "+ Existing {unit}" is pressed and before any package has been chosen. */
 export interface IssueUnitRow {
   id: string;
   /** Empty until the user picks one. */
@@ -444,7 +444,12 @@ export function IssueUnitsModal({
           cursor: rows.length >= options.length ? 'not-allowed' : 'pointer',
         }}
       >
-        <Plus size={13} /> Add {singular}
+        {/* 🔴 "Existing", matching the entry screens' second link, because that is
+            the only kind of row this dialog has. An ISSUE takes stock that is
+            already on the books — every row here is answered by PICKING a package
+            out of the batch, never by naming a new one. Reading "Add {unit}" here
+            promised a package could be created on the way out of the building. */}
+        <Plus size={13} /> Existing {singular}
       </button>
     </Modal>
   );

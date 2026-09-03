@@ -42,6 +42,18 @@ export interface BatchUnitRow {
    * the server reads the id.
    */
   batchUnitId?: string | null;
+  /**
+   * 🔴 The label in this row is OURS, not the user's — so `renumberAutoLabels` may
+   * rewrite it. Set by "+ New {unit}", cleared the moment anybody types in the
+   * box, and never set on an "Existing {unit}" row or on one that came back from
+   * the server.
+   *
+   * The flag is the whole reason renumbering is safe. Matching the shape of the
+   * name instead (`/^T\d+$/`) would look identical until a mill types its real
+   * tag — and in this trade a real taka tag very often IS "T7". Renumbering that
+   * to "T3" silently rewrites what is printed on the goods.
+   */
+  autoLabel?: boolean;
 }
 
 /** An existing package a row may be pointed at — what the picker offers. No
@@ -67,13 +79,90 @@ export const isExistingUnit = (unit: BatchUnitRow) =>
 /** True when an existing-kind row has actually been pointed at a package. */
 export const isPickedUnit = (unit: BatchUnitRow) => Boolean(unit.batchUnitId);
 
+/**
+ * The letter a suggested name starts with — the FIRST letter of whatever this org
+ * calls the level, so "Taka" gives T1, "Roll" gives R1, "Bale" gives B1.
+ *
+ * Read from the per-org name in Preferences rather than hard-coded, for the same
+ * reason every other string on these screens is: an org that renamed the level
+ * would otherwise be handed somebody else's initial.
+ */
+export const autoLabelPrefix = (singular: string) => singular.trim().charAt(0).toUpperCase() || 'T';
+
+/**
+ * 🔴 SUGGESTED NAMES FOR THE ROWS WE NAMED, RECOMPUTED FROM SCRATCH — call it
+ * after every add and every remove, so deleting the middle row renumbers the ones
+ * below it.
+ *
+ * Numbers are handed out as the LOWEST STILL-FREE `<prefix><n>`, not as the row's
+ * index, and that is what keeps the suggestion from colliding:
+ *
+ *   · `taken` carries the labels the batch ALREADY holds on the server. Topping up
+ *     a batch that holds T1–T3 suggests T4, not a second T1 the server would
+ *     refuse with a 409.
+ *   · a label the user typed is counted as taken too, so their "T7" is skipped
+ *     rather than duplicated.
+ *
+ * ONLY rows flagged `autoLabel` are touched. An "Existing {unit}" row, a row that
+ * came back from the server, and a row somebody typed into are all left exactly as
+ * they are — a saved package's name is on a printed challan and in the ledger, and
+ * renumbering it would make the paper and the database disagree.
+ *
+ * Generic over the row shape because Opening Stock carries `quantityIn` where the
+ * others carry `quantity`; only the two label fields are needed here.
+ */
+export function renumberAutoLabels<T extends { label: string; autoLabel?: boolean }>(
+  units: readonly T[],
+  prefix: string,
+  taken: readonly string[] = [],
+): T[] {
+  const used = new Set(
+    [...taken, ...units.filter((unit) => !unit.autoLabel).map((unit) => unit.label)]
+      .map((label) => label.trim().toLowerCase())
+      .filter(Boolean),
+  );
+
+  // Counts across the whole grid, not per row, so the numbers stay in order.
+  let n = 0;
+  const nextFree = () => {
+    n += 1;
+    let candidate = `${prefix}${n}`;
+    while (used.has(candidate.toLowerCase())) {
+      n += 1;
+      candidate = `${prefix}${n}`;
+    }
+    used.add(candidate.toLowerCase());
+    return candidate;
+  };
+
+  return units.map((unit) => {
+    if (!unit.autoLabel) return unit;
+    const candidate = nextFree();
+    // Same object back when nothing moved, so React skips the rows that did not
+    // change instead of re-rendering every input in the grid on each keystroke.
+    return unit.label === candidate ? unit : { ...unit, label: candidate };
+  });
+}
+
+/**
+ * 🔴 EVIDENCE THE USER MEANT THIS ROW — a typed label, a quantity, or a pick.
+ *
+ * A label WE generated is NOT evidence, and that exception is the whole reason
+ * this is a function. Since the grid started pre-filling "T1", every freshly added
+ * row carries a label, so counting labels made an untouched row look deliberate:
+ * open "Add Takas", type nothing, press Save, and the screen behind refused with
+ * "T1 needs a quantity greater than zero" about a row the user never filled in.
+ */
+const userFilled = (unit: BatchUnitRow) =>
+  (!unit.autoLabel && unit.label.trim() !== '') ||
+  unit.quantity.trim() !== '' ||
+  isPickedUnit(unit);
+
 /** Every row the user actually meant — an untouched blank row is not an error,
  * and an "Existing" row nobody picked into and typed nothing on is just as blank
- * as a new one with no label. */
+ * as a new one nobody typed into. */
 function named(units: readonly BatchUnitRow[]): BatchUnitRow[] {
-  return units.filter(
-    (unit) => unit.label.trim() !== '' || unit.quantity.trim() !== '' || isPickedUnit(unit),
-  );
+  return units.filter(userFilled);
 }
 
 /**
@@ -87,13 +176,14 @@ function named(units: readonly BatchUnitRow[]): BatchUnitRow[] {
  * is not an error anywhere: the batch total still balances, so the document saves
  * and the taka is simply not there.
  *
- * A QUANTITY is what makes a new row real now. `validateBatchUnits` has already
+ * A QUANTITY is what makes a new row real now — or a label the USER typed, never
+ * one the grid pre-filled (see `userFilled`). `validateBatchUnits` has already
  * refused anything half-filled by the time this runs.
  */
 export function isSubmittableUnit(unit: BatchUnitRow): boolean {
   return isExistingUnit(unit)
     ? isPickedUnit(unit)
-    : unit.label.trim() !== '' || parseFloat(unit.quantity) > 0;
+    : (!unit.autoLabel && unit.label.trim() !== '') || parseFloat(unit.quantity) > 0;
 }
 
 export function unitsTotal(units: readonly BatchUnitRow[]): number {

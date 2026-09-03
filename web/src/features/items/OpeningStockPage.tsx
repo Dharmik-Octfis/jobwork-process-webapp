@@ -9,7 +9,11 @@ import { fetchLocations } from '../configuration/locations/locations.api';
 import { itemsApi } from './items.api';
 import { useTrackingLabel, useBatchUnitLabel } from '../../hooks/useTrackingLabel';
 import { BatchUnitsModal, BatchUnitsTrigger } from '../../components/inventory/BatchUnitsModal';
-import { validateBatchUnits } from '../../components/inventory/batchUnits';
+import {
+  autoLabelPrefix,
+  renumberAutoLabels,
+  validateBatchUnits,
+} from '../../components/inventory/batchUnits';
 import type { ItemOpeningStockLocationRowDto } from './items.schemas';
 
 /** One package inside a declared batch. `id` is the real `batch_units.id` when
@@ -21,6 +25,10 @@ export interface OpeningStockUnitRow {
   isExisting: boolean;
   label: string;
   quantityIn: string;
+  /** The name in this row is OURS and may be renumbered — see `renumberAutoLabels`.
+   * Never set on a row that came back from the server: that name is already on a
+   * challan and in the ledger. */
+  autoLabel?: boolean;
 }
 
 export interface OpeningStockBatchRow {
@@ -66,6 +74,9 @@ const createEmptyUnit = (): OpeningStockUnitRow => ({
   isExisting: false,
   label: '',
   quantityIn: '',
+  // The suggested name is filled in by `renumberAutoLabels` right after, so the
+  // number is decided against the whole grid rather than by this row alone.
+  autoLabel: true,
 });
 
 const createEmptyLocation = (): OpeningStockLocationRow => ({
@@ -145,6 +156,10 @@ export function OpeningStockPage() {
    * its location here.
    */
   const [unitsFor, setUnitsFor] = useState<{ locationId: string; batchId: string } | null>(null);
+  /** That batch's packages as the dialog opened, so Cancel can put them back —
+   * held as the FORM's row shape, which carries `isExisting` and `quantityIn` that
+   * the dialog's own row type does not. */
+  const [unitsSnapshot, setUnitsSnapshot] = useState<OpeningStockUnitRow[]>([]);
 
   const { data: item } = useQuery({
     queryKey: ['item', orgId, itemId],
@@ -285,6 +300,19 @@ export function OpeningStockPage() {
     );
   };
 
+  /** Every add and every remove goes through here, so the suggested names are
+   * recomputed against the whole grid — which is what makes deleting the middle
+   * row renumber the ones below it. No `taken` list to pass: a package already
+   * saved sits in this same grid with `autoLabel` unset, so the helper counts its
+   * name as occupied and never suggests it twice. */
+  const withUnits = (
+    batch: OpeningStockBatchRow,
+    units: OpeningStockUnitRow[],
+  ): OpeningStockBatchRow => ({
+    ...batch,
+    units: renumberAutoLabels(units, autoLabelPrefix(unitLabel.singular)),
+  });
+
   const handleAddUnit = (locationId: string, batchId: string) => {
     setLocationRows((rows) =>
       rows.map((r) =>
@@ -292,7 +320,7 @@ export function OpeningStockPage() {
           ? {
               ...r,
               batches: r.batches.map((b) =>
-                b.id === batchId ? { ...b, units: [...b.units, createEmptyUnit()] } : b,
+                b.id === batchId ? withUnits(b, [...b.units, createEmptyUnit()]) : b,
               ),
             }
           : r,
@@ -300,14 +328,41 @@ export function OpeningStockPage() {
     );
   };
 
-  /** Open one batch's package dialog, giving an empty batch its first row on the
-   * way in — a control that reads "Add {plural}" has to add one. */
+  /**
+   * Open one batch's package dialog, giving an empty batch its first row on the
+   * way in — a control that reads "Add {plural}" has to add one.
+   *
+   * 🔴 The rows are SNAPSHOT here, before that first row is added, because the grid
+   * inside edits this state as it is typed and Cancel has to put it back.
+   */
   const openUnits = (locationId: string, batchId: string) => {
     const batch = locationRows
       .find((r) => r.id === locationId)
       ?.batches.find((b) => b.id === batchId);
+    setUnitsSnapshot(batch ? [...batch.units] : []);
     if (!batch?.units.length) handleAddUnit(locationId, batchId);
     setUnitsFor({ locationId, batchId });
+  };
+
+  /** Put the snapshot back and close — Cancel. */
+  const cancelUnits = () => {
+    if (unitsFor) {
+      const { locationId, batchId } = unitsFor;
+      const restore = unitsSnapshot;
+      setLocationRows((rows) =>
+        rows.map((r) =>
+          r.id === locationId
+            ? {
+                ...r,
+                batches: r.batches.map((b) =>
+                  b.id === batchId ? { ...b, units: [...restore] } : b,
+                ),
+              }
+            : r,
+        ),
+      );
+    }
+    setUnitsFor(null);
   };
 
   const handleDeleteUnit = (locationId: string, batchId: string, unitId: string) => {
@@ -317,7 +372,12 @@ export function OpeningStockPage() {
           ? {
               ...r,
               batches: r.batches.map((b) =>
-                b.id === batchId ? { ...b, units: b.units.filter((u) => u.id !== unitId) } : b,
+                b.id === batchId
+                  ? withUnits(
+                      b,
+                      b.units.filter((u) => u.id !== unitId),
+                    )
+                  : b,
               ),
             }
           : r,
@@ -341,7 +401,18 @@ export function OpeningStockPage() {
                 b.id === batchId
                   ? {
                       ...b,
-                      units: b.units.map((u) => (u.id === unitId ? { ...u, [field]: value } : u)),
+                      units: b.units.map((u) =>
+                        u.id === unitId
+                          ? // 🔴 Typing in the label box makes the name THEIRS — it
+                            // stops being renumbered from here on, because the next
+                            // thing they type may well be the tag on the roll.
+                            {
+                              ...u,
+                              [field]: value,
+                              ...(field === 'label' ? { autoLabel: false } : {}),
+                            }
+                          : u,
+                      ),
                     }
                   : b,
               ),
@@ -450,7 +521,12 @@ export function OpeningStockPage() {
                      new one is real once it has a quantity; the label stopped
                      being what makes it real on 2026-09-03. */
                   .filter(
-                    (u) => u.isExisting || u.label.trim() !== '' || parseFloat(u.quantityIn) > 0,
+                    (u) =>
+                      u.isExisting ||
+                      // A name the GRID pre-filled is not evidence the user meant
+                      // this row — only one they typed, or a quantity.
+                      (!u.autoLabel && u.label.trim() !== '') ||
+                      parseFloat(u.quantityIn) > 0,
                   )
                   .map((u) => ({
                     ...(u.isExisting ? { id: u.id } : {}),
@@ -1413,6 +1489,7 @@ export function OpeningStockPage() {
             )
           }
           onRemove={(unitId) => handleDeleteUnit(unitsFor.locationId, unitsFor.batchId, unitId)}
+          onCancel={cancelUnits}
         />
       )}
     </div>

@@ -11,7 +11,9 @@ import type { ReceiptBatchOption } from './jobReceipts.schemas';
 import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingLabel';
 import { BatchUnitsModal, BatchUnitsTrigger } from '../../../components/inventory/BatchUnitsModal';
 import {
+  autoLabelPrefix,
   isSubmittableUnit,
+  renumberAutoLabels,
   validateBatchUnits,
   type BatchUnitRow,
   type ExistingBatchUnitOption,
@@ -154,6 +156,9 @@ const createEmptyUnit = (): BatchUnitRow => ({
   id: crypto.randomUUID(),
   label: '',
   quantity: '',
+  // The suggested name is filled in by `renumberAutoLabels` right after, so the
+  // number is decided against the whole grid rather than by this row alone.
+  autoLabel: true,
 });
 
 let rowSeq = 0;
@@ -406,11 +411,27 @@ export function BatchAllocationModal({
    * not a set. It was an expanding sub-grid until 2026-09-03; packages are now
    * entered exactly the way the batches above them are. */
   const [unitsFor, setUnitsFor] = useState<string | null>(null);
+  /** That row's packages as the dialog opened, so Cancel can put them back. */
+  const [unitsSnapshot, setUnitsSnapshot] = useState<BatchUnitRow[]>([]);
+
+  /** Every add and every remove goes through here, so the suggested names are
+   * recomputed against the whole grid — which is what makes deleting the middle
+   * row renumber the ones below it. `taken` is what the picked batch ALREADY
+   * holds: topping up a batch with T1–T3 has to suggest T4, not a second T1 the
+   * server would refuse. */
+  const withUnits = (row: DraftRow, units: BatchUnitRow[]): DraftRow => ({
+    ...row,
+    units: renumberAutoLabels(
+      units,
+      autoLabelPrefix(unitLabel.singular),
+      (row.option?.units ?? []).map((unit) => unit.label),
+    ),
+  });
 
   const addUnit = (rowId: string) => {
     setRows((prev) =>
       prev.map((row) =>
-        row.id === rowId ? { ...row, units: [...row.units, createEmptyUnit()] } : row,
+        row.id === rowId ? withUnits(row, [...row.units, createEmptyUnit()]) : row,
       ),
     );
   };
@@ -422,17 +443,42 @@ export function BatchAllocationModal({
     setRows((prev) =>
       prev.map((row) =>
         row.id === rowId
-          ? { ...row, units: [...row.units, { ...createEmptyUnit(), batchUnitId: '' }] }
+          ? {
+              ...row,
+              // 🔴 `autoLabel: false` — an "Existing {unit}" row is answered by
+              // PICKING, and its label is copied from the package it points at.
+              // Left auto, the next add or remove would renumber it and overwrite
+              // the name of a package that already exists on the server.
+              units: [...row.units, { ...createEmptyUnit(), batchUnitId: '', autoLabel: false }],
+            }
           : row,
       ),
     );
   };
 
-  /** Open one row's package dialog, giving an empty row its first package on the
-   * way in — a control that reads "Add {plural}" has to add one. */
+  /**
+   * Open one row's package dialog, giving an empty row its first package on the
+   * way in — a control that reads "Add {plural}" has to add one.
+   *
+   * 🔴 The packages are SNAPSHOT here, before that first row is added, because the
+   * grid inside edits this state as it is typed and Cancel has to put it back.
+   */
   const openUnits = (rowId: string) => {
-    if (!rows.find((row) => row.id === rowId)?.units.length) addUnit(rowId);
+    const row = rows.find((candidate) => candidate.id === rowId);
+    setUnitsSnapshot(row ? [...row.units] : []);
+    if (!row?.units.length) addUnit(rowId);
     setUnitsFor(rowId);
+  };
+
+  /** Put the snapshot back and close — Cancel. */
+  const cancelUnits = () => {
+    if (unitsFor) {
+      const restore = unitsSnapshot;
+      setRows((prev) =>
+        prev.map((row) => (row.id === unitsFor ? { ...row, units: [...restore] } : row)),
+      );
+    }
+    setUnitsFor(null);
   };
 
   const pickExistingUnit = (rowId: string, unitId: string, option: ExistingBatchUnitOption) =>
@@ -454,7 +500,12 @@ export function BatchAllocationModal({
   const removeUnit = (rowId: string, unitId: string) =>
     setRows((prev) =>
       prev.map((row) =>
-        row.id === rowId ? { ...row, units: row.units.filter((u) => u.id !== unitId) } : row,
+        row.id === rowId
+          ? withUnits(
+              row,
+              row.units.filter((u) => u.id !== unitId),
+            )
+          : row,
       ),
     );
 
@@ -464,7 +515,14 @@ export function BatchAllocationModal({
         row.id === rowId
           ? {
               ...row,
-              units: row.units.map((u) => (u.id === unitId ? { ...u, [field]: value } : u)),
+              units: row.units.map((u) =>
+                u.id === unitId
+                  ? // 🔴 Typing in the label box makes the name THEIRS — it stops
+                    // being renumbered from here on, because the next thing they
+                    // type may well be the tag printed on the roll.
+                    { ...u, [field]: value, ...(field === 'label' ? { autoLabel: false } : {}) }
+                  : u,
+              ),
             }
           : row,
       ),
@@ -983,6 +1041,7 @@ export function BatchAllocationModal({
           onChange={(unitId, field, value) => changeUnit(unitsRow.id, unitId, field, value)}
           onPickExisting={(unitId, option) => pickExistingUnit(unitsRow.id, unitId, option)}
           onRemove={(unitId) => removeUnit(unitsRow.id, unitId)}
+          onCancel={cancelUnits}
         />
       )}
     </>

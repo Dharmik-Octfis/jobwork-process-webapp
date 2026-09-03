@@ -17,10 +17,17 @@ import {
  * delivery of ten batches no longer sprawls ten inline grids down a screen nobody
  * could scroll.
  *
- * It replaced an inline expanding panel. What did NOT change is the editing
- * model: the grid writes straight through to the caller's state, exactly as it
- * did expanded, so there is no draft to commit and no Cancel that pretends to
- * revert one. The single action is "Done", which closes.
+ * It replaced an inline expanding panel.
+ *
+ * 🔴 SAVE AND CANCEL, and Cancel really does undo (2026-09-03). It replaced a lone
+ * "Done", which offered no way out of a half-typed grid but retyping it.
+ *
+ * The grid still writes STRAIGHT THROUGH to the caller's state, so the undo is a
+ * SNAPSHOT — and the snapshot is taken by the CALL SITE, in the handler that opens
+ * this dialog, not in here. It has to be: Opening Stock's rows carry `quantityIn`
+ * and `isExisting` where this component's row shape has `quantity`, so a snapshot
+ * taken from the props would hand back rows with those fields stripped and quietly
+ * turn every saved package into a new one. The call site owns the real rows.
  *
  * Nesting is fine — `Modal` keeps a stack, so Escape closes this one and leaves
  * the batch dialog underneath open, and the body's scroll lock survives until the
@@ -51,6 +58,32 @@ interface BatchUnitsModalProps {
   onChange: (unitId: string, field: 'label' | 'quantity', value: string) => void;
   onPickExisting?: (unitId: string, option: ExistingBatchUnitOption) => void;
   onRemove: (unitId: string) => void;
+  /**
+   * Throw the edit away and close. The grid edits the caller's state as it is
+   * typed, so the caller restores the rows it snapshotted when it opened this —
+   * see the note above for why the snapshot cannot live in here.
+   */
+  onCancel: () => void;
+  /**
+   * 🔴 BILLS ONLY, and omitted everywhere else — no checkbox is rendered and Save
+   * changes no quantity.
+   *
+   * The packages must add up to their batch. When they do not, this is the way out
+   * that is not "retype it": tick the box and Save writes the packages' total onto
+   * the batch instead, carrying the bill line with it. Exactly the escape hatch
+   * `IssueUnitsModal` offers one module over, worded identically.
+   */
+  overwrite?: {
+    checked: boolean;
+    onChange: (checked: boolean) => void;
+    /** What the LINE would carry once this batch takes the packages' total. */
+    projectedQty: number;
+    /** Formats a quantity the way the screen behind this one formats it. */
+    format: (qty: number) => string;
+  };
+  /** Commit and close. `applyOverwrite` is the box's state at the moment Save was
+   * pressed, so the caller writes the quantity through in one place. */
+  onSave?: (applyOverwrite: boolean) => void;
 }
 
 export function BatchUnitsModal({
@@ -69,9 +102,17 @@ export function BatchUnitsModal({
   onChange,
   onPickExisting,
   onRemove,
+  onCancel,
+  overwrite,
+  onSave,
 }: BatchUnitsModalProps) {
   const gap = Number((batchQty - unitsTotal(units)).toFixed(4));
   const balanced = Math.abs(gap) <= QTY_EPSILON;
+
+  const handleSave = () => {
+    onSave?.(Boolean(overwrite?.checked));
+    onClose();
+  };
 
   /**
    * 🔴 THE REFERENCE IS NAMED BY ITS LEVEL, in the org's own word for it —
@@ -95,9 +136,39 @@ export function BatchUnitsModal({
          all be named. Said here, before they type, rather than by a red readout
          after. */
       subtitle={
-        `${subject} holds ${batchQty}${uomLabel ? ` ${uomLabel}` : ''}. ` +
-        `Names are optional — leave one blank and it is numbered by its position. ` +
-        `Add none at all and the whole ${batchSingular.toLowerCase()} stays untagged.`
+        <>
+          <div>
+            {`${subject} holds ${batchQty}${uomLabel ? ` ${uomLabel}` : ''}. ` +
+              `Names are optional — leave one blank and it is numbered by its position. ` +
+              `Add none at all and the whole ${batchSingular.toLowerCase()} stays untagged.`}
+          </div>
+
+          {/* 🔴 Live only while ticking it would change something. A grid that
+              already adds up has nothing to overwrite, so the box is disabled
+              rather than hidden — a control that comes and goes is harder to
+              trust than one that greys out and says why. */}
+          {overwrite && (
+            <label
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                marginTop: 6,
+                fontSize: 12.5,
+                color: balanced ? '#94a3b8' : '#334155',
+                cursor: balanced ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={overwrite.checked}
+                disabled={balanced}
+                onChange={(event) => overwrite.onChange(event.target.checked)}
+              />
+              Overwrite the line item with {overwrite.format(overwrite.projectedQty)} quantities
+            </label>
+          )}
+        </>
       }
       position="fullScreen"
       footer={
@@ -110,13 +181,55 @@ export function BatchUnitsModal({
             gap: 16,
           }}
         >
+          {/* 🔴 The actions sit on the LEFT, matching the Save/Cancel pair on the
+              batch grid this opens over — a dialog whose buttons jump to the other
+              end of the bar is one the eye has to re-find on every open. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button
+              type="button"
+              onClick={handleSave}
+              style={{
+                padding: '6px 20px',
+                background: '#15803d',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 4,
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >
+              Save
+            </button>
+            {/* Throws the edit away and puts the rows back as they were. Without
+                it, a half-typed grid could only be undone by retyping it. */}
+            <button
+              type="button"
+              onClick={onCancel}
+              style={{
+                padding: '6px 20px',
+                background: '#fff',
+                color: '#334155',
+                border: '1px solid #d1d5db',
+                borderRadius: 4,
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+
           {/* The same figure the grid carries, repeated on the sticky bar: the
               grid's copy scrolls away once a batch holds twenty packages, and
-              this is the number that decides whether Save will be refused. */}
+              this is the number that decides whether the screen behind will
+              refuse its own Save. */}
           <span
             style={{
               fontSize: 12,
               fontWeight: 500,
+              textAlign: 'right',
               color: units.length === 0 ? '#64748b' : balanced ? '#16a34a' : '#b91c1c',
             }}
           >
@@ -128,22 +241,6 @@ export function BatchUnitsModal({
                   ? `${Number(gap.toFixed(4))}${uomLabel ? ` ${uomLabel}` : ''} still to name.`
                   : `${Number((-gap).toFixed(4))}${uomLabel ? ` ${uomLabel}` : ''} more than the ${batchSingular.toLowerCase()} holds.`}
           </span>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: '8px 20px',
-              background: '#0062ff',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 4,
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: 'pointer',
-            }}
-          >
-            Done
-          </button>
         </div>
       }
     >

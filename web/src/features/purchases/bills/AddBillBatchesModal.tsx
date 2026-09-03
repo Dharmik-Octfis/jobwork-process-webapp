@@ -11,8 +11,11 @@ import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingL
 import { BatchUnitsModal, BatchUnitsTrigger } from '../../../components/inventory/BatchUnitsModal';
 import {
   QTY_EPSILON,
+  autoLabelPrefix,
   isExistingUnit,
   isSubmittableUnit,
+  renumberAutoLabels,
+  unitsTotal,
   validateBatchUnits,
   type BatchUnitRow as BillBatchUnitRow,
   type ExistingBatchUnitOption,
@@ -59,6 +62,9 @@ const createEmptyUnit = (): BillBatchUnitRow => ({
   id: crypto.randomUUID(),
   label: '',
   quantity: '',
+  // The suggested name is filled in by `renumberAutoLabels` right after, so the
+  // number is decided against the whole grid rather than by this row alone.
+  autoLabel: true,
 });
 
 const createEmptyBatch = (defaultSellingPrice = '', defaultMrp = ''): BillBatchRow => ({
@@ -198,6 +204,8 @@ export function AddBillBatchesModal({
    * the way the batches above them are.
    */
   const [unitsFor, setUnitsFor] = useState<string | null>(null);
+  /** That batch's packages as the dialog opened, so Cancel can put them back. */
+  const [unitsSnapshot, setUnitsSnapshot] = useState<BillBatchUnitRow[]>([]);
 
   const allocated = useMemo(
     () => batches.reduce((sum, b) => sum + (parseFloat(b.quantityIn) || 0), 0),
@@ -221,17 +229,51 @@ export function AddBillBatchesModal({
     setBatches(batches.filter((b) => b.id !== id));
   };
 
+  /** The names this batch ALREADY holds on the server — what a suggested name must
+   * not collide with, since topping up a batch that holds T1–T3 has to suggest T4
+   * and not a second T1 the server would refuse. */
+  const takenUnitLabels = (batch: BillBatchRow) =>
+    (batch.batchId ? (unitsByBatchId.get(batch.batchId) ?? []) : []).map((option) => option.label);
+
+  /** Every add and every remove goes through here, so the suggested names are
+   * recomputed against the whole grid — which is what makes deleting the middle
+   * row renumber the ones below it. */
+  const withUnits = (batch: BillBatchRow, units: BillBatchUnitRow[]): BillBatchRow => ({
+    ...batch,
+    units: renumberAutoLabels(units, autoLabelPrefix(unitLabel.singular), takenUnitLabels(batch)),
+  });
+
   const handleAddUnit = (batchRowId: string) => {
     setBatches((prev) =>
-      prev.map((b) => (b.id === batchRowId ? { ...b, units: [...b.units, createEmptyUnit()] } : b)),
+      prev.map((b) => (b.id === batchRowId ? withUnits(b, [...b.units, createEmptyUnit()]) : b)),
     );
   };
 
-  /** Open one batch's package dialog, giving an empty batch its first row on the
-   * way in — a control that reads "Add {plural}" has to add one. */
+  /**
+   * Open one batch's package dialog, giving an empty batch its first row on the
+   * way in — a control that reads "Add {plural}" has to add one.
+   *
+   * 🔴 The rows are SNAPSHOT here, before that first row is added, because the
+   * grid inside edits this state as it is typed and Cancel has to put it back.
+   * Taken here rather than inside the dialog: only this side holds the rows with
+   * every field on them.
+   */
   const openUnits = (batchRowId: string) => {
-    if (!batches.find((b) => b.id === batchRowId)?.units.length) handleAddUnit(batchRowId);
+    const batch = batches.find((b) => b.id === batchRowId);
+    setUnitsSnapshot(batch ? [...batch.units] : []);
+    if (!batch?.units.length) handleAddUnit(batchRowId);
     setUnitsFor(batchRowId);
+  };
+
+  /** Put the snapshot back and close — Cancel. */
+  const cancelUnits = () => {
+    if (unitsFor) {
+      const restore = unitsSnapshot;
+      setBatches((prev) =>
+        prev.map((b) => (b.id === unitsFor ? { ...b, units: [...restore] } : b)),
+      );
+    }
+    setUnitsFor(null);
   };
 
   /** The same, for a package the batch already holds. A blank `batchUnitId` is
@@ -241,7 +283,14 @@ export function AddBillBatchesModal({
     setBatches((prev) =>
       prev.map((b) =>
         b.id === batchRowId
-          ? { ...b, units: [...b.units, { ...createEmptyUnit(), batchUnitId: '' }] }
+          ? {
+              ...b,
+              // 🔴 `autoLabel: false` — an "Existing {unit}" row is answered by
+              // PICKING, and its label is copied from the package it points at.
+              // Left auto, the next add or remove would renumber it and overwrite
+              // the name of a package that already exists on the server.
+              units: [...b.units, { ...createEmptyUnit(), batchUnitId: '', autoLabel: false }],
+            }
           : b,
       ),
     );
@@ -271,7 +320,12 @@ export function AddBillBatchesModal({
   const handleDeleteUnit = (batchRowId: string, unitId: string) => {
     setBatches((prev) =>
       prev.map((b) =>
-        b.id === batchRowId ? { ...b, units: b.units.filter((u) => u.id !== unitId) } : b,
+        b.id === batchRowId
+          ? withUnits(
+              b,
+              b.units.filter((u) => u.id !== unitId),
+            )
+          : b,
       ),
     );
   };
@@ -285,7 +339,17 @@ export function AddBillBatchesModal({
     setBatches((prev) =>
       prev.map((b) =>
         b.id === batchRowId
-          ? { ...b, units: b.units.map((u) => (u.id === unitId ? { ...u, [field]: value } : u)) }
+          ? {
+              ...b,
+              units: b.units.map((u) =>
+                u.id === unitId
+                  ? // 🔴 Typing in the label box makes the name THEIRS — it stops
+                    // being renumbered from here on, because the next thing they
+                    // type may well be the tag printed on the roll.
+                    { ...u, [field]: value, ...(field === 'label' ? { autoLabel: false } : {}) }
+                  : u,
+              ),
+            }
           : b,
       ),
     );
@@ -395,6 +459,24 @@ export function AddBillBatchesModal({
   /** The batch whose package dialog is open, re-read from state each render so the
    * dialog shows live rows rather than a snapshot taken when it opened. */
   const unitsBatch = batches.find((b) => b.id === unitsFor) ?? null;
+
+  /**
+   * What the LINE would carry if the open batch took its packages' total — this
+   * batch swapped out of the running total and the packages swapped in.
+   *
+   * Quoted by the overwrite box inside the package dialog, where `allocated` on
+   * its own would be a lie: it still counts the quantity the box is offering to
+   * replace. Same arithmetic `IssueUnitsModal` does one module over.
+   */
+  const projectedLineQty = unitsBatch
+    ? Number(
+        (
+          allocated -
+          (parseFloat(unitsBatch.quantityIn) || 0) +
+          unitsTotal(unitsBatch.units)
+        ).toFixed(4),
+      )
+    : allocated;
 
   return (
     <>
@@ -926,6 +1008,33 @@ export function AddBillBatchesModal({
           onChange={(unitId, field, value) => updateUnit(unitsBatch.id, unitId, field, value)}
           onPickExisting={(unitId, option) => pickExistingUnit(unitsBatch.id, unitId, option)}
           onRemove={(unitId) => handleDeleteUnit(unitsBatch.id, unitId)}
+          onCancel={cancelUnits}
+          /**
+           * 🔴 The SAME `overwrite` flag the grid behind this one carries, not a
+           * second copy — it means one thing ("make the line take whatever the
+           * batches add up to") and two booleans for one meaning is how the two
+           * boxes would come to disagree. Only the figure quoted differs, because
+           * from in here the packages have not been written onto the batch yet.
+           */
+          overwrite={{
+            checked: overwrite,
+            onChange: setOverwrite,
+            projectedQty: projectedLineQty,
+            format: formatQty,
+          }}
+          /* Ticked, Save writes the packages' total onto the batch — which is what
+             makes the figure above come true. Untouched otherwise: the packages
+             were already typed straight into the row. */
+          onSave={(applyOverwrite) => {
+            if (!applyOverwrite) return;
+            setBatches((prev) =>
+              prev.map((b) =>
+                b.id === unitsBatch.id
+                  ? { ...b, quantityIn: String(Number(unitsTotal(b.units).toFixed(4))) }
+                  : b,
+              ),
+            );
+          }}
         />
       )}
     </>
