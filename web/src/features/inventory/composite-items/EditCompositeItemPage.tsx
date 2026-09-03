@@ -411,7 +411,7 @@ export function EditCompositeItemPage() {
         <form
           id="edit-composite-item-form"
           onSubmit={handleSubmit}
-          style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '900px' }}
+          style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}
         >
           {/* Top Section: Basic Info & Images */}
           <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -805,7 +805,7 @@ export function EditCompositeItemPage() {
                           className="qty-input"
                           style={{
                             width: '100%',
-                            height: '34px',
+                            height: '36px',
                             padding: '6px',
                             textAlign: 'right',
                             fontSize: 14,
@@ -1085,7 +1085,7 @@ export function EditCompositeItemPage() {
                             className="qty-input"
                             style={{
                               width: '100%',
-                              height: '34px',
+                              height: '36px',
                               padding: '6px',
                               textAlign: 'right',
                               fontSize: 14,
@@ -1218,8 +1218,10 @@ export function EditCompositeItemPage() {
           <div
             style={{
               background: '#f8fafc',
-              padding: '24px 0',
-              width: '100%',
+              padding: '24px 24px',
+              margin: '0 -24px',
+              width: 'calc(100% + 48px)',
+              boxSizing: 'border-box',
               borderRadius: 0,
               borderTop: '1px solid #e2e8f0',
               borderBottom: '1px solid #e2e8f0',
@@ -1228,7 +1230,8 @@ export function EditCompositeItemPage() {
               gap: '16px',
             }}
           >
-            <div className="form-field-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+            <div style={{ maxWidth: '900px', width: '100%' }}>
+              <div className="form-field-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', alignItems: 'start' }}>
               {/* Sales Information */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div
@@ -1257,12 +1260,12 @@ export function EditCompositeItemPage() {
                   </label>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                   <div className="form-field-grid" style={{ gridTemplateColumns: '130px 1fr',
                       alignItems: 'center',
                       gap: 12,
                      }}>
-                    <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>
+                    <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>
                       Selling Price*
                     </label>
                     <div style={{ position: 'relative', width: '100%' }}>
@@ -1275,11 +1278,11 @@ export function EditCompositeItemPage() {
                         disabled={!formData.isSalesInfo}
                         style={{
                           width: '100%',
-                          height: '34px',
-                          padding: '6px 110px 6px 10px',
+                          height: '36px',
+                          padding: '8px 110px 8px 12px',
                           borderRadius: '4px',
                           border: errors.sellingPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
-                          fontSize: 12,
+                          fontSize: 13,
                           backgroundColor: formData.isSalesInfo ? '#fff' : '#f1f5f9',
                           color: formData.isSalesInfo ? '#000' : '#94a3b8',
                           cursor: formData.isSalesInfo ? 'text' : 'not-allowed',
@@ -1318,7 +1321,7 @@ export function EditCompositeItemPage() {
                       gap: 12,
                      }}>
                     <label
-                      style={{ fontSize: 12, color: '#4b5563', fontWeight: 500, paddingTop: '8px' }}
+                      style={{ fontSize: 13, color: '#4b5563', fontWeight: 500, paddingTop: '8px' }}
                     >
                       Sales Description
                     </label>
@@ -1332,11 +1335,11 @@ export function EditCompositeItemPage() {
                       disabled={!formData.isSalesInfo}
                       style={{
                         width: '100%',
-                        height: '34px',
-                        padding: '6px 10px',
+                        height: '36px',
+                        padding: '8px 12px',
                         borderRadius: '4px',
                         border: '1px solid #d1d5db',
-                        fontSize: 12,
+                        fontSize: 13,
                         resize: 'vertical',
                         backgroundColor: formData.isSalesInfo ? '#fff' : '#f1f5f9',
                         color: formData.isSalesInfo ? '#000' : '#94a3b8',
@@ -1375,12 +1378,12 @@ export function EditCompositeItemPage() {
                   </label>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                   <div className="form-field-grid" style={{ gridTemplateColumns: '130px 1fr',
                       alignItems: 'center',
                       gap: 12,
                      }}>
-                    <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>
+                    <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>
                       Cost Price*
                     </label>
                     <div style={{ position: 'relative', width: '100%' }}>
@@ -1393,11 +1396,11 @@ export function EditCompositeItemPage() {
                         disabled={!formData.isPurchaseInfo}
                         style={{
                           width: '100%',
-                          height: '34px',
-                          padding: '6px 110px 6px 10px',
+                          height: '36px',
+                          padding: '8px 110px 8px 12px',
                           borderRadius: '4px',
                           border: errors.costPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
-                          fontSize: 12,
+                          fontSize: 13,
                           backgroundColor: formData.isPurchaseInfo ? '#fff' : '#f1f5f9',
                           color: formData.isPurchaseInfo ? '#000' : '#94a3b8',
                           cursor: formData.isPurchaseInfo ? 'text' : 'not-allowed',
@@ -1436,7 +1439,7 @@ export function EditCompositeItemPage() {
                       gap: 12,
                      }}>
                     <label
-                      style={{ fontSize: 12, color: '#4b5563', fontWeight: 500, paddingTop: '8px' }}
+                      style={{ fontSize: 13, color: '#4b5563', fontWeight: 500, paddingTop: '8px' }}
                     >
                       Purchase Description
                     </label>
@@ -1450,11 +1453,11 @@ export function EditCompositeItemPage() {
                       disabled={!formData.isPurchaseInfo}
                       style={{
                         width: '100%',
-                        height: '34px',
-                        padding: '6px 10px',
+                        height: '36px',
+                        padding: '8px 12px',
                         borderRadius: '4px',
                         border: '1px solid #d1d5db',
-                        fontSize: 12,
+                        fontSize: 13,
                         resize: 'vertical',
                         backgroundColor: formData.isPurchaseInfo ? '#fff' : '#f1f5f9',
                         color: formData.isPurchaseInfo ? '#000' : '#94a3b8',
@@ -1465,14 +1468,17 @@ export function EditCompositeItemPage() {
                 </div>
               </div>
             </div>
+            </div>
           </div>
 
           {/* Inventory Tracking */}
           <div
             style={{
               background: '#f8fafc',
-              padding: '24px 0',
-              width: '100%',
+              padding: '24px 24px',
+              margin: '0 -24px',
+              width: 'calc(100% + 48px)',
+              boxSizing: 'border-box',
               borderRadius: 0,
               borderTop: '1px solid #e2e8f0',
               borderBottom: '1px solid #e2e8f0',
@@ -1481,6 +1487,7 @@ export function EditCompositeItemPage() {
               gap: '16px',
             }}
           >
+            <div style={{ maxWidth: '900px', width: '100%' }}>
             <label
               style={{
                 display: 'flex',
@@ -1522,7 +1529,7 @@ export function EditCompositeItemPage() {
                     alignItems: 'center',
                     gap: 12,
                    }}>
-                  <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
+                  <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
                     Inventory Tracking
                   </label>
                   <div style={{ display: 'flex', gap: 16 }}>
@@ -1531,7 +1538,7 @@ export function EditCompositeItemPage() {
                         display: 'flex',
                         alignItems: 'center',
                         gap: 6,
-                        fontSize: 12,
+                        fontSize: 13,
                         cursor: 'pointer',
                       }}
                     >
@@ -1550,8 +1557,8 @@ export function EditCompositeItemPage() {
                           display: 'flex',
                           alignItems: 'center',
                           gap: 6,
-                          fontSize: 12,
-                          cursor: 'pointer',
+                        fontSize: 13,
+                        cursor: 'pointer',
                         }}
                       >
                         <input
@@ -1570,7 +1577,7 @@ export function EditCompositeItemPage() {
                 {formData.inventoryTracking === 'none' && (
                   <div style={{ display: 'flex', gap: 24, marginTop: 12 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
+                      <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
                         Opening Stock
                       </label>
                       <input
@@ -1581,17 +1588,17 @@ export function EditCompositeItemPage() {
                         onChange={handleChange}
                         style={{
                           width: '100%',
-                          height: '34px',
+                          height: '36px',
                           minWidth: '160px',
-                          padding: '6px 10px',
+                          padding: '8px 12px',
                           borderRadius: '4px',
                           border: '1px solid #d1d5db',
-                          fontSize: 12,
+                          fontSize: 13,
                         }}
                       />
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
+                      <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
                         Value of Opening Stock (per quantity)
                       </label>
                       <input
@@ -1602,12 +1609,12 @@ export function EditCompositeItemPage() {
                         onChange={handleChange}
                         style={{
                           width: '100%',
-                          height: '34px',
+                          height: '36px',
                           minWidth: '200px',
-                          padding: '6px 10px',
+                          padding: '8px 12px',
                           borderRadius: '4px',
                           border: '1px solid #d1d5db',
-                          fontSize: 12,
+                          fontSize: 13,
                         }}
                       />
                     </div>
@@ -1615,18 +1622,16 @@ export function EditCompositeItemPage() {
                 )}
               </div>
             )}
+            </div>
           </div>
 
           {/* Custom Fields */}
           {orgId && (
             <div
               style={{
-                background: '#f8fafc',
-                padding: '24px 0',
                 width: '100%',
-                borderRadius: 0,
+                padding: '24px 0',
                 borderTop: '1px solid #e2e8f0',
-                borderBottom: '1px solid #e2e8f0',
               }}
             >
               <h3

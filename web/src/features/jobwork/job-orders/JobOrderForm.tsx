@@ -48,19 +48,21 @@ interface Props {
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
-  fontSize: 12,
-  color: '#64748b',
+  fontSize: 13,
+  fontWeight: 500,
+  color: '#4b5563',
   marginBottom: 4,
 };
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  padding: '6px 8px',
+  padding: '8px 12px',
   fontSize: 13,
   border: '1px solid #d1d5db',
   borderRadius: 4,
   background: '#fff',
-  minHeight: 32,
+  height: 36,
+  boxSizing: 'border-box' as const,
 };
 
 const readOnlyStyle: React.CSSProperties = {
@@ -368,7 +370,9 @@ export function JobOrderForm({
   };
 
   return (
-    <form onSubmit={submit} noValidate style={{ padding: '24px 32px', paddingBottom: 120 }}>
+    <>
+    <div className="page-body">
+    <form id="joborder-form" onSubmit={submit} noValidate style={{ padding: '12px 16px', paddingBottom: 120 }}>
       {localError && (
         <p
           style={{
@@ -395,7 +399,7 @@ export function JobOrderForm({
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
             gap: 16,
-            maxWidth: 900,
+            maxWidth: 1200,
           }}
         >
           <div>
@@ -569,57 +573,6 @@ export function JobOrderForm({
         </section>
       )}
 
-      <div
-        className="form-actions-footer page-footer"
-        style={{
-          height: 44,
-          boxSizing: 'border-box',
-          position: 'sticky',
-          bottom: 0,
-          right: 0,
-          background: '#fff',
-          padding: '0 24px',
-          borderTop: '1px solid #eef0f3',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          zIndex: 100,
-        }}
-      >
-        <button
-          type="submit"
-          disabled={isPending}
-          style={{
-            padding: '6px 20px',
-            background: '#0062ff',
-            color: 'white',
-            border: 'none',
-            borderRadius: 4,
-            cursor: 'pointer',
-            fontWeight: 500,
-            fontSize: 13,
-          }}
-        >
-          {isPending ? 'Saving…' : 'Save'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          style={{
-            padding: '6px 20px',
-            background: 'white',
-            color: '#333',
-            border: '1px solid #d1d5db',
-            borderRadius: 4,
-            cursor: 'pointer',
-            fontWeight: 500,
-            fontSize: 13,
-          }}
-        >
-          Cancel
-        </button>
-      </div>
-
       {isNumberConfigOpen && (
         <JobOrderNumberConfigModal
           onClose={() => setIsNumberConfigOpen(false)}
@@ -634,5 +587,55 @@ export function JobOrderForm({
         />
       )}
     </form>
+    </div>
+    <div
+      className="page-footer form-actions-footer"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '16px 32px',
+        background: '#fff',
+        borderTop: '1px solid #eef0f3',
+        position: 'sticky',
+        bottom: 0,
+        zIndex: 100,
+      }}
+    >
+      <button
+        form="joborder-form"
+        type="submit"
+        disabled={isPending}
+        style={{
+          padding: '6px 20px',
+          background: '#0062ff',
+          color: 'white',
+          border: 'none',
+          borderRadius: 4,
+          cursor: 'pointer',
+          fontWeight: 500,
+          fontSize: 13,
+        }}
+      >
+        {isPending ? 'Saving…' : 'Save'}
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        style={{
+          padding: '6px 20px',
+          background: 'white',
+          color: '#333',
+          border: '1px solid #d1d5db',
+          borderRadius: 4,
+          cursor: 'pointer',
+          fontWeight: 500,
+          fontSize: 13,
+        }}
+      >
+        Cancel
+      </button>
+    </div>
+    </>
   );
 }

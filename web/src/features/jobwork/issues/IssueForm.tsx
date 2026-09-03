@@ -31,19 +31,21 @@ interface Props {
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
-  fontSize: 12,
-  color: '#64748b',
+  fontSize: 13,
+  fontWeight: 500,
+  color: '#4b5563',
   marginBottom: 4,
 };
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  padding: '6px 8px',
+  padding: '8px 12px',
   fontSize: 13,
   border: '1px solid #d1d5db',
   borderRadius: 4,
   background: '#fff',
-  minHeight: 32,
+  height: 36,
+  boxSizing: 'border-box' as const,
 };
 
 const readOnlyStyle: React.CSSProperties = {

@@ -89,7 +89,7 @@ export function LocationForm({ initialData, onSubmit, isPending, onCancel }: Loc
   rootLocations.forEach((rootLoc) => buildFlattenedLocations(rootLoc, 0));
 
   const labelStyle = { display: 'block', fontSize: '13px', color: '#111', marginBottom: '6px' };
-  const inputStyle = { width: '100%', maxWidth: '440px', padding: '6px 8px', fontSize: '13px', border: '1px solid #d1d5db', borderRadius: '4px', background: '#fff', minHeight: '32px' };
+  const inputStyle = { width: '100%', maxWidth: '440px', padding: '8px 12px', fontSize: '13px', border: '1px solid #d1d5db', borderRadius: '4px', background: '#fff', height: '36px', boxSizing: 'border-box' };
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>

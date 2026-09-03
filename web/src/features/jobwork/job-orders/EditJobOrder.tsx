@@ -104,10 +104,9 @@ export function EditJobOrder() {
   }
 
   return (
-    <div
-      style={{ background: '#fff', minHeight: '100%', display: 'flex', flexDirection: 'column' }}
-    >
-      <header className="detail-page-header"
+    <div className="page-container" style={{ background: '#fff' }}>
+      <header
+        className="page-header"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -153,7 +152,6 @@ export function EditJobOrder() {
           {message}
         </p>
       )}
-      <div style={{ padding: '0 0 44px 0' }}>
         <JobOrderForm
           initialData={jobOrder}
           // Material In posted its ledger rows when the order was created. There
@@ -167,7 +165,6 @@ export function EditJobOrder() {
           onCancel={() => navigate(backPath)}
           fieldErrors={fieldErrors}
         />
-      </div>
     </div>
   );
 }

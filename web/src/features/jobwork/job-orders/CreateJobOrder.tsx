@@ -48,10 +48,9 @@ export function CreateJobOrder() {
   });
 
   return (
-    <div
-      style={{ background: '#fff', minHeight: '100%', display: 'flex', flexDirection: 'column' }}
-    >
-      <header className="detail-page-header"
+    <div className="page-container" style={{ background: '#fff' }}>
+      <header
+        className="page-header"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -127,12 +126,11 @@ export function CreateJobOrder() {
           {message}
         </p>
       )}
-      <div style={{ padding: '0 0 44px 0' }}>
         {/* The form seeds its state ONCE from `initialData`, so it must not mount
             before the order being copied has arrived — it would render blank and
             stay blank. */}
         {isLoadingSource ? (
-          <div style={{ padding: 48, display: 'flex', justifyContent: 'center' }}>
+          <div className="page-body" style={{ padding: 48, display: 'flex', justifyContent: 'center' }}>
             <Spinner size={24} label="Loading the job order to copy" />
           </div>
         ) : (
@@ -149,7 +147,6 @@ export function CreateJobOrder() {
             fieldErrors={fieldErrors}
           />
         )}
-      </div>
     </div>
   );
 }

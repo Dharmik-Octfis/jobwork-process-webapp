@@ -287,7 +287,7 @@ export function EditItemPage() {
         <form
           id="edit-item-form"
           onSubmit={handleSubmit}
-          style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '900px' }}
+          style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}
         >
           {/* Top Section: Basic Info & Images */}
           <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -724,8 +724,10 @@ export function EditItemPage() {
           <div
             style={{
               background: '#f8fafc',
-              padding: '24px 0',
-              width: '100%',
+              padding: '24px 24px',
+              margin: '0 -24px',
+              width: 'calc(100% + 48px)',
+              boxSizing: 'border-box',
               borderRadius: 0,
               borderTop: '1px solid #e2e8f0',
               borderBottom: '1px solid #e2e8f0',
@@ -734,7 +736,8 @@ export function EditItemPage() {
               gap: '16px',
             }}
           >
-            <div className="form-field-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+            <div style={{ maxWidth: '900px', width: '100%' }}>
+              <div className="form-field-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', alignItems: 'start' }}>
               {/* Sales Information */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <label
@@ -758,10 +761,10 @@ export function EditItemPage() {
                 </label>
                 {formData.isSalesInfo && (
                   <div
-                    style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}
+                    style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
                   >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>
+                      <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>
                         Selling Price*
                       </label>
                       <input
@@ -772,10 +775,10 @@ export function EditItemPage() {
                         onChange={handleChange}
                         style={{
                           width: '100%',
-                          padding: '6px 10px',
+                          padding: '8px 12px',
                           borderRadius: '4px',
                           border: errors.sellingPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
-                          fontSize: 12,
+                          fontSize: 13,
                         }}
                       />
                       {errors.sellingPrice && (
@@ -787,7 +790,7 @@ export function EditItemPage() {
                       )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
+                      <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
                         Sales Description
                       </label>
                       <textarea
@@ -799,10 +802,10 @@ export function EditItemPage() {
                         rows={3}
                         style={{
                           width: '100%',
-                          padding: '6px 10px',
+                          padding: '8px 12px',
                           borderRadius: '4px',
                           border: '1px solid #d1d5db',
-                          fontSize: 12,
+                          fontSize: 13,
                           resize: 'vertical',
                         }}
                       />
@@ -834,10 +837,10 @@ export function EditItemPage() {
                 </label>
                 {formData.isPurchaseInfo && (
                   <div
-                    style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}
+                    style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
                   >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>
+                      <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>
                         Cost Price*
                       </label>
                       <input
@@ -848,10 +851,10 @@ export function EditItemPage() {
                         onChange={handleChange}
                         style={{
                           width: '100%',
-                          padding: '6px 10px',
+                          padding: '8px 12px',
                           borderRadius: '4px',
                           border: errors.costPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
-                          fontSize: 12,
+                          fontSize: 13,
                         }}
                       />
                       {errors.costPrice && (
@@ -863,7 +866,7 @@ export function EditItemPage() {
                       )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
+                      <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
                         Purchase Description
                       </label>
                       <textarea
@@ -875,10 +878,10 @@ export function EditItemPage() {
                         rows={3}
                         style={{
                           width: '100%',
-                          padding: '6px 10px',
+                          padding: '8px 12px',
                           borderRadius: '4px',
                           border: '1px solid #d1d5db',
-                          fontSize: 12,
+                          fontSize: 13,
                           resize: 'vertical',
                         }}
                       />
@@ -887,14 +890,17 @@ export function EditItemPage() {
                 )}
               </div>
             </div>
+            </div>
           </div>
 
           {/* Inventory Tracking */}
           <div
             style={{
               background: '#f8fafc',
-              padding: '24px 0',
-              width: '100%',
+              padding: '24px 24px',
+              margin: '0 -24px',
+              width: 'calc(100% + 48px)',
+              boxSizing: 'border-box',
               borderRadius: 0,
               borderTop: '1px solid #e2e8f0',
               borderBottom: '1px solid #e2e8f0',
@@ -903,6 +909,7 @@ export function EditItemPage() {
               gap: '16px',
             }}
           >
+            <div style={{ maxWidth: '900px', width: '100%' }}>
             <label
               style={{
                 display: 'flex',
@@ -944,7 +951,7 @@ export function EditItemPage() {
                     alignItems: 'center',
                     gap: 12,
                    }}>
-                  <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
+                  <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
                     Inventory Tracking
                   </label>
                   <div style={{ display: 'flex', gap: 16 }}>
@@ -953,7 +960,7 @@ export function EditItemPage() {
                         display: 'flex',
                         alignItems: 'center',
                         gap: 6,
-                        fontSize: 12,
+                        fontSize: 13,
                         cursor: 'pointer',
                       }}
                     >
@@ -972,8 +979,8 @@ export function EditItemPage() {
                           display: 'flex',
                           alignItems: 'center',
                           gap: 6,
-                          fontSize: 12,
-                          cursor: 'pointer',
+                        fontSize: 13,
+                        cursor: 'pointer',
                         }}
                       >
                         <input
@@ -992,7 +999,7 @@ export function EditItemPage() {
                 {formData.inventoryTracking === 'none' && (
                   <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
+                      <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
                         Opening Stock
                       </label>
                       <input
@@ -1004,15 +1011,15 @@ export function EditItemPage() {
                         style={{
                           width: '100%',
                           minWidth: '160px',
-                          padding: '6px 10px',
+                          padding: '8px 12px',
                           borderRadius: '4px',
                           border: '1px solid #d1d5db',
-                          fontSize: 12,
+                          fontSize: 13,
                         }}
                       />
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
+                      <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
                         Value of Opening Stock (per quantity)
                       </label>
                       <input
@@ -1024,10 +1031,10 @@ export function EditItemPage() {
                         style={{
                           width: '100%',
                           minWidth: '200px',
-                          padding: '6px 10px',
+                          padding: '8px 12px',
                           borderRadius: '4px',
                           border: '1px solid #d1d5db',
-                          fontSize: 12,
+                          fontSize: 13,
                         }}
                       />
                     </div>
@@ -1035,18 +1042,16 @@ export function EditItemPage() {
                 )}
               </div>
             )}
+            </div>
           </div>
 
           {/* Custom Fields */}
           {orgId && (
             <div
               style={{
-                background: '#f8fafc',
-                padding: '24px 0',
                 width: '100%',
-                borderRadius: 0,
+                padding: '24px 0',
                 borderTop: '1px solid #e2e8f0',
-                borderBottom: '1px solid #e2e8f0',
               }}
             >
               <h3

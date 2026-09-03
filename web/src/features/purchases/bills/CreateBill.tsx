@@ -517,7 +517,9 @@ export function CreateBill() {
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
-    color: '#111',
+    color: '#4b5563',
+    fontWeight: 500,
+    fontSize: 13,
   };
   const inputStyle = {
     width: '100%',

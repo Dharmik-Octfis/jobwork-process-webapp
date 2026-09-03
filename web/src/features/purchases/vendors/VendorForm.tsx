@@ -201,15 +201,19 @@ export function VendorForm({
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
-    color: '#111',
+    color: '#4b5563',
+    fontWeight: 500,
+    fontSize: 13,
   };
   const inputStyle = {
     width: '100%',
     maxWidth: '440px',
-    padding: '6px 8px',
+    padding: '8px 12px',
+    height: '36px',
     fontSize: '13px',
     border: '1px solid #d1d5db',
     borderRadius: '4px',
+    boxSizing: 'border-box' as const,
   };
 
   const tabBtnStyle = (isActive: boolean) => ({

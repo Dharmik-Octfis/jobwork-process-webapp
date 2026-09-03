@@ -28,15 +28,17 @@ const labelStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '6px',
-  color: '#111',
+  color: '#4b5563',
   fontSize: 13,
+  fontWeight: 500,
 };
 
 /** Caption above its control, matching the surrounding page's field captions. */
 const stackedLabelStyle: React.CSSProperties = {
   display: 'block',
-  fontSize: 12,
-  color: '#64748b',
+  fontSize: 13,
+  fontWeight: 500,
+  color: '#4b5563',
   marginBottom: 4,
 };
 

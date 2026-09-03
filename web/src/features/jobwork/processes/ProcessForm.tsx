@@ -13,19 +13,21 @@ export interface ProcessFormProps {
 const labelStyle: React.CSSProperties = {
   display: 'block',
   fontSize: 13,
-  color: '#111',
+  color: '#4b5563',
+  fontWeight: 500,
   marginBottom: 6,
 };
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
   maxWidth: 440,
-  padding: '6px 8px',
+  padding: '8px 12px',
   fontSize: 13,
   border: '1px solid #d1d5db',
   borderRadius: 4,
   background: '#fff',
-  minHeight: 32,
+  height: 36,
+  boxSizing: 'border-box' as const,
 };
 
 const errorStyle: React.CSSProperties = {
