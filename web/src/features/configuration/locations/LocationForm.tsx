@@ -92,164 +92,162 @@ export function LocationForm({ initialData, onSubmit, isPending, onCancel }: Loc
   const inputStyle = { width: '100%', maxWidth: '440px', padding: '6px 8px', fontSize: '13px', border: '1px solid #d1d5db', borderRadius: '4px', background: '#fff', minHeight: '32px' };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} noValidate style={{ padding: '24px 32px', paddingBottom: '200px' }}>
-      <div style={{ marginBottom: '24px' }}>
-        <label style={labelStyle}>Location Type</label>
-        <div style={{ display: 'flex', gap: '16px', maxWidth: '600px' }}>
-          <label style={{
-            flex: 1, padding: '16px', border: watchType === 'Business' ? '1px solid #0062ff' : '1px solid #eef0f3',
-            borderRadius: '6px', background: watchType === 'Business' ? '#f0f4ff' : '#fff', cursor: 'pointer'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <input type="radio" value="Business" {...register('type')} />
-              <strong style={{ fontSize: '14px', color: '#111' }}>Business Location</strong>
-            </div>
-            <p style={{ fontSize: '12px', color: '#555', margin: 0, paddingLeft: '24px', lineHeight: 1.4 }}>
-              A Business Location represents your organization or office's operational location. It is used to record transactions, assess regional performance, and monitor stock levels for items stored at this location.
-            </p>
-          </label>
-          <label style={{
-            flex: 1, padding: '16px', border: watchType === 'Warehouse' ? '1px solid #0062ff' : '1px solid #eef0f3',
-            borderRadius: '6px', background: watchType === 'Warehouse' ? '#f0f4ff' : '#fff', cursor: 'pointer'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <input type="radio" value="Warehouse" {...register('type')} />
-              <strong style={{ fontSize: '14px', color: '#111' }}>Warehouse Only Location</strong>
-            </div>
-            <p style={{ fontSize: '12px', color: '#555', margin: 0, paddingLeft: '24px', lineHeight: 1.4 }}>
-              A Warehouse Only Location refers to where your items are stored. It helps track and monitor stock levels for items stored at this location.
-            </p>
-          </label>
-        </div>
-      </div>
-
-      <div className="form-field-grid" style={{ gridTemplateColumns: '180px 1fr', rowGap: '20px', alignItems: 'center', marginBottom: '24px'  }}>
-        {watchType === 'Business' && (
-          <>
-            <label style={labelStyle}>Logo</label>
-            <Controller
-              name="logo"
-              control={control}
-              render={({ field: { onChange, value } }) => (
-                <SearchableSelect
-                  value={value || ''}
-                  onChange={onChange}
-                  options={[
-                    { label: 'Same as Organization Logo', value: '' },
-                    { label: 'Upload Custom Logo (Not implemented yet)', value: 'custom' },
-                  ]}
-                  style={{ maxWidth: '440px' }}
-                />
-              )}
-            />
-          </>
-        )}
-
-        <label style={{ ...labelStyle, color: '#ef4444' }}>Name*</label>
-        <div>
-          <input type="text" {...register('name', { required: true })} style={inputStyle} placeholder="Location Name" />
-          {errors.name && <span style={{ color: '#e54d4d', fontSize: '11px', display: 'block', marginTop: '4px' }}>Name is required</span>}
+    <form onSubmit={handleSubmit(onSubmit)} noValidate style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
+        <div style={{ marginBottom: '24px' }}>
+          <label style={labelStyle}>Location Type</label>
+          <div style={{ display: 'flex', gap: '16px', maxWidth: '600px' }}>
+            <label style={{
+              flex: 1, padding: '16px', border: watchType === 'Business' ? '1px solid #0062ff' : '1px solid #eef0f3',
+              borderRadius: '6px', background: watchType === 'Business' ? '#f0f4ff' : '#fff', cursor: 'pointer'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <input type="radio" value="Business" {...register('type')} />
+                <strong style={{ fontSize: '14px', color: '#111' }}>Business Location</strong>
+              </div>
+              <p style={{ fontSize: '12px', color: '#555', margin: 0, paddingLeft: '24px', lineHeight: 1.4 }}>
+                A Business Location represents your organization or office's operational location. It is used to record transactions, assess regional performance, and monitor stock levels for items stored at this location.
+              </p>
+            </label>
+            <label style={{
+              flex: 1, padding: '16px', border: watchType === 'Warehouse' ? '1px solid #0062ff' : '1px solid #eef0f3',
+              borderRadius: '6px', background: watchType === 'Warehouse' ? '#f0f4ff' : '#fff', cursor: 'pointer'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <input type="radio" value="Warehouse" {...register('type')} />
+                <strong style={{ fontSize: '14px', color: '#111' }}>Warehouse Only Location</strong>
+              </div>
+              <p style={{ fontSize: '12px', color: '#555', margin: 0, paddingLeft: '24px', lineHeight: 1.4 }}>
+                A Warehouse Only Location refers to where your items are stored. It helps track and monitor stock levels for items stored at this location.
+              </p>
+            </label>
+          </div>
         </div>
 
-        <div></div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
-          <input type="checkbox" checked={isChildLocation} onChange={(e) => {
-            setIsChildLocation(e.target.checked);
-            if (!e.target.checked) register('parentId').onChange({ target: { value: null } });
-          }} />
-          This is a Child Location
-        </label>
-
-        {isChildLocation && (
-          <>
-            <label style={{ ...labelStyle, color: '#ef4444' }}>Parent Location*</label>
-            <div>
+        <div className="form-field-grid" style={{ gridTemplateColumns: '180px 1fr', rowGap: '20px', alignItems: 'center', marginBottom: '24px'  }}>
+          {watchType === 'Business' && (
+            <>
+              <label style={labelStyle}>Logo</label>
               <Controller
-                name="parentId"
+                name="logo"
                 control={control}
-                rules={{ required: isChildLocation }}
                 render={({ field: { onChange, value } }) => (
-                  <ParentLocationDropdown
+                  <SearchableSelect
                     value={value || ''}
                     onChange={onChange}
-                    options={flattenedLocations}
+                    options={[
+                      { label: 'Same as Organization Logo', value: '' },
+                      { label: 'Upload Custom Logo (Not implemented yet)', value: 'custom' },
+                    ]}
                     style={{ maxWidth: '440px' }}
                   />
                 )}
               />
-              {errors.parentId && <span style={{ color: '#e54d4d', fontSize: '11px', display: 'block', marginTop: '4px' }}>Parent Location is required</span>}
-            </div>
-          </>
-        )}
-      </div>
+            </>
+          )}
 
-      <div className="form-field-grid" style={{ gridTemplateColumns: '180px 1fr', rowGap: '12px', alignItems: 'start'  }}>
-        <label style={{ ...labelStyle, marginTop: '8px' }}>Address</label>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <input type="text" {...register('street1')} style={inputStyle} placeholder="Street 1" />
-          <input type="text" {...register('street2')} style={inputStyle} placeholder="Street 2" />
-          <Controller
-            name="country"
-            control={control}
-            render={({ field: { onChange, value } }) => (
-              <SearchableSelect
-                value={value || 'India'}
-                onChange={onChange}
-                options={countryOptions}
-                style={{ maxWidth: '440px' }}
-              />
-            )}
-          />
-          <div style={{ display: 'flex', gap: '12px', maxWidth: '440px' }}>
-            <Controller
-              name="state"
-              control={control}
-              render={({ field: { onChange, value } }) => (
-                <SearchableSelect
-                  value={value || ''}
-                  onChange={onChange}
-                  placeholder="Select State"
-                  options={stateOptions}
-                  style={{ flex: 1 }}
-                />
-              )}
-            />
-            <Controller
-              name="city"
-              control={control}
-              render={({ field: { onChange, value } }) => (
-                <SearchableSelect
-                  value={value || ''}
-                  onChange={onChange}
-                  placeholder="Select City"
-                  options={cityOptions}
-                  style={{ flex: 1 }}
-                />
-              )}
-            />
+          <label style={{ ...labelStyle, color: '#ef4444' }}>Name*</label>
+          <div>
+            <input type="text" {...register('name', { required: true })} style={inputStyle} placeholder="Location Name" />
+            {errors.name && <span style={{ color: '#e54d4d', fontSize: '11px', display: 'block', marginTop: '4px' }}>Name is required</span>}
           </div>
-          <div style={{ display: 'flex', gap: '12px', maxWidth: '440px' }}>
-            <input type="text" {...register('zip')} style={{ ...inputStyle, flex: 1 }} placeholder="Zip/Pin Code" />
-            <input type="text" {...register('phone')} style={{ ...inputStyle, flex: 1 }} placeholder="Phone" />
+
+          <div></div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+            <input type="checkbox" checked={isChildLocation} onChange={(e) => {
+              setIsChildLocation(e.target.checked);
+              if (!e.target.checked) register('parentId').onChange({ target: { value: null } });
+            }} />
+            This is a Child Location
+          </label>
+
+          {isChildLocation && (
+            <>
+              <label style={{ ...labelStyle, color: '#ef4444' }}>Parent Location*</label>
+              <div>
+                <Controller
+                  name="parentId"
+                  control={control}
+                  rules={{ required: isChildLocation }}
+                  render={({ field: { onChange, value } }) => (
+                    <ParentLocationDropdown
+                      value={value || ''}
+                      onChange={onChange}
+                      options={flattenedLocations}
+                      style={{ maxWidth: '440px' }}
+                    />
+                  )}
+                />
+                {errors.parentId && <span style={{ color: '#e54d4d', fontSize: '11px', display: 'block', marginTop: '4px' }}>Parent Location is required</span>}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="form-field-grid" style={{ gridTemplateColumns: '180px 1fr', rowGap: '12px', alignItems: 'start'  }}>
+          <label style={{ ...labelStyle, marginTop: '8px' }}>Address</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <input type="text" {...register('street1')} style={inputStyle} placeholder="Street 1" />
+            <input type="text" {...register('street2')} style={inputStyle} placeholder="Street 2" />
+            <Controller
+              name="country"
+              control={control}
+              render={({ field: { onChange, value } }) => (
+                <SearchableSelect
+                  value={value || 'India'}
+                  onChange={onChange}
+                  options={countryOptions}
+                  style={{ maxWidth: '440px' }}
+                />
+              )}
+            />
+            <div style={{ display: 'flex', gap: '12px', maxWidth: '440px' }}>
+              <Controller
+                name="state"
+                control={control}
+                render={({ field: { onChange, value } }) => (
+                  <SearchableSelect
+                    value={value || ''}
+                    onChange={onChange}
+                    placeholder="Select State"
+                    options={stateOptions}
+                    style={{ flex: 1 }}
+                  />
+                )}
+              />
+              <Controller
+                name="city"
+                control={control}
+                render={({ field: { onChange, value } }) => (
+                  <SearchableSelect
+                    value={value || ''}
+                    onChange={onChange}
+                    placeholder="Select City"
+                    options={cityOptions}
+                    style={{ flex: 1 }}
+                  />
+                )}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '12px', maxWidth: '440px' }}>
+              <input type="text" {...register('zip')} style={{ ...inputStyle, flex: 1 }} placeholder="Zip/Pin Code" />
+              <input type="text" {...register('phone')} style={{ ...inputStyle, flex: 1 }} placeholder="Phone" />
+            </div>
           </div>
         </div>
       </div>
 
       <div
-        className="form-actions-footer page-footer"
+        className="form-actions-footer"
         style={{
-          height: '44px',
+          height: '52px',
           boxSizing: 'border-box',
-          position: 'sticky',
-          bottom: 0,
-          right: 0,
           background: '#fff',
-          padding: '0 24px',
+          padding: '0 32px',
           borderTop: '1px solid #eef0f3',
           display: 'flex',
           alignItems: 'center',
           gap: '12px',
-          zIndex: 100,
         }}
       >
         <button
@@ -257,7 +255,7 @@ export function LocationForm({ initialData, onSubmit, isPending, onCancel }: Loc
           disabled={isPending}
           style={{
             padding: '6px 20px',
-            background: '#0062ff',
+            background: 'var(--color-primary)',
             color: 'white',
             border: 'none',
             borderRadius: '4px',

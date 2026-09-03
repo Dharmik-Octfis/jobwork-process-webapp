@@ -1184,6 +1184,7 @@ export function CreatePurchaseOrder() {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <ItemComboBox
                             orgId={orgId!}
+                            portal={true}
                             value={watchItems?.[index]?.itemId}
                             initialItem={watchItems?.[index]?.item}
                             selectedImage={

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Settings, Info, Image as ImageIcon, Plus, Trash2 } from 'lucide-react';
+import { Settings, Info, Image as ImageIcon, Plus, Trash2, X } from 'lucide-react';
 import { useForm, Controller, useWatch, type FieldErrors } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'react-hot-toast';
@@ -228,14 +228,33 @@ export function CreateAssemblyPage() {
           padding: '16px 24px',
           borderBottom: '1px solid #eef0f3',
           display: 'flex',
+          justifyContent: 'space-between',
           alignItems: 'center',
-          gap: '8px',
         }}
       >
-        <PackageIcon />
-        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 600, color: '#1e293b' }}>
-          New Assembly
-        </h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <PackageIcon />
+          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 600, color: '#1e293b' }}>
+            New Assembly
+          </h1>
+        </div>
+        <button
+          type="button"
+          onClick={() => navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/inventory/assemblies`)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#64748b',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '4px',
+            borderRadius: '4px',
+          }}
+        >
+          <X size={20} />
+        </button>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>

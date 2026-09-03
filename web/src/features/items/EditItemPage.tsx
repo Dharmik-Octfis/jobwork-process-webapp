@@ -277,7 +277,7 @@ export function EditItemPage() {
           <h1 style={{ fontSize: '22px', fontWeight: 400, margin: 0, color: '#000' }}>Edit Item</h1>
           <button
             type="button"
-            onClick={() => (location.state as { returnUrl?: string })?.returnUrl ? navigate((location.state as { returnUrl?: string }).returnUrl!) : navigate(-1)}
+            onClick={() => navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/items`)}
             style={{
               background: 'none',
               border: 'none',

@@ -316,7 +316,11 @@ function GlobalSearch() {
   };
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', width: 320 }} className="global-search-container">
+    <div
+      ref={containerRef}
+      style={{ position: 'relative', width: 320 }}
+      className="global-search-container"
+    >
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
         <Search
           size={16}
@@ -417,7 +421,8 @@ export function AppLayout() {
 
   const rememberedOrgId = localStorage.getItem(LAST_ORG_KEY);
   const effectiveOrgId = activeOrgId || rememberedOrgId || organizations?.[0]?.organizationId;
-  const activeOrg = organizations?.find((o) => o.organizationId === effectiveOrgId) || organizations?.[0];
+  const activeOrg =
+    organizations?.find((o) => o.organizationId === effectiveOrgId) || organizations?.[0];
 
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
   const [prevPathname, setPrevPathname] = useState(location.pathname);
@@ -482,16 +487,19 @@ export function AppLayout() {
 
   return (
     <div
-      style={{
-        display: 'flex',
-        height: '100dvh', // Use dynamic viewport height to prevent mobile browser UI from cutting off the bottom
-        overflow: 'hidden',
-        background: 'var(--color-bg)',
-      }}
+      style={
+        {
+          display: 'flex',
+          height: '100dvh', // Use dynamic viewport height to prevent mobile browser UI from cutting off the bottom
+          overflow: 'hidden',
+          background: 'var(--color-bg)',
+          '--sidebar-width': isSidebarCollapsed ? '72px' : '220px',
+        } as React.CSSProperties
+      }
     >
       {/* Mobile Overlay */}
-      <div 
-        className={`mobile-sidebar-overlay ${isMobileMenuOpen ? 'mobile-open' : ''}`} 
+      <div
+        className={`mobile-sidebar-overlay ${isMobileMenuOpen ? 'mobile-open' : ''}`}
         onClick={() => setIsMobileMenuOpen(false)}
       />
 
@@ -632,9 +640,12 @@ export function AppLayout() {
           className="app-topbar"
         >
           {/* Global Search — one box, context-aware per module (see GlobalSearch) */}
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center' }} className="topbar-search-area">
-            <button 
-              className="mobile-header-menu-btn" 
+          <div
+            style={{ flex: 1, display: 'flex', alignItems: 'center' }}
+            className="topbar-search-area"
+          >
+            <button
+              className="mobile-header-menu-btn"
               onClick={() => setIsMobileMenuOpen(true)}
               aria-label="Open menu"
             >
@@ -643,7 +654,10 @@ export function AppLayout() {
             <GlobalSearch />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }} className="topbar-right-controls">
+          <div
+            style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}
+            className="topbar-right-controls"
+          >
             <div className="topbar-org-dropdown">
               <OrgDropdown
                 organizations={organizations || []}
@@ -867,7 +881,7 @@ function ModuleNavGroup({
               <span style={{ fontSize: 13, marginLeft: 4 }}>{module.name}</span>
             </div>
 
-            {(isHovered || isActive) && (
+            {(isHovered || isActive) && module.code !== 'DASHBOARD' && (
               <button
                 onClick={handlePlusClick}
                 title={`Create new ${module.name.toLowerCase()}`}
@@ -886,8 +900,12 @@ function ModuleNavGroup({
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')
+                }
               >
                 <Plus size={16} color="#fff" strokeWidth={2.5} />
               </button>
@@ -943,7 +961,7 @@ function ModuleNavGroup({
         {({ isActive }) => (
           <>
             <span>{module.name}</span>
-            {(isHovered || isActive) && (
+            {(isHovered || isActive) && module.code !== 'DASHBOARD' && (
               <button
                 onClick={handlePlusClick}
                 title={`Create new ${module.name.toLowerCase()}`}
@@ -962,8 +980,12 @@ function ModuleNavGroup({
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')
+                }
               >
                 <Plus size={16} color="#fff" strokeWidth={2.5} />
               </button>
@@ -1382,7 +1404,14 @@ function OrgDropdown({
           maxWidth: '100%',
         }}
       >
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+        <span
+          style={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            display: 'block',
+          }}
+        >
           {activeOrg?.name || 'Select Organization'}
         </span>
         <span style={{ fontSize: 10, flexShrink: 0 }}>▼</span>

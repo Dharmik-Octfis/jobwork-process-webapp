@@ -246,6 +246,11 @@ export function OpeningStockPage() {
   const handleSave = async () => {
     try {
       for (const loc of locationRows) {
+        if (!loc.locationId) {
+          toast.error('Please select a location.');
+          return;
+        }
+
         const locObj = locations.find((l) => l.id === loc.locationId);
         const locName = locObj?.name || 'Selected Location';
         const declared = parseFloat(loc.openingStock) || 0;

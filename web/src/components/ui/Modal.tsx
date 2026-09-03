@@ -155,6 +155,10 @@ export function Modal({
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
+    const mainNode = document.getElementById('app-main-content');
+    const previousMainOverflow = mainNode ? mainNode.style.overflow : '';
+    if (mainNode) mainNode.style.overflow = 'hidden';
+
     return () => {
       cancelAnimationFrame(raf);
       document.removeEventListener('keydown', onKeyDown, true);
@@ -162,7 +166,10 @@ export function Modal({
       if (at !== -1) modalStack.splice(at, 1);
       // Only the last dialog to close gives the page its scrollbar back — an
       // inner one closing must leave the outer one's lock in place.
-      if (modalStack.length === 0) document.body.style.overflow = previousOverflow;
+      if (modalStack.length === 0) {
+        document.body.style.overflow = previousOverflow;
+        if (mainNode) mainNode.style.overflow = previousMainOverflow;
+      }
       returnFocusRef.current?.focus?.();
     };
   }, [isOpen]);
@@ -179,6 +186,8 @@ export function Modal({
       style={{
         position: overlayPosition,
         inset: 0,
+        top: mainNode ? mainNode.scrollTop : 0,
+        bottom: mainNode ? -mainNode.scrollTop : 0,
         background: isFullScreen ? '#fff' : 'rgba(15, 23, 42, 0.45)',
         display: 'flex',
         alignItems: position === 'right' ? 'center' : 'flex-start',

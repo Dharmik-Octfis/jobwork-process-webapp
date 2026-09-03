@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { CustomFieldsSection } from '../custom-fields/CustomFieldsSection.tsx';
 import { useUoms } from '../inventory/uom/uom.api.ts';
 import { UomFormModal } from '../inventory/uom/UomFormModal.tsx';
-import { Plus } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import { useTrackingLabel } from '../../hooks/useTrackingLabel.ts';
 
 interface CreateItemPageProps {
@@ -283,18 +283,40 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
           padding: isModal ? '20px' : '24px 32px 24px',
           maxWidth: isModal ? '100%' : '1200px',
           margin: isModal ? '0' : '0 auto',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
         }}
       >
         <h1
           style={{
             fontSize: isModal ? '20px' : '24px',
             fontWeight: 600,
-            marginBottom: '24px',
+            margin: 0,
             color: '#1e293b',
           }}
         >
           New Item
         </h1>
+        {!isModal && (
+          <button
+            type="button"
+            onClick={() => navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/items`)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#64748b',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px',
+              borderRadius: '4px',
+            }}
+          >
+            <X size={24} />
+          </button>
+        )}
       </div>
 
       <div style={{ padding: isModal ? '0 20px 0px' : '0 32px 32px' }}>

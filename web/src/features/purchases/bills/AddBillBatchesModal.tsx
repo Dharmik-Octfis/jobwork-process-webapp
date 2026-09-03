@@ -209,25 +209,9 @@ export function AddBillBatchesModal({
       isOpen={isOpen}
       onClose={onClose}
       title={`Add ${trackingLabel.plural}`}
-      width={1100}
+      position="fullScreen"
       footer={
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', width: '100%' }}>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: '8px 16px',
-              border: '1px solid #d1d5db',
-              background: '#fff',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 500,
-              fontSize: '14px',
-              color: '#374151',
-            }}
-          >
-            Cancel
-          </button>
+        <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '12px', width: '100%' }}>
           <button
             type="button"
             onClick={handleSave}
@@ -244,6 +228,22 @@ export function AddBillBatchesModal({
           >
             Save
           </button>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: '8px 16px',
+              border: '1px solid #d1d5db',
+              background: '#fff',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 500,
+              fontSize: '14px',
+              color: '#374151',
+            }}
+          >
+            Cancel
+          </button>
         </div>
       }
     >
@@ -258,43 +258,28 @@ export function AddBillBatchesModal({
           borderRadius: 4,
           fontSize: 13,
           color: '#334155',
+          marginBottom: 16,
         }}
       >
-        <Warehouse size={14} color="#64748b" />
-        {locationName === null ? (
-          <span style={{ color: '#64748b' }}>Location not specified</span>
-        ) : (
-          <>
-            <span style={{ color: '#64748b' }}>Location :</span>
-            <span style={{ fontWeight: 500 }}>{locationName}</span>
-          </>
-        )}
+        <Warehouse size={16} color="#64748b" />
+        <span style={{ color: '#94a3b8' }}>Location :</span>
+        <span style={{ fontWeight: 500 }}>{locationName || 'N/A'}</span>
       </div>
 
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          gap: 20,
-          flexWrap: 'wrap',
-          padding: '14px 2px 16px',
-          borderBottom: '1px solid #eef0f3',
-        }}
-      >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <div style={{ fontSize: 15, color: '#111' }}>{itemName}</div>
-          {sku && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>SKU: {sku}</div>}
+          <h3 style={{ margin: '0 0 4px 0', fontSize: 14, color: '#0f172a' }}>{itemName}</h3>
+          {sku && <div style={{ fontSize: 12, color: '#94a3b8' }}>SKU: {sku}</div>}
         </div>
-
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 13, color: '#334155' }}>
-            <span style={{ color: '#64748b' }}>Total Quantity :</span> {formatQty(lineQty)}{' '}
-            {uomLabel}
-            <span style={{ color: '#e2e8f0', margin: '0 10px' }}>|</span>
-            <span style={{ color: '#64748b' }}>Quantity to be added :</span>{' '}
-            <span style={{ color: matches ? '#15803d' : '#b45309', fontWeight: 600 }}>
-              {formatQty(remaining)} {uomLabel}
+          <div style={{ fontSize: 12.5, color: '#64748b' }}>
+            Total Quantity : <span style={{ fontWeight: 600, color: '#334155' }}>{formatQty(allocated)} {uomLabel}</span>
+            <span style={{ margin: '0 8px', color: '#cbd5e1' }}>|</span>
+            Quantity to be added :{' '}
+            <span
+              style={{ fontWeight: 600, color: matches ? '#16a34a' : '#ea580c' }}
+            >
+              {formatQty(lineQty)} {uomLabel}
             </span>
           </div>
 
@@ -321,8 +306,7 @@ export function AddBillBatchesModal({
       </div>
 
       <div style={{ overflowX: 'auto', marginTop: '14px', minHeight: '350px' }}>
-        <div className="responsive-table-wrapper">
-                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
           <thead>
             <tr>
               <th
@@ -630,7 +614,6 @@ export function AddBillBatchesModal({
             ))}
           </tbody>
         </table>
-                  </div>
       </div>
 
       <div

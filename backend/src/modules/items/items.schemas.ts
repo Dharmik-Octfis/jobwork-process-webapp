@@ -123,7 +123,7 @@ export const batchInfoSchema = z.object({
 
 export const locationRowSchema = z.object({
   id: z.string().optional(),
-  locationId: z.string(),
+  locationId: z.string().min(1, 'Location is required'),
   openingStock: z.union([z.string(), z.number()]).optional().nullable(),
   openingStockValue: z.union([z.string(), z.number()]).optional().nullable(),
   // Optional: an item at `inventoryTracking = none` declares a bulk quantity and

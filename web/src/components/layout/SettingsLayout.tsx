@@ -67,7 +67,7 @@ export function SettingsLayout() {
 
   return (
     <div
-      className={`master-detail-container ${hasSelection ? 'has-selection' : ''}`}
+      className={hasSelection ? 'settings-layout-container has-selection' : 'settings-layout-container'}
       style={{
         display: 'flex',
         height: '100%',
@@ -77,7 +77,7 @@ export function SettingsLayout() {
     >
       {/* Settings Sidebar */}
       <aside
-        className="master-pane"
+        className={hasSelection ? "settings-sidebar hidden-on-mobile" : "settings-sidebar"}
         style={{
           width: 250,
           background: 'white',
@@ -700,7 +700,7 @@ export function SettingsLayout() {
 
       {/* Main Settings Content */}
       <main
-        className="detail-pane"
+        className={hasSelection ? "settings-content" : "settings-content hidden-on-mobile"}
         style={{
           flex: 1,
           overflowY: 'auto',

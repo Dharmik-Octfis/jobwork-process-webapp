@@ -401,14 +401,7 @@ export function EditCompositeItemPage() {
           </h1>
           <button
             type="button"
-            onClick={() => {
-              const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
-              if (returnUrl) {
-                navigate(returnUrl);
-              } else {
-                navigate(-1);
-              }
-            }}
+            onClick={() => navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/composite-items`)}
             style={{
               background: 'none',
               border: 'none',
@@ -713,13 +706,13 @@ export function EditCompositeItemPage() {
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '16px',
-                maxWidth: '850px',
+                maxWidth: '900px',
               }}
             >
               <div style={{ fontSize: 14, fontWeight: 600, color: '#ef4444' }}>
                 Associate Items*
               </div>
-              <div className="responsive-table-wrapper">
+              <div style={{ width: '100%', overflowX: 'auto' }}>
                     <table
                 style={{
                   width: '100%',
@@ -992,13 +985,13 @@ export function EditCompositeItemPage() {
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '12px',
-                  maxWidth: '850px',
+                  maxWidth: '900px',
                 }}
               >
                 <div style={{ fontSize: 14, fontWeight: 600, color: '#ef4444' }}>
                   Associate Services*
                 </div>
-                <div className="responsive-table-wrapper">
+                <div style={{ width: '100%', overflowX: 'auto' }}>
                     <table
                   style={{
                     width: '100%',

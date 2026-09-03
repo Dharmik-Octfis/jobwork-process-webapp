@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
 import { useUoms } from '../uom/uom.api';
 import { UomFormModal } from '../uom/UomFormModal';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, X } from 'lucide-react';
 import { ItemComboBox } from '../../../components/ui/ItemComboBox';
 
 import { MultiSelectItemModal } from '../../items/components/MultiSelectItemModal';
@@ -365,6 +365,9 @@ export function CreateCompositeItemPage({
           padding: isModal ? '20px' : '24px 32px 24px',
           maxWidth: isModal ? '100%' : '1200px',
           margin: isModal ? '0' : '0 auto',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
         }}
       >
         <h1
@@ -372,10 +375,30 @@ export function CreateCompositeItemPage({
             fontSize: isModal ? '20px' : '24px',
             fontWeight: 600,
             color: '#1e293b',
+            margin: 0,
           }}
         >
           New Composite Item
         </h1>
+        {!isModal && (
+          <button
+            type="button"
+            onClick={() => navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/composite-items`)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#64748b',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px',
+              borderRadius: '4px',
+            }}
+          >
+            <X size={24} />
+          </button>
+        )}
       </div>
 
       <div>
@@ -711,13 +734,13 @@ export function CreateCompositeItemPage({
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '16px',
-                maxWidth: '850px',
+                maxWidth: '900px',
               }}
             >
               <div style={{ fontSize: 14, fontWeight: 600, color: '#ef4444' }}>
                 Associate Items*
               </div>
-              <div className="responsive-table-wrapper">
+              <div style={{ width: '100%', overflowX: 'auto' }}>
                     <table
                 style={{
                   width: '100%',
@@ -990,13 +1013,13 @@ export function CreateCompositeItemPage({
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '12px',
-                  maxWidth: '850px',
+                  maxWidth: '900px',
                 }}
               >
                 <div style={{ fontSize: 14, fontWeight: 600, color: '#ef4444' }}>
                   Associate Services*
                 </div>
-                <div className="responsive-table-wrapper">
+                <div style={{ width: '100%', overflowX: 'auto' }}>
                     <table
                   style={{
                     width: '100%',

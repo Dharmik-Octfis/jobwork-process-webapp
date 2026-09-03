@@ -680,3 +680,8 @@ input[type='number'] {
     border-bottom: 1px solid #eef0f3;
   }
 }
+@media (max-width: 768px) {
+  .hidden-on-mobile {
+    display: none !important;
+  }
+}

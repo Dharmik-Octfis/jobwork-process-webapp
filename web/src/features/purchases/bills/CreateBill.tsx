@@ -952,6 +952,7 @@ export function CreateBill() {
                           ) : (
                             <ItemComboBox
                               orgId={orgId!}
+                              portal={true}
                               value={watchItems?.[index]?.itemId}
                               initialItem={watchItems?.[index]?.item}
                               selectedImage={
