@@ -80,7 +80,7 @@ export function CategorySelectDropdown({ value, onChange, error }: CategorySelec
         setSearch('');
       }
     },
-    stateReducer: (state, actionAndChanges) => {
+    stateReducer: (_state, actionAndChanges) => {
       const { type, changes } = actionAndChanges;
       switch (type) {
         case useCombobox.stateChangeTypes.ItemClick:

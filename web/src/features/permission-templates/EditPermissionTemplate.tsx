@@ -1,4 +1,4 @@
-import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { permissionTemplatesApi } from './permissionTemplates.api';
 import { PermissionTemplateEditor } from './PermissionTemplateEditor';
@@ -11,7 +11,8 @@ import { PermissionTemplateEditor } from './PermissionTemplateEditor';
  * openable on its own: a bookmarked or refreshed edit page still works.
  */
 export function EditPermissionTemplate() {
-  const navigate = useNavigate();  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { orgId, id } = useParams<{ orgId: string; id: string }>();
 
   const { data: template, isLoading } = useQuery({

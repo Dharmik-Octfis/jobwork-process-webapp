@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { useQuery } from '@tanstack/react-query';
 import { fetchLocations, type Location, type CreateLocationData } from './locations.api';
-import {useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { ParentLocationDropdown } from './ParentLocationDropdown';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import { organizationsApi } from '../../organizations/organizations.api';
@@ -33,7 +33,13 @@ export function LocationForm({ initialData, onSubmit, isPending, onCancel }: Loc
   const { orgId } = useParams<{ orgId: string }>();
   const [isChildLocation, setIsChildLocation] = useState(!!initialData?.parentId);
 
-  const { register, control, handleSubmit, watch, formState: { errors } } = useForm<CreateLocationData>({
+  const {
+    register,
+    control,
+    handleSubmit,
+    watch,
+    formState: { errors },
+  } = useForm<CreateLocationData>({
     defaultValues: {
       type: initialData?.type || 'Business',
       name: initialData?.name || '',
@@ -63,20 +69,24 @@ export function LocationForm({ initialData, onSubmit, isPending, onCancel }: Loc
   const watchCountry = watch('country');
   const watchState = watch('state');
 
-  const countryOptions = seedData?.countries?.map((c: SeedCountry) => ({ label: c.name, value: c.name })) || [];
+  const countryOptions =
+    seedData?.countries?.map((c: SeedCountry) => ({ label: c.name, value: c.name })) || [];
 
   const selectedCountryObj = seedData?.countries?.find((c: SeedCountry) => c.name === watchCountry);
-  const stateOptions = seedData?.states
-    ?.filter((s: SeedState) => !selectedCountryObj || s.countryCode === selectedCountryObj.code)
-    ?.map((s: SeedState) => ({ label: s.name, value: s.name })) || [];
+  const stateOptions =
+    seedData?.states
+      ?.filter((s: SeedState) => !selectedCountryObj || s.countryCode === selectedCountryObj.code)
+      ?.map((s: SeedState) => ({ label: s.name, value: s.name })) || [];
 
   const selectedStateObj = seedData?.states?.find((s: SeedState) => s.name === watchState);
-  const cityOptions = selectedStateObj?.cities?.map((c: SeedCity) => ({ label: c.name, value: c.name })) || [];
+  const cityOptions =
+    selectedStateObj?.cities?.map((c: SeedCity) => ({ label: c.name, value: c.name })) || [];
 
   // Filter out the current location from parent options to avoid circular dependency
   const availableParents = locations.filter((loc) => loc.id !== initialData?.id);
   const rootLocations = availableParents.filter((loc) => !loc.parentId);
-  const getChildLocations = (parentId: string) => availableParents.filter((loc) => loc.parentId === parentId);
+  const getChildLocations = (parentId: string) =>
+    availableParents.filter((loc) => loc.parentId === parentId);
 
   const watchType = watch('type');
 
@@ -89,42 +99,99 @@ export function LocationForm({ initialData, onSubmit, isPending, onCancel }: Loc
   rootLocations.forEach((rootLoc) => buildFlattenedLocations(rootLoc, 0));
 
   const labelStyle = { display: 'block', fontSize: '13px', color: '#111', marginBottom: '6px' };
-  const inputStyle = { width: '100%', maxWidth: '440px', padding: '8px 12px', fontSize: '13px', border: '1px solid #d1d5db', borderRadius: '4px', background: '#fff', height: '36px', boxSizing: 'border-box' };
+  const inputStyle: CSSProperties = {
+    width: '100%',
+    maxWidth: '440px',
+    padding: '8px 12px',
+    fontSize: '13px',
+    border: '1px solid #d1d5db',
+    borderRadius: '4px',
+    background: '#fff',
+    height: '36px',
+    boxSizing: 'border-box',
+  };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} noValidate style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      noValidate
+      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
+    >
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
         <div style={{ marginBottom: '24px' }}>
           <label style={labelStyle}>Location Type</label>
           <div style={{ display: 'flex', gap: '16px', maxWidth: '600px' }}>
-            <label style={{
-              flex: 1, padding: '16px', border: watchType === 'Business' ? '1px solid #0062ff' : '1px solid #eef0f3',
-              borderRadius: '6px', background: watchType === 'Business' ? '#f0f4ff' : '#fff', cursor: 'pointer'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <label
+              style={{
+                flex: 1,
+                padding: '16px',
+                border: watchType === 'Business' ? '1px solid #0062ff' : '1px solid #eef0f3',
+                borderRadius: '6px',
+                background: watchType === 'Business' ? '#f0f4ff' : '#fff',
+                cursor: 'pointer',
+              }}
+            >
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}
+              >
                 <input type="radio" value="Business" {...register('type')} />
                 <strong style={{ fontSize: '14px', color: '#111' }}>Business Location</strong>
               </div>
-              <p style={{ fontSize: '12px', color: '#555', margin: 0, paddingLeft: '24px', lineHeight: 1.4 }}>
-                A Business Location represents your organization or office's operational location. It is used to record transactions, assess regional performance, and monitor stock levels for items stored at this location.
+              <p
+                style={{
+                  fontSize: '12px',
+                  color: '#555',
+                  margin: 0,
+                  paddingLeft: '24px',
+                  lineHeight: 1.4,
+                }}
+              >
+                A Business Location represents your organization or office's operational location.
+                It is used to record transactions, assess regional performance, and monitor stock
+                levels for items stored at this location.
               </p>
             </label>
-            <label style={{
-              flex: 1, padding: '16px', border: watchType === 'Warehouse' ? '1px solid #0062ff' : '1px solid #eef0f3',
-              borderRadius: '6px', background: watchType === 'Warehouse' ? '#f0f4ff' : '#fff', cursor: 'pointer'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <label
+              style={{
+                flex: 1,
+                padding: '16px',
+                border: watchType === 'Warehouse' ? '1px solid #0062ff' : '1px solid #eef0f3',
+                borderRadius: '6px',
+                background: watchType === 'Warehouse' ? '#f0f4ff' : '#fff',
+                cursor: 'pointer',
+              }}
+            >
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}
+              >
                 <input type="radio" value="Warehouse" {...register('type')} />
                 <strong style={{ fontSize: '14px', color: '#111' }}>Warehouse Only Location</strong>
               </div>
-              <p style={{ fontSize: '12px', color: '#555', margin: 0, paddingLeft: '24px', lineHeight: 1.4 }}>
-                A Warehouse Only Location refers to where your items are stored. It helps track and monitor stock levels for items stored at this location.
+              <p
+                style={{
+                  fontSize: '12px',
+                  color: '#555',
+                  margin: 0,
+                  paddingLeft: '24px',
+                  lineHeight: 1.4,
+                }}
+              >
+                A Warehouse Only Location refers to where your items are stored. It helps track and
+                monitor stock levels for items stored at this location.
               </p>
             </label>
           </div>
         </div>
 
-        <div className="form-field-grid" style={{ gridTemplateColumns: '180px 1fr', rowGap: '20px', alignItems: 'center', marginBottom: '24px'  }}>
+        <div
+          className="form-field-grid"
+          style={{
+            gridTemplateColumns: '180px 1fr',
+            rowGap: '20px',
+            alignItems: 'center',
+            marginBottom: '24px',
+          }}
+        >
           {watchType === 'Business' && (
             <>
               <label style={labelStyle}>Logo</label>
@@ -148,16 +215,39 @@ export function LocationForm({ initialData, onSubmit, isPending, onCancel }: Loc
 
           <label style={{ ...labelStyle, color: '#ef4444' }}>Name*</label>
           <div>
-            <input type="text" {...register('name', { required: true })} style={inputStyle} placeholder="Location Name" />
-            {errors.name && <span style={{ color: '#e54d4d', fontSize: '11px', display: 'block', marginTop: '4px' }}>Name is required</span>}
+            <input
+              type="text"
+              {...register('name', { required: true })}
+              style={inputStyle}
+              placeholder="Location Name"
+            />
+            {errors.name && (
+              <span
+                style={{ color: '#e54d4d', fontSize: '11px', display: 'block', marginTop: '4px' }}
+              >
+                Name is required
+              </span>
+            )}
           </div>
 
           <div></div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
-            <input type="checkbox" checked={isChildLocation} onChange={(e) => {
-              setIsChildLocation(e.target.checked);
-              if (!e.target.checked) register('parentId').onChange({ target: { value: null } });
-            }} />
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '13px',
+              cursor: 'pointer',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={isChildLocation}
+              onChange={(e) => {
+                setIsChildLocation(e.target.checked);
+                if (!e.target.checked) register('parentId').onChange({ target: { value: null } });
+              }}
+            />
             This is a Child Location
           </label>
 
@@ -178,13 +268,27 @@ export function LocationForm({ initialData, onSubmit, isPending, onCancel }: Loc
                     />
                   )}
                 />
-                {errors.parentId && <span style={{ color: '#e54d4d', fontSize: '11px', display: 'block', marginTop: '4px' }}>Parent Location is required</span>}
+                {errors.parentId && (
+                  <span
+                    style={{
+                      color: '#e54d4d',
+                      fontSize: '11px',
+                      display: 'block',
+                      marginTop: '4px',
+                    }}
+                  >
+                    Parent Location is required
+                  </span>
+                )}
               </div>
             </>
           )}
         </div>
 
-        <div className="form-field-grid" style={{ gridTemplateColumns: '180px 1fr', rowGap: '12px', alignItems: 'start'  }}>
+        <div
+          className="form-field-grid"
+          style={{ gridTemplateColumns: '180px 1fr', rowGap: '12px', alignItems: 'start' }}
+        >
           <label style={{ ...labelStyle, marginTop: '8px' }}>Address</label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <input type="text" {...register('street1')} style={inputStyle} placeholder="Street 1" />
@@ -230,8 +334,18 @@ export function LocationForm({ initialData, onSubmit, isPending, onCancel }: Loc
               />
             </div>
             <div style={{ display: 'flex', gap: '12px', maxWidth: '440px' }}>
-              <input type="text" {...register('zip')} style={{ ...inputStyle, flex: 1 }} placeholder="Zip/Pin Code" />
-              <input type="text" {...register('phone')} style={{ ...inputStyle, flex: 1 }} placeholder="Phone" />
+              <input
+                type="text"
+                {...register('zip')}
+                style={{ ...inputStyle, flex: 1 }}
+                placeholder="Zip/Pin Code"
+              />
+              <input
+                type="text"
+                {...register('phone')}
+                style={{ ...inputStyle, flex: 1 }}
+                placeholder="Phone"
+              />
             </div>
           </div>
         </div>

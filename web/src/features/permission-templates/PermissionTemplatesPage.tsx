@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, ShieldCheck, SlidersHorizontal } from 'lucide-react';
 import { toApiErrorMessage } from '../../api/client';
@@ -72,7 +72,8 @@ function renderTemplateCell(template: PermissionTemplate, key: string): string {
 }
 
 export function PermissionTemplatesPage() {
-  const navigate = useNavigate();  const { orgId } = useParams<{ orgId: string }>();
+  const navigate = useNavigate();
+  const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
 
@@ -340,54 +341,54 @@ export function PermissionTemplatesPage() {
               </div>
             ) : (
               <div className="responsive-table-wrapper">
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                <thead>
-                  <tr
-                    style={{
-                      background: '#f9f9fb',
-                      borderTop: '1px solid #eef0f3',
-                      borderBottom: '1px solid #eef0f3',
-                    }}
-                  >
-                    {columns.map((col) => (
-                      <th key={col.key} style={headerStyle}>
-                        {col.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {templates.map((template) => (
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <thead>
                     <tr
-                      key={template.id}
-                      onClick={() => setSearchParams({ id: template.id })}
                       style={{
+                        background: '#f9f9fb',
+                        borderTop: '1px solid #eef0f3',
                         borderBottom: '1px solid #eef0f3',
-                        transition: 'background 0.1s',
-                        cursor: 'pointer',
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                     >
                       {columns.map((col) => (
-                        <td
-                          key={col.key}
-                          style={{
-                            padding: '12px 16px',
-                            fontSize: 13,
-                            // The locked column is the identity you click through on.
-                            color: col.locked ? '#0062ff' : '#333',
-                            fontWeight: col.locked ? 500 : 400,
-                          }}
-                        >
-                          {renderTemplateCell(template, col.key)}
-                        </td>
+                        <th key={col.key} style={headerStyle}>
+                          {col.label}
+                        </th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-                  </div>
+                  </thead>
+                  <tbody>
+                    {templates.map((template) => (
+                      <tr
+                        key={template.id}
+                        onClick={() => setSearchParams({ id: template.id })}
+                        style={{
+                          borderBottom: '1px solid #eef0f3',
+                          transition: 'background 0.1s',
+                          cursor: 'pointer',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        {columns.map((col) => (
+                          <td
+                            key={col.key}
+                            style={{
+                              padding: '12px 16px',
+                              fontSize: 13,
+                              // The locked column is the identity you click through on.
+                              color: col.locked ? '#0062ff' : '#333',
+                              fontWeight: col.locked ? 500 : 400,
+                            }}
+                          >
+                            {renderTemplateCell(template, col.key)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
 

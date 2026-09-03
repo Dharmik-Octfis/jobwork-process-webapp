@@ -1,4 +1,4 @@
-import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronRight, LayoutGrid } from 'lucide-react';
 import { CUSTOM_FIELD_MODULES } from './customFields.schemas';
 
