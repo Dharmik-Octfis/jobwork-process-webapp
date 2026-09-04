@@ -877,7 +877,7 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel }: Props) {
             <p style={{ fontSize: 12, color: '#64748b', margin: '-4px 0 10px 0', lineHeight: 1.4 }}>
               Select the challans you are receiving goods for. <br />
               <span style={{ color: '#ef4444', fontWeight: 500 }}>
-                ⚠️ Important: Ticking a challan will close it completely. Any missing quantity will be counted as permanent loss (scrap). You cannot leave a ticked challan partially open to receive the rest later.
+                ⚠️ Ticking a challan closes it permanently. Any unreceived quantity becomes scrap.
               </span>
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
