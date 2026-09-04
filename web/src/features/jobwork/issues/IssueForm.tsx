@@ -539,6 +539,14 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
       const mine = draft.lines.filter((line) => line.itemId === input.itemId);
       if (mine.length === 0) return;
 
+      if (!input.isBatchTracked) {
+        // An untracked line names no batch the user ever saw, so it is restored
+        // as the plain quantity it was typed as.
+        const typed = mine.reduce((sum, line) => sum + toNumber(line.qty), 0);
+        if (typed > 0) setUnstocked((prev) => ({ ...prev, [input.itemId]: typed }));
+        return;
+      }
+
       const seeded: Record<string, BatchSelection> = {};
       let matchedQty = 0;
       let gone = 0;
@@ -567,11 +575,6 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
       if (Object.keys(seeded).length > 0) {
         setSelection((prev) => ({ ...prev, ...seeded }));
         setTrackedQty((prev) => ({ ...prev, [input.itemId]: matchedQty }));
-      } else if (!input.isBatchTracked) {
-        // An untracked line names no batch the user ever saw, so it is restored
-        // as the plain quantity it was typed as.
-        const typed = mine.reduce((sum, line) => sum + toNumber(line.qty), 0);
-        if (typed > 0) setUnstocked((prev) => ({ ...prev, [input.itemId]: typed }));
       }
       if (gone > 0) {
         setPlanUnmatched((prev) => ({ ...prev, [input.itemId]: { gone, elsewhere: [] } }));
@@ -585,11 +588,23 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
     if (draft) return;
     // We run it unconditionally now instead of if(!isOpen)
     inputItems.forEach((input, index) => {
-      if (!input.isBatchTracked || input.plannedBatches.length === 0) return;
       if (seededItems.current.has(input.itemId)) return;
       const offered = batchQueries[index]?.data;
       if (!offered) return; // still loading — try again next render
       seededItems.current.add(input.itemId);
+
+      if (!input.isBatchTracked) {
+        const toBeIssued = input.plannedQty === null ? Infinity : Math.max(0, input.plannedQty - input.issuedQty);
+        if (toBeIssued <= 0) return;
+        const available = offered.reduce((sum, row) => sum + toNumber(row.availableQty), 0);
+        const qty = Math.min(toBeIssued, available);
+        if (qty > 0) {
+          setUnstocked((prev) => ({ ...prev, [input.itemId]: qty }));
+        }
+        return;
+      }
+
+      if (input.plannedBatches.length === 0) return;
 
       const seeded: Record<string, BatchSelection> = {};
       let matchedQty = 0;
@@ -1632,16 +1647,14 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
         {/* The draft keeps its own disabled state — a challan too incomplete to
             send can still be parked. */}
         <SplitButton
-          label={
-            mutation.isPending ? 'Saving…' : draft ? 'Issue challan' : 'Issue & create challan'
-          }
-          onClick={() => mutation.mutate(false)}
-          disabled={!canSave}
+          label={mutation.isPending ? 'Saving…' : 'Save as Draft'}
+          onClick={() => mutation.mutate(true)}
+          disabled={!canSaveDraft}
           actions={[
             {
-              label: 'Save as Draft',
-              disabled: !canSaveDraft,
-              onClick: () => mutation.mutate(true),
+              label: draft ? 'Issue challan' : 'Issue & create challan',
+              disabled: !canSave,
+              onClick: () => mutation.mutate(false),
             },
           ]}
         />

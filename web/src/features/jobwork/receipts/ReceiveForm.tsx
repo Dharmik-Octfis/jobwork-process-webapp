@@ -433,8 +433,8 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
         itemId: output.itemId,
         itemName: output.itemName,
         unit: output.uomSymbol ?? '',
-        receivedQty: row ? toNumber(row.receivedQty) : 0,
-        acceptedQty: row ? toNumber(row.acceptedQty) : 0,
+        receivedQty: row ? toNumber(row.receivedQty) : (output.expectedQty ? toNumber(output.expectedQty) : 0),
+        acceptedQty: row ? toNumber(row.acceptedQty) : (output.expectedQty ? toNumber(output.expectedQty) : 0),
         reworkQty: row ? toNumber(row.reworkQty) : 0,
         // Always zero. This form never sends anything else — goods refused at the
         // gate never entered stock — so there is nothing to restore.
@@ -746,23 +746,11 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
   });
 
   const canSave =
-    rows.length > 0 &&
-    selectedIssueIds.length > 0 &&
-    /**
-     * 🔴 The EFFECTIVE location, not the raw state.
-     *
-     * The dropdown auto-selects the first godown and displays it, but
-     * `locationId` stays empty until somebody actively picks — so Preview sat
-     * disabled beside a field that plainly showed a location, with nothing on
-     * screen to say what was missing. Checking what is displayed is the whole
-     * point of deriving it.
-     */
     Boolean(effectiveLocationId) &&
     brokenRows.length === 0 &&
     unallocatedRows.length === 0 &&
     effectiveReturned.every((row) => Boolean(row.itemId)) &&
     totals.received > 0 &&
-    totals.issued > 0 &&
     !mutation.isPending;
 
   /**
@@ -780,8 +768,6 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
    * make the button permanently dead on the commonest receipt there is.
    */
   const canSaveDraft =
-    rows.length > 0 &&
-    selectedIssueIds.length > 0 &&
     Boolean(effectiveLocationId) &&
     !mutation.isPending;
 
@@ -1364,14 +1350,14 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
         }}
       >
         <SplitButton
-          label={mutation.isPending ? 'Saving…' : 'Receive goods'}
-          onClick={() => mutation.mutate(false)}
-          disabled={!canSave}
+          label={mutation.isPending ? 'Saving…' : 'Save as Draft'}
+          onClick={() => mutation.mutate(true)}
+          disabled={!canSaveDraft}
           actions={[
             {
-              label: 'Save as Draft',
-              disabled: !canSaveDraft,
-              onClick: () => mutation.mutate(true),
+              label: 'Receive goods',
+              disabled: !canSave,
+              onClick: () => mutation.mutate(false),
             },
           ]}
         />

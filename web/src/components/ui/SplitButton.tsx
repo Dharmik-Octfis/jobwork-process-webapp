@@ -40,8 +40,7 @@ export function SplitButton({ label, onClick, disabled = false, actions }: Props
   const menuId = useId();
 
   const enabledIndexes = actions.flatMap((action, i) => (action.disabled ? [] : [i]));
-  /** Nothing to open — the caret dies with the menu rather than showing dead rows. */
-  const canOpen = enabledIndexes.length > 0;
+  const canOpen = actions.length > 0;
 
   // Pointerdown, not click, so the menu is gone before whatever was clicked reacts.
   useEffect(() => {
@@ -192,11 +191,11 @@ export function SplitButton({ label, onClick, disabled = false, actions }: Props
           justifyContent: 'center',
           width: 28,
           padding: 0,
-          background: canOpen ? GREEN : '#f1f5f9',
-          color: canOpen ? '#fff' : '#94a3b8',
+          background: (canOpen && (!disabled || enabledIndexes.length > 0)) ? GREEN : '#f1f5f9',
+          color: (canOpen && (!disabled || enabledIndexes.length > 0)) ? '#fff' : '#94a3b8',
           border: 'none',
           // A hairline seam so the two halves read as one control.
-          borderLeft: `1px solid ${canOpen ? 'rgba(255,255,255,0.28)' : '#e2e8f0'}`,
+          borderLeft: `1px solid ${(canOpen && (!disabled || enabledIndexes.length > 0)) ? 'rgba(255,255,255,0.28)' : '#e2e8f0'}`,
           borderTopRightRadius: 4,
           borderBottomRightRadius: 4,
           cursor: canOpen ? 'pointer' : 'not-allowed',
