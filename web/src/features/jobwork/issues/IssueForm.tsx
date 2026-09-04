@@ -833,6 +833,9 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
     onSuccess: (_result, saveAsDraft) => {
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, jobOrder.id] });
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
+      if (draft) {
+        queryClient.invalidateQueries({ queryKey: ['job-issue', orgId, draft.id] });
+      }
       queryClient.invalidateQueries({ queryKey: ['available-batches', orgId] });
       // Balances at every location just moved, and the coverage labels are read
       // off them — without this the next challan is planned against stale figures.

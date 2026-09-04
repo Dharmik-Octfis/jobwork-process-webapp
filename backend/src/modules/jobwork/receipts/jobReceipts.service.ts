@@ -1587,9 +1587,7 @@ export async function createNewJobReceipt(
       { issued: ZERO, received: ZERO, accepted: ZERO, rework: ZERO, scrap: ZERO, returned: ZERO },
     );
 
-    if (totals.issued.lessThanOrEqualTo(0) && !asDraft) {
-      throw ApiError.badRequest('Say how much of the issued material this receipt accounts for.');
-    }
+
 
     /**
      * 🔴 THE SUM CHECK, ENFORCED HERE AND NOT ONLY IN THE SCHEMA.
@@ -2366,34 +2364,8 @@ export async function postJobReceiptDraft(organizationId: string, id: string, us
   const issueIds = [
     ...new Set(draft.lines.flatMap((line) => (line.jobIssueId ? [line.jobIssueId] : []))),
   ];
-  if (issueIds.length === 0) {
-    throw ApiError.badRequest(
-      'This draft does not say which challan it accounts for. Open it and pick the challan first.',
-    );
-  }
 
-  for (const output of draft.outputs) {
-    const accepted = output.batches.filter((row) => row.kind === 'accepted');
-    const rework = output.batches.filter((row) => row.kind === 'rework');
-    const isService =
-      output.item?.itemType === 'service' ||
-      output.item?.name?.toLowerCase().includes('service') ||
-      output.item?.name?.toLowerCase() === 'dyeing' ||
-      output.item?.name?.toLowerCase() === 'stitching';
-    const batchRequired = !isService; // Or based on `inventoryTracking === 'batch'` if preferred, but following frontend heuristic
 
-    if (batchRequired) {
-      const short =
-        (output.acceptedQty.greaterThan(0) && accepted.length === 0) ||
-        (output.reworkQty.greaterThan(0) && rework.length === 0);
-      if (short) {
-        throw ApiError.badRequest(
-          `This draft does not say which batch ${output.item?.name ?? 'the goods'} came back into. ` +
-            'Open the draft, enter the batch reference, and receive it from there.',
-        );
-      }
-    }
-  }
 
   return createNewJobReceipt(
     organizationId,
