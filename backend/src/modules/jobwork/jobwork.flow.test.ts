@@ -2085,7 +2085,14 @@ describe('jobwork — FIFO allocation for untracked items', () => {
  * reach into its children either (the deliberate choice of exact-match over
  * picked-plus-descendants); and a flat org, which is most of them, is untouched.
  */
-describe('jobwork — one challan, one location', () => {
+/**
+ * The timeout is explicit for the same reason as the block above: these cases
+ * build a site, several godowns and their stock before asserting anything, which
+ * lands around five seconds against the shared dev database — vitest's default,
+ * exactly. It passed on the margin and failed the moment another suite ran
+ * beside it, which is a stopwatch result rather than a code result.
+ */
+describe('jobwork — one challan, one location', { timeout: 60_000 }, () => {
   /** A root location with `children` godowns under it — the shape a compound has. */
   const makeSite = async (childCount: number) =>
     runAsTenant(orgId, async (tx) => {

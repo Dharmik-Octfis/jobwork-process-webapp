@@ -59,9 +59,62 @@ export const JOB_ORDER_STEP_STATUSES = [
 ] as const;
 export type JobOrderStepStatus = (typeof JOB_ORDER_STEP_STATUSES)[number];
 
-/** An issue's life. `closed` means everything sent has been accounted for. */
-export const JOB_ISSUE_STATUSES = ['issued', 'partially_received', 'closed', 'cancelled'] as const;
+/**
+ * An issue's life. `closed` means everything sent has been accounted for.
+ *
+ * `draft` is the odd one out: every other value is CALC+, derived from what the
+ * receipts underneath have accounted for, while this one is chosen — by which
+ * button was pressed — and nothing derives its way out of it.
+ */
+export const JOB_ISSUE_STATUSES = [
+  'draft',
+  'issued',
+  'partially_received',
+  'closed',
+  'cancelled',
+] as const;
 export type JobIssueStatus = (typeof JOB_ISSUE_STATUSES)[number];
+
+/**
+ * A receipt's life. It had no list in code until drafts arrived — the vocabulary
+ * lived in a schema comment and in `listFilters.catalog.ts`, which is exactly how
+ * a third value gets added in one place and missed in the other.
+ */
+export const JOB_RECEIPT_STATUSES = ['draft', 'posted', 'cancelled'] as const;
+export type JobReceiptStatus = (typeof JOB_RECEIPT_STATUSES)[number];
+
+/**
+ * 🔴 THE ONLY WAY TO ASK "DID THIS DOCUMENT ACTUALLY MOVE STOCK?"
+ *
+ * Put it in the `where` of every sum over issues or receipts. Never spell the
+ * statuses out inline, and never fall back to `{ not: 'cancelled' }` — the same
+ * reasoning as `ACTIVE_USER` in `lib/authGuards.ts`: two excluded values means
+ * two chances to exclude only one, and the one that gets forgotten is the new one.
+ *
+ * A DRAFT IS THE DANGEROUS HALF. A cancelled document has reversing ledger rows,
+ * so counting it merely double-counts a zero. A draft has LINES AND TOTALS AND NO
+ * LEDGER ROWS AT ALL — it is a challan that says 4,800 m left the godown while the
+ * ledger says nothing did. Count one and the step reports material at a processor
+ * that never went anywhere, the next step's chain guard opens on it, and the
+ * Overview and the stock report disagree with no way to tell which is lying.
+ *
+ * `jobwork.drafts.test.ts` pins this: it saves a draft on both sides and asserts
+ * the step's totals, the ledger and the job order status are all untouched.
+ */
+const NOT_POSTED: string[] = ['draft', 'cancelled'];
+export const POSTED_DOC_STATUS = { notIn: NOT_POSTED };
+
+/**
+ * "Did this document ever happen?" — a different question from the one above, and
+ * the one the ACTIVITY TIMELINE asks.
+ *
+ * A cancelled challan belongs on a timeline: it went out on the 3rd and was
+ * cancelled on the 5th, and hiding it leaves a gap between two numbers that no
+ * longer explain each other. A draft does not: nothing has happened yet, and
+ * listing one as "4,800 m issued to Sunrise Dyers" describes goods that are still
+ * in the godown.
+ */
+export const HAPPENED_DOC_STATUS = { not: 'draft' } as const;
 
 /**
  * 🔴 NOT A USER PREFERENCE. `Process.preservesPackaging` decides this, and the

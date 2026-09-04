@@ -325,6 +325,16 @@ export interface CreateJobReceiptData {
   reworkBatchReference?: string | null;
   remarks?: string | null;
   customFields?: Record<string, unknown>;
+  /**
+   * Which button was pressed — a MODE, not a status, exactly as on the issue
+   * side. Omitted means post.
+   *
+   * 🔴 A draft does NOT keep an output batch it is creating. There is no `batches`
+   * row for a batch that does not exist yet, and minting one to park a form is the
+   * thing this whole path avoids — so a typed batch reference is asked for again
+   * when the draft is reopened. Existing-batch top-ups survive untouched.
+   */
+  saveAsDraft?: boolean;
 }
 
 export const jobReceiptsPageSchema = paginatedSchema(jobReceiptSchema);

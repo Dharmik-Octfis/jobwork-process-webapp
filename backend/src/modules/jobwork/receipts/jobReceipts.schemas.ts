@@ -435,10 +435,33 @@ export const createJobReceiptSchema = openApiRegistry.register(
 
     remarks: z.string().trim().max(2000).nullable().optional(),
     customFields: z.record(z.string(), z.unknown()).optional(),
+
+    /**
+     * 🔴 A MODE, NOT A STATUS — the same reasoning as on the issue side. It says
+     * which button was pressed; the service turns it into `draft` or `posted` and
+     * nothing else, so no payload can name `cancelled`.
+     *
+     * Absent means post, so every existing client keeps behaving as it did.
+     */
+    saveAsDraft: z.boolean().optional(),
   }),
 );
 
 export type CreateJobReceiptInput = z.infer<typeof createJobReceiptSchema>;
+
+/**
+ * Rewriting a parked draft — the whole form again, not a patch. The lines,
+ * outputs and batch rows are replaced wholesale, and a partial update of a
+ * document made of three child lists is a shape nothing on the screen produces.
+ *
+ * Refused by the service on anything that is not still a draft.
+ */
+export const updateJobReceiptSchema = openApiRegistry.register(
+  'UpdateJobReceiptRequest',
+  createJobReceiptSchema,
+);
+
+export type UpdateJobReceiptInput = z.infer<typeof updateJobReceiptSchema>;
 
 /**
  * Cancelling a receipt. Same rule as an issue: reversing entries, never a delete.

@@ -79,6 +79,36 @@ export async function createJobReceipt(
   return jobReceiptSchema.parse(response.data);
 }
 
+/**
+ * Rewrite a parked draft. Only reaches a draft — once posted, a receipt has
+ * created batches and moved stock, and its only correction is a cancellation.
+ */
+export async function updateJobReceipt(
+  orgId: string,
+  id: string,
+  data: CreateJobReceiptData,
+): Promise<JobReceipt> {
+  const response = await apiClient.put(`${endpoints.jobwork.receipts(orgId)}/${id}`, data);
+  return jobReceiptSchema.parse(response.data);
+}
+
+/**
+ * Post a draft as it stands.
+ *
+ * 🔴 Refused with a 400 when the draft never named the batch its goods came into
+ * — which is the usual case, since a draft cannot store a batch it is creating.
+ * The message says to reopen the draft; surface it rather than swallowing it.
+ */
+export async function postJobReceipt(orgId: string, id: string): Promise<JobReceipt> {
+  const response = await apiClient.post(`${endpoints.jobwork.receipts(orgId)}/${id}/post`);
+  return jobReceiptSchema.parse(response.data);
+}
+
+/** Delete a DRAFT. A posted receipt is cancelled instead. */
+export async function deleteJobReceipt(orgId: string, id: string): Promise<void> {
+  await apiClient.delete(`${endpoints.jobwork.receipts(orgId)}/${id}`);
+}
+
 export async function cancelJobReceipt(orgId: string, id: string, reason: string): Promise<void> {
   await apiClient.post(`${endpoints.jobwork.receipts(orgId)}/${id}/cancel`, { reason });
 }

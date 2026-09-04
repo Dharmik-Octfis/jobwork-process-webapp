@@ -22,7 +22,12 @@ import {
   assertUomsBelongToOrg,
   resolveProcessorName,
 } from '../jobwork.refs.ts';
-import { runAsDocument, type ProcessorType } from '../jobwork.types.ts';
+import {
+  HAPPENED_DOC_STATUS,
+  POSTED_DOC_STATUS,
+  runAsDocument,
+  type ProcessorType,
+} from '../jobwork.types.ts';
 import {
   getAllChainNotReady,
   getAllStepTotals,
@@ -666,10 +671,15 @@ async function loadExistingSteps(tx: TenantClient, organizationId: string, jobOr
         select: { itemId: true, plannedQty: true, fromStock: true },
       },
       outputs: { where: { isDeleted: false }, select: { itemId: true, expectedQty: true } },
+      // Posted documents only. A DRAFT must not lock the steps grid: the lock
+      // exists because a live challan's step number is printed on paperwork a
+      // processor is holding, and a draft has been handed to nobody. Editing the
+      // step under a parked draft is safe because posting re-validates the draft
+      // against the step as it stands then, and refuses it if the item is gone.
       _count: {
         select: {
-          issues: { where: { isDeleted: false, status: { not: 'cancelled' } } },
-          receipts: { where: { isDeleted: false, status: { not: 'cancelled' } } },
+          issues: { where: { isDeleted: false, status: POSTED_DOC_STATUS } },
+          receipts: { where: { isDeleted: false, status: POSTED_DOC_STATUS } },
         },
       },
     },
@@ -1986,6 +1996,11 @@ function buildItemTotals(
  * went out on the 3rd and was cancelled on the 5th is a thing that happened, and
  * the ledger carries its reversal either way (§10); hiding it leaves a gap
  * between two numbers that no longer explain each other.
+ *
+ * 🔴 DRAFTS ARE NOT — `HAPPENED_DOC_STATUS`. This is the timeline of what the
+ * order did, and a parked draft has done nothing; rendering one here would put
+ * "4,800 m issued to Sunrise Dyers" against goods still standing in the godown.
+ * Drafts are found on the Issues and Receipts lists, under their own filter.
  */
 async function buildActivity(
   tx: TenantClient,
@@ -2002,6 +2017,7 @@ async function buildActivity(
       organizationId,
       jobOrderId,
       isDeleted: false,
+      status: HAPPENED_DOC_STATUS,
       ...(filterStepId ? { jobOrderStepId: filterStepId } : {}),
     },
     select: {
@@ -2037,6 +2053,7 @@ async function buildActivity(
       organizationId,
       jobOrderId,
       isDeleted: false,
+      status: HAPPENED_DOC_STATUS,
       ...(filterStepId ? { jobOrderStepId: filterStepId } : {}),
     },
     select: {

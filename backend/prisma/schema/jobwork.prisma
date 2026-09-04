@@ -702,7 +702,16 @@ model JobIssue {
   /// (§5.4).
   toleranceOverrideReason String? @map("tolerance_override_reason")
 
-  /// issued | partially_received | closed | cancelled. CALC+.
+  /// draft | issued | partially_received | closed | cancelled.
+  ///
+  /// CALC+ from `issued` onwards — but `draft` is NOT calculated. It is chosen,
+  /// by which button was pressed, and it is sticky: no recompute may promote a
+  /// draft, because a draft has posted nothing for a recompute to read.
+  ///
+  /// 🔴 A DRAFT HAS LINES BUT NO LEDGER ROWS. It is the one state in this module
+  /// where `job_issue_lines` exist while `stock_ledger` does not, so every sum
+  /// over issues must exclude it — use `POSTED_DOC_STATUS` (jobwork.types.ts),
+  /// never a bare `{ not: 'cancelled' }`, which counts a draft as issued.
   status String @default("issued") @db.VarChar(30)
 
   remarks String?
@@ -904,8 +913,14 @@ model JobReceipt {
   /// was never physically ours.
   totalReturnedQty Decimal @default(0) @map("total_returned_qty") @db.Decimal(18, 4)
 
-  /// posted | cancelled. A cancellation posts REVERSING ledger rows and flips
-  /// this; it never deletes anything (inventory.prisma).
+  /// draft | posted | cancelled. A cancellation posts REVERSING ledger rows and
+  /// flips this; it never deletes anything (inventory.prisma).
+  ///
+  /// 🔴 A DRAFT IS THE ONE STATUS THAT MAY BE DELETED, because it is the one that
+  /// posted nothing — no ledger row, no batch, no package. It is also the one
+  /// whose six `total_*` columns below are populated while the ledger behind them
+  /// is empty, so every step-progress sum must exclude it: use `POSTED_DOC_STATUS`
+  /// (jobwork.types.ts), never a bare `{ not: 'cancelled' }`.
   status String @default("posted") @db.VarChar(30)
 
   remarks String?

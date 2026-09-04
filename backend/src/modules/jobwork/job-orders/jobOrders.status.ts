@@ -1,6 +1,6 @@
 import { Prisma } from '../../../../generated/prisma/client.ts';
 import type { TenantClient } from '../../../db/prisma.ts';
-import { SOURCE_DOC_TYPES } from '../jobwork.types.ts';
+import { POSTED_DOC_STATUS, SOURCE_DOC_TYPES } from '../jobwork.types.ts';
 import type { JobOrderStatus, JobOrderStepStatus } from '../jobwork.types.ts';
 
 /**
@@ -111,9 +111,14 @@ export interface StepTotals {
 /**
  * Everything one step has moved, in one place.
  *
- * Cancelled documents are excluded from every sum. A cancelled issue has already
- * had its ledger rows reversed, so counting its lines would make the step look
- * like it is holding stock at a processor that came back weeks ago.
+ * 🔴 UNPOSTED DOCUMENTS ARE EXCLUDED FROM EVERY SUM — `POSTED_DOC_STATUS`, which
+ * is two statuses and not one.
+ *
+ * A CANCELLED issue has already had its ledger rows reversed, so counting its
+ * lines would make the step look like it is holding stock at a processor that
+ * came back weeks ago. A DRAFT never posted anything in the first place: its
+ * lines and its `total_*` columns are a typed intention, and counting them would
+ * report material at a processor that is still sitting in the godown.
  */
 export async function getStepTotals(
   tx: TenantClient,
@@ -125,7 +130,7 @@ export async function getStepTotals(
       organizationId,
       jobOrderStepId,
       isDeleted: false,
-      status: { not: 'cancelled' },
+      status: POSTED_DOC_STATUS,
     },
     select: { id: true },
   });
@@ -135,7 +140,7 @@ export async function getStepTotals(
       organizationId,
       jobOrderStepId,
       isDeleted: false,
-      status: { not: 'cancelled' },
+      status: POSTED_DOC_STATUS,
     },
     select: {
       id: true,
@@ -320,9 +325,11 @@ export function stepStatusFrom(totals: StepTotals, isCompleted: boolean): JobOrd
  * silently did not apply and step 2 could issue against nothing. Position is
  * what the shop floor means by "the next step", and it cannot be typed wrong.
  *
- * "Returned something" is `receivedQty > 0` on a non-cancelled receipt. Not
- * accepted quantity: a consignment that came back entirely as rework did come
- * back, and the rework has to be re-issued from somewhere.
+ * "Returned something" is `receivedQty > 0` on a POSTED receipt. Not accepted
+ * quantity: a consignment that came back entirely as rework did come back, and
+ * the rework has to be re-issued from somewhere. And not a draft one — typing a
+ * receipt and parking it must not unlock the next step, or the chain guard is
+ * opened by paperwork instead of by goods.
  *
  * Lives here rather than in the service because both the Overview (to disable
  * the button) and `jobIssues.service.ts` (to refuse the save) must ask exactly
@@ -355,7 +362,7 @@ export async function chainNotReady(
       organizationId,
       jobOrderStepId: previous.id,
       isDeleted: false,
-      status: { not: 'cancelled' },
+      status: POSTED_DOC_STATUS,
     },
     _sum: { totalReceivedQty: true },
   });
@@ -446,7 +453,7 @@ export async function getAllStepTotals(
       organizationId,
       jobOrderStepId: { in: stepIds },
       isDeleted: false,
-      status: { not: 'cancelled' },
+      status: POSTED_DOC_STATUS,
     },
     select: { id: true, jobOrderStepId: true },
   });
@@ -456,7 +463,7 @@ export async function getAllStepTotals(
       organizationId,
       jobOrderStepId: { in: stepIds },
       isDeleted: false,
-      status: { not: 'cancelled' },
+      status: POSTED_DOC_STATUS,
     },
     select: {
       id: true,
@@ -615,7 +622,7 @@ export async function getAllChainNotReady(
             organizationId,
             jobOrderStepId: { in: previousIds },
             isDeleted: false,
-            status: { not: 'cancelled' },
+            status: POSTED_DOC_STATUS,
           },
           _sum: { totalReceivedQty: true },
         })

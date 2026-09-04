@@ -5,13 +5,23 @@ import { useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { DateInput } from '../../../components/ui/DateInput';
 import { Select } from '../../../components/ui/Select';
+import { SplitButton } from '../../../components/ui/SplitButton';
 import { fetchLocations } from '../../configuration/locations/locations.api';
 import { fetchStockLocations } from '../batches/batches.api';
 import { itemsApi } from '../../items/items.api';
 import { formatQty, toNumber } from '../jobwork.schemas';
 import type { JobOrder, OverviewStep } from '../job-orders/jobOrders.schemas';
-import { createJobReceipt, fetchReceiptBatchOptions, fetchReceivePrefill } from './jobReceipts.api';
-import type { JobReceiptBatchAllocationData, JobReceiptLineData } from './jobReceipts.schemas';
+import {
+  createJobReceipt,
+  fetchReceiptBatchOptions,
+  fetchReceivePrefill,
+  updateJobReceipt,
+} from './jobReceipts.api';
+import type {
+  JobReceipt,
+  JobReceiptBatchAllocationData,
+  JobReceiptLineData,
+} from './jobReceipts.schemas';
 import { BatchAllocationModal, type BatchAllocation } from './BatchAllocationModal';
 import { isExistingUnit, isSubmittableUnit } from '../../../components/inventory/batchUnits';
 import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingLabel';
@@ -21,6 +31,17 @@ interface Props {
   step: OverviewStep;
   onReceived: (receiptId?: string) => void;
   onCancel: () => void;
+  /**
+   * 🔴 EDITING A PARKED DRAFT. Present, and this form REPLACES that receipt
+   * instead of creating one — same id, same receipt number.
+   *
+   * 🔴 What it restores is everything EXCEPT the batch allocations. A draft
+   * cannot hold a batch it is creating (`job_receipt_output_batches.batch_id` is
+   * a NOT NULL key to a real batch, and minting one to park a form is the thing
+   * this whole path avoids), so the batch reference is asked for again. The
+   * quantities, the challans and the notes all come back.
+   */
+  draft?: JobReceipt | null;
 }
 
 /**
@@ -173,7 +194,7 @@ const sectionHeading: React.CSSProperties = {
  *    back, which the documents already know (see the loss strip below). A typed
  *    scrap box was a third number that could contradict the other two.
  */
-export function ReceiveForm({ jobOrder, step, onReceived, onCancel }: Props) {
+export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Props) {
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
   const trackingLabel = useTrackingLabel();
@@ -187,16 +208,37 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel }: Props) {
    * an effect is what lets the prefill arrive without a second render, and what
    * stops a re-fetch from silently re-ticking something the user un-ticked.
    */
-  const [pickedIssueIds, setPickedIssueIds] = useState<string[]>([]);
+  /**
+   * Seeded from the draft at mount — the page only renders this form once the
+   * draft has loaded, and remounts it by `key`, so the initial value is enough
+   * and no effect is needed to fill it in afterwards.
+   */
+  const [pickedIssueIds, setPickedIssueIds] = useState<string[]>(() =>
+    draft
+      ? [...new Set(draft.lines.flatMap((line) => (line.jobIssueId ? [line.jobIssueId] : [])))]
+      : [],
+  );
   /** 🔴 Default empty array: picking the first batch of receipts is the
    * user's job, not a guess the system makes by pre-selecting every open
    * challan against the processor's historical load.
    */
   const [returnedEdits, setReturnedEdits] = useState<ReturnedRow[] | null>(null);
-  const [receiptDate, setReceiptDate] = useState(new Date().toISOString().slice(0, 10));
-  const [locationId, setLocationId] = useState('');
-  const [remarks, setRemarks] = useState('');
+  const [receiptDate, setReceiptDate] = useState(
+    (draft?.receiptDate ?? new Date().toISOString()).slice(0, 10),
+  );
+  const [locationId, setLocationId] = useState(draft?.locationId ?? '');
+  const [remarks, setRemarks] = useState(draft?.remarks ?? '');
   const [error, setError] = useState<string | null>(null);
+  /**
+   * What could not be carried over from the draft. Derived, not state: it is a
+   * fact about the draft that never changes while this form is open.
+   */
+  const draftNotice =
+    draft && (draft.outputs ?? []).some((output) => toNumber(output.acceptedQty) > 0)
+      ? 'Quantities and challans have been restored. The batch the goods came into is not kept on ' +
+        'a draft — that batch does not exist until the receipt is posted — so allocate it again ' +
+        'before receiving.'
+      : null;
   /** Which returned row's batches are being allocated, and for which side. Null
    * closes the grid — and unmounts it, which is what lets it seed itself once. */
   const [allocating, setAllocating] = useState<{
@@ -355,6 +397,25 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel }: Props) {
    * measurement (§6.3). `null` means "not touched yet", so a prefill arriving
    * late cannot wipe what somebody has typed.
    */
+  /**
+   * 🔴 A DRAFT SEEDS THIS DERIVATION, it does not `setState` into it.
+   *
+   * The seeding used to be an effect, which is the obvious shape and the wrong
+   * one: it fires after the first paint, so the grid renders blank and then
+   * re-renders full, and it has to guard against overwriting the user's own
+   * edits. Here the fallback branch simply reads the draft — `returnedEdits`
+   * still wins the moment anything is typed, which is exactly the precedence
+   * wanted, for free.
+   *
+   * It waits on `prefill` because a row needs its item's NAME and UNIT to render
+   * and the draft stores neither — it saved quantities against an item id, and
+   * the names live on the step's plan.
+   *
+   * 🔴 `batches` stays EMPTY even on a draft. A `BatchAllocation` carries the
+   * option object from a live picker search, and a NEW batch was never stored at
+   * all, so there is nothing honest to put here — `draftNotice` says so rather
+   * than letting somebody press Receive and be refused by the server.
+   */
   const returnedRows: ReturnedRow[] = useMemo(() => {
     if (returnedEdits) return returnedEdits;
     if (!prefill) return [];
@@ -363,25 +424,28 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel }: Props) {
     // step whose main output happened to be typed second would put the cost on a
     // by-product.
     const planned = [...prefill.outputs].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
+    const saved = new Map(draft?.outputs?.map((output) => [output.itemId, output]) ?? []);
 
-    const blank = {
-      receivedQty: 0,
-      acceptedQty: 0,
-      reworkQty: 0,
-      returnedQty: 0,
-      valueShare: null,
-      remarks: '',
-      batches: [] as BatchAllocation[],
-      reworkBatches: [] as BatchAllocation[],
-    };
-    return planned.map((output) => ({
-      key: output.itemId,
-      itemId: output.itemId,
-      itemName: output.itemName,
-      unit: output.uomSymbol ?? '',
-      ...blank,
-    }));
-  }, [returnedEdits, prefill]);
+    return planned.map((output) => {
+      const row = saved.get(output.itemId);
+      return {
+        key: output.itemId,
+        itemId: output.itemId,
+        itemName: output.itemName,
+        unit: output.uomSymbol ?? '',
+        receivedQty: row ? toNumber(row.receivedQty) : 0,
+        acceptedQty: row ? toNumber(row.acceptedQty) : 0,
+        reworkQty: row ? toNumber(row.reworkQty) : 0,
+        // Always zero. This form never sends anything else — goods refused at the
+        // gate never entered stock — so there is nothing to restore.
+        returnedQty: 0,
+        valueShare: null,
+        remarks: row?.remarks ?? '',
+        batches: [] as BatchAllocation[],
+        reworkBatches: [] as BatchAllocation[],
+      };
+    });
+  }, [returnedEdits, prefill, draft]);
 
   // What came back is typed on the returned rows, full stop. Under unit_wise the
   // first returned row used to be DERIVED from the consumed rows' per-taka split;
@@ -577,8 +641,13 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel }: Props) {
     );
   }, [consumedByItem, effectiveReturned]);
 
+  /**
+   * One mutation for both buttons, taking the mode as its argument — the same
+   * shape as the Issue form's, and for the same reason: an identical payload
+   * either way, so the two can never drift apart.
+   */
   const mutation = useMutation({
-    mutationFn: () => {
+    mutationFn: (saveAsDraft: boolean) => {
       /**
        * Two independent lists (§5.7): what this receipt consumes, and what came
        * back. The consumed rows carry NO disposition — the returned grid is the
@@ -602,7 +671,7 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel }: Props) {
         reasonId: row.reasonId,
         responsibility: row.responsibility,
       }));
-      return createJobReceipt(orgId!, {
+      const payload = {
         jobOrderStepId: step.id,
         receiptDate: receiptDate || undefined,
         issueIds: selectedIssueIds,
@@ -658,7 +727,11 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel }: Props) {
             responsibility: null,
           })),
         remarks: remarks.trim() || null,
-      });
+        saveAsDraft,
+      };
+      return draft
+        ? updateJobReceipt(orgId!, draft.id, payload)
+        : createJobReceipt(orgId!, payload);
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, jobOrder.id] });
@@ -690,6 +763,26 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel }: Props) {
     effectiveReturned.every((row) => Boolean(row.itemId)) &&
     totals.received > 0 &&
     totals.issued > 0 &&
+    !mutation.isPending;
+
+  /**
+   * 🔴 A LOOSER GATE, matching what the server relaxes for a draft.
+   *
+   * Everything dropped here is a COMPLETENESS check — the dispositions add up,
+   * every batch is allocated, something actually came back — and a draft is
+   * incomplete by definition: the operator is entering what the delivery note
+   * claims before the count is finished. Refusing the save would block a document
+   * the backend accepts.
+   *
+   * What remains is what a draft cannot be without: a challan to account for and
+   * the godown the goods land in. `unallocatedRows` is deliberately NOT required
+   * — a draft cannot carry a batch it is creating anyway, so demanding one would
+   * make the button permanently dead on the commonest receipt there is.
+   */
+  const canSaveDraft =
+    rows.length > 0 &&
+    selectedIssueIds.length > 0 &&
+    Boolean(effectiveLocationId) &&
     !mutation.isPending;
 
   const updateReturned = (key: string, patch: Partial<ReturnedRow>) =>
@@ -792,6 +885,25 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel }: Props) {
           role="alert"
         >
           {error}
+        </p>
+      )}
+
+      {/* Amber, not red: nothing has gone wrong — this says which part of the
+          draft could not be carried over, and it is the one thing the user has
+          to redo before receiving. */}
+      {draftNotice && (
+        <p
+          style={{
+            fontSize: 13,
+            color: '#92400e',
+            background: '#fffbeb',
+            border: '1px solid #fde68a',
+            borderRadius: 4,
+            padding: '8px 12px',
+            margin: '0 0 16px 0',
+          }}
+        >
+          {draftNotice}
         </p>
       )}
 
@@ -1251,23 +1363,18 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel }: Props) {
           zIndex: 10,
         }}
       >
-        <button
-          type="button"
-          onClick={() => mutation.mutate()}
+        <SplitButton
+          label={mutation.isPending ? 'Saving…' : 'Receive goods'}
+          onClick={() => mutation.mutate(false)}
           disabled={!canSave}
-          style={{
-            padding: '6px 20px',
-            background: canSave ? '#186337' : '#f1f5f9',
-            color: canSave ? '#fff' : '#94a3b8',
-            border: 'none',
-            borderRadius: 4,
-            cursor: canSave ? 'pointer' : 'not-allowed',
-            fontWeight: 500,
-            fontSize: 13,
-          }}
-        >
-          {mutation.isPending ? 'Receiving…' : 'Receive goods'}
-        </button>
+          actions={[
+            {
+              label: 'Save as Draft',
+              disabled: !canSaveDraft,
+              onClick: () => mutation.mutate(true),
+            },
+          ]}
+        />
         <button
           type="button"
           onClick={onCancel}

@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { DateInput } from '../../../components/ui/DateInput';
 import { Select } from '../../../components/ui/Select';
+import { SplitButton } from '../../../components/ui/SplitButton';
 import { blurOnWheel } from '../../../components/ui/blurOnWheel';
 import { fetchVendors } from '../../purchases/vendors/vendors.api';
 import { fetchCustomers } from '../../sales/customers/customers.api';
@@ -16,8 +17,8 @@ import {
 } from '../batches/batches.api';
 import { formatQty, toNumber } from '../jobwork.schemas';
 import type { JobOrder, OverviewStep } from '../job-orders/jobOrders.schemas';
-import { createJobIssue } from './jobIssues.api';
-import type { JobIssueLineData } from './jobIssues.schemas';
+import { createJobIssue, updateJobIssue } from './jobIssues.api';
+import type { JobIssue, JobIssueLineData } from './jobIssues.schemas';
 import { AddBatchesModal } from './AddBatchesModal';
 import { selectionKey, type BatchSelection } from './batchSelection';
 import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingLabel';
@@ -27,6 +28,15 @@ interface Props {
   step: OverviewStep;
   onIssued: (issueId?: string) => void;
   onCancel: () => void;
+  /**
+   * 🔴 EDITING A PARKED DRAFT. Present, and this form REPLACES that challan
+   * instead of creating one — same id, same challan number.
+   *
+   * Its lines seed the pickers in place of the job order's plan (see the seed
+   * effect): a draft is a decision somebody already made, and re-seeding from the
+   * plan would silently overwrite it with what the planner guessed days ago.
+   */
+  draft?: JobIssue | null;
 }
 
 const labelStyle: React.CSSProperties = {
@@ -129,16 +139,24 @@ interface PlanGap {
  * it is created on first use — making someone set up a location for a dyer
  * before they can send anything to that dyer is a gate with no purpose.
  */
-export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
+export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) {
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
   const trackingLabel = useTrackingLabel();
   const unitLabel = useBatchUnitLabel();
 
-  const [sourceLocationId, setSourceLocationId] = useState('');
-  const [processorType, setProcessorType] = useState<string>(step.processorType);
-  const [processorId, setProcessorId] = useState<string | null>(step.processorId);
-  const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10));
+  // Everything the draft already decided. Read once, as initial state, so the
+  // user's own edits are never fought by a re-render.
+  const [sourceLocationId, setSourceLocationId] = useState(draft?.sourceLocationId ?? '');
+  const [processorType, setProcessorType] = useState<string>(
+    draft?.processorType ?? step.processorType,
+  );
+  const [processorId, setProcessorId] = useState<string | null>(
+    draft ? draft.processorId : step.processorId,
+  );
+  const [issueDate, setIssueDate] = useState(
+    (draft?.issueDate ?? new Date().toISOString()).slice(0, 10),
+  );
   /** 🔴 Keyed by batchId and carrying the batch ROW, not just its id — the picker
    * is a search now and a picked batch can leave the result set (see
    * `BatchSelection`). */
@@ -158,7 +176,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
   const [debouncedSearch, setDebouncedSearch] = useState<Record<string, string>>({});
   /** Which item section opened Add Batches. Null when it is closed. */
   const [addBatchesFor, setAddBatchesFor] = useState<string | null>(null);
-  const [remarks, setRemarks] = useState('');
+  const [remarks, setRemarks] = useState(draft?.remarks ?? '');
   const [overrideReason] = useState('');
   const [_needsOverride, setNeedsOverride] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -494,7 +512,77 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
    */
   const [planUnmatched, setPlanUnmatched] = useState<Record<string, PlanGap>>({});
 
+  /**
+   * 🔴 SEEDING A DRAFT BACK ONTO THE PICKERS — and it REPLACES the plan seed
+   * below rather than running beside it.
+   *
+   * A draft is a decision somebody already made and parked; the plan is what the
+   * planner guessed days earlier. Letting both run would overwrite the first with
+   * the second, silently, and the user would reopen their draft to find different
+   * rolls on it.
+   *
+   * It trusts the draft no further than the plan seed trusts the plan. Nothing is
+   * reserved while a draft sits there, so a roll on it may since have been issued
+   * elsewhere or drained — a line whose batch the availability query is no longer
+   * offering is DROPPED and counted, not carried forward as a quantity against a
+   * batch that cannot supply it. `gone` is the same counter the plan uses, so the
+   * banner that explains it needs no new wording.
+   */
   useEffect(() => {
+    if (!draft) return;
+    inputItems.forEach((input, index) => {
+      if (seededItems.current.has(input.itemId)) return;
+      const offered = batchQueries[index]?.data;
+      if (!offered) return; // still loading — try again next render
+      seededItems.current.add(input.itemId);
+
+      const mine = draft.lines.filter((line) => line.itemId === input.itemId);
+      if (mine.length === 0) return;
+
+      const seeded: Record<string, BatchSelection> = {};
+      let matchedQty = 0;
+      let gone = 0;
+
+      for (const line of mine) {
+        const batch = offered.find(
+          (row) => row.batchId === line.batchId && row.locationId === effectiveSourceId,
+        );
+        if (!batch) {
+          gone += 1;
+          continue;
+        }
+        const unit = line.batchUnitId
+          ? (batch.units.find((u) => u.batchUnitId === line.batchUnitId) ?? null)
+          : null;
+        if (line.batchUnitId && !unit) {
+          gone += 1;
+          continue;
+        }
+        const qty = toNumber(line.qty);
+        if (qty <= 0) continue;
+        seeded[selectionKey(batch, unit?.batchUnitId ?? null)] = { batch, unit, qty };
+        matchedQty += qty;
+      }
+
+      if (Object.keys(seeded).length > 0) {
+        setSelection((prev) => ({ ...prev, ...seeded }));
+        setTrackedQty((prev) => ({ ...prev, [input.itemId]: matchedQty }));
+      } else if (!input.isBatchTracked) {
+        // An untracked line names no batch the user ever saw, so it is restored
+        // as the plain quantity it was typed as.
+        const typed = mine.reduce((sum, line) => sum + toNumber(line.qty), 0);
+        if (typed > 0) setUnstocked((prev) => ({ ...prev, [input.itemId]: typed }));
+      }
+      if (gone > 0) {
+        setPlanUnmatched((prev) => ({ ...prev, [input.itemId]: { gone, elsewhere: [] } }));
+      }
+    });
+  }, [draft, inputItems, batchQueries, effectiveSourceId]);
+
+  useEffect(() => {
+    // Skipped entirely while editing a draft — the effect above has already
+    // claimed every item, and the plan must not overwrite a parked decision.
+    if (draft) return;
     // We run it unconditionally now instead of if(!isOpen)
     inputItems.forEach((input, index) => {
       if (!input.isBatchTracked || input.plannedBatches.length === 0) return;
@@ -584,7 +672,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
         }));
       }
     });
-  }, [inputItems, batchQueries, allLocations, effectiveSourceId]);
+  }, [draft, inputItems, batchQueries, allLocations, effectiveSourceId]);
 
   const { data: vendorsPage } = useQuery({
     queryKey: ['vendors', orgId, 'processors'],
@@ -703,9 +791,17 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
     return totals;
   }, [lines]);
 
+  /**
+   * One mutation for both buttons, taking the mode as its argument.
+   *
+   * 🔴 `saveAsDraft` decides how the SERVER treats the payload, not what the
+   * client sends: the body is identical either way. Building a second, thinner
+   * payload for drafts is how the two drift — the draft would stop carrying a
+   * field, and posting it later would silently lose it.
+   */
   const mutation = useMutation({
-    mutationFn: () =>
-      createJobIssue(orgId!, {
+    mutationFn: (saveAsDraft: boolean) => {
+      const payload = {
         jobOrderStepId: step.id,
         issueDate: issueDate || undefined,
         processorType,
@@ -714,16 +810,33 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
         lines,
         toleranceOverrideReason: overrideReason.trim() || null,
         remarks: remarks.trim() || null,
-      }),
+        saveAsDraft,
+      };
+      return draft ? updateJobIssue(orgId!, draft.id, payload) : createJobIssue(orgId!, payload);
+    },
     meta: { suppressToast: true },
-    onSuccess: (data) => {
+    onSuccess: (_result, saveAsDraft) => {
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, jobOrder.id] });
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
       queryClient.invalidateQueries({ queryKey: ['available-batches', orgId] });
       // Balances at every location just moved, and the coverage labels are read
       // off them — without this the next challan is planned against stale figures.
       queryClient.invalidateQueries({ queryKey: ['stock-locations', orgId] });
-      onIssued(data.id);
+      onIssued();
+
+      /**
+       * 🔴 A DRAFT LEAVES THE SCREEN, it does not roll on to the next godown.
+       *
+       * The continuation below exists because ISSUING empties what it sent and
+       * the rest of the step is usually standing in another godown — so the form
+       * re-arms itself there. A draft sent nothing: every batch it names is still
+       * exactly where it was, and re-arming would invite a second draft covering
+       * the same material.
+       */
+      if (saveAsDraft) {
+        onCancel();
+        return;
+      }
 
       /* Items this challan carried nothing of. Read off `qtyByItem`, which is the
          allocation that was actually sent, not what was typed. */
@@ -877,6 +990,21 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
     overDrawn.size === 0 &&
     blockedLines.size === 0 &&
     !mutation.isPending;
+
+  /**
+   * 🔴 A LOOSER GATE, and only where the server is also looser.
+   *
+   * `overDrawn` and `blockedLines` are availability warnings — more is being sent
+   * than the ledger holds — and the draft path on the server does not ask that
+   * question, so refusing the save here would block a document the backend would
+   * accept. Someone drafting Monday's challan on Friday has not got the fabric in
+   * yet, which is the ordinary case rather than a mistake.
+   *
+   * What stays required is what a draft still cannot be saved without: at least
+   * one line (a challan of nothing is not a draft, it is an empty form) and the
+   * godown it goes out of (every line's batch is scoped to it).
+   */
+  const canSaveDraft = lines.length > 0 && Boolean(effectiveSourceId) && !mutation.isPending;
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -1228,7 +1356,13 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
                               lineHeight: 1.45,
                             }}
                           >
-                            {planUnmatched[input.itemId]!.gone} planned{' '}
+                            {/* "on this draft" when one is being edited: the rows
+                                that dropped were somebody's own saved choice, not
+                                the planner's, and calling them "planned" sends the
+                                user to the job order to look for a problem that is
+                                not there. */}
+                            {planUnmatched[input.itemId]!.gone}{' '}
+                            {draft ? 'of this draft’s' : 'planned'}{' '}
                             {planUnmatched[input.itemId]!.gone === 1
                               ? `${trackingLabel.singular.toLowerCase()} is`
                               : `${trackingLabel.plural.toLowerCase()} are`}{' '}
@@ -1495,23 +1629,22 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
           zIndex: 10,
         }}
       >
-        <button
-          type="button"
-          onClick={() => mutation.mutate()}
+        {/* The draft keeps its own disabled state — a challan too incomplete to
+            send can still be parked. */}
+        <SplitButton
+          label={
+            mutation.isPending ? 'Saving…' : draft ? 'Issue challan' : 'Issue & create challan'
+          }
+          onClick={() => mutation.mutate(false)}
           disabled={!canSave}
-          style={{
-            padding: '6px 20px',
-            background: canSave ? '#0062ff' : '#f1f5f9',
-            color: canSave ? '#fff' : '#94a3b8',
-            border: 'none',
-            borderRadius: 4,
-            cursor: canSave ? 'pointer' : 'not-allowed',
-            fontWeight: 500,
-            fontSize: 13,
-          }}
-        >
-          {mutation.isPending ? 'Issuing…' : 'Issue & create challan'}
-        </button>
+          actions={[
+            {
+              label: 'Save as Draft',
+              disabled: !canSaveDraft,
+              onClick: () => mutation.mutate(true),
+            },
+          ]}
+        />
         <button
           type="button"
           onClick={onCancel}

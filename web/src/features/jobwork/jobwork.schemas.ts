@@ -115,9 +115,25 @@ export const STEP_STATUS_META: Record<string, { label: string; color: string; bg
 };
 
 export const ISSUE_STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
+  // Grey, and the same grey a draft job order uses — a draft is the one status
+  // here that describes paperwork rather than goods, so it must not read as a
+  // stage of the material's journey.
+  draft: { label: 'Draft', color: '#475569', bg: '#f1f5f9' },
   issued: { label: 'Out', color: '#1d4ed8', bg: '#eff6ff' },
   partially_received: { label: 'Partly back', color: '#7c3aed', bg: '#f5f3ff' },
   closed: { label: 'Closed', color: '#15803d', bg: '#f0fdf4' },
+  cancelled: { label: 'Cancelled', color: '#b91c1c', bg: '#fef2f2' },
+};
+
+/**
+ * Receipts. This map is new: the two lists used to render `status === 'cancelled'
+ * ? 'Cancelled' : 'Posted'` inline, in three places, and a third status made all
+ * three quietly label a draft "Posted" — which is the exact opposite of what it
+ * is. A map means a fourth status is a line here rather than a bug there.
+ */
+export const RECEIPT_STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
+  draft: { label: 'Draft', color: '#475569', bg: '#f1f5f9' },
+  posted: { label: 'Posted', color: '#15803d', bg: '#f0fdf4' },
   cancelled: { label: 'Cancelled', color: '#b91c1c', bg: '#fef2f2' },
 };
 

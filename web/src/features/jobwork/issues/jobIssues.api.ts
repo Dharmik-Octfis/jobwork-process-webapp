@@ -40,6 +40,34 @@ export async function createJobIssue(orgId: string, data: CreateJobIssueData): P
   return jobIssueSchema.parse(response.data);
 }
 
+/**
+ * Rewrite a parked draft — the whole form again, not a patch.
+ *
+ * 🔴 Only reaches a draft. The server refuses this once the challan is issued:
+ * from that point it has ledger rows, and the only legal correction is a
+ * cancellation that posts the opposite ones.
+ */
+export async function updateJobIssue(
+  orgId: string,
+  id: string,
+  data: CreateJobIssueData,
+): Promise<JobIssue> {
+  const response = await apiClient.put(`${endpoints.jobwork.issues(orgId)}/${id}`, data);
+  return jobIssueSchema.parse(response.data);
+}
+
+/** Issue a draft as it stands. Every check the draft was allowed to skip —
+ * stock, tolerance, the step chain — runs now, so this can legitimately 400. */
+export async function postJobIssue(orgId: string, id: string): Promise<JobIssue> {
+  const response = await apiClient.post(`${endpoints.jobwork.issues(orgId)}/${id}/post`);
+  return jobIssueSchema.parse(response.data);
+}
+
+/** Delete a DRAFT. A posted challan is cancelled instead — see above. */
+export async function deleteJobIssue(orgId: string, id: string): Promise<void> {
+  await apiClient.delete(`${endpoints.jobwork.issues(orgId)}/${id}`);
+}
+
 /** Cancelling posts reversing ledger rows. It never deletes — the history of
  * "this went out on the 3rd and was cancelled on the 5th" has to survive. */
 export async function cancelJobIssue(orgId: string, id: string, reason: string): Promise<void> {

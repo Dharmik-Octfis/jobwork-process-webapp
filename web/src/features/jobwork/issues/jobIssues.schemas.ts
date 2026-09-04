@@ -115,6 +115,14 @@ export interface CreateJobIssueData {
   toleranceOverrideReason?: string | null;
   lines: JobIssueLineData[];
   remarks?: string | null;
+  /**
+   * Which button was pressed — a MODE, not a status. `status` is derived by the
+   * server from the receipts underneath and is never accepted from here; this
+   * only chooses between parking the challan and sending it.
+   *
+   * Omitted means issue, so nothing that predates drafts changes behaviour.
+   */
+  saveAsDraft?: boolean;
 }
 
 export const jobIssuesPageSchema = paginatedSchema(jobIssueSchema);

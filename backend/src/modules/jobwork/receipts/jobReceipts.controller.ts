@@ -8,16 +8,20 @@ import {
   cancelJobReceipt,
   countJobReceipts,
   createNewJobReceipt,
+  deleteJobReceiptDraft,
   getJobReceiptById,
   getJobReceiptsList,
   getOutputBatchOptions,
   getReceiptsForStep,
   getReceivePrefill,
+  postJobReceiptDraft,
 } from './jobReceipts.service.ts';
 import {
   createJobReceiptSchema,
+  updateJobReceiptSchema,
   type CancelJobReceiptInput,
   type CreateJobReceiptInput,
+  type UpdateJobReceiptInput,
 } from './jobReceipts.schemas.ts';
 
 const orgParam = z.object({ orgId: z.string() });
@@ -98,6 +102,49 @@ const batchOptionsQuerySchema = z.object({
 });
 
 openApiRegistry.registerPath({
+  method: 'put',
+  path: '/organizations/{orgId}/jobwork/receipts/{id}',
+  tags: ['Job Receipts'],
+  summary: 'Rewrite a DRAFT receipt — and optionally post it. Refused once posted',
+  request: {
+    params: orgParam.extend({ id: z.string() }),
+    body: { content: { 'application/json': { schema: updateJobReceiptSchema } } },
+  },
+  responses: {
+    200: { description: 'Saved' },
+    409: { description: 'Already posted, so it can no longer be edited' },
+  },
+});
+
+openApiRegistry.registerPath({
+  method: 'post',
+  path: '/organizations/{orgId}/jobwork/receipts/{id}/post',
+  tags: ['Job Receipts'],
+  summary: 'Post a draft as it stands — runs every check the draft was allowed to skip',
+  request: { params: orgParam.extend({ id: z.string() }) },
+  responses: {
+    200: { description: 'Received' },
+    400: {
+      description:
+        'Dispositions do not add up, more than the challans have outstanding, or the draft never named its output batches',
+    },
+    409: { description: 'Not a draft' },
+  },
+});
+
+openApiRegistry.registerPath({
+  method: 'delete',
+  path: '/organizations/{orgId}/jobwork/receipts/{id}',
+  tags: ['Job Receipts'],
+  summary: 'Delete a DRAFT. A posted receipt is cancelled, never deleted',
+  request: { params: orgParam.extend({ id: z.string() }) },
+  responses: {
+    200: { description: 'Deleted' },
+    409: { description: 'Not a draft — cancel it instead' },
+  },
+});
+
+openApiRegistry.registerPath({
   method: 'get',
   path: '/organizations/{orgId}/jobwork/receipts/batch-options',
   tags: ['Job Receipts'],
@@ -119,12 +166,36 @@ export const getBatchOptions = async (req: Request, res: Response) => {
 };
 
 export const createJobReceipt = async (req: Request, res: Response) => {
+  const body = req.body as CreateJobReceiptInput;
   const created = await createNewJobReceipt(
     req.tenantId!,
-    req.body as CreateJobReceiptInput,
+    body,
     req.user?.id,
+    body.saveAsDraft ? 'draft' : 'post',
   );
-  sendSuccess(res, created, 'Goods received.', 201);
+  sendSuccess(res, created, body.saveAsDraft ? 'Draft saved.' : 'Goods received.', 201);
+};
+
+export const updateJobReceipt = async (req: Request, res: Response) => {
+  const body = req.body as UpdateJobReceiptInput;
+  const updated = await createNewJobReceipt(
+    req.tenantId!,
+    body,
+    req.user?.id,
+    body.saveAsDraft ? 'draft' : 'post',
+    req.params.id as string,
+  );
+  sendSuccess(res, updated, body.saveAsDraft ? 'Draft saved.' : 'Goods received.');
+};
+
+export const postJobReceipt = async (req: Request, res: Response) => {
+  const posted = await postJobReceiptDraft(req.tenantId!, req.params.id as string, req.user?.id);
+  sendSuccess(res, posted, 'Goods received.');
+};
+
+export const deleteJobReceipt = async (req: Request, res: Response) => {
+  await deleteJobReceiptDraft(req.tenantId!, req.params.id as string, req.user?.id);
+  sendSuccess(res, null, 'Draft deleted.');
 };
 
 export const getJobReceipt = async (req: Request, res: Response) => {

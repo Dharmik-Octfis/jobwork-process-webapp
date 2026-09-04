@@ -15,7 +15,13 @@ import {
   type Ownership,
 } from '../../inventory/stock-ledger/stockLedger.service.ts';
 import { assertLocationsBelongToOrg, resolveProcessorName } from '../jobwork.refs.ts';
-import { SOURCE_DOC_TYPES, runAsDocument, type ProcessorType } from '../jobwork.types.ts';
+import {
+  HAPPENED_DOC_STATUS,
+  POSTED_DOC_STATUS,
+  SOURCE_DOC_TYPES,
+  runAsDocument,
+  type ProcessorType,
+} from '../jobwork.types.ts';
 import { chainNotReady, recomputeStep } from '../job-orders/jobOrders.status.ts';
 import type { CreateJobIssueInput } from './jobIssues.schemas.ts';
 
@@ -272,7 +278,10 @@ async function assertWithinTolerance(
           jobOrderStepId: step.id,
           isDeleted: false,
           isRework: false,
-          status: { not: 'cancelled' },
+          // Drafts excluded with cancellations: a parked challan has issued
+          // nothing, so counting it against the ceiling would refuse a real issue
+          // for material that is still in the godown.
+          status: POSTED_DOC_STATUS,
         },
       },
       _sum: { qty: true },
@@ -370,13 +379,35 @@ async function allowedItems(
  * thread and buttons, and each has its own batches; one query for "the step's item"
  * would find no thread and reject the line as unavailable.
  *
+ * 🔴 `context.lenient` IS THE DRAFT PATH, and it relaxes exactly one class of
+ * rule: how much stock is there. Availability, package ceilings and the
+ * cross-line over-draw sums are questions about the WORLD, and a draft is not
+ * making a claim about the world yet — it is a form somebody parked half-typed,
+ * possibly before the goods have even arrived. Refusing to save it because the
+ * fabric is not in yet defeats the entire point of a draft.
+ *
+ * What lenient does NOT relax is anything structural: the item must still be one
+ * the step consumes, a batch-tracked item must still name a batch, and the batch
+ * must still belong to this org and this item. Those are questions about the
+ * DOCUMENT, and a draft that violates them is not incomplete — it is wrong, and
+ * saving it only moves the error to a screen further away.
+ *
+ * Every relaxed check is re-run, strictly, when the draft is posted
+ * (`postJobIssueDraft` → this function with `lenient: false`). Nothing reaches
+ * the ledger without passing all of them.
  */
 async function resolveLines(
   tx: TenantClient,
   organizationId: string,
   lines: readonly ResolvedLineItem[],
-  context: { locationId: string; ownership: Ownership; ownerPartyId: string | null },
+  context: {
+    locationId: string;
+    ownership: Ownership;
+    ownerPartyId: string | null;
+    lenient?: boolean;
+  },
 ) {
+  const lenient = context.lenient ?? false;
   const itemIds = new Set(lines.map((line) => line.itemId));
 
   /**
@@ -593,6 +624,26 @@ async function resolveLines(
       }
 
       if (remaining.greaterThan(0)) {
+        /**
+         * A DRAFT MAY OVERDRAW — the shortfall rides on the oldest batch in the
+         * queue and is refused later, at post. Someone drafting Monday's issue on
+         * Friday has not got the stock yet, and that is the ordinary case.
+         *
+         * It still needs A batch to hang on, because `job_issue_lines.batch_id` is
+         * NOT NULL. With an empty queue there is no such row and no honest one to
+         * invent — inventing it is precisely the phantom-batch scaffold deleted
+         * above — so this one shortfall is refused in both modes.
+         */
+        if (lenient && queue[0]) {
+          resolved.push({
+            ...line,
+            batchId: queue[0].batchId,
+            sourceLocationId: queue[0].locationId,
+            qty: remaining,
+          });
+          continue;
+        }
+
         // Named in the item's own terms and AT THE LOCATION, because that is the
         // only place searched — saying "this site" would describe stock the rule
         // no longer lets this challan touch. The user never saw a batch here, so
@@ -603,8 +654,12 @@ async function resolveLines(
         );
         throw new ApiError(
           400,
-          `${item?.name ?? 'This item'} has ${onHand.toString()} available at ${locationName}, ` +
-            `but ${line.qty} is being issued. Issue it from the location holding it, or add the stock first.`,
+          lenient
+            ? `${item?.name ?? 'This item'} has no stock on record at ${locationName}, so there ` +
+                'is no batch to record this line against. Add the stock first, or take the line off ' +
+                'the draft.'
+            : `${item?.name ?? 'This item'} has ${onHand.toString()} available at ${locationName}, ` +
+                `but ${line.qty} is being issued. Issue it from the location holding it, or add the stock first.`,
           { [`lines.${index}.qty`]: `Only ${onHand.toString()} is available at ${locationName}.` },
         );
       }
@@ -643,6 +698,25 @@ async function resolveLines(
 
     const batch = availableByKey.get(keyOf(line.batchId, pickedLocationId));
     if (!batch) {
+      /**
+       * A batch with nothing left is a normal thing for a DRAFT to name: the
+       * draft was parked while the roll still had 200 m on it and another challan
+       * has since taken them. Keep the line — the batch is still a real batch of
+       * this item — and let the post refuse it if the stock has not come back.
+       *
+       * `assertBatchesAreOurs` below is what stops that leniency accepting a
+       * batch belonging to another item, another tenant or another ownership.
+       */
+      if (lenient) {
+        resolved.push({
+          ...line,
+          batchId: line.batchId,
+          sourceLocationId: pickedLocationId,
+          qty: new Prisma.Decimal(line.qty),
+        });
+        continue;
+      }
+
       // Covers all three failure modes at once — wrong tenant, wrong item, wrong
       // ownership, or simply nothing left. The picker only ever offers rows this
       // query returned, so a miss here means the payload was hand-made or the
@@ -666,7 +740,7 @@ async function resolveLines(
      * below already sums by (batch, location, unit), which is the same map an
      * atomic pick used. Only this comparison changed, from `=` to `≤`.
      */
-    if (line.batchUnitId) {
+    if (line.batchUnitId && !lenient) {
       const unit = unitsByKey.get(keyOf(line.batchId, pickedLocationId))?.get(line.batchUnitId);
       if (!unit) {
         throw ApiError.badRequest(
@@ -704,9 +778,48 @@ async function resolveLines(
    * batch total, because that comparison passes while the packages are being
    * overdrawn.
    */
+  /**
+   * 🔴 THE ONE CHECK A DRAFT STILL OWES, and the reason leniency above is safe.
+   *
+   * Skipping availability means a picked batch is no longer proved to exist by
+   * having been returned from the availability query. Without this, a hand-made
+   * draft payload could name ANOTHER TENANT'S batch id and have it written into
+   * `job_issue_lines` — the same class of failure as a missing tenant filter
+   * (§5.2), and it would sit there until somebody posted it.
+   *
+   * Ownership is checked with it: a customer's goods may only be issued into a
+   * job order of the same ownership, and a draft that quietly mixes them is a
+   * draft that cannot be posted, which is worse than one that cannot be saved.
+   */
+  if (lenient && resolved.length > 0) {
+    const wanted = [...new Set(resolved.map((line) => line.batchId))];
+    const real = await tx.batch.findMany({
+      where: {
+        organizationId,
+        id: { in: wanted },
+        isDeleted: false,
+        itemId: { in: [...itemIds] },
+        ownership: context.ownership,
+        ...(context.ownership === 'customer' ? { ownerPartyId: context.ownerPartyId } : {}),
+      },
+      select: { id: true, itemId: true },
+    });
+    const realById = new Map(real.map((row) => [row.id, row.itemId]));
+    for (const line of resolved) {
+      if (realById.get(line.batchId) !== line.itemId) {
+        throw ApiError.badRequest(
+          'One of the selected batches is not a batch of that item, or belongs to different ' +
+            'ownership. Re-open the picker so it can show what is actually there.',
+        );
+      }
+    }
+  }
+
   const perBatchUntagged = new Map<string, Prisma.Decimal>();
   const perUnit = new Map<string, Prisma.Decimal>();
-  for (const line of resolved) {
+  // Left empty for a draft, so both loops below fall through. Both ask an
+  // availability question, and a draft is exempt from those — see `lenient`.
+  for (const line of lenient ? [] : resolved) {
     const key = keyOf(line.batchId, line.sourceLocationId);
     if (line.batchUnitId) {
       const unitKey = `${key}#${line.batchUnitId}`;
@@ -759,16 +872,68 @@ async function resolveLines(
   return resolved;
 }
 
+/**
+ * 🔴 SAVING A CHALLAN — as a draft, or posted. ONE function, deliberately.
+ *
+ * The two differ in what they check and what they write, not in what they mean,
+ * and splitting them into two services is how the draft path drifts: it grows its
+ * own copy of the destination resolution, the item allow-list and the line
+ * mapping, and eight weeks later a draft posts a challan the direct path would
+ * have refused. Everything here runs for both; `mode` gates only the steps that
+ * are genuinely about posting.
+ *
+ * WHAT A DRAFT SKIPS, AND WHY EACH ONE IS SAFE TO SKIP
+ *
+ *   · `chainNotReady`    — the previous step may well finish before this is sent.
+ *   · tolerance          — the quantity is still being typed.
+ *   · availability       — `resolveLines({ lenient })`; the goods may not be in yet.
+ *   · `postMovement`     — 🔴 THE POINT. No ledger row, so no stock moves.
+ *   · `recomputeStep`    — nothing moved, so nothing to recompute. Calling it
+ *                          would be harmless today (the sums exclude drafts) and
+ *                          is left out because "a draft changes no status" should
+ *                          be true by construction, not by a filter holding.
+ *
+ * Every one of them is re-run at post. A draft is a parking space, never a way
+ * past a rule.
+ */
+export type IssueSaveMode = 'draft' | 'post';
+
+/**
+ * `existingId` REWRITES A DRAFT IN PLACE instead of creating one — the same
+ * function, because editing a draft and saving a new one differ in one line of
+ * SQL and nothing else. It refuses anything that is not still a draft: past that
+ * point the ledger has rows, and an edit would leave the document saying one
+ * thing while `stock_ledger` says another, with nothing to reconcile them. That
+ * is the rule `jobIssues.routes.ts` has always stated; a draft is not an
+ * exception to it, it is the state before it applies.
+ */
 export async function createNewJobIssue(
   organizationId: string,
   data: CreateJobIssueInput,
   userId?: string,
+  mode: IssueSaveMode = 'post',
+  existingId?: string,
 ) {
   const { lines, ...header } = data;
+  const asDraft = mode === 'draft';
 
   // Two ledger rows per line, and a fifty-taka challan is normal — past
   // Prisma's 5-second default (jobwork.types.ts).
   return runAsDocument(organizationId, async (tx) => {
+    const existing = existingId
+      ? await tx.jobIssue.findFirst({
+          where: { id: existingId, organizationId, isDeleted: false },
+          select: { id: true, status: true, challanNumber: true, createdBy: true },
+        })
+      : null;
+    if (existingId && !existing) throw ApiError.notFound('Challan not found');
+    if (existing && existing.status !== 'draft') {
+      throw ApiError.conflict(
+        'This challan has already been issued, so it can no longer be edited. ' +
+          'Cancel it and raise a new one instead.',
+      );
+    }
+
     const step = await tx.jobOrderStep.findFirst({
       where: { id: header.jobOrderStepId, organizationId, isDeleted: false },
       include: {
@@ -803,7 +968,10 @@ export async function createNewJobIssue(
      * Rework is exempt: it re-issues what this step itself returned, which by
      * definition already came back.
      */
-    if (!isRework) {
+    // Not for a draft: step 1 may well have returned something by the time this
+    // is actually sent, and refusing to PARK tomorrow's challan because today's
+    // goods are not back is a gate with no purpose.
+    if (!isRework && !asDraft) {
       const notReady = await chainNotReady(tx, organizationId, step.jobOrderId, step);
       if (notReady) throw ApiError.conflict(notReady);
     }
@@ -899,6 +1067,7 @@ export async function createNewJobIssue(
       locationId: header.sourceLocationId,
       ownership,
       ownerPartyId: step.jobOrder.ownerPartyId,
+      lenient: asDraft,
     });
 
     const qtyByItem = new Map<string, Prisma.Decimal>();
@@ -916,7 +1085,7 @@ export async function createNewJobIssue(
     // first time a step ran to plan.
     // Always asked, even when the step names no tolerance: an input row may
     // carry its own, and the step-level null is only the fallback.
-    if (!isRework) {
+    if (!isRework && !asDraft) {
       await assertWithinTolerance(
         tx,
         organizationId,
@@ -932,7 +1101,15 @@ export async function createNewJobIssue(
     let attemptNo = 1;
     if (isRework) {
       const previous = await tx.jobIssue.count({
-        where: { organizationId, jobOrderStepId: step.id, isDeleted: false },
+        // Cancelled challans still count — their number was printed and the
+        // processor saw it. A DRAFT was handed to nobody, so counting one would
+        // print "attempt 3" on the consignment that is physically the second.
+        where: {
+          organizationId,
+          jobOrderStepId: step.id,
+          isDeleted: false,
+          status: HAPPENED_DOC_STATUS,
+        },
       });
       attemptNo = previous + 1;
     }
@@ -944,42 +1121,76 @@ export async function createNewJobIssue(
       processorId,
     );
 
-    const challanNumber = await allocateNumber(tx, organizationId, 'job_issue');
+    // 🔴 A draft KEEPS the number it was given. Re-allocating on every save would
+    // walk the challan number forward each time somebody edits a parked document,
+    // burning a statutory series on keystrokes — and the number is already on the
+    // screen the user is looking at.
+    const challanNumber =
+      existing?.challanNumber ?? (await allocateNumber(tx, organizationId, 'job_issue'));
     const issueDate = header.issueDate ?? new Date();
 
+    const headerData = {
+      jobOrderId: step.jobOrderId,
+      jobOrderStepId: step.id,
+      issueDate,
+      processorType,
+      processorId: processorId ?? null,
+      processorNameSnapshot: processorName,
+      processorAddressSnapshot: processorSnapshot.address,
+      processorGstinSnapshot: processorSnapshot.gstin,
+      sourceLocationId: header.sourceLocationId,
+      destinationLocationId,
+      isRework,
+      attemptNo,
+      totalQty,
+      // The one value a user chooses. Everything above `draft` is derived by
+      // `jobOrders.status.ts` from the receipts underneath.
+      status: asDraft ? 'draft' : 'issued',
+      toleranceOverrideReason: header.toleranceOverrideReason?.trim() || null,
+      remarks: header.remarks?.trim() || null,
+      updatedBy: userId ?? null,
+    };
+
     const issue = await withUniqueViolation(DUPLICATE_NUMBER, () =>
-      tx.jobIssue.create({
-        data: {
-          organizationId,
-          jobOrderId: step.jobOrderId,
-          jobOrderStepId: step.id,
-          challanNumber,
-          issueDate,
-          processorType,
-          processorId: processorId ?? null,
-          processorNameSnapshot: processorName,
-          processorAddressSnapshot: processorSnapshot.address,
-          processorGstinSnapshot: processorSnapshot.gstin,
-          sourceLocationId: header.sourceLocationId,
-          destinationLocationId,
-          isRework,
-          attemptNo,
-          totalQty,
-          toleranceOverrideReason: header.toleranceOverrideReason?.trim() || null,
-          remarks: header.remarks?.trim() || null,
-          createdBy: userId ?? null,
-          updatedBy: userId ?? null,
-        },
-      }),
+      existing
+        ? tx.jobIssue.update({ where: { id: existing.id }, data: headerData })
+        : tx.jobIssue.create({
+            data: { ...headerData, organizationId, challanNumber, createdBy: userId ?? null },
+          }),
     );
+
+    /**
+     * 🔴 HARD DELETE, and the one place in this module that may do it.
+     *
+     * The soft-delete rule protects HISTORY: a removed row is something that once
+     * counted, and `updatedBy` records who removed it. A draft's lines never
+     * counted — no ledger row ever referenced them, no report ever summed them,
+     * nobody outside this document has seen them — so there is no history to
+     * keep, and stamping `is_deleted` instead would leave one dead row per line
+     * per save, forever, on a document people edit repeatedly by design.
+     *
+     * Safe because `existing` is proved to be a draft above. The moment a challan
+     * is posted this branch is unreachable, and `job_issue_lines` goes back to
+     * being append-only.
+     */
+    if (existing) {
+      await tx.jobIssueLine.deleteMany({
+        where: { organizationId, jobIssueId: existing.id },
+      });
+    }
 
     // Two posts per line, both against the line's own batch — so the batch rows
     // are read once for the whole challan rather than twice per taka.
-    const issuedBatches = await resolveBatchesForPosting(
-      tx,
-      organizationId,
-      resolvedLines.map((line) => line.batchId),
-    );
+    //
+    // Skipped entirely for a draft, along with the balance read below: both exist
+    // only to feed `postMovement`, which a draft never reaches.
+    const issuedBatches = asDraft
+      ? new Map()
+      : await resolveBatchesForPosting(
+          tx,
+          organizationId,
+          resolvedLines.map((line) => line.batchId),
+        );
 
     /**
      * 🔴 Every line's opening balance in ONE read per source location — one, under
@@ -998,10 +1209,12 @@ export async function createNewJobIssue(
       ]);
     }
     const balances = new Map<string, { qty: Prisma.Decimal; value: Prisma.Decimal }>();
-    for (const [locationId, batchIds] of batchIdsByLocation) {
-      const atLocation = await getBalancesByBatch(tx, { organizationId, locationId, batchIds });
-      for (const [batchId, balance] of atLocation) {
-        balances.set(balanceKey(batchId, locationId), balance);
+    if (!asDraft) {
+      for (const [locationId, batchIds] of batchIdsByLocation) {
+        const atLocation = await getBalancesByBatch(tx, { organizationId, locationId, batchIds });
+        for (const [batchId, balance] of atLocation) {
+          balances.set(balanceKey(batchId, locationId), balance);
+        }
       }
     }
 
@@ -1026,6 +1239,16 @@ export async function createNewJobIssue(
           updatedBy: userId ?? null,
         },
       });
+
+      /**
+       * 🔴 A DRAFT STOPS HERE — THIS IS THE WHOLE FEATURE.
+       *
+       * The line row is written, so reopening the draft shows exactly what was
+       * picked; the two ledger rows below are not, so no stock has moved, nothing
+       * is standing at the processor, and every balance is what it was. The line
+       * carries no `stock_ledger` row until this challan is posted.
+       */
+      if (asDraft) continue;
 
       /**
        * 🔴 TWO ROWS PER LINE, never one signed row: out of the godown, in at the
@@ -1092,11 +1315,104 @@ export async function createNewJobIssue(
       );
     }
 
-    await recomputeStep(tx, organizationId, step.id);
+    // Nothing moved, so there is nothing to recompute. Left out rather than
+    // called-and-ignored so that "a draft changes no status" holds by
+    // construction, not because a filter inside it happened to exclude one.
+    if (!asDraft) await recomputeStep(tx, organizationId, step.id);
 
     return tx.jobIssue.findFirstOrThrow({
       where: { id: issue.id, organizationId },
       include: ISSUE_INCLUDE,
+    });
+  });
+}
+
+/**
+ * Post a draft AS IT STANDS, without reopening the form — the list and detail
+ * pages' `Post` action.
+ *
+ * 🔴 It goes back through `createNewJobIssue` in `post` mode rather than simply
+ * flipping the status and posting the stored lines. Flipping is the tempting
+ * shortcut and it is the bug: the draft was saved leniently, so its lines may
+ * overdraw a batch, breach the tolerance ceiling, or sit behind a step that has
+ * still returned nothing. Every one of those checks lives in that function, and
+ * a second posting path would be a second place for them to be forgotten.
+ *
+ * The draft's own rows are the input, so what is posted is exactly what was
+ * parked — read back out into the shape the create path takes.
+ */
+export async function postJobIssueDraft(organizationId: string, id: string, userId?: string) {
+  const draft = await runAsTenant(organizationId, (tx) =>
+    tx.jobIssue.findFirst({
+      where: { id, organizationId, isDeleted: false },
+      include: { lines: { where: { isDeleted: false }, orderBy: { createdAt: 'asc' } } },
+    }),
+  );
+  if (!draft) throw ApiError.notFound('Challan not found');
+  if (draft.status !== 'draft') {
+    throw ApiError.conflict('This challan has already been issued.');
+  }
+  if (draft.lines.length === 0) {
+    throw ApiError.badRequest('This draft has nothing on it to issue. Add at least one batch.');
+  }
+
+  return createNewJobIssue(
+    organizationId,
+    {
+      jobOrderStepId: draft.jobOrderStepId,
+      issueDate: draft.issueDate,
+      processorType: draft.processorType as ProcessorType,
+      processorId: draft.processorId,
+      sourceLocationId: draft.sourceLocationId,
+      destinationLocationId: draft.destinationLocationId,
+      isRework: draft.isRework,
+      toleranceOverrideReason: draft.toleranceOverrideReason,
+      remarks: draft.remarks,
+      lines: draft.lines.map((line) => ({
+        itemId: line.itemId,
+        batchId: line.batchId,
+        batchUnitId: line.batchUnitId,
+        sourceLocationId: line.sourceLocationId,
+        qty: Number(line.qty),
+      })),
+    },
+    userId,
+    'post',
+    draft.id,
+  );
+}
+
+/**
+ * Delete a draft. A REAL delete of the lines and a soft delete of the header.
+ *
+ * 🔴 This is the only removal this module has, and it exists only because a draft
+ * is the only state that posted nothing. A posted challan is cancelled, never
+ * deleted (`cancelJobIssue`) — it has ledger rows, and the sole legal correction
+ * for those is a reversing entry.
+ *
+ * The header is soft-deleted rather than dropped so the challan NUMBER stays
+ * taken. Freeing it would let the sequence hand the same number to a later
+ * challan, and two documents that ever shared a number is a question no auditor
+ * can be given a good answer to.
+ */
+export async function deleteJobIssueDraft(organizationId: string, id: string, userId?: string) {
+  return runAsTenant(organizationId, async (tx) => {
+    const draft = await tx.jobIssue.findFirst({
+      where: { id, organizationId, isDeleted: false },
+      select: { id: true, status: true },
+    });
+    if (!draft) throw ApiError.notFound('Challan not found');
+    if (draft.status !== 'draft') {
+      throw ApiError.conflict(
+        'Only a draft can be deleted. This challan has been issued — cancel it instead, ' +
+          'which posts the reversing stock entries.',
+      );
+    }
+
+    await tx.jobIssueLine.deleteMany({ where: { organizationId, jobIssueId: draft.id } });
+    await tx.jobIssue.update({
+      where: { id: draft.id },
+      data: { isDeleted: true, updatedBy: userId ?? null },
     });
   });
 }

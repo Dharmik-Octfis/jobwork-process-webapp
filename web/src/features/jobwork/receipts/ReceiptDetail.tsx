@@ -1,14 +1,19 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
 import { formatDate } from '../../../lib/formatDate';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
-import { formatQty, toNumber } from '../jobwork.schemas';
-import { cancelJobReceipt, fetchJobReceiptById } from './jobReceipts.api';
+import { RECEIPT_STATUS_META, formatQty, statusMeta, toNumber } from '../jobwork.schemas';
+import {
+  cancelJobReceipt,
+  deleteJobReceipt,
+  fetchJobReceiptById,
+  postJobReceipt,
+} from './jobReceipts.api';
 import type { JobReceipt, JobReceiptsPage } from './jobReceipts.schemas';
 import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 
@@ -79,7 +84,9 @@ function BatchChip({
         (tone === 'good'
           ? `${singular} ready to issue onward`
           : `Rework ${singular.toLowerCase()} — re-issue to this same step`) +
-        (isTopUp ? ` · added to a ${singular.toLowerCase()} that already existed` : ' · created by this receipt')
+        (isTopUp
+          ? ` · added to a ${singular.toLowerCase()} that already existed`
+          : ' · created by this receipt')
       }
     >
       {tone === 'rework' && <span style={{ fontFamily: 'inherit', opacity: 0.8 }}>↻</span>}
@@ -92,10 +99,12 @@ function BatchChip({
 
 export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { singular } = useTrackingLabel();
   const { orgId } = useParams<{ orgId: string }>();
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { data: receipt, isLoading } = useQuery({
@@ -109,15 +118,18 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
   const cancelMutation = useMutation({
     mutationFn: () => cancelJobReceipt(orgId!, receiptId, cancelReason),
     onSuccess: () => {
-      queryClient.setQueriesData({ queryKey: ['job-receipts', orgId], type: 'active' }, (old: JobReceiptsPage | undefined) => {
-        if (!old || !old.results) return old;
-        return {
-          ...old,
-          results: old.results.map((item: JobReceipt) =>
-            item.id === receiptId ? { ...item, status: 'cancelled' } : item
-          ),
-        };
-      });
+      queryClient.setQueriesData(
+        { queryKey: ['job-receipts', orgId], type: 'active' },
+        (old: JobReceiptsPage | undefined) => {
+          if (!old || !old.results) return old;
+          return {
+            ...old,
+            results: old.results.map((item: JobReceipt) =>
+              item.id === receiptId ? { ...item, status: 'cancelled' } : item,
+            ),
+          };
+        },
+      );
       queryClient.invalidateQueries({ queryKey: ['job-receipts', orgId], type: 'inactive' });
       queryClient.invalidateQueries({ queryKey: ['job-receipt', orgId, receiptId] });
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
@@ -126,6 +138,43 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
     },
     onError: (err: { response?: { data?: { message?: string } } }) => {
       setError(err.response?.data?.message ?? 'Could not cancel this receipt');
+    },
+  });
+
+  /**
+   * Post a draft as it stands.
+   *
+   * 🔴 This legitimately 400s more often than its issue-side twin, because a
+   * draft cannot store a batch it is CREATING — so most drafts come back needing
+   * the batch reference typed again. The server says exactly that; showing its
+   * message is what tells the user to press Edit rather than press this again.
+   */
+  const postMutation = useMutation({
+    mutationFn: () => postJobReceipt(orgId!, receiptId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['job-receipts', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['job-receipt', orgId, receiptId] });
+      queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['available-batches', orgId] });
+      setError(null);
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      setError(err.response?.data?.message ?? 'Could not post this receipt');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteJobReceipt(orgId!, receiptId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['job-receipts', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
+      setDeleteOpen(false);
+      onClose();
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      setError(err.response?.data?.message ?? 'Could not delete this draft');
+      setDeleteOpen(false);
     },
   });
 
@@ -176,7 +225,10 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
       <header className="detail-page-header">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h2 className="detail-title" style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}>
+            <h2
+              className="detail-title"
+              style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}
+            >
               {receipt.receiptNumber}
             </h2>
             <span
@@ -185,11 +237,11 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
                 borderRadius: 10,
                 fontSize: 11,
                 fontWeight: 500,
-                color: receipt.status === 'cancelled' ? '#b91c1c' : '#15803d',
-                background: receipt.status === 'cancelled' ? '#fef2f2' : '#f0fdf4',
+                color: statusMeta(RECEIPT_STATUS_META, receipt.status).color,
+                background: statusMeta(RECEIPT_STATUS_META, receipt.status).bg,
               }}
             >
-              {receipt.status === 'cancelled' ? 'Cancelled' : 'Posted'}
+              {statusMeta(RECEIPT_STATUS_META, receipt.status).label}
             </span>
           </div>
           <span style={{ fontSize: 12, color: '#64748b' }}>
@@ -197,8 +249,71 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          {receipt.status !== 'cancelled' && (
-            <button className="action-btn"
+          {receipt.status === 'draft' && (
+            <>
+              <button
+                className="action-btn"
+                type="button"
+                onClick={() =>
+                  navigate(`/organizations/${orgId}/jobwork/receipts/new?draftId=${receipt.id}`, {
+                    state: { returnUrl: `/organizations/${orgId}/jobwork/receipts` },
+                  })
+                }
+                style={{
+                  padding: '6px 12px',
+                  fontSize: 13,
+                  border: '1px solid #d1d5db',
+                  borderRadius: 4,
+                  background: '#fff',
+                  cursor: 'pointer',
+                  color: '#333',
+                }}
+              >
+                <span className="action-btn-text">Edit</span>
+              </button>
+              <button
+                className="action-btn"
+                type="button"
+                onClick={() => postMutation.mutate()}
+                disabled={postMutation.isPending}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: 13,
+                  border: 'none',
+                  borderRadius: 4,
+                  background: postMutation.isPending ? '#86efac' : '#186337',
+                  cursor: postMutation.isPending ? 'not-allowed' : 'pointer',
+                  color: '#fff',
+                  fontWeight: 500,
+                }}
+              >
+                <span className="action-btn-text">
+                  {postMutation.isPending ? 'Receiving…' : 'Receive goods'}
+                </span>
+              </button>
+              <button
+                className="action-btn"
+                type="button"
+                onClick={() => setDeleteOpen(true)}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: 13,
+                  border: '1px solid #fecaca',
+                  borderRadius: 4,
+                  background: '#fff',
+                  cursor: 'pointer',
+                  color: '#b91c1c',
+                }}
+              >
+                <span className="action-btn-text">Delete</span>
+              </button>
+            </>
+          )}
+          {/* A cancellation reverses ledger rows, so it only applies to a receipt
+              that posted some. A draft is deleted above. */}
+          {receipt.status !== 'cancelled' && receipt.status !== 'draft' && (
+            <button
+              className="action-btn"
               type="button"
               onClick={() => setCancelOpen(true)}
               style={{
@@ -254,37 +369,38 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
 
       <div style={{ padding: '20px 24px' }}>
         <div className="responsive-table-wrapper">
-<table style={{ borderCollapse: 'collapse', marginBottom: 20 }}>
-          <tbody>
-            <tr>
-              <td style={rowLabel}>Job order</td>
-              <td style={rowValue}>
-                <button
-                  type="button"
-                  onClick={() => onOpenJobOrder(receipt.jobOrderId)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    padding: 0,
-                    font: 'inherit',
-                    color: '#0062ff',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {receipt.jobOrder?.jobOrderNumber ?? 'Open'}
-                </button>
-                {receipt.step && ` · step ${receipt.step.seq}, ${receipt.step.processNameSnapshot}`}
-              </td>
-            </tr>
-            <tr>
-              {/* Where it landed. WHAT came back is the table below — a receipt
+          <table style={{ borderCollapse: 'collapse', marginBottom: 20 }}>
+            <tbody>
+              <tr>
+                <td style={rowLabel}>Job order</td>
+                <td style={rowValue}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenJobOrder(receipt.jobOrderId)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      font: 'inherit',
+                      color: '#0062ff',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {receipt.jobOrder?.jobOrderNumber ?? 'Open'}
+                  </button>
+                  {receipt.step &&
+                    ` · step ${receipt.step.seq}, ${receipt.step.processNameSnapshot}`}
+                </td>
+              </tr>
+              <tr>
+                {/* Where it landed. WHAT came back is the table below — a receipt
                   returns several items, and naming only the first here was the
                   header pretending to describe all of them. */}
-              <td style={rowLabel}>Received into</td>
-              <td style={rowValue}>{receipt.location?.name ?? '-'}</td>
-            </tr>
-            <tr>
-              {/*
+                <td style={rowLabel}>Received into</td>
+                <td style={rowValue}>{receipt.location?.name ?? '-'}</td>
+              </tr>
+              <tr>
+                {/*
                 🔴 WHICH CHALLANS THIS SETTLES — at the RECEIPT level, which is
                 the level it is known at. It was a per-line column before and sat
                 empty: one batch-level line closes several challan lines at once and
@@ -292,98 +408,98 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
                 is how anybody gets from goods on the shelf back to the paperwork
                 they travelled on.
               */}
-              <td style={rowLabel}>Closes</td>
-              <td style={rowValue}>
-                {closedChallans.length === 0 ? (
-                  '-'
-                ) : (
-                  <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {closedChallans.map((challan) => (
-                      <span
-                        key={challan}
-                        style={{
-                          padding: '1px 8px',
-                          borderRadius: 10,
-                          fontSize: 11,
-                          fontWeight: 600,
-                          background: '#eff6ff',
-                          color: '#1d4ed8',
-                        }}
-                      >
-                        {challan}
-                      </span>
-                    ))}
-                  </span>
-                )}
-              </td>
-            </tr>
-            <tr>
-              <td style={rowLabel}>Consumed</td>
-              <td style={rowValue}>
-                {consumedByItem.length === 0
-                  ? formatQty(receipt.totalIssuedQty)
-                  : consumedByItem.map((row) => (
-                      <span key={row.name} style={{ display: 'block' }}>
-                        {row.name} · {formatQty(row.qty)}
-                      </span>
-                    ))}
-              </td>
-            </tr>
-            <tr>
-              <td style={rowLabel}>Received</td>
-              <td style={rowValue}>
-                {formatQty(receipt.totalReceivedQty)} {unit}
-              </td>
-            </tr>
-            <tr>
-              <td style={rowLabel}>Yield</td>
-              <td style={rowValue}>
-                {actualYield === null ? '-' : actualYield.toFixed(4)}
-                {receipt.step?.expectedYield && (
-                  <span style={{ color: '#94a3b8' }}>
-                    {' '}
-                    (expected {formatQty(receipt.step.expectedYield)})
-                  </span>
-                )}
-              </td>
-            </tr>
-            {receipt.outputBatch && (
-              <tr>
-                <td style={rowLabel}>Output {singular.toLowerCase()}</td>
-                <td style={rowValue}>{receipt.outputBatch.supplierBatchRef ?? '—'}</td>
-              </tr>
-            )}
-            {receipt.reworkBatch && (
-              <tr>
-                <td style={rowLabel}>Rework {singular.toLowerCase()}</td>
-                <td style={{ ...rowValue, color: '#b45309' }}>
-                  {receipt.reworkBatch.supplierBatchRef ?? '—'} — kept separate so the reworked
-                  pieces stay countable
-                </td>
-              </tr>
-            )}
-            {receipt.remarks && (
-              <tr>
-                <td style={rowLabel}>Remarks</td>
-                <td style={{ ...rowValue, whiteSpace: 'pre-wrap' }}>{receipt.remarks}</td>
-              </tr>
-            )}
-            {customFieldDefs.map((def) => (
-              <tr key={def.id}>
-                <td style={rowLabel}>{def.label}</td>
+                <td style={rowLabel}>Closes</td>
                 <td style={rowValue}>
-                  {formatCustomFieldValue(receipt.customFields?.[def.key], def)}
+                  {closedChallans.length === 0 ? (
+                    '-'
+                  ) : (
+                    <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {closedChallans.map((challan) => (
+                        <span
+                          key={challan}
+                          style={{
+                            padding: '1px 8px',
+                            borderRadius: 10,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            background: '#eff6ff',
+                            color: '#1d4ed8',
+                          }}
+                        >
+                          {challan}
+                        </span>
+                      ))}
+                    </span>
+                  )}
                 </td>
               </tr>
-            ))}
-          </tbody>
-        </table>
-</div>
+              <tr>
+                <td style={rowLabel}>Consumed</td>
+                <td style={rowValue}>
+                  {consumedByItem.length === 0
+                    ? formatQty(receipt.totalIssuedQty)
+                    : consumedByItem.map((row) => (
+                        <span key={row.name} style={{ display: 'block' }}>
+                          {row.name} · {formatQty(row.qty)}
+                        </span>
+                      ))}
+                </td>
+              </tr>
+              <tr>
+                <td style={rowLabel}>Received</td>
+                <td style={rowValue}>
+                  {formatQty(receipt.totalReceivedQty)} {unit}
+                </td>
+              </tr>
+              <tr>
+                <td style={rowLabel}>Yield</td>
+                <td style={rowValue}>
+                  {actualYield === null ? '-' : actualYield.toFixed(4)}
+                  {receipt.step?.expectedYield && (
+                    <span style={{ color: '#94a3b8' }}>
+                      {' '}
+                      (expected {formatQty(receipt.step.expectedYield)})
+                    </span>
+                  )}
+                </td>
+              </tr>
+              {receipt.outputBatch && (
+                <tr>
+                  <td style={rowLabel}>Output {singular.toLowerCase()}</td>
+                  <td style={rowValue}>{receipt.outputBatch.supplierBatchRef ?? '—'}</td>
+                </tr>
+              )}
+              {receipt.reworkBatch && (
+                <tr>
+                  <td style={rowLabel}>Rework {singular.toLowerCase()}</td>
+                  <td style={{ ...rowValue, color: '#b45309' }}>
+                    {receipt.reworkBatch.supplierBatchRef ?? '—'} — kept separate so the reworked
+                    pieces stay countable
+                  </td>
+                </tr>
+              )}
+              {receipt.remarks && (
+                <tr>
+                  <td style={rowLabel}>Remarks</td>
+                  <td style={{ ...rowValue, whiteSpace: 'pre-wrap' }}>{receipt.remarks}</td>
+                </tr>
+              )}
+              {customFieldDefs.map((def) => (
+                <tr key={def.id}>
+                  <td style={rowLabel}>{def.label}</td>
+                  <td style={rowValue}>
+                    {formatCustomFieldValue(receipt.customFields?.[def.key], def)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         <div style={{ border: '1px solid #eef0f3', borderRadius: 4, overflowX: 'auto' }}>
           <div className="responsive-table-wrapper">
-<table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
-            {/*
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
+              {/*
               🔴 WHAT CAME BACK, one row per item (§5.7).
 
               This used to render `receipt.lines` — the CONSUMED side — whose
@@ -394,41 +510,41 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
               once and names none, and "Issued" is the consumed quantity, which
               the Consumed row above already states.
             */}
-            <thead>
-              <tr style={{ background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
-                <th style={th} scope="col">
-                  Item
-                </th>
-                <th style={th} scope="col">
-                  Received
-                </th>
-                <th style={th} scope="col">
-                  Good
-                </th>
-                <th style={th} scope="col">
-                  Rework
-                </th>
-                <th style={th} scope="col">
-                  Scrap
-                </th>
-                <th style={th} scope="col">
-                  Reason
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {receipt.outputs.length === 0 && (
-                <tr>
-                  <td style={{ ...td, color: '#94a3b8' }} colSpan={6}>
-                    Nothing recorded as returned on this receipt.
-                  </td>
+              <thead>
+                <tr style={{ background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
+                  <th style={th} scope="col">
+                    Item
+                  </th>
+                  <th style={th} scope="col">
+                    Received
+                  </th>
+                  <th style={th} scope="col">
+                    Good
+                  </th>
+                  <th style={th} scope="col">
+                    Rework
+                  </th>
+                  <th style={th} scope="col">
+                    Scrap
+                  </th>
+                  <th style={th} scope="col">
+                    Reason
+                  </th>
                 </tr>
-              )}
-              {receipt.outputs.map((row) => (
-                <tr key={row.id} style={{ borderBottom: '1px solid #eef0f3' }}>
-                  <td style={{ ...td, fontWeight: 500, color: '#111' }}>
-                    {row.item?.name ?? '-'}
-                    {/* 🔴 EVERY batch this row wrote into, as chips rather than
+              </thead>
+              <tbody>
+                {receipt.outputs.length === 0 && (
+                  <tr>
+                    <td style={{ ...td, color: '#94a3b8' }} colSpan={6}>
+                      Nothing recorded as returned on this receipt.
+                    </td>
+                  </tr>
+                )}
+                {receipt.outputs.map((row) => (
+                  <tr key={row.id} style={{ borderBottom: '1px solid #eef0f3' }}>
+                    <td style={{ ...td, fontWeight: 500, color: '#111' }}>
+                      {row.item?.name ?? '-'}
+                      {/* 🔴 EVERY batch this row wrote into, as chips rather than
                         grey text — they are identifiers somebody reads off a tag
                         and types into a search box, not a footnote. Green is the
                         stock you can issue onward; amber is the rework, kept in
@@ -438,46 +554,46 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
                         since 2026-08-21 those two name only the FIRST of each
                         kind, so a split delivery rendered from them shows one
                         batch and hides the rest. */}
-                    {row.batches.length > 0 && (
-                      <span style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-                        {row.batches.map((allocation) => (
-                          <BatchChip
-                            key={allocation.id}
-                            batch={allocation.batch.supplierBatchRef ?? '—'}
-                            qty={formatQty(allocation.qty)}
-                            tone={allocation.kind === 'rework' ? 'rework' : 'good'}
-                            /* Worth saying: this delivery continued a batch that
+                      {row.batches.length > 0 && (
+                        <span style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                          {row.batches.map((allocation) => (
+                            <BatchChip
+                              key={allocation.id}
+                              batch={allocation.batch.supplierBatchRef ?? '—'}
+                              qty={formatQty(allocation.qty)}
+                              tone={allocation.kind === 'rework' ? 'rework' : 'good'}
+                              /* Worth saying: this delivery continued a batch that
                                already existed rather than starting a new lot. */
-                            isTopUp={!allocation.isNewBatch}
-                          />
-                        ))}
+                              isTopUp={!allocation.isNewBatch}
+                            />
+                          ))}
+                        </span>
+                      )}
+                    </td>
+                    <td style={td}>
+                      {formatQty(row.receivedQty)}{' '}
+                      <span style={{ color: '#94a3b8' }}>
+                        {row.uom?.symbol ?? row.uom?.unitName ?? ''}
                       </span>
-                    )}
-                  </td>
-                  <td style={td}>
-                    {formatQty(row.receivedQty)}{' '}
-                    <span style={{ color: '#94a3b8' }}>
-                      {row.uom?.symbol ?? row.uom?.unitName ?? ''}
-                    </span>
-                  </td>
-                  <td style={td}>{formatQty(row.acceptedQty)}</td>
-                  <td style={td}>{formatQty(row.reworkQty)}</td>
-                  <td style={td}>{formatQty(row.scrapQty)}</td>
-                  <td style={{ ...td, whiteSpace: 'pre-wrap' }}>
-                    {/* Free text since 2026-08-21; `reason` is what receipts
+                    </td>
+                    <td style={td}>{formatQty(row.acceptedQty)}</td>
+                    <td style={td}>{formatQty(row.reworkQty)}</td>
+                    <td style={td}>{formatQty(row.scrapQty)}</td>
+                    <td style={{ ...td, whiteSpace: 'pre-wrap' }}>
+                      {/* Free text since 2026-08-21; `reason` is what receipts
                         posted before that carry. */}
-                    {row.remarks || row.reason?.name || '-'}
-                    {row.responsibility && (
-                      <span style={{ display: 'block', fontSize: 11, color: '#94a3b8' }}>
-                        {row.responsibility === 'ours' ? 'Our fault' : 'Their fault'}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-</div>
+                      {row.remarks || row.reason?.name || '-'}
+                      {row.responsibility && (
+                        <span style={{ display: 'block', fontSize: 11, color: '#94a3b8' }}>
+                          {row.responsibility === 'ours' ? 'Our fault' : 'Their fault'}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -519,6 +635,23 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
           setCancelOpen(false);
           setCancelReason('');
         }}
+      />
+
+      {/* No reason asked for: a cancelled receipt is history somebody will
+          question, a deleted draft never happened. */}
+      <ConfirmDialog
+        isOpen={deleteOpen}
+        title="Delete this draft"
+        message={
+          <p style={{ margin: 0, lineHeight: 1.6 }}>
+            {receipt.receiptNumber} has not been posted, so no stock has moved, no batch was created
+            and the challans it names are still open. The receipt number stays used.
+          </p>
+        }
+        confirmText={deleteMutation.isPending ? 'Deleting…' : 'Delete draft'}
+        cancelText="Keep it"
+        onConfirm={() => deleteMutation.mutate()}
+        onCancel={() => setDeleteOpen(false)}
       />
     </div>
   );

@@ -26,7 +26,12 @@ import {
   assertLocationsBelongToOrg,
   assertUomsBelongToOrg,
 } from '../jobwork.refs.ts';
-import { SOURCE_DOC_TYPES, isExternalLocation, runAsDocument } from '../jobwork.types.ts';
+import {
+  POSTED_DOC_STATUS,
+  SOURCE_DOC_TYPES,
+  isExternalLocation,
+  runAsDocument,
+} from '../jobwork.types.ts';
 import { recomputeStep } from '../job-orders/jobOrders.status.ts';
 import type {
   CreateJobReceiptInput,
@@ -244,7 +249,12 @@ async function closedQtyByIssueLine(
        * re-entering it is exactly the flow that could not be tested until this
        * was right.
        */
-      jobReceipt: { status: { not: 'cancelled' } },
+      // Drafts excluded with cancellations: a parked receipt has consumed
+      // nothing, so counting its lines would show a challan as closed while the
+      // goods are still at the processor — and refuse the real receipt when it
+      // arrives, with the same "more is being received than is outstanding"
+      // message described above.
+      jobReceipt: { status: POSTED_DOC_STATUS },
     },
     _sum: { issuedQty: true },
   });
@@ -484,6 +494,8 @@ export async function getOutputBatchOptions(
     // Receipts already posted against this job order — the batches they created
     // are the ones a follow-up delivery continues.
     const priorReceipts = await tx.jobReceipt.findMany({
+      // `'posted'` exactly — not "not cancelled". A draft receipt created no
+      // batch, so it has none to continue.
       where: { organizationId, jobOrderId: step.jobOrderId, isDeleted: false, status: 'posted' },
       select: { id: true },
     });
@@ -496,7 +508,9 @@ export async function getOutputBatchOptions(
         organizationId,
         itemId: query.itemId,
         isDeleted: false,
-        jobIssue: { jobOrderId: step.jobOrderId, isDeleted: false, status: { not: 'cancelled' } },
+        // Posted challans only — a draft's batches never left the godown, so
+        // offering them here would suggest continuing a lot that was never sent.
+        jobIssue: { jobOrderId: step.jobOrderId, isDeleted: false, status: POSTED_DOC_STATUS },
       },
       select: { batchId: true },
     });
@@ -1285,6 +1299,18 @@ async function allocateConsumption(
   organizationId: string,
   issueIds: readonly string[],
   lines: readonly JobReceiptLineInput[],
+  /**
+   * 🔴 THE DRAFT PATH. Over-receiving stops being an error and becomes a number
+   * the document is allowed to hold: the goods may genuinely not all be back yet,
+   * the operator may be entering what the delivery note claims before counting
+   * it, and a draft that refuses to save until the arithmetic closes is a draft
+   * that cannot be used for the one job drafts exist for.
+   *
+   * The remainder rides on the last eligible challan line so the quantity the
+   * user typed survives the round trip. Nothing is posted either way — the strict
+   * pass runs again at post, and refuses then.
+   */
+  lenient = false,
 ): Promise<ConsumeAllocation[]> {
   const issueLines = await tx.jobIssueLine.findMany({
     where: { organizationId, jobIssueId: { in: [...issueIds] }, isDeleted: false },
@@ -1324,7 +1350,7 @@ async function allocateConsumption(
         );
       }
       const left = outstanding.get(issueLine.id) ?? ZERO;
-      if (toConsume.greaterThan(left)) {
+      if (toConsume.greaterThan(left) && !lenient) {
         throw ApiError.badRequest(
           `Challan line for batch ${issueLine.batchId} has ${left.toString()} still out, ` +
             `but ${toConsume.toString()} is being received against it.`,
@@ -1387,6 +1413,25 @@ async function allocateConsumption(
     }
 
     if (toConsume.greaterThan(0)) {
+      // A draft keeps the surplus, hung on the last line it could reach, so the
+      // typed quantity is still there when the draft is reopened. With no
+      // eligible line at all there is nothing to hang it on and it is dropped —
+      // the draft still saves, and the post refuses it.
+      const last = eligible[eligible.length - 1];
+      if (lenient) {
+        if (last) {
+          allocations.push({
+            jobIssueId: last.jobIssueId,
+            jobIssueLineId: last.id,
+            batchId: last.batchId,
+            batchUnitId: last.batchUnitId,
+            itemId: last.itemId,
+            qty: toConsume,
+          });
+        }
+        continue;
+      }
+
       throw ApiError.badRequest(
         `${toConsume.toString()} more is being received than these challans still have outstanding.`,
       );
@@ -1396,16 +1441,60 @@ async function allocateConsumption(
   return allocations;
 }
 
+/**
+ * 🔴 SAVING A RECEIPT — as a draft, or posted. One function, for the same reason
+ * `createNewJobIssue` is one: the two differ in what they check and what they
+ * write, never in what they mean, and a second path is a second place for a rule
+ * to go missing.
+ *
+ * WHAT A DRAFT SKIPS
+ *
+ *   · the disposition sum check   — the split is still being typed.
+ *   · allocation balance          — the batches have not been named yet.
+ *   · over-receipt                — `allocateConsumption({ lenient })`.
+ *   · `createBatch` / packages    — 🔴 no batch is born by parking a form.
+ *   · `postMovement`              — 🔴 THE POINT. No consume, no produce.
+ *   · closing the challans        — a draft settles nothing, so the challans it
+ *                                   names stay open and receivable.
+ *   · `recomputeStep`             — nothing moved.
+ *
+ * 🔴 AND ONE THING A DRAFT LOSES, deliberately (2026-09-04). An output batch the
+ * user is CREATING has no `batches` row to point at — `job_receipt_output_batches
+ * .batch_id` is a NOT NULL foreign key to a real batch — and inventing that batch
+ * early is exactly the thing a draft must not do. So new-batch allocations are
+ * not saved; allocations that TOP UP an existing batch are. Reopening the draft
+ * asks for the batch reference again, and `postJobReceiptDraft` refuses to post a
+ * draft that never got one rather than guessing a label.
+ */
+export type ReceiptSaveMode = 'draft' | 'post';
+
 export async function createNewJobReceipt(
   organizationId: string,
   data: CreateJobReceiptInput,
   userId?: string,
+  mode: ReceiptSaveMode = 'post',
+  existingId?: string,
 ) {
   const { customFields: rawCustomFields, lines, outputs: sentOutputs, issueIds, ...header } = data;
+  const asDraft = mode === 'draft';
 
   // Consumes fifty, produces fifty, and creates a package per accepted taka —
   // past Prisma's 5-second default (jobwork.types.ts).
   return runAsDocument(organizationId, async (tx) => {
+    const existing = existingId
+      ? await tx.jobReceipt.findFirst({
+          where: { id: existingId, organizationId, isDeleted: false },
+          select: { id: true, status: true, receiptNumber: true },
+        })
+      : null;
+    if (existingId && !existing) throw ApiError.notFound('Receipt not found');
+    if (existing && existing.status !== 'draft') {
+      throw ApiError.conflict(
+        'This receipt has already been posted, so it can no longer be edited. ' +
+          'Cancel it and enter a new one instead.',
+      );
+    }
+
     const step = await tx.jobOrderStep.findFirst({
       where: { id: header.jobOrderStepId, organizationId, isDeleted: false },
       include: {
@@ -1428,7 +1517,10 @@ export async function createNewJobReceipt(
         organizationId,
         jobOrderStepId: step.id,
         isDeleted: false,
-        status: { not: 'cancelled' },
+        // 🔴 A DRAFT CHALLAN CANNOT BE RECEIVED AGAINST, in either mode. Nothing
+        // was sent, so there is nothing at the processor to come back — and a
+        // receipt against one would consume stock the ledger says never left.
+        status: POSTED_DOC_STATUS,
       },
       select: {
         id: true,
@@ -1495,7 +1587,7 @@ export async function createNewJobReceipt(
       { issued: ZERO, received: ZERO, accepted: ZERO, rework: ZERO, scrap: ZERO, returned: ZERO },
     );
 
-    if (totals.issued.lessThanOrEqualTo(0)) {
+    if (totals.issued.lessThanOrEqualTo(0) && !asDraft) {
       throw ApiError.badRequest('Say how much of the issued material this receipt accounts for.');
     }
 
@@ -1514,7 +1606,9 @@ export async function createNewJobReceipt(
      * Compared at four decimals — the columns' own precision — because an exact
      * comparison would reject 3 × 33.3333 for being a billionth off.
      */
-    for (const [index, line] of lines.entries()) {
+    // Not on a draft: the split is what the operator is still working out, and
+    // the whole reason to park the form is that it does not add up yet.
+    for (const [index, line] of asDraft ? [] : lines.entries()) {
       const split = new Prisma.Decimal(line.acceptedQty ?? 0)
         .plus(line.reworkQty ?? 0)
         .plus(line.scrapQty ?? 0)
@@ -1530,7 +1624,7 @@ export async function createNewJobReceipt(
       }
     }
 
-    const allocations = await allocateConsumption(tx, organizationId, issueIds, lines);
+    const allocations = await allocateConsumption(tx, organizationId, issueIds, lines, asDraft);
 
     /**
      * 🔴 WHAT CAME BACK (§5.7) — resolved before anything is written, because
@@ -1570,7 +1664,10 @@ export async function createNewJobReceipt(
      * fail while nothing has moved; discovering it halfway through leaves the
      * ledger holding half a receipt.
      */
-    assertAllocationsBalance(outputRows);
+    // Not on a draft — it is a COMPLETENESS check ("every metre came back into
+    // some batch"), and a draft is incomplete by definition. It runs in full at
+    // post, before a single row is written, exactly as it always has.
+    if (!asDraft) assertAllocationsBalance(outputRows);
 
     const ownership = step.jobOrder.ownership as Ownership;
     const existingBatches = await loadExistingOutputBatches(
@@ -1614,48 +1711,86 @@ export async function createNewJobReceipt(
     const customFields = validateCustomFields({
       defs,
       input: rawCustomFields,
-      mode: 'create',
+      // A draft's custom fields are re-validated on the way to being posted, so
+      // `update` here — it is what keeps a required field from blocking the save
+      // of a form somebody has not finished filling in.
+      mode: asDraft ? 'update' : 'create',
     }) as Prisma.InputJsonValue;
 
-    const receiptNumber = await allocateNumber(tx, organizationId, 'job_receipt');
+    // A draft KEEPS its number across edits — re-allocating would walk the
+    // series forward every time somebody opens and saves a parked receipt.
+    const receiptNumber =
+      existing?.receiptNumber ?? (await allocateNumber(tx, organizationId, 'job_receipt'));
     const receiptDate = header.receiptDate ?? new Date();
 
+    const headerData = {
+      jobOrderId: step.jobOrderId,
+      jobOrderStepId: step.id,
+      receiptDate,
+      processorType: issues[0]!.processorType,
+      processorId: issues[0]!.processorId,
+      processorNameSnapshot: issues[0]!.processorNameSnapshot,
+      locationId: header.locationId,
+      status: asDraft ? 'draft' : 'posted',
+      /**
+       * 🔴 THE SIX TOTALS ARE THE PRIMARY OUTPUT'S, IN ITS OWN UNIT — not a sum
+       * across items. Three items in three units cannot be added, so rather than
+       * store a meaningless figure the header describes one row and
+       * `job_receipt_outputs` holds the rest.
+       *
+       * The `outputItemId` / `outputUomId` columns that used to say WHICH row
+       * these belong to went on 2026-08-12; it is the primary output, and that is
+       * derivable from the child list. `chainNotReady` still sums
+       * `totalReceivedQty`, which is why these six stay.
+       *
+       * 🔴 A DRAFT FILLS THESE IN TOO, so the list page can show what it is for.
+       * They are therefore populated while the ledger behind them is empty, which
+       * is precisely why every sum over receipts filters on `POSTED_DOC_STATUS` —
+       * `chainNotReady` above all, since it reads `totalReceivedQty` alone and
+       * would otherwise let a parked receipt unlock the next step.
+       */
+      totalIssuedQty: principalConsumedQty,
+      totalReceivedQty: primaryOutput.receivedQty,
+      totalAcceptedQty: primaryOutput.acceptedQty,
+      totalReworkQty: primaryOutput.reworkQty,
+      totalScrapQty: primaryOutput.scrapQty,
+      totalReturnedQty: primaryOutput.returnedQty,
+      remarks: header.remarks?.trim() || null,
+      customFields,
+      updatedBy: userId ?? null,
+    };
+
     const receipt = await withUniqueViolation(DUPLICATE_NUMBER, () =>
-      tx.jobReceipt.create({
-        data: {
-          organizationId,
-          jobOrderId: step.jobOrderId,
-          jobOrderStepId: step.id,
-          receiptNumber,
-          receiptDate,
-          processorType: issues[0]!.processorType,
-          processorId: issues[0]!.processorId,
-          processorNameSnapshot: issues[0]!.processorNameSnapshot,
-          locationId: header.locationId,
-          /**
-           * 🔴 THE SIX TOTALS ARE THE PRIMARY OUTPUT'S, IN ITS OWN UNIT — not a
-           * sum across items. Three items in three units cannot be added, so
-           * rather than store a meaningless figure the header describes one row
-           * and `job_receipt_outputs` holds the rest.
-           *
-           * The `outputItemId` / `outputUomId` columns that used to say WHICH row
-           * these belong to went on 2026-08-12; it is the primary output, and
-           * that is derivable from the child list. `chainNotReady` still sums
-           * `totalReceivedQty`, which is why these six stay.
-           */
-          totalIssuedQty: principalConsumedQty,
-          totalReceivedQty: primaryOutput.receivedQty,
-          totalAcceptedQty: primaryOutput.acceptedQty,
-          totalReworkQty: primaryOutput.reworkQty,
-          totalScrapQty: primaryOutput.scrapQty,
-          totalReturnedQty: primaryOutput.returnedQty,
-          remarks: header.remarks?.trim() || null,
-          customFields,
-          createdBy: userId ?? null,
-          updatedBy: userId ?? null,
-        },
-      }),
+      existing
+        ? tx.jobReceipt.update({ where: { id: existing.id }, data: headerData })
+        : tx.jobReceipt.create({
+            data: { ...headerData, organizationId, receiptNumber, createdBy: userId ?? null },
+          }),
     );
+
+    /**
+     * 🔴 HARD DELETE, and legal for exactly the same reason as on the issue side:
+     * a draft's children never counted. No ledger row references them, no report
+     * sums them, and nobody outside this document has seen them — so there is no
+     * history for a soft delete to preserve, and stamping `is_deleted` instead
+     * would leave a dead row per line per save on a document meant to be edited
+     * repeatedly.
+     *
+     * `existing` is proved to be a draft above, so this is unreachable once a
+     * receipt is posted. Batch rows are NOT touched here because a draft never
+     * created any — that is the whole point of the batch work being skipped.
+     */
+    if (existing) {
+      await tx.jobReceiptOutputBatch.deleteMany({
+        where: { organizationId, jobReceiptId: existing.id },
+      });
+      await tx.jobReceiptOutput.deleteMany({
+        where: { organizationId, jobReceiptId: existing.id },
+      });
+      await tx.jobReceiptLine.deleteMany({
+        where: { organizationId, jobReceiptId: existing.id },
+      });
+    }
 
     /**
      * STEP 1 — consume the input where it physically is: the processor's
@@ -1677,17 +1812,23 @@ export async function createNewJobReceipt(
      * allocation drained it to nothing.
      */
     const consumedBatchIds = [...new Set(allocations.map((allocation) => allocation.batchId))];
-    const balances = await getBalancesByBatch(tx, {
-      organizationId,
-      locationId: processorLocationId,
-      batchIds: consumedBatchIds,
-    });
+    // Both reads feed `postMovement` alone, so a draft — which never posts —
+    // skips them and the loop below with them.
+    const balances = asDraft
+      ? new Map<string, { qty: Prisma.Decimal; value: Prisma.Decimal }>()
+      : await getBalancesByBatch(tx, {
+          organizationId,
+          locationId: processorLocationId,
+          batchIds: consumedBatchIds,
+        });
     // The same hoist for the batch rows each post copies its item and owner off.
-    const consumedBatches = await resolveBatchesForPosting(tx, organizationId, consumedBatchIds);
+    const consumedBatches = asDraft
+      ? new Map()
+      : await resolveBatchesForPosting(tx, organizationId, consumedBatchIds);
 
     let consumedValue = ZERO;
     const parentBatchIds = new Set<string>();
-    for (const allocation of allocations) {
+    for (const allocation of asDraft ? [] : allocations) {
       const balance = balances.get(allocation.batchId) ?? { qty: ZERO, value: ZERO };
       const unitValue = balance.qty.greaterThan(0) ? balance.value.dividedBy(balance.qty) : ZERO;
       const lineValue = unitValue.times(allocation.qty).toDecimalPlaces(4);
@@ -1959,7 +2100,16 @@ export async function createNewJobReceipt(
       return posted;
     };
 
-    for (const output of outputRows) {
+    /**
+     * 🔴 A DRAFT NEVER REACHES `postSide`, SO IT CREATES NO BATCH AND NO PACKAGE.
+     *
+     * This is the receipt side's version of "a draft moves no stock", and it is
+     * the stronger half: a receipt is where batches are BORN. Running this for a
+     * parked form would mint a batch, a package grid and a `produce` row for
+     * goods nobody has accepted yet, and deleting the draft afterwards would
+     * leave all three behind with nothing to explain them.
+     */
+    for (const output of asDraft ? [] : outputRows) {
       const rowValue = valueByItem.get(output.itemId) ?? ZERO;
       /**
        * 🔴 Accepted and rework split the ITEM's share by quantity — legitimate
@@ -1995,7 +2145,39 @@ export async function createNewJobReceipt(
      * org could have defined to put in it.
      */
     for (const [index, output] of outputRows.entries()) {
-      const posted = postedByItem.get(output.itemId) ?? [];
+      /**
+       * 🔴 WHAT A DRAFT KEEPS OF THE BATCH PLAN: the allocations that name a
+       * batch which ALREADY EXISTS, and only those.
+       *
+       * A top-up points at a real `batches` row, so it survives the round trip
+       * untouched. A NEW batch is nothing but a label the user typed — there is
+       * no row to point `batch_id` at, and creating one would be the very thing
+       * this whole path avoids — so it is dropped, and reopening the draft asks
+       * for the reference again. `postJobReceiptDraft` refuses rather than
+       * guessing.
+       */
+      const posted =
+        postedByItem.get(output.itemId) ??
+        (asDraft
+          ? [
+              ...output.batches
+                .filter((plan) => plan.batchId)
+                .map((plan) => ({
+                  kind: 'accepted' as const,
+                  batchId: plan.batchId!,
+                  qty: plan.qty,
+                  isNewBatch: false,
+                })),
+              ...output.reworkBatches
+                .filter((plan) => plan.batchId)
+                .map((plan) => ({
+                  kind: 'rework' as const,
+                  batchId: plan.batchId!,
+                  qty: plan.qty,
+                  isNewBatch: false,
+                })),
+            ]
+          : []);
       const outputRow = await tx.jobReceiptOutput.create({
         data: {
           organizationId,
@@ -2090,10 +2272,12 @@ export async function createNewJobReceipt(
       });
     }
 
-    await tx.jobReceipt.update({
-      where: { id: receipt.id },
-      data: { outputBatchId, reworkBatchId },
-    });
+    if (!asDraft) {
+      await tx.jobReceipt.update({
+        where: { id: receipt.id },
+        data: { outputBatchId, reworkBatchId },
+      });
+    }
 
     /**
      * Close the challans this receipt fully accounted for.
@@ -2106,7 +2290,9 @@ export async function createNewJobReceipt(
     const closingLines = await tx.jobIssueLine.findMany({
       where: {
         organizationId,
-        jobIssueId: { in: issues.map((issue) => issue.id) },
+        // A draft settles nothing, so it closes nothing. Left as an empty read
+        // rather than skipped so the loop below stays one shape.
+        jobIssueId: { in: asDraft ? [] : issues.map((issue) => issue.id) },
         isDeleted: false,
       },
       select: { id: true, jobIssueId: true, qty: true },
@@ -2127,7 +2313,11 @@ export async function createNewJobReceipt(
       );
     }
 
-    for (const issue of issues) {
+    // 🔴 A DRAFT LEAVES THE CHALLANS ALONE. Marking one `closed` or
+    // `partially_received` from a parked receipt would take it off the Receive
+    // screen's open list while the goods were still at the processor — the
+    // challan would look settled by a document that settled nothing.
+    for (const issue of asDraft ? [] : issues) {
       // A challan with no live lines has nothing outstanding, and closes — which
       // is what the per-issue loop did when its `findMany` came back empty.
       const outstanding = outstandingByIssue.get(issue.id) ?? ZERO;
@@ -2137,11 +2327,142 @@ export async function createNewJobReceipt(
       });
     }
 
-    await recomputeStep(tx, organizationId, step.id);
+    if (!asDraft) await recomputeStep(tx, organizationId, step.id);
 
     return tx.jobReceipt.findFirstOrThrow({
       where: { id: receipt.id, organizationId },
       include: RECEIPT_INCLUDE,
+    });
+  });
+}
+
+/**
+ * Post a draft receipt as it stands.
+ *
+ * 🔴 IT GOES BACK THROUGH `createNewJobReceipt` in `post` mode, never a status
+ * flip. The draft was saved leniently — its dispositions may not add up, it may
+ * account for more than the challans have outstanding, and the goods it consumes
+ * may have moved on since. Every one of those checks lives in that function, and
+ * a shortcut past them is a receipt that posts a ledger nobody can reconcile.
+ *
+ * 🔴 AND IT REFUSES A DRAFT THAT NEVER NAMED ITS OUTPUT BATCHES. A draft cannot
+ * store a batch it is CREATING (see the note on `createNewJobReceipt`), so most
+ * drafts come back here with an accepted quantity and nothing to put it in.
+ * `assertAllocationsBalance` would catch it anyway — but with "the accepted
+ * batches add up to 0", which reads as a bug rather than as the one field the
+ * form still needs. Saying so plainly here is the difference between a user who
+ * knows to reopen the draft and one who thinks the software is broken.
+ */
+export async function postJobReceiptDraft(organizationId: string, id: string, userId?: string) {
+  const draft = await runAsTenant(organizationId, (tx) =>
+    tx.jobReceipt.findFirst({
+      where: { id, organizationId, isDeleted: false },
+      include: RECEIPT_INCLUDE,
+    }),
+  );
+  if (!draft) throw ApiError.notFound('Receipt not found');
+  if (draft.status !== 'draft') throw ApiError.conflict('This receipt has already been posted.');
+
+  const issueIds = [
+    ...new Set(draft.lines.flatMap((line) => (line.jobIssueId ? [line.jobIssueId] : []))),
+  ];
+  if (issueIds.length === 0) {
+    throw ApiError.badRequest(
+      'This draft does not say which challan it accounts for. Open it and pick the challan first.',
+    );
+  }
+
+  for (const output of draft.outputs) {
+    const accepted = output.batches.filter((row) => row.kind === 'accepted');
+    const rework = output.batches.filter((row) => row.kind === 'rework');
+    const short =
+      (output.acceptedQty.greaterThan(0) && accepted.length === 0) ||
+      (output.reworkQty.greaterThan(0) && rework.length === 0);
+    if (short) {
+      throw ApiError.badRequest(
+        `This draft does not say which batch ${output.item?.name ?? 'the goods'} came back into. ` +
+          'Open the draft, enter the batch reference, and receive it from there.',
+      );
+    }
+  }
+
+  return createNewJobReceipt(
+    organizationId,
+    {
+      jobOrderStepId: draft.jobOrderStepId,
+      receiptDate: draft.receiptDate,
+      issueIds,
+      locationId: draft.locationId,
+      remarks: draft.remarks,
+      customFields: draft.customFields as Record<string, unknown>,
+      lines: draft.lines.map((line) => ({
+        jobIssueId: line.jobIssueId,
+        jobIssueLineId: line.jobIssueLineId,
+        issuedQty: Number(line.issuedQty),
+        receivedQty: Number(line.receivedQty),
+        acceptedQty: Number(line.acceptedQty),
+        reworkQty: Number(line.reworkQty),
+        scrapQty: Number(line.scrapQty),
+        returnedQty: Number(line.returnedQty),
+      })),
+      outputs: draft.outputs.map((output) => ({
+        itemId: output.itemId,
+        uomId: output.uomId,
+        receivedQty: Number(output.receivedQty),
+        acceptedQty: Number(output.acceptedQty),
+        reworkQty: Number(output.reworkQty),
+        scrapQty: Number(output.scrapQty),
+        returnedQty: Number(output.returnedQty),
+        isPrimary: output.isPrimary,
+        reasonId: output.reasonId,
+        responsibility: output.responsibility,
+        remarks: output.remarks,
+        batches: output.batches
+          .filter((row) => row.kind === 'accepted')
+          .map((row) => ({ batchId: row.batch.id, qty: Number(row.qty) })),
+        reworkBatches: output.batches
+          .filter((row) => row.kind === 'rework')
+          .map((row) => ({ batchId: row.batch.id, qty: Number(row.qty) })),
+      })),
+    } as CreateJobReceiptInput,
+    userId,
+    'post',
+    draft.id,
+  );
+}
+
+/**
+ * Delete a draft receipt. Children go for real, the header is soft-deleted.
+ *
+ * 🔴 Only a draft, and only because a draft posted nothing: no ledger row, no
+ * batch, no package, no challan reopened. A POSTED receipt is cancelled
+ * (`cancelJobReceipt`), which reverses what it wrote — deleting one would strand
+ * the batches it created with no document explaining where they came from.
+ *
+ * The header stays as a soft-deleted row so its receipt NUMBER remains taken.
+ */
+export async function deleteJobReceiptDraft(organizationId: string, id: string, userId?: string) {
+  return runAsTenant(organizationId, async (tx) => {
+    const draft = await tx.jobReceipt.findFirst({
+      where: { id, organizationId, isDeleted: false },
+      select: { id: true, status: true },
+    });
+    if (!draft) throw ApiError.notFound('Receipt not found');
+    if (draft.status !== 'draft') {
+      throw ApiError.conflict(
+        'Only a draft can be deleted. This receipt has been posted — cancel it instead, ' +
+          'which posts the reversing stock entries.',
+      );
+    }
+
+    await tx.jobReceiptOutputBatch.deleteMany({
+      where: { organizationId, jobReceiptId: draft.id },
+    });
+    await tx.jobReceiptOutput.deleteMany({ where: { organizationId, jobReceiptId: draft.id } });
+    await tx.jobReceiptLine.deleteMany({ where: { organizationId, jobReceiptId: draft.id } });
+    await tx.jobReceipt.update({
+      where: { id: draft.id },
+      data: { isDeleted: true, updatedBy: userId ?? null },
     });
   });
 }

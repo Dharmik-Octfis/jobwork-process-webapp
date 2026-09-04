@@ -110,9 +110,17 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
   job_issue: [
     {
       key: 'all',
+      /**
+       * 🔴 The default deliberately EXCLUDES drafts — it is the chase list, and a
+       * challan nobody has sent is not material anybody is chasing. That does mean
+       * a draft vanishes from the view it was saved on, so the Drafts filter below
+       * is not a convenience: without it a parked challan would be unreachable
+       * from this page.
+       */
       label: 'Open Challans',
       where: { status: { in: ['issued', 'partially_received'] } },
     },
+    { key: 'draft', label: 'Drafts', where: { status: 'draft' } },
     { key: 'all_issues', label: 'All Challans', where: {} },
     { key: 'closed', label: 'Closed', where: { status: 'closed' } },
     { key: 'rework', label: 'Rework Issues', where: { isRework: true } },
@@ -120,6 +128,7 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
   ],
   job_receipt: [
     { key: 'all', label: 'All Receipts', where: {} },
+    { key: 'draft', label: 'Drafts', where: { status: 'draft' } },
     { key: 'with_rework', label: 'With Rework', where: { totalReworkQty: { gt: 0 } } },
     { key: 'with_scrap', label: 'With Scrap', where: { totalScrapQty: { gt: 0 } } },
     { key: 'cancelled', label: 'Cancelled', where: { status: 'cancelled' } },

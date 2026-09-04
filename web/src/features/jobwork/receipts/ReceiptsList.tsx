@@ -13,7 +13,7 @@ import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
 import type { CustomFieldDefinition } from '../../custom-fields/customFields.schemas';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
-import { formatQty, itemSummary } from '../jobwork.schemas';
+import { RECEIPT_STATUS_META, formatQty, itemSummary, statusMeta } from '../jobwork.schemas';
 import { fetchJobReceiptCount, fetchJobReceipts, fetchReceiptsForStep } from './jobReceipts.api';
 import { ReceiptDetail } from './ReceiptDetail';
 import type { JobReceipt } from './jobReceipts.schemas';
@@ -52,8 +52,26 @@ function renderCell(
     case 'outputItem':
       // Every item that came back, counted. A receipt returns shirts AND rejects.
       return itemSummary(receipt.outputs ?? []);
-    case 'status':
-      return receipt.status === 'cancelled' ? 'Cancelled' : 'Posted';
+    case 'status': {
+      // A pill, matching the Issues list. It was a bare `cancelled ? … : 'Posted'`
+      // ternary, which labelled a draft "Posted" — the one thing it is not.
+      const meta = statusMeta(RECEIPT_STATUS_META, receipt.status);
+      return (
+        <span
+          style={{
+            display: 'inline-block',
+            padding: '2px 8px',
+            borderRadius: 10,
+            fontSize: 11,
+            fontWeight: 500,
+            color: meta.color,
+            background: meta.bg,
+          }}
+        >
+          {meta.label}
+        </span>
+      );
+    }
     case 'totalReceivedQty':
     case 'totalAcceptedQty':
     case 'totalReworkQty':
@@ -134,8 +152,12 @@ export function ReceiptsList() {
         flexDirection: 'column',
       }}
     >
-      <div className={`master-detail-container ${selectedId ? 'has-selection' : ''}`} style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
-        <div className="master-pane"
+      <div
+        className={`master-detail-container ${selectedId ? 'has-selection' : ''}`}
+        style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}
+      >
+        <div
+          className="master-pane"
           style={{
             flex: selectedId ? '0 0 320px' : 1,
             borderRight: selectedId ? '1px solid #eef0f3' : 'none',
@@ -208,7 +230,11 @@ export function ReceiptsList() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => navigate(`/organizations/${orgId}/jobwork/receipts/new`, { state: { returnUrl: location.pathname + location.search } })}
+                  onClick={() =>
+                    navigate(`/organizations/${orgId}/jobwork/receipts/new`, {
+                      state: { returnUrl: location.pathname + location.search },
+                    })
+                  }
                   style={{
                     background: '#186337',
                     color: 'white',
@@ -309,69 +335,69 @@ export function ReceiptsList() {
               </div>
             ) : (
               <div className="responsive-table-wrapper">
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                <thead>
-                  <tr
-                    style={{
-                      background: '#f9f9fb',
-                      borderTop: '1px solid #eef0f3',
-                      borderBottom: '1px solid #eef0f3',
-                    }}
-                  >
-                    {columns.map((col) => (
-                      <th key={col.key} style={headerStyle} scope="col">
-                        {col.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {receipts.map((receipt) => (
-                    /**
-                     * The whole row opens it. The LOCKED column stays a real
-                     * `<button>` underneath: a row `onClick` is invisible to
-                     * Tab, so this is the mouse convenience and the button is
-                     * the control (CLAUDE.md).
-                     */
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <thead>
                     <tr
-                      key={receipt.id}
-                      onClick={() => openDetail(receipt.id)}
-                      style={{ borderBottom: '1px solid #eef0f3', cursor: 'pointer' }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      style={{
+                        background: '#f9f9fb',
+                        borderTop: '1px solid #eef0f3',
+                        borderBottom: '1px solid #eef0f3',
+                      }}
                     >
                       {columns.map((col) => (
-                        <td
-                          key={col.key}
-                          style={{ padding: '12px 16px', fontSize: 13, color: '#333' }}
-                        >
-                          {col.locked ? (
-                            <button
-                              type="button"
-                              onClick={() => openDetail(receipt.id)}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                padding: 0,
-                                font: 'inherit',
-                                fontWeight: 500,
-                                color: '#0062ff',
-                                cursor: 'pointer',
-                                textAlign: 'left',
-                              }}
-                            >
-                              {renderCell(receipt, col.key, customFieldDefs)}
-                            </button>
-                          ) : (
-                            renderCell(receipt, col.key, customFieldDefs)
-                          )}
-                        </td>
+                        <th key={col.key} style={headerStyle} scope="col">
+                          {col.label}
+                        </th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-                  </div>
+                  </thead>
+                  <tbody>
+                    {receipts.map((receipt) => (
+                      /**
+                       * The whole row opens it. The LOCKED column stays a real
+                       * `<button>` underneath: a row `onClick` is invisible to
+                       * Tab, so this is the mouse convenience and the button is
+                       * the control (CLAUDE.md).
+                       */
+                      <tr
+                        key={receipt.id}
+                        onClick={() => openDetail(receipt.id)}
+                        style={{ borderBottom: '1px solid #eef0f3', cursor: 'pointer' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        {columns.map((col) => (
+                          <td
+                            key={col.key}
+                            style={{ padding: '12px 16px', fontSize: 13, color: '#333' }}
+                          >
+                            {col.locked ? (
+                              <button
+                                type="button"
+                                onClick={() => openDetail(receipt.id)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  font: 'inherit',
+                                  fontWeight: 500,
+                                  color: '#0062ff',
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                }}
+                              >
+                                {renderCell(receipt, col.key, customFieldDefs)}
+                              </button>
+                            ) : (
+                              renderCell(receipt, col.key, customFieldDefs)
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
 

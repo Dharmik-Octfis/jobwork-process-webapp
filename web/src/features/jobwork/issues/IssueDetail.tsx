@@ -7,7 +7,7 @@ import { Spinner } from '../../../components/ui/Spinner';
 import { formatDate } from '../../../lib/formatDate';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { ISSUE_STATUS_META, formatQty, sharedUnit, statusMeta, toNumber } from '../jobwork.schemas';
-import { cancelJobIssue, fetchJobIssueById } from './jobIssues.api';
+import { cancelJobIssue, deleteJobIssue, fetchJobIssueById, postJobIssue } from './jobIssues.api';
 import { printChallan } from './printChallan';
 import type { JobIssue, JobIssuesPage } from './jobIssues.schemas';
 import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingLabel';
@@ -40,6 +40,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
   const unitLabel = useBatchUnitLabel();
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { data: issue, isLoading } = useQuery({
@@ -80,6 +81,45 @@ export function IssueDetail({ issueId, onClose }: Props) {
     },
     onError: (err: { response?: { data?: { message?: string } } }) => {
       setError(err.response?.data?.message ?? 'Could not cancel this challan');
+    },
+  });
+
+  /**
+   * Issue a draft as it stands.
+   *
+   * 🔴 A 400 here is the NORMAL outcome, not a bug: the draft skipped the stock,
+   * tolerance and step-chain checks, and this is where they run. The message says
+   * which one refused it, so it is shown rather than replaced with a generic one.
+   */
+  const postMutation = useMutation({
+    mutationFn: () => postJobIssue(orgId!, issueId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['job-issue', orgId, issueId] });
+      queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
+      // The stock behind it has just moved, so anything valuing or listing it is stale.
+      queryClient.invalidateQueries({ queryKey: ['available-batches', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['stock-locations', orgId] });
+      setError(null);
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      setError(err.response?.data?.message ?? 'Could not issue this challan');
+    },
+  });
+
+  /** Only a draft reaches this — a posted challan is cancelled, which reverses
+   * its ledger rows rather than removing anything. */
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteJobIssue(orgId!, issueId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
+      setDeleteOpen(false);
+      onClose();
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      setError(err.response?.data?.message ?? 'Could not delete this draft');
+      setDeleteOpen(false);
     },
   });
 
@@ -152,36 +192,106 @@ export function IssueDetail({ issueId, onClose }: Props) {
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            className="action-btn"
-            type="button"
-            onClick={() => {
-              const opened = printChallan(issue, orgName, trackingLabel.singular, unitLabel);
-              if (!opened) {
-                setError(
-                  'The print window was blocked. Allow pop-ups for this site and try again.',
-                );
-              }
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 12px',
-              fontSize: 13,
-              border: '1px solid #d1d5db',
-              borderRadius: 4,
-              background: '#fff',
-              cursor: 'pointer',
-              color: '#333',
-            }}
-          >
-            <Printer size={14} />{' '}
-            <span className="action-btn-text">
-              <span className="action-btn-text">Print</span> challan
-            </span>
-          </button>
-          {issue.status !== 'cancelled' && (
+          {/**
+           * 🔴 A DRAFT GETS A DIFFERENT SET, and Print is deliberately not in it.
+           * A challan is the document that TRAVELS WITH THE GOODS; printing one
+           * for material still in the godown puts a Rule 55 challan in somebody's
+           * hand for a consignment that does not exist.
+           */}
+          {issue.status === 'draft' && (
+            <>
+              <button
+                className="action-btn"
+                type="button"
+                onClick={() =>
+                  navigate(`/organizations/${orgId}/jobwork/issues/new?draftId=${issue.id}`, {
+                    state: { returnUrl: `/organizations/${orgId}/jobwork/issues` },
+                  })
+                }
+                style={{
+                  padding: '6px 12px',
+                  fontSize: 13,
+                  border: '1px solid #d1d5db',
+                  borderRadius: 4,
+                  background: '#fff',
+                  cursor: 'pointer',
+                  color: '#333',
+                }}
+              >
+                <span className="action-btn-text">Edit</span>
+              </button>
+              <button
+                className="action-btn"
+                type="button"
+                onClick={() => postMutation.mutate()}
+                disabled={postMutation.isPending}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: 13,
+                  border: 'none',
+                  borderRadius: 4,
+                  background: postMutation.isPending ? '#93c5fd' : '#0062ff',
+                  cursor: postMutation.isPending ? 'not-allowed' : 'pointer',
+                  color: '#fff',
+                  fontWeight: 500,
+                }}
+              >
+                <span className="action-btn-text">
+                  {postMutation.isPending ? 'Issuing…' : 'Issue challan'}
+                </span>
+              </button>
+              <button
+                className="action-btn"
+                type="button"
+                onClick={() => setDeleteOpen(true)}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: 13,
+                  border: '1px solid #fecaca',
+                  borderRadius: 4,
+                  background: '#fff',
+                  cursor: 'pointer',
+                  color: '#b91c1c',
+                }}
+              >
+                <span className="action-btn-text">Delete</span>
+              </button>
+            </>
+          )}
+          {issue.status !== 'draft' && (
+            <button
+              className="action-btn"
+              type="button"
+              onClick={() => {
+                const opened = printChallan(issue, orgName, trackingLabel.singular, unitLabel);
+                if (!opened) {
+                  setError(
+                    'The print window was blocked. Allow pop-ups for this site and try again.',
+                  );
+                }
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                fontSize: 13,
+                border: '1px solid #d1d5db',
+                borderRadius: 4,
+                background: '#fff',
+                cursor: 'pointer',
+                color: '#333',
+              }}
+            >
+              <Printer size={14} />{' '}
+              <span className="action-btn-text">
+                <span className="action-btn-text">Print</span> challan
+              </span>
+            </button>
+          )}
+          {/* Cancelling posts reversing rows, so it only applies to a challan
+              that posted some — a draft is deleted above instead. */}
+          {issue.status !== 'cancelled' && issue.status !== 'draft' && (
             <button
               className="action-btn"
               type="button"
@@ -388,6 +498,24 @@ export function IssueDetail({ issueId, onClose }: Props) {
           setCancelOpen(false);
           setCancelReason('');
         }}
+      />
+
+      {/* No reason is asked for, unlike a cancellation. A cancelled challan is
+          history somebody will question; a deleted draft never happened, so there
+          is nothing to explain. */}
+      <ConfirmDialog
+        isOpen={deleteOpen}
+        title="Delete this draft"
+        message={
+          <p style={{ margin: 0, lineHeight: 1.6 }}>
+            {issue.challanNumber} has not been issued, so no stock has moved and there is nothing to
+            reverse. The challan number stays used and will not be given to another challan.
+          </p>
+        }
+        confirmText={deleteMutation.isPending ? 'Deleting…' : 'Delete draft'}
+        cancelText="Keep it"
+        onConfirm={() => deleteMutation.mutate()}
+        onCancel={() => setDeleteOpen(false)}
       />
     </div>
   );
