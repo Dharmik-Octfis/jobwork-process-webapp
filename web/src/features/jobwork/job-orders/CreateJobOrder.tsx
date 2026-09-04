@@ -76,6 +76,8 @@ export function CreateJobOrder() {
             const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
             if (returnUrl) {
               navigate(returnUrl);
+            } else if (cloneFrom) {
+              navigate(`/organizations/${orgId}/jobwork/job-orders?id=${cloneFrom}`);
             } else {
               navigate(-1);
             }
@@ -143,7 +145,16 @@ export function CreateJobOrder() {
               mutation.mutate(data);
             }}
             isPending={mutation.isPending}
-            onCancel={() => navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/jobwork/job-orders`)}
+            onCancel={() => {
+              const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
+              if (returnUrl) {
+                navigate(returnUrl);
+              } else if (cloneFrom) {
+                navigate(`/organizations/${orgId}/jobwork/job-orders?id=${cloneFrom}`);
+              } else {
+                navigate(`/organizations/${orgId}/jobwork/job-orders`);
+              }
+            }}
             fieldErrors={fieldErrors}
           />
         )}

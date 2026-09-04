@@ -837,7 +837,7 @@ function ModuleNavGroup({
       e.preventDefault();
       e.stopPropagation();
       if (to !== '#') {
-        navigate(`${to}/new`);
+        navigate(`${to}/new`, { state: { returnUrl: location.pathname + location.search } });
       }
     };
 
@@ -922,7 +922,7 @@ function ModuleNavGroup({
       e.preventDefault();
       e.stopPropagation();
       if (to !== '#') {
-        navigate(`${to}/new`);
+        navigate(`${to}/new`, { state: { returnUrl: location.pathname + location.search } });
       }
     };
 
