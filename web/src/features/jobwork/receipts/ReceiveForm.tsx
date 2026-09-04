@@ -738,6 +738,9 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
       queryClient.invalidateQueries({ queryKey: ['job-receipts', orgId] });
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
       queryClient.invalidateQueries({ queryKey: ['available-batches', orgId] });
+      if (draft?.id) {
+        queryClient.invalidateQueries({ queryKey: ['job-receipt', orgId, draft.id] });
+      }
       onReceived(data.id);
     },
     onError: (err: AxiosError<{ message?: string }>) => {

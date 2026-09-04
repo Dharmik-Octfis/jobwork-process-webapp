@@ -28,29 +28,32 @@ const headerStyle: React.CSSProperties = {
   textTransform: 'uppercase',
 };
 
+function StatusPill({ status }: { status: string }) {
+  const meta = statusMeta(ISSUE_STATUS_META, status);
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        padding: '2px 8px',
+        borderRadius: 10,
+        fontSize: 11,
+        fontWeight: 500,
+        color: meta.color,
+        background: meta.bg,
+      }}
+    >
+      {meta.label}
+    </span>
+  );
+}
+
 // No `cf:` branch — `job_issue` is list-only since 2026-08-10, so the server
 // merges no custom-field columns into this catalog. A `cf:` key left in someone's
 // saved preferences falls through to the default and renders "-".
 function renderCell(issue: JobIssue, key: string): React.ReactNode {
   switch (key) {
-    case 'status': {
-      const meta = statusMeta(ISSUE_STATUS_META, issue.status);
-      return (
-        <span
-          style={{
-            display: 'inline-block',
-            padding: '2px 8px',
-            borderRadius: 10,
-            fontSize: 11,
-            fontWeight: 500,
-            color: meta.color,
-            background: meta.bg,
-          }}
-        >
-          {meta.label}
-        </span>
-      );
-    }
+    case 'status':
+      return <StatusPill status={issue.status} />;
     case 'jobOrderNumber':
       return issue.jobOrder?.jobOrderNumber ?? '-';
     case 'processName':
@@ -313,14 +316,17 @@ export function IssuesList() {
                   >
                     <span
                       style={{
-                        display: 'block',
-                        fontSize: 13,
-                        fontWeight: 500,
-                        color: '#1e293b',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 8,
                         marginBottom: 4,
                       }}
                     >
-                      {issue.challanNumber}
+                      <span style={{ fontSize: 13, fontWeight: 500, color: '#1e293b' }}>
+                        {issue.challanNumber}
+                      </span>
+                      <StatusPill status={issue.status} />
                     </span>
                     <span style={{ fontSize: 12, color: '#64748b' }}>
                       {issue.processorNameSnapshot ?? 'In-house'} · {formatQty(issue.totalQty)}

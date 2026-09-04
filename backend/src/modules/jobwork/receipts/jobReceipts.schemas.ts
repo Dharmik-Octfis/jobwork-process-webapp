@@ -404,7 +404,7 @@ export const createJobReceiptSchema = openApiRegistry.register(
 
     /** One receipt may close several challans — a processor often returns two
      * consignments together (§6.1). */
-    issueIds: z.array(z.string().uuid()).min(1, 'Pick at least one challan to receive against.'),
+    issueIds: z.array(z.string().uuid()),
 
     /** Defaults to the step's receive item. Editable: what comes back is
      * sometimes not what was planned, and forcing a job order edit to record that
@@ -418,7 +418,7 @@ export const createJobReceiptSchema = openApiRegistry.register(
     /** The CONSUMPTION side: how much of each challan line this receipt accounts
      * for. In unit-wise mode each line is one taka and carries the disposition
      * that built the primary output's packages. */
-    lines: z.array(jobReceiptLineSchema).min(1, 'A receipt needs at least one line.'),
+    lines: z.array(jobReceiptLineSchema),
 
     /**
      * 🔴 The RETURN side, one row per item (§5.7). Left empty, one output is
@@ -444,6 +444,23 @@ export const createJobReceiptSchema = openApiRegistry.register(
      * Absent means post, so every existing client keeps behaving as it did.
      */
     saveAsDraft: z.boolean().optional(),
+  }).superRefine((data, ctx) => {
+    if (!data.saveAsDraft) {
+      if (data.issueIds.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Pick at least one challan to receive against.',
+          path: ['issueIds'],
+        });
+      }
+      if (data.lines.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'A receipt needs at least one line.',
+          path: ['lines'],
+        });
+      }
+    }
   }),
 );
 

@@ -26,6 +26,25 @@ const headerStyle: React.CSSProperties = {
   textTransform: 'uppercase',
 };
 
+function StatusPill({ status }: { status: string }) {
+  const meta = statusMeta(RECEIPT_STATUS_META, status);
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        padding: '2px 8px',
+        borderRadius: 10,
+        fontSize: 11,
+        fontWeight: 500,
+        color: meta.color,
+        background: meta.bg,
+      }}
+    >
+      {meta.label}
+    </span>
+  );
+}
+
 function renderCell(
   receipt: JobReceipt,
   key: string,
@@ -52,26 +71,10 @@ function renderCell(
     case 'outputItem':
       // Every item that came back, counted. A receipt returns shirts AND rejects.
       return itemSummary(receipt.outputs ?? []);
-    case 'status': {
+    case 'status':
       // A pill, matching the Issues list. It was a bare `cancelled ? … : 'Posted'`
       // ternary, which labelled a draft "Posted" — the one thing it is not.
-      const meta = statusMeta(RECEIPT_STATUS_META, receipt.status);
-      return (
-        <span
-          style={{
-            display: 'inline-block',
-            padding: '2px 8px',
-            borderRadius: 10,
-            fontSize: 11,
-            fontWeight: 500,
-            color: meta.color,
-            background: meta.bg,
-          }}
-        >
-          {meta.label}
-        </span>
-      );
-    }
+      return <StatusPill status={receipt.status} />;
     case 'totalReceivedQty':
     case 'totalAcceptedQty':
     case 'totalReworkQty':
@@ -317,14 +320,17 @@ export function ReceiptsList() {
                   >
                     <span
                       style={{
-                        display: 'block',
-                        fontSize: 13,
-                        fontWeight: 500,
-                        color: '#1e293b',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 8,
                         marginBottom: 4,
                       }}
                     >
-                      {receipt.receiptNumber}
+                      <span style={{ fontSize: 13, fontWeight: 500, color: '#1e293b' }}>
+                        {receipt.receiptNumber}
+                      </span>
+                      <StatusPill status={receipt.status} />
                     </span>
                     <span style={{ fontSize: 12, color: '#64748b' }}>
                       {formatQty(receipt.totalAcceptedQty)} accepted of{' '}

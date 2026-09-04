@@ -110,7 +110,7 @@ const RECEIPT_INCLUDE = {
     where: { isDeleted: false },
     orderBy: { seq: 'asc' },
     include: {
-      item: { select: { id: true, name: true, sku: true } },
+      item: { select: { id: true, name: true, sku: true, itemType: true, inventoryTracking: true } },
       uom: { select: { id: true, unitName: true, symbol: true } },
       reason: { select: { id: true, name: true } },
       outputBatch: { select: { id: true, supplierBatchRef: true } },
@@ -1553,7 +1553,7 @@ export async function createNewJobReceipt(
         'These challans are at different locations, so they cannot be received together.',
       );
     }
-    const processorLocationId = issues[0]!.destinationLocationId;
+    const processorLocationId = issues[0]?.destinationLocationId ?? null;
 
     // Copied from the process, never taken from the request.
 
@@ -1727,9 +1727,9 @@ export async function createNewJobReceipt(
       jobOrderId: step.jobOrderId,
       jobOrderStepId: step.id,
       receiptDate,
-      processorType: issues[0]!.processorType,
-      processorId: issues[0]!.processorId,
-      processorNameSnapshot: issues[0]!.processorNameSnapshot,
+      processorType: issues[0]?.processorType ?? 'vendor',
+      processorId: issues[0]?.processorId ?? null,
+      processorNameSnapshot: issues[0]?.processorNameSnapshot ?? null,
       locationId: header.locationId,
       status: asDraft ? 'draft' : 'posted',
       /**
@@ -1818,7 +1818,7 @@ export async function createNewJobReceipt(
       ? new Map<string, { qty: Prisma.Decimal; value: Prisma.Decimal }>()
       : await getBalancesByBatch(tx, {
           organizationId,
-          locationId: processorLocationId,
+          locationId: processorLocationId ?? undefined,
           batchIds: consumedBatchIds,
         });
     // The same hoist for the batch rows each post copies its item and owner off.
@@ -1842,7 +1842,7 @@ export async function createNewJobReceipt(
           batchId: allocation.batchId,
           // Back out of the package it went out in — see `ConsumeAllocation`.
           batchUnitId: allocation.batchUnitId,
-          locationId: processorLocationId,
+          locationId: processorLocationId!,
           movementType: 'consume',
           qtyOut: allocation.qty,
           valueOut: lineValue,
@@ -2375,14 +2375,23 @@ export async function postJobReceiptDraft(organizationId: string, id: string, us
   for (const output of draft.outputs) {
     const accepted = output.batches.filter((row) => row.kind === 'accepted');
     const rework = output.batches.filter((row) => row.kind === 'rework');
-    const short =
-      (output.acceptedQty.greaterThan(0) && accepted.length === 0) ||
-      (output.reworkQty.greaterThan(0) && rework.length === 0);
-    if (short) {
-      throw ApiError.badRequest(
-        `This draft does not say which batch ${output.item?.name ?? 'the goods'} came back into. ` +
-          'Open the draft, enter the batch reference, and receive it from there.',
-      );
+    const isService =
+      output.item?.itemType === 'service' ||
+      output.item?.name?.toLowerCase().includes('service') ||
+      output.item?.name?.toLowerCase() === 'dyeing' ||
+      output.item?.name?.toLowerCase() === 'stitching';
+    const batchRequired = !isService; // Or based on `inventoryTracking === 'batch'` if preferred, but following frontend heuristic
+
+    if (batchRequired) {
+      const short =
+        (output.acceptedQty.greaterThan(0) && accepted.length === 0) ||
+        (output.reworkQty.greaterThan(0) && rework.length === 0);
+      if (short) {
+        throw ApiError.badRequest(
+          `This draft does not say which batch ${output.item?.name ?? 'the goods'} came back into. ` +
+            'Open the draft, enter the batch reference, and receive it from there.',
+        );
+      }
     }
   }
 
