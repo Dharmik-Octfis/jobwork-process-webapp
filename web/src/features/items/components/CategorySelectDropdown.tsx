@@ -241,7 +241,8 @@ export function CategorySelectDropdown({ value, onChange, error }: CategorySelec
               >
                 <button
                   type="button"
-                  onClick={() => {
+                  onMouseDown={(e) => {
+                    e.preventDefault();
                     closeMenu();
                     setIsManageModalOpen(true);
                   }}

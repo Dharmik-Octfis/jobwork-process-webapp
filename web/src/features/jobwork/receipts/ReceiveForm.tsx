@@ -187,9 +187,11 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel }: Props) {
    * an effect is what lets the prefill arrive without a second render, and what
    * stops a re-fetch from silently re-ticking something the user un-ticked.
    */
-  const [pickedIssueIds, setPickedIssueIds] = useState<string[] | null>(null);
-  /** `null` until somebody touches the returned grid, so a late prefill cannot
-   * wipe typed rows and re-seeding cannot fight the user. */
+  const [pickedIssueIds, setPickedIssueIds] = useState<string[]>([]);
+  /** 🔴 Default empty array: picking the first batch of receipts is the
+   * user's job, not a guess the system makes by pre-selecting every open
+   * challan against the processor's historical load.
+   */
   const [returnedEdits, setReturnedEdits] = useState<ReturnedRow[] | null>(null);
   const [receiptDate, setReceiptDate] = useState(new Date().toISOString().slice(0, 10));
   const [locationId, setLocationId] = useState('');
@@ -294,8 +296,8 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel }: Props) {
   const inUom = step.inputs[0]?.uom;
   const inUnit = inUom?.symbol ?? inUom?.unitName ?? '';
 
-  // Every open challan is ticked until the user says otherwise.
-  const selectedIssueIds = pickedIssueIds ?? (prefill?.issues ?? []).map((i) => i.id);
+  // Checked challans. By default, none are checked (unlike before where all were).
+  const selectedIssueIds = pickedIssueIds;
   const effectiveLocationId = locationId || (godowns[0]?.id ?? '');
 
   /**
@@ -872,6 +874,12 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel }: Props) {
 
           <section style={{ marginBottom: 20 }}>
             <h3 style={sectionHeading}>Challans being closed</h3>
+            <p style={{ fontSize: 12, color: '#64748b', margin: '-4px 0 10px 0', lineHeight: 1.4 }}>
+              Select the challans you are receiving goods for. <br />
+              <span style={{ color: '#ef4444', fontWeight: 500 }}>
+                ⚠️ Important: Ticking a challan will close it completely. Any missing quantity will be counted as permanent loss (scrap). You cannot leave a ticked challan partially open to receive the rest later.
+              </span>
+            </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
               {prefill.issues.length === 0 && (
                 <span style={{ fontSize: 13, color: '#64748b' }}>
