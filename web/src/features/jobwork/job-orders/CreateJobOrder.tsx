@@ -39,7 +39,7 @@ export function CreateJobOrder() {
     mutationFn: (data: CreateJobOrderData) => createJobOrder(orgId!, data),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['jobOrders', orgId] });
-      navigate(`/organizations/${orgId}/jobwork/job-orders/${data.id}`);
+      navigate(`/organizations/${orgId}/jobwork/job-orders?id=${data.id}`);
     },
     onError: (error: AxiosError<{ message?: string; details?: Record<string, string> }>) => {
       setFieldErrors(error.response?.data?.details ?? {});

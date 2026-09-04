@@ -59,7 +59,7 @@ export function CreateIssuePage() {
           type="button"
           onClick={() => {
              if (jobOrderIdParam) {
-               navigate(`/organizations/${orgId}/jobwork/job-orders/${jobOrderIdParam}`);
+               navigate(`/organizations/${orgId}/jobwork/job-orders?id=${jobOrderIdParam}`);
              } else {
                navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/jobwork/issues`);
              }
@@ -118,16 +118,18 @@ export function CreateIssuePage() {
           <IssueForm
             jobOrder={jobOrderData.jobOrder}
             step={selectedStep}
-            onIssued={() => {
+            onIssued={(issueId) => {
               if (jobOrderIdParam) {
-                navigate(`/organizations/${orgId}/jobwork/job-orders/${jobOrderIdParam}`);
+                navigate(`/organizations/${orgId}/jobwork/job-orders?id=${jobOrderIdParam}`);
+              } else if (issueId) {
+                navigate(`/organizations/${orgId}/jobwork/issues?id=${issueId}`);
               } else {
                 navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/jobwork/issues`);
               }
             }}
             onCancel={() => {
               if (jobOrderIdParam) {
-                navigate(`/organizations/${orgId}/jobwork/job-orders/${jobOrderIdParam}`);
+                navigate(`/organizations/${orgId}/jobwork/job-orders?id=${jobOrderIdParam}`);
               } else {
                 navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/jobwork/issues`);
               }

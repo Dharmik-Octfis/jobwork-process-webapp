@@ -19,7 +19,7 @@ import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingL
 interface Props {
   jobOrder: JobOrder;
   step: OverviewStep;
-  onReceived: () => void;
+  onReceived: (receiptId?: string) => void;
   onCancel: () => void;
 }
 
@@ -660,13 +660,12 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel }: Props) {
         remarks: remarks.trim() || null,
       });
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, jobOrder.id] });
       queryClient.invalidateQueries({ queryKey: ['job-receipts', orgId] });
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
       queryClient.invalidateQueries({ queryKey: ['available-batches', orgId] });
-      onReceived();
-      onCancel();
+      onReceived(data.id);
     },
     onError: (err: AxiosError<{ message?: string }>) => {
       setError(err.response?.data?.message ?? 'Could not post this receipt');

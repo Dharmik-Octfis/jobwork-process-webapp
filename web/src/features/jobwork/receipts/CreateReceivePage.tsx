@@ -59,7 +59,7 @@ export function CreateReceivePage() {
           type="button"
           onClick={() => {
              if (jobOrderIdParam) {
-               navigate(`/organizations/${orgId}/jobwork/job-orders/${jobOrderIdParam}`);
+               navigate(`/organizations/${orgId}/jobwork/job-orders?id=${jobOrderIdParam}`);
              } else {
                navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/jobwork/receipts`);
              }
@@ -119,16 +119,18 @@ export function CreateReceivePage() {
           <ReceiveForm
             jobOrder={jobOrderData.jobOrder}
             step={selectedStep}
-            onReceived={() => {
+            onReceived={(receiptId) => {
               if (jobOrderIdParam) {
-                navigate(`/organizations/${orgId}/jobwork/job-orders/${jobOrderIdParam}`);
+                navigate(`/organizations/${orgId}/jobwork/job-orders?id=${jobOrderIdParam}`);
+              } else if (receiptId) {
+                navigate(`/organizations/${orgId}/jobwork/receipts?id=${receiptId}`);
               } else {
                 navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/jobwork/receipts`);
               }
             }}
             onCancel={() => {
               if (jobOrderIdParam) {
-                navigate(`/organizations/${orgId}/jobwork/job-orders/${jobOrderIdParam}`);
+                navigate(`/organizations/${orgId}/jobwork/job-orders?id=${jobOrderIdParam}`);
               } else {
                 navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/jobwork/receipts`);
               }

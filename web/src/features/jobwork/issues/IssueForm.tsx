@@ -25,7 +25,7 @@ import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingL
 interface Props {
   jobOrder: JobOrder;
   step: OverviewStep;
-  onIssued: () => void;
+  onIssued: (issueId?: string) => void;
   onCancel: () => void;
 }
 
@@ -716,14 +716,14 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel }: Props) {
         remarks: remarks.trim() || null,
       }),
     meta: { suppressToast: true },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, jobOrder.id] });
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
       queryClient.invalidateQueries({ queryKey: ['available-batches', orgId] });
       // Balances at every location just moved, and the coverage labels are read
       // off them — without this the next challan is planned against stale figures.
       queryClient.invalidateQueries({ queryKey: ['stock-locations', orgId] });
-      onIssued();
+      onIssued(data.id);
 
       /* Items this challan carried nothing of. Read off `qtyByItem`, which is the
          allocation that was actually sent, not what was typed. */
