@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { Settings } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { DateInput } from '../../../components/ui/DateInput';
 import { Select } from '../../../components/ui/Select';
 import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
@@ -332,11 +333,11 @@ export function JobOrderForm({
 
     const missing = steps.findIndex((s) => !s.processId);
     if (missing >= 0) {
-      setLocalError(`Step ${missing + 1} needs a process.`);
+      toast.error(`Step ${missing + 1} needs a process.`);
       return;
     }
     if (ownership === 'customer' && !ownerPartyId) {
-      setLocalError('Customer-owned work needs the customer it belongs to.');
+      toast.error('Customer-owned work needs the customer it belongs to.');
       return;
     }
     // 🔴 At least one item, somewhere. A job order that consumes nothing has
@@ -344,7 +345,13 @@ export function JobOrderForm({
     // Issue dialog with no sections in it.
     const empty = steps.findIndex((s) => (s.inputs ?? []).length === 0);
     if (empty >= 0) {
-      setLocalError(`Step ${empty + 1} consumes nothing. Add at least one item to it.`);
+      toast.error(`Step ${empty + 1} consumes nothing. Add at least one item to it.`);
+      return;
+    }
+
+    const emptyOutput = steps.findIndex((s) => (s.outputs ?? []).length === 0);
+    if (emptyOutput >= 0) {
+      toast.error(`Step ${emptyOutput + 1} produces nothing.`);
       return;
     }
     setLocalError(null);
