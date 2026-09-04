@@ -676,7 +676,17 @@ export function AppLayout() {
         {/* Page Content. Suspense sits INSIDE <main> so a route chunk still
             loading swaps only this area — the sidebar and header stay on screen.
             Every page under this layout is lazy (see app/router.tsx). */}
-        <main id="app-main-content" style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+        <main
+          id="app-main-content"
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            minHeight: 0,
+            overflow: 'auto',
+            position: 'relative',
+          }}
+        >
           <Suspense fallback={<RouteFallback />}>
             <Outlet />
           </Suspense>
