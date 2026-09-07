@@ -374,6 +374,36 @@ sendSuccess(res, null, 'Vendor deleted.'); // 200, no payload
   bubble, so a `window` listener never hears the dialog body scrolling), flip upwards when the room
   below runs out, and keep the menu element mounted while closed so downshift's `getMenuProps` ref
   still tells an inside click from an outside one.
+- 🔴 **Every screen must work on a phone — responsive is mandatory, not a follow-up.** This is a
+  shop-floor app used from phones and tablets as much as from a desk, so a page that only lays out on
+  a 1440px monitor is **unfinished**, the same way an unreachable control is. Nothing catches it for
+  you: `tsc -b` passes, the desktop screenshot looks perfect, and the breakage only exists at 390px.
+  Like tab order, it is fixed **once in the shared layer, not per page**:
+  - **`768px` is THE breakpoint** — `@media (max-width: 768px)` in `web/src/index.css`, where the
+    shared responsive rules already live. A couple of feature stylesheets tune at 640px/480px; do
+    not invent a new breakpoint per page.
+  - **Reuse the shared classes; do not hand-roll a media query per screen.** They are already wired
+    and used across the app: `.responsive-table-wrapper` (a wide table scrolls instead of squashing),
+    `.form-field-grid` (multi-column form collapses to one column), `.master-detail-container` +
+    `.master-pane` / `.detail-pane` (one pane at a time on narrow screens), `.action-btn-text` (drop
+    a button's label, keep the icon), `.hidden-on-mobile` (non-essential chrome), `.page-container`.
+    A page that writes its own media query is exactly where the behaviour diverges from Vendors or
+    Items.
+  - **A wide table scrolls, it never shrinks.** Wrap it in `.responsive-table-wrapper`; the table
+    keeps its `min-width` so columns stay readable and the wrapper takes the overflow. Never let a
+    table set the page's width — a container wider than the viewport pushes the header and its
+    primary button off-screen, which is the flexbox blowout that
+    `.detail-pane, .detail-pane div { max-width: 100vw }` exists to stop.
+  - **Fluid units, never a fixed pixel width on layout.** `width: 900px` on a container is the bug;
+    `max-width` + `%` / `fr` / `minmax()` is the fix. Every flex or grid child holding text or a
+    table needs `min-width: 0` — without it flexbox refuses to shrink the child and the whole row
+    overflows the screen.
+  - **Touch targets ≥ 44px, and overlays must fit a phone.** A portalled dropdown positioned `fixed`
+    (the rule above) must also clamp its width to the viewport and flip upwards when there is no room
+    below — on a phone there usually is not. A modal on a narrow screen is full-width with its
+    actions reachable without zooming.
+  - **Walk the new page at 390px, 768px and desktop before calling it done** — same as the keyboard
+    walk. No horizontal page scroll, nothing clipped, every primary action reachable with a thumb.
 - 🔴 **Tab navigation is mandatory and must be perfect — a control you cannot reach with Tab is not
   done.** Native elements (`input`, `textarea`, `select`, `button`, `a[href]`) are focusable for free;
   a `<div onClick>` is **not**. Tab skips straight past it, so the control is unreachable by keyboard
