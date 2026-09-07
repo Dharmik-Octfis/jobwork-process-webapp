@@ -158,8 +158,12 @@ export function IssuesList() {
         flexDirection: 'column',
       }}
     >
-      <div className={`master-detail-container ${selectedId ? 'has-selection' : ''}`} style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
-        <div className="master-pane"
+      <div
+        className={`master-detail-container ${selectedId ? 'has-selection' : ''}`}
+        style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}
+      >
+        <div
+          className="master-pane"
           style={{
             flex: selectedId ? '0 0 320px' : 1,
             borderRight: selectedId ? '1px solid #eef0f3' : 'none',
@@ -200,11 +204,14 @@ export function IssuesList() {
                 </button>
               </div>
             ) : (
+              // `fallbackLabel` mirrors the catalog's own label for the default
+              // preset. Renamed from "Open Challans" when challan closing went:
+              // no closed state is left for "open" to be the other half of.
               <ListFilterDropdown
                 filters={filters}
                 value={filter}
                 onChange={setFilter}
-                fallbackLabel="Open Challans"
+                fallbackLabel="Issued Challans"
               />
             )}
 
@@ -232,7 +239,11 @@ export function IssuesList() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => navigate(`/organizations/${orgId}/jobwork/issues/new`, { state: { returnUrl: location.pathname + location.search } })}
+                  onClick={() =>
+                    navigate(`/organizations/${orgId}/jobwork/issues/new`, {
+                      state: { returnUrl: location.pathname + location.search },
+                    })
+                  }
                   style={{
                     background: '#186337',
                     color: 'white',
@@ -336,69 +347,69 @@ export function IssuesList() {
               </div>
             ) : (
               <div className="responsive-table-wrapper">
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                <thead>
-                  <tr
-                    style={{
-                      background: '#f9f9fb',
-                      borderTop: '1px solid #eef0f3',
-                      borderBottom: '1px solid #eef0f3',
-                    }}
-                  >
-                    {columns.map((col) => (
-                      <th key={col.key} style={headerStyle} scope="col">
-                        {col.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {issues.map((issue) => (
-                    /**
-                     * The whole row opens it. The LOCKED column stays a real
-                     * `<button>` underneath: a row `onClick` is invisible to
-                     * Tab, so this is the mouse convenience and the button is
-                     * the control (CLAUDE.md).
-                     */
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <thead>
                     <tr
-                      key={issue.id}
-                      onClick={() => openDetail(issue.id)}
-                      style={{ borderBottom: '1px solid #eef0f3', cursor: 'pointer' }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      style={{
+                        background: '#f9f9fb',
+                        borderTop: '1px solid #eef0f3',
+                        borderBottom: '1px solid #eef0f3',
+                      }}
                     >
                       {columns.map((col) => (
-                        <td
-                          key={col.key}
-                          style={{ padding: '12px 16px', fontSize: 13, color: '#333' }}
-                        >
-                          {col.locked ? (
-                            <button
-                              type="button"
-                              onClick={() => openDetail(issue.id)}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                padding: 0,
-                                font: 'inherit',
-                                fontWeight: 500,
-                                color: '#0062ff',
-                                cursor: 'pointer',
-                                textAlign: 'left',
-                              }}
-                            >
-                              {renderCell(issue, col.key)}
-                            </button>
-                          ) : (
-                            renderCell(issue, col.key)
-                          )}
-                        </td>
+                        <th key={col.key} style={headerStyle} scope="col">
+                          {col.label}
+                        </th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-                  </div>
+                  </thead>
+                  <tbody>
+                    {issues.map((issue) => (
+                      /**
+                       * The whole row opens it. The LOCKED column stays a real
+                       * `<button>` underneath: a row `onClick` is invisible to
+                       * Tab, so this is the mouse convenience and the button is
+                       * the control (CLAUDE.md).
+                       */
+                      <tr
+                        key={issue.id}
+                        onClick={() => openDetail(issue.id)}
+                        style={{ borderBottom: '1px solid #eef0f3', cursor: 'pointer' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        {columns.map((col) => (
+                          <td
+                            key={col.key}
+                            style={{ padding: '12px 16px', fontSize: 13, color: '#333' }}
+                          >
+                            {col.locked ? (
+                              <button
+                                type="button"
+                                onClick={() => openDetail(issue.id)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  font: 'inherit',
+                                  fontWeight: 500,
+                                  color: '#0062ff',
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                }}
+                              >
+                                {renderCell(issue, col.key)}
+                              </button>
+                            ) : (
+                              renderCell(issue, col.key)
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
 

@@ -120,9 +120,16 @@ export const ISSUE_STATUS_META: Record<string, { label: string; color: string; b
   // stage of the material's journey.
   draft: { label: 'Draft', color: '#475569', bg: '#f1f5f9' },
   issued: { label: 'Out', color: '#1d4ed8', bg: '#eff6ff' },
-  partially_received: { label: 'Partly back', color: '#7c3aed', bg: '#f5f3ff' },
-  closed: { label: 'Closed', color: '#15803d', bg: '#f0fdf4' },
   cancelled: { label: 'Cancelled', color: '#b91c1c', bg: '#fef2f2' },
+  /**
+   * 🔴 `partially_received` and `closed` were removed on 2026-09-07 with challan
+   * closing itself — a challan is parked, out, or withdrawn. How much of it has
+   * come back is a ledger question, answered per batch at the processor's own
+   * location, and a status column was always a coarser answer to it.
+   *
+   * `statusMeta` falls back to the raw value, so a row somewhere that still holds
+   * one of the old strings renders as itself rather than blank.
+   */
 };
 
 /**

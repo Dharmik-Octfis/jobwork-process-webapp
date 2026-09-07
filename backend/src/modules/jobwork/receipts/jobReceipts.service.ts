@@ -309,12 +309,22 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
     });
     if (!step) throw ApiError.notFound('Job order step not found');
 
+    /**
+     * 🔴 Every challan that actually went out — `POSTED_DOC_STATUS`, so drafts
+     * and cancellations are excluded and nothing else is.
+     *
+     * It used to ask for `['issued','partially_received']`, i.e. "not closed",
+     * and that was the status doing the work of hiding challans with nothing left
+     * on them. With no closing, the same list is derived from the material below:
+     * a challan whose every line is exhausted contributes no rows and is dropped
+     * from `issues` at the end. Same screen, one fewer thing to keep in step.
+     */
     const issues = await tx.jobIssue.findMany({
       where: {
         organizationId,
         jobOrderStepId,
         isDeleted: false,
-        status: { in: ['issued', 'partially_received'] },
+        status: POSTED_DOC_STATUS,
       },
       orderBy: { issueDate: 'asc' },
       include: {
@@ -365,22 +375,30 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
       }
     }
 
+    /* Challans with nothing left to account for, dropped here rather than by a
+       `closed` status. `rows` already skips an exhausted LINE; this is the same
+       rule one level up, so the picker offers exactly the challans that have
+       something on them. */
+    const live = new Set(rows.map((row) => row.jobIssueId));
+
     return {
       step,
-      issues: issues.map((issue) => ({
-        id: issue.id,
-        challanNumber: issue.challanNumber,
-        issueDate: issue.issueDate,
-        totalQty: issue.totalQty.toString(),
-        isRework: issue.isRework,
-        attemptNo: issue.attemptNo,
-        // Who is holding it and where. Both are per challan because the dialog
-        // only offers "they stayed there" once the picked challans agree — which
-        // is the same condition the save enforces.
-        processorName: issue.processorNameSnapshot,
-        destinationLocationId: issue.destinationLocationId,
-        destinationName: issue.destination?.name ?? null,
-      })),
+      issues: issues
+        .filter((issue) => live.has(issue.id))
+        .map((issue) => ({
+          id: issue.id,
+          challanNumber: issue.challanNumber,
+          issueDate: issue.issueDate,
+          totalQty: issue.totalQty.toString(),
+          isRework: issue.isRework,
+          attemptNo: issue.attemptNo,
+          // Who is holding it and where. Both are per challan because the dialog
+          // only offers "they stayed there" once the picked challans agree — which
+          // is the same condition the save enforces.
+          processorName: issue.processorNameSnapshot,
+          destinationLocationId: issue.destinationLocationId,
+          destinationName: issue.destination?.name ?? null,
+        })),
       lines: rows,
       /**
        * The returned grid's opening rows — one per item the step planned to
@@ -2319,53 +2337,23 @@ export async function createNewJobReceipt(
     }
 
     /**
-     * Close the challans this receipt fully accounted for.
+     * 🔴 A RECEIPT NO LONGER TOUCHES THE CHALLAN'S STATUS (2026-09-07).
      *
-     * Two reads for every challan between them, where this was a `findMany` per
-     * challan and an `aggregate` per line of it. Both must still run HERE, after
-     * the `jobReceiptLine` rows above are written — they are what "already
-     * received" now counts.
+     * This used to read every line of every ticked challan, sum what was still
+     * out, and stamp `closed` or `partially_received` on each one. All of it is
+     * gone: a challan is `issued` until somebody cancels it.
+     *
+     * The status was the only thing removed. Ticking a challan still decides
+     * WHICH BATCH at the processor this receipt draws down and by how much —
+     * `allocateConsumption` above — so the stock still leaves the processor and
+     * its cost still flows into the output. What went was a derived label that
+     * duplicated, less accurately, what the ledger already says: what is still at
+     * a jobworker is the balance at their location, per batch, and no status
+     * column can disagree with that because none is consulted.
+     *
+     * `closedQtyByIssueLine` stays and is still the cap on over-consumption —
+     * that is arithmetic about material, not about a document's state.
      */
-    const closingLines = await tx.jobIssueLine.findMany({
-      where: {
-        organizationId,
-        // A draft settles nothing, so it closes nothing. Left as an empty read
-        // rather than skipped so the loop below stays one shape.
-        jobIssueId: { in: asDraft ? [] : issues.map((issue) => issue.id) },
-        isDeleted: false,
-      },
-      select: { id: true, jobIssueId: true, qty: true },
-    });
-    const closedByLine = await closedQtyByIssueLine(
-      tx,
-      organizationId,
-      closingLines.map((line) => line.id),
-    );
-
-    const outstandingByIssue = new Map<string, Prisma.Decimal>();
-    for (const line of closingLines) {
-      outstandingByIssue.set(
-        line.jobIssueId,
-        (outstandingByIssue.get(line.jobIssueId) ?? ZERO).plus(
-          line.qty.minus(closedByLine.get(line.id) ?? ZERO),
-        ),
-      );
-    }
-
-    // 🔴 A DRAFT LEAVES THE CHALLANS ALONE. Marking one `closed` or
-    // `partially_received` from a parked receipt would take it off the Receive
-    // screen's open list while the goods were still at the processor — the
-    // challan would look settled by a document that settled nothing.
-    for (const issue of asDraft ? [] : issues) {
-      // A challan with no live lines has nothing outstanding, and closes — which
-      // is what the per-issue loop did when its `findMany` came back empty.
-      const outstanding = outstandingByIssue.get(issue.id) ?? ZERO;
-      await tx.jobIssue.update({
-        where: { id: issue.id },
-        data: { status: outstanding.lessThanOrEqualTo(0) ? 'closed' : 'partially_received' },
-      });
-    }
-
     if (!asDraft) await recomputeStep(tx, organizationId, step.id);
 
     return tx.jobReceipt.findFirstOrThrow({
@@ -2708,12 +2696,10 @@ export async function cancelJobReceipt(
       },
     });
 
-    // The challans this receipt closed are open again.
-    await tx.jobIssue.updateMany({
-      where: { organizationId, jobOrderStepId: receipt.jobOrderStepId, status: 'closed' },
-      data: { status: 'partially_received' },
-    });
-
+    /* Nothing to reopen: a receipt never closed a challan. What a cancellation
+       gives back is the OUTSTANDING quantity, and that is derived from this
+       receipt's own lines — which `closedQtyByIssueLine` stops counting the
+       moment the status here becomes `cancelled`. */
     await recomputeStep(tx, organizationId, receipt.jobOrderStepId);
     return updated;
   });

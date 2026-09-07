@@ -104,8 +104,14 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
     { key: 'short_closed', label: 'Closed Short', where: { status: 'short_closed' } },
   ],
   /**
-   * Issues. The default is **Open** — material that is still at a processor.
-   * That is the list someone actually chases; a closed challan is paperwork.
+   * Issues. The default is every challan that went out.
+   *
+   * 🔴 It was "Open" — `issued` or `partially_received`, i.e. not `closed` —
+   * until challan closing was removed on 2026-09-07. There is no closed state to
+   * exclude any more, so the filter says what it now means. What is still out at
+   * a processor is a LEDGER question (the balance at their location), not a
+   * status one, and this list never answered it accurately anyway: a challan went
+   * `closed` on the paperwork while its goods sat at the dyer.
    */
   job_issue: [
     {
@@ -117,12 +123,11 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
        * is not a convenience: without it a parked challan would be unreachable
        * from this page.
        */
-      label: 'Open Challans',
-      where: { status: { in: ['issued', 'partially_received'] } },
+      label: 'Issued Challans',
+      where: { status: 'issued' },
     },
     { key: 'draft', label: 'Drafts', where: { status: 'draft' } },
     { key: 'all_issues', label: 'All Challans', where: {} },
-    { key: 'closed', label: 'Closed', where: { status: 'closed' } },
     { key: 'rework', label: 'Rework Issues', where: { isRework: true } },
     { key: 'cancelled', label: 'Cancelled', where: { status: 'cancelled' } },
   ],

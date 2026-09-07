@@ -60,19 +60,25 @@ export const JOB_ORDER_STEP_STATUSES = [
 export type JobOrderStepStatus = (typeof JOB_ORDER_STEP_STATUSES)[number];
 
 /**
- * An issue's life. `closed` means everything sent has been accounted for.
+ * A challan's life: parked, sent, or withdrawn. Nothing else.
  *
- * `draft` is the odd one out: every other value is CALC+, derived from what the
- * receipts underneath have accounted for, while this one is chosen — by which
- * button was pressed — and nothing derives its way out of it.
+ * 🔴 `partially_received` and `closed` WERE HERE and were removed on 2026-09-07.
+ * A challan does not need closing — no rule requires it, and the two derived
+ * states were answering a question the ledger already answers better: what is
+ * still at a processor is `SUM(in) − SUM(out)` at their location, per batch,
+ * whatever any document's status column says.
+ *
+ * What ticking a challan on a receipt still does is UNCHANGED, and it is the part
+ * that matters: its lines say which batch at the processor is being drawn down
+ * and by how much, so stock leaves and its cost flows into the output. Only the
+ * status label went — the arithmetic underneath it was never the label's.
+ *
+ * Every value here is now chosen rather than derived — by which button was
+ * pressed, or by a cancellation — so nothing writes this column but the action
+ * that owns it. `scripts/open-challan-statuses.ts` backfilled the rows that were
+ * already carrying the two removed values.
  */
-export const JOB_ISSUE_STATUSES = [
-  'draft',
-  'issued',
-  'partially_received',
-  'closed',
-  'cancelled',
-] as const;
+export const JOB_ISSUE_STATUSES = ['draft', 'issued', 'cancelled'] as const;
 export type JobIssueStatus = (typeof JOB_ISSUE_STATUSES)[number];
 
 /**

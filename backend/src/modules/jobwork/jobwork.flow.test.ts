@@ -718,6 +718,120 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
     );
     expect(isExternalLocation(where.type)).toBe(true);
   });
+
+  /**
+   * 🔴 A CHALLAN IS NEVER CLOSED (2026-09-07). It is `draft`, `issued` or
+   * `cancelled`, and a receipt does not touch it.
+   *
+   * What ticking a challan still does is the half that matters, and this pins
+   * both halves apart: the material is drawn down from the processor exactly as
+   * before, while the status stays put. The Receive picker stops offering a
+   * challan by asking whether anything is still OUTSTANDING on it — derived from
+   * the receipts, not read off a column — which is what `closed` used to do less
+   * accurately: a cancellation reopened every closed challan on the step,
+   * including ones it had nothing to do with, and they stayed wrong.
+   */
+  it('accounts for a challan without closing it, and stops offering it when nothing is left', async () => {
+    const process = await createNewProcess(orgId, { name: `No-closing ${unique()}` });
+    const batch = await seedStock(greyId, 100);
+    const jobOrder = await createNewJobOrder(orgId, {
+      steps: [
+        {
+          processId: process.id,
+          processorId: dyerId,
+          inputs: [{ itemId: greyId, plannedQty: 100 }],
+          outputs: [{ itemId: dyedId, isPrimary: true }],
+        },
+      ],
+    });
+    const stepId = jobOrder.steps[0]!.id;
+
+    const issue = await createNewJobIssue(orgId, {
+      jobOrderStepId: stepId,
+      sourceLocationId: godownId,
+      lines: [{ batchId: batch.id, qty: 100 }],
+    });
+
+    /* 🔴 Scoped to THIS test's batch, not to the dyer's location. Every test in
+       this block ships to the same dyer, so the location holds their material
+       too — asserting a location total here reads as this test's 100 one day and
+       300 the next, depending on what ran before it. The batch is fresh from
+       `seedStock`, so its position is unambiguously ours. */
+    const atDyer = () =>
+      runAsTenant(orgId, (tx) =>
+        getBalance(tx, {
+          organizationId: orgId,
+          batchId: batch.id,
+          locationId: issue.destinationLocationId,
+        }),
+      ).then((b) => b.qty.toString());
+
+    expect(await atDyer()).toBe('100');
+
+    // Half of it back. The challan still has 40 out, so it stays on offer…
+    await createNewJobReceipt(orgId, {
+      jobOrderStepId: stepId,
+      issueIds: [issue.id],
+      locationId: godownId,
+      lines: [{ itemId: greyId, issuedQty: 60, receivedQty: 60, acceptedQty: 60 }],
+      outputs: [
+        {
+          itemId: dyedId,
+          isPrimary: true,
+          receivedQty: 60,
+          acceptedQty: 60,
+          batchReference: `DYE-${unique()}`,
+        },
+      ],
+    });
+    const midway = await runAsTenant(orgId, (tx) =>
+      tx.jobIssue.findFirstOrThrow({ where: { id: issue.id, organizationId: orgId } }),
+    );
+    expect(midway.status).toBe('issued');
+    expect((await getReceivePrefill(orgId, stepId)).issues.map((i) => i.id)).toContain(issue.id);
+
+    // …and the consumption really happened: 60 gone from the processor.
+    expect(await atDyer()).toBe('40');
+
+    // The rest. Still `issued` — nothing closes it — but nothing is outstanding,
+    // so the picker drops it.
+    await createNewJobReceipt(orgId, {
+      jobOrderStepId: stepId,
+      issueIds: [issue.id],
+      locationId: godownId,
+      lines: [{ itemId: greyId, issuedQty: 40, receivedQty: 40, acceptedQty: 40 }],
+      outputs: [
+        {
+          itemId: dyedId,
+          isPrimary: true,
+          receivedQty: 40,
+          acceptedQty: 40,
+          batchReference: `DYE-${unique()}`,
+        },
+      ],
+    });
+    const settled = await runAsTenant(orgId, (tx) =>
+      tx.jobIssue.findFirstOrThrow({ where: { id: issue.id, organizationId: orgId } }),
+    );
+    expect(settled.status).toBe('issued');
+    expect((await getReceivePrefill(orgId, stepId)).issues.map((i) => i.id)).not.toContain(
+      issue.id,
+    );
+
+    expect(await atDyer()).toBe('0');
+
+    // 🔴 And the cap the challan still carries: it has nothing left to account
+    // for, so a third receipt against it is refused.
+    await expect(
+      createNewJobReceipt(orgId, {
+        jobOrderStepId: stepId,
+        issueIds: [issue.id],
+        locationId: godownId,
+        lines: [{ itemId: greyId, issuedQty: 10, receivedQty: 10, acceptedQty: 10 }],
+        outputs: [{ itemId: dyedId, isPrimary: true, receivedQty: 10, acceptedQty: 10 }],
+      }),
+    ).rejects.toBeTruthy();
+  });
 });
 
 /**
