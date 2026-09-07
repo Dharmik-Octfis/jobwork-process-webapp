@@ -334,6 +334,25 @@ export function overPlanWarning(
 }
 
 /**
+ * 🔴 LOCATION TYPES WHERE THE STOCK IS STILL AWAY FROM US — the client's copy of
+ * the server's `EXTERNAL_LOCATION_TYPES` (`backend/.../jobwork.types.ts`), which
+ * stays the source of truth: the server refuses a receipt into one of these
+ * (`assertReceivableLocation`) and computes the `isExternal` flag the batch
+ * breakdown renders.
+ *
+ * It exists here for the one thing a server answer cannot do — keep the option
+ * off the Received-into dropdown in the first place, so nobody types a whole
+ * receipt against a location that will be refused. Widen it here only alongside
+ * the server list; a screen that draws this line differently from the ledger is
+ * how "in stock" comes to mean two things.
+ */
+export const EXTERNAL_LOCATION_TYPES: readonly string[] = [
+  'processor',
+  'in_transit',
+  'customer_site',
+];
+
+/**
  * 🔴 WHICH OUTPUT CARRIES THE STEP'S COST — the client's copy of the server's
  * `flagPrimaryOutput` (§9.2.1).
  *

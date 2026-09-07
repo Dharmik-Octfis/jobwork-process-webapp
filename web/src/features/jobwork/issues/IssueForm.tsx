@@ -16,6 +16,7 @@ import {
   type AvailableBatch,
 } from '../batches/batches.api';
 import { formatQty, toNumber } from '../jobwork.schemas';
+import { invalidateStockQueries } from '../stockCache';
 import type { JobOrder, OverviewStep } from '../job-orders/jobOrders.schemas';
 import { createJobIssue, updateJobIssue } from './jobIssues.api';
 import type { JobIssue, JobIssueLineData } from './jobIssues.schemas';
@@ -594,7 +595,8 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
       seededItems.current.add(input.itemId);
 
       if (!input.isBatchTracked) {
-        const toBeIssued = input.plannedQty === null ? Infinity : Math.max(0, input.plannedQty - input.issuedQty);
+        const toBeIssued =
+          input.plannedQty === null ? Infinity : Math.max(0, input.plannedQty - input.issuedQty);
         if (toBeIssued <= 0) return;
         const available = offered.reduce((sum, row) => sum + toNumber(row.availableQty), 0);
         const qty = Math.min(toBeIssued, available);
@@ -836,10 +838,10 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
       if (draft) {
         queryClient.invalidateQueries({ queryKey: ['job-issue', orgId, draft.id] });
       }
-      queryClient.invalidateQueries({ queryKey: ['available-batches', orgId] });
       // Balances at every location just moved, and the coverage labels are read
-      // off them — without this the next challan is planned against stale figures.
-      queryClient.invalidateQueries({ queryKey: ['stock-locations', orgId] });
+      // off them — without this the next challan is planned against stale figures,
+      // and the Item page's Stock Locations tab keeps its pre-challan numbers.
+      invalidateStockQueries(queryClient, orgId);
       onIssued();
 
       /**

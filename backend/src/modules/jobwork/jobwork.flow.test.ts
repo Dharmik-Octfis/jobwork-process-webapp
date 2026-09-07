@@ -6,7 +6,7 @@ import {
   getBalance,
   postMovement,
 } from '../inventory/stock-ledger/stockLedger.service.ts';
-import { SOURCE_DOC_TYPES, runAsDocument } from './jobwork.types.ts';
+import { SOURCE_DOC_TYPES, isExternalLocation, runAsDocument } from './jobwork.types.ts';
 import { createNewProcess } from './processes/processes.service.ts';
 import { createNewRoute, updateRouteById } from './process-routes/processRoutes.service.ts';
 import {
@@ -604,6 +604,119 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
         lines: [{ issuedQty: 100, receivedQty: 90, acceptedQty: 80 }],
       }),
     ).rejects.toBeTruthy();
+  });
+
+  /**
+   * 🔴 WHERE A RECEIPT MAY LAND ITS GOODS — the two answers, and the line between
+   * them (`docs/JOBWORK_DISPATCH_ONWARD_PLAN.md`).
+   *
+   * A godown of ours is the ordinary one. The other is the shed the challans are
+   * ALREADY STANDING IN: the dyeing is done but nothing has been collected, and
+   * writing the cloth into a warehouse it is not in is a lie the ageing report
+   * then repeats. Nothing moved, so nothing needs a document.
+   *
+   * An unrelated processor is the case that stays refused, and it is a different
+   * claim entirely — it asserts a transfer between two premises with no challan
+   * behind it. On 2026-09-07 a lost filter in `ReceiveForm` did exactly that:
+   * JR-00023 recorded five bags of finished cloth at a jobworker who had done no
+   * work on them.
+   */
+  it('lands goods at the processor they are already standing at, but never at another', async () => {
+    const process = await createNewProcess(orgId, { name: `Receive-into ${unique()}` });
+    const batch = await seedStock(greyId, 100);
+    const jobOrder = await createNewJobOrder(orgId, {
+      steps: [
+        {
+          processId: process.id,
+          processorId: dyerId,
+          inputs: [{ itemId: greyId, plannedQty: 100 }],
+          outputs: [{ itemId: dyedId, isPrimary: true }],
+        },
+      ],
+    });
+    const stepId = jobOrder.steps[0]!.id;
+
+    const issue = await createNewJobIssue(orgId, {
+      jobOrderStepId: stepId,
+      sourceLocationId: godownId,
+      lines: [{ batchId: batch.id, qty: 100 }],
+    });
+
+    // Both processors' own locations, auto-provisioned by the challans that went
+    // to them. `atDyer` is where this step's goods are; `atCutter` is a jobworker
+    // with no part in it.
+    const atDyer = await runAsTenant(orgId, (tx) =>
+      tx.jobIssue
+        .findFirstOrThrow({
+          where: { id: issue.id, organizationId: orgId },
+          select: { destinationLocationId: true },
+        })
+        .then((row) => row.destinationLocationId),
+    );
+    const atCutter = await runAsTenant(orgId, (tx) =>
+      tx.location
+        .create({
+          data: {
+            organizationId: orgId,
+            name: `Unrelated cutter ${unique()}`,
+            type: 'processor',
+            vendorId: cutterId,
+          },
+          select: { id: true },
+        })
+        .then((row) => row.id),
+    );
+
+    const receipt = (locationId: string) => ({
+      jobOrderStepId: stepId,
+      issueIds: [issue.id],
+      locationId,
+      lines: [{ itemId: greyId, issuedQty: 100, receivedQty: 100, acceptedQty: 100 }],
+      outputs: [
+        {
+          itemId: dyedId,
+          isPrimary: true,
+          receivedQty: 100,
+          acceptedQty: 100,
+          batchReference: `DYE-${unique()}`,
+        },
+      ],
+    });
+
+    // 🔴 Refused, in both modes: a draft naming a location the post can only
+    // reject is a document parked with a fault in it.
+    await expect(createNewJobReceipt(orgId, receipt(atCutter))).rejects.toThrow(/not where these/);
+    await expect(createNewJobReceipt(orgId, receipt(atCutter), undefined, 'draft')).rejects.toThrow(
+      /not where these/,
+    );
+
+    /* Deltas, not absolutes: this describe block shares one dyer, and its rework
+       challans put dyed fabric at that same location. What this test owns is the
+       change its own receipt made. */
+    const dyedAt = (locationId: string) =>
+      runAsTenant(orgId, (tx) =>
+        getBalance(tx, { organizationId: orgId, itemId: dyedId, locationId }),
+      ).then((b) => b.qty);
+    const beforeAtDyer = await dyedAt(atDyer);
+    const beforeAtGodown = await dyedAt(godownId);
+
+    // 🔴 Allowed — and the output stands at the dyer's, where it physically is.
+    const posted = await createNewJobReceipt(orgId, receipt(atDyer));
+    expect(posted.status).toBe('posted');
+
+    expect((await dyedAt(atDyer)).minus(beforeAtDyer).toString()).toBe('100');
+    // Not a metre of it in our godown — which is the whole point of saying so.
+    expect((await dyedAt(godownId)).minus(beforeAtGodown).toString()).toBe('0');
+
+    // …and the ledger still calls it external, so the ageing report keeps
+    // counting it as out and the 180/365-day clock goes on running.
+    const where = await runAsTenant(orgId, (tx) =>
+      tx.location.findFirstOrThrow({
+        where: { id: atDyer, organizationId: orgId },
+        select: { type: true },
+      }),
+    );
+    expect(isExternalLocation(where.type)).toBe(true);
   });
 });
 

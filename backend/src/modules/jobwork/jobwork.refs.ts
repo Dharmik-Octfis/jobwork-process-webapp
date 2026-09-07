@@ -1,6 +1,6 @@
 import type { TenantClient } from '../../db/prisma.ts';
 import { ApiError } from '../../lib/apiError.ts';
-import type { ProcessorType } from './jobwork.types.ts';
+import { isExternalLocation, type ProcessorType } from './jobwork.types.ts';
 
 /**
  * "Does this id belong to this organization?" — asked once, in one place.
@@ -82,6 +82,57 @@ export async function assertLocationsBelongToOrg(
     select: { id: true },
   });
   if (found.length !== ask.length) throw ApiError.badRequest('Unknown location.');
+}
+
+/**
+ * Where a receipt may land its goods: somewhere WE hold — or the one shed the
+ * goods are already standing in.
+ *
+ * 🔴 TWO PERMITTED ANSWERS, AND THE SECOND ONE IS NOT A LOCATION THE CLIENT PICKS.
+ *
+ *   · any non-external location — a godown of ours (the ordinary receipt);
+ *   · `processorLocationId`, the destination of the CHALLANS THIS RECEIPT CLOSES
+ *     — "it never came back" (dispatch onward, `docs/JOBWORK_DISPATCH_ONWARD_PLAN.md`).
+ *
+ * The difference between the two external cases is whether anything MOVED.
+ * Landing goods at the processor who did the work claims no movement at all —
+ * they are where the challan put them, and where this same receipt posts its
+ * `consume` rows. Landing them at an unrelated processor asserts a transfer
+ * between two premises with no document behind it: on 2026-09-07 a lost filter in
+ * `ReceiveForm` did exactly that, and JR-00023 recorded five bags of finished
+ * cloth at a jobworker who had done no work on them and held no challan for them.
+ *
+ * `processorLocationId` is derived by the caller from the challans and is already
+ * proved single (`jobReceipts.service.ts` refuses to receive challans standing at
+ * two locations on one document), so this cannot be widened by a hand-made
+ * payload — the permitted set is one godown list plus one id the server computed.
+ *
+ * Nothing is stored to mark the difference. `isExternalLocation` IS the answer to
+ * "did these come back?", so the ageing report and the 180/365-day GST clock stay
+ * right by construction; a flag beside it would be a second answer free to
+ * disagree with the ledger.
+ */
+export async function assertReceivableLocation(
+  tx: TenantClient,
+  organizationId: string,
+  locationId: string,
+  processorLocationId: string | null,
+) {
+  const location = await tx.location.findFirst({
+    where: { id: locationId, organizationId, isDeleted: false },
+    select: { name: true, type: true },
+  });
+  if (!location) throw ApiError.badRequest('Unknown location.');
+  if (!isExternalLocation(location.type)) return;
+  if (locationId === processorLocationId) return;
+
+  throw new ApiError(
+    400,
+    `${location.name} is a ${location.type.replace(/_/g, ' ')} location and is not where these ` +
+      'goods are, so nothing here records how they got there. Receive them into one of your own ' +
+      'godowns, or leave them with the processor who did the work and send them on with a challan.',
+    { locationId: 'Not one of your own godowns.' },
+  );
 }
 
 /**

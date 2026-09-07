@@ -7,7 +7,14 @@ import { Spinner } from '../../../components/ui/Spinner';
 import { formatDate } from '../../../lib/formatDate';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
-import { RECEIPT_STATUS_META, formatQty, statusMeta, toNumber } from '../jobwork.schemas';
+import {
+  EXTERNAL_LOCATION_TYPES,
+  RECEIPT_STATUS_META,
+  formatQty,
+  statusMeta,
+  toNumber,
+} from '../jobwork.schemas';
+import { invalidateStockQueries } from '../stockCache';
 import {
   cancelJobReceipt,
   deleteJobReceipt,
@@ -133,6 +140,9 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
       queryClient.invalidateQueries({ queryKey: ['job-receipts', orgId], type: 'inactive' });
       queryClient.invalidateQueries({ queryKey: ['job-receipt', orgId, receiptId] });
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
+      // A cancellation posts the reversing ledger rows — the goods went back to
+      // the processor, so every balance on screen has just changed.
+      invalidateStockQueries(queryClient, orgId);
       setCancelOpen(false);
       setCancelReason('');
     },
@@ -156,7 +166,8 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
       queryClient.invalidateQueries({ queryKey: ['job-receipt', orgId, receiptId] });
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
-      queryClient.invalidateQueries({ queryKey: ['available-batches', orgId] });
+      // The goods just landed in a godown — every stock figure on screen is stale.
+      invalidateStockQueries(queryClient, orgId);
       setError(null);
     },
     onError: (err: { response?: { data?: { message?: string } } }) => {
@@ -397,7 +408,28 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
                   returns several items, and naming only the first here was the
                   header pretending to describe all of them. */}
                 <td style={rowLabel}>Received into</td>
-                <td style={rowValue}>{receipt.location?.name ?? '-'}</td>
+                <td style={rowValue}>
+                  {receipt.location?.name ?? '-'}
+                  {/* 🔴 An external location means the goods NEVER CAME BACK
+                      (dispatch onward). Without this the row reads exactly like a
+                      receipt into your own godown, and the difference is whether
+                      the 180/365-day clock is still running on them. */}
+                  {EXTERNAL_LOCATION_TYPES.includes(receipt.location?.type ?? '') && (
+                    <span
+                      style={{
+                        marginLeft: 8,
+                        padding: '2px 8px',
+                        borderRadius: 10,
+                        fontSize: 11,
+                        fontWeight: 500,
+                        color: '#b45309',
+                        background: '#fef3c7',
+                      }}
+                    >
+                      Still out — not returned
+                    </span>
+                  )}
+                </td>
               </tr>
               <tr>
                 {/*

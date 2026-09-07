@@ -92,16 +92,25 @@ WHERE organization_id = :tenantId      -- plus runAsTenant
 
 …and then the domain filter, which is what actually matters:
 
-| Lookup             | Domain filter                                         |
-| ------------------ | ----------------------------------------------------- |
-| Processor          | `vendorTypes @> ['job_worker'] AND status = 'active'` |
-| Broker             | `vendorTypes @> ['broker']`                           |
-| Transporter        | `vendorTypes @> ['transporter']`                      |
-| Material supplier  | `vendorTypes @> ['material_supplier']`                |
-| Source location    | `type IN ('godown','shopfloor')`                      |
-| Processor location | `type = 'processor' AND vendorId = :selectedVendor`   |
-| Item (issue)       | `isDeleted = false AND isActive = true`               |
-| UoM                | org's UoM list                                        |
+| Lookup             | Domain filter                                                                                       |
+| ------------------ | --------------------------------------------------------------------------------------------------- |
+| Processor          | `vendorTypes @> ['job_worker'] AND status = 'active'`                                               |
+| Broker             | `vendorTypes @> ['broker']`                                                                         |
+| Transporter        | `vendorTypes @> ['transporter']`                                                                    |
+| Material supplier  | `vendorTypes @> ['material_supplier']`                                                              |
+| Source location    | every location the LEDGER holds the item at, less the one it is going to                            |
+| Receive-into       | `type NOT IN ('processor','in_transit','customer_site')`, plus the picked challans' own destination |
+| Processor location | `type = 'processor' AND vendorId = :selectedVendor`                                                 |
+| Item (issue)       | `isDeleted = false AND isActive = true`                                                             |
+| UoM                | org's UoM list                                                                                      |
+
+🔴 **Neither location row is a plain type filter, and both were written as one first.** The source
+list is not restricted to godowns: goods at a processor are our stock at their location (§5.4), so
+processor-to-processor is a real move and only the _destination_ is dropped from the list
+(`batches.service.ts`). The receive list is the mirror image — goods come back into a place we hold —
+with the one exception that the goods may not have come back at all, which is the dispatch-onward
+option in `JOBWORK_DISPATCH_ONWARD_PLAN.md`. A type filter alone gets each of them wrong in a
+different direction.
 
 **Soft-deleted rows must not appear in a picker but must still render on documents that already
 reference them.** A vendor deleted today cannot be chosen on a new challan, and must still show its

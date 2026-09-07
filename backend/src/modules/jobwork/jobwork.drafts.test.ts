@@ -19,6 +19,7 @@ import {
   createNewJobReceipt,
   deleteJobReceiptDraft,
   getReceivePrefill,
+  postJobReceiptDraft,
 } from './receipts/jobReceipts.service.ts';
 import { chainNotReady, getStepTotals } from './job-orders/jobOrders.status.ts';
 import type { ProcessorType } from './jobwork.types.ts';
@@ -532,5 +533,61 @@ describe('a draft receipt affects nothing', { timeout: 120_000 }, () => {
       tx.jobReceiptOutput.count({ where: { organizationId: orgId, jobReceiptId: draft.id } }),
     );
     expect(outputs).toBe(0);
+  });
+
+  /**
+   * 🔴 A RECEIPT THAT ACCOUNTS FOR NOTHING MINTS STOCK, and a draft is the way in.
+   *
+   * `produce` creates stock; `consume` is what that stock is made of. A posted
+   * receipt with no challan behind it writes only the first half, so goods appear
+   * with no material under them and every valuation downstream costs something out
+   * of thin air.
+   *
+   * The route schema asks this question, and the draft-post path does not go
+   * through it: `postJobReceiptDraft` calls the service directly. So the guard
+   * lives in the service, and this pins it — it was removed on 2026-09-04 and two
+   * receipts (JR-00019, JR-00020) posted 90 shirts against nothing before it was
+   * put back on 2026-09-07. Both had to be cancelled by hand.
+   */
+  it('refuses to post a draft receipt that accounts for no challan', async () => {
+    const { step1 } = await makeOrder();
+
+    // A draft may be this incomplete — that is what a draft is for.
+    const draft = await createNewJobReceipt(
+      orgId,
+      {
+        jobOrderStepId: step1.id,
+        issueIds: [],
+        locationId: godownId,
+        lines: [],
+        outputs: [{ itemId: dyedId, isPrimary: true, receivedQty: 30, acceptedQty: 30 }],
+      },
+      undefined,
+      'draft',
+    );
+    expect(draft.status).toBe('draft');
+    expect(await ledgerRowsFor(SOURCE_DOC_TYPES.jobReceipt, draft.id)).toBe(0);
+
+    // Posting it is refused, and the message names the field to go and fill in.
+    await expect(postJobReceiptDraft(orgId, draft.id)).rejects.toThrow(/which challan/);
+
+    // 🔴 Still a draft, and not one shirt on the books.
+    const after = await runAsTenant(orgId, (tx) =>
+      tx.jobReceipt.findFirstOrThrow({ where: { id: draft.id, organizationId: orgId } }),
+    );
+    expect(after.status).toBe('draft');
+    expect(await ledgerRowsFor(SOURCE_DOC_TYPES.jobReceipt, draft.id)).toBe(0);
+
+    // …and the same is refused on the direct path, which is where a hand-made
+    // payload would arrive.
+    await expect(
+      createNewJobReceipt(orgId, {
+        jobOrderStepId: step1.id,
+        issueIds: [],
+        locationId: godownId,
+        lines: [],
+        outputs: [{ itemId: dyedId, isPrimary: true, receivedQty: 30, acceptedQty: 30 }],
+      }),
+    ).rejects.toThrow(/how much of the issued material/);
   });
 });

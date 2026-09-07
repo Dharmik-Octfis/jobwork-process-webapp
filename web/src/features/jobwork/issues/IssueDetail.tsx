@@ -7,6 +7,7 @@ import { Spinner } from '../../../components/ui/Spinner';
 import { formatDate } from '../../../lib/formatDate';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { ISSUE_STATUS_META, formatQty, sharedUnit, statusMeta, toNumber } from '../jobwork.schemas';
+import { invalidateStockQueries } from '../stockCache';
 import { cancelJobIssue, deleteJobIssue, fetchJobIssueById, postJobIssue } from './jobIssues.api';
 import { printChallan } from './printChallan';
 import type { JobIssue, JobIssuesPage } from './jobIssues.schemas';
@@ -76,6 +77,9 @@ export function IssueDetail({ issueId, onClose }: Props) {
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId], type: 'inactive' });
       queryClient.invalidateQueries({ queryKey: ['job-issue', orgId, issueId] });
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
+      // A cancellation posts the reversing ledger rows, so the stock came BACK —
+      // every balance on screen is as stale as it is after an issue.
+      invalidateStockQueries(queryClient, orgId);
       setCancelOpen(false);
       setCancelReason('');
     },
@@ -98,8 +102,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
       queryClient.invalidateQueries({ queryKey: ['job-issue', orgId, issueId] });
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
       // The stock behind it has just moved, so anything valuing or listing it is stale.
-      queryClient.invalidateQueries({ queryKey: ['available-batches', orgId] });
-      queryClient.invalidateQueries({ queryKey: ['stock-locations', orgId] });
+      invalidateStockQueries(queryClient, orgId);
       setError(null);
     },
     onError: (err: { response?: { data?: { message?: string } } }) => {

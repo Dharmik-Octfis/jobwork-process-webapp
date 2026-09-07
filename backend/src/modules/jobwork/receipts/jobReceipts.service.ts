@@ -23,7 +23,7 @@ import {
 } from '../../inventory/stock-ledger/stockLedger.service.ts';
 import {
   assertItemsBelongToOrg,
-  assertLocationsBelongToOrg,
+  assertReceivableLocation,
   assertUomsBelongToOrg,
 } from '../jobwork.refs.ts';
 import {
@@ -92,7 +92,10 @@ const RECEIPT_INCLUDE = {
       rateBasis: true,
     },
   },
-  location: { select: { id: true, name: true } },
+  // `type` rides along so the document can say the goods never came back — a
+  // receipt into an external location is the dispatch-onward case, and it must
+  // not read like an ordinary one.
+  location: { select: { id: true, name: true, type: true } },
   outputBatch: { select: { id: true, supplierBatchRef: true } },
   reworkBatch: { select: { id: true, supplierBatchRef: true } },
   /** The CONSUMPTION record — one row per challan line this receipt closes. */
@@ -110,7 +113,9 @@ const RECEIPT_INCLUDE = {
     where: { isDeleted: false },
     orderBy: { seq: 'asc' },
     include: {
-      item: { select: { id: true, name: true, sku: true, itemType: true, inventoryTracking: true } },
+      item: {
+        select: { id: true, name: true, sku: true, itemType: true, inventoryTracking: true },
+      },
       uom: { select: { id: true, unitName: true, symbol: true } },
       reason: { select: { id: true, name: true } },
       outputBatch: { select: { id: true, supplierBatchRef: true } },
@@ -313,6 +318,10 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
       },
       orderBy: { issueDate: 'asc' },
       include: {
+        // Where these goods are standing. The dialog needs it to offer "they
+        // stayed there" as a receive-into option — the one external location a
+        // receipt may name, and only because the challan itself put them there.
+        destination: { select: { id: true, name: true } },
         lines: {
           where: { isDeleted: false },
           include: {
@@ -365,6 +374,12 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
         totalQty: issue.totalQty.toString(),
         isRework: issue.isRework,
         attemptNo: issue.attemptNo,
+        // Who is holding it and where. Both are per challan because the dialog
+        // only offers "they stayed there" once the picked challans agree — which
+        // is the same condition the save enforces.
+        processorName: issue.processorNameSnapshot,
+        destinationLocationId: issue.destinationLocationId,
+        destinationName: issue.destination?.name ?? null,
       })),
       lines: rows,
       /**
@@ -1507,7 +1522,6 @@ export async function createNewJobReceipt(
     if (!step) throw ApiError.notFound('Job order step not found');
     if (step.jobOrder.isDeleted) throw ApiError.notFound('Job order not found');
 
-    await assertLocationsBelongToOrg(tx, organizationId, [header.locationId]);
     await assertItemsBelongToOrg(tx, organizationId, [header.outputItemId]);
     await assertUomsBelongToOrg(tx, organizationId, [header.outputUomId]);
 
@@ -1555,6 +1569,12 @@ export async function createNewJobReceipt(
     }
     const processorLocationId = issues[0]?.destinationLocationId ?? null;
 
+    // Somewhere we hold, or the one shed these very challans are standing in —
+    // asked here rather than above because the second answer is `processorLocationId`,
+    // which the challans decide. Asked for a draft too: a draft naming a location
+    // the post will refuse is a document parked with a fault in it.
+    await assertReceivableLocation(tx, organizationId, header.locationId, processorLocationId);
+
     // Copied from the process, never taken from the request.
 
     /**
@@ -1587,7 +1607,28 @@ export async function createNewJobReceipt(
       { issued: ZERO, received: ZERO, accepted: ZERO, rework: ZERO, scrap: ZERO, returned: ZERO },
     );
 
-
+    /**
+     * 🔴 A POSTED RECEIPT MUST ACCOUNT FOR MATERIAL THAT WENT OUT.
+     *
+     * Its `produce` rows create stock; its `consume` rows are what that stock is
+     * made of. A receipt accounting for nothing posts only the first half, so
+     * goods appear at a location with no material behind them and every valuation
+     * downstream is costing something out of thin air.
+     *
+     * Removed on 2026-09-04 (`fd2ddfe`) and restored 2026-09-07, because it was
+     * not theoretical: JR-00019 and JR-00020 each posted a single `produce` row
+     * for 30 and 60 shirts against no challan at all, and both had to be
+     * cancelled. The route schema asks the same question
+     * (`createJobReceiptSchema.superRefine`), but the draft-post path never goes
+     * through it — `postJobReceiptDraft` calls this function directly — so the
+     * schema alone left the hole open.
+     *
+     * A DRAFT is exempt, as it is from every other completeness rule: the whole
+     * point is parking a half-typed form.
+     */
+    if (!asDraft && totals.issued.lessThanOrEqualTo(0)) {
+      throw ApiError.badRequest('Say how much of the issued material this receipt accounts for.');
+    }
 
     /**
      * 🔴 THE SUM CHECK, ENFORCED HERE AND NOT ONLY IN THE SCHEMA.
@@ -2365,7 +2406,24 @@ export async function postJobReceiptDraft(organizationId: string, id: string, us
     ...new Set(draft.lines.flatMap((line) => (line.jobIssueId ? [line.jobIssueId] : []))),
   ];
 
-
+  /**
+   * 🔴 A draft with no challan on it cannot be posted.
+   *
+   * `createNewJobReceipt` refuses it too — nothing was issued, so there is nothing
+   * for the receipt to account for — but only after resolving the step, the
+   * outputs and the batches, and the message it lands on describes an arithmetic
+   * failure rather than the missing field. Said here, it names the one thing to
+   * go and do.
+   *
+   * Restored 2026-09-07 with the check inside that function; it was removed on
+   * 2026-09-04 (`fd2ddfe`) and JR-00019 / JR-00020 went through the gap, minting
+   * 90 shirts against no material at all.
+   */
+  if (issueIds.length === 0) {
+    throw ApiError.badRequest(
+      'This draft does not say which challan it accounts for. Open it and pick the challan first.',
+    );
+  }
 
   return createNewJobReceipt(
     organizationId,

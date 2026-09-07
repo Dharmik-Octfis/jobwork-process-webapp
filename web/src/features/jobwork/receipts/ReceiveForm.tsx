@@ -9,7 +9,8 @@ import { SplitButton } from '../../../components/ui/SplitButton';
 import { fetchLocations } from '../../configuration/locations/locations.api';
 import { fetchStockLocations } from '../batches/batches.api';
 import { itemsApi } from '../../items/items.api';
-import { formatQty, toNumber } from '../jobwork.schemas';
+import { EXTERNAL_LOCATION_TYPES, formatQty, toNumber } from '../jobwork.schemas';
+import { invalidateStockQueries } from '../stockCache';
 import type { JobOrder, OverviewStep } from '../job-orders/jobOrders.schemas';
 import {
   createJobReceipt,
@@ -308,6 +309,9 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
    * them posts the stock as still away from us, and "what is lying with
    * processors" then reads as if the delivery never arrived.
    *
+   * ONE exception, and it is not this list: the shed the picked challans are
+   * already standing in — see `stayedThere` below.
+   *
    * Deliberately NOT widened to every location when this comes back empty: the
    * honest answer is to say which of the two reasons it is (see the note under
    * the field) rather than to offer the dyer's own shed as somewhere to receive
@@ -321,7 +325,55 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
     }
     return [...byId.values()];
   }, [locations, stockLocations]);
-  const godowns = knownLocations;
+
+  /**
+   * 🔴 The filter the comment above describes. It was missing until 2026-09-07 —
+   * `godowns` was `knownLocations` outright — so the dropdown offered every
+   * jobworker's shed and, defaulting to the first row, quietly landed JR-00023's
+   * finished cloth at ABC LLP. The server refuses it now too
+   * (`assertReceivableLocation`); this is what keeps the wrong option off screen
+   * rather than 400ing after the operator has typed the whole receipt.
+   */
+  const godowns = useMemo(
+    () => knownLocations.filter((l) => !EXTERNAL_LOCATION_TYPES.includes(l.type)),
+    [knownLocations],
+  );
+
+  /**
+   * 🔴 DISPATCH ONWARD — "the goods never came back" as an explicit choice
+   * (`docs/JOBWORK_DISPATCH_ONWARD_PLAN.md`).
+   *
+   * The dyeing is finished but the cloth has not been collected: it is standing
+   * at the dyer's, either awaiting collection or going straight on to the next
+   * jobworker under a Rule 45 endorsement. Writing it into a godown it is not in
+   * is a lie the ageing report then repeats, so this offers the truth instead —
+   * ONE named option, never the processor list back again.
+   *
+   * `null` while the picked challans disagree about where they are, which is the
+   * same condition the server refuses on save: two sheds, no single answer.
+   */
+  const stayedThere = useMemo(() => {
+    const picked = (prefill?.issues ?? []).filter((i) => pickedIssueIds.includes(i.id));
+    if (picked.length === 0) return null;
+    const first = picked[0]!;
+    if (picked.some((i) => i.destinationLocationId !== first.destinationLocationId)) return null;
+    // A step run in-house returns to a work centre, which is already a location we
+    // hold — it is in `godowns`, and offering it twice would read as two places.
+    if (godowns.some((l) => l.id === first.destinationLocationId)) return null;
+    return {
+      id: first.destinationLocationId,
+      label: `Stays with ${first.processorName ?? first.destinationName ?? 'the processor'} — not collected yet`,
+    };
+  }, [prefill, pickedIssueIds, godowns]);
+
+  /** What the field may hold: our godowns, plus that one option when it applies. */
+  const receiveInto = useMemo(
+    () => [
+      ...godowns.map((l) => ({ value: l.id, label: l.name })),
+      ...(stayedThere ? [{ value: stayedThere.id, label: stayedThere.label }] : []),
+    ],
+    [godowns, stayedThere],
+  );
 
   const { data: itemsPage } = useQuery({
     queryKey: ['items', orgId, 'receive'],
@@ -340,7 +392,15 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
 
   // Checked challans. By default, none are checked (unlike before where all were).
   const selectedIssueIds = pickedIssueIds;
-  const effectiveLocationId = locationId || (godowns[0]?.id ?? '');
+  /* A draft saved before the filter came back may name an unrelated processor's
+     location. Ignoring it rather than carrying it forward keeps the field honest —
+     held as a hidden value it is not in the dropdown, so the operator sees a blank
+     box and is refused by the server on save.
+
+     🔴 The fallback is a GODOWN, never `stayedThere`. "It never came back" is a
+     fact somebody states, not one a default states for them. */
+  const effectiveLocationId =
+    (receiveInto.some((o) => o.value === locationId) ? locationId : '') || (godowns[0]?.id ?? '');
 
   /**
    * WHAT IS STILL OUT, per item — the raw figure, before this receipt decides
@@ -433,8 +493,16 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
         itemId: output.itemId,
         itemName: output.itemName,
         unit: output.uomSymbol ?? '',
-        receivedQty: row ? toNumber(row.receivedQty) : (output.expectedQty ? toNumber(output.expectedQty) : 0),
-        acceptedQty: row ? toNumber(row.acceptedQty) : (output.expectedQty ? toNumber(output.expectedQty) : 0),
+        receivedQty: row
+          ? toNumber(row.receivedQty)
+          : output.expectedQty
+            ? toNumber(output.expectedQty)
+            : 0,
+        acceptedQty: row
+          ? toNumber(row.acceptedQty)
+          : output.expectedQty
+            ? toNumber(output.expectedQty)
+            : 0,
         reworkQty: row ? toNumber(row.reworkQty) : 0,
         // Always zero. This form never sends anything else — goods refused at the
         // gate never entered stock — so there is nothing to restore.
@@ -737,7 +805,9 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, jobOrder.id] });
       queryClient.invalidateQueries({ queryKey: ['job-receipts', orgId] });
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
-      queryClient.invalidateQueries({ queryKey: ['available-batches', orgId] });
+      // The goods just landed in a godown, under batches this receipt may have
+      // created — the pickers, the location balances and the Item page all move.
+      invalidateStockQueries(queryClient, orgId);
       if (draft?.id) {
         queryClient.invalidateQueries({ queryKey: ['job-receipt', orgId, draft.id] });
       }
@@ -770,9 +840,7 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
    * — a draft cannot carry a batch it is creating anyway, so demanding one would
    * make the button permanently dead on the commonest receipt there is.
    */
-  const canSaveDraft =
-    Boolean(effectiveLocationId) &&
-    !mutation.isPending;
+  const canSaveDraft = Boolean(effectiveLocationId) && !mutation.isPending;
 
   const updateReturned = (key: string, patch: Partial<ReturnedRow>) =>
     setReturnedEdits(
@@ -925,19 +993,27 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                 <Select
                   value={effectiveLocationId}
                   onChange={setLocationId}
-                  options={godowns.map((l) => ({ value: l.id, label: l.name }))}
+                  options={receiveInto}
                   placeholder={isLoadingLocations ? 'Loading…' : 'Select a location…'}
-                  disabled={godowns.length === 0}
+                  disabled={receiveInto.length === 0}
                   ariaLabel="Received into location"
                   fullWidth
                   portal
                 />
+                {/* The consequence, said where the choice is made: these goods are
+                    still out, and the 180/365-day clock is still running on them. */}
+                {stayedThere && effectiveLocationId === stayedThere.id && (
+                  <p style={{ fontSize: 11.5, color: '#b45309', margin: '5px 0 0 0' }}>
+                    These stay out with the processor — send them on with a challan, or receive them
+                    into a godown when they arrive.
+                  </p>
+                )}
                 {/* 🔴 SAY WHY IT IS EMPTY. A dropdown with nothing in it and no
                       note beside it is indistinguishable from a broken screen, and
                       it blocks the save — so each reason it can be empty is spelled
                       out where the operator is looking, and they are different
                       problems with different fixes. */}
-                {!isLoadingLocations && godowns.length === 0 && (
+                {!isLoadingLocations && receiveInto.length === 0 && (
                   <p style={{ fontSize: 11.5, color: '#b91c1c', margin: '5px 0 0 0' }}>
                     {knownLocations.length > 0
                       ? 'Every location set up is a processor, in-transit or customer site. Goods cannot be received into any of those — add a warehouse under Configuration → Locations.'
@@ -1308,7 +1384,9 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
           kind={allocating.kind}
           itemName={items.find((i) => i.id === allocatingRow.itemId)?.name ?? 'Item'}
           uomLabel={outUnit}
-          locationName={godowns.find((l) => l.id === effectiveLocationId)?.name ?? null}
+          // From every location the form knows, not just the godowns — the batch
+          // modal has to name the processor's shed when the goods stayed there.
+          locationName={knownLocations.find((l) => l.id === effectiveLocationId)?.name ?? null}
           targetQty={
             allocating.kind === 'accepted' ? allocatingRow.acceptedQty : allocatingRow.reworkQty
           }

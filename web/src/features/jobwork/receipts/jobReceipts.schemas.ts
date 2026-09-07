@@ -131,7 +131,10 @@ export const jobReceiptSchema = z.object({
       rateBasis: z.string().nullable(),
     })
     .optional(),
-  location: namedRefSchema.nullable().optional(),
+  /** `type` is what tells an ordinary receipt from a dispatch-onward one: an
+   * external location means the goods never came back. Read it through
+   * `EXTERNAL_LOCATION_TYPES`, never by matching the name. */
+  location: namedRefSchema.extend({ type: z.string().nullable().optional() }).nullable().optional(),
   outputBatch: z
     .object({ id: z.string(), supplierBatchRef: z.string().nullable() })
     .nullable()
@@ -173,6 +176,12 @@ export const receivePrefillSchema = z.object({
       totalQty: z.string(),
       isRework: z.boolean(),
       attemptNo: z.number(),
+      /** Who is holding these goods, and the location the challan sent them to.
+       * The pair is what lets the dialog offer "they stayed there" as a receive-
+       * into option — the one external location a receipt may name. */
+      processorName: z.string().nullable(),
+      destinationLocationId: z.string(),
+      destinationName: z.string().nullable(),
     }),
   ),
   lines: z.array(
