@@ -357,7 +357,7 @@ export { EXTERNAL_LOCATION_TYPES } from '../configuration/locations/locations.ap
  *
  * The grid stopped asking: a radio decided nothing in the common case (one item
  * back) and was one more thing to get wrong in the uncommon one — the same call
- * `ReceiveDialog` already made for its returned rows. So the rule is the
+ * the Receive form already makes for its returned rows. So the rule is the
  * server's own fallback: whatever a saved row is already flagged with, and
  * otherwise the FIRST row. Read it here rather than reading `row.isPrimary`
  * directly, or the chain badge labels a step's main output "Ends here" while the

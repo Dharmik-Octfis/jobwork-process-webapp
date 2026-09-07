@@ -559,7 +559,7 @@ function ItemList({
                     `primaryOutputIndex` so the chain badge says the same thing.
                     Asking decided nothing in the common case, one item back, and
                     was one more control to get wrong in the uncommon one. Same
-                    call `ReceiveDialog` already made for its returned rows. */}
+                    call the Receive form already makes for its returned rows. */}
 
                 <button
                   type="button"

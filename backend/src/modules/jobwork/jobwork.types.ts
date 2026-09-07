@@ -161,9 +161,13 @@ export type Responsibility = (typeof RESPONSIBILITIES)[number];
  * material still out at a vendor.
  *
  * Any screen showing a per-location breakdown has to draw this line, so it is
- * drawn ONCE. `web/.../ReceiveDialog.tsx` picked the same two types
- * independently for its godown dropdown; a second copy of a rule is a second
- * chance for the two to disagree about what "in stock" means.
+ * drawn ONCE — and the warning this comment used to carry came true: a receive
+ * dialog had picked the same types independently for its godown dropdown, and
+ * the copy then drifted. The client now keeps ONE list of its own, in
+ * `web/.../configuration/locations/locations.api.ts`, and every picker filters
+ * through it; this stays the source of truth for anything the LEDGER decides.
+ * A second copy of a rule is a second chance for the two to disagree about what
+ * "in stock" means.
  */
 export const EXTERNAL_LOCATION_TYPES = ['processor', 'in_transit', 'customer_site'] as const;
 
