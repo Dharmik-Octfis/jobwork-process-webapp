@@ -5,7 +5,7 @@ import { Modal } from '../../../components/ui/Modal';
 import { Select } from '../../../components/ui/Select';
 import { Trash2, Plus, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchLocations } from '../../configuration/locations/locations.api';
+import { fetchLocations, isOwnLocation } from '../../configuration/locations/locations.api';
 import { itemsApi } from '../items.api';
 import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingLabel';
 import { BatchUnitsModal, BatchUnitsTrigger } from '../../../components/inventory/BatchUnitsModal';
@@ -241,7 +241,9 @@ export function AddOpeningStockModal({
     enabled: !!orgId && isOpen,
   });
 
-  const locationOptions = [...locations]
+  // Ours only — see the same filter on `OpeningStockPage`.
+  const locationOptions = locations
+    .filter(isOwnLocation)
     .sort((a, b) => (a.isPrimary ? -1 : b.isPrimary ? 1 : 0))
     .map((loc) => ({
       value: loc.id,

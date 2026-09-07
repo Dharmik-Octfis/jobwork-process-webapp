@@ -1,10 +1,11 @@
-import { useState, Fragment } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Plus, Edit2, Trash2, Star } from 'lucide-react';
 import {
   fetchLocations,
   deleteLocation,
+  isOwnLocation,
   markLocationAsPrimary,
   type Location,
 } from './locations.api';
@@ -20,11 +21,25 @@ export function LocationsList() {
   const [locationToMarkPrimary, setLocationToMarkPrimary] = useState<string | null>(null);
   const [hoveredLocationId, setHoveredLocationId] = useState<string | null>(null);
 
-  const { data: locations = [], isLoading } = useQuery({
+  const { data: allLocations = [], isLoading } = useQuery({
     queryKey: ['locations', orgId],
     queryFn: () => fetchLocations(orgId!),
     enabled: Boolean(orgId),
   });
+
+  /**
+   * 🔴 THE PLACES WE HOLD — not the ones the ledger merely uses (2026-09-07).
+   *
+   * A `processor` location stands for a jobworker's own premises and is created
+   * automatically the first time material is issued to them, so this screen
+   * filled up with rows nobody added and nobody can meaningfully edit: the
+   * address that matters for a vendor is the vendor's own.
+   *
+   * They keep working while hidden — `resolveDestination` creates and revives
+   * them by name, and the ledger goes on holding stock at them. This list is the
+   * one place a person manages their own sites, so it shows those.
+   */
+  const locations = useMemo(() => allLocations.filter(isOwnLocation), [allLocations]);
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteLocation(orgId!, id),
@@ -194,7 +209,9 @@ export function LocationsList() {
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button
                 onClick={() =>
-                  navigate(`/organizations/${orgId}/settings/locations/${location.id}/edit`, { state: { returnUrl: currentLocation.pathname + currentLocation.search } })
+                  navigate(`/organizations/${orgId}/settings/locations/${location.id}/edit`, {
+                    state: { returnUrl: currentLocation.pathname + currentLocation.search },
+                  })
                 }
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
                 title="Edit Location"
@@ -249,7 +266,11 @@ export function LocationsList() {
       >
         <h1 style={{ fontSize: '18px', fontWeight: 600, color: '#000', margin: 0 }}>Locations</h1>
         <button
-          onClick={() => navigate(`/organizations/${orgId}/settings/locations/new`, { state: { returnUrl: location.pathname + location.search } })}
+          onClick={() =>
+            navigate(`/organizations/${orgId}/settings/locations/new`, {
+              state: { returnUrl: location.pathname + location.search },
+            })
+          }
           style={{
             background: '#186337',
             color: 'white',
@@ -282,7 +303,11 @@ export function LocationsList() {
               Add a new location to start tracking operations in different places.
             </p>
             <button
-              onClick={() => navigate(`/organizations/${orgId}/settings/locations/new`, { state: { returnUrl: currentLocation.pathname + currentLocation.search } })}
+              onClick={() =>
+                navigate(`/organizations/${orgId}/settings/locations/new`, {
+                  state: { returnUrl: currentLocation.pathname + currentLocation.search },
+                })
+              }
               style={{
                 background: '#0062ff',
                 color: 'white',
@@ -299,18 +324,18 @@ export function LocationsList() {
           </div>
         ) : (
           <div className="responsive-table-wrapper">
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
-                <th style={headerStyle}>NAME</th>
-                <th style={headerStyle}>TYPE</th>
-                <th style={headerStyle}>ADDRESS DETAILS</th>
-                <th style={{ ...headerStyle, textAlign: 'right' }}>ACTION</th>
-              </tr>
-            </thead>
-            <tbody>{rootLocations.map((loc) => renderLocationRow(loc, 0))}</tbody>
-          </table>
-                  </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
+                  <th style={headerStyle}>NAME</th>
+                  <th style={headerStyle}>TYPE</th>
+                  <th style={headerStyle}>ADDRESS DETAILS</th>
+                  <th style={{ ...headerStyle, textAlign: 'right' }}>ACTION</th>
+                </tr>
+              </thead>
+              <tbody>{rootLocations.map((loc) => renderLocationRow(loc, 0))}</tbody>
+            </table>
+          </div>
         )}
       </div>
 

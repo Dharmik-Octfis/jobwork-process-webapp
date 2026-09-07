@@ -1,7 +1,12 @@
 import { useState, type CSSProperties } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { useQuery } from '@tanstack/react-query';
-import { fetchLocations, type Location, type CreateLocationData } from './locations.api';
+import {
+  fetchLocations,
+  isOwnLocation,
+  type Location,
+  type CreateLocationData,
+} from './locations.api';
 import { useParams } from 'react-router-dom';
 import { ParentLocationDropdown } from './ParentLocationDropdown';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
@@ -83,7 +88,11 @@ export function LocationForm({ initialData, onSubmit, isPending, onCancel }: Loc
     selectedStateObj?.cities?.map((c: SeedCity) => ({ label: c.name, value: c.name })) || [];
 
   // Filter out the current location from parent options to avoid circular dependency
-  const availableParents = locations.filter((loc) => loc.id !== initialData?.id);
+  // A parent site is one of ours — a jobworker's premises cannot contain our
+  // godown, and those rows are not listed on the locations screen either.
+  const availableParents = locations.filter(
+    (loc) => loc.id !== initialData?.id && isOwnLocation(loc),
+  );
   const rootLocations = availableParents.filter((loc) => !loc.parentId);
   const getChildLocations = (parentId: string) =>
     availableParents.filter((loc) => loc.parentId === parentId);

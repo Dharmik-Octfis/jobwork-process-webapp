@@ -37,7 +37,7 @@ import {
 } from './purchase-orders.api';
 import { fetchVendors } from '../vendors/vendors.api';
 import { itemsApi } from '../../items/items.api';
-import type { Location } from '../../configuration/locations/locations.api';
+import { isOwnLocation, type Location } from '../../configuration/locations/locations.api';
 import { fetchCustomers, type Customer } from '../../sales/customers/customers.api';
 import { PurchaseOrderNumberConfigModal } from './PurchaseOrderNumberConfigModal';
 import { PaymentTermModal } from '../../sales/customers/PaymentTermModal';
@@ -136,6 +136,9 @@ export function CreatePurchaseOrder() {
   const { data: locations = [] } = useQuery({
     queryKey: ['locations', orgId],
     queryFn: () => fetchLocations(orgId!),
+    // Ours only — a delivery address is one of our own sites. Same filter, same
+    // reason, as the bill screen.
+    select: (rows: Location[]) => rows.filter(isOwnLocation),
   });
 
   const { data: paymentTerms } = useQuery({

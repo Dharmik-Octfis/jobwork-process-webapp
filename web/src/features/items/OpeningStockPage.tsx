@@ -5,7 +5,7 @@ import { Select } from '../../components/ui/Select';
 import { Trash2, Plus, X } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
-import { fetchLocations } from '../configuration/locations/locations.api';
+import { fetchLocations, isOwnLocation } from '../configuration/locations/locations.api';
 import { itemsApi } from './items.api';
 import { useTrackingLabel, useBatchUnitLabel } from '../../hooks/useTrackingLabel';
 import { BatchUnitsModal, BatchUnitsTrigger } from '../../components/inventory/BatchUnitsModal';
@@ -212,7 +212,10 @@ export function OpeningStockPage() {
     enabled: !!orgId,
   });
 
-  const locationOptions = [...locations]
+  // Opening stock declares what WE hold, so a jobworker's location is never an
+  // answer here — material at a processor got there through a challan.
+  const locationOptions = locations
+    .filter(isOwnLocation)
     .sort((a, b) => (a.isPrimary ? -1 : b.isPrimary ? 1 : 0))
     .map((loc) => ({
       value: loc.id,

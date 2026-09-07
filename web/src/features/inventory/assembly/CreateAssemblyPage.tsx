@@ -13,7 +13,7 @@ import { Select } from '../../../components/ui/Select';
 import { ItemComboBox } from '../../../components/ui/ItemComboBox';
 import { assembliesApi, createAssemblySchema, type CreateAssemblyDto } from './assemblies.api';
 import { compositeItemsApi } from '../composite-items/compositeItems.api';
-import { fetchLocations } from '../../configuration/locations/locations.api';
+import { fetchLocations, isOwnLocation } from '../../configuration/locations/locations.api';
 import { fetchAvailableBatches } from '../../jobwork/batches/batches.api';
 import { AddBatchesModal } from '../../jobwork/issues/AddBatchesModal';
 import type { BatchSelection } from '../../jobwork/issues/batchSelection';
@@ -333,7 +333,12 @@ export function CreateAssemblyPage() {
         </div>
         <button
           type="button"
-          onClick={() => navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/inventory/assemblies`)}
+          onClick={() =>
+            navigate(
+              (location.state as { returnUrl?: string })?.returnUrl ||
+                `/organizations/${orgId}/inventory/assemblies`,
+            )
+          }
           style={{
             background: 'none',
             border: 'none',
@@ -544,7 +549,11 @@ export function CreateAssemblyPage() {
                     <Select
                       value={field.value}
                       onChange={field.onChange}
-                      options={(locations || []).map((l) => ({ value: l.id, label: l.name }))}
+                      // Ours only: an assembly consumes and produces on our own
+                      // floor, never in a jobworker's shed.
+                      options={(locations || [])
+                        .filter(isOwnLocation)
+                        .map((l) => ({ value: l.id, label: l.name }))}
                       placeholder="Add Location"
                       hasError={!!errors.locationId}
                     />

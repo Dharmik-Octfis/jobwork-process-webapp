@@ -2,7 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Settings, ChevronDown } from 'lucide-react';
-import { fetchLocations, type Location } from '../../configuration/locations/locations.api';
+import {
+  fetchLocations,
+  isOwnLocation,
+  type Location,
+} from '../../configuration/locations/locations.api';
 import { itemsApi } from '../items.api';
 import type { ItemOpeningStockLocationRowDto } from '../items.schemas';
 
@@ -15,7 +19,11 @@ interface ItemLocationsProps {
   isBatchTracked?: boolean;
 }
 
-export function ItemLocations({ orgId, itemId, isBatchTracked: _isBatchTracked = true }: ItemLocationsProps) {
+export function ItemLocations({
+  orgId,
+  itemId,
+  isBatchTracked: _isBatchTracked = true,
+}: ItemLocationsProps) {
   const navigate = useNavigate();
   const [stockType, setStockType] = useState<'accounting' | 'physical'>('accounting');
   const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
@@ -26,18 +34,34 @@ export function ItemLocations({ orgId, itemId, isBatchTracked: _isBatchTracked =
     enabled: !!orgId && !!itemId,
   });
 
-  const { data: locations = [], isLoading } = useQuery({
+  const { data: allLocations = [], isLoading } = useQuery({
     queryKey: ['locations', orgId],
     queryFn: () => fetchLocations(orgId),
     enabled: !!orgId,
   });
+
+  /**
+   * 🔴 OUR OWN PREMISES ONLY (2026-09-07).
+   *
+   * A processor's location is a real place the ledger holds stock at — goods at a
+   * jobworker are our stock at their location (§5.4) — but this table answers
+   * "how much is in my godowns", and mixing the two made every item read as
+   * though a dyer's shed were one of them. Material out at a processor is shown
+   * where it belongs: on the job order, and on the challan that sent it.
+   *
+   * ⚠️ THE CONSEQUENCE, AND IT IS DELIBERATE: these rows no longer add up to the
+   * item's total stock whenever anything is out for processing. That is what was
+   * asked for; if the totals ever need to reconcile on this page again, the fix
+   * is a second "with processors" group, not widening this filter — the two are
+   * different questions and one table cannot answer both without saying which.
+   */
+  const locations = useMemo(() => allLocations.filter(isOwnLocation), [allLocations]);
 
   const { data: openingStockRows = EMPTY_ROWS, isLoading: isOpeningStockLoading } = useQuery({
     queryKey: ['itemOpeningStock', orgId, itemId],
     queryFn: () => itemsApi.getOpeningStock(orgId, itemId),
     enabled: !!orgId && !!itemId,
   });
-
 
   // 🔴 `stockOnHand` FIRST — it is the ledger balance, which is what every other
   // screen sees. Reading `openingStock` ahead of it froze this column at the
@@ -368,7 +392,6 @@ export function ItemLocations({ orgId, itemId, isBatchTracked: _isBatchTracked =
           </tbody>
         </table>
       </div>
-
     </div>
   );
 }

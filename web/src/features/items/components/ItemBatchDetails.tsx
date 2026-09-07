@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, ChevronDown, ChevronRight, SlidersHorizontal } from 'lucide-react';
 import { format } from 'date-fns';
 import { itemsApi } from '../items.api';
-import { fetchLocations } from '../../configuration/locations/locations.api';
+import { fetchLocations, isOwnLocation } from '../../configuration/locations/locations.api';
 import '../../users/Users.css'; // For users-tooltip-wrapper classes
 import { AddOpeningStockModal } from './AddOpeningStockModal';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
@@ -143,10 +143,12 @@ export function ItemBatchDetails({
     enabled: !!orgId,
   });
 
+  // Our own premises only — a jobworker's shed is where the ledger keeps goods
+  // that are out, not a godown anyone filters a batch list by.
   const locationOptions: SelectOption[] = useMemo(
     () => [
       { value: 'all', label: 'All' },
-      ...locations.map((loc) => ({ value: loc.id, label: loc.name })),
+      ...locations.filter(isOwnLocation).map((loc) => ({ value: loc.id, label: loc.name })),
     ],
     [locations],
   );
@@ -203,8 +205,24 @@ export function ItemBatchDetails({
     });
   }, [itemBatches, inactiveBatchIds]);
 
+  /**
+   * 🔴 Batch rows standing at a processor, dropped with the dropdown options
+   * (2026-09-07). Filtering only the picker left "All" listing rows at a
+   * jobworker's shed that no filter could then narrow to — the list and the
+   * control disagreeing about what a location is.
+   *
+   * By ID and only when the location is KNOWN to be external: while the
+   * locations query is still loading, every row is unknown, and dropping those
+   * would blank the table and then fill it in.
+   */
+  const externalLocationIds = useMemo(
+    () => new Set(locations.filter((l) => !isOwnLocation(l)).map((l) => l.id)),
+    [locations],
+  );
+
   const filteredBatches = useMemo(() => {
     return allBatches.filter((b) => {
+      if (externalLocationIds.has(b.locationId)) return false;
       if (selectedLocationId !== 'all' && b.locationId !== selectedLocationId) return false;
 
       if (statusFilter === 'active') {
@@ -228,7 +246,7 @@ export function ItemBatchDetails({
       }
       return true;
     });
-  }, [allBatches, selectedLocationId, statusFilter, searchQuery]);
+  }, [allBatches, externalLocationIds, selectedLocationId, statusFilter, searchQuery]);
 
   const activeColumns = useMemo(() => {
     return visibleColumns
