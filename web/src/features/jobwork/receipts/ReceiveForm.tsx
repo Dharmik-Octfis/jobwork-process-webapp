@@ -30,7 +30,7 @@ import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingL
 interface Props {
   jobOrder: JobOrder;
   step: OverviewStep;
-  onReceived: (receiptId?: string) => void;
+  onReceived: (receiptId?: string, isDraft?: boolean) => void;
   onCancel: () => void;
   /**
    * 🔴 EDITING A PARKED DRAFT. Present, and this form REPLACES that receipt
@@ -801,7 +801,7 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
         ? updateJobReceipt(orgId!, draft.id, payload)
         : createJobReceipt(orgId!, payload);
     },
-    onSuccess: (data) => {
+    onSuccess: (data, saveAsDraft) => {
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, jobOrder.id] });
       queryClient.invalidateQueries({ queryKey: ['job-receipts', orgId] });
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
@@ -811,7 +811,7 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
       if (draft?.id) {
         queryClient.invalidateQueries({ queryKey: ['job-receipt', orgId, draft.id] });
       }
-      onReceived(data.id);
+      onReceived(data.id, saveAsDraft);
     },
     onError: (err: AxiosError<{ message?: string }>) => {
       setError(err.response?.data?.message ?? 'Could not post this receipt');

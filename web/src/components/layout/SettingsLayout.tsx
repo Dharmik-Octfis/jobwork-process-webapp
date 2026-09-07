@@ -26,6 +26,12 @@ export function SettingsLayout() {
   const { orgId } = useParams<{ orgId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const [returnUrl] = useState(() => {
+    const state = location.state as { returnUrl?: string };
+    return state?.returnUrl || `/organizations/${orgId}`;
+  });
+
   const onModulesRoute = location.pathname.includes('/settings/modules');
 
   const onOrgRoute =
@@ -97,7 +103,7 @@ export function SettingsLayout() {
           }}
         >
           <button
-            onClick={() => navigate(`/organizations/${orgId}`)}
+            onClick={() => navigate(returnUrl)}
             title="Close Settings"
             style={{
               background: 'none',
