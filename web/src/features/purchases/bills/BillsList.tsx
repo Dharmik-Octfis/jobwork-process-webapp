@@ -313,15 +313,24 @@ export function BillsList() {
                             e.currentTarget.style.background = 'transparent';
                         }}
                       >
+                        {/* Status rides along here too: while the detail is open
+                            this pane is the only view of the other bills, and the
+                            table column it comes from is off screen. */}
                         <div
                           style={{
-                            fontSize: '13px',
-                            fontWeight: 500,
-                            color: '#1e293b',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 8,
                             marginBottom: '4px',
                           }}
                         >
-                          {po.billNumber}
+                          <span style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b' }}>
+                            {po.billNumber}
+                          </span>
+                          <span style={{ fontSize: '12px', color: '#64748b' }}>
+                            {renderBillCell(po, 'status', paymentTerms)}
+                          </span>
                         </div>
                         <div style={{ fontSize: '12px', color: '#64748b' }}>
                           {po.vendor?.contactName || '-'} • ₹

@@ -222,7 +222,10 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
           </h2>
           <span
             style={{
-              background: po.status === 'draft' ? '#94a3b8' : '#3b82f6',
+              // Lowercased: the column stores "Draft", not "draft" (the filter
+              // presets match it capitalised), so the bare compare was never true
+              // and a draft PO was painted with the issued colour.
+              background: po.status?.toLowerCase() === 'draft' ? '#94a3b8' : '#3b82f6',
               color: 'white',
               fontSize: '11px',
               padding: '2px 8px',
@@ -939,7 +942,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                       <span style={{ fontSize: '12px', color: '#475569' }}>Order:</span>
                       <span
                         style={{
-                          background: po.status === 'draft' ? '#94a3b8' : '#16a34a',
+                          background: po.status?.toLowerCase() === 'draft' ? '#94a3b8' : '#16a34a',
                           color: 'white',
                           fontSize: '10px',
                           padding: '1px 6px',

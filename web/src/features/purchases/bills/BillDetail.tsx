@@ -208,7 +208,10 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
           </h2>
           <span
             style={{
-              background: po.status === 'draft' ? '#94a3b8' : '#3b82f6',
+              // Lowercased to match the check below, and because the column
+              // stores "Draft": the bare compare was never true, so a draft bill
+              // was painted with the non-draft colour.
+              background: po.status?.toLowerCase() === 'draft' ? '#94a3b8' : '#3b82f6',
               color: 'white',
               fontSize: '11px',
               padding: '2px 8px',
@@ -704,7 +707,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <span
                         style={{
-                          background: po.status === 'draft' ? '#94a3b8' : '#16a34a',
+                          background: po.status?.toLowerCase() === 'draft' ? '#94a3b8' : '#16a34a',
                           color: 'white',
                           fontSize: '11px',
                           padding: '2px 8px',
