@@ -597,6 +597,7 @@ export function AppLayout() {
           >
             <NavLink
               to={`/organizations/${effectiveOrgId}/settings`}
+              state={{ returnUrl: location.pathname + location.search }}
               style={({ isActive }) => ({
                 width: '100%',
                 display: 'flex',

@@ -96,6 +96,8 @@ export function CreateIssuePage() {
           onClick={() => {
             if (jobOrderIdParam) {
               navigate(`/organizations/${orgId}/jobwork/job-orders?id=${jobOrderIdParam}`);
+            } else if (draftId) {
+              navigate(`/organizations/${orgId}/jobwork/issues?id=${draftId}&filter=draft`);
             } else {
               navigate(
                 (location.state as { returnUrl?: string })?.returnUrl ||
@@ -178,11 +180,15 @@ export function CreateIssuePage() {
             draft={draft ?? null}
             jobOrder={jobOrderData.jobOrder}
             step={selectedStep}
-            onIssued={(issueId) => {
+            onIssued={(issueId, isDraft) => {
               if (jobOrderIdParam) {
                 navigate(`/organizations/${orgId}/jobwork/job-orders?id=${jobOrderIdParam}`);
               } else if (issueId) {
-                navigate(`/organizations/${orgId}/jobwork/issues?id=${issueId}`);
+                if (isDraft) {
+                  navigate(`/organizations/${orgId}/jobwork/issues?id=${issueId}&filter=draft`);
+                } else {
+                  navigate(`/organizations/${orgId}/jobwork/issues?id=${issueId}`);
+                }
               } else {
                 navigate(
                   (location.state as { returnUrl?: string })?.returnUrl ||
@@ -193,6 +199,8 @@ export function CreateIssuePage() {
             onCancel={() => {
               if (jobOrderIdParam) {
                 navigate(`/organizations/${orgId}/jobwork/job-orders?id=${jobOrderIdParam}`);
+              } else if (draftId) {
+                navigate(`/organizations/${orgId}/jobwork/issues?id=${draftId}&filter=draft`);
               } else {
                 navigate(
                   (location.state as { returnUrl?: string })?.returnUrl ||

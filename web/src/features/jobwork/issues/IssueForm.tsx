@@ -27,7 +27,7 @@ import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingL
 interface Props {
   jobOrder: JobOrder;
   step: OverviewStep;
-  onIssued: (issueId?: string) => void;
+  onIssued: (issueId?: string, isDraft?: boolean) => void;
   onCancel: () => void;
   /**
    * 🔴 EDITING A PARKED DRAFT. Present, and this form REPLACES that challan
@@ -832,7 +832,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
       return draft ? updateJobIssue(orgId!, draft.id, payload) : createJobIssue(orgId!, payload);
     },
     meta: { suppressToast: true },
-    onSuccess: (_result, saveAsDraft) => {
+    onSuccess: (result, saveAsDraft) => {
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, jobOrder.id] });
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
       if (draft) {
@@ -854,7 +854,6 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
        * the same material.
        */
       if (saveAsDraft) {
-        onCancel();
         return;
       }
 
