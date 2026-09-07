@@ -1049,13 +1049,13 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
           </section>
 
           <section style={{ marginBottom: 20 }}>
-            <h3 style={sectionHeading}>Challans being closed</h3>
-            <p style={{ fontSize: 12, color: '#64748b', margin: '-4px 0 10px 0', lineHeight: 1.4 }}>
-              Select the challans you are receiving goods for. <br />
-              <span style={{ color: '#ef4444', fontWeight: 500 }}>
-                ⚠️ Ticking a challan closes it permanently. Any unreceived quantity becomes scrap.
-              </span>
-            </p>
+            {/* 🔴 The warning that stood here — "ticking a challan closes it
+                permanently, any unreceived quantity becomes scrap" — described
+                challan closing, which was removed on 2026-09-07, and described it
+                wrongly even then: nothing was ever scrapped by ticking a box. A
+                challan now stays out until its material is accounted for, so
+                there is nothing to warn about. */}
+            <h3 style={sectionHeading}>Received against</h3>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
               {prefill.issues.length === 0 && (
                 <span style={{ fontSize: 13, color: '#64748b' }}>
@@ -1112,9 +1112,6 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
             */}
           <section style={{ marginBottom: 20 }}>
             <h3 style={sectionHeading}>What came back</h3>
-            <p style={{ fontSize: 12, color: '#64748b', margin: '-4px 0 10px 0' }}>
-              Type what arrived and what goes back for rework. Everything else is worked out.
-            </p>
             <div style={{ border: '1px solid #eef0f3', borderRadius: 4 }}>
               <div className="responsive-table-wrapper">
                 <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>

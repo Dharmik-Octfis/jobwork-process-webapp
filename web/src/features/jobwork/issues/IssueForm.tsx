@@ -832,7 +832,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
       return draft ? updateJobIssue(orgId!, draft.id, payload) : createJobIssue(orgId!, payload);
     },
     meta: { suppressToast: true },
-    onSuccess: (result, saveAsDraft) => {
+    onSuccess: (_result, saveAsDraft) => {
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, jobOrder.id] });
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
       if (draft) {
