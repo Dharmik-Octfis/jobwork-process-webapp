@@ -181,14 +181,20 @@ export function CreateIssuePage() {
             jobOrder={jobOrderData.jobOrder}
             step={selectedStep}
             onIssued={(issueId, isDraft) => {
-              if (jobOrderIdParam) {
+              /**
+               * 🔴 A DRAFT ALWAYS LANDS ON THE DRAFTS VIEW, whatever opened this
+               * form — the `?filter=draft` is not decoration.
+               *
+               * The Issues page defaults to Issued Challans and the job order
+               * overview shows no drafts at all, so every other destination
+               * shows nothing of what was just saved and reads as a save that
+               * did not happen. Issuing keeps its old destination: a sent
+               * challan is visible wherever the operator came from.
+               */
+              if (isDraft && issueId) {
+                navigate(`/organizations/${orgId}/jobwork/issues?id=${issueId}&filter=draft`);
+              } else if (jobOrderIdParam) {
                 navigate(`/organizations/${orgId}/jobwork/job-orders?id=${jobOrderIdParam}`);
-              } else if (issueId) {
-                if (isDraft) {
-                  navigate(`/organizations/${orgId}/jobwork/issues?id=${issueId}&filter=draft`);
-                } else {
-                  navigate(`/organizations/${orgId}/jobwork/issues?id=${issueId}`);
-                }
               } else {
                 navigate(
                   (location.state as { returnUrl?: string })?.returnUrl ||

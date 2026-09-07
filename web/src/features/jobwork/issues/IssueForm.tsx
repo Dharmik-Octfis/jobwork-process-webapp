@@ -832,7 +832,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
       return draft ? updateJobIssue(orgId!, draft.id, payload) : createJobIssue(orgId!, payload);
     },
     meta: { suppressToast: true },
-    onSuccess: (_result, saveAsDraft) => {
+    onSuccess: (result, saveAsDraft) => {
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, jobOrder.id] });
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
       if (draft) {
@@ -842,7 +842,10 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
       // off them — without this the next challan is planned against stale figures,
       // and the Item page's Stock Locations tab keeps its pre-challan numbers.
       invalidateStockQueries(queryClient, orgId);
-      onIssued();
+      // Which challan was written and which button wrote it — the page decides
+      // where that lands, since a parked draft and a sent challan are read back
+      // on different views.
+      onIssued(result.id, saveAsDraft);
 
       /**
        * 🔴 A DRAFT LEAVES THE SCREEN, it does not roll on to the next godown.

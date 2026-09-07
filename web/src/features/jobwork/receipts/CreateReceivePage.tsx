@@ -169,14 +169,22 @@ export function CreateReceivePage() {
             jobOrder={jobOrderData.jobOrder}
             step={selectedStep}
             onReceived={(receiptId, isDraft) => {
-              if (jobOrderIdParam) {
+              /**
+               * 🔴 A DRAFT ALWAYS LANDS ON THE DRAFTS VIEW, whatever opened this
+               * form — same rule as the issue side.
+               *
+               * The job order overview surfaces no draft receipts at all, so
+               * returning there after parking one shows no trace of the save and
+               * reads as a save that did not happen. Posting keeps its old
+               * destination: a posted receipt is visible wherever the operator
+               * came from.
+               */
+              if (isDraft && receiptId) {
+                navigate(`/organizations/${orgId}/jobwork/receipts?id=${receiptId}&filter=draft`);
+              } else if (jobOrderIdParam) {
                 navigate(`/organizations/${orgId}/jobwork/job-orders?id=${jobOrderIdParam}`);
               } else if (receiptId) {
-                if (isDraft) {
-                  navigate(`/organizations/${orgId}/jobwork/receipts?id=${receiptId}&filter=draft`);
-                } else {
-                  navigate(`/organizations/${orgId}/jobwork/receipts?id=${receiptId}`);
-                }
+                navigate(`/organizations/${orgId}/jobwork/receipts?id=${receiptId}`);
               } else {
                 navigate(
                   (location.state as { returnUrl?: string })?.returnUrl ||
