@@ -2413,6 +2413,48 @@ export async function postJobReceiptDraft(organizationId: string, id: string, us
     );
   }
 
+  /**
+   * 🔴 A DRAFT THAT NEVER NAMED ITS OUTPUT BATCHES CANNOT BE POSTED FROM HERE.
+   *
+   * A draft cannot store a batch it is CREATING — the batch does not exist until
+   * something posts it — so a receipt parked for a batch-tracked output comes
+   * back with an accepted quantity and nothing to put it in. Reopening the draft
+   * and pressing Receive is the way through: the form asks for the reference and
+   * posts in one go.
+   *
+   * Without this, `createBatch` refuses far downstream with "This item is
+   * batch-tracked, so the batch needs a reference" — true, but thrown from inside
+   * the posting machinery with no hint that the fix is to reopen the draft. The
+   * Post button on the detail drawer then looks broken for every batch-tracked
+   * item while working fine for untracked ones.
+   *
+   * 🔴 THE TEST IS THE ITEM'S OWN `inventoryTracking`, not a guess at the item's
+   * name. A guard removed on 2026-09-04 decided this by matching the name against
+   * "service", "dyeing" and "stitching", which refuses a real item called Dyeing
+   * Cloth and waves through a batch-tracked one called anything else. Whether a
+   * batch is needed is the item's answer, and `createBatch` enforces exactly the
+   * same rule at the other end.
+   *
+   * An output that names an EXISTING batch is fine — that id survives a draft,
+   * because the batch is already there to point at.
+   */
+  const needsReference = draft.outputs.filter((output) => {
+    if (output.item?.inventoryTracking !== 'batch') return false;
+    const has = (kind: string) => output.batches.some((row) => row.kind === kind);
+    return (
+      (output.acceptedQty.greaterThan(0) && !has('accepted')) ||
+      (output.reworkQty.greaterThan(0) && !has('rework'))
+    );
+  });
+  if (needsReference.length > 0) {
+    const names = needsReference.map((output) => output.item?.name ?? 'the goods').join(', ');
+    throw ApiError.badRequest(
+      `This draft does not say which batch ${names} came back into. Open the draft, enter the ` +
+        'batch reference, and receive it from there.',
+      { outputs: 'Enter the batch reference on the draft.' },
+    );
+  }
+
   return createNewJobReceipt(
     organizationId,
     {

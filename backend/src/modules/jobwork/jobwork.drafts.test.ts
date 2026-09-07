@@ -549,6 +549,81 @@ describe('a draft receipt affects nothing', { timeout: 120_000 }, () => {
    * receipts (JR-00019, JR-00020) posted 90 shirts against nothing before it was
    * put back on 2026-09-07. Both had to be cancelled by hand.
    */
+  /**
+   * 🔴 A DRAFT CANNOT CARRY A BATCH IT IS CREATING, so posting one from the
+   * drawer has to say so in words the operator can act on.
+   *
+   * The batch does not exist until something posts it, so a receipt parked for a
+   * batch-tracked output comes back with an accepted quantity and nowhere to put
+   * it. Reopening the draft and pressing Receive is the way through — the form
+   * asks for the reference and posts in one go.
+   *
+   * Restored 2026-09-07 after an end-to-end walk found the drawer's Post button
+   * failing with `createBatch`'s "This item is batch-tracked, so the batch needs
+   * a reference" — correct, thrown from deep inside the posting machinery, and no
+   * help at all. The guard removed on 2026-09-04 tested the item's NAME for
+   * "service"/"dyeing"/"stitching"; this one asks `inventoryTracking`, which is
+   * the question `createBatch` itself asks at the other end.
+   */
+  it('refuses to post a draft receipt whose batch-tracked output names no batch', async () => {
+    const { batch, step1 } = await makeOrder();
+    const issue = await createNewJobIssue(orgId, {
+      jobOrderStepId: step1.id,
+      sourceLocationId: godownId,
+      lines: [{ itemId: greyId, batchId: batch.id, qty: 200 }],
+    });
+
+    const draft = await createNewJobReceipt(
+      orgId,
+      {
+        jobOrderStepId: step1.id,
+        issueIds: [issue.id],
+        locationId: godownId,
+        lines: [{ itemId: greyId, jobIssueId: issue.id, issuedQty: 200, receivedQty: 0 }],
+        // No `batchReference`: the form has not been reopened, so the draft holds
+        // an accepted quantity and no batch to put it in.
+        outputs: [{ itemId: dyedId, isPrimary: true, receivedQty: 200, acceptedQty: 200 }],
+      },
+      undefined,
+      'draft',
+    );
+
+    await expect(postJobReceiptDraft(orgId, draft.id)).rejects.toThrow(/which batch/);
+
+    // Still a draft, still nothing posted — the refusal changed nothing.
+    const after = await runAsTenant(orgId, (tx) =>
+      tx.jobReceipt.findFirstOrThrow({ where: { id: draft.id, organizationId: orgId } }),
+    );
+    expect(after.status).toBe('draft');
+    expect(await ledgerRowsFor(SOURCE_DOC_TYPES.jobReceipt, draft.id)).toBe(0);
+
+    // 🔴 And the way through: the same draft, reopened with the reference the
+    // form asks for, posts and moves the stock.
+    const posted = await createNewJobReceipt(
+      orgId,
+      {
+        jobOrderStepId: step1.id,
+        issueIds: [issue.id],
+        locationId: godownId,
+        lines: [{ itemId: greyId, jobIssueId: issue.id, issuedQty: 200, receivedQty: 0 }],
+        outputs: [
+          {
+            itemId: dyedId,
+            isPrimary: true,
+            receivedQty: 200,
+            acceptedQty: 200,
+            batchReference: `DYE-${unique()}`,
+          },
+        ],
+      },
+      undefined,
+      'post',
+      draft.id,
+    );
+    expect(posted.status).toBe('posted');
+    expect(await ledgerRowsFor(SOURCE_DOC_TYPES.jobReceipt, draft.id)).toBeGreaterThan(0);
+  });
+
   it('refuses to post a draft receipt that accounts for no challan', async () => {
     const { step1 } = await makeOrder();
 
