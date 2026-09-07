@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Printer, X } from 'lucide-react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
@@ -32,6 +32,44 @@ const th: React.CSSProperties = {
 
 const td: React.CSSProperties = { padding: '8px 12px', fontSize: 13, color: '#333' };
 
+/**
+ * 🔴 A STATUS CHANGE IS PATCHED INTO THE OPEN LISTS, never invalidated.
+ *
+ * Most presets here filter on `status` — Issued Challans, Drafts, Cancelled —
+ * so a refetch DELETES the row from the view the operator is looking at the
+ * instant they act on it: press Issue on a draft and the Drafts list drops it
+ * mid-click, which reads as the challan having been removed rather than sent.
+ * Both transitions rewrite the row in place (`createNewJobIssue` updates it —
+ * same id, same challan number), so `status` is the only thing the cached list
+ * is now wrong about. The row leaves the view on the next real fetch: a
+ * refresh, or `staleTime` expiring.
+ */
+function patchStatusInLists(
+  queryClient: QueryClient,
+  orgId: string | undefined,
+  issueId: string,
+  status: string,
+) {
+  const swap = (rows: JobIssue[]) =>
+    rows.map((item) => (item.id === issueId ? { ...item, status } : item));
+
+  queryClient.setQueriesData(
+    { queryKey: ['job-issues', orgId], type: 'active' },
+    // Two shapes live under this key: the paginated list, and the unpaginated
+    // "every challan against one step" read (`?stepId=`). That one is not
+    // filtered on status, so its row STAYS — it just has to say the right thing.
+    (old: JobIssuesPage | JobIssue[] | undefined) => {
+      if (!old) return old;
+      if (Array.isArray(old)) return swap(old);
+      if (!old.results) return old;
+      return { ...old, results: swap(old.results) };
+    },
+  );
+  // The pages nobody is looking at are refetched instead — nothing is on screen
+  // for the row to disappear from, and they must be right when next opened.
+  queryClient.invalidateQueries({ queryKey: ['job-issues', orgId], type: 'inactive' });
+}
+
 export function IssueDetail({ issueId, onClose }: Props) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -62,19 +100,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
   const cancelMutation = useMutation({
     mutationFn: () => cancelJobIssue(orgId!, issueId, cancelReason),
     onSuccess: () => {
-      queryClient.setQueriesData(
-        { queryKey: ['job-issues', orgId], type: 'active' },
-        (old: JobIssuesPage | undefined) => {
-          if (!old || !old.results) return old;
-          return {
-            ...old,
-            results: old.results.map((item: JobIssue) =>
-              item.id === issueId ? { ...item, status: 'cancelled' } : item,
-            ),
-          };
-        },
-      );
-      queryClient.invalidateQueries({ queryKey: ['job-issues', orgId], type: 'inactive' });
+      patchStatusInLists(queryClient, orgId, issueId, 'cancelled');
       queryClient.invalidateQueries({ queryKey: ['job-issue', orgId, issueId] });
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
       // A cancellation posts the reversing ledger rows, so the stock came BACK —
@@ -97,8 +123,10 @@ export function IssueDetail({ issueId, onClose }: Props) {
    */
   const postMutation = useMutation({
     mutationFn: () => postJobIssue(orgId!, issueId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
+    // The server's own word for the new state, not a hardcoded 'issued' — this
+    // one value is the only thing `status` is derived from at post time.
+    onSuccess: (posted) => {
+      patchStatusInLists(queryClient, orgId, issueId, posted.status);
       queryClient.invalidateQueries({ queryKey: ['job-issue', orgId, issueId] });
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
       // The stock behind it has just moved, so anything valuing or listing it is stale.

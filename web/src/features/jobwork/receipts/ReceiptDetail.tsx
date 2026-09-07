@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
@@ -104,6 +104,44 @@ function BatchChip({
   );
 }
 
+/**
+ * 🔴 A STATUS CHANGE IS PATCHED INTO THE OPEN LISTS, never invalidated.
+ *
+ * The Drafts preset filters on `status`, so a refetch DELETES the row from the
+ * view the operator is looking at the instant they act on it — press Post on a
+ * draft and it drops mid-click, which reads as the receipt having been removed
+ * rather than posted. Both transitions rewrite the row in place
+ * (`createNewJobReceipt` updates it — same id, same receipt number), so `status`
+ * is the only thing the cached list is now wrong about. The row leaves the view
+ * on the next real fetch: a refresh, or `staleTime` expiring. Mirrors
+ * `IssueDetail`.
+ */
+function patchStatusInLists(
+  queryClient: QueryClient,
+  orgId: string | undefined,
+  receiptId: string,
+  status: string,
+) {
+  const swap = (rows: JobReceipt[]) =>
+    rows.map((item) => (item.id === receiptId ? { ...item, status } : item));
+
+  queryClient.setQueriesData(
+    { queryKey: ['job-receipts', orgId], type: 'active' },
+    // Two shapes live under this key: the paginated list, and the unpaginated
+    // "every receipt against one step" read (`?stepId=`). That one is not
+    // filtered on status, so its row STAYS — it just has to say the right thing.
+    (old: JobReceiptsPage | JobReceipt[] | undefined) => {
+      if (!old) return old;
+      if (Array.isArray(old)) return swap(old);
+      if (!old.results) return old;
+      return { ...old, results: swap(old.results) };
+    },
+  );
+  // The pages nobody is looking at are refetched instead — nothing is on screen
+  // for the row to disappear from, and they must be right when next opened.
+  queryClient.invalidateQueries({ queryKey: ['job-receipts', orgId], type: 'inactive' });
+}
+
 export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -125,19 +163,7 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
   const cancelMutation = useMutation({
     mutationFn: () => cancelJobReceipt(orgId!, receiptId, cancelReason),
     onSuccess: () => {
-      queryClient.setQueriesData(
-        { queryKey: ['job-receipts', orgId], type: 'active' },
-        (old: JobReceiptsPage | undefined) => {
-          if (!old || !old.results) return old;
-          return {
-            ...old,
-            results: old.results.map((item: JobReceipt) =>
-              item.id === receiptId ? { ...item, status: 'cancelled' } : item,
-            ),
-          };
-        },
-      );
-      queryClient.invalidateQueries({ queryKey: ['job-receipts', orgId], type: 'inactive' });
+      patchStatusInLists(queryClient, orgId, receiptId, 'cancelled');
       queryClient.invalidateQueries({ queryKey: ['job-receipt', orgId, receiptId] });
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
       // A cancellation posts the reversing ledger rows — the goods went back to
@@ -161,9 +187,13 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
    */
   const postMutation = useMutation({
     mutationFn: () => postJobReceipt(orgId!, receiptId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['job-receipts', orgId] });
+    // The server's own word for the new state, not a hardcoded 'posted' — that
+    // one value is what the list's preset filters on.
+    onSuccess: (posted) => {
+      patchStatusInLists(queryClient, orgId, receiptId, posted.status);
       queryClient.invalidateQueries({ queryKey: ['job-receipt', orgId, receiptId] });
+      // Not patched, invalidated: a receipt moves the CHALLAN's received and
+      // pending figures, and no row on that list is changing status here.
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
       // The goods just landed in a godown — every stock figure on screen is stale.
