@@ -1,5 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchPurchaseOrders, fetchPurchaseOrderCount, deletePurchaseOrder } from './purchase-orders.api';
+import {
+  fetchPurchaseOrders,
+  fetchPurchaseOrderCount,
+  deletePurchaseOrder,
+} from './purchase-orders.api';
 import { fetchPaymentTerms, type PaymentTerm } from './payment-terms.api';
 import { Plus, SlidersHorizontal, FileText } from 'lucide-react';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
@@ -19,7 +23,7 @@ import type { PurchaseOrder } from './purchase-orders.schemas';
 function renderPoCell(po: PurchaseOrder, key: string, paymentTerms: PaymentTerm[] = []): string {
   if (key === 'paymentTerms') {
     const term = paymentTerms.find((t) => t.id === po.paymentTerms);
-    return term ? term.termName : (po.paymentTerms || '-');
+    return term ? term.termName : po.paymentTerms || '-';
   }
   if (key.startsWith(CUSTOM_FIELD_PREFIX)) {
     const value = po.customFields?.[key.slice(CUSTOM_FIELD_PREFIX.length)];
@@ -51,7 +55,8 @@ export function PurchaseOrdersList() {
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['purchaseOrders', orgId, search, filter, page, perPage],
-    queryFn: () => fetchPurchaseOrders(orgId!, { search: search || undefined, filter, page, perPage }),
+    queryFn: () =>
+      fetchPurchaseOrders(orgId!, { search: search || undefined, filter, page, perPage }),
     enabled: Boolean(orgId),
     placeholderData: (prev) => prev,
   });
@@ -95,9 +100,7 @@ export function PurchaseOrdersList() {
   };
 
   const toggleSelection = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
-    );
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
   };
 
   const toggleAll = () => {
@@ -126,7 +129,10 @@ export function PurchaseOrdersList() {
         flexDirection: 'column',
       }}
     >
-      <div className={`master-detail-container ${selectedPoId ? 'has-selection' : ''}`} style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+      <div
+        className={`master-detail-container ${selectedPoId ? 'has-selection' : ''}`}
+        style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}
+      >
         <div
           className="master-pane"
           style={{
@@ -189,7 +195,11 @@ export function PurchaseOrdersList() {
                 )}
 
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/purchases/purchase-orders/new`, { state: { returnUrl: location.pathname + location.search } })}
+                  onClick={() =>
+                    navigate(`/organizations/${orgId}/purchases/purchase-orders/new`, {
+                      state: { returnUrl: location.pathname + location.search },
+                    })
+                  }
                   style={{
                     background: '#186337',
                     color: 'white',
@@ -244,14 +254,24 @@ export function PurchaseOrdersList() {
                 >
                   <FileText size={40} color="#94a3b8" />
                 </div>
-                <h2 style={{ fontSize: 20, fontWeight: 600, color: '#1e293b', margin: '0 0 8px 0' }}>
+                <h2
+                  style={{ fontSize: 20, fontWeight: 600, color: '#1e293b', margin: '0 0 8px 0' }}
+                >
                   No Purchase Orders Found
                 </h2>
-                <p style={{ color: '#64748b', maxWidth: 400, margin: '0 0 24px 0', lineHeight: 1.5 }}>
-                  {search ? `No purchase orders match "${search}".` : 'You haven\'t created any purchase orders yet.'}
+                <p
+                  style={{ color: '#64748b', maxWidth: 400, margin: '0 0 24px 0', lineHeight: 1.5 }}
+                >
+                  {search
+                    ? `No purchase orders match "${search}".`
+                    : "You haven't created any purchase orders yet."}
                 </p>
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/purchases/purchase-orders/new`, { state: { returnUrl: location.pathname + location.search } })}
+                  onClick={() =>
+                    navigate(`/organizations/${orgId}/purchases/purchase-orders/new`, {
+                      state: { returnUrl: location.pathname + location.search },
+                    })
+                  }
                   style={{
                     background: '#28a745',
                     color: 'white',
@@ -270,7 +290,16 @@ export function PurchaseOrdersList() {
               <div>
                 {selectedPoId ? (
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <div style={{ padding: '8px 16px', fontSize: '12px', fontWeight: 600, color: '#64748b', background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
+                    <div
+                      style={{
+                        padding: '8px 16px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: '#64748b',
+                        background: '#f9f9fb',
+                        borderBottom: '1px solid #eef0f3',
+                      }}
+                    >
                       Purchase Orders
                     </div>
                     {purchaseOrders.map((po) => (
@@ -288,14 +317,23 @@ export function PurchaseOrdersList() {
                           if (selectedPoId !== po.id) e.currentTarget.style.background = '#f8fafc';
                         }}
                         onMouseLeave={(e) => {
-                          if (selectedPoId !== po.id) e.currentTarget.style.background = 'transparent';
+                          if (selectedPoId !== po.id)
+                            e.currentTarget.style.background = 'transparent';
                         }}
                       >
-                        <div style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b', marginBottom: '4px' }}>
+                        <div
+                          style={{
+                            fontSize: '13px',
+                            fontWeight: 500,
+                            color: '#1e293b',
+                            marginBottom: '4px',
+                          }}
+                        >
                           {po.poNumber}
                         </div>
                         <div style={{ fontSize: '12px', color: '#64748b' }}>
-                          {po.vendor?.contactName || '-'} • ₹{(po as Record<string, unknown>).total || po.totalAmount || 0}
+                          {po.vendor?.contactName || '-'} • ₹
+                          {(po as Record<string, unknown>).total || po.totalAmount || 0}
                         </div>
                       </div>
                     ))}
@@ -303,71 +341,89 @@ export function PurchaseOrdersList() {
                 ) : (
                   <div className="responsive-table-wrapper">
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                    <thead>
-                      <tr
-                        style={{
-                          background: '#f9f9fb',
-                          borderTop: '1px solid #eef0f3',
-                          borderBottom: '1px solid #eef0f3',
-                        }}
-                      >
-                        <th style={{ width: 48, ...headerStyle, paddingRight: 0, textAlign: 'center' }}>
-                          <input
-                            type="checkbox"
-                            checked={purchaseOrders.length > 0 && selectedIds.length === purchaseOrders.length}
-                            onChange={toggleAll}
-                            style={{ cursor: 'pointer' }}
-                          />
-                        </th>
-                        {columns.map((col) => (
-                          <th key={col.key} style={headerStyle}>
-                            {col.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {purchaseOrders.map((po) => (
+                      <thead>
                         <tr
-                          key={po.id}
-                          onClick={() => setSearchParams({ id: po.id })}
                           style={{
+                            background: '#f9f9fb',
+                            borderTop: '1px solid #eef0f3',
                             borderBottom: '1px solid #eef0f3',
-                            transition: 'background 0.1s',
-                            cursor: 'pointer',
-                            background: selectedIds.includes(po.id) ? '#f8fafc' : 'transparent',
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                          onMouseLeave={(e) => {
-                            if (!selectedIds.includes(po.id))
-                              e.currentTarget.style.background = 'transparent';
                           }}
                         >
-                          <td style={{ width: 48, padding: '12px 16px', paddingRight: 0, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                          <th
+                            style={{
+                              width: 48,
+                              ...headerStyle,
+                              paddingRight: 0,
+                              textAlign: 'center',
+                            }}
+                          >
                             <input
                               type="checkbox"
-                              checked={selectedIds.includes(po.id)}
-                              onChange={() => toggleSelection(po.id)}
+                              checked={
+                                purchaseOrders.length > 0 &&
+                                selectedIds.length === purchaseOrders.length
+                              }
+                              onChange={toggleAll}
                               style={{ cursor: 'pointer' }}
                             />
-                          </td>
+                          </th>
                           {columns.map((col) => (
-                            <td
-                              key={col.key}
-                              style={{
-                                padding: '12px 16px',
-                                color: col.key === 'poNumber' ? '#0062ff' : '#333',
-                                fontSize: 13,
-                                fontWeight: col.key === 'poNumber' ? 500 : 400,
-                              }}
-                            >
-                              {renderPoCell(po, col.key, paymentTerms)}
-                            </td>
+                            <th key={col.key} style={headerStyle}>
+                              {col.label}
+                            </th>
                           ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {purchaseOrders.map((po) => (
+                          <tr
+                            key={po.id}
+                            onClick={() => setSearchParams({ id: po.id })}
+                            style={{
+                              borderBottom: '1px solid #eef0f3',
+                              transition: 'background 0.1s',
+                              cursor: 'pointer',
+                              background: selectedIds.includes(po.id) ? '#f8fafc' : 'transparent',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                            onMouseLeave={(e) => {
+                              if (!selectedIds.includes(po.id))
+                                e.currentTarget.style.background = 'transparent';
+                            }}
+                          >
+                            <td
+                              style={{
+                                width: 48,
+                                padding: '12px 16px',
+                                paddingRight: 0,
+                                textAlign: 'center',
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.includes(po.id)}
+                                onChange={() => toggleSelection(po.id)}
+                                style={{ cursor: 'pointer' }}
+                              />
+                            </td>
+                            {columns.map((col) => (
+                              <td
+                                key={col.key}
+                                style={{
+                                  padding: '12px 16px',
+                                  color: col.key === 'poNumber' ? '#0062ff' : '#333',
+                                  fontSize: 13,
+                                  fontWeight: col.key === 'poNumber' ? 500 : 400,
+                                }}
+                              >
+                                {renderPoCell(po, col.key, paymentTerms)}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
@@ -430,9 +486,7 @@ export function PurchaseOrdersList() {
         onConfirm={async () => {
           setIsProcessing(true);
           try {
-            await Promise.allSettled(
-              selectedIds.map(id => deletePurchaseOrder(orgId!, id))
-            );
+            await Promise.allSettled(selectedIds.map((id) => deletePurchaseOrder(orgId!, id)));
             queryClient.invalidateQueries({ queryKey: ['purchaseOrders', orgId] });
             setSelectedIds([]);
           } finally {

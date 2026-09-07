@@ -15,7 +15,13 @@ interface Html2PdfOptions {
   };
 }
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchBillById, getBillSignedUrl, deleteBill, updateBill, type BillAttachment } from './bills.api';
+import {
+  fetchBillById,
+  getBillSignedUrl,
+  deleteBill,
+  updateBill,
+  type BillAttachment,
+} from './bills.api';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer } from 'lucide-react';
@@ -194,7 +200,10 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
       {/* Header */}
       <div className="detail-page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <h2 className="detail-title" style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
+          <h2
+            className="detail-title"
+            style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}
+          >
             {po.billNumber}
           </h2>
           <span
@@ -233,8 +242,13 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
             </button>
           )}
 
-          <button className="action-btn"
-            onClick={() => navigate(`/organizations/${orgId}/purchases/bills/${poId}/edit`, { state: { returnUrl: location.pathname + location.search } })}
+          <button
+            className="action-btn"
+            onClick={() =>
+              navigate(`/organizations/${orgId}/purchases/bills/${poId}/edit`, {
+                state: { returnUrl: location.pathname + location.search },
+              })
+            }
             style={{
               padding: '6px 12px',
               border: '1px solid #d1d5db',
@@ -251,7 +265,8 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
           </button>
 
           <div style={{ position: 'relative' }} ref={moreMenuRef}>
-            <button className="action-btn"
+            <button
+              className="action-btn"
               onClick={() => setIsMoreOpen(!isMoreOpen)}
               style={{
                 padding: '6px 12px',
@@ -379,7 +394,8 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
 
         {/* PDF / Print Dropdown next to Activity tab */}
         <div style={{ position: 'relative' }} ref={pdfMenuRef}>
-          <button className="action-btn"
+          <button
+            className="action-btn"
             onClick={() => setIsPdfMenuOpen(!isPdfMenuOpen)}
             style={{
               padding: '4px 8px',
@@ -397,7 +413,8 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
             onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           >
-            <FileText size={16} /> PDF/<span className="action-btn-text">Print</span> <ChevronDown size={14} />
+            <FileText size={16} /> PDF/<span className="action-btn-text">Print</span>{' '}
+            <ChevronDown size={14} />
           </button>
 
           {isPdfMenuOpen && (
@@ -730,183 +747,180 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
 
               {/* Line Items Table */}
               <div className="responsive-table-wrapper">
-<table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
-                    <th
-                      style={{
-                        padding: '10px 12px',
-                        textAlign: 'left',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                      }}
-                    >
-                      ITEMS & DESCRIPTION
-                    </th>
-                    <th
-                      style={{
-                        padding: '10px 12px',
-                        textAlign: 'center',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                      }}
-                    >
-                      QUANTITY
-                    </th>
-                    <th
-                      style={{
-                        padding: '10px 12px',
-                        textAlign: 'left',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                      }}
-                    >
-                      LOCATION
-                    </th>
-                    <th
-                      style={{
-                        padding: '10px 12px',
-                        textAlign: 'right',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                      }}
-                    >
-                      RATE
-                    </th>
-                    <th
-                      style={{
-                        padding: '10px 12px',
-                        textAlign: 'right',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                      }}
-                    >
-                      DISCOUNT
-                    </th>
-                    <th
-                      style={{
-                        padding: '10px 12px',
-                        textAlign: 'right',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                      }}
-                    >
-                      AMOUNT
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(po.lineItems || []).map((item, index) => {
-                    const discVal = Number(
-                      item.discountValue !== undefined && item.discountValue !== null
-                        ? item.discountValue
-                        : item.discountPercentage || item.discountAmount || 0,
-                    );
-                    const discDisplay =
-                      item.discountType === 'fixed' ? `₹${discVal.toFixed(2)}` : `${discVal}%`;
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                      <th
+                        style={{
+                          padding: '10px 12px',
+                          textAlign: 'left',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: '#64748b',
+                        }}
+                      >
+                        ITEMS & DESCRIPTION
+                      </th>
+                      <th
+                        style={{
+                          padding: '10px 12px',
+                          textAlign: 'center',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: '#64748b',
+                        }}
+                      >
+                        QUANTITY
+                      </th>
+                      <th
+                        style={{
+                          padding: '10px 12px',
+                          textAlign: 'left',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: '#64748b',
+                        }}
+                      >
+                        LOCATION
+                      </th>
+                      <th
+                        style={{
+                          padding: '10px 12px',
+                          textAlign: 'right',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: '#64748b',
+                        }}
+                      >
+                        RATE
+                      </th>
+                      <th
+                        style={{
+                          padding: '10px 12px',
+                          textAlign: 'right',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: '#64748b',
+                        }}
+                      >
+                        DISCOUNT
+                      </th>
+                      <th
+                        style={{
+                          padding: '10px 12px',
+                          textAlign: 'right',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: '#64748b',
+                        }}
+                      >
+                        AMOUNT
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(po.lineItems || []).map((item, index) => {
+                      const discVal = Number(
+                        item.discountValue !== undefined && item.discountValue !== null
+                          ? item.discountValue
+                          : item.discountPercentage || item.discountAmount || 0,
+                      );
+                      const discDisplay =
+                        item.discountType === 'fixed' ? `₹${discVal.toFixed(2)}` : `${discVal}%`;
 
-                    return (
-                      <Fragment key={item.id || index}>
-                        <tr
-                          style={{
-                            borderBottom:
-                              item.batches && item.batches.length > 0
-                                ? 'none'
-                                : '1px solid #f1f5f9',
-                          }}
-                        >
-                          <td
+                      return (
+                        <Fragment key={item.id || index}>
+                          <tr
                             style={{
-                              padding: '14px 12px',
-                              fontSize: '13px',
-                              color: '#0062ff',
-                              fontWeight: 500,
-                              verticalAlign: 'top',
+                              borderBottom:
+                                item.batches && item.batches.length > 0
+                                  ? 'none'
+                                  : '1px solid #f1f5f9',
                             }}
                           >
-                            {item.item?.name || 'Item'}
-                            {item.description && (
-                              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                                {item.description}
-                              </div>
-                            )}
-                          </td>
-                          <td
-                            style={{
-                              padding: '14px 12px',
-                              fontSize: '13px',
-                              color: '#1e293b',
-                              textAlign: 'center',
-                              verticalAlign: 'top',
-                            }}
-                          >
-                            {item.quantity} PCS
-                          </td>
-                          <td
-                            style={{
-                              padding: '14px 12px',
-                              fontSize: '13px',
-                              color: '#475569',
-                              verticalAlign: 'top',
-                            }}
-                          >
-                            {po.location?.name || 'Head Office'}
-                          </td>
-                          <td
-                            style={{
-                              padding: '14px 12px',
-                              fontSize: '13px',
-                              color: '#1e293b',
-                              textAlign: 'right',
-                              verticalAlign: 'top',
-                            }}
-                          >
-                            ₹{Number(item.rate || 0).toFixed(2)}
-                          </td>
-                          <td
-                            style={{
-                              padding: '14px 12px',
-                              fontSize: '13px',
-                              color: '#475569',
-                              textAlign: 'right',
-                              verticalAlign: 'top',
-                            }}
-                          >
-                            {discVal > 0 ? discDisplay : '₹0.00'}
-                          </td>
-                          <td
-                            style={{
-                              padding: '14px 12px',
-                              fontSize: '13px',
-                              color: '#0f172a',
-                              textAlign: 'right',
-                              fontWeight: 600,
-                              verticalAlign: 'top',
-                            }}
-                          >
-                            ₹
-                            {Number(
-                              (item as Record<string, unknown>).itemTotal || item.amount || 0,
-                            ).toFixed(2)}
-                          </td>
-                        </tr>
-
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-</div>
-
-
-
-
+                            <td
+                              style={{
+                                padding: '14px 12px',
+                                fontSize: '13px',
+                                color: '#0062ff',
+                                fontWeight: 500,
+                                verticalAlign: 'top',
+                              }}
+                            >
+                              {item.item?.name || 'Item'}
+                              {item.description && (
+                                <div
+                                  style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}
+                                >
+                                  {item.description}
+                                </div>
+                              )}
+                            </td>
+                            <td
+                              style={{
+                                padding: '14px 12px',
+                                fontSize: '13px',
+                                color: '#1e293b',
+                                textAlign: 'center',
+                                verticalAlign: 'top',
+                              }}
+                            >
+                              {item.quantity} PCS
+                            </td>
+                            <td
+                              style={{
+                                padding: '14px 12px',
+                                fontSize: '13px',
+                                color: '#475569',
+                                verticalAlign: 'top',
+                              }}
+                            >
+                              {po.location?.name || 'Head Office'}
+                            </td>
+                            <td
+                              style={{
+                                padding: '14px 12px',
+                                fontSize: '13px',
+                                color: '#1e293b',
+                                textAlign: 'right',
+                                verticalAlign: 'top',
+                              }}
+                            >
+                              ₹{Number(item.rate || 0).toFixed(2)}
+                            </td>
+                            <td
+                              style={{
+                                padding: '14px 12px',
+                                fontSize: '13px',
+                                color: '#475569',
+                                textAlign: 'right',
+                                verticalAlign: 'top',
+                              }}
+                            >
+                              {discVal > 0 ? discDisplay : '₹0.00'}
+                            </td>
+                            <td
+                              style={{
+                                padding: '14px 12px',
+                                fontSize: '13px',
+                                color: '#0f172a',
+                                textAlign: 'right',
+                                fontWeight: 600,
+                                verticalAlign: 'top',
+                              }}
+                            >
+                              ₹
+                              {Number(
+                                (item as Record<string, unknown>).itemTotal || item.amount || 0,
+                              ).toFixed(2)}
+                            </td>
+                          </tr>
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
 
               {/* Totals & Notes Section */}
               <div
@@ -1037,16 +1051,16 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                     <span>Total</span>
                     <span>
                       ₹
-                      {Number(
-                        (po as Record<string, unknown>).total || po.totalAmount || 0,
-                      ).toFixed(2)}
+                      {Number((po as Record<string, unknown>).total || po.totalAmount || 0).toFixed(
+                        2,
+                      )}
                     </span>
                   </div>
                 </div>
               </div>
 
               {/* BATCH DETAILS SECTION */}
-              {(po.lineItems || []).some(item => item.batches && item.batches.length > 0) && (
+              {(po.lineItems || []).some((item) => item.batches && item.batches.length > 0) && (
                 <div
                   style={{
                     borderTop: '1px solid #f1f5f9',
@@ -1054,47 +1068,157 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                     marginTop: '24px',
                   }}
                 >
-                  <h3 style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{trackingLabel.singular.toUpperCase()} DETAILS</h3>
-                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '6px', overflow: 'hidden' }}>
+                  <h3
+                    style={{
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      color: '#475569',
+                      marginBottom: '16px',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                    }}
+                  >
+                    {trackingLabel.singular.toUpperCase()} DETAILS
+                  </h3>
+                  <div
+                    style={{ border: '1px solid #e2e8f0', borderRadius: '6px', overflow: 'hidden' }}
+                  >
                     <div className="responsive-table-wrapper">
-<table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                      <thead>
-                        <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                          <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', width: '20%' }}>ITEM</th>
-                          <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b' }}>SUPPLIER {trackingLabel.singular.toUpperCase()} REF</th>
-                          <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b' }}>MANUFACTURER {trackingLabel.singular.toUpperCase()}#</th>
-                          <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b' }}>MFG. DATE</th>
-                          <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b' }}>EXPIRY DATE</th>
-                          <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600, color: '#64748b' }}>QUANTITY</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(po.lineItems || []).filter(item => item.batches && item.batches.length > 0).map((item, itemIndex, arr) => {
-                          const isLastItem = itemIndex === arr.length - 1;
-                          return item.batches!.map((batch, bIndex) => {
-                            const isFirstBatch = bIndex === 0;
-                            const isLastBatch = bIndex === item.batches!.length - 1;
-                            const needsBottomBorder = !isLastItem || !isLastBatch;
+                      <table
+                        style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}
+                      >
+                        <thead>
+                          <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                            <th
+                              style={{
+                                padding: '10px 16px',
+                                textAlign: 'left',
+                                fontWeight: 600,
+                                color: '#64748b',
+                                width: '20%',
+                              }}
+                            >
+                              ITEM
+                            </th>
+                            <th
+                              style={{
+                                padding: '10px 16px',
+                                textAlign: 'left',
+                                fontWeight: 600,
+                                color: '#64748b',
+                              }}
+                            >
+                              SUPPLIER {trackingLabel.singular.toUpperCase()} REF
+                            </th>
+                            <th
+                              style={{
+                                padding: '10px 16px',
+                                textAlign: 'left',
+                                fontWeight: 600,
+                                color: '#64748b',
+                              }}
+                            >
+                              MANUFACTURER {trackingLabel.singular.toUpperCase()}#
+                            </th>
+                            <th
+                              style={{
+                                padding: '10px 16px',
+                                textAlign: 'left',
+                                fontWeight: 600,
+                                color: '#64748b',
+                              }}
+                            >
+                              MFG. DATE
+                            </th>
+                            <th
+                              style={{
+                                padding: '10px 16px',
+                                textAlign: 'left',
+                                fontWeight: 600,
+                                color: '#64748b',
+                              }}
+                            >
+                              EXPIRY DATE
+                            </th>
+                            <th
+                              style={{
+                                padding: '10px 16px',
+                                textAlign: 'right',
+                                fontWeight: 600,
+                                color: '#64748b',
+                              }}
+                            >
+                              QUANTITY
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(po.lineItems || [])
+                            .filter((item) => item.batches && item.batches.length > 0)
+                            .map((item, itemIndex, arr) => {
+                              const isLastItem = itemIndex === arr.length - 1;
+                              return item.batches!.map((batch, bIndex) => {
+                                const isFirstBatch = bIndex === 0;
+                                const isLastBatch = bIndex === item.batches!.length - 1;
+                                const needsBottomBorder = !isLastItem || !isLastBatch;
 
-                            return (
-                              <tr key={`${item.id}-${bIndex}`} style={{ borderBottom: needsBottomBorder ? '1px solid #f1f5f9' : 'none' }}>
-                                {isFirstBatch && (
-                                  <td rowSpan={item.batches!.length} style={{ padding: '12px 16px', color: '#0f172a', fontWeight: 500, verticalAlign: 'top', borderRight: '1px solid #f1f5f9', background: '#fff' }}>
-                                    {item.item?.name || 'Item'}
-                                  </td>
-                                )}
-                                <td style={{ padding: '12px 16px', color: '#1e293b' }}>{batch.supplierBatchRef || '-'}</td>
-                                <td style={{ padding: '12px 16px', color: '#1e293b' }}>{batch.manufacturerBatch || '-'}</td>
-                                <td style={{ padding: '12px 16px', color: '#475569' }}>{batch.manufacturedDate ? format(new Date(batch.manufacturedDate), 'dd-MMM-yyyy') : '-'}</td>
-                                <td style={{ padding: '12px 16px', color: '#475569' }}>{batch.expiryDate ? format(new Date(batch.expiryDate), 'dd-MMM-yyyy') : '-'}</td>
-                                <td style={{ padding: '12px 16px', color: '#0f172a', textAlign: 'right', fontWeight: 600 }}>{batch.quantity}</td>
-                              </tr>
-                            );
-                          });
-                        })}
-                      </tbody>
-                    </table>
-</div>
+                                return (
+                                  <tr
+                                    key={`${item.id}-${bIndex}`}
+                                    style={{
+                                      borderBottom: needsBottomBorder
+                                        ? '1px solid #f1f5f9'
+                                        : 'none',
+                                    }}
+                                  >
+                                    {isFirstBatch && (
+                                      <td
+                                        rowSpan={item.batches!.length}
+                                        style={{
+                                          padding: '12px 16px',
+                                          color: '#0f172a',
+                                          fontWeight: 500,
+                                          verticalAlign: 'top',
+                                          borderRight: '1px solid #f1f5f9',
+                                          background: '#fff',
+                                        }}
+                                      >
+                                        {item.item?.name || 'Item'}
+                                      </td>
+                                    )}
+                                    <td style={{ padding: '12px 16px', color: '#1e293b' }}>
+                                      {batch.supplierBatchRef || '-'}
+                                    </td>
+                                    <td style={{ padding: '12px 16px', color: '#1e293b' }}>
+                                      {batch.manufacturerBatch || '-'}
+                                    </td>
+                                    <td style={{ padding: '12px 16px', color: '#475569' }}>
+                                      {batch.manufacturedDate
+                                        ? format(new Date(batch.manufacturedDate), 'dd-MMM-yyyy')
+                                        : '-'}
+                                    </td>
+                                    <td style={{ padding: '12px 16px', color: '#475569' }}>
+                                      {batch.expiryDate
+                                        ? format(new Date(batch.expiryDate), 'dd-MMM-yyyy')
+                                        : '-'}
+                                    </td>
+                                    <td
+                                      style={{
+                                        padding: '12px 16px',
+                                        color: '#0f172a',
+                                        textAlign: 'right',
+                                        fontWeight: 600,
+                                      }}
+                                    >
+                                      {batch.quantity}
+                                    </td>
+                                  </tr>
+                                );
+                              });
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1120,466 +1244,559 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
             >
               {/* PDF Header Table Grid */}
               <div className="responsive-table-wrapper">
-<table
-                style={{
-                  width: '100%',
-                  borderCollapse: 'collapse',
-                  border: '1px solid #000',
-                  marginBottom: '-1px',
-                }}
-              >
-                <tbody>
-                  <tr>
-                    <td
-                      style={{
-                        width: '50%',
-                        padding: '12px',
-                        verticalAlign: 'top',
-                        borderRight: '1px solid #000',
-                      }}
-                    >
-                      <div style={{ fontSize: '16px', fontWeight: 800, color: '#000' }}>
-                        {currentOrg?.name || 'Company Name'}
-                      </div>
-                      <div
+                <table
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    border: '1px solid #000',
+                    marginBottom: '-1px',
+                  }}
+                >
+                  <tbody>
+                    <tr>
+                      <td
                         style={{
-                          fontSize: '11px',
-                          color: '#333',
-                          marginTop: '4px',
-                          lineHeight: 1.4,
+                          width: '50%',
+                          padding: '12px',
+                          verticalAlign: 'top',
+                          borderRight: '1px solid #000',
                         }}
                       >
-                        {currentOrg?.address?.streetAddress1 && (
-                          <>
-                            {currentOrg.address.streetAddress1}
-                            <br />
-                          </>
-                        )}
-                        {currentOrg?.address?.city ||
-                        currentOrg?.address?.stateCode ||
-                        currentOrg?.address?.zip ? (
-                          <>
-                            {[
-                              currentOrg.address.city,
-                              currentOrg.address.stateCode,
-                              currentOrg.address.zip,
-                            ]
-                              .filter(Boolean)
-                              .join(' ')}
-                            <br />
-                          </>
-                        ) : null}
-                        {currentOrg?.address?.country && <>{currentOrg.address.country}</>}
-                      </div>
-                    </td>
-                    <td
-                      style={{
-                        width: '50%',
-                        padding: '12px',
-                        verticalAlign: 'middle',
-                        textAlign: 'right',
-                      }}
-                    >
-                      <h2 className="detail-title"
+                        <div style={{ fontSize: '16px', fontWeight: 800, color: '#000' }}>
+                          {currentOrg?.name || 'Company Name'}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '11px',
+                            color: '#333',
+                            marginTop: '4px',
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          {currentOrg?.address?.streetAddress1 && (
+                            <>
+                              {currentOrg.address.streetAddress1}
+                              <br />
+                            </>
+                          )}
+                          {currentOrg?.address?.city ||
+                          currentOrg?.address?.stateCode ||
+                          currentOrg?.address?.zip ? (
+                            <>
+                              {[
+                                currentOrg.address.city,
+                                currentOrg.address.stateCode,
+                                currentOrg.address.zip,
+                              ]
+                                .filter(Boolean)
+                                .join(' ')}
+                              <br />
+                            </>
+                          ) : null}
+                          {currentOrg?.address?.country && <>{currentOrg.address.country}</>}
+                        </div>
+                      </td>
+                      <td
                         style={{
-                          fontSize: '26px',
-                          fontWeight: 800,
-                          color: '#000',
-                          margin: 0,
-                          letterSpacing: '1px',
+                          width: '50%',
+                          padding: '12px',
+                          verticalAlign: 'middle',
+                          textAlign: 'right',
                         }}
                       >
-                        BILL
-                      </h2>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-</div>
+                        <h2
+                          className="detail-title"
+                          style={{
+                            fontSize: '26px',
+                            fontWeight: 800,
+                            color: '#000',
+                            margin: 0,
+                            letterSpacing: '1px',
+                          }}
+                        >
+                          BILL
+                        </h2>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
 
               {/* PDF Bill Meta Table */}
               <div className="responsive-table-wrapper">
-<table
-                style={{
-                  width: '100%',
-                  borderCollapse: 'collapse',
-                  border: '1px solid #000',
-                  marginBottom: '-1px',
-                  fontSize: '11px',
-                }}
-              >
-                <tbody>
-                  <tr>
-                    <td
-                      style={{ width: '50%', padding: '6px 10px', borderRight: '1px solid #000' }}
-                    >
-                      <strong>Bill No.</strong> : <strong>{po.billNumber}</strong>
-                    </td>
-                    <td style={{ width: '50%', padding: '6px 10px' }}>
-                      <strong>Place Of Supply</strong> : Gujarat (24)
-                    </td>
-                  </tr>
-                  <tr style={{ borderTop: '1px solid #000' }}>
-                    <td
-                      style={{ width: '50%', padding: '6px 10px', borderRight: '1px solid #000' }}
-                    >
-                      <strong>Date</strong> :{' '}
-                      {po.billDate ? format(new Date(po.billDate), 'dd-MM-yyyy') : '-'}
-                    </td>
-                    <td style={{ width: '50%', padding: '6px 10px' }}>
-                      <strong>Terms</strong> : -
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-</div>
+                <table
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    border: '1px solid #000',
+                    marginBottom: '-1px',
+                    fontSize: '11px',
+                  }}
+                >
+                  <tbody>
+                    <tr>
+                      <td
+                        style={{ width: '50%', padding: '6px 10px', borderRight: '1px solid #000' }}
+                      >
+                        <strong>Bill No.</strong> : <strong>{po.billNumber}</strong>
+                      </td>
+                      <td style={{ width: '50%', padding: '6px 10px' }}>
+                        <strong>Place Of Supply</strong> : Gujarat (24)
+                      </td>
+                    </tr>
+                    <tr style={{ borderTop: '1px solid #000' }}>
+                      <td
+                        style={{ width: '50%', padding: '6px 10px', borderRight: '1px solid #000' }}
+                      >
+                        <strong>Date</strong> :{' '}
+                        {po.billDate ? format(new Date(po.billDate), 'dd-MM-yyyy') : '-'}
+                      </td>
+                      <td style={{ width: '50%', padding: '6px 10px' }}>
+                        <strong>Terms</strong> : -
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
 
               {/* Vendor & Delivery Address Grid */}
               <div className="responsive-table-wrapper">
-<table
-                style={{
-                  width: '100%',
-                  borderCollapse: 'collapse',
-                  border: '1px solid #000',
-                  marginBottom: '-1px',
-                  fontSize: '11px',
-                }}
-              >
-                <thead>
-                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #000' }}>
-                    <th
-                      style={{
-                        width: '50%',
-                        padding: '6px 10px',
-                        textAlign: 'left',
-                        borderRight: '1px solid #000',
-                      }}
-                    >
-                      Vendor Address
-                    </th>
-                    <th style={{ width: '50%', padding: '6px 10px', textAlign: 'left' }}>
-                      Deliver To
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td
-                      style={{
-                        padding: '10px',
-                        verticalAlign: 'top',
-                        borderRight: '1px solid #000',
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      <strong>{po.vendor?.contactName || po.vendor?.companyName || '-'}</strong>
-                      {po.vendor?.email && <div>{po.vendor.email}</div>}
-                      {po.vendor?.phone && <div>{po.vendor.phone}</div>}
-                    </td>
-                    <td style={{ padding: '10px', verticalAlign: 'top', lineHeight: 1.5 }}>
-                      <strong>{po.location?.name || 'Head Office'}</strong>
-                      <div>{po.location?.addressString}</div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-</div>
+                <table
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    border: '1px solid #000',
+                    marginBottom: '-1px',
+                    fontSize: '11px',
+                  }}
+                >
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #000' }}>
+                      <th
+                        style={{
+                          width: '50%',
+                          padding: '6px 10px',
+                          textAlign: 'left',
+                          borderRight: '1px solid #000',
+                        }}
+                      >
+                        Vendor Address
+                      </th>
+                      <th style={{ width: '50%', padding: '6px 10px', textAlign: 'left' }}>
+                        Deliver To
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td
+                        style={{
+                          padding: '10px',
+                          verticalAlign: 'top',
+                          borderRight: '1px solid #000',
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        <strong>{po.vendor?.contactName || po.vendor?.companyName || '-'}</strong>
+                        {po.vendor?.email && <div>{po.vendor.email}</div>}
+                        {po.vendor?.phone && <div>{po.vendor.phone}</div>}
+                      </td>
+                      <td style={{ padding: '10px', verticalAlign: 'top', lineHeight: 1.5 }}>
+                        <strong>{po.location?.name || 'Head Office'}</strong>
+                        <div>{po.location?.addressString}</div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
 
               {/* PDF Items Table */}
               <div className="responsive-table-wrapper">
-<table
-                style={{
-                  width: '100%',
-                  borderCollapse: 'collapse',
-                  border: '1px solid #000',
-                  marginBottom: '-1px',
-                  fontSize: '11px',
-                }}
-              >
-                <thead>
-                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #000' }}>
-                    <th
-                      style={{
-                        padding: '6px 8px',
-                        borderRight: '1px solid #000',
-                        textAlign: 'center',
-                        width: '35px',
-                      }}
-                    >
-                      S No
-                    </th>
-                    <th
-                      style={{
-                        padding: '6px 8px',
-                        borderRight: '1px solid #000',
-                        textAlign: 'left',
-                      }}
-                    >
-                      Material Code & Description
-                    </th>
-                    <th
-                      style={{
-                        padding: '6px 8px',
-                        borderRight: '1px solid #000',
-                        textAlign: 'center',
-                        width: '85px',
-                      }}
-                    >
-                      Delivery Date
-                    </th>
-                    <th
-                      style={{
-                        padding: '6px 8px',
-                        borderRight: '1px solid #000',
-                        textAlign: 'center',
-                        width: '65px',
-                      }}
-                    >
-                      Qty (UoM)
-                    </th>
-                    <th
-                      style={{
-                        padding: '6px 8px',
-                        borderRight: '1px solid #000',
-                        textAlign: 'right',
-                        width: '85px',
-                      }}
-                    >
-                      Unit Rate (INR)
-                    </th>
-                    <th
-                      style={{
-                        padding: '6px 8px',
-                        borderRight: '1px solid #000',
-                        textAlign: 'right',
-                        width: '65px',
-                      }}
-                    >
-                      Discount
-                    </th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right', width: '95px' }}>
-                      Total Value
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(po.lineItems || []).map((item, index) => {
-                    const discVal = Number(
-                      item.discountValue !== undefined && item.discountValue !== null
-                        ? item.discountValue
-                        : item.discountPercentage || item.discountAmount || 0,
-                    );
-                    const discDisplay =
-                      item.discountType === 'fixed' ? `₹${discVal.toFixed(2)}` : `${discVal}%`;
+                <table
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    border: '1px solid #000',
+                    marginBottom: '-1px',
+                    fontSize: '11px',
+                  }}
+                >
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #000' }}>
+                      <th
+                        style={{
+                          padding: '6px 8px',
+                          borderRight: '1px solid #000',
+                          textAlign: 'center',
+                          width: '35px',
+                        }}
+                      >
+                        S No
+                      </th>
+                      <th
+                        style={{
+                          padding: '6px 8px',
+                          borderRight: '1px solid #000',
+                          textAlign: 'left',
+                        }}
+                      >
+                        Material Code & Description
+                      </th>
+                      <th
+                        style={{
+                          padding: '6px 8px',
+                          borderRight: '1px solid #000',
+                          textAlign: 'center',
+                          width: '85px',
+                        }}
+                      >
+                        Delivery Date
+                      </th>
+                      <th
+                        style={{
+                          padding: '6px 8px',
+                          borderRight: '1px solid #000',
+                          textAlign: 'center',
+                          width: '65px',
+                        }}
+                      >
+                        Qty (UoM)
+                      </th>
+                      <th
+                        style={{
+                          padding: '6px 8px',
+                          borderRight: '1px solid #000',
+                          textAlign: 'right',
+                          width: '85px',
+                        }}
+                      >
+                        Unit Rate (INR)
+                      </th>
+                      <th
+                        style={{
+                          padding: '6px 8px',
+                          borderRight: '1px solid #000',
+                          textAlign: 'right',
+                          width: '65px',
+                        }}
+                      >
+                        Discount
+                      </th>
+                      <th style={{ padding: '6px 8px', textAlign: 'right', width: '95px' }}>
+                        Total Value
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(po.lineItems || []).map((item, index) => {
+                      const discVal = Number(
+                        item.discountValue !== undefined && item.discountValue !== null
+                          ? item.discountValue
+                          : item.discountPercentage || item.discountAmount || 0,
+                      );
+                      const discDisplay =
+                        item.discountType === 'fixed' ? `₹${discVal.toFixed(2)}` : `${discVal}%`;
 
-                    return (
-                      <tr key={item.id || index} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                        <td
-                          style={{
-                            padding: '8px',
-                            borderRight: '1px solid #000',
-                            textAlign: 'center',
-                          }}
-                        >
-                          {index + 1}
-                        </td>
-                        <td
-                          style={{ padding: '8px', borderRight: '1px solid #000', fontWeight: 600 }}
-                        >
-                          {item.item?.name || 'Item'}
-                          {item.description && (
-                            <div style={{ fontWeight: 400, color: '#475569', marginTop: '2px' }}>
-                              {item.description}
-                            </div>
-                          )}
-                        </td>
-                        <td
-                          style={{
-                            padding: '8px',
-                            borderRight: '1px solid #000',
-                            textAlign: 'center',
-                          }}
-                        >
-                          {po.dueDate ? format(new Date(po.dueDate), 'dd-MM-yyyy') : '-'}
-                        </td>
-                        <td
-                          style={{
-                            padding: '8px',
-                            borderRight: '1px solid #000',
-                            textAlign: 'center',
-                          }}
-                        >
-                          {item.quantity}
-                        </td>
-                        <td
-                          style={{
-                            padding: '8px',
-                            borderRight: '1px solid #000',
-                            textAlign: 'right',
-                          }}
-                        >
-                          ₹{Number(item.rate || 0).toFixed(2)}
-                        </td>
-                        <td
-                          style={{
-                            padding: '8px',
-                            borderRight: '1px solid #000',
-                            textAlign: 'right',
-                          }}
-                        >
-                          {discVal > 0 ? discDisplay : '₹0.00'}
-                        </td>
-                        <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600 }}>
-                          ₹
-                          {Number(
-                            (item as Record<string, unknown>).itemTotal || item.amount || 0,
-                          ).toFixed(2)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-</div>
-
-
+                      return (
+                        <tr key={item.id || index} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                          <td
+                            style={{
+                              padding: '8px',
+                              borderRight: '1px solid #000',
+                              textAlign: 'center',
+                            }}
+                          >
+                            {index + 1}
+                          </td>
+                          <td
+                            style={{
+                              padding: '8px',
+                              borderRight: '1px solid #000',
+                              fontWeight: 600,
+                            }}
+                          >
+                            {item.item?.name || 'Item'}
+                            {item.description && (
+                              <div style={{ fontWeight: 400, color: '#475569', marginTop: '2px' }}>
+                                {item.description}
+                              </div>
+                            )}
+                          </td>
+                          <td
+                            style={{
+                              padding: '8px',
+                              borderRight: '1px solid #000',
+                              textAlign: 'center',
+                            }}
+                          >
+                            {po.dueDate ? format(new Date(po.dueDate), 'dd-MM-yyyy') : '-'}
+                          </td>
+                          <td
+                            style={{
+                              padding: '8px',
+                              borderRight: '1px solid #000',
+                              textAlign: 'center',
+                            }}
+                          >
+                            {item.quantity}
+                          </td>
+                          <td
+                            style={{
+                              padding: '8px',
+                              borderRight: '1px solid #000',
+                              textAlign: 'right',
+                            }}
+                          >
+                            ₹{Number(item.rate || 0).toFixed(2)}
+                          </td>
+                          <td
+                            style={{
+                              padding: '8px',
+                              borderRight: '1px solid #000',
+                              textAlign: 'right',
+                            }}
+                          >
+                            {discVal > 0 ? discDisplay : '₹0.00'}
+                          </td>
+                          <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600 }}>
+                            ₹
+                            {Number(
+                              (item as Record<string, unknown>).itemTotal || item.amount || 0,
+                            ).toFixed(2)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
 
               {/* PDF Totals & Signatures Grid */}
               <div className="responsive-table-wrapper">
-<table
-                style={{
-                  width: '100%',
-                  borderCollapse: 'collapse',
-                  border: '1px solid #000',
-                  fontSize: '11px',
-                }}
-              >
-                <tbody>
-                  <tr>
-                    <td
-                      style={{
-                        width: '60%',
-                        padding: '12px',
-                        verticalAlign: 'top',
-                        borderRight: '1px solid #000',
-                      }}
-                    >
-                      {po.termsAndConditions && (
-                        <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
-                          <strong>Terms & Conditions:</strong>
-                          <br />
-                          {po.termsAndConditions}
-                        </div>
-                      )}
-                    </td>
-                    <td
-                      style={{
-                        width: '40%',
-                        padding: '12px',
-                        verticalAlign: 'top',
-                        textAlign: 'right',
-                      }}
-                    >
-                      <div
+                <table
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    border: '1px solid #000',
+                    fontSize: '11px',
+                  }}
+                >
+                  <tbody>
+                    <tr>
+                      <td
                         style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          marginBottom: '8px',
+                          width: '60%',
+                          padding: '12px',
+                          verticalAlign: 'top',
+                          borderRight: '1px solid #000',
                         }}
                       >
-                        <span>Sub Total:</span>
-                        <strong>₹{Number(po.subTotal || 0).toFixed(2)}</strong>
-                      </div>
-                      {Number(po.subTotal || 0) >
-                        Number((po as Record<string, unknown>).total || po.totalAmount || 0) && (
+                        {po.termsAndConditions && (
+                          <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+                            <strong>Terms & Conditions:</strong>
+                            <br />
+                            {po.termsAndConditions}
+                          </div>
+                        )}
+                      </td>
+                      <td
+                        style={{
+                          width: '40%',
+                          padding: '12px',
+                          verticalAlign: 'top',
+                          textAlign: 'right',
+                        }}
+                      >
                         <div
                           style={{
                             display: 'flex',
                             justifyContent: 'space-between',
                             marginBottom: '8px',
-                            color: '#16a34a',
                           }}
                         >
-                          <span>Total Discount:</span>
+                          <span>Sub Total:</span>
+                          <strong>₹{Number(po.subTotal || 0).toFixed(2)}</strong>
+                        </div>
+                        {Number(po.subTotal || 0) >
+                          Number((po as Record<string, unknown>).total || po.totalAmount || 0) && (
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              marginBottom: '8px',
+                              color: '#16a34a',
+                            }}
+                          >
+                            <span>Total Discount:</span>
+                            <strong>
+                              -₹
+                              {(
+                                Number(po.subTotal || 0) -
+                                Number((po as Record<string, unknown>).total || po.totalAmount || 0)
+                              ).toFixed(2)}
+                            </strong>
+                          </div>
+                        )}
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            borderTop: '1px solid #000',
+                            paddingTop: '6px',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                          }}
+                        >
+                          <span>Total:</span>
                           <strong>
-                            -₹
-                            {(
-                              Number(po.subTotal || 0) -
-                              Number((po as Record<string, unknown>).total || po.totalAmount || 0)
+                            ₹
+                            {Number(
+                              (po as Record<string, unknown>).total || po.totalAmount || 0,
                             ).toFixed(2)}
                           </strong>
                         </div>
-                      )}
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          borderTop: '1px solid #000',
-                          paddingTop: '6px',
-                          fontSize: '12px',
-                          fontWeight: 700,
-                        }}
-                      >
-                        <span>Total:</span>
-                        <strong>
-                          ₹
-                          {Number(
-                            (po as Record<string, unknown>).total || po.totalAmount || 0,
-                          ).toFixed(2)}
-                        </strong>
-                      </div>
 
-                      <div style={{ marginTop: '40px', fontSize: '11px', color: '#333' }}>
-                        <div>For, {currentOrg?.name || 'Company Name'}</div>
-                        <div style={{ marginTop: '30px', fontWeight: 600 }}>
-                          Authorized Signature
+                        <div style={{ marginTop: '40px', fontSize: '11px', color: '#333' }}>
+                          <div>For, {currentOrg?.name || 'Company Name'}</div>
+                          <div style={{ marginTop: '30px', fontWeight: 600 }}>
+                            Authorized Signature
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-</div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
 
               {/* PDF Batch Details Section */}
-              {(po.lineItems || []).some(item => item.batches && item.batches.length > 0) && (
+              {(po.lineItems || []).some((item) => item.batches && item.batches.length > 0) && (
                 <div style={{ marginTop: '16px', marginBottom: '8px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#000', marginBottom: '6px' }}>{trackingLabel.singular.toUpperCase()} DETAILS</div>
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      color: '#000',
+                      marginBottom: '6px',
+                    }}
+                  >
+                    {trackingLabel.singular.toUpperCase()} DETAILS
+                  </div>
                   <div className="responsive-table-wrapper">
-<table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #000', fontSize: '10px' }}>
-                    <thead>
-                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #000' }}>
-                        <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #000', width: '25%' }}>Item</th>
-                        <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #000' }}>Supplier {trackingLabel.singular} Ref</th>
-                        <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #000' }}>Manufacturer {trackingLabel.singular}#</th>
-                        <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #000' }}>Mfg. Date</th>
-                        <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #000' }}>Expiry Date</th>
-                        <th style={{ padding: '6px 8px', textAlign: 'right' }}>Quantity</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(po.lineItems || []).filter(item => item.batches && item.batches.length > 0).map((item) => {
-                        return item.batches!.map((batch, bIndex) => {
-                          const isFirstBatch = bIndex === 0;
-                          return (
-                            <tr key={`${item.id}-${bIndex}`} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                              {isFirstBatch && (
-                                <td rowSpan={item.batches!.length} style={{ padding: '6px 8px', borderRight: '1px solid #000', verticalAlign: 'top', fontWeight: 600 }}>
-                                  {item.item?.name || 'Item'}
-                                </td>
-                              )}
-                              <td style={{ padding: '6px 8px', borderRight: '1px solid #000' }}>{batch.supplierBatchRef || '-'}</td>
-                              <td style={{ padding: '6px 8px', borderRight: '1px solid #000' }}>{batch.manufacturerBatch || '-'}</td>
-                              <td style={{ padding: '6px 8px', borderRight: '1px solid #000' }}>{batch.manufacturedDate ? format(new Date(batch.manufacturedDate), 'dd-MMM-yyyy') : '-'}</td>
-                              <td style={{ padding: '6px 8px', borderRight: '1px solid #000' }}>{batch.expiryDate ? format(new Date(batch.expiryDate), 'dd-MMM-yyyy') : '-'}</td>
-                              <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600 }}>{batch.quantity}</td>
-                            </tr>
-                          );
-                        });
-                      })}
-                    </tbody>
-                  </table>
-</div>
+                    <table
+                      style={{
+                        width: '100%',
+                        borderCollapse: 'collapse',
+                        border: '1px solid #000',
+                        fontSize: '10px',
+                      }}
+                    >
+                      <thead>
+                        <tr style={{ background: '#f8fafc', borderBottom: '1px solid #000' }}>
+                          <th
+                            style={{
+                              padding: '6px 8px',
+                              textAlign: 'left',
+                              borderRight: '1px solid #000',
+                              width: '25%',
+                            }}
+                          >
+                            Item
+                          </th>
+                          <th
+                            style={{
+                              padding: '6px 8px',
+                              textAlign: 'left',
+                              borderRight: '1px solid #000',
+                            }}
+                          >
+                            Supplier {trackingLabel.singular} Ref
+                          </th>
+                          <th
+                            style={{
+                              padding: '6px 8px',
+                              textAlign: 'left',
+                              borderRight: '1px solid #000',
+                            }}
+                          >
+                            Manufacturer {trackingLabel.singular}#
+                          </th>
+                          <th
+                            style={{
+                              padding: '6px 8px',
+                              textAlign: 'left',
+                              borderRight: '1px solid #000',
+                            }}
+                          >
+                            Mfg. Date
+                          </th>
+                          <th
+                            style={{
+                              padding: '6px 8px',
+                              textAlign: 'left',
+                              borderRight: '1px solid #000',
+                            }}
+                          >
+                            Expiry Date
+                          </th>
+                          <th style={{ padding: '6px 8px', textAlign: 'right' }}>Quantity</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(po.lineItems || [])
+                          .filter((item) => item.batches && item.batches.length > 0)
+                          .map((item) => {
+                            return item.batches!.map((batch, bIndex) => {
+                              const isFirstBatch = bIndex === 0;
+                              return (
+                                <tr
+                                  key={`${item.id}-${bIndex}`}
+                                  style={{ borderBottom: '1px solid #e2e8f0' }}
+                                >
+                                  {isFirstBatch && (
+                                    <td
+                                      rowSpan={item.batches!.length}
+                                      style={{
+                                        padding: '6px 8px',
+                                        borderRight: '1px solid #000',
+                                        verticalAlign: 'top',
+                                        fontWeight: 600,
+                                      }}
+                                    >
+                                      {item.item?.name || 'Item'}
+                                    </td>
+                                  )}
+                                  <td style={{ padding: '6px 8px', borderRight: '1px solid #000' }}>
+                                    {batch.supplierBatchRef || '-'}
+                                  </td>
+                                  <td style={{ padding: '6px 8px', borderRight: '1px solid #000' }}>
+                                    {batch.manufacturerBatch || '-'}
+                                  </td>
+                                  <td style={{ padding: '6px 8px', borderRight: '1px solid #000' }}>
+                                    {batch.manufacturedDate
+                                      ? format(new Date(batch.manufacturedDate), 'dd-MMM-yyyy')
+                                      : '-'}
+                                  </td>
+                                  <td style={{ padding: '6px 8px', borderRight: '1px solid #000' }}>
+                                    {batch.expiryDate
+                                      ? format(new Date(batch.expiryDate), 'dd-MMM-yyyy')
+                                      : '-'}
+                                  </td>
+                                  <td
+                                    style={{
+                                      padding: '6px 8px',
+                                      textAlign: 'right',
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    {batch.quantity}
+                                  </td>
+                                </tr>
+                              );
+                            });
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
