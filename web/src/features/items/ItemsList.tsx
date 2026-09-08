@@ -371,6 +371,9 @@ export function ItemsList() {
                           cursor: 'pointer',
                           background: selectedItemId === item.id ? '#f1f5f9' : 'transparent',
                           transition: 'background 0.1s',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'flex-start',
                         }}
                         onMouseEnter={(e) => {
                           if (selectedItemId !== item.id)
@@ -381,23 +384,35 @@ export function ItemsList() {
                             e.currentTarget.style.background = 'transparent';
                         }}
                       >
-                          <div
-                            style={{
-                              fontSize: '13px',
-                              fontWeight: 500,
-                              color: '#1e293b',
-                              marginBottom: '4px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                            }}
-                          >
-                            {item.itemStructure === 'composite' && (
-                              <ShoppingBag size={14} color="#64748b" />
-                            )}
-                            <span>{item.name}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div
+                              style={{
+                                fontSize: '13px',
+                                fontWeight: 500,
+                                color: '#1e293b',
+                                marginBottom: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                              }}
+                            >
+                              {item.itemStructure === 'composite' && (
+                                <ShoppingBag size={14} color="#64748b" />
+                              )}
+                              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
+                            </div>
+                            <div style={{ fontSize: '12px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>SKU: {item.sku}</div>
                           </div>
-                          <div style={{ fontSize: '12px', color: '#64748b' }}>SKU: {item.sku}</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: '12px', flexShrink: 0 }}>
+                            <div style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b' }}>
+                              ₹{item.sellingPrice ? Number(item.sellingPrice).toFixed(2) : '0.00'}
+                            </div>
+                            {item.isActive === false && (
+                              <div style={{ fontSize: '11px', fontWeight: 500, color: '#94a3b8', marginTop: '4px' }}>
+                                INACTIVE
+                              </div>
+                            )}
+                          </div>
                       </div>
                     ))}
                   </div>

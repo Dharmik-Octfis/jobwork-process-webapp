@@ -467,6 +467,7 @@ export class CompositeItemsService {
               unit: true,
               stockingUomId: true,
               itemType: true,
+              itemStructure: true,
               /* 🔴 The assembly form needs it: a batch-tracked component gets a
                  batch picker, an untracked one is allocated FIFO by the server. */
               inventoryTracking: true,

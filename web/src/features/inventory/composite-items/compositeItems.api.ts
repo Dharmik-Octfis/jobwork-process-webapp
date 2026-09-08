@@ -33,6 +33,7 @@ export interface CompositeComponent {
     unit: string;
     stockingUomId: string | null;
     type: string;
+    itemStructure?: string;
     /** 🔴 `batch` means this component gets a batch picker on the assembly form;
      * anything else is allocated FIFO by the server. Same rule as everywhere
      * else — the picker appears exactly where a batch is visible. */
