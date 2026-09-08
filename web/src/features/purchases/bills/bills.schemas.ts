@@ -1,4 +1,3 @@
- 
 import { z } from 'zod';
 import { paginatedSchema, type Paginated } from '../../../lib/pagination';
 
@@ -37,6 +36,17 @@ export const billItemSchema = z.object({
         units: z
           .array(
             z.object({
+              /**
+               * 🔴 Set on a package read back from a SAVED bill — its real
+               * `batch_units.id`. The edit form carries it through as
+               * `savedUnitId` so re-saving TOPS THE PACKAGE UP instead of naming
+               * it again, which the server refuses: a label is a physical tag and
+               * two rolls in one batch may not share one.
+               *
+               * Optional because the same shape is what the form SENDS, where a
+               * package being named for the first time has no id yet.
+               */
+              batchUnitId: z.string().optional(),
               label: z.string(),
               quantity: z.number().or(z.string()),
             }),

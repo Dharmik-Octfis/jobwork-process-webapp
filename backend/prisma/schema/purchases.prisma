@@ -282,7 +282,75 @@ model BillItem {
   bill               Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
   updatedByUser      User?    @relation("BillItemUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
+  /// What this line says it received, broken down. See `BillItemBatch`.
+  batchLines BillItemBatch[]
+
   @@map("bill_items")
+}
+
+/// 🔴 WHAT A BILL LINE SAYS IT RECEIVED — the document's own record, and the
+/// table this module spent its first year without.
+///
+/// `getBillById` used to reconstruct a line's batches by reading `stock_ledger`
+/// back and grouping it. That works only for a bill that has POSTED, which is
+/// why a draft lost every batch and taka the moment it was saved: a draft writes
+/// no ledger rows, so there was nothing to read. It also broke on edit, because
+/// `updateBill` replaces its `bill_items` rows and the ledger kept pointing at
+/// the ids it had just soft-deleted.
+///
+/// The direction was simply backwards. A document is a record of INTENT and the
+/// ledger is a record of EFFECT; postings are derived from the document, never
+/// the document from its postings. It is the same split `job_issue_lines` has
+/// always had — and exactly why jobwork's drafts needed no new storage while
+/// bills could not have them at all.
+///
+/// 🔴 ONE ROW PER (batch, package), the same grain as `job_issue_lines`. Three
+/// takas of one batch are three rows; a batch nobody broke into packages is one
+/// row with a null `batchUnitId`. Deliberately NOT a nested batch table with a
+/// units child — the flat shape is what the ledger, the picker and the issue
+/// document all already use, and one grain across the app is worth more than a
+/// tidier tree.
+///
+/// The quantity lives HERE and nowhere else. A `batch_unit` stores its tag and
+/// its position, never an amount — a package's posted quantity stays a SUM over
+/// its ledger rows, so the two can never drift. This column is what the bill
+/// INTENDS; the ledger is what happened.
+model BillItemBatch {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  /// Denormalised from the parent bill so this table carries its OWN policy,
+  /// like `job_issue_lines` and `batch_units`. `bill_items` is gated through a
+  /// subquery on `bills` instead; that shape is slower and only works while
+  /// every read joins the header, which a read of this table does not.
+  organizationId String @map("organization_id") @db.Uuid
+  billItemId     String @map("bill_item_id") @db.Uuid
+
+  batchId String @map("batch_id") @db.Uuid
+
+  /// WHICH package of that batch — a taka, roll, bale. Null is load-bearing and
+  /// means two different things, both real: an org that runs no unit level, and
+  /// the untagged remainder of a batch that does.
+  batchUnitId String? @map("batch_unit_id") @db.Uuid
+
+  qty Decimal @db.Decimal(18, 4)
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  billItem      BillItem     @relation(fields: [billItemId], references: [id], onDelete: Cascade)
+  batch         Batch        @relation("BillItemBatchBatch", fields: [batchId], references: [id])
+  batchUnit     BatchUnit?   @relation("BillItemBatchUnit", fields: [batchUnitId], references: [id])
+  createdByUser User?        @relation("BillItemBatchCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?        @relation("BillItemBatchUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, billItemId])
+  @@index([organizationId, batchId])
+  @@map("bill_item_batches")
 }
 
 model BillActivity {

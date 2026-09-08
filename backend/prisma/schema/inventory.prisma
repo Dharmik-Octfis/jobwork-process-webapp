@@ -148,6 +148,10 @@ model Batch {
 
   issueLines JobIssueLine[] @relation("JobIssueLineBatch")
 
+  /// The bill lines that say they received this batch. The document's own claim,
+  /// which exists for a DRAFT too — before any of it reaches `ledgerEntries`.
+  billItemBatches BillItemBatch[] @relation("BillItemBatchBatch")
+
   /// Job orders that PLAN to use this batch. A note, not a hold — see the model.
   plannedForStepInputs JobOrderStepInputBatch[] @relation("JobOrderStepInputBatchBatch")
   receiptsAsOutput     JobReceipt[]             @relation("JobReceiptOutputBatch")
@@ -262,6 +266,10 @@ model BatchUnit {
   /// The challan lines that sent this package out. Several, over its life — a
   /// roll can go to the dyer, come back, and go to the printer.
   issueLines JobIssueLine[] @relation("JobIssueLineBatchUnit")
+
+  /// The bill lines that say they received this package — present on a DRAFT,
+  /// where no ledger row names it yet.
+  billItemBatches BillItemBatch[] @relation("BillItemBatchUnit")
 
   /// Job orders that PLAN to use this package. A note, not a hold — see the model.
   plannedForStepInputs JobOrderStepInputBatch[] @relation("JobOrderStepInputBatchUnit")

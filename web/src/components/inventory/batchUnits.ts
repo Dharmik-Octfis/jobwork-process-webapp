@@ -43,6 +43,21 @@ export interface BatchUnitRow {
    */
   batchUnitId?: string | null;
   /**
+   * 🔴 A PACKAGE THIS DOCUMENT ALREADY CREATED, read back from a saved bill — the
+   * THIRD kind of row, and deliberately not `batchUnitId`.
+   *
+   * The two above are "name a new package" and "top up somebody else's". This is
+   * neither: the row is the document's own, so it renders as an ordinary label box
+   * showing the tag that was typed, while still submitting the id so the server
+   * TOPS IT UP instead of creating a second package under a tag the batch already
+   * holds — which is the 409 that made every saved bill with takas uneditable.
+   *
+   * It cannot reuse `batchUnitId`, because that flips the row to the picker (see
+   * `isExistingUnit`), and the picker lists packages that currently hold STOCK. A
+   * draft's packages hold none, so its own takas would render as empty dropdowns.
+   */
+  savedUnitId?: string | null;
+  /**
    * 🔴 The label in this row is OURS, not the user's — so `renumberAutoLabels` may
    * rewrite it. Set by "+ New {unit}", cleared the moment anybody types in the
    * box, and never set on an "Existing {unit}" row or on one that came back from
@@ -183,7 +198,12 @@ function named(units: readonly BatchUnitRow[]): BatchUnitRow[] {
 export function isSubmittableUnit(unit: BatchUnitRow): boolean {
   return isExistingUnit(unit)
     ? isPickedUnit(unit)
-    : (!unit.autoLabel && unit.label.trim() !== '') || parseFloat(unit.quantity) > 0;
+    : // A row read back from a saved document is real by definition — somebody
+      // already saved it — so it goes even if its quantity was cleared to zero,
+      // which `validateBatchUnits` refuses separately and more clearly.
+      Boolean(unit.savedUnitId) ||
+        (!unit.autoLabel && unit.label.trim() !== '') ||
+        parseFloat(unit.quantity) > 0;
 }
 
 export function unitsTotal(units: readonly BatchUnitRow[]): number {

@@ -66,12 +66,22 @@ async function receiveBillBatch(
     itemId: string;
     billId: string;
     lineId: string;
-    locationId: string;
+    locationId: string | null;
     rate: number;
     batch: BillBatchPayload;
+    /**
+     * 🔴 WHETHER THE STOCK MOVES — the whole of what a draft changes, and the
+     * same switch `jobIssues.service` calls `asDraft`.
+     *
+     * `bill_item_batches` is written either way, because that is the DOCUMENT
+     * saying what it received; the ledger rows below are written only when the
+     * bill is Open, because that is the stock actually arriving. A draft that
+     * wrote no document rows is what made every taka vanish on save.
+     */
+    post: boolean;
   },
-) {
-  const { organizationId, userId, itemId, billId, lineId, locationId, rate, batch } = args;
+): Promise<{ unitIds: string[] }> {
+  const { organizationId, userId, itemId, billId, lineId, locationId, rate, batch, post } = args;
   const quantity = Number(batch.quantity);
 
   let batchId = batch.batchId;
@@ -162,6 +172,60 @@ async function receiveBillBatch(
       : []),
   ];
 
+  const untagged = quantity - unitTotal;
+
+  /**
+   * 🔴 THE DOCUMENT ROWS — written on EVERY save, draft or open, and the reason
+   * this function no longer needs a location to do its job.
+   *
+   * One row per package, plus one for the untagged remainder, which is the grain
+   * `job_issue_lines` uses and the grain the ledger posts at. Writing them here
+   * rather than beside the postings is the point: a draft reaches this line and
+   * stops, and reopening it still shows every batch and every taka.
+   */
+  for (const unit of postableUnits) {
+    await tx.billItemBatch.create({
+      data: {
+        organizationId,
+        billItemId: lineId,
+        batchId,
+        batchUnitId: unit.id,
+        qty: unit.qty,
+        createdBy: userId,
+        updatedBy: userId,
+      },
+    });
+  }
+  // A batch fully broken into packages leaves nothing behind. The epsilon is the
+  // same one the equality above uses — `3 × 33.3333` must not leave a remainder.
+  if (untagged > QTY_EPSILON) {
+    await tx.billItemBatch.create({
+      data: {
+        organizationId,
+        billItemId: lineId,
+        batchId,
+        batchUnitId: null,
+        qty: untagged,
+        createdBy: userId,
+        updatedBy: userId,
+      },
+    });
+  }
+
+  const unitIds = postableUnits.map((unit) => unit.id);
+  if (!post) return { unitIds };
+
+  /**
+   * 🔴 PAST HERE THE STOCK ACTUALLY MOVES. Only an Open bill gets this far, so a
+   * draft holds no stock, appears in no picker and changes no balance — while its
+   * document rows above say exactly what it will receive when it is posted.
+   */
+  if (!locationId) {
+    throw ApiError.badRequest('A bill cannot be opened without a location to receive into.', {
+      locationId: 'Select the location this stock is arriving at.',
+    });
+  }
+
   for (const unit of postableUnits) {
     await postMovement(
       tx,
@@ -182,9 +246,8 @@ async function receiveBillBatch(
     );
   }
 
-  const untagged = quantity - unitTotal;
-  // A batch fully broken into packages leaves nothing behind, and a zero-quantity
-  // movement is one `postMovement` refuses by design — one direction per row.
+  // A zero-quantity movement is one `postMovement` refuses by design — one
+  // direction per row.
   if (untagged > QTY_EPSILON) {
     await postMovement(
       tx,
@@ -203,6 +266,8 @@ async function receiveBillBatch(
       resolved,
     );
   }
+
+  return { unitIds };
 }
 
 /**
@@ -228,13 +293,10 @@ async function reverseBillPostings(
     organizationId: string;
     billId: string;
     billNumber: string;
-    /** Packages the incoming payload still names. They survive, so an unchanged
-     * taka keeps its row, its `seq` and its tag across the edit. */
-    keepUnitIds: ReadonlySet<string>;
     userId: string | null;
   },
 ) {
-  const { organizationId, billId, billNumber, keepUnitIds, userId } = args;
+  const { organizationId, billId, billNumber, userId } = args;
 
   const posted = await tx.stockLedgerEntry.findMany({
     where: { organizationId, sourceDocType: 'bill', sourceDocId: billId },
@@ -351,12 +413,39 @@ async function reverseBillPostings(
       batches,
     );
   }
+}
+
+/**
+ * 🔴 RETIRE THE PACKAGES THIS BILL CREATED AND NO LONGER NAMES.
+ *
+ * Split out of `reverseBillPostings` when drafts arrived, because it is needed on
+ * both paths and the reversal is needed on only one: removing a taka from a DRAFT
+ * moves no stock, so there is nothing to reverse, but its `batch_units` row must
+ * still go or the tag stays reserved and the picker keeps offering it.
+ *
+ * Called AFTER the document rows are written, so `keepUnitIds` can be the units
+ * actually used by this save — which is the only set that includes packages the
+ * payload created without an id of its own.
+ *
+ * A dropped package's `seq` is never handed to its replacement: the numbers are
+ * retired, so a batch that loses #2 and #3 reads #1, #4.
+ */
+async function retireBillUnits(
+  tx: TenantClient,
+  args: {
+    organizationId: string;
+    billId: string;
+    keepUnitIds: ReadonlySet<string>;
+    userId: string | null;
+  },
+) {
+  const { organizationId, billId, keepUnitIds, userId } = args;
 
   const created = await tx.batchUnit.findMany({
     where: { organizationId, sourceDocType: 'bill', sourceDocId: billId, isDeleted: false },
     select: { id: true },
   });
-  /* A package the payload still names keeps its row, so the re-post tops it up
+  /* A package this save still uses keeps its row, so the next edit tops it up
      through `resolveExistingBatchUnits` instead of hitting "already exists in
      this batch" on its own tag. */
   const candidates = created.map((unit) => unit.id).filter((id) => !keepUnitIds.has(id));
@@ -376,6 +465,22 @@ async function reverseBillPostings(
   // A package another document has moved keeps its row: those ledger rows name it
   // forever and have to stay interpretable.
   const spokenFor = new Set(movedElsewhere.map((row) => row.batchUnitId));
+
+  /* And a package another BILL LINE still names keeps its row too — a batch
+     topped up by a second line of the same bill is one this save is still
+     using, just not through the line that created it. */
+  const namedElsewhere = await tx.billItemBatch.findMany({
+    where: {
+      organizationId,
+      batchUnitId: { in: candidates },
+      isDeleted: false,
+      billItem: { isDeleted: false },
+    },
+    select: { batchUnitId: true },
+    distinct: ['batchUnitId'],
+  });
+  for (const row of namedElsewhere) spokenFor.add(row.batchUnitId);
+
   const retire = candidates.filter((id) => !spokenFor.has(id));
   if (retire.length === 0) return;
 
@@ -418,11 +523,11 @@ export async function countBills(organizationId: string, opts: ListQuery): Promi
   );
 }
 
-/** One batch as the bill form reads it back, seeded from its first ledger row.
+/** One batch as the bill form reads it back, seeded from its first document row.
  * Quantity and `units` are then accumulated across that batch's other rows. */
-function toBatchReadback(m: {
+function toBatchReadback(row: {
   batchId: string;
-  qtyIn: Prisma.Decimal;
+  qty: Prisma.Decimal;
   batch: {
     supplierBatchRef: string | null;
     manufacturerBatch: string | null;
@@ -433,14 +538,14 @@ function toBatchReadback(m: {
   } | null;
 }) {
   return {
-    batchId: m.batchId,
-    supplierBatchRef: m.batch?.supplierBatchRef || undefined,
-    manufacturerBatch: m.batch?.manufacturerBatch || undefined,
-    manufacturedDate: m.batch?.manufacturedDate || undefined,
-    expiryDate: m.batch?.expiryDate || undefined,
-    quantity: Number(m.qtyIn) || 0,
-    mrp: m.batch?.mrp != null ? Number(m.batch.mrp) : undefined,
-    sellingPrice: m.batch?.sellingPrice != null ? Number(m.batch.sellingPrice) : undefined,
+    batchId: row.batchId,
+    supplierBatchRef: row.batch?.supplierBatchRef || undefined,
+    manufacturerBatch: row.batch?.manufacturerBatch || undefined,
+    manufacturedDate: row.batch?.manufacturedDate || undefined,
+    expiryDate: row.batch?.expiryDate || undefined,
+    quantity: Number(row.qty) || 0,
+    mrp: row.batch?.mrp != null ? Number(row.batch.mrp) : undefined,
+    sellingPrice: row.batch?.sellingPrice != null ? Number(row.batch.sellingPrice) : undefined,
     units: [] as { batchUnitId: string; label: string; quantity: number }[],
   };
 }
@@ -461,17 +566,31 @@ export async function getBillById(orgId: string, id: string) {
 
     if (!bill) return null;
 
+    /**
+     * 🔴 READ FROM THE DOCUMENT, NOT FROM THE LEDGER (2026-09-08).
+     *
+     * This used to query `stock_ledger` and reconstruct what the bill must have
+     * said from the movements it left behind. That inverted the dependency — a
+     * document is a record of INTENT and the ledger a record of EFFECT — and it
+     * failed in three ways for one reason:
+     *
+     *   · a DRAFT posts nothing, so it read back with no batches and no takas at
+     *     all, and everything the user typed was lost on save;
+     *   · an EDIT replaces the `bill_items` rows, so the movements pointed at ids
+     *     that had just been soft-deleted and the whole form went blank;
+     *   · a REVERSED bill nets to zero, so a document that plainly said something
+     *     read back as having said nothing.
+     *
+     * `bill_item_batches` is written on every save by `receiveBillBatch`, so all
+     * three now answer the same way, and the ledger is left to answer the only
+     * question it should: what stock actually moved.
+     */
     const lineItemIds = bill.lineItems.map((li) => li.id);
-    const movements = await tx.stockLedgerEntry.findMany({
+    const documentRows = await tx.billItemBatch.findMany({
       where: {
-        sourceDocId: bill.id,
-        sourceDocLineId: { in: lineItemIds },
-        sourceDocType: 'bill',
-        // The form reads back what the bill currently RECEIVES. A reversal from an
-        // earlier edit carries no line id and is excluded by the filter above
-        // anyway, but the intent belongs in the query — this is the quantity the
-        // dialog re-submits, and netting a reversal into it would halve the batch.
-        movementType: { not: 'reversal' },
+        organizationId: orgId,
+        billItemId: { in: lineItemIds },
+        isDeleted: false,
       },
       include: {
         batch: true,
@@ -479,49 +598,69 @@ export async function getBillById(orgId: string, id: string) {
         // untagged remainder and on every row written before the level existed.
         batchUnit: { select: { id: true, seq: true, label: true } },
       },
-      orderBy: { postedAt: 'asc' },
+      /**
+       * 🔴 `id` IS THE TIEBREAK, NOT `createdAt` ALONE — the same trap this file
+       * documents for `bill_items`. Every row of one save carries the identical
+       * `created_at`, because Postgres's `CURRENT_TIMESTAMP` is the TRANSACTION's
+       * start time, so a sort on it alone has nothing to order by and the batches
+       * come back in whatever order the planner chose. Packages are then ordered
+       * by `seq` in memory below, which a relation sort cannot do reliably here.
+       */
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
 
-    const movementsByLineId = movements.reduce(
-      (acc, mov) => {
-        if (mov.sourceDocLineId) {
-          if (!acc[mov.sourceDocLineId]) acc[mov.sourceDocLineId] = [];
-          acc[mov.sourceDocLineId]!.push(mov);
-        }
+    const rowsByLineId = documentRows.reduce(
+      (acc, row) => {
+        if (!acc[row.billItemId]) acc[row.billItemId] = [];
+        acc[row.billItemId]!.push(row);
         return acc;
       },
-      {} as Record<string, typeof movements>,
+      {} as Record<string, typeof documentRows>,
     );
 
     const lineItemsWithBatches = bill.lineItems.map((li) => {
-      const liMovements = movementsByLineId[li.id] || [];
+      const liRows = rowsByLineId[li.id] || [];
 
       /**
        * 🔴 GROUPED BY BATCH, because one batch is no longer one row.
        *
-       * A batch broken into packages posts one movement per package plus one for
-       * the untagged remainder, so the flat map this used to be would render the
-       * same batch three times, each showing a slice of its quantity — the dialog
-       * would then send those slices back as three separate batches on the next
-       * save. The batch's quantity is the SUM of its rows; the packages are the
-       * rows that name one.
+       * A batch broken into packages is one row per package plus one for the
+       * untagged remainder, so a flat map would render the same batch three
+       * times, each showing a slice of its quantity — and the dialog would then
+       * send those slices back as three separate batches on the next save. The
+       * batch's quantity is the SUM of its rows; the packages are the rows that
+       * name one.
        */
       const byBatch = new Map<string, ReturnType<typeof toBatchReadback>>();
-      for (const m of liMovements) {
+      /* `seq` alongside each package, only to sort by — see below. Kept out of
+         the payload because it is the batch's numbering, not the bill's, and the
+         form neither sends it back nor has anywhere to show it. */
+      const seqByUnitId = new Map<string, number>();
+      for (const m of liRows) {
         const existing = byBatch.get(m.batchId);
         const row = existing ?? toBatchReadback(m);
-        if (existing) row.quantity += Number(m.qtyIn) || 0;
+        if (existing) row.quantity += Number(m.qty) || 0;
         if (m.batchUnit) {
+          seqByUnitId.set(m.batchUnit.id, m.batchUnit.seq);
           row.units.push({
             batchUnitId: m.batchUnit.id,
             label: m.batchUnit.label,
-            quantity: Number(m.qtyIn) || 0,
+            quantity: Number(m.qty) || 0,
           });
         }
         byBatch.set(m.batchId, row);
       }
 
+      /* 🔴 Packages in `seq` order, which is the order they sit in the batch —
+         so the dialog reads #1, #2, #3 however the rows were written. Insert
+         order would put a taka the user just ADDED before one they kept, because
+         `createBatchUnits` runs before `resolveExistingBatchUnits`. */
       const batches = [...byBatch.values()];
+      for (const batch of batches) {
+        batch.units.sort(
+          (a, b) => (seqByUnitId.get(a.batchUnitId) ?? 0) - (seqByUnitId.get(b.batchUnitId) ?? 0),
+        );
+      }
       return {
         ...li,
         batches: batches.length > 0 ? batches : undefined,
@@ -545,7 +684,9 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
     notes: _notes,
     ...billData
   } = data as CreateBillPayload & { notes?: string };
-  return runAsTenant(orgId, async (tx) => {
+  // `runAsDocument`, like `updateBill`: a fifty-taka consignment now writes fifty
+  // package rows, fifty document rows and fifty ledger rows in one transaction.
+  return runAsDocument(orgId, async (tx) => {
     let performedBy = 'System';
     if (userId) {
       const user = await tx.user.findUnique({ where: { id: userId } });
@@ -627,7 +768,16 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
       },
     });
 
-    if (createdBill.status?.toLowerCase() === 'open' && createdBill.locationId) {
+    /**
+     * 🔴 THE DOCUMENT IS WRITTEN EITHER WAY; ONLY THE STOCK WAITS FOR "Open".
+     *
+     * This whole block used to sit behind that condition, so a DRAFT stored none
+     * of its batches or takas and reopening it showed an empty form. Now the
+     * condition only decides `post` — the same shape `jobIssues.service` uses to
+     * park a challan without moving anything.
+     */
+    const posting = createdBill.status?.toLowerCase() === 'open' && !!createdBill.locationId;
+    {
       const itemIds = lineItems.map((li: BillItemPayload) => li.itemId);
       const items = await tx.item.findMany({
         where: { id: { in: itemIds }, organizationId: orgId },
@@ -643,9 +793,17 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
         const item = itemsById.get(payload.itemId);
 
         if (item?.trackInventory && item.inventoryTracking !== 'none') {
+          /* 🔴 THE UNNAMED FALLBACK IS A POSTING CONCERN, NOT A DOCUMENT ONE.
+             It exists so an Open bill still moves stock when the user skipped the
+             batch dialog. A DRAFT must not use it: inventing a batch nobody named
+             is both wrong — the user has not decided yet — and impossible, since
+             `createBatch` requires a reference for a batch-tracked item and there
+             is none to give. A draft with no batch detail simply stores none. */
           const batches = payload.batches?.length
             ? payload.batches
-            : [{ quantity: payload.quantity } as BillBatchPayload];
+            : posting
+              ? [{ quantity: payload.quantity } as BillBatchPayload]
+              : [];
           for (const b of batches) {
             await receiveBillBatch(tx, {
               organizationId: orgId,
@@ -656,9 +814,14 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
               locationId: createdBill.locationId,
               rate: Number(payload.rate || 0),
               batch: b,
+              post: posting,
             });
           }
-        } else if (item?.trackInventory && item.inventoryTracking === 'none') {
+          /* An item tracked at neither batch nor package level has no detail to
+             remember: its quantity is the line's own column, and the anonymous
+             batch below exists only to give the ledger something to hang on. So
+             this branch stays posting-only, and a draft writes nothing for it. */
+        } else if (posting && item?.trackInventory && item.inventoryTracking === 'none') {
           const batch = await createBatch(tx, {
             organizationId: orgId,
             itemId: item.id,
@@ -671,7 +834,8 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
             {
               organizationId: orgId,
               batchId: batch.id,
-              locationId: createdBill.locationId,
+              // Non-null by `posting`, which this branch is gated on.
+              locationId: createdBill.locationId!,
               movementType: 'receipt',
               qtyIn: payload.quantity,
               valueIn: (payload.rate || 0) * payload.quantity,
@@ -797,6 +961,13 @@ export async function updateBill(
         where: { billId: id },
         data: { isDeleted: true, updatedBy: userId },
       });
+      /* The batch rows go with the lines that own them. They are re-created below
+         from the payload, and leaving the old ones live would double every
+         quantity the form reads back. */
+      await tx.billItemBatch.updateMany({
+        where: { organizationId: orgId, billItem: { billId: id } },
+        data: { isDeleted: true, updatedBy: userId },
+      });
 
       for (const item of lineItems) {
         const created = await tx.billItem.create({
@@ -864,40 +1035,30 @@ export async function updateBill(
      */
     const rewritingLines = Boolean(lineItems);
     const mustReverse = alreadyPosted > 0 && (rewritingLines || effectiveStatus !== 'open');
+
+    /**
+     * 🔴 THE DOCUMENT ROWS ARE REWRITTEN WHENEVER THE LINES ARE — draft or open,
+     * and independently of whether anything posts. That is what lets a draft be
+     * edited over and over and still read back exactly what was typed.
+     */
+    const mustWrite = rewritingLines;
     const mustPost =
       effectiveStatus === 'open' &&
       !!effectiveLocationId &&
       (goingOpen || (alreadyPosted > 0 && rewritingLines));
 
+    // Reversal FIRST and on its own: it withdraws what the OLD payload posted, so
+    // it must not see the batches and packages the new one is about to create.
     if (mustReverse) {
-      /* Read off the PAYLOAD, so the takas the user deleted are exactly the ones
-         retired. Their `seq` is not handed on to the replacements — a dead
-         package's number is never reused, so a batch that loses #2 and #3 reads
-         #1, #4, and the gap is the honest record of what happened.
-
-         A bill that is NOT staying Open keeps none of them: it holds no stock, so
-         a package of its own with nothing in it would only reserve a tag nobody
-         can see. Reopening mints them again from the payload. */
-      const keepUnitIds = new Set<string>();
-      if (effectiveStatus === 'open') {
-        for (const line of writtenLines) {
-          for (const batch of line.payload.batches ?? []) {
-            for (const unit of batch.units ?? []) {
-              if (unit.batchUnitId) keepUnitIds.add(unit.batchUnitId);
-            }
-          }
-        }
-      }
       await reverseBillPostings(tx, {
         organizationId: orgId,
         billId: id,
         billNumber: existing.billNumber,
-        keepUnitIds,
         userId: userId || null,
       });
     }
 
-    if (mustPost && effectiveLocationId) {
+    if (mustWrite) {
       const itemIds = writtenLines.map((line) => line.payload.itemId);
       const items = await tx.item.findMany({
         where: { id: { in: itemIds }, organizationId: orgId },
@@ -905,17 +1066,25 @@ export async function updateBill(
       });
       const itemsById = new Map(items.map((i) => [i.id, i]));
 
+      /* Every package this save actually used, created ones included — which is
+         why it is collected HERE and not read off the payload: a taka the user
+         has just added carries no id until `createBatchUnits` gives it one. */
+      const usedUnitIds = new Set<string>();
+
       for (const line of writtenLines) {
         const payload = line.payload;
         const lineRecord = { id: line.lineId };
         const item = itemsById.get(payload.itemId);
 
         if (item?.trackInventory && item.inventoryTracking !== 'none') {
+          // Posting-only, same as on create — a draft never invents a batch.
           const batches = payload.batches?.length
             ? payload.batches
-            : [{ quantity: Number(payload.quantity) } as BillBatchPayload];
+            : mustPost
+              ? [{ quantity: Number(payload.quantity) } as BillBatchPayload]
+              : [];
           for (const b of batches) {
-            await receiveBillBatch(tx, {
+            const { unitIds } = await receiveBillBatch(tx, {
               organizationId: orgId,
               userId: userId || null,
               itemId: item.id,
@@ -924,9 +1093,13 @@ export async function updateBill(
               locationId: effectiveLocationId,
               rate: Number(payload.rate || 0),
               batch: b,
+              post: mustPost,
             });
+            for (const unitId of unitIds) usedUnitIds.add(unitId);
           }
-        } else if (item?.trackInventory && item.inventoryTracking === 'none') {
+          // Posting-only, for the same reason as on create: an item tracked at
+          // neither level has no detail to remember.
+        } else if (mustPost && item?.trackInventory && item.inventoryTracking === 'none') {
           const batch = await createBatch(tx, {
             organizationId: orgId,
             itemId: item.id,
@@ -939,7 +1112,7 @@ export async function updateBill(
             {
               organizationId: orgId,
               batchId: batch.id,
-              locationId: effectiveLocationId,
+              locationId: effectiveLocationId!,
               movementType: 'receipt',
               qtyIn: Number(payload.quantity),
               valueIn: Number(payload.rate || 0) * Number(payload.quantity),
@@ -952,6 +1125,17 @@ export async function updateBill(
           );
         }
       }
+
+      /* 🔴 LAST, once every package this save uses is known. A taka the user
+         deleted from a DRAFT moves no stock, so nothing reverses it — but its
+         `batch_units` row still has to go, or the tag stays reserved and the
+         picker keeps offering a roll the bill no longer claims. */
+      await retireBillUnits(tx, {
+        organizationId: orgId,
+        billId: id,
+        keepUnitIds: usedUnitIds,
+        userId: userId || null,
+      });
     }
 
     return await tx.bill.findFirst({ where: { id } });
@@ -979,12 +1163,28 @@ export async function deleteBill(orgId: string, id: string, userId: string | nul
     });
     if (!existing) throw ApiError.notFound('Bill not found');
 
-    // Nothing is kept: the bill is going away, so every package it created goes
-    // with it — the same rule as taking one back to Draft.
     await reverseBillPostings(tx, {
       organizationId: orgId,
       billId: id,
       billNumber: existing.billNumber,
+      userId,
+    });
+
+    /* 🔴 THE DOCUMENT'S OWN ROWS GO FIRST, and the order is load-bearing:
+       `retireBillUnits` reads this table to decide which packages are still
+       claimed by a live line. Leave these standing and every one of them looks
+       spoken for, so nothing is retired. */
+    await tx.billItemBatch.updateMany({
+      where: { organizationId: orgId, billItem: { billId: id } },
+      data: { isDeleted: true, updatedBy: userId },
+    });
+
+    // Nothing is kept: the bill is going away, so every package it created goes
+    // with it — unless another document has moved one, which keeps its row so the
+    // ledger rows naming it stay interpretable.
+    await retireBillUnits(tx, {
+      organizationId: orgId,
+      billId: id,
       keepUnitIds: new Set(),
       userId,
     });

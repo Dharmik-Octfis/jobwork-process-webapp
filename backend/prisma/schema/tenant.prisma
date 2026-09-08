@@ -94,6 +94,8 @@ model User {
   updatedBills                  Bill[]                  @relation("BillUpdatedBy")
   createdBillItems              BillItem[]              @relation("BillItemCreatedBy")
   updatedBillItems              BillItem[]              @relation("BillItemUpdatedBy")
+  createdBillItemBatches        BillItemBatch[]         @relation("BillItemBatchCreatedBy")
+  updatedBillItemBatches        BillItemBatch[]         @relation("BillItemBatchUpdatedBy")
   createdBillActivities         BillActivity[]          @relation("BillActivityCreatedBy")
   updatedBillActivities         BillActivity[]          @relation("BillActivityUpdatedBy")
   createdBillComments           BillComment[]           @relation("BillCommentCreatedBy")
@@ -304,6 +306,7 @@ model Organization {
   jobOrderSteps          JobOrderStep[]
   jobIssues              JobIssue[]
   jobIssueLines          JobIssueLine[]
+  billItemBatches        BillItemBatch[]
   jobReceipts            JobReceipt[]
   jobReceiptLines        JobReceiptLine[]
   rejectionReasons       RejectionReason[]

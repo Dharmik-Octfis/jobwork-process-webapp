@@ -40,6 +40,9 @@ export interface BillBatchRow {
 export interface InitialBillBatchUnit {
   label?: string | null;
   quantity?: number | string | null;
+  /** The `batch_units.id` a SAVED bill already created for this package. Carried
+   * through so re-saving tops it up instead of naming it a second time. */
+  batchUnitId?: string | null;
   [key: string]: unknown;
 }
 
@@ -113,6 +116,11 @@ const toFormRows = (
       id: crypto.randomUUID(),
       label: String(unit.label ?? ''),
       quantity: unit.quantity === null || unit.quantity === undefined ? '' : String(unit.quantity),
+      /* 🔴 The id the saved bill gave this package, carried back in. Dropping it
+         here is what made a bill with takas uneditable: every row read back
+         looked new, so saving tried to create "T-1" in a batch that already had
+         one and the server answered 409 on a tag the user never retyped. */
+      savedUnitId: typeof unit.batchUnitId === 'string' ? unit.batchUnitId : undefined,
     })),
   }));
 };
@@ -433,9 +441,15 @@ export function AddBillBatchesModal({
             .map((u) =>
               isExistingUnit(u)
                 ? { batchUnitId: u.batchUnitId!, quantity: parseFloat(u.quantity) }
-                : // Blank is legal — the server names it `#seq`. Sent as `undefined`
-                  // rather than `''` so "not stated" reaches the schema as absence.
-                  { label: u.label.trim() || undefined, quantity: parseFloat(u.quantity) },
+                : u.savedUnitId
+                  ? /* A package this bill already created. It goes back as an id,
+                       exactly like a top-up — the server tops it up rather than
+                       minting a duplicate under its own tag — but it reached the
+                       grid as an ordinary label row, not through the picker. */
+                    { batchUnitId: u.savedUnitId, quantity: parseFloat(u.quantity) }
+                  : // Blank is legal — the server names it `#seq`. Sent as `undefined`
+                    // rather than `''` so "not stated" reaches the schema as absence.
+                    { label: u.label.trim() || undefined, quantity: parseFloat(u.quantity) },
             )
         : undefined,
     }));

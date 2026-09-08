@@ -94,6 +94,10 @@ beforeAll(async () => {
 afterAll(async () => {
   await runAsTenant(orgId, async (tx) => {
     await tx.stockLedgerEntry.deleteMany({ where: { organizationId: orgId } });
+    // Document rows before packages before batches — each holds a RESTRICT key on
+    // the next, so the reverse order fails on the constraint rather than on the
+    // data. Same rule the jobwork suites follow.
+    await tx.billItemBatch.deleteMany({ where: { organizationId: orgId } });
     await tx.batchUnit.deleteMany({ where: { organizationId: orgId } });
     await tx.batch.deleteMany({ where: { organizationId: orgId } });
     await tx.billActivity.deleteMany({ where: { bill: { organizationId: orgId } } });
@@ -108,6 +112,16 @@ afterAll(async () => {
   await deleteTestOrganization(orgId);
   await prisma.user.deleteMany({ where: { id: userId } });
 });
+
+/** The packages a batch still has, in `seq` order — shared by the suites below. */
+const liveUnitsOf = (batchId: string) =>
+  runAsTenant(orgId, (tx) =>
+    tx.batchUnit.findMany({
+      where: { organizationId: orgId, batchId, isDeleted: false },
+      orderBy: { seq: 'asc' },
+      select: { id: true, seq: true, label: true },
+    }),
+  );
 
 function billPayload(
   batches: CreateBillPayload['lineItems'][number]['batches'],
@@ -668,7 +682,7 @@ describe('bill — editing a posted bill re-posts its stock', () => {
    * "not posted yet" — and the next Draft → Open would have posted a second time
    * had the guard not existed.
    */
-  it('withdraws the stock when a posted bill goes back to Draft', async () => {
+  it('withdraws the stock when a posted bill goes back to Draft, but keeps the paperwork', async () => {
     const { bill, batchId } = await postedBill([
       { label: 'T-1', quantity: 100 },
       { label: 'T-2', quantity: 50 },
@@ -682,9 +696,23 @@ describe('bill — editing a posted bill re-posts its stock', () => {
     );
     expect(balance.qty.toString()).toBe('0');
     expect(balance.value.toString()).toBe('0');
-    // Its packages go with it — an empty taka would only reserve a tag nobody can
-    // see on a document that claims to hold nothing.
-    expect(await liveUnits(batchId)).toHaveLength(0);
+
+    /**
+     * 🔴 THE STOCK GOES, THE DOCUMENT STAYS — and this assertion is the inverse of
+     * what it was before `bill_item_batches` existed (2026-09-08).
+     *
+     * It used to expect the packages retired, because back then a draft could not
+     * hold anything: the batches were derived from the ledger, so a bill with no
+     * postings read back empty and a taka with no movements was pure litter.
+     *
+     * Now the draft still SAYS it received these two takas — that is what a draft
+     * is — so its packages and its rows survive. Reopening posts them again from
+     * the document rather than asking the user to retype them.
+     */
+    expect(await liveUnits(batchId)).toHaveLength(2);
+
+    const read = await getBillById(orgId, bill.id);
+    expect(read!.lineItems[0]!.batches![0]!.units.map((u) => u.label)).toEqual(['T-1', 'T-2']);
   });
 
   /**
@@ -749,5 +777,186 @@ describe('bill — editing a posted bill re-posts its stock', () => {
       getBalance(tx, { organizationId: orgId, batchId }),
     );
     expect(balance.qty.toString()).toBe('70');
+  });
+});
+
+/**
+ * 🔴 THE DOCUMENT REMEMBERS WHAT IT SAID — `bill_item_batches`, added 2026-09-08.
+ *
+ * Every test here failed before it existed, and all for one reason: `getBillById`
+ * reconstructed a bill's batches by reading `stock_ledger` back. A draft posts
+ * nothing, so it read back with nothing — every batch and every taka the user
+ * typed was discarded the moment they hit Save.
+ *
+ * This is the same split `job_issue_lines` has always had, which is exactly why
+ * jobwork's drafts worked from day one and bills' could not.
+ */
+describe('bill — a draft keeps its batches and takas', () => {
+  const draftPayload = (status: string, ref: string) =>
+    billPayload(
+      [
+        {
+          supplierBatchRef: ref,
+          quantity: 300,
+          units: [
+            { label: 'T-1', quantity: 100 },
+            { label: 'T-2', quantity: 200 },
+          ],
+        },
+      ],
+      status,
+      300,
+    );
+
+  it('reads a draft back with everything that was typed into it', async () => {
+    const ref = `JV-${unique()}`;
+    const bill = await createBill(orgId, userId, draftPayload('Draft', ref));
+
+    const read = await getBillById(orgId, bill.id);
+    const batches = read!.lineItems[0]!.batches!;
+    expect(batches).toHaveLength(1);
+    expect(batches[0]!.supplierBatchRef).toBe(ref);
+    expect(batches[0]!.quantity).toBe(300);
+    expect(batches[0]!.units.map((u) => u.label)).toEqual(['T-1', 'T-2']);
+    expect(batches[0]!.units.map((u) => u.quantity)).toEqual([100, 200]);
+
+    // 🔴 AND IT MOVED NOTHING. A draft is a parking space: the paperwork is
+    // complete, the stock has not arrived, and no picker offers these takas.
+    const rows = await runAsTenant(orgId, (tx) =>
+      tx.stockLedgerEntry.findMany({
+        where: { organizationId: orgId, sourceDocType: 'bill', sourceDocId: bill.id },
+      }),
+    );
+    expect(rows).toHaveLength(0);
+    const balance = await runAsTenant(orgId, (tx) =>
+      getBalance(tx, { organizationId: orgId, batchId: batches[0]!.batchId! }),
+    );
+    expect(balance.qty.toString()).toBe('0');
+  });
+
+  it('posts exactly what the draft said when it is opened', async () => {
+    const bill = await createBill(orgId, userId, draftPayload('Draft', `JV-${unique()}`));
+    const read = await getBillById(orgId, bill.id);
+    const draftBatch = read!.lineItems[0]!.batches![0]!;
+
+    // What the form re-submits: the ids it read back, unchanged.
+    await updateBill(orgId, bill.id, userId, {
+      status: 'Open',
+      lineItems: [
+        {
+          itemId,
+          quantity: 300,
+          rate: 10,
+          amount: 3000,
+          batches: [
+            {
+              batchId: draftBatch.batchId,
+              quantity: 300,
+              units: draftBatch.units.map((u) => ({
+                batchUnitId: u.batchUnitId,
+                quantity: u.quantity,
+              })),
+            },
+          ],
+        },
+      ],
+    } as never);
+
+    const { balance, byUnit } = await runAsTenant(orgId, async (tx) => ({
+      balance: await getBalance(tx, { organizationId: orgId, batchId: draftBatch.batchId! }),
+      byUnit: (
+        await getBalancesByBatchUnit(tx, { organizationId: orgId, batchIds: [draftBatch.batchId!] })
+      ).get(draftBatch.batchId!)!,
+    }));
+
+    expect(balance.qty.toString()).toBe('300');
+    // 🔴 The SAME packages the draft created — not fresh ones. The draft's takas
+    // are the real rows, so opening tops them up rather than minting duplicates
+    // that would collide on their own tags.
+    expect(byUnit.get(draftBatch.units[0]!.batchUnitId)!.toString()).toBe('100');
+    expect(byUnit.get(draftBatch.units[1]!.batchUnitId)!.toString()).toBe('200');
+    expect(await liveUnitsOf(draftBatch.batchId!)).toHaveLength(2);
+  });
+
+  it('keeps a draft editable, and retires a taka removed from one', async () => {
+    const bill = await createBill(orgId, userId, draftPayload('Draft', `JV-${unique()}`));
+    const first = await getBillById(orgId, bill.id);
+    const batch = first!.lineItems[0]!.batches![0]!;
+    const keep = batch.units[0]!;
+
+    // Drop T-2, keep T-1, add a new one.
+    await updateBill(orgId, bill.id, userId, {
+      status: 'Draft',
+      lineItems: [
+        {
+          itemId,
+          quantity: 250,
+          rate: 10,
+          amount: 2500,
+          batches: [
+            {
+              batchId: batch.batchId,
+              quantity: 250,
+              units: [
+                { batchUnitId: keep.batchUnitId, quantity: 100 },
+                { label: 'T-9', quantity: 150 },
+              ],
+            },
+          ],
+        },
+      ],
+    } as never);
+
+    const read = await getBillById(orgId, bill.id);
+    const after = read!.lineItems[0]!.batches!;
+    expect(after).toHaveLength(1);
+    expect(after[0]!.quantity).toBe(250);
+    expect(after[0]!.units.map((u) => u.label)).toEqual(['T-1', 'T-9']);
+
+    // 🔴 T-2 is gone from the batch too, not just from the paperwork. Nothing
+    // reverses it — a draft moved no stock — so this is the cleanup that only
+    // `retireBillUnits` does, and without it the tag stays reserved for ever.
+    const live = await liveUnitsOf(batch.batchId!);
+    expect(live.map((u) => u.label)).toEqual(['T-1', 'T-9']);
+    // Its `seq` is retired with it: T-9 is #3, never #2.
+    expect(live.map((u) => u.seq)).toEqual([1, 3]);
+
+    // Still a draft, so still nothing on the books.
+    const rows = await runAsTenant(orgId, (tx) =>
+      tx.stockLedgerEntry.findMany({
+        where: { organizationId: orgId, sourceDocType: 'bill', sourceDocId: bill.id },
+      }),
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it('does not invent a batch for a draft whose lines name none', async () => {
+    // The unnamed fallback exists so an OPEN bill still moves stock when the user
+    // skipped the batch dialog. On a draft it would have to invent a reference
+    // `createBatch` refuses to do without — and inventing one is wrong anyway,
+    // because the user has not chosen the batch yet.
+    const bill = await createBill(orgId, userId, {
+      ...billPayload(undefined, 'Draft', 40),
+      lineItems: [{ itemId, quantity: 40, rate: 10, amount: 400 }],
+    } as never);
+
+    const read = await getBillById(orgId, bill.id);
+    expect(read!.lineItems[0]!.batches).toBeUndefined();
+  });
+
+  it('a deleted bill stops claiming its batches', async () => {
+    const bill = await createBill(orgId, userId, draftPayload('Draft', `JV-${unique()}`));
+    const read = await getBillById(orgId, bill.id);
+    const batchId = read!.lineItems[0]!.batches![0]!.batchId!;
+
+    await deleteBill(orgId, bill.id, userId);
+
+    expect(await getBillById(orgId, bill.id)).toBeNull();
+    const rows = await runAsTenant(orgId, (tx) =>
+      tx.billItemBatch.count({ where: { organizationId: orgId, isDeleted: false, batchId } }),
+    );
+    expect(rows).toBe(0);
+    // And its packages go with it — nothing else ever moved them.
+    expect(await liveUnitsOf(batchId)).toHaveLength(0);
   });
 });
