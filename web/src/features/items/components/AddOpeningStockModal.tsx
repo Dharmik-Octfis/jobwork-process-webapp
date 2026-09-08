@@ -12,8 +12,10 @@ import { BatchUnitsModal, BatchUnitsTrigger } from '../../../components/inventor
 import {
   autoLabelPrefix,
   renumberAutoLabels,
+  unitsTotal,
   validateBatchUnits,
 } from '../../../components/inventory/batchUnits';
+import { formatQty } from '../../jobwork/jobwork.schemas';
 import type { ItemOpeningStockLocationRowDto } from '../items.schemas';
 
 /**
@@ -190,6 +192,11 @@ export function AddOpeningStockModal({
    * held as the FORM's row shape, which carries `isExisting` and `quantityIn` that
    * the dialog's own row type does not. */
   const [unitsSnapshot, setUnitsSnapshot] = useState<OpeningStockUnitRow[]>([]);
+  /** The escape hatch out of "the packages must add up to the batch" — Save writes
+   * their total onto the batch rather than making the user retype it. Stops at the
+   * batch: the location's declared Opening Stock is left as typed. Same flag, same
+   * reasoning, as the Opening Stock page. */
+  const [unitsOverwrite, setUnitsOverwrite] = useState(false);
 
   const { data: item } = useQuery({
     queryKey: ['item', orgId, itemId],
@@ -371,6 +378,7 @@ export function AddOpeningStockModal({
       .find((r) => r.id === locationId)
       ?.batches.find((b) => b.id === batchId);
     setUnitsSnapshot(batch ? [...batch.units] : []);
+    setUnitsOverwrite(false);
     if (!batch?.units.length) handleAddUnit(locationId, batchId);
     setUnitsFor({ locationId, batchId });
   };
@@ -393,6 +401,7 @@ export function AddOpeningStockModal({
         ),
       );
     }
+    setUnitsOverwrite(false);
     setUnitsFor(null);
   };
 
@@ -607,6 +616,14 @@ export function AddOpeningStockModal({
         .find((r) => r.id === unitsFor.locationId)
         ?.batches.find((b) => b.id === unitsFor.batchId) ?? null)
     : null;
+
+  /** …in the dialog's own row shape, one copy, so the figure the overwrite box
+   * quotes is computed from exactly the rows it will write. */
+  const unitsRows = (unitsBatch?.units ?? []).map((u) => ({
+    id: u.id,
+    label: u.label,
+    quantity: u.quantityIn,
+  }));
 
   return (
     <>
@@ -1490,11 +1507,7 @@ export function AddOpeningStockModal({
           singular={unitLabel.singular}
           plural={unitLabel.plural}
           batchQty={parseFloat(unitsBatch.quantityIn) || 0}
-          units={unitsBatch.units.map((u) => ({
-            id: u.id,
-            label: u.label,
-            quantity: u.quantityIn,
-          }))}
+          units={unitsRows}
           /* No "Existing {unit}" here: opening stock DECLARES what is on hand, so
            every package it names is one this document owns — the top-up case
            belongs to documents that receive goods. */
@@ -1510,6 +1523,23 @@ export function AddOpeningStockModal({
           }
           onRemove={(unitId) => handleDeleteUnit(unitsFor.locationId, unitsFor.batchId, unitId)}
           onCancel={cancelUnits}
+          overwrite={{
+            checked: unitsOverwrite,
+            onChange: setUnitsOverwrite,
+            projectedQty: unitsRows.length > 0 ? unitsTotal(unitsRows) : 0,
+            format: formatQty,
+          }}
+          onSave={(applyOverwrite) => {
+            if (applyOverwrite) {
+              updateBatch(
+                unitsFor.locationId,
+                unitsFor.batchId,
+                'quantityIn',
+                formatQty(unitsTotal(unitsRows)),
+              );
+            }
+            setUnitsOverwrite(false);
+          }}
         />
       )}
     </>

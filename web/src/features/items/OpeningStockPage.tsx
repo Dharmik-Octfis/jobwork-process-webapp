@@ -12,8 +12,10 @@ import { BatchUnitsModal, BatchUnitsTrigger } from '../../components/inventory/B
 import {
   autoLabelPrefix,
   renumberAutoLabels,
+  unitsTotal,
   validateBatchUnits,
 } from '../../components/inventory/batchUnits';
+import { formatQty } from '../jobwork/jobwork.schemas';
 import type { ItemOpeningStockLocationRowDto } from './items.schemas';
 
 /** One package inside a declared batch. `id` is the real `batch_units.id` when
@@ -160,6 +162,21 @@ export function OpeningStockPage() {
    * held as the FORM's row shape, which carries `isExisting` and `quantityIn` that
    * the dialog's own row type does not. */
   const [unitsSnapshot, setUnitsSnapshot] = useState<OpeningStockUnitRow[]>([]);
+  /**
+   * The escape hatch out of "the packages must add up to the batch": tick it and
+   * Save writes their total onto the batch instead of making the user retype it.
+   *
+   * 🔴 It STOPS AT THE BATCH — the location's declared Opening Stock is left
+   * exactly as typed, and the footer's "Quantity To Be Added / Added Qty to
+   * Location" pair shows the gap that opens up. Bills carries the same flag all
+   * the way to its line because the line is the top of that document; here the
+   * top is the figure the whole page exists to declare, and rewriting it as a
+   * side effect of editing one batch's takas is not something to do silently.
+   *
+   * Dialog-local, unlike Bills' — there is no second copy of the box on the grid
+   * behind, so opening, cancelling and saving each just clear it.
+   */
+  const [unitsOverwrite, setUnitsOverwrite] = useState(false);
 
   const { data: item } = useQuery({
     queryKey: ['item', orgId, itemId],
@@ -343,6 +360,7 @@ export function OpeningStockPage() {
       .find((r) => r.id === locationId)
       ?.batches.find((b) => b.id === batchId);
     setUnitsSnapshot(batch ? [...batch.units] : []);
+    setUnitsOverwrite(false);
     if (!batch?.units.length) handleAddUnit(locationId, batchId);
     setUnitsFor({ locationId, batchId });
   };
@@ -365,6 +383,7 @@ export function OpeningStockPage() {
         ),
       );
     }
+    setUnitsOverwrite(false);
     setUnitsFor(null);
   };
 
@@ -571,6 +590,15 @@ export function OpeningStockPage() {
         .find((r) => r.id === unitsFor.locationId)
         ?.batches.find((b) => b.id === unitsFor.batchId) ?? null)
     : null;
+
+  /** …in the dialog's own row shape. One copy, because the overwrite figure and
+   * the rows the grid renders have to be the same rows — quoting a total the box
+   * then failed to write is the one way this control could lie. */
+  const unitsRows = (unitsBatch?.units ?? []).map((u) => ({
+    id: u.id,
+    label: u.label,
+    quantity: u.quantityIn,
+  }));
 
   return (
     <div
@@ -1473,11 +1501,7 @@ export function OpeningStockPage() {
           singular={unitLabel.singular}
           plural={unitLabel.plural}
           batchQty={parseFloat(unitsBatch.quantityIn) || 0}
-          units={unitsBatch.units.map((u) => ({
-            id: u.id,
-            label: u.label,
-            quantity: u.quantityIn,
-          }))}
+          units={unitsRows}
           /* No "Existing {unit}" here: opening stock DECLARES what is on hand, so
              every package it names is one this document owns — the top-up case
              belongs to documents that receive goods. */
@@ -1493,6 +1517,26 @@ export function OpeningStockPage() {
           }
           onRemove={(unitId) => handleDeleteUnit(unitsFor.locationId, unitsFor.batchId, unitId)}
           onCancel={cancelUnits}
+          overwrite={{
+            checked: unitsOverwrite,
+            onChange: setUnitsOverwrite,
+            /* What the BATCH would carry, not the location — this box stops one
+               level up (see `unitsOverwrite`), so the figure it quotes has to be
+               the one it will actually write. */
+            projectedQty: unitsRows.length > 0 ? unitsTotal(unitsRows) : 0,
+            format: formatQty,
+          }}
+          onSave={(applyOverwrite) => {
+            if (applyOverwrite) {
+              updateBatch(
+                unitsFor.locationId,
+                unitsFor.batchId,
+                'quantityIn',
+                formatQty(unitsTotal(unitsRows)),
+              );
+            }
+            setUnitsOverwrite(false);
+          }}
         />
       )}
     </div>

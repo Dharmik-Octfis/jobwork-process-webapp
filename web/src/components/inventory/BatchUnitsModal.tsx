@@ -65,13 +65,20 @@ interface BatchUnitsModalProps {
    */
   onCancel: () => void;
   /**
-   * 🔴 BILLS ONLY, and omitted everywhere else — no checkbox is rendered and Save
-   * changes no quantity.
+   * 🔴 OPT-IN, and omitted on a screen that does not want it — no checkbox is
+   * rendered and Save changes no quantity.
    *
    * The packages must add up to their batch. When they do not, this is the way out
-   * that is not "retype it": tick the box and Save writes the packages' total onto
-   * the batch instead, carrying the bill line with it. Exactly the escape hatch
-   * `IssueUnitsModal` offers one module over, worded identically.
+   * that is not "retype it": tick the box and Save writes the packages' total
+   * upwards instead. Exactly the escape hatch `IssueUnitsModal` offers one module
+   * over, worded identically.
+   *
+   * 🔴 HOW FAR UP IS THE CALLER'S CHOICE, not this dialog's, which is why the
+   * figure is passed in rather than derived here. Bills carries it all the way to
+   * the bill line, because the line is the top of that document. Opening Stock
+   * stops at the batch: above it sits the location's declared opening stock, which
+   * is the number that whole page exists to state, and rewriting it as a side
+   * effect of editing one batch's packages is not something to do silently.
    */
   overwrite?: {
     checked: boolean;
