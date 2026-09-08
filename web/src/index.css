@@ -367,7 +367,7 @@ input[type='number'] {
 .master-detail-container {
   display: flex;
   overflow: hidden;
-  background: #f8fafc;
+  background: #f4f5f8;
   flex: 1;
 }
 
@@ -379,7 +379,7 @@ input[type='number'] {
 
 .detail-pane {
   flex: 1;
-  background: #fff;
+  background: #f4f5f8;
   overflow-y: auto;
   position: relative;
 }
@@ -461,6 +461,7 @@ input[type='number'] {
 .detail-content-layout {
   display: flex;
   gap: 0px;
+  background: #fff;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
   border-radius: 8px;
   border: 1px solid #eef0f3;
@@ -484,7 +485,7 @@ input[type='number'] {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
-  background: #f8fafc;
+  background: #fff;
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 24px;
@@ -721,7 +722,7 @@ input[type='number'] {
   flex: 1;
   height: 100%;
   min-height: 0;
-  background: #fff;
+  background: #f4f5f8;
   position: relative;
 }
 

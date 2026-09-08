@@ -12,8 +12,6 @@ import { formatDate } from '../../../lib/formatDate';
 import {
   ISSUE_STATUS_META,
   formatQty,
-  itemSummary,
-  sharedUnit,
   statusMeta,
 } from '../jobwork.schemas';
 import { fetchIssuesForStep, fetchJobIssueCount, fetchJobIssues } from './jobIssues.api';
@@ -60,15 +58,6 @@ function renderCell(issue: JobIssue, key: string): React.ReactNode {
       return issue.step?.processNameSnapshot ?? '-';
     case 'processorName':
       return issue.processorNameSnapshot ?? 'In-house';
-    case 'item':
-      // Every item on the challan, counted — the header column that named only
-      // the principal one went on 2026-08-12.
-      return itemSummary(issue.lines);
-    case 'totalQty': {
-      // No unit when the lines disagree: metres + cones + pieces is not a sum.
-      const unit = sharedUnit(issue.lines);
-      return `${formatQty(issue.totalQty)}${unit ? ` ${unit}` : ''}`;
-    }
     case 'sourceLocation':
       return issue.sourceLocation?.name ?? '-';
     case 'destinationLocation':

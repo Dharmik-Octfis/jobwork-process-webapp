@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { AlertTriangle, PackageCheck, Send, Check } from 'lucide-react';
 import { formatDate } from '../../../lib/formatDate';
 import {
+  ISSUE_STATUS_META,
+  RECEIPT_STATUS_META,
   STEP_STATUS_META,
   formatQty,
   processorTypeLabel,
@@ -19,6 +21,28 @@ interface Props {
   onReceive: (step: OverviewStep) => void;
   onComplete?: (step: OverviewStep) => void;
   onOpenDocument: (event: ActivityEvent) => void;
+}
+
+function DocumentStatusPill({ event }: { event: ActivityEvent }) {
+  const meta = statusMeta(
+    event.kind === 'issue' ? ISSUE_STATUS_META : RECEIPT_STATUS_META,
+    event.status,
+  );
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        padding: '2px 8px',
+        borderRadius: 10,
+        fontSize: 11,
+        fontWeight: 500,
+        color: meta.color,
+        background: meta.bg,
+      }}
+    >
+      {meta.label}
+    </span>
+  );
 }
 
 const actionButton: React.CSSProperties = {
@@ -366,6 +390,15 @@ export function ActivityTabs({ events, onOpen }: { events: ActivityEvent[], onOp
                 <th style={{ textAlign: 'left', fontSize: 12, color: '#64748b', paddingBottom: 8, fontWeight: 500, borderBottom: '1px solid #eef0f3' }}>
                   {activeTab === 'issue' ? 'Issue Number' : 'Receive Number'}
                 </th>
+                <th style={{ textAlign: 'left', fontSize: 12, color: '#64748b', paddingBottom: 8, fontWeight: 500, borderBottom: '1px solid #eef0f3' }}>
+                  Done By
+                </th>
+                <th style={{ textAlign: 'left', fontSize: 12, color: '#64748b', paddingBottom: 8, fontWeight: 500, borderBottom: '1px solid #eef0f3' }}>
+                  Processor
+                </th>
+                <th style={{ textAlign: 'left', fontSize: 12, color: '#64748b', paddingBottom: 8, fontWeight: 500, borderBottom: '1px solid #eef0f3' }}>
+                  Status
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -393,11 +426,20 @@ export function ActivityTabs({ events, onOpen }: { events: ActivityEvent[], onOp
                       {event.number}
                     </button>
                   </td>
+                  <td style={{ padding: '12px 0', fontSize: 13, color: '#334155', borderBottom: '1px solid #f8fafc' }}>
+                    {event.processorType ? processorTypeLabel(event.processorType) : '-'}
+                  </td>
+                  <td style={{ padding: '12px 0', fontSize: 13, color: '#334155', borderBottom: '1px solid #f8fafc' }}>
+                    {event.partyName || '-'}
+                  </td>
+                  <td style={{ padding: '12px 0', fontSize: 13, color: '#334155', borderBottom: '1px solid #f8fafc' }}>
+                    <DocumentStatusPill event={event} />
+                  </td>
                 </tr>
               ))}
               {activeEvents.length === 0 && (
                 <tr>
-                  <td colSpan={2} style={{ padding: '24px 0', textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>
+                  <td colSpan={5} style={{ padding: '24px 0', textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>
                     No {activeTab === 'issue' ? 'issues' : 'receives'} found.
                   </td>
                 </tr>

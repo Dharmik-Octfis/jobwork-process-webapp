@@ -75,8 +75,6 @@ function renderCell(
       // A pill, matching the Issues list. It was a bare `cancelled ? … : 'Posted'`
       // ternary, which labelled a draft "Posted" — the one thing it is not.
       return <StatusPill status={receipt.status} />;
-    case 'totalReceivedQty':
-    case 'totalAcceptedQty':
     case 'totalReworkQty':
     case 'totalScrapQty':
     case 'totalReturnedQty':

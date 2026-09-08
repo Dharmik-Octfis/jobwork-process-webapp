@@ -23,7 +23,6 @@ import {
   resolveProcessorName,
 } from '../jobwork.refs.ts';
 import {
-  HAPPENED_DOC_STATUS,
   POSTED_DOC_STATUS,
   runAsDocument,
   type ProcessorType,
@@ -2017,7 +2016,6 @@ async function buildActivity(
       organizationId,
       jobOrderId,
       isDeleted: false,
-      status: HAPPENED_DOC_STATUS,
       ...(filterStepId ? { jobOrderStepId: filterStepId } : {}),
     },
     select: {
@@ -2030,6 +2028,7 @@ async function buildActivity(
       isRework: true,
       attemptNo: true,
       totalQty: true,
+      processorType: true,
       processorNameSnapshot: true,
       createdBy: true,
       createdAt: true,
@@ -2053,7 +2052,6 @@ async function buildActivity(
       organizationId,
       jobOrderId,
       isDeleted: false,
-      status: HAPPENED_DOC_STATUS,
       ...(filterStepId ? { jobOrderStepId: filterStepId } : {}),
     },
     select: {
@@ -2065,6 +2063,7 @@ async function buildActivity(
       remarks: true,
       totalIssuedQty: true,
       totalReturnedQty: true,
+      processorType: true,
       processorNameSnapshot: true,
       createdBy: true,
       createdAt: true,
@@ -2117,6 +2116,7 @@ async function buildActivity(
     status: issue.status,
     remarks: issue.remarks,
     partyName: issue.processorNameSnapshot ?? issue.destination?.name ?? null,
+    processorType: issue.processorType,
     actorName: directory.actorName(issue.createdBy),
     isRework: issue.isRework,
     attemptNo: issue.attemptNo,
@@ -2141,7 +2141,8 @@ async function buildActivity(
     date: receipt.receiptDate.toISOString(),
     status: receipt.status,
     remarks: receipt.remarks,
-    partyName: receipt.processorNameSnapshot ?? null,
+    partyName: receipt.processorNameSnapshot ?? receipt.location?.name ?? null,
+    processorType: receipt.processorType,
     actorName: directory.actorName(receipt.createdBy),
     locationName: receipt.location?.name ?? null,
     consumedQty: receipt.totalIssuedQty.toString(),

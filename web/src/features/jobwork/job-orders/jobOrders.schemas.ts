@@ -180,6 +180,7 @@ const activityBaseShape = {
   status: z.string(),
   remarks: z.string().nullable(),
   partyName: z.string().nullable(),
+  processorType: z.string(),
   /** Who recorded it, resolved through the org's own member directory. */
   actorName: z.string(),
 };
