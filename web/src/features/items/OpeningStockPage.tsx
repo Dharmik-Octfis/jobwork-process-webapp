@@ -33,6 +33,16 @@ export interface OpeningStockUnitRow {
   autoLabel?: boolean;
 }
 
+/** This page's row shape → the shared one the dialog and the rules read. One copy,
+ * because the dialog's gate and this page's Save must judge the same rows: they
+ * disagreed while only one of them carried `autoLabel`. */
+const toUnitRow = (u: OpeningStockUnitRow) => ({
+  id: u.id,
+  label: u.label,
+  quantity: u.quantityIn,
+  autoLabel: u.autoLabel,
+});
+
 export interface OpeningStockBatchRow {
   id: string;
   batchReference: string;
@@ -503,11 +513,7 @@ export function OpeningStockPage() {
           if (showUnits) {
             for (const batch of loc.batches) {
               const problem = validateBatchUnits({
-                units: batch.units.map((u) => ({
-                  id: u.id,
-                  label: u.label,
-                  quantity: u.quantityIn,
-                })),
+                units: batch.units.map(toUnitRow),
                 batchQty: parseFloat(batch.quantityIn) || 0,
                 batchName: batch.batchReference || singular,
                 singular: unitLabel.singular,
@@ -593,12 +599,14 @@ export function OpeningStockPage() {
 
   /** …in the dialog's own row shape. One copy, because the overwrite figure and
    * the rows the grid renders have to be the same rows — quoting a total the box
-   * then failed to write is the one way this control could lie. */
-  const unitsRows = (unitsBatch?.units ?? []).map((u) => ({
-    id: u.id,
-    label: u.label,
-    quantity: u.quantityIn,
-  }));
+   * then failed to write is the one way this control could lie.
+   *
+   * 🔴 `autoLabel` RIDES ALONG, and dropping it is not cosmetic: `userFilled`
+   * reads it to tell a row the user meant from one the grid pre-filled, and a
+   * missing flag reads as "they typed this". `BatchUnitsTrigger` adds a blank row
+   * on the way in, so without this the dialog would open with Save already dead,
+   * complaining that the T1 it invented needs a quantity. */
+  const unitsRows = (unitsBatch?.units ?? []).map(toUnitRow);
 
   return (
     <div

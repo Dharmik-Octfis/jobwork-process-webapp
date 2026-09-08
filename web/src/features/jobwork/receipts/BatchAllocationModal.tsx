@@ -14,6 +14,7 @@ import {
   autoLabelPrefix,
   isSubmittableUnit,
   renumberAutoLabels,
+  unitsTotal,
   validateBatchUnits,
   type BatchUnitRow,
   type ExistingBatchUnitOption,
@@ -413,6 +414,17 @@ export function BatchAllocationModal({
   const [unitsFor, setUnitsFor] = useState<string | null>(null);
   /** That row's packages as the dialog opened, so Cancel can put them back. */
   const [unitsSnapshot, setUnitsSnapshot] = useState<BatchUnitRow[]>([]);
+  /**
+   * 🔴 THE WAY OUT OF A GRID THAT DOES NOT ADD UP, and it is not optional garnish:
+   * `BatchUnitsModal` refuses Save while the packages disagree with the batch, and
+   * its Escape, its ✕ and its Cancel all revert. Without this box a user who typed
+   * ten packages against a stale quantity could only throw them away.
+   *
+   * Stops at the ROW, never at `targetQty` — that figure is what came back from the
+   * processor, not something a package grid may rewrite. Ticking this unbalances
+   * the outer grid on purpose, and the existing `matches` gate is what then says so.
+   */
+  const [unitsOverwrite, setUnitsOverwrite] = useState(false);
 
   /** Every add and every remove goes through here, so the suggested names are
    * recomputed against the whole grid — which is what makes deleting the middle
@@ -466,6 +478,7 @@ export function BatchAllocationModal({
   const openUnits = (rowId: string) => {
     const row = rows.find((candidate) => candidate.id === rowId);
     setUnitsSnapshot(row ? [...row.units] : []);
+    setUnitsOverwrite(false);
     if (!row?.units.length) addUnit(rowId);
     setUnitsFor(rowId);
   };
@@ -478,6 +491,7 @@ export function BatchAllocationModal({
         prev.map((row) => (row.id === unitsFor ? { ...row, units: [...restore] } : row)),
       );
     }
+    setUnitsOverwrite(false);
     setUnitsFor(null);
   };
 
@@ -1042,6 +1056,16 @@ export function BatchAllocationModal({
           onPickExisting={(unitId, option) => pickExistingUnit(unitsRow.id, unitId, option)}
           onRemove={(unitId) => removeUnit(unitsRow.id, unitId)}
           onCancel={cancelUnits}
+          overwrite={{
+            checked: unitsOverwrite,
+            onChange: setUnitsOverwrite,
+            projectedQty: unitsTotal(unitsRow.units),
+            format: formatQty,
+          }}
+          onSave={(applyOverwrite) => {
+            if (applyOverwrite) setRow(unitsRow.id, { qty: unitsTotal(unitsRow.units) });
+            setUnitsOverwrite(false);
+          }}
         />
       )}
     </>

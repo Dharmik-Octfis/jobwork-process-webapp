@@ -3,6 +3,7 @@ import { Modal } from '../ui/Modal';
 import { BatchUnitsGrid } from './BatchUnitsGrid';
 import {
   unitsTotal,
+  validateBatchUnits,
   QTY_EPSILON,
   type BatchUnitRow,
   type ExistingBatchUnitOption,
@@ -116,11 +117,6 @@ export function BatchUnitsModal({
   const gap = Number((batchQty - unitsTotal(units)).toFixed(4));
   const balanced = Math.abs(gap) <= QTY_EPSILON;
 
-  const handleSave = () => {
-    onSave?.(Boolean(overwrite?.checked));
-    onClose();
-  };
-
   /**
    * 🔴 THE REFERENCE IS NAMED BY ITS LEVEL, in the org's own word for it —
    * "Takas in Batch CF-B-01", never a bare "Takas in CF-B-01". A reference on its
@@ -130,6 +126,44 @@ export function BatchUnitsModal({
    */
   const ref = batchRef?.trim();
   const heading = ref ? `${batchSingular} ${ref}` : batchSingular;
+
+  /**
+   * 🔴 SAVE IS REFUSED WHILE THE GRID IS WRONG — the same gate `IssueUnitsModal`
+   * puts on its own commit, and for the reason that dialog states: packages are a
+   * SPLIT of the batch's quantity, so leaving here with a split that does not add
+   * up is leaving with something the screen behind will refuse anyway. Every one
+   * of the four callers already validates this at ITS save; all this does is say
+   * so at the grid the user is looking at, instead of one screen later.
+   *
+   * Asked TWICE on purpose. `rowProblem` is every rule but the total — a blank
+   * quantity, an unpicked package, a duplicate label — and none of those is
+   * something the overwrite box can excuse. The second call adds the total, which
+   * ticking the box does excuse, because that is precisely what the box does.
+   *
+   * 🔴 It must come from `validateBatchUnits` and NOT from `balanced` above.
+   * `BatchUnitsTrigger` gives an empty batch its first row on the way in, so a
+   * freshly opened dialog holds one blank row against a non-zero batch — which is
+   * "unbalanced" by arithmetic and perfectly legal by the rules ("add none at all
+   * and the whole batch stays untagged"). Gating on `balanced` would disable Save
+   * the moment the dialog opened.
+   */
+  const validateArgs = {
+    units,
+    batchQty,
+    batchName: ref || batchSingular,
+    singular,
+    plural,
+    uomLabel,
+  };
+  const rowProblem = validateBatchUnits({ ...validateArgs, skipTotal: true });
+  const problem = rowProblem ?? validateBatchUnits(validateArgs);
+  const canSave = !rowProblem && (!problem || Boolean(overwrite?.checked));
+
+  const handleSave = () => {
+    if (!canSave) return;
+    onSave?.(Boolean(overwrite?.checked));
+    onClose();
+  };
   /** The same thing at the head of a sentence, where an unnamed batch cannot just
    * be the bare word. */
   const subject = ref ? heading : `This ${batchSingular.toLowerCase()}`;
@@ -199,15 +233,19 @@ export function BatchUnitsModal({
             <button
               type="button"
               onClick={handleSave}
+              disabled={!canSave}
+              /* Says WHY it is dead — a greyed button with no reason is the same
+                 dead end as one that saves something the screen behind rejects. */
+              title={canSave ? undefined : (problem ?? undefined)}
               style={{
                 padding: '6px 20px',
-                background: '#15803d',
-                color: '#fff',
+                background: canSave ? '#15803d' : '#f1f5f9',
+                color: canSave ? '#fff' : '#94a3b8',
                 border: 'none',
                 borderRadius: 4,
                 fontSize: 13,
                 fontWeight: 500,
-                cursor: 'pointer',
+                cursor: canSave ? 'pointer' : 'not-allowed',
               }}
             >
               Save
@@ -235,22 +273,35 @@ export function BatchUnitsModal({
           {/* The same figure the grid carries, repeated on the sticky bar: the
               grid's copy scrolls away once a batch holds twenty packages, and
               this is the number that decides whether the screen behind will
-              refuse its own Save. */}
+              refuse its own Save.
+
+              🔴 A ROW problem displaces the tally, because it outranks it: the
+              tally is about arithmetic the user can still fix by typing, while a
+              duplicate label or a blank quantity is the thing actually holding
+              Save down, and it had no words anywhere on this dialog before. */}
           <span
             style={{
               fontSize: 12,
               fontWeight: 500,
               textAlign: 'right',
-              color: units.length === 0 ? '#64748b' : balanced ? '#16a34a' : '#b91c1c',
+              color: rowProblem
+                ? '#b91c1c'
+                : units.length === 0
+                  ? '#64748b'
+                  : balanced
+                    ? '#16a34a'
+                    : '#b91c1c',
             }}
           >
-            {units.length === 0
-              ? `No ${plural.toLowerCase()} yet — the whole ${batchSingular.toLowerCase()} stays untagged.`
-              : balanced
-                ? `Adds up to ${batchQty}${uomLabel ? ` ${uomLabel}` : ''}.`
-                : gap > 0
-                  ? `${Number(gap.toFixed(4))}${uomLabel ? ` ${uomLabel}` : ''} still to name.`
-                  : `${Number((-gap).toFixed(4))}${uomLabel ? ` ${uomLabel}` : ''} more than the ${batchSingular.toLowerCase()} holds.`}
+            {rowProblem
+              ? rowProblem
+              : units.length === 0
+                ? `No ${plural.toLowerCase()} yet — the whole ${batchSingular.toLowerCase()} stays untagged.`
+                : balanced
+                  ? `Adds up to ${batchQty}${uomLabel ? ` ${uomLabel}` : ''}.`
+                  : gap > 0
+                    ? `${Number(gap.toFixed(4))}${uomLabel ? ` ${uomLabel}` : ''} still to name.`
+                    : `${Number((-gap).toFixed(4))}${uomLabel ? ` ${uomLabel}` : ''} more than the ${batchSingular.toLowerCase()} holds.`}
           </span>
         </div>
       }

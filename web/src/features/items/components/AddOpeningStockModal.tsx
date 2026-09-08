@@ -36,6 +36,19 @@ export interface OpeningStockUnitRow {
   autoLabel?: boolean;
 }
 
+/** This screen's row shape → the shared one the dialog and the rules read.
+ *
+ * 🔴 `autoLabel` RIDES ALONG. `userFilled` reads it to tell a row the user meant
+ * from one the grid pre-filled, and a missing flag reads as "they typed this" —
+ * which, with a blank row added on the way in, is a dialog that opens with Save
+ * already dead over a T1 it invented itself. */
+const toUnitRow = (u: OpeningStockUnitRow) => ({
+  id: u.id,
+  label: u.label,
+  quantity: u.quantityIn,
+  autoLabel: u.autoLabel,
+});
+
 export interface OpeningStockBatchRow {
   id: string;
   batchReference: string;
@@ -519,11 +532,7 @@ export function AddOpeningStockModal({
           if (showUnits) {
             for (const batch of loc.batches) {
               const problem = validateBatchUnits({
-                units: batch.units.map((u) => ({
-                  id: u.id,
-                  label: u.label,
-                  quantity: u.quantityIn,
-                })),
+                units: batch.units.map(toUnitRow),
                 batchQty: parseFloat(batch.quantityIn) || 0,
                 batchName: batch.batchReference || singular,
                 singular: unitLabel.singular,
@@ -619,11 +628,7 @@ export function AddOpeningStockModal({
 
   /** …in the dialog's own row shape, one copy, so the figure the overwrite box
    * quotes is computed from exactly the rows it will write. */
-  const unitsRows = (unitsBatch?.units ?? []).map((u) => ({
-    id: u.id,
-    label: u.label,
-    quantity: u.quantityIn,
-  }));
+  const unitsRows = (unitsBatch?.units ?? []).map(toUnitRow);
 
   return (
     <>

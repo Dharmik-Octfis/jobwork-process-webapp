@@ -205,6 +205,18 @@ export function validateBatchUnits(args: {
   singular: string;
   plural: string;
   uomLabel?: string;
+  /**
+   * Check every rule EXCEPT the total. For the caller that offers an overwrite
+   * box: ticking it makes the batch take the packages' total, so the gap is no
+   * longer a mistake — but a blank quantity or a duplicate label still is, and
+   * those must keep refusing whether the box is ticked or not.
+   *
+   * 🔴 Asking twice — once with this, once without — is how `BatchUnitsModal`
+   * tells "only the total is off" from "a row is wrong", and it must stay a
+   * property of THIS function. Re-deriving the gap at the call site was the
+   * original four-copies bug in a new place.
+   */
+  skipTotal?: boolean;
 }): string | null {
   const rows = named(args.units);
   if (rows.length === 0) return null;
@@ -263,6 +275,8 @@ export function validateBatchUnits(args: {
    * packages is still fine, which is what keeps every org that does not run the
    * level, and every batch received before it existed, working exactly as before.
    */
+  if (args.skipTotal) return null;
+
   const total = unitsTotal(rows);
   const gap = Number((args.batchQty - total).toFixed(4));
   if (Math.abs(gap) > QTY_EPSILON) {
