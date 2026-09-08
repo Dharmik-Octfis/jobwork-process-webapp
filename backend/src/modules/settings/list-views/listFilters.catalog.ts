@@ -37,8 +37,8 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
     { key: 'inactive', label: 'Inactive Customers', where: { status: 'inactive' } },
   ],
   item: [
-    { key: 'all', label: 'Active Items', where: { isActive: true } },
-    { key: 'all_items', label: 'All Items', where: {} },
+    { key: 'all', label: 'All Items', where: {} },
+    { key: 'active', label: 'Active Items', where: { isActive: true } },
     { key: 'inactive', label: 'Inactive Items', where: { isActive: false } },
     { key: 'goods', label: 'Goods', where: { itemType: 'goods' } },
     { key: 'services', label: 'Services', where: { itemType: 'service' } },
@@ -46,9 +46,8 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
   /**
    * Users. The first entry is the default, so an admin opening Settings → Users
    * lands on **Active Users** — the people who can actually sign in today, which is
-   * what they are looking for almost every time. (Same trick the `item` list uses:
-   * the key stays `all` because it is the default slot, while the label and `where`
-   * narrow it.)
+   * what they are looking for almost every time. (The key stays `all` because it 
+   * is the default slot, while the label and `where` narrow it.)
    *
    * 🔴 `unconfirmed` is the one preset whose rows do NOT come from `memberships` —
    * an invited person has no membership row yet. `members.service.ts` branches on

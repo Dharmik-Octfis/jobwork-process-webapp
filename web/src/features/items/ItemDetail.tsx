@@ -103,6 +103,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['item', orgId, itemId] });
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['compositeItems', orgId] });
       setIsMoreOpen(false);
     },
   });

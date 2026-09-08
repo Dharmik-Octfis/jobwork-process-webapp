@@ -237,7 +237,7 @@ export function ItemsList() {
                 filters={filters}
                 value={filter}
                 onChange={setFilter}
-                fallbackLabel="Active Items"
+                fallbackLabel="All Items"
               />
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>

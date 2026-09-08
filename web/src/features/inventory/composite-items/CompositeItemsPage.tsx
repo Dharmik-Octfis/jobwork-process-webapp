@@ -302,10 +302,12 @@ function CompactCompositeItemRow({
           {item.name}
         </span>
         
-        {!item.isActive && (
-          <span style={{ fontSize: 10, fontWeight: 600, color: '#64748b', padding: '2px 6px', background: '#f1f5f9', borderRadius: 4, marginLeft: 8 }}>
-            INACTIVE
-          </span>
+        {item.isActive === false && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: '12px', flexShrink: 0 }}>
+            <div style={{ fontSize: '11px', fontWeight: 500, color: '#94a3b8' }}>
+              INACTIVE
+            </div>
+          </div>
         )}
       </div>
 
@@ -518,7 +520,7 @@ export function CompositeItemsPage() {
               filters={filters}
               value={filter}
               onChange={setFilter}
-              fallbackLabel="Active Items"
+              fallbackLabel="All Items"
             />
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>

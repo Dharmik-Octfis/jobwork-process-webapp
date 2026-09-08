@@ -324,6 +324,8 @@ export function VendorsList() {
                           cursor: 'pointer',
                           background: selectedVendorId === vendor.id ? '#f1f5f9' : 'transparent',
                           transition: 'background 0.1s',
+                          display: 'flex',
+                          alignItems: 'flex-start',
                         }}
                         onMouseEnter={(e) => {
                           if (selectedVendorId !== vendor.id)
@@ -334,19 +336,28 @@ export function VendorsList() {
                             e.currentTarget.style.background = 'transparent';
                         }}
                       >
-                        <div
-                          style={{
-                            fontSize: '13px',
-                            fontWeight: 500,
-                            color: '#1e293b',
-                            marginBottom: '4px',
-                          }}
-                        >
-                          {vendor.contactName}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontSize: '13px',
+                              fontWeight: 500,
+                              color: '#1e293b',
+                              marginBottom: '4px',
+                            }}
+                          >
+                            {vendor.contactName}
+                          </div>
+                          <div style={{ fontSize: '12px', color: '#64748b' }}>
+                            {vendor.companyName || vendor.email || 'No email'}
+                          </div>
                         </div>
-                        <div style={{ fontSize: '12px', color: '#64748b' }}>
-                          {vendor.companyName || vendor.email || 'No email'}
-                        </div>
+                        {vendor.status === 'inactive' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: '12px', flexShrink: 0 }}>
+                            <div style={{ fontSize: '11px', fontWeight: 500, color: '#94a3b8', marginTop: '4px' }}>
+                              INACTIVE
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
