@@ -61,7 +61,7 @@ export async function updateBill(req: Request, res: Response) {
 
 export async function deleteBill(req: Request, res: Response) {
   const orgId = req.tenantId!;
-  await billService.deleteBill(orgId, req.params.id as string);
+  await billService.deleteBill(orgId, req.params.id as string, req.user?.id ?? null);
   sendSuccess(res, null, 'Bill deleted.');
 }
 

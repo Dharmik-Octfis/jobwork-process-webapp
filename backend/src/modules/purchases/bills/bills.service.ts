@@ -1,5 +1,5 @@
 import { runAsTenant } from '../../../db/prisma.ts';
-import type { Prisma } from '../../../../generated/prisma/client.ts';
+import { Prisma } from '../../../../generated/prisma/client.ts';
 import type { CreateBillPayload, UpdateBillPayload, BillItemPayload } from './bills.schemas.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
@@ -11,6 +11,7 @@ import {
   postMovement,
   createBatch,
   createBatchUnits,
+  resolveBatchesForPosting,
   resolveExistingBatchUnits,
   type ResolvedBatches,
 } from '../../inventory/stock-ledger/stockLedger.service.ts';
@@ -21,6 +22,20 @@ const DUPLICATE_NUMBER = 'A bill with this number already exists.';
 /** Same tolerance `assertAllocationsBalance` uses one level up: an exact
  * comparison rejects `3 × 33.3333` for being a billionth off. */
 const QTY_EPSILON = 0.00005;
+
+/**
+ * Prisma's default interactive-transaction budget is 5 seconds. A fifty-taka
+ * consignment already posts fifty rows through `postMovement` on the way in;
+ * editing one now reverses those fifty before re-posting, so the write is twice
+ * what it was. Same figures and the same reasoning as `DOCUMENT_TX` in
+ * `jobwork.types.ts` — duplicated rather than imported, as `assemblies.service`
+ * does, because purchases must not depend on jobwork.
+ */
+const DOCUMENT_TX = { maxWait: 15_000, timeout: 120_000 } as const;
+
+function runAsDocument<T>(orgId: string, fn: (tx: TenantClient) => Promise<T>): Promise<T> {
+  return runAsTenant(orgId, fn, DOCUMENT_TX);
+}
 
 type BillBatchPayload = NonNullable<BillItemPayload['batches']>[number];
 
@@ -190,6 +205,186 @@ async function receiveBillBatch(
   }
 }
 
+/**
+ * 🔴 TAKE BACK WHAT THIS BILL PUT ON THE BOOKS — the missing half of
+ * `receiveBillBatch`, and the reason editing a posted bill used to do nothing.
+ *
+ * Bills could post stock and never un-post it: removing a taka on the form
+ * returned 200, rewrote the paperwork and left three takas receivable forever
+ * while the bill claimed two. A posted movement is never rewritten or deleted
+ * here — the correction is a `reversal` row, exactly as in `cancelJobReceipt`.
+ *
+ * 🔴 IT REVERSES THE NET, NOT ROW BY ROW, and that is what makes a SECOND edit
+ * safe. Pairing every posted row with a fresh reversal would re-reverse the rows
+ * an earlier edit had already undone, and the batch would go negative on the
+ * third save. Netting `qty_in - qty_out` per (batch, package, location) across
+ * every row this bill owns — its own reversals included — answers "what does
+ * this bill still contribute", which is zero once it has been withdrawn. So
+ * running it twice is a no-op, by construction rather than by a guard.
+ */
+async function reverseBillPostings(
+  tx: TenantClient,
+  args: {
+    organizationId: string;
+    billId: string;
+    billNumber: string;
+    /** Packages the incoming payload still names. They survive, so an unchanged
+     * taka keeps its row, its `seq` and its tag across the edit. */
+    keepUnitIds: ReadonlySet<string>;
+    userId: string | null;
+  },
+) {
+  const { organizationId, billId, billNumber, keepUnitIds, userId } = args;
+
+  const posted = await tx.stockLedgerEntry.findMany({
+    where: { organizationId, sourceDocType: 'bill', sourceDocId: billId },
+    select: {
+      batchId: true,
+      /**
+       * 🔴 THE COLUMN THIS PATH MOST EASILY FORGETS, AND THE WORST ONE TO MISS —
+       * the same warning `cancelJobReceipt` carries on its own select. Drop it and
+       * the reversals post UNTAGGED: the batch's balance comes back perfectly
+       * correct, so no screen looks wrong, while every taka keeps its quantity
+       * forever with an untagged negative beside it. No error, no warning.
+       */
+      batchUnitId: true,
+      locationId: true,
+      qtyIn: true,
+      qtyOut: true,
+      valueIn: true,
+      valueOut: true,
+    },
+  });
+  if (posted.length === 0) return;
+
+  const batchIds = [...new Set(posted.map((row) => row.batchId))];
+
+  /**
+   * 🔴 THE TEST IS "HAS ANYTHING TAKEN STOCK OUT", not "has anything touched it"
+   * — the same test `cancelJobReceipt` makes, for the same reason. This bill's
+   * rows are receipts, so the only way withdrawing them can go wrong is if the
+   * quantity is no longer there to withdraw: issued to a jobworker, consumed by
+   * an assembly, transferred away.
+   *
+   * Quantity somebody else put IN stays allowed, or the ordinary case breaks — a
+   * batch this bill topped up carries the earlier document's receipt forever.
+   * This bill's own rows, its reversals included, are excluded by `sourceDocId`,
+   * so a second edit reads the same as the first rather than blocking itself.
+   *
+   * One query across every batch, not one each: this runs inside the document's
+   * single transaction connection, where a round trip per batch is a round trip
+   * nobody gets back.
+   */
+  const movedOn = await tx.stockLedgerEntry.findFirst({
+    where: {
+      organizationId,
+      batchId: { in: batchIds },
+      qtyOut: { gt: 0 },
+      NOT: { sourceDocType: 'bill', sourceDocId: billId },
+    },
+    select: { batchId: true },
+  });
+  if (movedOn) {
+    // Read only to name the batch in the message, so it costs nothing on the
+    // path that succeeds.
+    const batch = await tx.batch.findFirst({
+      where: { id: movedOn.batchId, organizationId },
+      select: { supplierBatchRef: true },
+    });
+    throw ApiError.conflict(
+      `Stock from batch ${batch?.supplierBatchRef || movedOn.batchId} has already been used ` +
+        'since this bill was posted, so its quantities can no longer be changed. ' +
+        'Reverse the document that used it first.',
+    );
+  }
+
+  const netByKey = new Map<
+    string,
+    {
+      batchId: string;
+      batchUnitId: string | null;
+      locationId: string;
+      qty: Prisma.Decimal;
+      value: Prisma.Decimal;
+    }
+  >();
+  for (const row of posted) {
+    const key = `${row.batchId}|${row.batchUnitId ?? ''}|${row.locationId}`;
+    const net = netByKey.get(key) ?? {
+      batchId: row.batchId,
+      batchUnitId: row.batchUnitId,
+      locationId: row.locationId,
+      qty: new Prisma.Decimal(0),
+      value: new Prisma.Decimal(0),
+    };
+    net.qty = net.qty.plus(row.qtyIn).minus(row.qtyOut);
+    net.value = net.value.plus(row.valueIn).minus(row.valueOut);
+    netByKey.set(key, net);
+  }
+
+  const batches = await resolveBatchesForPosting(tx, organizationId, batchIds);
+  const now = new Date();
+  for (const net of netByKey.values()) {
+    // Already withdrawn by an earlier edit — and `postMovement` refuses a
+    // zero-quantity row regardless, one direction per row.
+    if (!net.qty.greaterThan(0)) continue;
+    await postMovement(
+      tx,
+      {
+        organizationId,
+        batchId: net.batchId,
+        batchUnitId: net.batchUnitId,
+        locationId: net.locationId,
+        movementType: 'reversal',
+        qtyOut: net.qty,
+        valueOut: net.value.greaterThan(0) ? net.value : 0,
+        sourceDocType: 'bill',
+        sourceDocId: billId,
+        /* No `sourceDocLineId`: the line that posted the original row is being
+           replaced, and the reversal undoes the bill's contribution as a whole.
+           It also keeps reversals out of `getBillById`, which reads the form's
+           quantities back by live line id. */
+        remarks: `Reversed: bill ${billNumber} was edited.`,
+        postedAt: now,
+        userId,
+      },
+      batches,
+    );
+  }
+
+  const created = await tx.batchUnit.findMany({
+    where: { organizationId, sourceDocType: 'bill', sourceDocId: billId, isDeleted: false },
+    select: { id: true },
+  });
+  /* A package the payload still names keeps its row, so the re-post tops it up
+     through `resolveExistingBatchUnits` instead of hitting "already exists in
+     this batch" on its own tag. */
+  const candidates = created.map((unit) => unit.id).filter((id) => !keepUnitIds.has(id));
+  if (candidates.length === 0) return;
+
+  // 🔴 Two queries for fifty takas, not a hundred. A `count` per package is the
+  // N+1 this transaction's one connection pays for serially.
+  const movedElsewhere = await tx.stockLedgerEntry.findMany({
+    where: {
+      organizationId,
+      batchUnitId: { in: candidates },
+      NOT: { sourceDocType: 'bill', sourceDocId: billId },
+    },
+    select: { batchUnitId: true },
+    distinct: ['batchUnitId'],
+  });
+  // A package another document has moved keeps its row: those ledger rows name it
+  // forever and have to stay interpretable.
+  const spokenFor = new Set(movedElsewhere.map((row) => row.batchUnitId));
+  const retire = candidates.filter((id) => !spokenFor.has(id));
+  if (retire.length === 0) return;
+
+  await tx.batchUnit.updateMany({
+    where: { id: { in: retire }, organizationId },
+    data: { isDeleted: true, updatedBy: userId },
+  });
+}
+
 function billListWhere(organizationId: string, opts: ListQuery): Prisma.BillWhereInput {
   return {
     organizationId: organizationId,
@@ -272,6 +467,11 @@ export async function getBillById(orgId: string, id: string) {
         sourceDocId: bill.id,
         sourceDocLineId: { in: lineItemIds },
         sourceDocType: 'bill',
+        // The form reads back what the bill currently RECEIVES. A reversal from an
+        // earlier edit carries no line id and is excluded by the filter above
+        // anyway, but the intent belongs in the query — this is the quantity the
+        // dialog re-submits, and netting a reversal into it would halve the batch.
+        movementType: { not: 'reversal' },
       },
       include: {
         batch: true,
@@ -505,7 +705,10 @@ export async function updateBill(
     notes: _notes,
     ...billData
   } = data as UpdateBillPayload & { notes?: string };
-  return runAsTenant(orgId, async (tx) => {
+  // `runAsDocument`, not `runAsTenant`: an edit now reverses every row this bill
+  // posted before re-posting the new ones, so a fifty-taka consignment is a
+  // hundred `postMovement` calls on one connection.
+  return runAsDocument(orgId, async (tx) => {
     const existing = await tx.bill.findFirst({
       where: { id, organizationId: orgId, isDeleted: false },
       include: { lineItems: { where: { isDeleted: false } } },
@@ -624,29 +827,77 @@ export async function updateBill(
 
     const effectiveLocationId =
       billData.locationId !== undefined ? billData.locationId : existing.locationId;
-    if (
-      existing.status.toLowerCase() === 'draft' &&
-      billData.status?.toLowerCase() === 'open' &&
-      effectiveLocationId
-    ) {
-      /**
-       * 🔴 POST ONCE, EVER — the guard that makes an Open → Draft → Open cycle
-       * safe.
-       *
-       * `updateBillSchema` is `.partial()`, so a bill can be set back to Draft and
-       * forward to Open again, and this block would post a SECOND full set of
-       * receipt rows: the stock, and its value, doubled. Nothing checked, because
-       * `createBill` and this branch each only knew about their own posting.
-       *
-       * Now the ledger itself is the record of whether it has happened. It is the
-       * right thing to ask — a document's movements are exactly the rows carrying
-       * its id, and they are never deleted, so the answer survives anything the
-       * bill's own columns are edited into.
-       */
-      const alreadyPosted = await tx.stockLedgerEntry.count({
-        where: { organizationId: orgId, sourceDocType: 'bill', sourceDocId: id },
-      });
+    const effectiveStatus = (billData.status ?? existing.status ?? '').toLowerCase();
+    const goingOpen = existing.status.toLowerCase() === 'draft' && effectiveStatus === 'open';
 
+    /**
+     * 🔴 THE LEDGER IS THE RECORD OF WHETHER THIS BILL HAS POSTED — not a column
+     * on the bill, which `updateBillSchema.partial()` lets an Open → Draft → Open
+     * cycle rewrite freely. A document's movements are exactly the rows carrying
+     * its id, and they are never deleted, so the answer survives any edit.
+     */
+    const alreadyPosted = await tx.stockLedgerEntry.count({
+      where: { organizationId: orgId, sourceDocType: 'bill', sourceDocId: id },
+    });
+
+    /**
+     * 🔴 REVERSE, THEN RE-POST — never post a second time on top of the first.
+     *
+     * This was a flat "post once, ever" guard. It did stop an Open → Draft → Open
+     * cycle doubling the stock, but it also made a posted bill's stock
+     * permanently uncorrectable: deleting a taka on the form returned 200,
+     * replaced the line rows and left all three takas receivable. Withdrawing the
+     * old postings first keeps the anti-doubling guarantee — the net on the books
+     * is always exactly what the payload says — and makes the edit mean something.
+     *
+     * 🔴 GOING BACK TO DRAFT WITHDRAWS THE STOCK TOO — a draft holds none. That
+     * is the other half of the same rule, and it is safe for the opposite reason:
+     * there is no re-post to get wrong, because a bill that is not Open does not
+     * post. Reopening it posts again from whatever the payload then says.
+     *
+     * 🔴 SO THE ONE CASE THAT MUST NOT REVERSE is a payload with no `lineItems`
+     * that leaves the bill OPEN — a note, an attachment, a payment term. There
+     * `writtenLines` falls back to the rows already on the bill, which carry no
+     * `batches`, so reversing would withdraw the stock and re-post it from a
+     * payload that never described it, flattening every taka into one untagged
+     * lump on an edit that never mentioned them.
+     */
+    const rewritingLines = Boolean(lineItems);
+    const mustReverse = alreadyPosted > 0 && (rewritingLines || effectiveStatus !== 'open');
+    const mustPost =
+      effectiveStatus === 'open' &&
+      !!effectiveLocationId &&
+      (goingOpen || (alreadyPosted > 0 && rewritingLines));
+
+    if (mustReverse) {
+      /* Read off the PAYLOAD, so the takas the user deleted are exactly the ones
+         retired. Their `seq` is not handed on to the replacements — a dead
+         package's number is never reused, so a batch that loses #2 and #3 reads
+         #1, #4, and the gap is the honest record of what happened.
+
+         A bill that is NOT staying Open keeps none of them: it holds no stock, so
+         a package of its own with nothing in it would only reserve a tag nobody
+         can see. Reopening mints them again from the payload. */
+      const keepUnitIds = new Set<string>();
+      if (effectiveStatus === 'open') {
+        for (const line of writtenLines) {
+          for (const batch of line.payload.batches ?? []) {
+            for (const unit of batch.units ?? []) {
+              if (unit.batchUnitId) keepUnitIds.add(unit.batchUnitId);
+            }
+          }
+        }
+      }
+      await reverseBillPostings(tx, {
+        organizationId: orgId,
+        billId: id,
+        billNumber: existing.billNumber,
+        keepUnitIds,
+        userId: userId || null,
+      });
+    }
+
+    if (mustPost && effectiveLocationId) {
       const itemIds = writtenLines.map((line) => line.payload.itemId);
       const items = await tx.item.findMany({
         where: { id: { in: itemIds }, organizationId: orgId },
@@ -654,8 +905,7 @@ export async function updateBill(
       });
       const itemsById = new Map(items.map((i) => [i.id, i]));
 
-      const toPost = alreadyPosted > 0 ? [] : writtenLines;
-      for (const line of toPost) {
+      for (const line of writtenLines) {
         const payload = line.payload;
         const lineRecord = { id: line.lineId };
         const item = itemsById.get(payload.itemId);
@@ -708,16 +958,40 @@ export async function updateBill(
   });
 }
 
-export async function deleteBill(orgId: string, id: string) {
-  return runAsTenant(orgId, async (tx) => {
+/**
+ * 🔴 A DELETED BILL TAKES ITS STOCK WITH IT.
+ *
+ * This soft-deleted the bill and stopped there, so deleting a posted bill left
+ * every receipt row on the books: the quantity stayed issuable from a document
+ * that no longer existed on any screen, and there was no path left to take it
+ * back — the bill could not be opened to edit, and `updateBill` refuses a deleted
+ * one. It was the only way to put stock somewhere unreachable.
+ *
+ * The reversal also brings its guard: a bill whose stock has already been issued
+ * onward cannot be deleted at all (409), rather than deleted and left inconsistent.
+ * That is the same answer SAP gives, and the right one — the document that
+ * consumed the stock has to be reversed first.
+ */
+export async function deleteBill(orgId: string, id: string, userId: string | null = null) {
+  return runAsDocument(orgId, async (tx) => {
     const existing = await tx.bill.findFirst({
       where: { id, organizationId: orgId, isDeleted: false },
     });
     if (!existing) throw ApiError.notFound('Bill not found');
 
+    // Nothing is kept: the bill is going away, so every package it created goes
+    // with it — the same rule as taking one back to Draft.
+    await reverseBillPostings(tx, {
+      organizationId: orgId,
+      billId: id,
+      billNumber: existing.billNumber,
+      keepUnitIds: new Set(),
+      userId,
+    });
+
     await tx.bill.update({
       where: { id },
-      data: { isDeleted: true },
+      data: { isDeleted: true, updatedBy: userId },
     });
   });
 }
