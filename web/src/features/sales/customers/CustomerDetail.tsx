@@ -14,7 +14,7 @@ import {
 } from './customers.schemas';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, ChevronUp, Pencil, Trash, Settings, User, Plus } from 'lucide-react';
-import { useState, useRef, useEffect, Fragment } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { CustomerActivityTimeline } from './CustomerActivityTimeline';
 import { CustomerComments } from './CustomerComments';
@@ -652,32 +652,15 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
       </div>
 
       {/* Tabs */}
-      <div
-        style={{
-          padding: '0 24px',
-          borderBottom: '1px solid #eef0f3',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '16px',
-        }}
-      >
-        {tabs.map((tab, idx) => (
-          <Fragment key={tab}>
-            {idx > 0 && <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />}
-            <div
-              onClick={() => setActiveTab(tab)}
-              style={{
-                padding: '12px 0',
-                fontSize: '14px',
-                fontWeight: activeTab === tab ? 600 : 500,
-                color: activeTab === tab ? '#0062ff' : '#64748b',
-                borderBottom: activeTab === tab ? '2px solid #0062ff' : '2px solid transparent',
-                cursor: 'pointer',
-              }}
-            >
-              {tab}
-            </div>
-          </Fragment>
+      <div className="detail-page-tabs">
+        {tabs.map((tab) => (
+          <div
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`detail-tab ${activeTab === tab ? 'active' : ''}`}
+          >
+            {tab}
+          </div>
         ))}
       </div>
 

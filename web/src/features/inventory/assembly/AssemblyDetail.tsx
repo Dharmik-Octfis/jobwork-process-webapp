@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, FileText, ChevronDown, Info, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { X, FileText, ChevronDown, Info, Image as ImageIcon, Trash2, Printer } from 'lucide-react';
 import { assembliesApi } from './assemblies.api';
 import { formatDate } from '../../../lib/formatDate';
 import { AssemblyComments } from './AssemblyComments';
@@ -222,36 +222,42 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
         </div>
       </div>
 
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 16,
-          padding: '0 24px',
-          borderBottom: '1px solid #eef0f3',
-          background: '#f8fafc',
-        }}
-      >
+      <div className="detail-page-tabs">
+        {['Overview', 'Comment', 'History'].map((tab) => (
+          <div
+            key={tab}
+            onClick={() => setActiveTab(tab as 'Overview' | 'Comment' | 'History')}
+            className={`detail-tab ${activeTab === tab ? 'active' : ''}`}
+          >
+            {tab}
+          </div>
+        ))}
+
+        {/* Vertical Divider */}
+        <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />
+
+        {/* PDF / Print Dropdown */}
         <div style={{ position: 'relative' }} ref={pdfMenuRef}>
           <button
             type="button"
+            className="action-btn"
             onClick={() => setIsPdfMenuOpen(!isPdfMenuOpen)}
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
               padding: '12px 0',
               border: 'none',
               background: 'transparent',
-              color: '#334155',
-              fontSize: 13,
-              fontWeight: 500,
+              fontSize: '13px',
               cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              color: '#777777',
+              fontWeight: 400,
             }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = '#222222')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = '#777777')}
           >
-            <FileText size={14} />
-            PDF/Print
-            <ChevronDown size={14} />
+            <FileText size={16} /> PDF/Print <ChevronDown size={14} />
           </button>
           {isPdfMenuOpen && (
             <div
@@ -259,116 +265,53 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
                 position: 'absolute',
                 top: '100%',
                 left: 0,
-                marginTop: 4,
-                background: '#fff',
+                marginTop: '4px',
+                background: 'white',
                 border: '1px solid #eef0f3',
-                borderRadius: 6,
-                boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-                zIndex: 10,
-                minWidth: 160,
-                padding: 4,
+                borderRadius: '4px',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                width: '130px',
+                zIndex: 20,
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
               }}
             >
-              <button
+              <div
                 onClick={handleDownloadPdf}
                 style={{
+                  padding: '8px 12px',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  color: '#334155',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 8,
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: 'none',
-                  background: 'transparent',
-                  color: '#334155',
-                  fontSize: 13,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  borderRadius: 4,
+                  gap: '6px',
                 }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >
-                <FileText size={14} />
-                PDF
-              </button>
-              <button
+                <FileText size={14} /> Download PDF
+              </div>
+              <div
                 onClick={handlePrint}
                 style={{
+                  padding: '8px 12px',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  color: '#334155',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 8,
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: 'none',
-                  background: 'transparent',
-                  color: '#334155',
-                  fontSize: 13,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  borderRadius: 4,
+                  gap: '6px',
                 }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >
-                <FileText size={14} />
-                Print
-              </button>
+                <Printer size={14} /> Print
+              </div>
             </div>
           )}
         </div>
-        <div style={{ width: 1, height: 16, background: '#cbd5e1' }} />
-        <button
-          type="button"
-          onClick={() => setActiveTab('Overview')}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            padding: '12px 0',
-            border: 'none',
-            borderBottom: activeTab === 'Overview' ? '2px solid #0062ff' : '2px solid transparent',
-            background: 'transparent',
-            color: activeTab === 'Overview' ? '#0062ff' : '#64748b',
-            fontSize: 13,
-            fontWeight: activeTab === 'Overview' ? 600 : 500,
-            cursor: 'pointer',
-          }}
-        >
-          Overview
-        </button>
-        <div style={{ width: 1, height: 16, background: '#cbd5e1' }} />
-        <button
-          type="button"
-          onClick={() => setActiveTab('Comment')}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            padding: '12px 0',
-            border: 'none',
-            borderBottom: activeTab === 'Comment' ? '2px solid #0062ff' : '2px solid transparent',
-            background: 'transparent',
-            color: activeTab === 'Comment' ? '#0062ff' : '#64748b',
-            fontSize: 13,
-            fontWeight: activeTab === 'Comment' ? 600 : 500,
-            cursor: 'pointer',
-          }}
-        >
-          Comment
-        </button>
-        <div style={{ width: 1, height: 16, background: '#cbd5e1' }} />
-        <button
-          type="button"
-          onClick={() => setActiveTab('History')}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            padding: '12px 0',
-            border: 'none',
-            borderBottom: activeTab === 'History' ? '2px solid #0062ff' : '2px solid transparent',
-            background: 'transparent',
-            color: activeTab === 'History' ? '#0062ff' : '#64748b',
-            fontSize: 13,
-            fontWeight: activeTab === 'History' ? 600 : 500,
-            cursor: 'pointer',
-          }}
-        >
-          History
-        </button>
       </div>
 
       <div

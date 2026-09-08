@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { itemsApi } from './items.api';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, Building2, HelpCircle } from 'lucide-react';
-import { useState, useRef, useEffect, Fragment, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { ItemLocations } from './components/ItemLocations';
 import { ItemBatchDetails } from './components/ItemBatchDetails';
@@ -149,23 +149,26 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
       }}
     >
       {/* Header */}
-      <div className="detail-page-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <h2 className="detail-title" style={{ fontWeight: 600, color: '#1e293b', margin: 0 }}>
-            {item.name}
-          </h2>
-          <span
-            style={{
-              background: item.isActive !== false ? '#3b82f6' : '#94a3b8',
-              color: 'white',
-              fontSize: '11px',
-              padding: '2px 8px',
-              borderRadius: '12px',
-              fontWeight: 500,
-            }}
-          >
-            {item.isActive !== false ? 'Active' : 'Inactive'}
-          </span>
+      <div className="detail-page-header" style={{ alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <h2 className="detail-title" style={{ fontWeight: 400, fontSize: '24px', color: '#222222', margin: 0 }}>
+              {item.name}
+            </h2>
+            <span
+              style={{
+                background: item.isActive !== false ? '#3b82f6' : '#94a3b8',
+                color: 'white',
+                fontSize: '11px',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontWeight: 500,
+                marginTop: '4px',
+              }}
+            >
+              {item.isActive !== false ? 'Active' : 'Inactive'}
+            </span>
+          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -177,7 +180,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
               style={{
                 padding: '6px 12px',
                 border: 'none',
-                background: '#0062ff',
+                background: 'var(--color-check)',
                 color: 'white',
                 borderRadius: '4px',
                 fontSize: '13px',
@@ -201,35 +204,38 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
               }
             }}
             style={{
-              padding: '6px 12px',
-              border: '1px solid #d1d5db',
-              background: 'white',
+              padding: '6px 8px',
+              border: '1px solid var(--color-border)',
+              background: '#f8fafc',
+              color: 'var(--color-text)',
               borderRadius: '4px',
-              fontSize: '13px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '4px',
+              justifyContent: 'center',
             }}
-            className="action-btn"
+            title="Edit"
           >
-            <Edit size={14} /> <span className="action-btn-text">Edit</span>
+            <Edit size={14} />
           </button>
 
           <div style={{ position: 'relative' }} ref={moreMenuRef}>
             <button
               onClick={() => setIsMoreOpen(!isMoreOpen)}
               style={{
-                padding: '6px 8px',
-                border: '1px solid #d1d5db',
-                background: 'white',
+                padding: '6px 12px',
+                border: '1px solid var(--color-border)',
+                background: '#f8fafc',
+                color: 'var(--color-text)',
                 borderRadius: '4px',
+                fontSize: '13px',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
+                gap: '4px',
               }}
             >
-              <ChevronDown size={14} />
+              More <ChevronDown size={14} />
             </button>
             {isMoreOpen && (
               <div
@@ -314,7 +320,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
       </div>
 
       {/* Tabs */}
-      <div className="detail-page-tabs">
+      <div className="detail-page-tabs" style={{ display: 'flex', gap: '24px', borderBottom: '1px solid var(--color-border)', padding: '0 24px' }}>
         {[
           'Overview',
           ...(isInventoryTracked ? ['Locations'] : []),
@@ -323,24 +329,14 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
           'Related Lists',
           'History',
           ...(showComponentsTab ? ['Components'] : []),
-        ].map((tab, idx) => (
-          <Fragment key={tab}>
-            {idx > 0 && <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />}
-            <div
-              onClick={() => setActiveTab(tab)}
-              style={{
-                padding: '12px 0',
-                fontSize: '13px',
-                fontWeight: effectiveActiveTab === tab ? 500 : 400,
-                color: effectiveActiveTab === tab ? '#0062ff' : '#64748b',
-                borderBottom:
-                  effectiveActiveTab === tab ? '2px solid #0062ff' : '2px solid transparent',
-                cursor: 'pointer',
-              }}
-            >
-              {tab}
-            </div>
-          </Fragment>
+        ].map((tab) => (
+          <div
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`detail-tab ${effectiveActiveTab === tab ? 'active' : ''}`}
+          >
+            {tab}
+          </div>
         ))}
       </div>
 
@@ -361,9 +357,9 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
               <div>
                 <div
                   style={{
-                    fontSize: '15px',
+                    fontSize: '16px',
                     fontWeight: 500,
-                    color: '#1e293b',
+                    color: 'var(--color-text)',
                     marginBottom: '16px',
                   }}
                 >
@@ -372,51 +368,51 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                    <div style={{ fontSize: '12px', color: '#64748b' }}>Item Name</div>
-                    <div style={{ fontSize: '12px', color: '#0062ff', fontWeight: 500 }}>
+                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>Item Name</div>
+                    <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}>
                       {item.name}
                     </div>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                    <div style={{ fontSize: '12px', color: '#64748b' }}>SKU</div>
-                    <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>
+                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>SKU</div>
+                    <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}>
                       {item.sku}
                     </div>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                    <div style={{ fontSize: '12px', color: '#64748b' }}>Unit</div>
-                    <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>
+                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>Unit</div>
+                    <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}>
                       {item.unit}
                     </div>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                    <div style={{ fontSize: '12px', color: '#64748b' }}>Category</div>
-                    <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>
+                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>Category</div>
+                    <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}>
                       {item.category || '-'}
                     </div>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                    <div style={{ fontSize: '12px', color: '#64748b' }}>Type</div>
-                    <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>
+                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>Type</div>
+                    <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}>
                       {item.itemType}
                     </div>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                    <div style={{ fontSize: '12px', color: '#64748b' }}>Item Type</div>
-                    <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>
+                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>Item Type</div>
+                    <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}>
                       {item.itemStructure}
                     </div>
                   </div>
 
                   {item.hsnCode && (
                     <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                      <div style={{ fontSize: '12px', color: '#64748b' }}>HSN Code</div>
-                      <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>
+                      <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>HSN Code</div>
+                      <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}>
                         {item.hsnCode}
                       </div>
                     </div>
@@ -428,9 +424,9 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                 <div>
                   <div
                     style={{
-                      fontSize: '15px',
+                      fontSize: '16px',
                       fontWeight: 500,
-                      color: '#1e293b',
+                      color: 'var(--color-text)',
                       marginBottom: '16px',
                     }}
                   >
@@ -438,8 +434,8 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                      <div style={{ fontSize: '12px', color: '#64748b' }}>Cost Price</div>
-                      <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>
+                      <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>Cost Price</div>
+                      <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}>
                         ₹{item.costPrice ? Number(item.costPrice).toFixed(2) : '0.00'}
                       </div>
                     </div>
@@ -451,9 +447,9 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                 <div>
                   <div
                     style={{
-                      fontSize: '15px',
+                      fontSize: '16px',
                       fontWeight: 500,
-                      color: '#1e293b',
+                      color: 'var(--color-text)',
                       marginBottom: '16px',
                     }}
                   >
@@ -461,8 +457,8 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                      <div style={{ fontSize: '12px', color: '#64748b' }}>Selling Price</div>
-                      <div style={{ fontSize: '11px', color: '#1e293b', fontWeight: 500 }}>
+                      <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>Selling Price</div>
+                      <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}>
                         ₹{item.sellingPrice ? Number(item.sellingPrice).toFixed(2) : '0.00'}
                       </div>
                     </div>

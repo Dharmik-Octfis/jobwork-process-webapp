@@ -1,4 +1,4 @@
-import { format } from 'date-fns';
+﻿import { format } from 'date-fns';
 interface Html2PdfOptions {
   margin?: number | [number, number] | [number, number, number, number];
   filename?: string;
@@ -26,7 +26,7 @@ import { deleteBill } from '../bills/bills.api';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer } from 'lucide-react';
-import { useState, useRef, useEffect, Fragment } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { PurchaseOrderComments } from './PurchaseOrderComments';
 import { PurchaseOrderActivityTimeline } from './PurchaseOrderActivityTimeline';
@@ -358,35 +358,16 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
       </div>
 
       {/* Tabs */}
-      <div
-        style={{
-          padding: '0 24px',
-          borderBottom: '1px solid #eef0f3',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '16px',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          {tabs.map((tab, idx) => (
-            <Fragment key={tab}>
-              {idx > 0 && <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />}
-              <div
-                onClick={() => setActiveTab(tab)}
-                style={{
-                  padding: '12px 0',
-                  fontSize: '14px',
-                  fontWeight: activeTab === tab ? 600 : 500,
-                  color: activeTab === tab ? '#0062ff' : '#64748b',
-                  borderBottom: activeTab === tab ? '2px solid #0062ff' : '2px solid transparent',
-                  cursor: 'pointer',
-                }}
-              >
-                {tab}
-              </div>
-            </Fragment>
-          ))}
-        </div>
+      <div className="detail-page-tabs">
+        {tabs.map((tab) => (
+          <div
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`detail-tab ${activeTab === tab ? 'active' : ''}`}
+          >
+            {tab}
+          </div>
+        ))}
 
         {/* Vertical Divider */}
         <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />
@@ -398,20 +379,19 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               className="action-btn"
               onClick={() => setIsPdfMenuOpen(!isPdfMenuOpen)}
               style={{
-                padding: '4px 8px',
+                padding: '12px 0',
                 border: 'none',
                 background: 'transparent',
-                borderRadius: '4px',
-                fontSize: '14px',
+                fontSize: '13px',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                color: '#475569',
-                fontWeight: 500,
+                color: '#777777',
+                fontWeight: 400,
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#222222')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#777777')}
             >
               <FileText size={16} /> PDF/<span className="action-btn-text">Print</span>{' '}
               <ChevronDown size={14} />
@@ -512,14 +492,11 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
           {/* Bills / Receives Top Bar */}
           <div
             style={{
-              background: '#fff',
-              border: '1px solid #e2e8f0',
-              borderRadius: '8px 8px 0 0',
               padding: '0 16px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              borderBottom: '1px solid #eef0f3',
+              borderBottom: '1px solid #eef0f3', // Keep borderBottom to separate tabs
             }}
           >
             <div style={{ display: 'flex', gap: '20px' }}>
@@ -591,10 +568,6 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
           {/* Status Bar & PDF View Toggle */}
           <div
             style={{
-              background: '#fff',
-              border: '1px solid #e2e8f0',
-              borderTop: 'none',
-              borderRadius: '0 0 8px 8px',
               padding: '12px 16px',
               display: 'flex',
               alignItems: 'center',
@@ -672,9 +645,6 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
             <div
               style={{
                 marginBottom: '24px',
-                background: '#fff',
-                border: '1px solid #e2e8f0',
-                borderRadius: '8px',
                 overflow: 'hidden',
               }}
             >

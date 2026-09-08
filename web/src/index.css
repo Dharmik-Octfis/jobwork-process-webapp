@@ -72,9 +72,9 @@
   --color-surface-2: #f7f9fc;
   --color-border: #e3e8ef;
   --color-border-strong: #cdd9e8;
-  --color-text: #18222e;
-  --color-text-muted: #51607a;
-  --color-text-subtle: #8a97ab;
+  --color-text: #222222;
+  --color-text-muted: #777777;
+  --color-text-subtle: #999999;
 
   /* Primary — the petrol blue we reserve for the primary action / active state */
   --color-primary: #1c7c8c;
@@ -144,12 +144,10 @@ body,
 body {
   margin: 0;
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.4;
   color: var(--color-text);
   background: var(--color-bg);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 
@@ -430,16 +428,36 @@ input[type='number'] {
   align-items: center;
   border-bottom: 1px solid #eef0f3;
   padding: 0 24px;
-  gap: 16px;
-  overflow-x: auto;
-  scrollbar-width: none; /* Hide scrollbar for clean look */
-  -ms-overflow-style: none;
+  gap: 24px;
+  flex-wrap: wrap; /* Allows dropdowns to be visible and wraps tabs on small screens */
 }
-.detail-page-tabs::-webkit-scrollbar {
-  display: none;
+
+.detail-tab {
+  padding: 12px 0;
+  font-size: 13px;
+  cursor: pointer;
+  position: relative;
+  color: #777777;
+  font-weight: 400;
+  margin-bottom: -1px;
+  white-space: nowrap;
 }
-.detail-page-tabs > div {
-  white-space: nowrap; /* Prevent tabs from wrapping text on mobile */
+.detail-tab:hover {
+  color: #222222;
+}
+.detail-tab.active {
+  color: #222222;
+  font-weight: 500;
+}
+.detail-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background-color: #0062ff;
+  border-radius: 3px 3px 0 0;
 }
 
 .detail-overview-grid {
@@ -754,4 +772,9 @@ input[type='number'] {
   z-index: 100;
   justify-content: flex-start;
   flex-shrink: 0;
+}
+
+/* Disable scrollbar on responsive tables inside PDF view */
+.po-print-template .responsive-table-wrapper {
+  overflow-x: visible !important;
 }

@@ -66,7 +66,6 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
   const queryClient = useQueryClient();
   const trackingLabel = useTrackingLabel();
   const [activeTab, setActiveTab] = useState('Overview');
-  const [activeSubTab, setActiveSubTab] = useState<'Bills' | 'Receives'>('Bills');
   const [isPdfView, setIsPdfView] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isPdfMenuOpen, setIsPdfMenuOpen] = useState(false);
@@ -362,35 +361,16 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
       </div>
 
       {/* Tabs */}
-      <div
-        style={{
-          padding: '0 24px',
-          borderBottom: '1px solid #eef0f3',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '16px',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          {tabs.map((tab, idx) => (
-            <Fragment key={tab}>
-              {idx > 0 && <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />}
-              <div
-                onClick={() => setActiveTab(tab)}
-                style={{
-                  padding: '12px 0',
-                  fontSize: '14px',
-                  fontWeight: activeTab === tab ? 600 : 500,
-                  color: activeTab === tab ? '#0062ff' : '#64748b',
-                  borderBottom: activeTab === tab ? '2px solid #0062ff' : '2px solid transparent',
-                  cursor: 'pointer',
-                }}
-              >
-                {tab}
-              </div>
-            </Fragment>
-          ))}
-        </div>
+      <div className="detail-page-tabs">
+        {tabs.map((tab) => (
+          <div
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`detail-tab ${activeTab === tab ? 'active' : ''}`}
+          >
+            {tab}
+          </div>
+        ))}
 
         {/* Vertical Divider */}
         <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />
@@ -401,23 +381,21 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
             className="action-btn"
             onClick={() => setIsPdfMenuOpen(!isPdfMenuOpen)}
             style={{
-              padding: '4px 8px',
+              padding: '12px 0',
               border: 'none',
               background: 'transparent',
-              borderRadius: '4px',
-              fontSize: '14px',
+              fontSize: '13px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              color: '#475569',
-              fontWeight: 500,
+              color: '#777777',
+              fontWeight: 400,
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            onMouseEnter={(e) => (e.currentTarget.style.color = '#222222')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = '#777777')}
           >
-            <FileText size={16} /> PDF/<span className="action-btn-text">Print</span>{' '}
-            <ChevronDown size={14} />
+            <FileText size={16} /> PDF/Print <ChevronDown size={14} />
           </button>
 
           {isPdfMenuOpen && (
@@ -484,50 +462,11 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
             padding: '16px 24px',
           }}
         >
-          {/* Bills / Receives Top Bar */}
-          <div
-            style={{
-              background: '#fff',
-              border: '1px solid #e2e8f0',
-              borderRadius: '8px 8px 0 0',
-              padding: '0 16px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              borderBottom: '1px solid #eef0f3',
-            }}
-          >
-            <div style={{ display: 'flex', gap: '20px' }}>
-              <button
-                type="button"
-                onClick={() => setActiveSubTab('Bills')}
-                style={{
-                  padding: '12px 0',
-                  background: 'none',
-                  border: 'none',
-                  borderBottom:
-                    activeSubTab === 'Bills' ? '2px solid #0062ff' : '2px solid transparent',
-                  color: activeSubTab === 'Bills' ? '#0062ff' : '#475569',
-                  fontWeight: activeSubTab === 'Bills' ? 600 : 500,
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-              >
-                Overview
-              </button>
-            </div>
-          </div>
+
 
           {/* PDF View Toggle */}
           <div
             style={{
-              background: '#fff',
-              border: '1px solid #e2e8f0',
-              borderTop: 'none',
-              borderRadius: '0 0 8px 8px',
               padding: '12px 16px',
               display: 'flex',
               alignItems: 'center',
