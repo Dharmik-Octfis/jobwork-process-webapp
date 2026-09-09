@@ -229,7 +229,14 @@ export function OpeningStockPage() {
   const [isInitialized, setIsInitialized] = useState(false);
 
   if (initialRows && item && !isInitialized) {
-    setLocationRows(toFormRows(initialRows, isBatchTracked, defaultSellingPrice, defaultMrp));
+    const rows = toFormRows(initialRows, isBatchTracked, defaultSellingPrice, defaultMrp);
+    if (rows.length === 0) {
+      rows.push({
+        ...createEmptyLocation(),
+        batches: isBatchTracked ? [createEmptyBatch(defaultSellingPrice, defaultMrp)] : [],
+      });
+    }
+    setLocationRows(rows);
     setIsInitialized(true);
   }
 
@@ -769,6 +776,7 @@ export function OpeningStockPage() {
                         options={locationOptions}
                         placeholder="Select Location"
                         minWidth="100%"
+                        portal
                       />
                     </td>
                     <td
@@ -1016,6 +1024,7 @@ export function OpeningStockPage() {
                           options={locationOptions}
                           placeholder="Select Location"
                           minWidth="100%"
+                          portal
                         />
                       </td>
                       <td
@@ -1110,6 +1119,7 @@ export function OpeningStockPage() {
                                 options={locationOptions}
                                 placeholder="Select Location"
                                 minWidth="100%"
+                                portal
                               />
                             </td>
                             <td

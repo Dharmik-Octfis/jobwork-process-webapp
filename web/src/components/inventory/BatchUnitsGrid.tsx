@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { SearchableSelect } from '../ui/SearchableSelect';
 import {
@@ -113,6 +114,21 @@ export function BatchUnitsGrid({
 }: BatchUnitsGridProps) {
   const allocated = unitsTotal(units);
   const unallocated = batchQty - allocated;
+
+  const [focusNewUnit, setFocusNewUnit] = useState(false);
+  const prevUnitsLength = useRef(units.length);
+
+  useEffect(() => {
+    if (focusNewUnit && units.length > prevUnitsLength.current) {
+      const inputs = document.querySelectorAll('input[data-unit-quantity="true"]');
+      const lastInput = inputs[inputs.length - 1] as HTMLInputElement;
+      if (lastInput) {
+        lastInput.focus();
+      }
+      setFocusNewUnit(false);
+    }
+    prevUnitsLength.current = units.length;
+  }, [units.length, focusNewUnit]);
 
   /** The New/Existing pair mirrors the batch row above; a screen that passes
    * neither handler keeps the single "+ Add" link it has always had. */
@@ -264,6 +280,14 @@ export function BatchUnitsGrid({
                     value={unit.quantity}
                     placeholder="0"
                     aria-label={`${singular} ${index + 1} quantity`}
+                    data-unit-quantity="true"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        onAdd();
+                        setFocusNewUnit(true);
+                      }
+                    }}
                     onChange={(e) => onChange(unit.id, 'quantity', e.target.value)}
                     style={{ ...inputStyle, textAlign: 'right' }}
                     onFocus={(e) => (e.target.style.borderColor = '#0062ff')}

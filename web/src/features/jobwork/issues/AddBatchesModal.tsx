@@ -630,6 +630,7 @@ export function AddBatchesModal({
                             offeredCount={batches.length}
                             singular={singular}
                             plural={plural}
+                            unitLabel={unitLabel}
                           />
                         </td>
                         <td style={readOnlyCell}>{row.batch?.manufacturerBatch?.trim() || '—'}</td>
@@ -843,6 +844,7 @@ interface CellProps {
   offeredCount: number;
   singular: string;
   plural: string;
+  unitLabel: { enabled: boolean; singular: string; plural: string };
 }
 
 /**
@@ -869,6 +871,7 @@ function BatchSelectCell({
   offeredCount,
   singular,
   plural,
+  unitLabel,
 }: CellProps) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState<React.CSSProperties>({ visibility: 'hidden' });
@@ -1158,6 +1161,7 @@ function BatchSelectCell({
                         }}
                       >
                         Balance in batch: {formatQty(batch.availableQty)} {uomLabel}
+                        {unitLabel.enabled && batch.units.length > 0 ? ` (${batch.units.length} ${batch.units.length === 1 ? unitLabel.singular.toLowerCase() : unitLabel.plural.toLowerCase()})` : ''}
                         {/* Which godown, when the list spans more than one — two
                             rows can both read `jv2` and be different stock. */}
                         {showGodown && batch.locationName ? ` · ${batch.locationName}` : ''}
