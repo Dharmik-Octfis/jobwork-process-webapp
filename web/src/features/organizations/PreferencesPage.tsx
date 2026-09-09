@@ -114,154 +114,165 @@ export function PreferencesPage() {
   };
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', backgroundColor: 'var(--color-bg)' }}>
-      <div style={{ maxWidth: '800px', margin: '0 auto', padding: 'var(--space-6)' }}>
-        <main>
-          <section
-            className="org-form-card"
-            style={{ maxWidth: '100%', padding: 'var(--space-6)' }}
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#fff' }}>
+      <header
+        style={{
+          padding: '24px 32px',
+          borderBottom: '1px solid var(--color-border)',
+          backgroundColor: '#fff',
+        }}
+      >
+        <h1 style={{ fontSize: '24px', fontWeight: 600, color: 'var(--navy-900)', margin: '0 0 4px 0' }}>
+          Preferences
+        </h1>
+        <p style={{ color: 'var(--color-text-muted)', fontSize: '14px', margin: 0 }}>
+          Manage default terminology and settings for this organization.
+        </p>
+      </header>
+
+      <form onSubmit={handleSubmit(onSubmit)} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+        <main style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
+          <div style={{ maxWidth: '800px' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '24px',
+            }}
           >
-            <div
-              className="org-form-header"
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <Input
+                label="Item Tracking Label (Singular)"
+                placeholder="e.g. Batch, Lot, Roll"
+                error={errors.settings?.itemTrackingLabel?.singular?.message}
+                hint="Term used for single units."
+                {...register('settings.itemTrackingLabel.singular')}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <Input
+                label="Item Tracking Label (Plural)"
+                placeholder="e.g. Batches, Lots, Rolls"
+                error={errors.settings?.itemTrackingLabel?.plural?.message}
+                hint="Term used for multiple units."
+                {...register('settings.itemTrackingLabel.plural')}
+              />
+            </div>
+          </div>
+
+          {/* ── The optional level BELOW a batch ──────────────────────────
+              Off by default and off for every existing organization, because
+              a level nobody asked for is a column of empty inputs on six
+              screens. Switching it on is what makes the "Add <unit>" control
+              appear inside the Add <batches> window. */}
+          <div
+            style={{
+              marginTop: '32px',
+              paddingTop: '32px',
+              borderTop: '1px solid var(--color-border)',
+            }}
+          >
+            <label
               style={{
-                marginBottom: 'var(--space-6)',
-                borderBottom: '1px solid var(--color-border)',
-                paddingBottom: 'var(--space-4)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px',
+                cursor: 'pointer',
               }}
             >
-              <h2 style={{ fontSize: '24px', color: 'var(--navy-900)', marginBottom: '8px' }}>
-                Preferences
-              </h2>
-              <p style={{ color: 'var(--color-text-muted)', fontSize: '14px' }}>
-                Manage default terminology and settings for this organization.
-              </p>
-            </div>
+              <input
+                type="checkbox"
+                style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer' }}
+                {...register('settings.batchUnit.enabled')}
+              />
+              <span>
+                <span
+                  style={{
+                    display: 'block',
+                    fontSize: '15px',
+                    color: 'var(--navy-900)',
+                    fontWeight: 500,
+                  }}
+                >
+                  Track individual units inside each {trackingSingular}
+                </span>
+                <span
+                  style={{
+                    display: 'block',
+                    fontSize: '13px',
+                    color: 'var(--color-text-muted)',
+                    marginTop: '4px',
+                  }}
+                >
+                  Adds one more level below a {trackingSingular.toLowerCase()} — each roll, bale
+                  or piece gets its own label and quantity, so it can be issued and traced on
+                  its own.
+                </span>
+              </span>
+            </label>
 
-            <form onSubmit={handleSubmit(onSubmit)} className="org-form-content">
+            {batchUnitEnabled && (
               <div
                 style={{
                   display: 'grid',
                   gridTemplateColumns: '1fr 1fr',
-                  gap: 'var(--space-4)',
+                  gap: '24px',
+                  marginTop: '24px',
+                  paddingLeft: '28px',
                 }}
               >
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   <Input
-                    label="Item Tracking Label (Singular)"
-                    placeholder="e.g. Batch, Lot, Roll"
-                    error={errors.settings?.itemTrackingLabel?.singular?.message}
-                    hint="Term used for single units."
-                    {...register('settings.itemTrackingLabel.singular')}
+                    label="Unit Label (Singular)"
+                    placeholder="e.g. Taka, Roll, Bale"
+                    error={errors.settings?.batchUnit?.singular?.message}
+                    hint="Term used for a single unit."
+                    {...register('settings.batchUnit.singular')}
                   />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   <Input
-                    label="Item Tracking Label (Plural)"
-                    placeholder="e.g. Batches, Lots, Rolls"
-                    error={errors.settings?.itemTrackingLabel?.plural?.message}
+                    label="Unit Label (Plural)"
+                    placeholder="e.g. Takas, Rolls, Bales"
+                    error={errors.settings?.batchUnit?.plural?.message}
                     hint="Term used for multiple units."
-                    {...register('settings.itemTrackingLabel.plural')}
+                    {...register('settings.batchUnit.plural')}
                   />
                 </div>
               </div>
+            )}
+          </div>
 
-              {/* ── The optional level BELOW a batch ──────────────────────────
-                  Off by default and off for every existing organization, because
-                  a level nobody asked for is a column of empty inputs on six
-                  screens. Switching it on is what makes the "Add <unit>" control
-                  appear inside the Add <batches> window. */}
-              <div
-                style={{
-                  marginTop: 'var(--space-6)',
-                  paddingTop: 'var(--space-5)',
-                  borderTop: '1px solid var(--color-border)',
-                }}
-              >
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '10px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer' }}
-                    {...register('settings.batchUnit.enabled')}
-                  />
-                  <span>
-                    <span
-                      style={{
-                        display: 'block',
-                        fontSize: '14px',
-                        color: 'var(--navy-900)',
-                        fontWeight: 500,
-                      }}
-                    >
-                      Track individual units inside each {trackingSingular}
-                    </span>
-                    <span
-                      style={{
-                        display: 'block',
-                        fontSize: '12.5px',
-                        color: 'var(--color-text-muted)',
-                        marginTop: '2px',
-                      }}
-                    >
-                      Adds one more level below a {trackingSingular.toLowerCase()} — each roll, bale
-                      or piece gets its own label and quantity, so it can be issued and traced on
-                      its own.
-                    </span>
-                  </span>
-                </label>
-
-                {batchUnitEnabled && (
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr',
-                      gap: 'var(--space-4)',
-                      marginTop: 'var(--space-4)',
-                      paddingLeft: '26px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <Input
-                        label="Unit Label (Singular)"
-                        placeholder="e.g. Taka, Roll, Bale"
-                        error={errors.settings?.batchUnit?.singular?.message}
-                        hint="Term used for a single unit."
-                        {...register('settings.batchUnit.singular')}
-                      />
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <Input
-                        label="Unit Label (Plural)"
-                        placeholder="e.g. Takas, Rolls, Bales"
-                        error={errors.settings?.batchUnit?.plural?.message}
-                        hint="Term used for multiple units."
-                        {...register('settings.batchUnit.plural')}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="org-form-actions" style={{ marginTop: 'var(--space-6)' }}>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="org-form-submit-btn"
-                  style={{ padding: '8px 24px', fontSize: '15px' }}
-                >
-                  {isSubmitting ? 'Saving...' : 'Save Changes'}
-                </button>
-              </div>
-            </form>
-          </section>
+          </div>
         </main>
-      </div>
+
+        <footer style={{
+          padding: '16px 32px',
+          borderTop: '1px solid var(--color-border)',
+          backgroundColor: '#fff',
+          display: 'flex',
+          justifyContent: 'flex-start',
+        }}>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            style={{
+              padding: '10px 24px',
+              fontSize: '15px',
+              fontWeight: 500,
+              backgroundColor: 'var(--navy-900)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
+              opacity: isSubmitting ? 0.7 : 1,
+              transition: 'background-color 0.2s',
+            }}
+          >
+            {isSubmitting ? 'Saving...' : 'Save Changes'}
+          </button>
+        </footer>
+      </form>
     </div>
   );
 }

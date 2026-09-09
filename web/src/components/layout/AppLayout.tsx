@@ -32,6 +32,7 @@ import {
   Copy,
   Check,
   Menu,
+  BarChart2,
 } from 'lucide-react';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useAuth } from '../../providers/auth-context';
@@ -119,6 +120,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   ClipboardList,
   Send,
   PackageCheck,
+  BarChart2,
 };
 /* eslint-enable @typescript-eslint/naming-convention */
 
@@ -893,7 +895,7 @@ function ModuleNavGroup({
               <span style={{ fontSize: 13, marginLeft: 4 }}>{module.name}</span>
             </div>
 
-            {(isHovered || isActive) && module.code !== 'DASHBOARD' && (
+            {(isHovered || isActive) && module.code !== 'DASHBOARD' && module.code !== 'REPORTS' && (
               <button
                 onClick={handlePlusClick}
                 title={`Create new ${module.name.toLowerCase()}`}
@@ -973,7 +975,7 @@ function ModuleNavGroup({
         {({ isActive }) => (
           <>
             <span>{module.name}</span>
-            {(isHovered || isActive) && module.code !== 'DASHBOARD' && (
+            {(isHovered || isActive) && module.code !== 'DASHBOARD' && module.code !== 'REPORTS' && (
               <button
                 onClick={handlePlusClick}
                 title={`Create new ${module.name.toLowerCase()}`}
