@@ -54,6 +54,10 @@ const DashboardPage = lazyPage(
   () => import('../features/dashboard/DashboardPage'),
   'DashboardPage',
 );
+const ReportsPage = lazyPage(
+  () => import('../features/reports/ReportsPage'),
+  'ReportsPage',
+);
 const PurchasesPage = lazyPage(
   () => import('../features/purchases/PurchasesPage'),
   'PurchasesPage',
@@ -264,6 +268,7 @@ export const router = createBrowserRouter([
             element: <RequireOrganization />,
             children: [
               { path: '/organizations/:orgId', element: <DashboardPage /> },
+              { path: '/organizations/:orgId/reports', element: <ReportsPage /> },
               { path: '/organizations/:orgId/purchases', element: <PurchasesPage /> },
               { path: '/organizations/:orgId/purchases/vendors', element: <VendorsList /> },
               { path: '/organizations/:orgId/purchases/vendors/new', element: <CreateVendor /> },

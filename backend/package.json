@@ -11,6 +11,7 @@
     "start": "node dist/src/server.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
+    "seed": "tsx prisma/seed.ts",
     "db:generate": "prisma generate",
     "db:pull": "prisma db pull",
     "db:status": "tsx scripts/db-sync.ts status",

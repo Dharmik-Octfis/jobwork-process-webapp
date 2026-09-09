@@ -207,6 +207,13 @@ async function main() {
     });
   }
 
+  // Reports
+  await prisma.appModule.upsert({
+    where: { code: 'REPORTS' },
+    update: { sortIndex: 7 }, // After Jobwork
+    create: { code: 'REPORTS', name: 'Reports', sortIndex: 7, icon: 'FileText' },
+  });
+
   // Their pages now hang off SettingsLayout, which reads no module tree, so the
   // rows have nothing to drive. Deactivated rather than deleted: `buildTree`
   // filters on `isActive`, and an active row with no `ROUTE_MAP` entry renders as

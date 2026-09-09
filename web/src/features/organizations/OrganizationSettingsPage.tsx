@@ -102,7 +102,7 @@ export function OrganizationSettingsPage() {
 
   // Filter states by selected country
   const availableStates =
-    masterData?.states.filter(
+    masterData?.states?.filter(
       (s) => !selectedCountryCode || s.countryCode === selectedCountryCode,
     ) || [];
 
@@ -191,7 +191,7 @@ export function OrganizationSettingsPage() {
   };
 
   const availableCities =
-    selectedStateCode && masterData
+    selectedStateCode && masterData?.states
       ? masterData.states.find((s) => s.code === selectedStateCode)?.cities || []
       : [];
 

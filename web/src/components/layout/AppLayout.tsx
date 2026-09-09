@@ -57,6 +57,7 @@ import { fetchJobIssues } from '../../features/jobwork/issues/jobIssues.api';
  */
 const ROUTE_MAP: Record<string, string> = {
   DASHBOARD: '',
+  REPORTS: '/reports',
   PURCHASES: '/purchases',
   VENDORS: '/purchases/vendors',
   PO: '/purchases/purchase-orders',
