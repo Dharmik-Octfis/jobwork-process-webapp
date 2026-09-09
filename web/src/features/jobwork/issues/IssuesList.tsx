@@ -193,14 +193,11 @@ export function IssuesList() {
                 </button>
               </div>
             ) : (
-              // `fallbackLabel` mirrors the catalog's own label for the default
-              // preset. Renamed from "Open Challans" when challan closing went:
-              // no closed state is left for "open" to be the other half of.
               <ListFilterDropdown
                 filters={filters}
                 value={filter}
                 onChange={setFilter}
-                fallbackLabel="Issued Challans"
+                fallbackLabel="All Challans"
               />
             )}
 

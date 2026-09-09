@@ -786,20 +786,21 @@ export function AddBillBatchesModal({
                             const b = (opt as unknown as { batch: { availableQty: number; units?: unknown[] } }).batch;
                             return (
                               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <div style={{ fontWeight: 500 }}>{opt.label}</div>
-                                <div
-                                  style={{ fontSize: '11.5px', fontWeight: 500, color: '#64748b' }}
-                                >
-                                  Balance in batch: {formatQty(b.availableQty)} {uomLabel}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <div style={{ fontWeight: 500 }}>{opt.label}</div>
                                   {unitLabel.enabled && b.units && b.units.length > 0 && (
-                                    <>
-                                      {' · '}
+                                    <div style={{ fontSize: '11.5px', fontWeight: 500, color: '#64748b' }}>
                                       {b.units.length}{' '}
                                       {b.units.length === 1
                                         ? unitLabel.singular.toLowerCase()
                                         : unitLabel.plural.toLowerCase()}
-                                    </>
+                                    </div>
                                   )}
+                                </div>
+                                <div
+                                  style={{ fontSize: '11.5px', fontWeight: 500, color: '#64748b', marginTop: 2 }}
+                                >
+                                  Balance in batch: {formatQty(b.availableQty)} {uomLabel}
                                 </div>
                               </div>
                             );
