@@ -742,6 +742,7 @@ input[type='number'] {
   min-height: 0;
   background: #ffffff;
   position: relative;
+  overflow: hidden;
 }
 
 .page-header {

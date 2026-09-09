@@ -149,15 +149,7 @@ const cellReadOnly: React.CSSProperties = {
 /** One field's caption. A `<span>`, not a `<label>`: most of these controls are
  * `Select`, which renders a button with no id to point `htmlFor` at — the control
  * carries its own `ariaLabel` instead. The native inputs do get real labels. */
-const fieldLabel: React.CSSProperties = {
-  display: 'block',
-  fontSize: 11,
-  fontWeight: 600,
-  color: '#64748b',
-  textTransform: 'uppercase',
-  letterSpacing: 0.3,
-  marginBottom: 4,
-};
+
 
 const iconButton: React.CSSProperties = {
   display: 'flex',
@@ -965,194 +957,181 @@ export function StepsGrid<T extends StepGridRow>({
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
-                  gap: 14,
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
+                  gap: '14px 32px',
                   padding: 14,
                 }}
               >
-                <div>
-                  <span style={{ ...fieldLabel, color: '#ef4444' }}>Process*</span>
-                  <ProcessSelect
-                    value={step.processId || null}
-                    onChange={(processId, process) =>
-                      update(index, {
-                        processId,
-                        /**
-                         * 🔴 Seeded HERE, visibly, rather than mirrored by the
-                         * server at save. A process that does not change the item
-                         * returns what it took — so the row is put in where
-                         * somebody can see it, change it, or delete it. Only when
-                         * PRODUCES is still empty: an existing list is the user's
-                         * and is never rewritten by a process change.
-                         */
-                        outputs:
-                          (step.outputs ?? []).length === 0 &&
-                          !process.itemChanges &&
-                          step.inputs?.[0]?.itemId
-                            ? [
-                                {
-                                  ...emptyStepItem(),
-                                  itemId: step.inputs[0]!.itemId,
-                                  uomId: step.inputs[0]!.uomId ?? null,
-                                },
-                              ]
-                            : step.outputs,
-                        // The process master is the first link of the default
-                        // chain (§2.5). Only blanks are filled — anything the
-                        // user already typed stays.
-                        rateBasis: step.rateBasis ?? process.rateBasis,
-                        tolerancePct:
-                          step.tolerancePct ??
-                          (process.defaultTolerancePct === null
-                            ? null
-                            : Number(process.defaultTolerancePct)),
-                        // The process's default units are NOT copied down any
-                        // more: each row takes its own item's stocking unit
-                        // (§5.1), and an org-wide "issue in KG" is a statement
-                        // about the thing being processed, not about the thread
-                        // and buttons going out beside it. The server applies it
-                        // to the principal row alone, where the item cannot
-                        // answer for itself.
-                      })
-                    }
-                    disabled={readOnly}
-                    ariaLabel={`Step ${stepNo} process`}
-                    minWidth="100%"
-                    portal={portalMenus}
-                  />
-                </div>
-
-                <div>
-                  <span style={fieldLabel}>Done by</span>
-                  <Select
-                    value={step.processorType ?? 'vendor'}
-                    onChange={(value) =>
-                      // The processor and the work centre are mutually exclusive,
-                      // so switching type clears the one that no longer applies.
-                      // Leaving a stale id behind is how a challan ends up
-                      // addressed to a vendor on an in-house step.
-                      update(index, {
-                        processorType: value,
-                        processorId: value === 'internal' ? null : step.processorId,
-                        workCentreLocationId:
-                          value === 'internal' ? step.workCentreLocationId : null,
-                      })
-                    }
-                    options={[...PROCESSOR_TYPE_OPTIONS]}
-                    disabled={readOnly}
-                    ariaLabel={`Step ${stepNo} performed by`}
-                    minWidth={0}
-                    portal={portalMenus}
-                  />
-                </div>
-
-                <div>
-                  <span style={fieldLabel}>
-                    {step.processorType === 'internal' ? 'Work centre' : 'Processor'}
-                  </span>
-                  {step.processorType === 'internal' ? (
-                    <Select
-                      value={step.workCentreLocationId ?? ''}
-                      onChange={(value) => update(index, { workCentreLocationId: value || null })}
-                      options={[
-                        { value: '', label: 'Select a work centre…' },
-                        ...workCentres.map((l) => ({ value: l.id, label: l.name })),
-                      ]}
-                      disabled={true}
-                      ariaLabel={`Step ${stepNo} work centre`}
-                      minWidth={0}
-                      portal={portalMenus}
-                    />
-                  ) : (
-                    <Select
-                      value={step.processorId ?? ''}
-                      onChange={(value) => update(index, { processorId: value || null })}
-                      options={[
-                        { value: '', label: 'Decide per job order' },
-                        ...(step.processorType === 'customer'
-                          ? (customersPage?.results ?? []).map((c) => ({
-                              value: c.id,
-                              label: c.companyName || c.contactName,
-                            }))
-                          : (vendorsPage?.results ?? [])
-                              .filter(
-                                (v) =>
-                                  !v.vendorTypes?.length || v.vendorTypes.includes('job_worker'),
-                              )
-                              .map((v) => ({
-                                value: v.id,
-                                label: v.companyName || v.contactName,
-                              }))),
-                      ]}
+                {/* 1. Process */}
+                <div className="form-field-grid" style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}>
+                  <span style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>Process*</span>
+                  <div style={{ width: '100%' }}>
+                    <ProcessSelect
+                      value={step.processId || null}
+                      onChange={(processId, process) =>
+                        update(index, {
+                          processId,
+                          outputs:
+                            (step.outputs ?? []).length === 0 &&
+                            !process.itemChanges &&
+                            step.inputs?.[0]?.itemId
+                              ? [
+                                  {
+                                    ...emptyStepItem(),
+                                    itemId: step.inputs[0]!.itemId,
+                                    uomId: step.inputs[0]!.uomId ?? null,
+                                  },
+                                ]
+                              : step.outputs,
+                          rateBasis: step.rateBasis ?? process.rateBasis,
+                          tolerancePct:
+                            step.tolerancePct ??
+                            (process.defaultTolerancePct === null
+                              ? null
+                              : Number(process.defaultTolerancePct)),
+                        })
+                      }
                       disabled={readOnly}
-                      ariaLabel={`Step ${stepNo} processor`}
-                      minWidth={0}
+                      ariaLabel={`Step ${stepNo} process`}
+                      minWidth="100%"
                       portal={portalMenus}
                     />
-                  )}
+                  </div>
                 </div>
 
-                {/* 🔴 No step-level "Planned qty" and no "Yield".
-                    Planned quantity is per item now — it lives on each row of
-                    CONSUMES below, because one number cannot cover metres, cones
-                    and pieces at once (§5.7). Yield is gone with it: one ratio
-                    cannot relate three inputs to two outputs, and every output
-                    already carries the quantity it is expected to return, which
-                    says the same thing without implying a conversion. */}
-
-                <div>
-                  <label style={fieldLabel} htmlFor={field('rate')}>
-                    Rate
-                  </label>
-                  <input
-                    id={field('rate')}
-                    type="number"
-                    onWheel={blurOnWheel}
-                    step="0.01"
-                    min="0"
-                    value={step.rate ?? ''}
-                    onChange={(e) =>
-                      update(index, { rate: e.target.value === '' ? null : Number(e.target.value) })
-                    }
-                    disabled={readOnly}
-                    style={cellInput}
-                  />
-                </div>
-
-                <div>
-                  <span style={fieldLabel}>Rate basis</span>
-                  <Select
-                    value={step.rateBasis ?? ''}
-                    onChange={(value) => update(index, { rateBasis: value || null })}
-                    options={[{ value: '', label: 'From the process' }, ...RATE_BASIS_OPTIONS]}
-                    disabled={readOnly}
-                    ariaLabel={`Step ${stepNo} rate basis`}
-                    minWidth={0}
-                    portal={portalMenus}
-                  />
-                </div>
-
-                <div>
-                  <label style={fieldLabel} htmlFor={field('tolerance')}>
+                {/* 2. Tolerance */}
+                <div className="form-field-grid" style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}>
+                  <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }} htmlFor={field('tolerance')}>
                     Tolerance % — all items
                   </label>
-                  <input
-                    id={field('tolerance')}
-                    type="number"
-                    onWheel={blurOnWheel}
-                    step="0.001"
-                    min="0"
-                    max="100"
-                    value={step.tolerancePct ?? ''}
-                    onChange={(e) =>
-                      update(index, {
-                        tolerancePct: e.target.value === '' ? null : Number(e.target.value),
-                      })
-                    }
-                    disabled={readOnly}
-                    style={cellInput}
-                    title="How much over the plan may be issued. Any item can override it on its own row."
-                  />
+                  <div style={{ width: '100%' }}>
+                    <input
+                      id={field('tolerance')}
+                      type="number"
+                      onWheel={blurOnWheel}
+                      step="0.001"
+                      min="0"
+                      max="100"
+                      value={step.tolerancePct ?? ''}
+                      onChange={(e) =>
+                        update(index, {
+                          tolerancePct: e.target.value === '' ? null : Number(e.target.value),
+                        })
+                      }
+                      disabled={readOnly}
+                      style={{ ...cellInput, width: '100%' }}
+                      title="How much over the plan may be issued. Any item can override it on its own row."
+                    />
+                  </div>
+                </div>
+
+                {/* 3. Done by */}
+                <div className="form-field-grid" style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}>
+                  <span style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>Done by</span>
+                  <div style={{ width: '100%' }}>
+                    <Select
+                      value={step.processorType ?? 'vendor'}
+                      onChange={(value) =>
+                        update(index, {
+                          processorType: value,
+                          processorId: value === 'internal' ? null : step.processorId,
+                          workCentreLocationId:
+                            value === 'internal' ? step.workCentreLocationId : null,
+                        })
+                      }
+                      options={[...PROCESSOR_TYPE_OPTIONS]}
+                      disabled={readOnly}
+                      ariaLabel={`Step ${stepNo} performed by`}
+                      fullWidth
+                      portal={portalMenus}
+                    />
+                  </div>
+                </div>
+
+                {/* 4. Processor */}
+                <div className="form-field-grid" style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}>
+                  <span style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
+                    {step.processorType === 'internal' ? 'Work centre' : 'Processor'}
+                  </span>
+                  <div style={{ width: '100%' }}>
+                    {step.processorType === 'internal' ? (
+                      <Select
+                        value={step.workCentreLocationId ?? ''}
+                        onChange={(value) => update(index, { workCentreLocationId: value || null })}
+                        options={[
+                          { value: '', label: 'Select a work centre…' },
+                          ...workCentres.map((l) => ({ value: l.id, label: l.name })),
+                        ]}
+                        disabled={true}
+                        ariaLabel={`Step ${stepNo} work centre`}
+                        fullWidth
+                        portal={portalMenus}
+                      />
+                    ) : (
+                      <Select
+                        value={step.processorId ?? ''}
+                        onChange={(value) => update(index, { processorId: value || null })}
+                        options={[
+                          { value: '', label: 'Decide per job order' },
+                          ...(step.processorType === 'customer'
+                            ? (customersPage?.results ?? []).map((c) => ({
+                                value: c.id,
+                                label: c.companyName || c.contactName,
+                              }))
+                            : (vendorsPage?.results ?? [])
+                                .filter(
+                                  (v) =>
+                                    !v.vendorTypes?.length || v.vendorTypes.includes('job_worker'),
+                                )
+                                .map((v) => ({
+                                  value: v.id,
+                                  label: v.companyName || v.contactName,
+                                }))),
+                        ]}
+                        disabled={readOnly}
+                        ariaLabel={`Step ${stepNo} processor`}
+                        fullWidth
+                        portal={portalMenus}
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* 5. Rate */}
+                <div className="form-field-grid" style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}>
+                  <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }} htmlFor={field('rate')}>
+                    Rate
+                  </label>
+                  <div style={{ width: '100%' }}>
+                    <input
+                      id={field('rate')}
+                      type="number"
+                      onWheel={blurOnWheel}
+                      step="0.01"
+                      min="0"
+                      value={step.rate ?? ''}
+                      onChange={(e) =>
+                        update(index, { rate: e.target.value === '' ? null : Number(e.target.value) })
+                      }
+                      disabled={readOnly}
+                      style={{ ...cellInput, width: '100%' }}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-field-grid" style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}>
+                  <span style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>Rate basis</span>
+                  <div style={{ width: '100%' }}>
+                    <Select
+                      value={step.rateBasis ?? ''}
+                      onChange={(value) => update(index, { rateBasis: value || null })}
+                      options={[{ value: '', label: 'From the process' }, ...RATE_BASIS_OPTIONS]}
+                      disabled={readOnly}
+                      ariaLabel={`Step ${stepNo} rate basis`}
+                      fullWidth
+                      portal={portalMenus}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -1243,6 +1222,7 @@ export function StepsGrid<T extends StepGridRow>({
                   portalMenus={portalMenus}
                   mirrorSource={step.inputs ?? []}
                   showQty={showPlannedQty}
+                  emptyHint="Nothing listed — this step will produce nothing."
                   /* Job orders only. A route holds no output quantities at all,
                      so there is nothing for it to preview. */
                   qtyPlaceholderFor={
@@ -1255,7 +1235,6 @@ export function StepsGrid<T extends StepGridRow>({
                   stepIndex={index}
                   stepNumber={stepNo}
                   errors={errors}
-                  emptyHint="Nothing listed — this step will produce nothing, and nothing can be received against it. Add what comes back, even if it is the same item that went in."
                   badgeFor={(row, rowIndex) => {
                     if (!row.itemId) return null;
                     // Which row is the main output is derived now, not ticked —

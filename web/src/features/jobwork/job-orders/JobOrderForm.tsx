@@ -47,13 +47,6 @@ interface Props {
   fieldErrors?: Record<string, string>;
 }
 
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  fontSize: 13,
-  fontWeight: 500,
-  color: '#4b5563',
-  marginBottom: 4,
-};
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
@@ -387,7 +380,7 @@ export function JobOrderForm({
           id="joborder-form"
           onSubmit={submit}
           noValidate
-          style={{ padding: '12px 16px', paddingBottom: 120 }}
+          style={{ padding: '12px 16px', paddingBottom: 24 }}
         >
           {localError && (
             <p
@@ -411,16 +404,18 @@ export function JobOrderForm({
             <h2 style={sectionHeading}>Order</h2>
 
             <div
-              className="form-field-grid"
               style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                gap: 16,
-                maxWidth: 1200,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px',
+                maxWidth: '640px',
               }}
             >
-              <div>
-                <label style={labelStyle} htmlFor="jo-number">
+              <div
+                className="form-field-grid"
+                style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
+              >
+                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }} htmlFor="jo-number">
                   Job Order Number
                 </label>
                 {isEdit ? (
@@ -429,14 +424,10 @@ export function JobOrderForm({
                     type="text"
                     value={initialData?.jobOrderNumber ?? ''}
                     readOnly
-                    style={readOnlyStyle}
+                    style={{ ...readOnlyStyle, width: '100%' }}
                   />
                 ) : (
-                  /* The gear belongs TO this field — it configures the number in it —
-                 so it sits inside the box rather than floating beside it as a
-                 second control. Still a real <button>, so Tab reaches it right
-                 after the input (CLAUDE.md's tab rule). */
-                  <div style={{ position: 'relative' }}>
+                  <div style={{ position: 'relative', width: '100%' }}>
                     <input
                       id="jo-number"
                       type="text"
@@ -447,6 +438,7 @@ export function JobOrderForm({
                         ...inputStyle,
                         padding: '6px 34px 6px 8px',
                         boxSizing: 'border-box',
+                        width: '100%',
                       }}
                     />
                     <button
@@ -477,88 +469,118 @@ export function JobOrderForm({
                 )}
               </div>
 
-              <div>
-                <label style={labelStyle} htmlFor="jo-date">
+              <div
+                className="form-field-grid"
+                style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
+              >
+                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }} htmlFor="jo-date">
                   Date
                 </label>
-                <DateInput
-                  id="jo-date"
-                  value={orderDate}
-                  onChange={setOrderDate}
-                  style={inputStyle}
-                />
+                <div style={{ width: '100%' }}>
+                  <DateInput
+                    id="jo-date"
+                    value={orderDate}
+                    onChange={setOrderDate}
+                    style={{ ...inputStyle, width: '100%' }}
+                  />
+                </div>
               </div>
 
-              <div>
-                <label style={labelStyle} htmlFor="jo-target">
+              <div
+                className="form-field-grid"
+                style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
+              >
+                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }} htmlFor="jo-target">
                   Target date
                 </label>
-                <DateInput
-                  id="jo-target"
-                  value={targetDate}
-                  onChange={setTargetDate}
-                  style={inputStyle}
-                />
+                <div style={{ width: '100%' }}>
+                  <DateInput
+                    id="jo-target"
+                    value={targetDate}
+                    onChange={setTargetDate}
+                    style={{ ...inputStyle, width: '100%' }}
+                  />
+                </div>
               </div>
 
-              <div>
-                <label style={labelStyle}>Route</label>
-                <Select
-                  value={routeId}
-                  onChange={(value) => void applyRoute(value)}
-                  options={[
-                    { value: '', label: 'No route — build steps by hand' },
-                    ...routes.map((r) => ({ value: r.id, label: r.name })),
-                  ]}
-                  ariaLabel="Route"
-                  fullWidth
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Material belongs to</label>
-                <Select
-                  value={ownership}
-                  onChange={(value) => {
-                    setOwnership(value);
-                    if (value !== 'customer') setOwnerPartyId(null);
-                  }}
-                  options={[...OWNERSHIP_OPTIONS]}
-                  ariaLabel="Ownership"
-                  fullWidth
-                />
-              </div>
-
-              {ownership === 'customer' && (
-                <div>
-                  <label style={{ ...labelStyle, color: '#ef4444' }}>Customer*</label>
+              <div
+                className="form-field-grid"
+                style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
+              >
+                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>Route</label>
+                <div style={{ width: '100%' }}>
                   <Select
-                    value={ownerPartyId ?? ''}
-                    onChange={(value) => setOwnerPartyId(value || null)}
+                    value={routeId}
+                    onChange={(value) => void applyRoute(value)}
                     options={[
-                      { value: '', label: 'Select a customer…' },
-                      ...customers.map((c) => ({
-                        value: c.id,
-                        label: c.companyName || c.contactName,
-                      })),
+                      { value: '', label: 'No route — build steps by hand' },
+                      ...routes.map((r) => ({ value: r.id, label: r.name })),
                     ]}
-                    ariaLabel="Owning customer"
+                    ariaLabel="Route"
                     fullWidth
                   />
                 </div>
-              )}
-            </div>
+              </div>
 
-            <div style={{ marginTop: 16, maxWidth: 620 }}>
-              <label style={labelStyle} htmlFor="jo-remarks">
-                Remarks
-              </label>
-              <textarea
-                id="jo-remarks"
-                value={remarks}
-                onChange={(e) => setRemarks(e.target.value)}
-                style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }}
-              />
+              <div
+                className="form-field-grid"
+                style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
+              >
+                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>Material belongs to</label>
+                <div style={{ width: '100%' }}>
+                  <Select
+                    value={ownership}
+                    onChange={(value) => {
+                      setOwnership(value);
+                      if (value !== 'customer') setOwnerPartyId(null);
+                    }}
+                    options={[...OWNERSHIP_OPTIONS]}
+                    ariaLabel="Ownership"
+                    fullWidth
+                  />
+                </div>
+              </div>
+
+              {ownership === 'customer' && (
+                <div
+                className="form-field-grid"
+                style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
+              >
+                  <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>Customer*</label>
+                  <div style={{ width: '100%' }}>
+                    <Select
+                      value={ownerPartyId ?? ''}
+                      onChange={(value) => setOwnerPartyId(value || null)}
+                      options={[
+                        { value: '', label: 'Select a customer…' },
+                        ...customers.map((c) => ({
+                          value: c.id,
+                          label: c.companyName || c.contactName,
+                        })),
+                      ]}
+                      ariaLabel="Owning customer"
+                      fullWidth
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div
+                className="form-field-grid"
+                style={{ gridTemplateColumns: '160px 1fr', alignItems: 'flex-start', gap: '16px', marginTop: 8 }}
+              >
+                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500, marginTop: 8 }} htmlFor="jo-remarks">
+                  Remarks
+                </label>
+                <div style={{ width: '100%' }}>
+                  <textarea
+                    id="jo-remarks"
+                    value={remarks}
+                    onChange={(e) => setRemarks(e.target.value)}
+                    style={{ ...inputStyle, width: '100%', minHeight: 60, resize: 'vertical' }}
+                  />
+                </div>
+              </div>
             </div>
           </section>
 
@@ -614,20 +636,7 @@ export function JobOrderForm({
           )}
         </form>
       </div>
-      <div
-        className="page-footer form-actions-footer"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          padding: '16px 32px',
-          background: '#fff',
-          borderTop: '1px solid #eef0f3',
-          position: 'sticky',
-          bottom: 0,
-          zIndex: 100,
-        }}
-      >
+      <div className="page-footer form-actions-footer">
         <button
           form="joborder-form"
           type="submit"
