@@ -95,7 +95,10 @@ export function SettingsLayout() {
       >
         <div
           style={{
-            padding: 'var(--space-4)',
+            padding: '0 var(--space-4)',
+            height: '60px',
+            flexShrink: 0,
+            boxSizing: 'border-box',
             borderBottom: '1px solid var(--color-border)',
             display: 'flex',
             alignItems: 'center',

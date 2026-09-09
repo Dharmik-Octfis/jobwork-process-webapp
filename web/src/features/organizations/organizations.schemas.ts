@@ -46,6 +46,7 @@ const baseOrganizationSchema = z.object({
           plural: z.string().max(30).optional(),
         })
         .optional(),
+      migrationDate: z.string().optional(),
     })
     .optional(),
 });
@@ -100,5 +101,6 @@ export interface Organization {
       singular?: string;
       plural?: string;
     };
+    migrationDate?: string;
   } | null;
 }

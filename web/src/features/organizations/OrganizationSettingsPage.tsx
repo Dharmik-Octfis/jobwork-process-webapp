@@ -277,169 +277,156 @@ export function OrganizationSettingsPage() {
   }
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
-      <div
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#fff' }}>
+      <header
         style={{
+          padding: '0 32px',
+          height: '60px',
+          flexShrink: 0,
+          boxSizing: 'border-box',
+          borderBottom: '1px solid var(--color-border)',
+          backgroundColor: '#fff',
           display: 'flex',
-          flex: 1,
-          maxWidth: 1200,
-          margin: '0 auto',
-          width: '100%',
-          padding: 'var(--space-3) var(--space-4)',
-          gap: 'var(--space-3)',
+          flexDirection: 'column',
+          justifyContent: 'center',
         }}
       >
-        {/* Main Content */}
-        <main style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-          <section
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px' }}>
+          <h1 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--navy-900)', margin: 0 }}>
+            Organization Profile
+          </h1>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '13px', margin: 0 }}>
+            Update your organization's details and public information.
+          </p>
+        </div>
+      </header>
+
+      <main style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
+        <div style={{ maxWidth: '800px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+          {/* Logo Section */}
+          <div
             style={{
-              background: 'var(--color-surface)',
-              borderRadius: 'var(--radius-lg)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '12px',
               border: '1px solid var(--color-border)',
-              padding: 'var(--space-4)',
+              borderRadius: 'var(--radius-md)',
+              background: '#fff',
             }}
           >
-            <h2 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 var(--space-1) 0' }}>
-              Organization Profile
-            </h2>
-            <p
-              style={{
-                color: 'var(--color-text-muted)',
-                margin: '0 0 var(--space-3) 0',
-                fontSize: 13,
-              }}
-            >
-              Update your organization's details and public information.
-            </p>
-
-            {/* Logo Section */}
             <div
               style={{
+                width: 48,
+                height: 48,
+                borderRadius: 8,
+                border: '1px solid var(--color-border)',
+                background: '#fff',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 12,
-                marginBottom: 16,
-                padding: '12px',
-                border: '1px solid var(--color-border)',
-                borderRadius: 'var(--radius-md)',
-                background: 'var(--color-surface-2)',
+                justifyContent: 'center',
+                overflow: 'hidden',
+                flexShrink: 0,
               }}
             >
-              <div
+              {logoPreview ? (
+                <img
+                  src={logoPreview}
+                  alt="Organization Logo"
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                />
+              ) : (
+                <span style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-text-muted)' }}>
+                  {activeOrg.name.charAt(0).toUpperCase()}
+                </span>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <label
                 style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: 8,
-                  border: '1px solid var(--color-border)',
-                  background: '#fff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  overflow: 'hidden',
-                  flexShrink: 0,
+                  fontWeight: 600,
+                  fontSize: 14,
+                  display: 'block',
+                  marginBottom: 4,
+                  color: 'var(--color-text)',
                 }}
               >
-                {logoPreview ? (
-                  <img
-                    src={logoPreview}
-                    alt="Organization Logo"
-                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                  />
-                ) : (
-                  <span style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-text-muted)' }}>
-                    {activeOrg.name.charAt(0).toUpperCase()}
-                  </span>
-                )}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                Organization Logo
+              </label>
+              <p style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: '0 0 12px 0' }}>
+                Upload your company logo. Recommended format: PNG, JPG, or SVG up to 2MB.
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <label
                   style={{
+                    cursor: uploadingLogo ? 'not-allowed' : 'pointer',
+                    padding: '8px 16px',
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    fontSize: 13,
                     fontWeight: 600,
-                    fontSize: 14,
-                    display: 'block',
-                    marginBottom: 4,
-                    color: 'var(--color-text)',
+                    color: '#374151',
+                    transition: 'all 0.2s',
+                    opacity: uploadingLogo ? 0.7 : 1,
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
                   }}
                 >
-                  Organization Logo
+                  {uploadingLogo ? 'Uploading...' : 'Choose Image'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLogoUpload}
+                    disabled={uploadingLogo}
+                    style={{ display: 'none' }}
+                  />
                 </label>
-                <p style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: '0 0 12px 0' }}>
-                  Upload your company logo. Recommended format: PNG, JPG, or SVG up to 2MB.
-                </p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <label
+                {logoPreview && (
+                  <button
+                    type="button"
+                    onClick={handleLogoRemove}
+                    disabled={deletingLogo}
                     style={{
-                      cursor: uploadingLogo ? 'not-allowed' : 'pointer',
                       padding: '8px 16px',
                       backgroundColor: '#ffffff',
-                      border: '1px solid #d1d5db',
+                      border: '1px solid #ef4444',
                       borderRadius: '6px',
                       fontSize: 13,
                       fontWeight: 600,
-                      color: '#374151',
+                      color: '#ef4444',
+                      cursor: deletingLogo ? 'not-allowed' : 'pointer',
                       transition: 'all 0.2s',
-                      opacity: uploadingLogo ? 0.7 : 1,
-                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
                     }}
                   >
-                    {uploadingLogo ? 'Uploading...' : 'Choose Image'}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleLogoUpload}
-                      disabled={uploadingLogo}
-                      style={{ display: 'none' }}
-                    />
-                  </label>
-                  {logoPreview && (
-                    <button
-                      type="button"
-                      onClick={handleLogoRemove}
-                      disabled={deletingLogo}
-                      style={{
-                        padding: '8px 16px',
-                        backgroundColor: '#ffffff',
-                        border: '1px solid #ef4444',
-                        borderRadius: '6px',
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: '#ef4444',
-                        cursor: deletingLogo ? 'not-allowed' : 'pointer',
-                        transition: 'all 0.2s',
-                        opacity: deletingLogo ? 0.7 : 1,
-                      }}
-                    >
-                      {deletingLogo ? 'Removing...' : 'Remove'}
-                    </button>
-                  )}
-                </div>
+                    {deletingLogo ? 'Removing...' : 'Remove Logo'}
+                  </button>
+                )}
               </div>
             </div>
+          </div>
 
-            {serverError && (
-              <div
-                style={{
-                  padding: 12,
-                  background: 'var(--danger-50)',
-                  color: 'var(--color-danger)',
-                  borderRadius: 'var(--radius-md)',
-                  marginBottom: 20,
-                  fontSize: 14,
-                }}
-              >
-                {serverError}
-              </div>
-            )}
-
-            <form
-              onSubmit={handleSubmit(onSubmit)}
-              style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}
+          {serverError && (
+            <div
+              style={{
+                color: '#ef4444',
+                padding: '12px 16px',
+                backgroundColor: '#fef2f2',
+                border: '1px solid #fecaca',
+                borderRadius: 6,
+                marginBottom: 20,
+                fontSize: 14,
+              }}
             >
+              {serverError}
+            </div>
+          )}
+
+          <form
+            id="org-settings-form"
+            onSubmit={handleSubmit(onSubmit)}
+            style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}
+          >
               {/* Org ID — read-only. The only field here a customer needs to read
                   *out* rather than edit. Generated once at creation and never
                   changes, so it is deliberately not part of the form state. */}
@@ -708,36 +695,37 @@ export function OrganizationSettingsPage() {
                 {errors.website && <p className="org-form-error-msg">{errors.website.message}</p>}
               </div>
 
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  marginTop: 'var(--space-2)',
-                  paddingTop: 'var(--space-2)',
-                  borderTop: '1px solid var(--color-border)',
-                }}
-              >
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  style={{
-                    background: 'var(--color-primary)',
-                    color: 'white',
-                    border: 'none',
-                    padding: '10px 24px',
-                    borderRadius: 'var(--radius-md)',
-                    fontWeight: 600,
-                    cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                    opacity: isSubmitting ? 0.7 : 1,
-                  }}
-                >
-                  {isSubmitting ? 'Saving...' : 'Save'}
-                </button>
-              </div>
             </form>
-          </section>
+          </div>
         </main>
-      </div>
+
+        <footer style={{
+          padding: '16px 32px',
+          borderTop: '1px solid var(--color-border)',
+          backgroundColor: '#fff',
+          display: 'flex',
+          justifyContent: 'flex-start',
+        }}>
+          <button
+            form="org-settings-form"
+            type="submit"
+            disabled={isSubmitting}
+            style={{
+              padding: '10px 24px',
+              fontSize: '15px',
+              fontWeight: 500,
+              backgroundColor: 'var(--navy-900)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
+              opacity: isSubmitting ? 0.7 : 1,
+              transition: 'background-color 0.2s',
+            }}
+          >
+            {isSubmitting ? 'Saving...' : 'Save Changes'}
+          </button>
+        </footer>
     </div>
   );
 }

@@ -85,6 +85,7 @@ export const createOrganizationSchema = openApiRegistry.register(
             plural: z.string().max(30).default('Takas'),
           })
           .optional(),
+        migrationDate: z.string().optional().openapi({ example: '2024-04-01' }),
       })
       .optional(),
   }),

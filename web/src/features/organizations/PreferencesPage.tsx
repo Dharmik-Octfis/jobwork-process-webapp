@@ -39,6 +39,7 @@ const preferencesSchema = z.object({
             ctx.addIssue({ code: 'custom', path: ['plural'], message: 'Required' });
         })
         .optional(),
+      migrationDate: z.string().optional(),
     })
     .optional(),
 });
@@ -76,6 +77,7 @@ export function PreferencesPage() {
           singular: 'Taka',
           plural: 'Takas',
         },
+        migrationDate: '',
       },
     },
   });
@@ -98,6 +100,7 @@ export function PreferencesPage() {
             singular: activeOrg.settings?.batchUnit?.singular || 'Taka',
             plural: activeOrg.settings?.batchUnit?.plural || 'Takas',
           },
+          migrationDate: activeOrg.settings?.migrationDate || '',
         },
       });
     }
@@ -117,17 +120,25 @@ export function PreferencesPage() {
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#fff' }}>
       <header
         style={{
-          padding: '24px 32px',
+          padding: '0 32px',
+          height: '60px',
+          flexShrink: 0,
+          boxSizing: 'border-box',
           borderBottom: '1px solid var(--color-border)',
           backgroundColor: '#fff',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
         }}
       >
-        <h1 style={{ fontSize: '24px', fontWeight: 600, color: 'var(--navy-900)', margin: '0 0 4px 0' }}>
-          Preferences
-        </h1>
-        <p style={{ color: 'var(--color-text-muted)', fontSize: '14px', margin: 0 }}>
-          Manage default terminology and settings for this organization.
-        </p>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px' }}>
+          <h1 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--navy-900)', margin: 0 }}>
+            Preferences
+          </h1>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '13px', margin: 0 }}>
+            Manage default terminology and settings for this organization.
+          </p>
+        </div>
       </header>
 
       <form onSubmit={handleSubmit(onSubmit)} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
@@ -241,6 +252,24 @@ export function PreferencesPage() {
                 </div>
               </div>
             )}
+          </div>
+
+          <div
+            style={{
+              marginTop: '32px',
+              paddingTop: '32px',
+              borderTop: '1px solid var(--color-border)',
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', maxWidth: '388px' }}>
+              <Input
+                type="date"
+                label="Migration Date"
+                error={errors.settings?.migrationDate?.message}
+                hint="The starting date for reports and opening balances."
+                {...register('settings.migrationDate')}
+              />
+            </div>
           </div>
 
           </div>

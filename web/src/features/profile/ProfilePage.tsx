@@ -61,36 +61,34 @@ export function ProfilePage() {
   };
 
   return (
-    <div
-      style={{
-        padding: '32px 24px',
-        maxWidth: '640px',
-        margin: '0 auto',
-        fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
-      }}
-    >
-      {/* Top Header */}
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 6px 0', color: '#0f172a' }}>
-          Account Settings
-        </h1>
-        <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>
-          Manage your personal information and profile image.
-        </p>
-      </div>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#fff' }}>
+      <header
+        style={{
+          padding: '0 32px',
+          height: '60px',
+          flexShrink: 0,
+          boxSizing: 'border-box',
+          borderBottom: '1px solid var(--color-border)',
+          backgroundColor: '#fff',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px' }}>
+          <h1 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--navy-900)', margin: 0 }}>
+            Account Settings
+          </h1>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '13px', margin: 0 }}>
+            Manage your personal information and profile image.
+          </p>
+        </div>
+      </header>
 
-      {/* Main Container Stack */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-        {/* Profile Info Card */}
-        <div
-          style={{
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '12px',
-            padding: '24px',
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
-          }}
-        >
+      <main style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
+        <div style={{ maxWidth: '800px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {/* Profile Info Card */}
+        <div>
           <div
             style={{
               display: 'flex',
@@ -255,7 +253,7 @@ export function ProfilePage() {
             </div>
           </div>
 
-          <form onSubmit={handleSaveProfile}>
+          <form id="profile-form" onSubmit={handleSaveProfile}>
             <div style={{ display: 'flex', gap: 16, marginBottom: 18 }}>
               <div style={{ flex: 1 }}>
                 <Input
@@ -287,19 +285,32 @@ export function ProfilePage() {
               />
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Button type="submit" isLoading={updateProfileMutation.isPending}>
-                Save Profile
-              </Button>
-              {updateProfileMutation.isError && (
-                <span style={{ color: 'var(--color-danger)', fontSize: 13, fontWeight: 500 }}>
-                  {toApiErrorMessage(updateProfileMutation.error)}
-                </span>
-              )}
-            </div>
           </form>
         </div>
-      </div>
+        </div>
+      </main>
+
+      <footer
+        style={{
+          padding: '16px 32px',
+          borderTop: '1px solid var(--color-border)',
+          backgroundColor: '#fff',
+          display: 'flex',
+          justifyContent: 'flex-start',
+          flexShrink: 0,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <Button type="submit" form="profile-form" isLoading={updateProfileMutation.isPending}>
+            Save Profile
+          </Button>
+          {updateProfileMutation.isError && (
+            <span style={{ color: 'var(--color-danger)', fontSize: 13, fontWeight: 500 }}>
+              {toApiErrorMessage(updateProfileMutation.error)}
+            </span>
+          )}
+        </div>
+      </footer>
     </div>
   );
 }
