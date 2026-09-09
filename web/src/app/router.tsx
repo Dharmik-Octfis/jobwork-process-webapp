@@ -11,6 +11,7 @@ import { AcceptInvitePage } from '../features/invitations/AcceptInvitePage';
 import { CreateOrganizationForm } from '../features/organizations/CreateOrganizationForm';
 import { AppLayout } from '../components/layout/AppLayout';
 import { SettingsLayout } from '../components/layout/SettingsLayout';
+import { AppErrorBoundary } from './AppErrorBoundary';
 
 /**
  * WHAT IS EAGER AND WHAT IS SPLIT, AND WHY THE LINE SITS WHERE IT DOES
@@ -176,7 +177,10 @@ const RejectionReasonsList = lazyPage(
 const ItemsList = lazyPage(() => import('../features/items/ItemsList'), 'ItemsList');
 const CreateItemPage = lazyPage(() => import('../features/items/CreateItemPage'), 'CreateItemPage');
 const EditItemPage = lazyPage(() => import('../features/items/EditItemPage'), 'EditItemPage');
-const OpeningStockPage = lazyPage(() => import('../features/items/OpeningStockPage'), 'OpeningStockPage');
+const OpeningStockPage = lazyPage(
+  () => import('../features/items/OpeningStockPage'),
+  'OpeningStockPage',
+);
 const CompositeItemsPage = lazyPage(
   () => import('../features/inventory/composite-items/CompositeItemsPage'),
   'CompositeItemsPage',
@@ -247,154 +251,193 @@ const EditLocation = lazyPage(
  * eager, or it suspends with no boundary above it and blanks the whole app.
  */
 export const router = createBrowserRouter([
-  { path: '/login', element: <LoginPage /> },
-  { path: '/signup', element: <SignupPage /> },
-  { path: '/forgot-password', element: <ForgotPasswordPage /> },
-  // Public — the invitee may not have an account yet.
-  { path: '/invite/accept', element: <AcceptInvitePage /> },
   {
-    element: <ProtectedRoute />,
+    /**
+     * Pathless root. It matches nothing itself and renders `<Outlet />` by
+     * default, so every path below resolves exactly as before — its only job is
+     * to give the whole tree one `errorElement`. Without a root route the
+     * top-level entries have no shared parent, and a crash on any of them falls
+     * through to React Router's built-in developer page.
+     */
+    errorElement: <AppErrorBoundary />,
     children: [
+      { path: '/login', element: <LoginPage /> },
+      { path: '/signup', element: <SignupPage /> },
+      { path: '/forgot-password', element: <ForgotPasswordPage /> },
+      // Public — the invitee may not have an account yet.
+      { path: '/invite/accept', element: <AcceptInvitePage /> },
       {
-        element: <AppLayout />,
+        element: <ProtectedRoute />,
         children: [
-          // No organization in the URL yet — send them to their last one.
-          { path: '/', element: <OrgRedirect /> },
           {
-            element: <RequireOrganization />,
+            element: <AppLayout />,
             children: [
-              { path: '/organizations/:orgId', element: <DashboardPage /> },
-              { path: '/organizations/:orgId/purchases', element: <PurchasesPage /> },
-              { path: '/organizations/:orgId/purchases/vendors', element: <VendorsList /> },
-              { path: '/organizations/:orgId/purchases/vendors/new', element: <CreateVendor /> },
-              { path: '/organizations/:orgId/purchases/vendors/:id/edit', element: <EditVendor /> },
+              // No organization in the URL yet — send them to their last one.
+              { path: '/', element: <OrgRedirect /> },
               {
-                path: '/organizations/:orgId/purchases/purchase-orders',
-                element: <PurchaseOrdersList />,
+                element: <RequireOrganization />,
+                children: [
+                  { path: '/organizations/:orgId', element: <DashboardPage /> },
+                  { path: '/organizations/:orgId/purchases', element: <PurchasesPage /> },
+                  { path: '/organizations/:orgId/purchases/vendors', element: <VendorsList /> },
+                  {
+                    path: '/organizations/:orgId/purchases/vendors/new',
+                    element: <CreateVendor />,
+                  },
+                  {
+                    path: '/organizations/:orgId/purchases/vendors/:id/edit',
+                    element: <EditVendor />,
+                  },
+                  {
+                    path: '/organizations/:orgId/purchases/purchase-orders',
+                    element: <PurchaseOrdersList />,
+                  },
+                  {
+                    path: '/organizations/:orgId/purchases/purchase-orders/new',
+                    element: <CreatePurchaseOrder />,
+                  },
+                  {
+                    path: '/organizations/:orgId/purchases/purchase-orders/:id/edit',
+                    element: <CreatePurchaseOrder />,
+                  },
+                  { path: '/organizations/:orgId/sales/customers', element: <CustomersList /> },
+                  {
+                    path: '/organizations/:orgId/sales/customers/new',
+                    element: <CreateCustomer />,
+                  },
+                  {
+                    path: '/organizations/:orgId/sales/customers/:id/edit',
+                    element: <EditCustomer />,
+                  },
+                  { path: '/organizations/:orgId/purchases/po', element: <PurchasesPage /> },
+                  { path: '/organizations/:orgId/purchases/bills', element: <PurchasesPage /> },
+                  {
+                    path: '/organizations/:orgId/purchases/bills/new',
+                    element: <CreateBill />,
+                  },
+                  {
+                    path: '/organizations/:orgId/purchases/bills/:id/edit',
+                    element: <CreateBill />,
+                  },
+                  // Jobwork, Sprints 1–4.
+                  //
+                  // Previously, there was no `issues/new` and no `receipts/new`, deliberately.
+                  // But now they are implemented as full pages that allow standalone creation
+                  // or redirecting from the Job Order Overview page.
+                  { path: '/organizations/:orgId/jobwork', element: <JobworkPage /> },
+                  // The Processes and Process Routes masters now live under Settings —
+                  // these two only forward the old URLs there.
+                  {
+                    path: '/organizations/:orgId/jobwork/processes/*',
+                    element: <LegacyJobworkMasterRedirect />,
+                  },
+                  {
+                    path: '/organizations/:orgId/jobwork/routes/*',
+                    element: <LegacyJobworkMasterRedirect />,
+                  },
+                  { path: '/organizations/:orgId/jobwork/job-orders', element: <JobOrdersList /> },
+                  {
+                    path: '/organizations/:orgId/jobwork/job-orders/new',
+                    element: <CreateJobOrder />,
+                  },
+                  // Before ':id', or "new" is read as a job order id.
+                  {
+                    path: '/organizations/:orgId/jobwork/job-orders/:id',
+                    element: <JobOrderOverview />,
+                  },
+                  {
+                    path: '/organizations/:orgId/jobwork/job-orders/:id/edit',
+                    element: <EditJobOrder />,
+                  },
+                  { path: '/organizations/:orgId/jobwork/issues', element: <IssuesList /> },
+                  {
+                    path: '/organizations/:orgId/jobwork/issues/new',
+                    element: <CreateIssuePage />,
+                  },
+                  { path: '/organizations/:orgId/jobwork/receipts', element: <ReceiptsList /> },
+                  {
+                    path: '/organizations/:orgId/jobwork/receipts/new',
+                    element: <CreateReceivePage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/jobwork/rejection-reasons',
+                    element: <RejectionReasonsList />,
+                  },
+                  { path: '/organizations/:orgId/items', element: <ItemsList /> },
+                  { path: '/organizations/:orgId/items/new', element: <CreateItemPage /> },
+                  { path: '/organizations/:orgId/items/:id/edit', element: <EditItemPage /> },
+                  {
+                    path: '/organizations/:orgId/items/:id/opening-stock',
+                    element: <OpeningStockPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/composite-items',
+                    element: <CompositeItemsPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/composite-items/new',
+                    element: <CreateCompositeItemPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/composite-items/:id/edit',
+                    element: <EditCompositeItemPage />,
+                  },
+                  { path: '/organizations/:orgId/inventory/assembly', element: <AssemblyList /> },
+                  {
+                    path: '/organizations/:orgId/inventory/assembly/new',
+                    element: <CreateAssemblyPage />,
+                  },
+                ],
               },
-              {
-                path: '/organizations/:orgId/purchases/purchase-orders/new',
-                element: <CreatePurchaseOrder />,
-              },
-              {
-                path: '/organizations/:orgId/purchases/purchase-orders/:id/edit',
-                element: <CreatePurchaseOrder />,
-              },
-              { path: '/organizations/:orgId/sales/customers', element: <CustomersList /> },
-              { path: '/organizations/:orgId/sales/customers/new', element: <CreateCustomer /> },
-              { path: '/organizations/:orgId/sales/customers/:id/edit', element: <EditCustomer /> },
-              { path: '/organizations/:orgId/purchases/po', element: <PurchasesPage /> },
-              { path: '/organizations/:orgId/purchases/bills', element: <PurchasesPage /> },
-              {
-                path: '/organizations/:orgId/purchases/bills/new',
-                element: <CreateBill />,
-              },
-              {
-                path: '/organizations/:orgId/purchases/bills/:id/edit',
-                element: <CreateBill />,
-              },
-              // Jobwork, Sprints 1–4.
-              //
-              // Previously, there was no `issues/new` and no `receipts/new`, deliberately.
-              // But now they are implemented as full pages that allow standalone creation
-              // or redirecting from the Job Order Overview page.
-              { path: '/organizations/:orgId/jobwork', element: <JobworkPage /> },
-              // The Processes and Process Routes masters now live under Settings —
-              // these two only forward the old URLs there.
-              {
-                path: '/organizations/:orgId/jobwork/processes/*',
-                element: <LegacyJobworkMasterRedirect />,
-              },
-              {
-                path: '/organizations/:orgId/jobwork/routes/*',
-                element: <LegacyJobworkMasterRedirect />,
-              },
-              { path: '/organizations/:orgId/jobwork/job-orders', element: <JobOrdersList /> },
-              { path: '/organizations/:orgId/jobwork/job-orders/new', element: <CreateJobOrder /> },
-              // Before ':id', or "new" is read as a job order id.
-              {
-                path: '/organizations/:orgId/jobwork/job-orders/:id',
-                element: <JobOrderOverview />,
-              },
-              {
-                path: '/organizations/:orgId/jobwork/job-orders/:id/edit',
-                element: <EditJobOrder />,
-              },
-              { path: '/organizations/:orgId/jobwork/issues', element: <IssuesList /> },
-              { path: '/organizations/:orgId/jobwork/issues/new', element: <CreateIssuePage /> },
-              { path: '/organizations/:orgId/jobwork/receipts', element: <ReceiptsList /> },
-              { path: '/organizations/:orgId/jobwork/receipts/new', element: <CreateReceivePage /> },
-              {
-                path: '/organizations/:orgId/jobwork/rejection-reasons',
-                element: <RejectionReasonsList />,
-              },
-              { path: '/organizations/:orgId/items', element: <ItemsList /> },
-              { path: '/organizations/:orgId/items/new', element: <CreateItemPage /> },
-              { path: '/organizations/:orgId/items/:id/edit', element: <EditItemPage /> },
-              { path: '/organizations/:orgId/items/:id/opening-stock', element: <OpeningStockPage /> },
-              { path: '/organizations/:orgId/composite-items', element: <CompositeItemsPage /> },
-              {
-                path: '/organizations/:orgId/composite-items/new',
-                element: <CreateCompositeItemPage />,
-              },
-              {
-                path: '/organizations/:orgId/composite-items/:id/edit',
-                element: <EditCompositeItemPage />,
-              },
-              { path: '/organizations/:orgId/inventory/assembly', element: <AssemblyList /> },
-              {
-                path: '/organizations/:orgId/inventory/assembly/new',
-                element: <CreateAssemblyPage />,
-              },
+              { path: '/organizations', element: <OrganizationsList /> },
             ],
           },
-          { path: '/organizations', element: <OrganizationsList /> },
-        ],
-      },
-      // Moved outside AppLayout so settings takes the full page
-      {
-        path: '/organizations/:orgId/settings',
-        element: <SettingsLayout />,
-        children: [
-          { index: true, element: <OrganizationSettingsPage /> },
-          { path: 'preferences', element: <PreferencesPage /> },
-          { path: 'profile', element: <ProfilePage /> },
-          { path: 'users', element: <UsersPage /> },
-          // "Members & Invites" became "Users" on 2026-07-30. The old path is kept
-          // as a redirect rather than deleted: it is in people's bookmarks and in
-          // links we have already sent by email, and a 404 there looks like the
-          // feature was removed. `replace` so Back doesn't bounce off the redirect.
+          // Moved outside AppLayout so settings takes the full page
           {
-            path: 'members',
-            element: <Navigate to="../users" replace />,
+            path: '/organizations/:orgId/settings',
+            element: <SettingsLayout />,
+            children: [
+              { index: true, element: <OrganizationSettingsPage /> },
+              { path: 'preferences', element: <PreferencesPage /> },
+              { path: 'profile', element: <ProfilePage /> },
+              { path: 'users', element: <UsersPage /> },
+              // "Members & Invites" became "Users" on 2026-07-30. The old path is kept
+              // as a redirect rather than deleted: it is in people's bookmarks and in
+              // links we have already sent by email, and a 404 there looks like the
+              // feature was removed. `replace` so Back doesn't bounce off the redirect.
+              {
+                path: 'members',
+                element: <Navigate to="../users" replace />,
+              },
+              // Two screens, deliberately: `roles` is job titles (no access at all),
+              // `permissions` is the access bundles. A member is assigned one of each.
+              { path: 'roles', element: <RolesPage /> },
+              // The list carries its own detail pane at `?id=<uuid>`, like every other
+              // module — so there is no `permissions/:id` route, only new/edit.
+              { path: 'permissions', element: <PermissionTemplatesPage /> },
+              { path: 'permissions/new', element: <NewPermissionTemplate /> },
+              { path: 'permissions/:id/edit', element: <EditPermissionTemplate /> },
+              { path: 'inventory/uom', element: <UnitOfMeasurementPage /> },
+              { path: 'configuration/currencies', element: <CurrenciesPage /> },
+              // Jobwork masters. Like every other settings list, each carries its own
+              // detail pane at `?id=<uuid>` rather than a `:id` route.
+              { path: 'jobwork/processes', element: <ProcessesList /> },
+              { path: 'jobwork/processes/new', element: <CreateProcess /> },
+              { path: 'jobwork/processes/:id/edit', element: <EditProcess /> },
+              { path: 'jobwork/routes', element: <RoutesList /> },
+              { path: 'jobwork/routes/new', element: <CreateRoute /> },
+              { path: 'jobwork/routes/:id/edit', element: <EditRoute /> },
+              { path: 'modules', element: <ModulesListPage /> },
+              { path: 'modules/:entityType', element: <ModuleFieldsPage /> },
+              { path: 'locations', element: <LocationsList /> },
+              { path: 'locations/new', element: <CreateLocation /> },
+              { path: 'locations/:id/edit', element: <EditLocation /> },
+            ],
           },
-          // Two screens, deliberately: `roles` is job titles (no access at all),
-          // `permissions` is the access bundles. A member is assigned one of each.
-          { path: 'roles', element: <RolesPage /> },
-          // The list carries its own detail pane at `?id=<uuid>`, like every other
-          // module — so there is no `permissions/:id` route, only new/edit.
-          { path: 'permissions', element: <PermissionTemplatesPage /> },
-          { path: 'permissions/new', element: <NewPermissionTemplate /> },
-          { path: 'permissions/:id/edit', element: <EditPermissionTemplate /> },
-          { path: 'inventory/uom', element: <UnitOfMeasurementPage /> },
-          { path: 'configuration/currencies', element: <CurrenciesPage /> },
-          // Jobwork masters. Like every other settings list, each carries its own
-          // detail pane at `?id=<uuid>` rather than a `:id` route.
-          { path: 'jobwork/processes', element: <ProcessesList /> },
-          { path: 'jobwork/processes/new', element: <CreateProcess /> },
-          { path: 'jobwork/processes/:id/edit', element: <EditProcess /> },
-          { path: 'jobwork/routes', element: <RoutesList /> },
-          { path: 'jobwork/routes/new', element: <CreateRoute /> },
-          { path: 'jobwork/routes/:id/edit', element: <EditRoute /> },
-          { path: 'modules', element: <ModulesListPage /> },
-          { path: 'modules/:entityType', element: <ModuleFieldsPage /> },
-          { path: 'locations', element: <LocationsList /> },
-          { path: 'locations/new', element: <CreateLocation /> },
-          { path: 'locations/:id/edit', element: <EditLocation /> },
+          { path: '/organizations/new', element: <CreateOrganizationForm /> },
         ],
       },
-      { path: '/organizations/new', element: <CreateOrganizationForm /> },
+      { path: '*', element: <Navigate to="/" replace /> },
     ],
   },
-  { path: '*', element: <Navigate to="/" replace /> },
 ]);
