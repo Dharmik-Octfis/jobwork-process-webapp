@@ -227,9 +227,16 @@ export function AddOpeningStockModal({
       ? String(item.mrp)
       : defaultSellingPrice;
 
-  const [locationRows, setLocationRows] = useState<OpeningStockLocationRow[]>(() =>
-    toFormRows(initialRows, isBatchTracked, defaultSellingPrice, defaultMrp),
-  );
+  const [locationRows, setLocationRows] = useState<OpeningStockLocationRow[]>(() => {
+    const rows = toFormRows(initialRows, isBatchTracked, defaultSellingPrice, defaultMrp);
+    if (rows.length === 0) {
+      rows.push({
+        ...createEmptyLocation(),
+        batches: isBatchTracked ? [createEmptyBatch(defaultSellingPrice, defaultMrp)] : [],
+      });
+    }
+    return rows;
+  });
 
   const [prevDefaultSellingPrice, setPrevDefaultSellingPrice] = useState(defaultSellingPrice);
   const [prevDefaultMrp, setPrevDefaultMrp] = useState(defaultMrp);
@@ -798,6 +805,7 @@ export function AddOpeningStockModal({
                           options={locationOptions}
                           placeholder="Select Location"
                           minWidth="100%"
+                          portal
                         />
                       </td>
                       <td
@@ -1049,6 +1057,7 @@ export function AddOpeningStockModal({
                             options={locationOptions}
                             placeholder="Select Location"
                             minWidth="100%"
+                            portal
                           />
                         </td>
                         <td
@@ -1143,6 +1152,7 @@ export function AddOpeningStockModal({
                                   options={locationOptions}
                                   placeholder="Select Location"
                                   minWidth="100%"
+                                  portal
                                 />
                               </td>
                               <td

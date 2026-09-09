@@ -847,6 +847,7 @@ export function BatchAllocationModal({
                               isInvalid={duplicateIds.has(row.id)}
                               singular={singular}
                               plural={plural}
+                              unitLabel={unitLabel}
                             />
                           )}
                           {lookalike && (
@@ -1260,6 +1261,7 @@ function ExistingBatchCell({
   isInvalid,
   singular,
   plural,
+  unitLabel,
 }: {
   row: DraftRow;
   onPick: (option: ReceiptBatchOption) => void;
@@ -1276,6 +1278,7 @@ function ExistingBatchCell({
   isInvalid: boolean;
   singular: string;
   plural: string;
+  unitLabel: { enabled: boolean; singular: string; plural: string };
 }) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState<React.CSSProperties>({ visibility: 'hidden' });
@@ -1466,6 +1469,9 @@ function ExistingBatchCell({
             : ''}
           {option.byLocation.length > 0
             ? ` · ${option.byLocation.map((l) => l.locationName ?? '—').join(', ')}`
+            : ''}
+          {unitLabel.enabled && option.units.length > 0
+            ? ` · ${option.units.length} ${option.units.length === 1 ? unitLabel.singular.toLowerCase() : unitLabel.plural.toLowerCase()}`
             : ''}
         </div>
         {option.source === 'other' && (

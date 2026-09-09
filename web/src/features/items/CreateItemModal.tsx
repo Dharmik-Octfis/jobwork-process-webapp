@@ -28,7 +28,7 @@ export function CreateItemModal({ isOpen, onClose, onSuccess }: CreateItemModalP
           width: '1000px',
           maxWidth: '100%',
           maxHeight: '95vh',
-          backgroundColor: '#f8fafc',
+          backgroundColor: '#ffffff',
           borderRadius: '0 0 8px 8px',
           overflow: 'hidden',
           boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)',

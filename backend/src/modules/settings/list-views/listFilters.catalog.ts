@@ -113,20 +113,9 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
    * `closed` on the paperwork while its goods sat at the dyer.
    */
   job_issue: [
-    {
-      key: 'all',
-      /**
-       * 🔴 The default deliberately EXCLUDES drafts — it is the chase list, and a
-       * challan nobody has sent is not material anybody is chasing. That does mean
-       * a draft vanishes from the view it was saved on, so the Drafts filter below
-       * is not a convenience: without it a parked challan would be unreachable
-       * from this page.
-       */
-      label: 'Issued Challans',
-      where: { status: 'issued' },
-    },
+    { key: 'all', label: 'All Challans', where: {} },
+    { key: 'issued', label: 'Issued Challans', where: { status: 'issued' } },
     { key: 'draft', label: 'Drafts', where: { status: 'draft' } },
-    { key: 'all_issues', label: 'All Challans', where: {} },
     { key: 'rework', label: 'Rework Issues', where: { isRework: true } },
     { key: 'cancelled', label: 'Cancelled', where: { status: 'cancelled' } },
   ],

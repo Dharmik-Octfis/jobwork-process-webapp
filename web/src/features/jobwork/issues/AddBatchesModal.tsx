@@ -630,6 +630,7 @@ export function AddBatchesModal({
                             offeredCount={batches.length}
                             singular={singular}
                             plural={plural}
+                            unitLabel={unitLabel}
                           />
                         </td>
                         <td style={readOnlyCell}>{row.batch?.manufacturerBatch?.trim() || '—'}</td>
@@ -843,6 +844,7 @@ interface CellProps {
   offeredCount: number;
   singular: string;
   plural: string;
+  unitLabel: { enabled: boolean; singular: string; plural: string };
 }
 
 /**
@@ -869,6 +871,7 @@ function BatchSelectCell({
   offeredCount,
   singular,
   plural,
+  unitLabel,
 }: CellProps) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState<React.CSSProperties>({ visibility: 'hidden' });
@@ -1139,22 +1142,30 @@ function BatchSelectCell({
                 <>
                   {options.map((batch, index) => (
                     <li
-                      key={rowKey(batch)}
+                      key={selectionKey(batch, null)}
                       {...getItemProps({ item: batch, index })}
                       style={{
-                        padding: '8px 12px',
-                        fontSize: 13,
+                        padding: '10px 12px',
+                        borderBottom: '1px solid #e2e8f0',
                         cursor: 'pointer',
                         background: highlightedIndex === index ? '#0062ff' : '#fff',
                         color: highlightedIndex === index ? '#fff' : '#111',
                       }}
                     >
-                      <div style={{ fontWeight: 500 }}>{batchLabel(batch)}</div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontWeight: 500 }}>{batchLabel(batch)}</div>
+                        {unitLabel.enabled && batch.units.length > 0 && (
+                          <div style={{ fontSize: 11.5, fontWeight: 500, color: highlightedIndex === index ? '#e0edff' : '#64748b' }}>
+                            {batch.units.length} {batch.units.length === 1 ? unitLabel.singular.toLowerCase() : unitLabel.plural.toLowerCase()}
+                          </div>
+                        )}
+                      </div>
                       <div
                         style={{
                           fontSize: 11.5,
                           fontWeight: 500,
                           color: highlightedIndex === index ? '#e0edff' : '#64748b',
+                          marginTop: 2,
                         }}
                       >
                         Balance in batch: {formatQty(batch.availableQty)} {uomLabel}
