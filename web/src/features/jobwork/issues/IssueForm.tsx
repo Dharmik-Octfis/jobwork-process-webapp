@@ -8,7 +8,13 @@ import { SplitButton } from '../../../components/ui/SplitButton';
 import { blurOnWheel } from '../../../components/ui/blurOnWheel';
 import { fetchVendors } from '../../purchases/vendors/vendors.api';
 import { fetchCustomers } from '../../sales/customers/customers.api';
-import { fetchLocations } from '../../configuration/locations/locations.api';
+import {
+  LOCATION_KIND_LABELS,
+  fetchLocations,
+  isOwnLocation,
+  type LocationKind,
+} from '../../configuration/locations/locations.api';
+import { RadioGroup } from '../../../components/ui/RadioGroup';
 import {
   fetchAvailableBatches,
   fetchAvailableBatchesForItems,
@@ -303,17 +309,6 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
       : (locations.find((l) => l.vendorId && l.vendorId === processorId)?.id ?? null);
 
   /**
-   * 🔴 The fallback keys off the list AFTER the destination is dropped, not
-   * before it.
-   *
-   * Keying it off the raw list was a real defect: when the only place holding
-   * the item is the processor's own — the normal state once anything has been
-   * sent there — the ledger list had one entry, the exclusion emptied it, and
-   * the fallback never fired. The dropdown then offered nothing, the source
-   * stayed blank, and both the batch queries and the save button died with no
-   * explanation anywhere on screen.
-   */
-  /**
    * 🔴 THE LABEL IS COVERAGE, NOT A QUANTITY (2026-08-19).
    *
    * A challan goes out of ONE location, so the question the user is really
@@ -325,23 +320,63 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
    * A single-item challan keeps the quantity, because there coverage is a
    * tautology and the balance is the useful fact.
    */
-  const ledgerOptions = locations
-    .filter((l) => l.id !== excludedSourceId)
-    .map((l) => ({
-      value: l.id,
-      label:
-        inputItems.length > 1
-          ? `${l.name} — ${l.items.length} of ${inputItems.length} items`
-          : `${l.name} — ${formatQty(l.availableQty)} ${uomLabel}`,
-    }));
+  const ledgerOption = (l: (typeof locations)[number]) => ({
+    value: l.id,
+    label:
+      inputItems.length > 1
+        ? `${l.name} — ${l.items.length} of ${inputItems.length} items`
+        : `${l.name} — ${formatQty(l.availableQty)} ${uomLabel}`,
+  });
 
-  const sourceOptions = ledgerOptions.length
-    ? ledgerOptions
+  /**
+   * 🔴 THE TWO SIDES OF THE RADIO, both cut from the SAME ledger answer.
+   *
+   * `locations` is a ledger query: every place actually holding this step's
+   * inputs, our godowns and processors' sheds alike (§5.4). Splitting it with
+   * `isOwnLocation` is presentation and nothing else — one list shown a side at a
+   * time — so what the form saves is still one `sourceLocationId` and the server
+   * sees no difference at all. Do not let the split become a second field: a
+   * processor's shed is a location, not a rival kind of thing.
+   *
+   * Both sides drop the destination first, so neither can offer the shed the
+   * goods are going to.
+   */
+  const ledgerRows = locations.filter((l) => l.id !== excludedSourceId);
+  const processorSourceOptions = ledgerRows.filter((l) => !isOwnLocation(l)).map(ledgerOption);
+  const ownLedgerRows = ledgerRows.filter(isOwnLocation);
+
+  /**
+   * 🔴 THE FALLBACK KEYS OFF THE LIST AFTER THE DESTINATION IS DROPPED — and,
+   * since the split, off the OWN rows rather than the whole ledger.
+   *
+   * Keying it off the raw list was a real defect: when the only place holding the
+   * item is the processor's own — the normal state once anything has been sent
+   * there — the ledger list had one entry, the exclusion emptied it, and the
+   * fallback never fired. The dropdown then offered nothing, the source stayed
+   * blank, and both the batch queries and the save button died with no
+   * explanation anywhere on screen.
+   *
+   * The split re-opens that same hole one level down: that processor row now sits
+   * on the Vendor side, so a fallback keyed off the combined list would leave the
+   * Location side empty and claim "no godown set up yet", which is not true.
+   */
+  const ownSourceOptions = ownLedgerRows.length
+    ? ownLedgerRows.map(ledgerOption)
     : allLocations
-        .filter(
-          (l) => l.type !== 'processor' && l.type !== 'in_transit' && l.id !== excludedSourceId,
-        )
+        .filter((l) => isOwnLocation(l) && l.id !== excludedSourceId)
         .map((l) => ({ value: l.id, label: `${l.name} — no stock on record` }));
+
+  /**
+   * 🔴 WHICH SIDE WE ARE ON — DERIVED FROM THE VALUE, never a second piece of
+   * state. Holding it separately means two things that can disagree ("Vendor"
+   * selected over a godown), and deriving it is also what reopens a parked draft
+   * on the right side with no effect to run.
+   */
+  const sourceKind: LocationKind = processorSourceOptions.some((o) => o.value === sourceLocationId)
+    ? 'vendor'
+    : 'location';
+
+  const sourceOptions = sourceKind === 'vendor' ? processorSourceOptions : ownSourceOptions;
 
   const effectiveSourceId = sourceLocationId || (sourceOptions[0]?.value ?? '');
   const sourceLocationName =
@@ -996,6 +1031,27 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
     resetAllocations(value);
   };
 
+  /**
+   * 🔴 SWITCHING SIDES IS A LOCATION CHANGE, so it goes through the SAME confirm.
+   *
+   * Batches are held per location, so moving to the other side clears every
+   * allocation exactly as picking a different godown does. Wiring the radio
+   * straight at the value instead would drop them silently — which is the one
+   * thing the confirm below exists to prevent, and it would be invisible because
+   * the grid the entries were in is further down the page.
+   */
+  const changeSourceKind = (kind: LocationKind) => {
+    if (kind === sourceKind) return;
+    const next =
+      (kind === 'vendor' ? processorSourceOptions[0]?.value : ownSourceOptions[0]?.value) ?? '';
+    /* Unreachable while that side is empty — its radio is disabled — but an empty
+       id is falsy, and the confirm banner below renders on `pendingLocationId`
+       being truthy, so it would swallow the change rather than ask about it. */
+    if (!next || next === effectiveSourceId) return;
+    if (allocatedCount > 0) setPendingLocationId(next);
+    else applyLocation(next);
+  };
+
   const openAddBatches = (id: string) => {
     if (!effectiveSourceId) {
       setNotice('Pick the godown this material goes out of first — batches are per godown.');
@@ -1139,6 +1195,64 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
         </p>
       )}
 
+      {/* 🔴 WHERE IT GOES OUT FROM — ITS OWN ROW, ABOVE EVERYTHING ELSE.
+          Every other answer on this form hangs off it: batches are held per
+          location, so changing it clears the whole picker below. In a 180px grid
+          cell beside Date it read as one detail among five, and the two sides of
+          the question had nowhere to sit. Label left, the choice on one line, the
+          list beneath — the shape Zoho Books uses for the same question. */}
+      <section style={{ marginBottom: 18 }}>
+        {/* Label, choice, list — stacked, the way every other field on this form
+            reads. `maxWidth` so the control does not stretch the width of a 1440px
+            monitor just because it now has a row to itself. */}
+        <div style={{ maxWidth: 420 }}>
+          <label style={labelStyle}>Issue from</label>
+          {/* Processor-to-processor is a real move (§5.4), so the Vendor side is
+                not an escape hatch — it is how the second leg of a job is raised.
+                The destination is excluded from both sides, so neither can offer
+                the shed the goods are going to. */}
+          <RadioGroup
+            name="issue-location-kind"
+            ariaLabel="Issue from one of our locations, or from the vendor holding the goods"
+            value={sourceKind}
+            onChange={changeSourceKind}
+            options={[
+              {
+                value: 'location',
+                label: LOCATION_KIND_LABELS.location,
+                disabledReason: ownSourceOptions.length === 0 ? 'no godown set up yet' : undefined,
+              },
+              {
+                value: 'vendor',
+                label: LOCATION_KIND_LABELS.vendor,
+                disabledReason:
+                  processorSourceOptions.length === 0
+                    ? 'nothing for this step is lying with a processor'
+                    : undefined,
+              },
+            ]}
+          />
+          <Select
+            value={effectiveSourceId}
+            onChange={(value) => {
+              if (value === effectiveSourceId) return;
+              /* Ask only when there is something to lose. Changing the godown
+                   before anything is picked is the ordinary first action on this
+                   dialog and must not cost a confirm. */
+              if (allocatedCount > 0) setPendingLocationId(value);
+              else applyLocation(value);
+            }}
+            options={
+              sourceOptions.length === 0
+                ? [{ value: '', label: 'No godown set up yet' }]
+                : sourceOptions
+            }
+            ariaLabel="Issue from location"
+            fullWidth
+          />
+        </div>
+      </section>
+
       <section style={{ marginBottom: 20 }}>
         <div
           className="form-field-grid"
@@ -1158,28 +1272,6 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
               onChange={setIssueDate}
               style={inputStyle}
               portal
-            />
-          </div>
-
-          <div>
-            <label style={labelStyle}>Issue from</label>
-            <Select
-              value={effectiveSourceId}
-              onChange={(value) => {
-                if (value === effectiveSourceId) return;
-                /* Ask only when there is something to lose. Changing the godown
-                   before anything is picked is the ordinary first action on this
-                   dialog and must not cost a confirm. */
-                if (allocatedCount > 0) setPendingLocationId(value);
-                else applyLocation(value);
-              }}
-              options={
-                sourceOptions.length === 0
-                  ? [{ value: '', label: 'No godown set up yet' }]
-                  : sourceOptions
-              }
-              ariaLabel="Issue from location"
-              fullWidth
             />
           </div>
 
