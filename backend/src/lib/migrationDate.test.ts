@@ -1,8 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma, runAsTenant } from '../db/prisma.ts';
 import { createTestOrganization, deleteTestOrganization } from '../db/testTenant.ts';
-import { assertOnOrAfterMigration, getMigrationDate } from './migrationDate.ts';
+import {
+  assertMigrationDateSettable,
+  assertOnOrAfterMigration,
+  getMigrationDate,
+  restampOpeningStock,
+} from './migrationDate.ts';
 import { ApiError } from './apiError.ts';
+import { updateOrganizationSchema } from '../modules/settings/organization/organizations/organizations.schemas.ts';
 
 /**
  * 🔴 THE GUARD IS THE WHOLE FEATURE, so it is pinned here.
@@ -23,20 +29,104 @@ const ANCHOR = new Date('2026-04-01T00:00:00.000Z');
 let anchoredOrgId: string;
 let unanchoredOrgId: string;
 
+/** A third org with real fixtures, for the two functions that read the ledger. */
+let ledgerOrgId: string;
+let ledgerItemId: string;
+let ledgerBatchId: string;
+let ledgerLocationId: string;
+
+const unique = () => process.hrtime.bigint().toString(36);
+
 beforeAll(async () => {
   anchoredOrgId = await createTestOrganization('migration-date-anchored');
   unanchoredOrgId = await createTestOrganization('migration-date-none');
+  ledgerOrgId = await createTestOrganization('migration-date-ledger');
 
   await prisma.organization.update({
     where: { id: anchoredOrgId },
     data: { migrationDate: ANCHOR },
   });
+
+  await runAsTenant(ledgerOrgId, async (tx) => {
+    const uom = await tx.unitOfMeasurement.create({
+      data: { organizationId: ledgerOrgId, unitName: 'Metre', symbol: 'MTR' },
+      select: { id: true },
+    });
+    const item = await tx.item.create({
+      data: {
+        organizationId: ledgerOrgId,
+        name: 'Grey Fabric',
+        sku: `MIGDATE-${unique()}`,
+        unit: 'Metre',
+        stockingUomId: uom.id,
+        trackInventory: true,
+        inventoryTracking: 'batch',
+      },
+      select: { id: true },
+    });
+    ledgerItemId = item.id;
+
+    const location = await tx.location.create({
+      data: { organizationId: ledgerOrgId, name: 'Main Godown', type: 'godown' },
+      select: { id: true },
+    });
+    ledgerLocationId = location.id;
+
+    const batch = await tx.batch.create({
+      data: {
+        organizationId: ledgerOrgId,
+        itemId: item.id,
+        batchNumber: `B-${unique()}`,
+        uomId: uom.id,
+      },
+      select: { id: true },
+    });
+    ledgerBatchId = batch.id;
+  });
 });
 
 afterAll(async () => {
+  await runAsTenant(ledgerOrgId, async (tx) => {
+    await tx.stockLedgerEntry.deleteMany({ where: { organizationId: ledgerOrgId } });
+    await tx.batch.deleteMany({ where: { organizationId: ledgerOrgId } });
+    await tx.item.deleteMany({ where: { organizationId: ledgerOrgId } });
+    await tx.location.deleteMany({ where: { organizationId: ledgerOrgId } });
+    await tx.unitOfMeasurement.deleteMany({ where: { organizationId: ledgerOrgId } });
+  });
   await deleteTestOrganization(anchoredOrgId);
   await deleteTestOrganization(unanchoredOrgId);
+  await deleteTestOrganization(ledgerOrgId);
 });
+
+/** One ledger row on the fixture org, dated where the test needs it. */
+async function postRow(args: {
+  sourceDocType: string;
+  movementType: string;
+  postedAt: Date;
+  qtyIn?: number;
+}) {
+  return runAsTenant(ledgerOrgId, (tx) =>
+    tx.stockLedgerEntry.create({
+      data: {
+        organizationId: ledgerOrgId,
+        itemId: ledgerItemId,
+        batchId: ledgerBatchId,
+        locationId: ledgerLocationId,
+        movementType: args.movementType,
+        qtyIn: args.qtyIn ?? 10,
+        sourceDocType: args.sourceDocType,
+        postedAt: args.postedAt,
+      },
+      select: { id: true },
+    }),
+  );
+}
+
+/** Clear the fixture org's ledger between cases — each one owns its own rows. */
+const clearLedger = () =>
+  runAsTenant(ledgerOrgId, (tx) =>
+    tx.stockLedgerEntry.deleteMany({ where: { organizationId: ledgerOrgId } }),
+  );
 
 /** `assertOnOrAfterMigration` against the anchored org, with a challan's shape. */
 const check = (orgId: string, date: Date) =>
@@ -157,5 +247,172 @@ describe('migration date — the guard', () => {
     const api = error as ApiError;
     expect(api.details).toHaveProperty('billDate');
     expect(api.message).toContain('bill');
+  });
+});
+
+/**
+ * 🔴 THE FIELD IN SETTINGS → PREFERENCES WRITES THROUGH THESE TWO.
+ *
+ * Saving a migration date is not one write. It has to refuse a day that would
+ * leave existing movements behind it — the anchor's whole meaning is that
+ * nothing is dated before it — and it has to carry the opening stock along, or
+ * the organization asserts two dates at once and the balance as at its own
+ * anchor reads zero. Both run inside the update endpoint's transaction.
+ */
+describe('migration date — setting it from Preferences', () => {
+  const APRIL = new Date('2026-04-01T00:00:00.000Z');
+
+  it('allows any day on an organization with no movements at all', async () => {
+    await clearLedger();
+    await expect(
+      runAsTenant(ledgerOrgId, (tx) =>
+        assertMigrationDateSettable(tx, { organizationId: ledgerOrgId, date: APRIL }),
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  /**
+   * 🔴 AN ESTABLISHED BUSINESS CAN STILL ADOPT ONE. The test is "would anything
+   * fall behind this day", NOT "has this organization been used" — a stricter
+   * rule reads as tidier and leaves every existing customer unable to set an
+   * anchor at all.
+   */
+  it('allows a day on or before the earliest movement', async () => {
+    await clearLedger();
+    await postRow({
+      sourceDocType: 'bill',
+      movementType: 'receipt',
+      postedAt: new Date('2026-05-10T00:00:00.000Z'),
+    });
+
+    await expect(
+      runAsTenant(ledgerOrgId, (tx) =>
+        assertMigrationDateSettable(tx, { organizationId: ledgerOrgId, date: APRIL }),
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it('refuses a day with movements behind it, and names the earliest', async () => {
+    await clearLedger();
+    await postRow({
+      sourceDocType: 'job_issue',
+      movementType: 'issue',
+      postedAt: new Date('2026-02-20T00:00:00.000Z'),
+    });
+
+    const error = await runAsTenant(ledgerOrgId, (tx) =>
+      assertMigrationDateSettable(tx, { organizationId: ledgerOrgId, date: APRIL }),
+    ).catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ApiError);
+    const api = error as ApiError;
+    expect(api.status).toBe(400);
+    // The message has to say what to pick instead, or the user is left guessing
+    // at a date the form will accept.
+    expect(String((api.details as Record<string, string>)['migrationDate'])).toContain(
+      '20-02-2026',
+    );
+  });
+
+  /**
+   * 🔴 OPENING STOCK IS NOT A CONSTRAINT ON THE ANCHOR — it is what the anchor
+   * DATES. Counting it here would make an organization that has already declared
+   * opening stock unable to move its own migration date, which is exactly the
+   * state OCTFIS TECHNO LLP was in.
+   */
+  it('ignores opening stock when deciding, however it is dated', async () => {
+    await clearLedger();
+    await postRow({
+      sourceDocType: 'item_opening_stock',
+      movementType: 'opening',
+      postedAt: new Date('2026-01-05T00:00:00.000Z'),
+    });
+
+    await expect(
+      runAsTenant(ledgerOrgId, (tx) =>
+        assertMigrationDateSettable(tx, { organizationId: ledgerOrgId, date: APRIL }),
+      ),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe('migration date — re-stamping the opening stock', () => {
+  const JUNE = new Date('2026-06-09T00:00:00.000Z');
+
+  it('moves the declaration AND its corrections, and nothing else', async () => {
+    await clearLedger();
+    const typedOn = new Date('2026-08-11T00:00:00.000Z');
+
+    await postRow({
+      sourceDocType: 'item_opening_stock',
+      movementType: 'opening',
+      postedAt: typedOn,
+    });
+    // 🔴 `settleOpening` writes a correction to an opening figure as a `reversal`
+    // against the same document. Moving the declaration without its corrections
+    // leaves the anchor's balance overstated by every fix ever made to it.
+    await postRow({
+      sourceDocType: 'item_opening_stock',
+      movementType: 'reversal',
+      postedAt: typedOn,
+    });
+    // A real event, on its own day. It must not move.
+    await postRow({
+      sourceDocType: 'bill',
+      movementType: 'receipt',
+      postedAt: typedOn,
+    });
+
+    const moved = await runAsTenant(ledgerOrgId, (tx) =>
+      restampOpeningStock(tx, { organizationId: ledgerOrgId, date: JUNE }),
+    );
+    expect(moved).toBe(2);
+
+    const rows = await runAsTenant(ledgerOrgId, (tx) =>
+      tx.stockLedgerEntry.findMany({
+        where: { organizationId: ledgerOrgId },
+        select: { sourceDocType: true, postedAt: true },
+      }),
+    );
+
+    for (const row of rows) {
+      const expected = row.sourceDocType === 'item_opening_stock' ? JUNE : typedOn;
+      expect(row.postedAt.toISOString()).toBe(expected.toISOString());
+    }
+  });
+});
+
+/**
+ * 🔴 THE WIRE FORMAT THE PREFERENCES FIELD POSTS. `<input type="date">` yields
+ * `YYYY-MM-DD`, and the schema takes that and nothing looser — an instant would
+ * land the anchor on the previous UTC day for an IST user, which is the whole
+ * reason `migrationDate.ts` insists on a calendar day.
+ */
+describe('migration date — what the update endpoint accepts', () => {
+  it('takes the date-only string the field produces', () => {
+    const parsed = updateOrganizationSchema.safeParse({ migrationDate: '2026-04-01' });
+    expect(parsed.success).toBe(true);
+  });
+
+  /** Clearing the field is how an organization goes back to "never migrated". */
+  it('takes an empty string, to clear the anchor', () => {
+    expect(updateOrganizationSchema.safeParse({ migrationDate: '' }).success).toBe(true);
+    expect(updateOrganizationSchema.safeParse({ migrationDate: null }).success).toBe(true);
+  });
+
+  it('refuses a display-formatted date and a full instant', () => {
+    expect(updateOrganizationSchema.safeParse({ migrationDate: '01-04-2026' }).success).toBe(false);
+    expect(
+      updateOrganizationSchema.safeParse({ migrationDate: '2026-04-01T00:00:00+05:30' }).success,
+    ).toBe(false);
+  });
+
+  /** Every other Preferences field still saves on its own, as it always did. */
+  it('leaves the rest of the form alone when the anchor is not sent', () => {
+    const parsed = updateOrganizationSchema.safeParse({
+      settings: { itemTrackingLabel: { singular: 'Lot', plural: 'Lots' } },
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.migrationDate).toBeUndefined();
   });
 });
