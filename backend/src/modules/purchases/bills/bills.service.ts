@@ -68,6 +68,10 @@ async function receiveBillBatch(
     lineId: string;
     locationId: string | null;
     rate: number;
+    /* The DOCUMENT's date, never the clock. `posted_at` is when the goods arrived,
+       so a bill dated 15-Apr and entered in September must age and report from
+       April — see the column's own comment in `inventory.prisma`. */
+    billDate: Date;
     batch: BillBatchPayload;
     /**
      * 🔴 WHETHER THE STOCK MOVES — the whole of what a draft changes, and the
@@ -81,7 +85,18 @@ async function receiveBillBatch(
     post: boolean;
   },
 ): Promise<{ unitIds: string[] }> {
-  const { organizationId, userId, itemId, billId, lineId, locationId, rate, batch, post } = args;
+  const {
+    organizationId,
+    userId,
+    itemId,
+    billId,
+    lineId,
+    locationId,
+    rate,
+    billDate,
+    batch,
+    post,
+  } = args;
   const quantity = Number(batch.quantity);
 
   let batchId = batch.batchId;
@@ -240,6 +255,7 @@ async function receiveBillBatch(
         sourceDocType: 'bill',
         sourceDocId: billId,
         sourceDocLineId: lineId,
+        postedAt: billDate,
         userId: userId || undefined,
       },
       resolved,
@@ -261,6 +277,7 @@ async function receiveBillBatch(
         sourceDocType: 'bill',
         sourceDocId: billId,
         sourceDocLineId: lineId,
+        postedAt: billDate,
         userId: userId || undefined,
       },
       resolved,
@@ -813,6 +830,7 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
               lineId: lineRecord.id,
               locationId: createdBill.locationId,
               rate: Number(payload.rate || 0),
+              billDate: createdBill.billDate,
               batch: b,
               post: posting,
             });
@@ -842,6 +860,7 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
               sourceDocType: 'bill',
               sourceDocId: createdBill.id,
               sourceDocLineId: lineRecord.id,
+              postedAt: createdBill.billDate,
               userId: userId || undefined,
             },
             asResolvedBatch(batch),
@@ -999,6 +1018,10 @@ export async function updateBill(
     const effectiveLocationId =
       billData.locationId !== undefined ? billData.locationId : existing.locationId;
     const effectiveStatus = (billData.status ?? existing.status ?? '').toLowerCase();
+    // Re-dating a bill re-dates the stock it moved: the reversal below withdraws
+    // every old row and this save posts fresh ones, so they must carry the date
+    // the bill now says, not the one it used to.
+    const effectiveBillDate = billData.billDate ?? existing.billDate;
     const goingOpen = existing.status.toLowerCase() === 'draft' && effectiveStatus === 'open';
 
     /**
@@ -1092,6 +1115,7 @@ export async function updateBill(
               lineId: lineRecord.id,
               locationId: effectiveLocationId,
               rate: Number(payload.rate || 0),
+              billDate: effectiveBillDate,
               batch: b,
               post: mustPost,
             });
@@ -1119,6 +1143,7 @@ export async function updateBill(
               sourceDocType: 'bill',
               sourceDocId: id,
               sourceDocLineId: lineRecord.id,
+              postedAt: effectiveBillDate,
               userId: userId || undefined,
             },
             asResolvedBatch(batch),

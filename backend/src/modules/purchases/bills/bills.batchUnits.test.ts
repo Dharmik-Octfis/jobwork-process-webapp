@@ -319,7 +319,11 @@ describe('bill — the two defects the unit level would have amplified', () => {
     const rows = await runAsTenant(orgId, (tx) =>
       tx.stockLedgerEntry.findMany({
         where: { organizationId: orgId, sourceDocType: 'bill', sourceDocId: bill.id },
-        orderBy: { postedAt: 'asc' },
+        // `createdAt`, not `postedAt`: this asserts the ORDER THE ROWS WERE
+        // WRITTEN, and since a bill posts on its own `billDate` the two are no
+        // longer the same sequence — a reversal happens today, the receipts it
+        // brackets are dated whenever the bill says.
+        orderBy: { createdAt: 'asc' },
       }),
     );
 
@@ -958,5 +962,134 @@ describe('bill — a draft keeps its batches and takas', () => {
     expect(rows).toBe(0);
     // And its packages go with it — nothing else ever moved them.
     expect(await liveUnitsOf(batchId)).toHaveLength(0);
+  });
+});
+
+/**
+ * 🔴 A BILL POSTS ON ITS OWN DATE, NOT THE DAY IT WAS TYPED.
+ *
+ * `posted_at` is when the goods arrived; `created_at` is when someone recorded it.
+ * All four of the bill's posting sites used to omit `postedAt` and fall through to
+ * `postMovement`'s `new Date()`, so a bill dated in April put its stock on the
+ * books in September. The number everyone watches stayed right — `getBalance`
+ * adds no date clause at all — which is exactly why it survived this long: only
+ * "as on" reports and the batch ageing that reads `MIN(posted_at)` were wrong.
+ */
+describe('bill → posted_at is the bill date', () => {
+  const ARRIVED = new Date('2026-04-15T00:00:00.000Z');
+  const ISSUED = new Date('2026-04-20T00:00:00.000Z');
+  const MONTH_END = new Date('2026-04-30T00:00:00.000Z');
+
+  /** A bill dated in the past, entered today — the whole shape of the bug. */
+  async function backdatedBill(quantity = 5000) {
+    const bill = await createBill(orgId, userId, {
+      ...billPayload([{ supplierBatchRef: `JV-${unique()}`, quantity }], 'Open', quantity),
+      billDate: ARRIVED,
+    } as CreateBillPayload);
+    const batchId = await runAsTenant(orgId, async (tx) => {
+      const row = await tx.stockLedgerEntry.findFirst({
+        where: { organizationId: orgId, sourceDocType: 'bill', sourceDocId: bill.id },
+        select: { batchId: true },
+      });
+      return row!.batchId;
+    });
+    return { bill, batchId };
+  }
+
+  it('stamps every row with the bill date, not the clock', async () => {
+    const { bill } = await backdatedBill();
+
+    const rows = await runAsTenant(orgId, (tx) =>
+      tx.stockLedgerEntry.findMany({
+        where: { organizationId: orgId, sourceDocType: 'bill', sourceDocId: bill.id },
+        select: { postedAt: true, createdAt: true },
+      }),
+    );
+
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.postedAt.toISOString()).toBe(ARRIVED.toISOString());
+      // …and the day it was typed is still on the row, in the other column.
+      expect(row.createdAt.getTime()).toBeGreaterThan(row.postedAt.getTime());
+    }
+  });
+
+  it('answers an as-on balance from the bill date onwards', async () => {
+    const { batchId } = await backdatedBill();
+
+    const [before, after] = await runAsTenant(orgId, async (tx) => [
+      // The day before it arrived: nothing yet.
+      await getBalance(tx, {
+        organizationId: orgId,
+        batchId,
+        asOf: new Date('2026-04-14T23:59:59.000Z'),
+      }),
+      await getBalance(tx, { organizationId: orgId, batchId, asOf: MONTH_END }),
+    ]);
+
+    expect(before.qty.toString()).toBe('0');
+    // Was 0 here too while the row was dated September.
+    expect(after.qty.toString()).toBe('5000');
+  });
+
+  /**
+   * 🔴 THE SHARP EDGE. Goods issued after they arrived but before anyone typed
+   * either document: the issue carried its own date and the receipt did not, so
+   * an as-on report summed an outward row whose inward half it could not see and
+   * reported stock leaving a batch that had never arrived.
+   */
+  it('does not read negative when the stock moves on before entry day', async () => {
+    const { batchId } = await backdatedBill();
+
+    await runAsTenant(orgId, (tx) =>
+      tx.stockLedgerEntry.create({
+        data: {
+          organizationId: orgId,
+          itemId,
+          batchId,
+          locationId,
+          movementType: 'issue',
+          qtyOut: 200,
+          valueOut: 2000,
+          sourceDocType: 'job_issue',
+          sourceDocId: null,
+          postedAt: ISSUED,
+        },
+      }),
+    );
+
+    const balance = await runAsTenant(orgId, (tx) =>
+      getBalance(tx, { organizationId: orgId, batchId, asOf: MONTH_END }),
+    );
+    // −200 before the fix: the issue was visible in April, the receipt was not.
+    expect(balance.qty.toString()).toBe('4800');
+  });
+
+  it('re-dates its stock when the bill is re-dated', async () => {
+    const { bill, batchId } = await backdatedBill(100);
+    const MOVED = new Date('2026-05-02T00:00:00.000Z');
+
+    await updateBill(orgId, bill.id, userId, {
+      status: 'Open',
+      billDate: MOVED,
+      lineItems: [
+        { itemId, quantity: 100, rate: 10, amount: 1000, batches: [{ batchId, quantity: 100 }] },
+      ],
+    } as never);
+
+    const latest = await runAsTenant(orgId, (tx) =>
+      tx.stockLedgerEntry.findFirst({
+        where: {
+          organizationId: orgId,
+          sourceDocType: 'bill',
+          sourceDocId: bill.id,
+          movementType: 'receipt',
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { postedAt: true },
+      }),
+    );
+
+    expect(latest!.postedAt.toISOString()).toBe(MOVED.toISOString());
   });
 });
