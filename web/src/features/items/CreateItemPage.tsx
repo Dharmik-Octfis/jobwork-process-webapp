@@ -1090,7 +1090,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
 
                   {formData.inventoryTracking === 'none' && (
                     <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: '300px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500, whiteSpace: 'nowrap' }}>
                           Opening Stock
                         </label>
@@ -1101,8 +1101,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                           value={formData.openingStock || ''}
                           onChange={handleChange}
                           style={{
-                            width: '100%',
-                            flex: 1,
+                            width: '140px',
                             padding: '8px 12px',
                             borderRadius: '4px',
                             border: '1px solid #d1d5db',
@@ -1110,7 +1109,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                           }}
                         />
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: '360px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500, whiteSpace: 'nowrap' }}>
                           Value of Opening Stock (per quantity)
                         </label>
@@ -1121,8 +1120,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                           value={formData.openingStockValuePerUnit || ''}
                           onChange={handleChange}
                           style={{
-                            width: '100%',
-                            flex: 1,
+                            width: '140px',
                             padding: '8px 12px',
                             borderRadius: '4px',
                             border: '1px solid #d1d5db',
