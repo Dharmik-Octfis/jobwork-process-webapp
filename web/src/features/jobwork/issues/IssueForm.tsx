@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { DateInput } from '../../../components/ui/DateInput';
 import { Select } from '../../../components/ui/Select';
+import { LocalComboBox } from '../../../components/ui/LocalComboBox';
 import { SplitButton } from '../../../components/ui/SplitButton';
 import { blurOnWheel } from '../../../components/ui/blurOnWheel';
 import { fetchVendors } from '../../purchases/vendors/vendors.api';
@@ -80,7 +81,6 @@ const sectionHeading: React.CSSProperties = {
   letterSpacing: 0.4,
 };
 
-/** The line-items grid. Fixed columns are the point — see the note above the table. */
 const lineTh: React.CSSProperties = {
   padding: '8px 12px',
   fontWeight: 600,
@@ -1201,82 +1201,90 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
           cell beside Date it read as one detail among five, and the two sides of
           the question had nowhere to sit. Label left, the choice on one line, the
           list beneath — the shape Zoho Books uses for the same question. */}
-      <section style={{ marginBottom: 18 }}>
-        {/* Label, choice, list — stacked, the way every other field on this form
-            reads. `maxWidth` so the control does not stretch the width of a 1440px
-            monitor just because it now has a row to itself. */}
-        <div style={{ maxWidth: 420 }}>
-          <label style={labelStyle}>Issue from</label>
-          {/* Processor-to-processor is a real move (§5.4), so the Vendor side is
-                not an escape hatch — it is how the second leg of a job is raised.
-                The destination is excluded from both sides, so neither can offer
-                the shed the goods are going to. */}
-          <RadioGroup
-            name="issue-location-kind"
-            ariaLabel="Issue from one of our locations, or from the vendor holding the goods"
-            value={sourceKind}
-            onChange={changeSourceKind}
-            options={[
-              {
-                value: 'location',
-                label: LOCATION_KIND_LABELS.location,
-                disabledReason: ownSourceOptions.length === 0 ? 'no godown set up yet' : undefined,
-              },
-              {
-                value: 'vendor',
-                label: LOCATION_KIND_LABELS.vendor,
-                disabledReason:
-                  processorSourceOptions.length === 0
-                    ? 'nothing for this step is lying with a processor'
-                    : undefined,
-              },
-            ]}
-          />
-          <Select
-            value={effectiveSourceId}
-            onChange={(value) => {
-              if (value === effectiveSourceId) return;
-              /* Ask only when there is something to lose. Changing the godown
-                   before anything is picked is the ordinary first action on this
-                   dialog and must not cost a confirm. */
-              if (allocatedCount > 0) setPendingLocationId(value);
-              else applyLocation(value);
-            }}
-            options={
-              sourceOptions.length === 0
-                ? [{ value: '', label: 'No godown set up yet' }]
-                : sourceOptions
-            }
-            ariaLabel="Issue from location"
-            fullWidth
-          />
-        </div>
-      </section>
-
       <section style={{ marginBottom: 20 }}>
         <div
           className="form-field-grid"
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: 14,
+            gridTemplateColumns: '120px 1fr',
+            gap: 16,
+            alignItems: 'start', // Align start since Issue from has two stacked inputs
+            maxWidth: '600px', // Increased from 480px so RadioGroup doesn't wrap
           }}
         >
-          <div>
-            <label style={labelStyle} htmlFor="issue-date">
-              Date
-            </label>
+          {/* Label, choice, list — stacked, the way every other field on this form
+              reads. `maxWidth` so the control does not stretch the width of a 1440px
+              monitor just because it now has a row to itself. */}
+          <label style={{ ...labelStyle, whiteSpace: 'nowrap', marginBottom: 0, marginTop: 10 }}>
+            Issue from
+          </label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {/* Processor-to-processor is a real move (§5.4), so the Vendor side is
+                  not an escape hatch — it is how the second leg of a job is raised.
+                  The destination is excluded from both sides, so neither can offer
+                  the shed the goods are going to. */}
+            <RadioGroup
+              name="issue-location-kind"
+              ariaLabel="Issue from one of our locations, or from the vendor holding the goods"
+              value={sourceKind}
+              onChange={changeSourceKind}
+              options={[
+                {
+                  value: 'location',
+                  label: LOCATION_KIND_LABELS.location,
+                  disabled: ownSourceOptions.length === 0,
+                },
+                {
+                  value: 'vendor',
+                  label: LOCATION_KIND_LABELS.vendor,
+                  disabled: processorSourceOptions.length === 0,
+                },
+              ]}
+            />
+            <div style={{ width: 320 }}>
+              <Select
+                value={effectiveSourceId}
+                onChange={(value) => {
+                  if (value === effectiveSourceId) return;
+                  /* Ask only when there is something to lose. Changing the godown
+                       before anything is picked is the ordinary first action on this
+                       dialog and must not cost a confirm. */
+                  if (allocatedCount > 0) setPendingLocationId(value);
+                  else applyLocation(value);
+                }}
+                options={
+                  sourceOptions.length === 0
+                    ? [{ value: '', label: 'No godown set up yet' }]
+                    : sourceOptions
+                }
+                ariaLabel="Issue from location"
+                fullWidth
+              />
+            </div>
+          </div>
+
+          <label
+            style={{ ...labelStyle, whiteSpace: 'nowrap', marginBottom: 0, alignSelf: 'center' }}
+            htmlFor="issue-date"
+          >
+            Date
+          </label>
+          <div style={{ width: 320 }}>
             <DateInput
               id="issue-date"
               value={issueDate}
               onChange={setIssueDate}
-              style={inputStyle}
+              style={{ ...inputStyle, width: '100%' }}
               portal
             />
           </div>
 
-          <div>
-            <label style={labelStyle}>Done By</label>
+          <label
+            style={{ ...labelStyle, whiteSpace: 'nowrap', marginBottom: 0, alignSelf: 'center' }}
+          >
+            Done By
+          </label>
+          <div style={{ width: 320 }}>
             <Select
               value={processorType}
               onChange={(value) => {
@@ -1300,51 +1308,73 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
           </div>
 
           {processorType === 'internal' ? (
-            <div>
-              <label style={labelStyle} htmlFor="issue-workcentre">
+            <>
+              <label
+                style={{
+                  ...labelStyle,
+                  whiteSpace: 'nowrap',
+                  marginBottom: 0,
+                  alignSelf: 'center',
+                }}
+                htmlFor="issue-workcentre"
+              >
                 Work centre
               </label>
-              <input
-                id="issue-workcentre"
-                type="text"
-                value={step.workCentre?.name ?? '—'}
-                readOnly
-                style={readOnlyStyle}
-              />
-            </div>
+              <div style={{ width: 320 }}>
+                <input
+                  id="issue-workcentre"
+                  type="text"
+                  value={step.workCentre?.name ?? '—'}
+                  readOnly
+                  style={{ ...readOnlyStyle, width: '100%' }}
+                />
+              </div>
+            </>
           ) : (
-            <div>
-              <label style={labelStyle}>Processor</label>
-              <Select
-                value={processorId ?? ''}
-                onChange={(value) => setProcessorId(value || null)}
-                options={[
-                  { value: '', label: 'Select a processor…' },
-                  ...processors.map((v) => ({
+            <>
+              <label
+                style={{
+                  ...labelStyle,
+                  whiteSpace: 'nowrap',
+                  marginBottom: 0,
+                  alignSelf: 'center',
+                }}
+              >
+                Processor
+              </label>
+              <div style={{ width: 320 }}>
+                <LocalComboBox
+                  value={processorId ?? null}
+                  onChange={(value) => setProcessorId(value || null)}
+                  options={processors.map((v) => ({
                     value: v.id,
                     label: v.companyName || v.contactName,
-                  })),
-                ]}
-                ariaLabel="Processor"
-                fullWidth
-              />
-            </div>
+                  }))}
+                  placeholder="Select a processor…"
+                  ariaLabel="Processor"
+                  portal={true}
+                />
+              </div>
+            </>
           )}
 
           {/* Remarks sat in the Transport section until that section was removed
               (2026-08-10). It is not a transport field — it is the one free-text
               note the challan prints — so it moved up here rather than going with
               vehicle / LR / e-way bill. */}
-          <div>
-            <label style={labelStyle} htmlFor="issue-remarks">
-              Remarks
-            </label>
+          <label
+            style={{ ...labelStyle, whiteSpace: 'nowrap', marginBottom: 0, alignSelf: 'center' }}
+            htmlFor="issue-remarks"
+          >
+            Remarks
+          </label>
+          <div style={{ width: 320 }}>
             <input
               id="issue-remarks"
               type="text"
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
-              style={inputStyle}
+              style={{ ...inputStyle, width: '100%' }}
             />
           </div>
         </div>
@@ -1367,7 +1397,14 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
           the eye reads DOWN a column to compare, and that only works if the column
           is in the same place on every row.
         */}
-        <div style={{ border: '1px solid #eef0f3', borderRadius: 6, overflowX: 'auto' }}>
+        <div
+          style={{
+            background: '#fff',
+            border: '1px solid #eef0f3',
+            borderRadius: 6,
+            overflowX: 'auto',
+          }}
+        >
           <div className="responsive-table-wrapper">
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
               <thead>
@@ -1384,7 +1421,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
                   <th style={{ ...lineTh, textAlign: 'center', width: 110 }} scope="col">
                     To Be Issued
                   </th>
-                  <th style={{ ...lineTh, textAlign: 'right', width: 140 }} scope="col">
+                  <th style={{ ...lineTh, textAlign: 'center', width: 110 }} scope="col">
                     Quantity
                   </th>
                   <th style={{ ...lineTh, width: 70 }} scope="col">
@@ -1426,7 +1463,13 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
                   const isEmptyHere = !query?.isLoading && !search && available === 0;
 
                   return (
-                    <tr key={input.itemId} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <tr
+                      key={input.itemId}
+                      style={{
+                        borderBottom: index === inputItems.length - 1 ? 'none' : '1px solid #f1f5f9',
+                        background: index % 2 === 0 ? '#ffffff' : '#f8fafc',
+                      }}
+                    >
                       <td style={{ ...lineTd, whiteSpace: 'normal' }}>
                         <div style={{ ...lineCell, fontWeight: 600, color: '#111' }}>
                           {input.name}
@@ -1511,7 +1554,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
                         </div>
                       </td>
 
-                      <td style={{ ...lineTd, textAlign: 'right' }}>
+                      <td style={{ ...lineTd, textAlign: 'center' }}>
                         {showUnstockedInput ? (
                           /*
                           🔴 AN UNTRACKED ITEM HAS NO PICKER AND NEVER WILL. Its
@@ -1542,8 +1585,8 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
                             aria-label={`Quantity of ${input.name} to issue`}
                             style={{
                               ...inputStyle,
-                              width: 120,
-                              textAlign: 'right',
+                              width: '100%',
+                              textAlign: 'center',
                               background: isEmptyHere ? '#f8fafc' : '#fff',
                               borderColor: overDrawn.has(input.itemId) ? '#fca5a5' : '#d1d5db',
                             }}
@@ -1572,8 +1615,8 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
                             aria-label={`Quantity of ${input.name} to issue`}
                             style={{
                               ...inputStyle,
-                              width: 120,
-                              textAlign: 'right',
+                              width: '100%',
+                              textAlign: 'center',
                               background: isEmptyHere ? '#f8fafc' : '#fff',
                               borderColor: blockedLines.has(input.itemId) ? '#fca5a5' : '#d1d5db',
                             }}
@@ -1585,7 +1628,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
                         <div style={lineCell}>{input.uomLabel || '—'}</div>
                       </td>
 
-                      <td style={lineTd}>
+                      <td style={{ ...lineTd, borderRight: 'none' }}>
                         {showUnstockedInput ? (
                           /* Untracked stock is allocated FIFO by the server, so there
                            is nothing to pick — saying so keeps the column meaningful
