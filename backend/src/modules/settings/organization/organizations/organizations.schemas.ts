@@ -13,6 +13,32 @@ export const createOrganizationSchema = openApiRegistry.register(
     baseCurrency: z.string().optional().openapi({ example: 'INR' }),
     taxIdValue: z.string().optional().openapi({ example: '22AAAAA0000A1Z5' }),
 
+    /**
+     * 🔴 THE DAY THIS ORGANIZATION'S BOOKS BEGIN HERE — a COLUMN, and top level
+     * here rather than another key inside `settings`.
+     *
+     * It lived in `settings` until 2026-09-10, as a string nothing on the server
+     * ever read. That is the wrong home twice over: it is a comparison operand
+     * (every document write evaluates it) rather than a preference, and
+     * `settings` is shallow-merged by whichever form last posted, so a page that
+     * does not render this key wipes it — silently re-opening back-dating
+     * everywhere with nothing to report it.
+     *
+     * DATE-ONLY ON THE WIRE, like every other date this API takes. An
+     * offset-bearing ISO would land the anchor on the previous UTC day for an
+     * IST user; `migrationDate.ts` explains why that cannot be papered over
+     * without a per-org timezone.
+     *
+     * Nullable so it can be cleared back to "never migrated".
+     */
+    migrationDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a calendar date, as YYYY-MM-DD.')
+      .nullable()
+      .optional()
+      .or(z.literal(''))
+      .openapi({ example: '2026-04-01' }),
+
     dialCode: z.string().optional().openapi({ example: '+91' }),
     phone: z
       .string()
@@ -85,7 +111,6 @@ export const createOrganizationSchema = openApiRegistry.register(
             plural: z.string().max(30).default('Takas'),
           })
           .optional(),
-        migrationDate: z.string().optional().openapi({ example: '2024-04-01' }),
       })
       .optional(),
   }),

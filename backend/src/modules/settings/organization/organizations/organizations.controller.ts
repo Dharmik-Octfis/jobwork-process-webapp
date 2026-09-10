@@ -9,6 +9,7 @@ import { seedSystemRoles } from '../roles/roles.service.ts';
 import { withOrgCodeRetry } from './orgCode.ts';
 import { composeFullName } from '../../../../lib/memberDirectory.ts';
 import { uploadFile, getFileUrl } from '../../../../lib/storage.ts';
+import { assertMigrationDateSettable, restampOpeningStock } from '../../../../lib/migrationDate.ts';
 
 import { MASTER_CURRENCIES } from '../../../seed-data/seed-data.controller.ts';
 
@@ -93,6 +94,10 @@ async function mapToZohoFormat(org: Organization & { industry?: Pick<Industry, '
     account_created_date: org.createdAt.toISOString(),
     industry: org.industry, // from include
     settings: org.settings,
+    // Date-only, matching what the API accepts: the client renders this straight
+    // into a `<input type="date">`, and an instant would show the wrong day to
+    // anyone east of UTC.
+    migrationDate: org.migrationDate ? org.migrationDate.toISOString().slice(0, 10) : null,
   };
 }
 
@@ -260,6 +265,33 @@ export async function updateOrganization(req: Request, res: Response, next: Next
     if (data.phone !== undefined) updateData.phone = data.phone;
     if (data.dialCode !== undefined) updateData.dialCode = data.dialCode;
     if (data.website !== undefined) updateData.website = data.website;
+
+    /**
+     * 🔴 THE ANCHOR, AND THE TWO WRITES THAT HAVE TO HAPPEN TOGETHER.
+     *
+     * Setting it is refused when a transaction would fall behind the new day —
+     * the anchor's whole meaning is that nothing does. And moving it MUST carry
+     * the opening stock along, or the organization asserts two dates at once and
+     * the balance as at its own anchor reads zero. Both inside one transaction:
+     * a re-stamp that lands without the column, or the reverse, is worse than
+     * either change alone.
+     *
+     * Empty string clears it back to "never migrated" — no anchor, no guard.
+     */
+    if (data.migrationDate !== undefined) {
+      const anchor =
+        data.migrationDate === null || data.migrationDate === ''
+          ? null
+          : new Date(`${data.migrationDate}T00:00:00.000Z`);
+
+      if (anchor) {
+        await runAsTenant(orgId, async (tx) => {
+          await assertMigrationDateSettable(tx, { organizationId: orgId, date: anchor });
+          await restampOpeningStock(tx, { organizationId: orgId, date: anchor });
+        });
+      }
+      updateData.migrationDate = anchor;
+    }
 
     if (data.address !== undefined) {
       if (data.address.street_address1 !== undefined)

@@ -98,3 +98,70 @@ export async function assertOnOrAfterMigration(
     },
   );
 }
+
+/** What opening stock posts as — excluded from the guard below, re-dated by it. */
+const OPENING_DOC_TYPE = 'item_opening_stock';
+
+/**
+ * 🔴 THE ANCHOR MAY ONLY MOVE TO WHERE IT IS STILL TRUE.
+ *
+ * The invariant the whole feature rests on is "no transaction is dated before
+ * the migration date". Setting one that already has documents behind it does
+ * not break the ledger, it breaks the CLAIM — every opening balance silently
+ * stops accounting for everything prior, and no query anywhere would report it.
+ *
+ * So the test is not "has this organization been used", it is "would anything
+ * fall behind the proposed day". An established organization CAN adopt an
+ * anchor, as long as it picks one on or before its earliest transaction; a
+ * stricter rule would leave every existing customer unable to set one at all.
+ *
+ * Opening stock is excluded because opening stock is what the anchor DATES —
+ * `restampOpeningStock` moves it to match, rather than it constraining the move.
+ */
+export async function assertMigrationDateSettable(
+  tx: TenantClient,
+  args: { organizationId: string; date: Date },
+): Promise<void> {
+  const earliest = await tx.stockLedgerEntry.aggregate({
+    where: {
+      organizationId: args.organizationId,
+      sourceDocType: { not: OPENING_DOC_TYPE },
+    },
+    _min: { postedAt: true },
+  });
+
+  const first = earliest._min.postedAt;
+  if (!first) return;
+  if (utcDayStart(first) >= utcDayStart(args.date)) return;
+
+  throw ApiError.badRequest(
+    'Your books cannot begin after transactions you have already recorded.',
+    {
+      migrationDate:
+        `This organization already has stock movements from ${formatDay(first)}. ` +
+        'Pick a date on or before that, or cancel those documents first.',
+    },
+  );
+}
+
+/**
+ * Move the opening stock onto a new anchor.
+ *
+ * 🔴 REQUIRED WHENEVER THE ANCHOR MOVES, not a tidy-up. Opening stock is a
+ * statement about the day the books began; leave it on the old day and the
+ * organization is asserting two different dates at once, with the balance as at
+ * its own anchor reading zero.
+ *
+ * Both movement types, because `settleOpening` writes corrections as `reversal`
+ * rows against the same document — see the note on its `postedAt` argument.
+ */
+export async function restampOpeningStock(
+  tx: TenantClient,
+  args: { organizationId: string; date: Date },
+): Promise<number> {
+  const { count } = await tx.stockLedgerEntry.updateMany({
+    where: { organizationId: args.organizationId, sourceDocType: OPENING_DOC_TYPE },
+    data: { postedAt: args.date },
+  });
+  return count;
+}

@@ -46,9 +46,15 @@ const baseOrganizationSchema = z.object({
           plural: z.string().max(30).optional(),
         })
         .optional(),
-      migrationDate: z.string().optional(),
     })
     .optional(),
+
+  /**
+   * The day this organization's books begin here. A COLUMN on the server, not a
+   * `settings` key — it lived there until 2026-09-10 as a string nothing read.
+   * `''` clears it back to "never migrated"; the server takes date-only.
+   */
+  migrationDate: z.string().optional(),
 });
 
 const phoneRefinement = (_data: { phone?: string; dialCode?: string }, _ctx: z.RefinementCtx) => {
@@ -101,6 +107,7 @@ export interface Organization {
       singular?: string;
       plural?: string;
     };
-    migrationDate?: string;
   } | null;
+  /** Date-only (`YYYY-MM-DD`), or null when the organization never migrated. */
+  migrationDate?: string | null;
 }
