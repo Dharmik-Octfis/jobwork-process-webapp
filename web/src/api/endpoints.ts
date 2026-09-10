@@ -158,4 +158,7 @@ export const endpoints = {
   /** Per-user list column layout ("Customize Columns") for one module. */
   listViews: (orgId: string, entityType: string) =>
     `/organizations/${orgId}/list-views/${entityType}`,
+  reports: {
+    inventoryValuation: (orgId: string) => `/organizations/${orgId}/reports/inventory-valuation`,
+  },
 } as const;

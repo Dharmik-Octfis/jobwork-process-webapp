@@ -38,7 +38,9 @@ export function AdvancedFilter({
   onMatchTypeChange,
   align = 'right',
   leftOffset = 0,
-}: AdvancedFilterProps) {
+  triggerLabel,
+  triggerIcon,
+}: AdvancedFilterProps & { triggerLabel?: string; triggerIcon?: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
   const [localConditions, setLocalConditions] = useState<FilterCondition[]>(conditions);
   const [prevConditions, setPrevConditions] = useState<FilterCondition[]>(conditions);
@@ -116,8 +118,21 @@ export function AdvancedFilter({
         type="button"
         className={`filter-trigger-btn ${conditions.length > 0 ? 'active' : ''}`}
         onClick={handleToggleOpen}
+        style={triggerLabel ? { 
+          width: 'auto', 
+          padding: '4px 10px', 
+          gap: '6px',
+          border: '1px solid #d1d5db',
+          background: '#fff',
+          borderRadius: '6px',
+          fontSize: '12px',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+          color: '#111827',
+          fontWeight: 500,
+        } : undefined}
       >
-        <Filter size={16} />
+        {triggerIcon || <Filter size={16} />}
+        {triggerLabel && <span>{triggerLabel}</span>}
       </button>
 
       {isOpen && (
