@@ -4,6 +4,8 @@ export const inventoryValuationQuerySchema = z.object({
   asOfDate: z.string().optional(),
   stockAvailability: z.enum(['none', 'gt', 'lte', 'lt', 'eq', 'neq']).optional().default('none'),
   status: z.enum(['all', 'active', 'inactive']).optional().default('all'),
+  itemName: z.string().optional(),
+  categoryName: z.string().optional(),
   // Pagination could be added here if needed
 });
 
@@ -15,5 +17,36 @@ export interface InventoryValuationRow {
   categoryName: string | null;
   uomName: string | null;
   stockOnHand: number;
-  inventoryAssetValue: number;
 }
+
+export const itemLedgerQuerySchema = z.object({
+  fromDate: z.string().optional(),
+  toDate: z.string().optional(),
+});
+
+export type ItemLedgerQuery = z.infer<typeof itemLedgerQuerySchema>;
+
+export interface ItemLedgerRow {
+  date: string | null; // null for opening/closing stock rows
+  transactionDetails: string;
+  quantity: number;
+  unitCost: number | null;
+  totalCost: number;
+  stockOnHand: number;
+  inventoryAssetValue: number;
+  isOpeningStock?: boolean;
+  isClosingStock?: boolean;
+  sourceDocType?: string | null;
+  sourceDocId?: string | null;
+  sourceDocNumber?: string | null;
+}
+
+export interface ItemLedgerResponse {
+  itemInfo: {
+    itemName: string;
+    sku: string | null;
+    uomName: string | null;
+  };
+  rows: ItemLedgerRow[];
+}
+

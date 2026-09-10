@@ -16,7 +16,7 @@ const PRESETS = [
   { label: 'Custom', getValue: () => null },
 ];
 
-export function ReportDateFilter({ value, onChange }: { value: string; onChange: (val: string) => void }) {
+export function ReportDateFilter({ value, onChange }: { value: string; onChange: (label: string, date: Date) => void }) {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState(value);
   const [customDate, setCustomDate] = useState<Date>(new Date());
@@ -34,7 +34,7 @@ export function ReportDateFilter({ value, onChange }: { value: string; onChange:
   }, [isOpen]);
 
   const handleApply = () => {
-    onChange(selectedPreset);
+    onChange(format(customDate, 'dd-MM-yyyy'), customDate);
     setIsOpen(false);
   };
 
@@ -91,8 +91,9 @@ export function ReportDateFilter({ value, onChange }: { value: string; onChange:
                 onClick={() => {
                   setSelectedPreset(p.label);
                   if (p.label !== 'Custom') {
-                    setCustomDate(p.getValue() as Date);
-                    onChange(p.label);
+                    const dateVal = p.getValue() as Date;
+                    setCustomDate(dateVal);
+                    onChange(p.label, dateVal);
                     setIsOpen(false);
                   }
                 }}

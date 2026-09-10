@@ -63,6 +63,10 @@ const InventoryValuationSummaryPage = lazyPage(
   () => import('../features/reports/InventoryValuationSummaryPage'),
   'InventoryValuationSummaryPage',
 );
+const InventoryValuationDetailPage = lazyPage(
+  () => import('../features/reports/InventoryValuationDetailPage'),
+  'InventoryValuationDetailPage',
+);
 const PurchasesPage = lazyPage(
   () => import('../features/purchases/PurchasesPage'),
   'PurchasesPage',
@@ -288,6 +292,7 @@ export const router = createBrowserRouter([
                   { path: '/organizations/:orgId', element: <DashboardPage /> },
                   { path: '/organizations/:orgId/reports', element: <ReportsPage /> },
                   { path: '/organizations/:orgId/reports/inventory-valuation-summary', element: <InventoryValuationSummaryPage /> },
+                  { path: '/organizations/:orgId/reports/inventory-valuation/:itemId', element: <InventoryValuationDetailPage /> },
                   { path: '/organizations/:orgId/purchases', element: <PurchasesPage /> },
                   { path: '/organizations/:orgId/purchases/vendors', element: <VendorsList /> },
                   {

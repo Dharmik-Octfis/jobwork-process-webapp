@@ -779,3 +779,6 @@ input[type='number'] {
 .po-print-template .responsive-table-wrapper {
   overflow-x: visible !important;
 }
+
+.table-row-hover:hover { background-color: #f8fafc !important; }
+

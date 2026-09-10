@@ -11,6 +11,8 @@ import { ItemActivityHistory } from './ItemActivityHistory';
 import { ItemImageGallery } from './components/ItemImageGallery';
 import { CompositeItemsList } from '../inventory/composite-items/CompositeItemsList';
 import { ItemTransactions } from './components/ItemTransactions';
+import { fetchLocations, isOwnLocation, type Location } from '../configuration/locations/locations.api';
+
 
 interface ItemDetailProps {
   itemId: string;
@@ -75,6 +77,16 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     enabled: Boolean(orgId && itemId),
   });
 
+  const { data: allLocations = [] } = useQuery({
+    queryKey: ['locations', orgId],
+    queryFn: () => fetchLocations(orgId!),
+    enabled: !!orgId,
+  });
+
+  const ownLocationIds = useMemo(() => {
+    return new Set(allLocations.filter(isOwnLocation).map((l: Location) => l.id));
+  }, [allLocations]);
+
   const totalOpeningStock = useMemo(() => {
     if (Array.isArray(openingStockRows) && openingStockRows.length > 0) {
       return openingStockRows.reduce((acc, row) => {
@@ -88,6 +100,32 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     }
     return Number(item?.openingStock ?? 0);
   }, [openingStockRows, item]);
+
+  const ownPremisesStock = useMemo(() => {
+    if (Array.isArray(openingStockRows) && openingStockRows.length > 0) {
+      let onHand = 0;
+      let committed = 0;
+      let available = 0;
+
+      for (const row of openingStockRows) {
+        if (!ownLocationIds.has(row.locationId)) continue;
+        
+        const batchTotal = Array.isArray(row.batches)
+          ? row.batches.reduce((bAcc, b) => bAcc + (Number(b.quantityIn) || 0), 0)
+          : 0;
+        const rowOnHand = Number(row.stockOnHand ?? row.openingStock ?? batchTotal) || batchTotal || 0;
+        const rowCommitted = Number(row.committedStock ?? 0) || 0;
+        const rowAvailable = Number(row.availableForSale ?? rowOnHand - rowCommitted) || 0;
+        
+        onHand += rowOnHand;
+        committed += rowCommitted;
+        available += rowAvailable;
+      }
+      return { onHand, committed, available };
+    }
+    const defaultStock = Number(item?.openingStock ?? 0);
+    return { onHand: defaultStock, committed: 0, available: defaultStock };
+  }, [openingStockRows, item, ownLocationIds]);
 
   const deleteMutation = useMutation({
     mutationFn: () => itemsApi.deleteItem(orgId!, itemId),
@@ -557,7 +595,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                       </span>
                       <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
                       <span style={{ fontSize: '13px', fontWeight: 600, color: '#0062ff' }}>
-                        {totalOpeningStock.toFixed(2)}
+                        {ownPremisesStock.onHand.toFixed(2)}
                       </span>
                     </div>
 
@@ -581,7 +619,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                       </span>
                       <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
                       <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
-                        0.00
+                        {ownPremisesStock.committed.toFixed(2)}
                       </span>
                     </div>
 
@@ -605,7 +643,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                       </span>
                       <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
                       <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
-                        {totalOpeningStock.toFixed(2)}
+                        {ownPremisesStock.available.toFixed(2)}
                       </span>
                     </div>
                   </div>
@@ -660,7 +698,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                       </span>
                       <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
                       <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
-                        {totalOpeningStock.toFixed(2)}
+                        {ownPremisesStock.onHand.toFixed(2)}
                       </span>
                     </div>
 
@@ -684,7 +722,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                       </span>
                       <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
                       <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
-                        0.00
+                        {ownPremisesStock.committed.toFixed(2)}
                       </span>
                     </div>
 
@@ -708,7 +746,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                       </span>
                       <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
                       <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
-                        {totalOpeningStock.toFixed(2)}
+                        {ownPremisesStock.available.toFixed(2)}
                       </span>
                     </div>
                   </div>

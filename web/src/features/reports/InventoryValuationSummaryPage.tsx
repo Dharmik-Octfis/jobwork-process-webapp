@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Menu, X, Filter, Columns, ChevronDown } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, endOfDay } from 'date-fns';
 import { SearchableSelect } from '../../components/ui/SearchableSelect';
 import { AdvancedFilter } from '../../components/ui/AdvancedFilter/AdvancedFilter';
 import type { FilterField, FilterCondition } from '../../components/ui/AdvancedFilter/filterUtils';
@@ -33,11 +33,12 @@ export function InventoryValuationSummaryPage() {
   const navigate = useNavigate();
   const today = format(new Date(), 'dd-MM-yyyy');
 
-  const [dateRange, setDateRange] = useState('This Week');
+  const [dateRange, setDateRange] = useState('Today');
+  const [asOfDate, setAsOfDate] = useState<Date>(new Date());
   const [stockFilter, setStockFilter] = useState('none');
   const [statusFilter, setStatusFilter] = useState('all');
   const [conditions, setConditions] = useState<FilterCondition[]>([]);
-  
+
   const [showColumnsModal, setShowColumnsModal] = useState(false);
 
   const { orgId } = useParams<{ orgId: string }>();
@@ -47,10 +48,23 @@ export function InventoryValuationSummaryPage() {
   const fetchData = async () => {
     if (!orgId) return;
     try {
-      const rows = await reportsApi.getInventoryValuation(orgId, {
+      const query: InventoryValuationQuery = {
+        asOfDate: endOfDay(asOfDate).toISOString(),
         stockAvailability: stockFilter as InventoryValuationQuery['stockAvailability'],
         status: statusFilter as InventoryValuationQuery['status'],
-      });
+      };
+
+      const itemNameCond = conditions.find(c => c.field === 'itemName');
+      if (itemNameCond && itemNameCond.value) {
+        query.itemName = itemNameCond.value as string;
+      }
+
+      const catNameCond = conditions.find(c => c.field === 'categoryName');
+      if (catNameCond && catNameCond.value) {
+        query.categoryName = catNameCond.value as string;
+      }
+
+      const rows = await reportsApi.getInventoryValuation(orgId, query);
       setData(rows);
     } catch (error) {
       console.error('Failed to fetch inventory valuation', error);
@@ -60,6 +74,9 @@ export function InventoryValuationSummaryPage() {
   };
 
   useEffect(() => {
+    // Record visit time for ReportsPage
+    localStorage.setItem(`lastVisited_inventoryValuation_${orgId}`, new Date().toISOString());
+
     const init = async () => {
       await fetchData();
     };
@@ -108,7 +125,7 @@ export function InventoryValuationSummaryPage() {
             </div>
           </div>
         </div>
-        
+
         <button
           type="button"
           onClick={() => navigate(-1)}
@@ -144,8 +161,14 @@ export function InventoryValuationSummaryPage() {
         </div>
 
         <div style={{ display: 'flex', gap: '12px', flex: 1 }}>
-          <ReportDateFilter value={dateRange} onChange={setDateRange} />
-          
+          <ReportDateFilter
+            value={dateRange}
+            onChange={(label, date) => {
+              setDateRange(label);
+              setAsOfDate(date);
+            }}
+          />
+
           <SearchableSelect
             options={STOCK_OPTIONS}
             value={stockFilter}
@@ -169,7 +192,7 @@ export function InventoryValuationSummaryPage() {
               </div>
             )}
           />
-          
+
           <SearchableSelect
             options={STATUS_OPTIONS}
             value={statusFilter}
@@ -193,7 +216,7 @@ export function InventoryValuationSummaryPage() {
               </div>
             )}
           />
-          
+
           <AdvancedFilter
             fields={FILTER_FIELDS}
             conditions={conditions}
@@ -203,7 +226,7 @@ export function InventoryValuationSummaryPage() {
             triggerIcon={<span style={{ fontSize: '14px', marginRight: '4px', color: '#2563eb' }}>+</span>}
             triggerLabel="More Filters"
           />
-          
+
           <button
             type="button"
             onClick={() => {
@@ -241,10 +264,10 @@ export function InventoryValuationSummaryPage() {
         >
           {/* Top Right Controls in Card */}
           <div style={{ position: 'absolute', top: '16px', right: '16px', display: 'flex', gap: '16px', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#6b7280' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#4b5563' }}>
               Group By : <span style={{ color: '#111827', fontWeight: 500 }}>Category Name</span>
-              <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#ef4444', display: 'flex', alignItems: 'center' }}><X size={12} /></button>
-              <ChevronDown size={14} style={{ marginLeft: '4px' }} />
+              <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#ef4444', display: 'flex', alignItems: 'center' }}><X size={14} /></button>
+              <ChevronDown size={14} style={{ marginLeft: '2px' }} />
             </div>
             <div style={{ width: '1px', height: '14px', background: '#e5e7eb' }} />
             <button
@@ -254,7 +277,7 @@ export function InventoryValuationSummaryPage() {
                 background: 'transparent',
                 border: 'none',
                 color: '#111827',
-                fontSize: '12px',
+                fontSize: '13px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
@@ -269,11 +292,11 @@ export function InventoryValuationSummaryPage() {
           </div>
 
           {/* Report Header Text */}
-          <div style={{ textAlign: 'center', padding: '56px 0 40px' }}>
-            <div style={{ fontSize: '12px', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', fontWeight: 500 }}>
+          <div style={{ textAlign: 'center', padding: '56px 0 32px' }}>
+            <div style={{ fontSize: '13px', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', fontWeight: 500 }}>
               OCTFIS TECHNO llp
             </div>
-            <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}>
               Inventory Valuation Summary
             </h2>
             <div style={{ fontSize: '13px', color: '#4b5563' }}>
@@ -284,8 +307,8 @@ export function InventoryValuationSummaryPage() {
           {/* Data Table */}
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ borderTop: '1px solid #f3f4f6', borderBottom: '1px solid #f3f4f6' }}>
-                <th style={thStyle}>ITEM NAME <ChevronDown size={12} color="#9ca3af" style={{ display: 'inline', verticalAlign: 'middle', marginLeft: '2px' }}/></th>
+              <tr style={{ borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb' }}>
+                <th style={thStyle}>ITEM NAME <ChevronDown size={12} color="#9ca3af" style={{ display: 'inline', verticalAlign: 'middle', marginLeft: '4px' }}/></th>
                 <th style={{ ...thStyle, textAlign: 'right' }}>STOCK ON HAND</th>
                 <th style={{ ...thStyle, textAlign: 'right' }}>INVENTORY ASSET VALUE</th>
               </tr>
@@ -301,29 +324,36 @@ export function InventoryValuationSummaryPage() {
                 </tr>
               ) : (
                 data.map((row) => (
-                  <tr key={row.itemId} style={{ borderTop: '1px solid #f9fafb' }}>
+                  <tr
+                    key={row.itemId}
+                    className="table-row-hover"
+                    style={{ borderTop: '1px solid #f9fafb', cursor: 'pointer' }}
+                    onClick={() => navigate(`/organizations/${orgId}/reports/inventory-valuation/${row.itemId}`)}
+                  >
                     <td style={tdStyle}>
-                      {row.itemName} <span style={{ color: '#9ca3af' }}>({row.uomName || 'unit'})</span>
+                      <span style={{ color: '#111827', fontWeight: 500 }}>
+                        {row.itemName}
+                      </span> <span style={{ color: '#9ca3af', fontSize: '12px' }}>({row.uomName || 'unit'})</span>
                     </td>
-                    <td style={{ ...tdStyle, textAlign: 'right' }}>{row.stockOnHand.toFixed(2)}</td>
-                    <td style={{ ...tdStyle, textAlign: 'right', color: '#2563eb' }}>
-                      ₹{row.inventoryAssetValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{row.stockOnHand.toFixed(2)}</td>
+                    <td style={{ ...tdStyle, textAlign: 'right', color: '#111827', fontWeight: 600 }}>
+                      ₹{row.inventoryAssetValue < 0 ? '-' : ''}{Math.abs(row.inventoryAssetValue).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                   </tr>
                 ))
               )}
-              <tr style={{ borderTop: '1px solid #f3f4f6' }}>
+              <tr style={{ borderTop: '1px solid #e5e7eb' }}>
                 <td style={{ ...tdStyle, fontWeight: 600 }}>Total</td>
-                <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{totalQty.toFixed(2)}</td>
-                <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>
-                  ₹{totalValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>{totalQty.toFixed(2)}</td>
+                <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: '#111827' }}>
+                  ₹{totalValue < 0 ? '-' : ''}{Math.abs(totalValue).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
       </div>
-      
+
       {showColumnsModal && (
         <CustomizeColumnsModal
           isOpen={showColumnsModal}

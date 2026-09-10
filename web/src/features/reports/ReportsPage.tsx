@@ -1,11 +1,23 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { X, Folder, Star } from 'lucide-react';
+import { format } from 'date-fns';
 
 export function ReportsPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
   const [activeCategory, setActiveCategory] = useState('Inventory Valuation');
+  const lastVisitedInv = useMemo(() => {
+    const visitedStr = localStorage.getItem(`lastVisited_inventoryValuation_${orgId}`);
+    if (visitedStr) {
+      try {
+        return format(new Date(visitedStr), 'dd-MM-yyyy hh:mm a');
+      } catch {
+        // ignore
+      }
+    }
+    return null;
+  }, [orgId]);
 
   return (
     <div
@@ -202,7 +214,7 @@ export function ReportsPage() {
                     System Generated
                   </td>
                   <td style={{ padding: '14px 24px', fontSize: '13px', color: '#334155', fontWeight: 400 }}>
-                    -
+                    {lastVisitedInv || '-'}
                   </td>
                 </tr>
               </tbody>
