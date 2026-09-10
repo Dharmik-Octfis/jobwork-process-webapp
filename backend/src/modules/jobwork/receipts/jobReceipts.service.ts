@@ -1,6 +1,7 @@
 import { Prisma } from '../../../../generated/prisma/client.ts';
 import { runAsTenant, type TenantClient } from '../../../db/prisma.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
+import { assertOnOrAfterMigration } from '../../../lib/migrationDate.ts';
 import { allocateNumber } from '../../../lib/numberSequence.ts';
 import { splitByQty } from '../../../lib/splitByQty.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
@@ -1779,6 +1780,13 @@ export async function createNewJobReceipt(
     const receiptNumber =
       existing?.receiptNumber ?? (await allocateNumber(tx, organizationId, 'job_receipt'));
     const receiptDate = header.receiptDate ?? new Date();
+    // Drafts too — see the same call in `jobIssues.service`.
+    await assertOnOrAfterMigration(tx, {
+      organizationId,
+      date: receiptDate,
+      field: 'receiptDate',
+      label: 'receipt',
+    });
 
     const headerData = {
       jobOrderId: step.jobOrderId,

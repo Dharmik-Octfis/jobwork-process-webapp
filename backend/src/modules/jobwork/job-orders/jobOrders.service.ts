@@ -1,6 +1,7 @@
 import { Prisma } from '../../../../generated/prisma/client.ts';
 import { runAsTenant, type TenantClient } from '../../../db/prisma.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
+import { assertOnOrAfterMigration } from '../../../lib/migrationDate.ts';
 import {
   allocateNumber,
   getNumberPreference,
@@ -22,11 +23,7 @@ import {
   assertUomsBelongToOrg,
   resolveProcessorName,
 } from '../jobwork.refs.ts';
-import {
-  POSTED_DOC_STATUS,
-  runAsDocument,
-  type ProcessorType,
-} from '../jobwork.types.ts';
+import { POSTED_DOC_STATUS, runAsDocument, type ProcessorType } from '../jobwork.types.ts';
 import {
   getAllChainNotReady,
   getAllStepTotals,
@@ -1015,12 +1012,22 @@ export async function createNewJobOrder(
       ? await reserveSuppliedNumber(tx, organizationId, 'job_order', header.jobOrderNumber)
       : await allocateNumber(tx, organizationId, 'job_order');
 
+    const orderDate = header.orderDate ?? new Date();
+    // A job order posts no stock, but it is still a document on these books and
+    // every challan raised under it inherits its period.
+    await assertOnOrAfterMigration(tx, {
+      organizationId,
+      date: orderDate,
+      field: 'orderDate',
+      label: 'job order',
+    });
+
     const created = await withUniqueViolation(DUPLICATE_NUMBER, () =>
       tx.jobOrder.create({
         data: {
           organizationId,
           jobOrderNumber,
-          orderDate: header.orderDate ?? new Date(),
+          orderDate,
           targetDate: header.targetDate ?? null,
           inputItemId: headerItem.itemId,
           inputUomId: headerItem.uomId,
@@ -1363,10 +1370,18 @@ export async function updateJobOrderById(
      */
     const headerItem = locked.length === 0 ? headerItemFrom(stepRows) : null;
 
+    const orderDate = header.orderDate ?? existing.orderDate;
+    await assertOnOrAfterMigration(tx, {
+      organizationId,
+      date: orderDate,
+      field: 'orderDate',
+      label: 'job order',
+    });
+
     await tx.jobOrder.update({
       where: { id },
       data: {
-        orderDate: header.orderDate ?? existing.orderDate,
+        orderDate,
         targetDate: header.targetDate ?? null,
         ...(headerItem
           ? {

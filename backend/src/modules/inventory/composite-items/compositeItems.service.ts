@@ -1,5 +1,6 @@
 import { runAsTenant } from '../../../db/prisma.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
+import { getMigrationDate } from '../../../lib/migrationDate.ts';
 import type {
   CreateCompositeComponentDto,
   UpdateCompositeComponentDto,
@@ -278,6 +279,10 @@ export class CompositeItemsService {
               valueIn: valuePerUnit ? declaredQty.times(valuePerUnit) : 0,
               sourceDocType: 'item_opening_stock',
               sourceDocId: item.id,
+              // Stated as at the anchor, same as `items.service` — this path is
+              // that one's twin for composite items, and a rule fixed in only one
+              // of a pair is the whole reason `assertOnOrAfterMigration` is shared.
+              postedAt: (await getMigrationDate(tx, organizationId)) ?? new Date(),
               userId,
             },
             // `createBatch` just returned this row — no reason to read it back.

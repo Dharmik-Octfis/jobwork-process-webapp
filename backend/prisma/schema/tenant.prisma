@@ -263,6 +263,22 @@ model Organization {
   orgAddress             String?                 @map("org_address")
   website                String?                 @map("website")
   taxIdValue             String?                 @map("tax_id_value")
+  /// 🔴 THE DAY THIS ORGANIZATION'S BOOKS BEGIN HERE — Zoho Books calls it the
+  /// migration date, and it carries the same three rules: opening stock is stated
+  /// AS AT this day, no document may be dated before it, and it stops being
+  /// editable once real transactions exist. Rule 1 without rule 2 is worthless —
+  /// if a challan can be back-dated past the anchor, the opening balance no longer
+  /// accounts for everything prior.
+  ///
+  /// A calendar date, not an instant (`@db.Date`, as `date_of_birth` above), so the
+  /// boundary day cannot flip with the server's timezone: a document dated on the
+  /// anchor itself must never read as falling before it. There is no per-org
+  /// timezone in this schema, so both sides of that comparison normalise to UTC.
+  ///
+  /// NULL means never migrated: no anchor, no back-date guard, opening stock posts
+  /// at `now()` exactly as it did before this column existed. Every organization
+  /// that predates it reads null, and nothing about them changes.
+  migrationDate          DateTime?               @map("migration_date") @db.Date
   createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt              DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   industryCode           String?                 @map("industry_code") @db.VarChar(64)

@@ -1,5 +1,6 @@
 import { runAsTenant, type TenantClient } from '../../../db/prisma.js';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.js';
+import { assertOnOrAfterMigration } from '../../../lib/migrationDate.js';
 import { reserveSuppliedNumber } from '../../../lib/numberSequence.js';
 import { splitByQty } from '../../../lib/splitByQty.js';
 import type { AssemblyLineDto, CreateAssemblyDto } from './assemblies.schemas.js';
@@ -436,6 +437,12 @@ export const assembliesService = {
       await reserveSuppliedNumber(tx, orgId, 'assembly', assemblyNumber);
 
       const assemblyDate = new Date(data.assemblyDate);
+      await assertOnOrAfterMigration(tx, {
+        organizationId: orgId,
+        date: assemblyDate,
+        field: 'assemblyDate',
+        label: 'assembly',
+      });
       const headerQty = decimal(data.qty);
 
       /**

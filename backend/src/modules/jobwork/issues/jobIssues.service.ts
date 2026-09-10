@@ -1,6 +1,7 @@
 import { Prisma } from '../../../../generated/prisma/client.ts';
 import { runAsTenant, type TenantClient } from '../../../db/prisma.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
+import { assertOnOrAfterMigration } from '../../../lib/migrationDate.ts';
 import { allocateNumber } from '../../../lib/numberSequence.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
@@ -1128,6 +1129,15 @@ export async function createNewJobIssue(
     const challanNumber =
       existing?.challanNumber ?? (await allocateNumber(tx, organizationId, 'job_issue'));
     const issueDate = header.issueDate ?? new Date();
+    // Checked on EVERY save, drafts included — a parked challan carries its date
+    // forward to the day it posts, so validating only at post lets an invalid one
+    // sit in the system until the anchor has already moved on.
+    await assertOnOrAfterMigration(tx, {
+      organizationId,
+      date: issueDate,
+      field: 'issueDate',
+      label: 'challan',
+    });
 
     const headerData = {
       jobOrderId: step.jobOrderId,

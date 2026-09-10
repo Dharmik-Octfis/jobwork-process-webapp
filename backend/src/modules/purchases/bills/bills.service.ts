@@ -4,6 +4,7 @@ import type { CreateBillPayload, UpdateBillPayload, BillItemPayload } from './bi
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import { ApiError } from '../../../lib/apiError.ts';
+import { assertOnOrAfterMigration } from '../../../lib/migrationDate.ts';
 import { validateCustomFields } from '../../settings/customization/custom-fields/customFields.engine.ts';
 import { loadActiveDefinitions } from '../../settings/customization/custom-fields/custom-fields.service.ts';
 import {
@@ -704,6 +705,15 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
   // `runAsDocument`, like `updateBill`: a fifty-taka consignment now writes fifty
   // package rows, fifty document rows and fifty ledger rows in one transaction.
   return runAsDocument(orgId, async (tx) => {
+    // Drafts too: a bill's date rides through to the ledger the moment it opens,
+    // so a parked one holding an invalid date is a posting waiting to happen.
+    await assertOnOrAfterMigration(tx, {
+      organizationId: orgId,
+      date: billData.billDate,
+      field: 'billDate',
+      label: 'bill',
+    });
+
     let performedBy = 'System';
     if (userId) {
       const user = await tx.user.findUnique({ where: { id: userId } });
@@ -1022,6 +1032,12 @@ export async function updateBill(
     // every old row and this save posts fresh ones, so they must carry the date
     // the bill now says, not the one it used to.
     const effectiveBillDate = billData.billDate ?? existing.billDate;
+    await assertOnOrAfterMigration(tx, {
+      organizationId: orgId,
+      date: effectiveBillDate,
+      field: 'billDate',
+      label: 'bill',
+    });
     const goingOpen = existing.status.toLowerCase() === 'draft' && effectiveStatus === 'open';
 
     /**

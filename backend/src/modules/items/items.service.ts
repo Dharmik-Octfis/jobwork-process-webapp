@@ -1,5 +1,6 @@
 import { runAsTenant, type TenantClient } from '../../db/prisma.ts';
 import { ApiError } from '../../lib/apiError.ts';
+import { getMigrationDate } from '../../lib/migrationDate.ts';
 import type { CreateItemDto, UpdateItemDto } from './items.schemas.ts';
 import { uploadFile } from '../../lib/storage.ts';
 import {
@@ -286,6 +287,20 @@ export class ItemsService {
       organizationId: string;
       itemId: string;
       valuePerUnit: Prisma.Decimal | null;
+      /**
+       * 🔴 THE DAY THE BOOKS BEGAN, and it goes on BOTH branches below — the
+       * top-up AND the reduction.
+       *
+       * An opening figure is a statement about one moment: what was here when we
+       * started. Correcting a typo in it does not describe a second event that
+       * happened today, it restates that same moment, so "stock as on the
+       * migration date" has to come back 400 rather than "500, less 100 in
+       * September". This is the opposite of a bill's reversal, which undoes
+       * something that really did happen on its own day — and the reason the
+       * distinction costs nothing is `created_at`, which still records when each
+       * correction was actually typed.
+       */
+      postedAt: Date;
       userId?: string;
     },
     /**
@@ -310,7 +325,7 @@ export class ItemsService {
     const delta = desiredQty.minus(position.qty);
     if (delta.isZero()) return;
 
-    const { organizationId, itemId, valuePerUnit, userId } = context;
+    const { organizationId, itemId, valuePerUnit, postedAt, userId } = context;
     const balanceKey = positionKey(position.batchId, position.batchUnitId, position.locationId);
     // The value already riding on this position, per unit — used when the form
     // states no value of its own, so a top-up is worth what the rest of it is.
@@ -332,6 +347,7 @@ export class ItemsService {
           valueIn: delta.times(unit),
           sourceDocType: 'item_opening_stock',
           sourceDocId: itemId,
+          postedAt,
           userId,
         },
         batches,
@@ -390,6 +406,7 @@ export class ItemsService {
         valueOut: remove.times(existingUnitValue),
         sourceDocType: 'item_opening_stock',
         sourceDocId: itemId,
+        postedAt,
         userId,
       },
       batches,
@@ -803,6 +820,10 @@ export class ItemsService {
               valueIn: valuePerUnit ? declaredQty.times(valuePerUnit) : 0,
               sourceDocType: 'item_opening_stock',
               sourceDocId: item.id,
+              // Stated as at the anchor, same as `saveOpeningStock` — an item
+              // created with a figure already on it is the same declaration,
+              // just made on the item form instead of the stock one.
+              postedAt: (await getMigrationDate(tx, organizationId)) ?? new Date(),
               userId,
             },
             // `createBatch` just returned this row — no reason to read it back.
@@ -1220,6 +1241,19 @@ export class ItemsService {
         throw ApiError.badRequest('Cannot add stock without a stocking unit of measurement.');
 
       /**
+       * 🔴 OPENING STOCK IS STATED AS AT THE MIGRATION DATE — that is what the
+       * anchor is FOR, and until it existed there was no date here to state it as
+       * at: every opening row fell through to `postMovement`'s `new Date()` and
+       * landed on the day the figures were typed. So "stock as on 31-Mar" came
+       * back empty for a business whose books began in April, and the batches
+       * aged from the data-entry day rather than from the day they arrived.
+       *
+       * `new Date()` when the organization has no anchor: unchanged behaviour for
+       * everyone who never migrated, which is every organization predating this.
+       */
+      const openingDate = (await getMigrationDate(tx, organizationId)) ?? new Date();
+
+      /**
        * 🔴 WHAT THIS DOCUMENT ALREADY SAYS. Everything below is a DELTA against
        * it — see `settleOpening` for the defect that made the old
        * reverse-everything-and-recreate approach destructive.
@@ -1430,7 +1464,13 @@ export class ItemsService {
           },
         });
 
-        const settleContext = { organizationId, itemId, valuePerUnit, userId };
+        const settleContext = {
+          organizationId,
+          itemId,
+          valuePerUnit,
+          postedAt: openingDate,
+          userId,
+        };
 
         // ── 1. Rows naming a batch this document already holds: adjust it, and
         //       keep its details in step. Never a new batch — a batch number is
@@ -1529,6 +1569,7 @@ export class ItemsService {
                 valueIn: valuePerUnit ? unit.qty.times(valuePerUnit) : 0,
                 sourceDocType: 'item_opening_stock',
                 sourceDocId: itemId,
+                postedAt: openingDate,
                 userId,
               });
             }
@@ -1646,6 +1687,7 @@ export class ItemsService {
                 valueIn: valuePerUnit ? unit.qty.times(valuePerUnit) : 0,
                 sourceDocType: 'item_opening_stock',
                 sourceDocId: itemId,
+                postedAt: openingDate,
                 userId,
               },
               postable,
@@ -1667,6 +1709,7 @@ export class ItemsService {
                 valueIn: valuePerUnit ? loose.times(valuePerUnit) : 0,
                 sourceDocType: 'item_opening_stock',
                 sourceDocId: itemId,
+                postedAt: openingDate,
                 userId,
               },
               postable,
@@ -1733,6 +1776,7 @@ export class ItemsService {
                 valueIn: valuePerUnit ? declaredQty.times(valuePerUnit) : 0,
                 sourceDocType: 'item_opening_stock',
                 sourceDocId: itemId,
+                postedAt: openingDate,
                 userId,
               });
             }
@@ -1787,6 +1831,7 @@ export class ItemsService {
             organizationId,
             itemId,
             valuePerUnit: null,
+            postedAt: openingDate,
             userId,
           },
           settleBatches,

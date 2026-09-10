@@ -1,0 +1,24 @@
+-- add_organization_migration_date
+--
+-- 🔴 HAND-WRITTEN, NOT DRAFTED — same reason as the two migrations before it.
+-- `migrate diff` opens every draft with three DROP COLUMNs for the live SSO
+-- columns (`refresh_tokens.idp_session_id`, `refresh_tokens.idp_subject`,
+-- `users.identity_user_id`) and two DROP INDEXes on the jobwork headers. Those
+-- exist because four applied migrations are missing from prisma/migrations, not
+-- because this change wants them gone; applying them destroys every SSO identity
+-- link. This file adds one column and nothing else.
+--
+-- THE DAY THIS ORGANIZATION'S BOOKS BEGIN HERE. Opening stock is stated as at
+-- this date, and no document may be dated before it — see the column's comment
+-- in prisma/schema/tenant.prisma for why those two rules only work together.
+--
+-- `date`, NOT `timestamptz`: a calendar date whose boundary must not move with
+-- the reader's timezone, exactly as `users.date_of_birth`. A document dated on
+-- the anchor itself must never read as falling before it.
+--
+-- NULLABLE, and no default. Every existing organization reads NULL, which means
+-- "never migrated": no anchor, no guard, and opening stock keeps posting at
+-- `now()` as it always has. A NOT NULL default would invent an anchor for orgs
+-- that never set one and start rejecting their back-dated entries on deploy.
+
+ALTER TABLE "organizations" ADD COLUMN "migration_date" DATE;
