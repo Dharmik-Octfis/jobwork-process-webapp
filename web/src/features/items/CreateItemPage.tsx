@@ -841,39 +841,41 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                   </label>
                   {formData.isSalesInfo && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500, minWidth: '120px' }}>
                           Selling Price*
                         </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          name="sellingPrice"
-                          value={formData.sellingPrice || ''}
-                          onChange={handleChange}
-                          style={{
-                            width: '100%',
-                            padding: '8px 12px',
-                            borderRadius: '4px',
-                            border: errors.sellingPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
-                            fontSize: 13,
-                          }}
-                        />
-                        {errors.sellingPrice && (
-                          <span
+                        <div style={{ flex: 1 }}>
+                          <input
+                            type="number"
+                            step="0.01"
+                            name="sellingPrice"
+                            value={formData.sellingPrice || ''}
+                            onChange={handleChange}
                             style={{
-                              color: '#ef4444',
-                              fontSize: 12,
-                              marginTop: 4,
-                              display: 'block',
+                              width: '100%',
+                              padding: '8px 12px',
+                              borderRadius: '4px',
+                              border: errors.sellingPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
+                              fontSize: 13,
                             }}
-                          >
-                            {errors.sellingPrice}
-                          </span>
-                        )}
+                          />
+                          {errors.sellingPrice && (
+                            <span
+                              style={{
+                                color: '#ef4444',
+                                fontSize: 12,
+                                marginTop: 4,
+                                display: 'block',
+                              }}
+                            >
+                              {errors.sellingPrice}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                        <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500, minWidth: '120px', paddingTop: '8px' }}>
                           Sales Description
                         </label>
                         <textarea
@@ -885,6 +887,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                           rows={3}
                           style={{
                             width: '100%',
+                            flex: 1,
                             padding: '8px 12px',
                             borderRadius: '4px',
                             border: '1px solid #d1d5db',
@@ -920,39 +923,41 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                   </label>
                   {formData.isPurchaseInfo && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500, minWidth: '130px' }}>
                           Cost Price*
                         </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          name="costPrice"
-                          value={formData.costPrice || ''}
-                          onChange={handleChange}
-                          style={{
-                            width: '100%',
-                            padding: '8px 12px',
-                            borderRadius: '4px',
-                            border: errors.costPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
-                            fontSize: 13,
-                          }}
-                        />
-                        {errors.costPrice && (
-                          <span
+                        <div style={{ flex: 1 }}>
+                          <input
+                            type="number"
+                            step="0.01"
+                            name="costPrice"
+                            value={formData.costPrice || ''}
+                            onChange={handleChange}
                             style={{
-                              color: '#ef4444',
-                              fontSize: 12,
-                              marginTop: 4,
-                              display: 'block',
+                              width: '100%',
+                              padding: '8px 12px',
+                              borderRadius: '4px',
+                              border: errors.costPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
+                              fontSize: 13,
                             }}
-                          >
-                            {errors.costPrice}
-                          </span>
-                        )}
+                          />
+                          {errors.costPrice && (
+                            <span
+                              style={{
+                                color: '#ef4444',
+                                fontSize: 12,
+                                marginTop: 4,
+                                display: 'block',
+                              }}
+                            >
+                              {errors.costPrice}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                        <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500, minWidth: '130px', paddingTop: '8px' }}>
                           Purchase Description
                         </label>
                         <textarea
@@ -964,6 +969,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                           rows={3}
                           style={{
                             width: '100%',
+                            flex: 1,
                             padding: '8px 12px',
                             borderRadius: '4px',
                             border: '1px solid #d1d5db',
@@ -1084,8 +1090,8 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
 
                   {formData.inventoryTracking === 'none' && (
                     <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
-                        <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: '300px' }}>
+                        <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500, whiteSpace: 'nowrap' }}>
                           Opening Stock
                         </label>
                         <input
@@ -1096,7 +1102,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                           onChange={handleChange}
                           style={{
                             width: '100%',
-                            minWidth: '160px',
+                            flex: 1,
                             padding: '8px 12px',
                             borderRadius: '4px',
                             border: '1px solid #d1d5db',
@@ -1104,8 +1110,8 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                           }}
                         />
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
-                        <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: '360px' }}>
+                        <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500, whiteSpace: 'nowrap' }}>
                           Value of Opening Stock (per quantity)
                         </label>
                         <input
@@ -1116,7 +1122,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                           onChange={handleChange}
                           style={{
                             width: '100%',
-                            minWidth: '200px',
+                            flex: 1,
                             padding: '8px 12px',
                             borderRadius: '4px',
                             border: '1px solid #d1d5db',
