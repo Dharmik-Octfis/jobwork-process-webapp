@@ -8,7 +8,10 @@ import {
   restampOpeningStock,
 } from './migrationDate.ts';
 import { ApiError } from './apiError.ts';
-import { updateOrganizationSchema } from '../modules/settings/organization/organizations/organizations.schemas.ts';
+import {
+  createOrganizationSchema,
+  updateOrganizationSchema,
+} from '../modules/settings/organization/organizations/organizations.schemas.ts';
 
 /**
  * 🔴 THE GUARD IS THE WHOLE FEATURE, so it is pinned here.
@@ -414,5 +417,29 @@ describe('migration date — what the update endpoint accepts', () => {
     });
     expect(parsed.success).toBe(true);
     expect(parsed.success && parsed.data.migrationDate).toBeUndefined();
+  });
+
+  /**
+   * 🔴 UPDATE-ONLY, AND THE CREATE SCHEMA MUST NOT CARRY IT.
+   *
+   * It was on the create schema until this test existed, while
+   * `createOrganization` never wrote it — a field the API validated, accepted
+   * and then silently discarded. Zoho Books asks for the migration date on
+   * Settings → Opening Balances rather than when an organization is made, and
+   * nothing here depends on it until opening stock is declared.
+   *
+   * This asserts the CONTRACT, not the storage: the key is not part of what
+   * creating an organization means, so it does not survive parsing and cannot be
+   * mistaken for something that was saved.
+   */
+  it('is not part of creating an organization', () => {
+    const parsed = createOrganizationSchema.safeParse({
+      name: 'Acme Corp',
+      industryType: 'technology',
+      migrationDate: '2026-04-01',
+    });
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && 'migrationDate' in parsed.data).toBe(false);
   });
 });

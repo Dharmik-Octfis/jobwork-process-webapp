@@ -48,13 +48,6 @@ const baseOrganizationSchema = z.object({
         .optional(),
     })
     .optional(),
-
-  /**
-   * The day this organization's books begin here. A COLUMN on the server, not a
-   * `settings` key — it lived there until 2026-09-10 as a string nothing read.
-   * `''` clears it back to "never migrated"; the server takes date-only.
-   */
-  migrationDate: z.string().optional(),
 });
 
 const phoneRefinement = (_data: { phone?: string; dialCode?: string }, _ctx: z.RefinementCtx) => {
@@ -65,8 +58,20 @@ export const createOrganizationSchema = baseOrganizationSchema.superRefine(phone
 
 export type CreateOrganizationData = z.infer<typeof createOrganizationSchema>;
 
+/**
+ * 🔴 THE DAY THE BOOKS BEGIN HERE — UPDATE-ONLY, matching the server.
+ *
+ * Deliberately absent from create. Zoho Books asks for it on Settings → Opening
+ * Balances rather than when an organization is made, and nothing depends on it
+ * until opening stock is declared — so putting it on the create form would ask
+ * the least-informed user for the one value that, typed wrong, refuses every
+ * document they go on to raise. It is edited in Preferences.
+ *
+ * `''` clears it back to "never migrated"; the server takes date-only.
+ */
 export const updateOrganizationSchema = baseOrganizationSchema
   .partial()
+  .extend({ migrationDate: z.string().optional() })
   .superRefine(phoneRefinement);
 export type UpdateOrganizationData = z.infer<typeof updateOrganizationSchema>;
 
