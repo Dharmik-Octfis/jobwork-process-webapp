@@ -20,12 +20,22 @@ import type { TenantClient } from '../db/prisma.ts';
 /**
  * The instant that starts a date's UTC calendar day.
  *
- * 🔴 BOTH SIDES OF THE COMPARISON GO THROUGH THIS. `migration_date` is a `date`
- * and arrives at UTC midnight; a document date arrives from the client as
- * whatever the browser sent, which for a date-only input in IST is the previous
- * day at 18:30Z. Comparing those two as instants reads a document dated ON the
- * anchor as falling BEFORE it, and rejects the first day of the books. There is
- * no per-org timezone in this schema to do better than UTC with.
+ * 🔴 BOTH SIDES GO THROUGH THIS, and both are UTC midnight already — which is
+ * the only reason a plain comparison is safe here.
+ *
+ * `migration_date` is a `date`, so Prisma hands it back at UTC midnight. Every
+ * document date arrives as a DATE-ONLY string (`.slice(0, 10)` in `IssueForm`,
+ * `.split('T')[0]` in `CreateBill`, and so on), which `z.coerce.date()` parses
+ * as UTC midnight per the ISO spec. So the day is carried, never a local
+ * instant, and this only has to strip a time component that is not there.
+ *
+ * 🔴 THAT IS A CONTRACT WITH THE FRONT END, not a property of dates. A form
+ * that starts sending an offset-bearing ISO — `2026-04-01T00:00:00+05:30`, what
+ * a naive `toISOString()` on a local Date produces in IST — sends an instant six
+ * hours into the PREVIOUS UTC day, and this refuses the first day of the books
+ * for every Indian user while passing in UTC. There is no per-org timezone in
+ * this schema to arbitrate with, so the wire format is what keeps it honest.
+ * `migrationDate.test.ts` pins both halves.
  */
 function utcDayStart(value: Date): number {
   return Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate());

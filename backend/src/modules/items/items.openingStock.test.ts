@@ -396,3 +396,143 @@ describe('opening stock — re-declaring is a delta, not a rewrite', () => {
     expect(Number((await balanceOf(batches[0]!.id, godownId)).qty)).toBe(800);
   });
 });
+
+/**
+ * 🔴 OPENING STOCK IS STATED AS AT THE MIGRATION DATE.
+ *
+ * Until 2026-09-10 there was no date here to state it as at: all seven posting
+ * sites fell through to `postMovement`'s `new Date()`, so the figures landed on
+ * the day somebody typed them. "Stock as on 31-Mar" therefore came back empty
+ * for a business whose books began in April, and every opening batch aged from
+ * the data-entry day rather than from the day the goods actually arrived.
+ */
+describe('opening stock — posted as at the migration date', () => {
+  const ANCHOR = new Date('2026-04-01T00:00:00.000Z');
+
+  /** The anchor applies from the moment it is set — these tests own the switch. */
+  async function withAnchor<T>(run: () => Promise<T>): Promise<T> {
+    await prisma.organization.update({
+      where: { id: orgId },
+      data: { migrationDate: ANCHOR },
+    });
+    try {
+      return await run();
+    } finally {
+      await prisma.organization.update({
+        where: { id: orgId },
+        data: { migrationDate: null },
+      });
+    }
+  }
+
+  const openingRows = (itemId: string) =>
+    runAsTenant(orgId, (tx) =>
+      tx.stockLedgerEntry.findMany({
+        where: { organizationId: orgId, itemId, sourceDocType: 'item_opening_stock' },
+        orderBy: { createdAt: 'asc' },
+        select: { movementType: true, postedAt: true, createdAt: true, qtyIn: true, qtyOut: true },
+      }),
+    );
+
+  it('stamps the anchor rather than the day the figures were typed', async () => {
+    const itemId = await freshItem('batch');
+
+    await withAnchor(() =>
+      itemsService.saveOpeningStock(itemId, orgId, {
+        locationRows: [
+          {
+            locationId: godownId,
+            openingStock: 100,
+            openingStockValue: 10,
+            batches: [{ batchReference: `ANCH-${unique()}`, quantityIn: 100 }],
+          },
+        ],
+      }),
+    );
+
+    const rows = await openingRows(itemId);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.postedAt.toISOString()).toBe(ANCHOR.toISOString());
+      // The day it was typed is still on the row, in the column that means that.
+      expect(row.createdAt.getTime()).toBeGreaterThan(row.postedAt.getTime());
+    }
+  });
+
+  /**
+   * 🔴 THE CORRECTION CARRIES THE ANCHOR TOO, and that is the whole argument for
+   * `settleOpening` stamping BOTH its branches.
+   *
+   * An opening figure is a statement about one moment: what was here when we
+   * started. Fixing a typo in it restates that moment — it does not describe a
+   * second event that happened today. So the balance AS ON the anchor has to
+   * read the corrected figure, not "100 then, less 40 in September".
+   *
+   * This is the opposite of a bill's reversal, which undoes something that
+   * really did happen on its own day, and it costs nothing because `created_at`
+   * still records when the correction was typed.
+   */
+  it('keeps a later correction on the anchor, so the as-on figure is the corrected one', async () => {
+    const itemId = await freshItem('batch');
+
+    const balanceAsOfAnchor = await withAnchor(async () => {
+      const first = await itemsService.saveOpeningStock(itemId, orgId, {
+        locationRows: [
+          {
+            locationId: godownId,
+            openingStock: 100,
+            openingStockValue: 10,
+            batches: [{ batchReference: `FIX-${unique()}`, quantityIn: 100 }],
+          },
+        ],
+      });
+      const batchId = first[0]!.batches[0]!.id!;
+
+      // The typo: it was 60 all along, not 100.
+      await itemsService.saveOpeningStock(itemId, orgId, {
+        locationRows: [
+          {
+            locationId: godownId,
+            openingStock: 60,
+            openingStockValue: 10,
+            batches: [{ id: batchId, batchReference: 'FIX', quantityIn: 60 }],
+          },
+        ],
+      });
+
+      return runAsTenant(orgId, (tx) =>
+        getBalance(tx, { organizationId: orgId, batchId, asOf: ANCHOR }),
+      );
+    });
+
+    // 100 if the reduction had been dated today — the balance as at the anchor
+    // would then keep insisting on a figure the user has already corrected.
+    expect(Number(balanceAsOfAnchor.qty)).toBe(60);
+  });
+
+  /**
+   * NULL MEANS NO ANCHOR, and every organization that predates the column reads
+   * null. Their opening stock must keep posting exactly as it did.
+   */
+  it('falls back to today when the organization never migrated', async () => {
+    const itemId = await freshItem('batch');
+    const before = Date.now();
+
+    await itemsService.saveOpeningStock(itemId, orgId, {
+      locationRows: [
+        {
+          locationId: godownId,
+          openingStock: 50,
+          openingStockValue: 10,
+          batches: [{ batchReference: `NOANCH-${unique()}`, quantityIn: 50 }],
+        },
+      ],
+    });
+
+    const rows = await openingRows(itemId);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.postedAt.getTime()).toBeGreaterThanOrEqual(before);
+    }
+  });
+});
