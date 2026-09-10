@@ -6,7 +6,12 @@ import type { AxiosError } from 'axios';
 import { DateInput } from '../../../components/ui/DateInput';
 import { Select } from '../../../components/ui/Select';
 import { SplitButton } from '../../../components/ui/SplitButton';
-import { fetchLocations } from '../../configuration/locations/locations.api';
+import { RadioGroup } from '../../../components/ui/RadioGroup';
+import {
+  LOCATION_KIND_LABELS,
+  fetchLocations,
+  type LocationKind,
+} from '../../configuration/locations/locations.api';
 import { fetchStockLocations } from '../batches/batches.api';
 import { itemsApi } from '../../items/items.api';
 import { EXTERNAL_LOCATION_TYPES, formatQty, toNumber } from '../jobwork.schemas';
@@ -349,30 +354,65 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
    * is a lie the ageing report then repeats, so this offers the truth instead —
    * ONE named option, never the processor list back again.
    *
-   * `null` while the picked challans disagree about where they are, which is the
-   * same condition the server refuses on save: two sheds, no single answer.
+   * Unavailable while the picked challans disagree about where they are, which is
+   * the same condition the server refuses on save: two sheds, no single answer.
+   *
+   * 🔴 THE OPTION AND THE REASON COME OUT OF ONE MEMO. They are the same four
+   * conditions read two ways — the Vendor radio has to say why it is unavailable
+   * — and answering them in two places is how the radio comes to be enabled over
+   * an option that is not there.
    */
-  const stayedThere = useMemo(() => {
-    const picked = (prefill?.issues ?? []).filter((i) => pickedIssueIds.includes(i.id));
-    if (picked.length === 0) return null;
+  const atProcessor = useMemo((): {
+    option: { id: string; label: string } | null;
+    reason: string | null;
+  } => {
+    const issues = prefill?.issues ?? [];
+    if (issues.length === 0) return { option: null, reason: 'nothing is out against this step' };
+    const picked = issues.filter((i) => pickedIssueIds.includes(i.id));
+    if (picked.length === 0) return { option: null, reason: 'tick a challan first' };
     const first = picked[0]!;
-    if (picked.some((i) => i.destinationLocationId !== first.destinationLocationId)) return null;
+    if (picked.some((i) => i.destinationLocationId !== first.destinationLocationId)) {
+      return { option: null, reason: 'the ticked challans went to two different places' };
+    }
     // A step run in-house returns to a work centre, which is already a location we
     // hold — it is in `godowns`, and offering it twice would read as two places.
-    if (godowns.some((l) => l.id === first.destinationLocationId)) return null;
+    if (godowns.some((l) => l.id === first.destinationLocationId)) {
+      return { option: null, reason: 'this step ran at our own work centre' };
+    }
     return {
-      id: first.destinationLocationId,
-      label: `Stays with ${first.processorName ?? first.destinationName ?? 'the processor'} — not collected yet`,
+      option: {
+        id: first.destinationLocationId,
+        label: `Stays with ${first.processorName ?? first.destinationName ?? 'the processor'} — not collected yet`,
+      },
+      reason: null,
     };
   }, [prefill, pickedIssueIds, godowns]);
+  const stayedThere = atProcessor.option;
 
-  /** What the field may hold: our godowns, plus that one option when it applies. */
+  /**
+   * 🔴 WHICH SIDE OF THE RADIO WE ARE ON — DERIVED FROM THE VALUE, never a second
+   * piece of state.
+   *
+   * The radio does not hold an answer of its own; it says which list the one
+   * `locationId` is being picked from. Holding it separately means two things
+   * that can disagree — "Vendor" selected over a godown — and it is also what
+   * silently restores a draft: a parked receipt saved at the processor reopens on
+   * the Vendor side because its `locationId` says so, with no effect to run.
+   *
+   * Falls back to Location on its own the moment `stayedThere` stops applying
+   * (the challan is un-ticked), and `effectiveLocationId` below then drops the
+   * stale id.
+   */
+  const locationKind: LocationKind =
+    stayedThere && locationId === stayedThere.id ? 'vendor' : 'location';
+
+  /** What the field may hold — one side of the radio at a time, never both. */
   const receiveInto = useMemo(
-    () => [
-      ...godowns.map((l) => ({ value: l.id, label: l.name })),
-      ...(stayedThere ? [{ value: stayedThere.id, label: stayedThere.label }] : []),
-    ],
-    [godowns, stayedThere],
+    () =>
+      locationKind === 'vendor' && stayedThere
+        ? [{ value: stayedThere.id, label: stayedThere.label }]
+        : godowns.map((l) => ({ value: l.id, label: l.name })),
+    [locationKind, godowns, stayedThere],
   );
 
   const { data: itemsPage } = useQuery({
@@ -397,10 +437,14 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
      held as a hidden value it is not in the dropdown, so the operator sees a blank
      box and is refused by the server on save.
 
-     🔴 The fallback is a GODOWN, never `stayedThere`. "It never came back" is a
-     fact somebody states, not one a default states for them. */
+     🔴 The fallback is the first option of the CURRENT side, which on the Location
+     side is a GODOWN, never `stayedThere` — "it never came back" is a fact somebody
+     states, not one a default states for them. The Vendor side holds exactly one
+     option and is only ever reached by picking the radio, so defaulting to it
+     there states nothing the operator did not already say. */
   const effectiveLocationId =
-    (receiveInto.some((o) => o.value === locationId) ? locationId : '') || (godowns[0]?.id ?? '');
+    (receiveInto.some((o) => o.value === locationId) ? locationId : '') ||
+    (receiveInto[0]?.value ?? '');
 
   /**
    * WHAT IS STILL OUT, per item — the raw figure, before this receipt decides
@@ -966,6 +1010,82 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
 
       {prefill && (
         <>
+          {/* 🔴 WHERE THE GOODS LAND — ITS OWN ROW, ABOVE EVERYTHING ELSE, and laid
+              out exactly like `Issue from` on the issue form. It is the one field
+              here that can be refused by the server, and the one whose answer the
+              operator has to think about; beside Date in a 180px cell it read as a
+              formality. Label left, the choice on one line, the list beneath. */}
+          <section style={{ marginBottom: 18 }}>
+            {/* Label, choice, list — stacked, the way every other field on this
+                form reads. `maxWidth` so the control does not stretch the width of
+                a 1440px monitor just because it now has a row to itself. */}
+            <div style={{ maxWidth: 420 }}>
+              <label style={labelStyle}>Received into</label>
+              {/* 🔴 The radio is also what makes the processor option FINDABLE.
+                    It used to be the last row of a dropdown that renders above the
+                    challan list, so an operator filling the form top-down never saw
+                    it — and when it did not apply there was nothing on screen to
+                    say it existed. Disabled with its reason beside it, it now says
+                    both. */}
+              <RadioGroup
+                name="receive-location-kind"
+                ariaLabel="Receive into one of our locations, or at the vendor"
+                value={locationKind}
+                onChange={(kind) => {
+                  /* The radio holds no value of its own — it MOVES the location,
+                       and the side follows from where the location is. Clearing it
+                       rather than naming a godown lets `effectiveLocationId` pick
+                       the same default it would have picked on first open. */
+                  setLocationId(kind === 'vendor' && stayedThere ? stayedThere.id : '');
+                }}
+                options={[
+                  { value: 'location', label: LOCATION_KIND_LABELS.location },
+                  {
+                    value: 'vendor',
+                    label: LOCATION_KIND_LABELS.vendor,
+                    disabledReason: atProcessor.reason ?? undefined,
+                  },
+                ]}
+              />
+              <Select
+                value={effectiveLocationId}
+                onChange={setLocationId}
+                options={receiveInto}
+                placeholder={isLoadingLocations ? 'Loading…' : 'Select a location…'}
+                disabled={receiveInto.length === 0}
+                ariaLabel="Received into location"
+                fullWidth
+                portal
+              />
+              {/* The consequence, said where the choice is made: these goods are
+                    still out, and the 180/365-day clock is still running on them. */}
+              {stayedThere && effectiveLocationId === stayedThere.id && (
+                <p style={{ fontSize: 11.5, color: '#b45309', margin: '5px 0 0 0' }}>
+                  These stay out with the processor — send them on with a challan, or receive them
+                  into a godown when they arrive.
+                </p>
+              )}
+              {/* 🔴 SAY WHY IT IS EMPTY. A dropdown with nothing in it and no
+                      note beside it is indistinguishable from a broken screen, and
+                      it blocks the save — so each reason it can be empty is spelled
+                      out where the operator is looking, and they are different
+                      problems with different fixes.
+
+                      Only on the Location side: the Vendor side is never an empty
+                      dropdown, because when it has no option the radio itself is
+                      disabled and carries the reason. */}
+              {!isLoadingLocations && locationKind === 'location' && receiveInto.length === 0 && (
+                <p style={{ fontSize: 11.5, color: '#b91c1c', margin: '5px 0 0 0' }}>
+                  {knownLocations.length > 0
+                    ? 'Every location set up is a processor, in-transit or customer site. Goods cannot be received into any of those — add a warehouse under Configuration → Locations.'
+                    : locationsError
+                      ? 'Locations could not be loaded — this needs the Locations read permission.'
+                      : 'No location has been set up yet. Add one under Configuration → Locations.'}
+                </p>
+              )}
+            </div>
+          </section>
+
           <section style={{ marginBottom: 20 }}>
             <div
               className="form-field-grid"
@@ -986,42 +1106,6 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                   style={inputStyle}
                   portal
                 />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Received into</label>
-                <Select
-                  value={effectiveLocationId}
-                  onChange={setLocationId}
-                  options={receiveInto}
-                  placeholder={isLoadingLocations ? 'Loading…' : 'Select a location…'}
-                  disabled={receiveInto.length === 0}
-                  ariaLabel="Received into location"
-                  fullWidth
-                  portal
-                />
-                {/* The consequence, said where the choice is made: these goods are
-                    still out, and the 180/365-day clock is still running on them. */}
-                {stayedThere && effectiveLocationId === stayedThere.id && (
-                  <p style={{ fontSize: 11.5, color: '#b45309', margin: '5px 0 0 0' }}>
-                    These stay out with the processor — send them on with a challan, or receive them
-                    into a godown when they arrive.
-                  </p>
-                )}
-                {/* 🔴 SAY WHY IT IS EMPTY. A dropdown with nothing in it and no
-                      note beside it is indistinguishable from a broken screen, and
-                      it blocks the save — so each reason it can be empty is spelled
-                      out where the operator is looking, and they are different
-                      problems with different fixes. */}
-                {!isLoadingLocations && receiveInto.length === 0 && (
-                  <p style={{ fontSize: 11.5, color: '#b91c1c', margin: '5px 0 0 0' }}>
-                    {knownLocations.length > 0
-                      ? 'Every location set up is a processor, in-transit or customer site. Goods cannot be received into any of those — add a warehouse under Configuration → Locations.'
-                      : locationsError
-                        ? 'Locations could not be loaded — this needs the Locations read permission.'
-                        : 'No location has been set up yet. Add one under Configuration → Locations.'}
-                  </p>
-                )}
               </div>
 
               {/* No single "Output item" here any more — a step can return

@@ -2,6 +2,7 @@ import axios from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
 import { env } from '../config/env';
 import { endpoints } from './endpoints';
+import { isApiEnvelope, unwrapEnvelope } from './envelope';
 
 /**
  * Shared axios instance for the Express API.
@@ -114,22 +115,27 @@ import { toast } from 'react-hot-toast';
 
 apiClient.interceptors.response.use(
   (response) => {
-    // Unwrap the standardized API response wrapper if present
-    if (
-      response.data &&
-      typeof response.data === 'object' &&
-      'statusCode' in response.data &&
-      'data' in response.data
-    ) {
+    // 🔴 Unwrap, or throw — never pass an unrecognised body through.
+    //
+    // This used to `return response` untouched when the body was not the
+    // envelope, which made a platform-level body (a gateway's rate-limit JSON,
+    // an HTML error page) become the query's data. The crash then surfaced far
+    // away as `X.map is not a function` inside a component. `unwrapEnvelope`
+    // names the URL and the shape instead, and react-query reports it as a
+    // normal query error. See api/envelope.ts.
+    if (isApiEnvelope(response.data)) {
       const message = response.data.message;
       const method = response.config.method?.toLowerCase();
       // Show toast if it's a mutation and the message is not just the generic 'Success'
-      if (['post', 'put', 'patch', 'delete'].includes(method || '') && message && message !== 'Success') {
+      if (
+        ['post', 'put', 'patch', 'delete'].includes(method || '') &&
+        message &&
+        message !== 'Success'
+      ) {
         toast.success(message);
       }
-      return { ...response, data: response.data.data };
     }
-    return response;
+    return { ...response, data: unwrapEnvelope(response.data, response.config.url ?? 'the API') };
   },
   async (error) => {
     const original = error.config as RetriableConfig | undefined;

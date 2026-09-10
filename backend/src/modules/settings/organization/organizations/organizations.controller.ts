@@ -191,12 +191,9 @@ export async function createOrganization(req: Request, res: Response, next: Next
       }),
     );
 
-    // We emulate Zoho's generic envelope: { code: 0, message: "success", organization: { ... } }
-    res.status(201).json({
-      code: 0,
-      message: 'success',
-      organization: await mapToZohoFormat(organization),
-    });
+    // Same fix as `getOrganizations` below — this emitted `{ code, message,
+    // organization }`, which the strict interceptor now rejects.
+    sendSuccess(res, await mapToZohoFormat(organization), 'Organization created.', 201);
   } catch (error) {
     next(error);
   }
@@ -224,11 +221,17 @@ export async function getOrganizations(req: Request, res: Response, next: NextFu
 
     const formattedOrgs = await Promise.all(organizations.map(mapToZohoFormat));
 
-    res.status(200).json({
-      code: 0,
-      message: 'success',
-      organizations: formattedOrgs,
-    });
+    /**
+     * 🔴 THE ENVELOPE, not the hand-rolled `{ code, message, organizations }` this
+     * returned until 2026-09-09.
+     *
+     * `apiClient` now THROWS on a 2xx body that is not `{ statusCode, message,
+     * data }` (`web/src/api/envelope.ts`) instead of passing it through. This was
+     * the last GET still emitting the old shape, and it is the one every tenant
+     * route waits on: the `['organizations']` query failed, and `RequireOrganization`
+     * rendered "Failed to load workspace. Please refresh." over the whole app.
+     */
+    sendSuccess(res, formattedOrgs);
   } catch (error) {
     next(error);
   }
