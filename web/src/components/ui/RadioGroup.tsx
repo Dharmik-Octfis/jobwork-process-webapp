@@ -14,6 +14,7 @@
 export interface RadioGroupOption<T extends string> {
   value: T;
   label: string;
+  disabled?: boolean;
   /** Present = this option cannot be picked, and this says why. Shown beside it. */
   disabledReason?: string;
 }
@@ -45,7 +46,7 @@ export function RadioGroup<T extends string>({
       style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 20, rowGap: 0 }}
     >
       {options.map((option) => {
-        const disabled = Boolean(option.disabledReason);
+        const disabled = option.disabled || Boolean(option.disabledReason);
         const active = option.value === value && !disabled;
         return (
           <label

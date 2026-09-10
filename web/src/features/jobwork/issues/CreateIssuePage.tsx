@@ -127,39 +127,40 @@ export function CreateIssuePage() {
         {/* Hidden while editing a draft: the step is fixed by the document, and
               the two pickers would offer to move lines onto a step that may not
               consume their items. */}
-        <div style={{ marginBottom: 24, display: draft ? 'none' : undefined }}>
-          <h2 style={{ fontSize: 14, fontWeight: 600, color: '#111', margin: '0 0 16px 0' }}>
-            Select Context
-          </h2>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-            <div style={{ width: 320, minWidth: 250 }}>
-              <label style={{ display: 'block', fontSize: 12, color: '#64748b', marginBottom: 6 }}>
-                Job Order
-              </label>
-              <JobOrderComboBox
-                orgId={orgId!}
-                value={effectiveJobOrderId || ''}
-                onChange={(id) => {
-                  setSelectedJobOrderId(id);
-                  setSelectedStepId(null);
-                }}
-                initialJobOrder={jobOrderData?.jobOrder}
-                placeholder="Select Job Order..."
-              />
-            </div>
-            <div style={{ width: 320, minWidth: 250 }}>
-              <label style={{ display: 'block', fontSize: 12, color: '#64748b', marginBottom: 6 }}>
-                Step
-              </label>
-              <LocalComboBox
-                value={effectiveStepId || null}
-                onChange={(val) => setSelectedStepId(val || null)}
-                options={stepOptions}
-                placeholder="Select Step..."
-                disabled={!effectiveJobOrderId || isLoadingLightweightJobOrder}
-                portal={false}
-              />
-            </div>
+        <div 
+          style={{ 
+            marginBottom: 24, 
+            paddingBottom: 24,
+            borderBottom: '1px solid #e2e8f0',
+            display: draft ? 'none' : undefined,
+          }}
+        >
+          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '16px', maxWidth: '480px', alignItems: 'center' }}>
+            <label style={{ fontSize: 13, color: '#4b5563', margin: 0, fontWeight: 500 }}>
+              Job Order
+            </label>
+            <JobOrderComboBox
+              orgId={orgId!}
+              value={effectiveJobOrderId || ''}
+              onChange={(id) => {
+                setSelectedJobOrderId(id);
+                setSelectedStepId(null);
+              }}
+              initialJobOrder={jobOrderData?.jobOrder}
+              placeholder="Select Job Order..."
+            />
+
+            <label style={{ fontSize: 13, color: '#4b5563', margin: 0, fontWeight: 500 }}>
+              Step
+            </label>
+            <LocalComboBox
+              value={effectiveStepId || null}
+              onChange={(val) => setSelectedStepId(val || null)}
+              options={stepOptions}
+              placeholder="Select Step..."
+              disabled={!effectiveJobOrderId || isLoadingLightweightJobOrder}
+              portal={false}
+            />
           </div>
         </div>
 

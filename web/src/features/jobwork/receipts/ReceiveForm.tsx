@@ -367,7 +367,7 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
     reason: string | null;
   } => {
     const issues = prefill?.issues ?? [];
-    if (issues.length === 0) return { option: null, reason: 'nothing is out against this step' };
+    if (issues.length === 0) return { option: null, reason: null };
     const picked = issues.filter((i) => pickedIssueIds.includes(i.id));
     if (picked.length === 0) return { option: null, reason: 'tick a challan first' };
     const first = picked[0]!;
@@ -1015,118 +1015,95 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
               here that can be refused by the server, and the one whose answer the
               operator has to think about; beside Date in a 180px cell it read as a
               formality. Label left, the choice on one line, the list beneath. */}
-          <section style={{ marginBottom: 18 }}>
-            {/* Label, choice, list — stacked, the way every other field on this
-                form reads. `maxWidth` so the control does not stretch the width of
-                a 1440px monitor just because it now has a row to itself. */}
-            <div style={{ maxWidth: 420 }}>
-              <label style={labelStyle}>Received into</label>
-              {/* 🔴 The radio is also what makes the processor option FINDABLE.
-                    It used to be the last row of a dropdown that renders above the
-                    challan list, so an operator filling the form top-down never saw
-                    it — and when it did not apply there was nothing on screen to
-                    say it existed. Disabled with its reason beside it, it now says
-                    both. */}
-              <RadioGroup
-                name="receive-location-kind"
-                ariaLabel="Receive into one of our locations, or at the vendor"
-                value={locationKind}
-                onChange={(kind) => {
-                  /* The radio holds no value of its own — it MOVES the location,
-                       and the side follows from where the location is. Clearing it
-                       rather than naming a godown lets `effectiveLocationId` pick
-                       the same default it would have picked on first open. */
-                  setLocationId(kind === 'vendor' && stayedThere ? stayedThere.id : '');
-                }}
-                options={[
-                  { value: 'location', label: LOCATION_KIND_LABELS.location },
-                  {
-                    value: 'vendor',
-                    label: LOCATION_KIND_LABELS.vendor,
-                    disabledReason: atProcessor.reason ?? undefined,
-                  },
-                ]}
-              />
-              <Select
-                value={effectiveLocationId}
-                onChange={setLocationId}
-                options={receiveInto}
-                placeholder={isLoadingLocations ? 'Loading…' : 'Select a location…'}
-                disabled={receiveInto.length === 0}
-                ariaLabel="Received into location"
-                fullWidth
-                portal
-              />
-              {/* The consequence, said where the choice is made: these goods are
-                    still out, and the 180/365-day clock is still running on them. */}
-              {stayedThere && effectiveLocationId === stayedThere.id && (
-                <p style={{ fontSize: 11.5, color: '#b45309', margin: '5px 0 0 0' }}>
-                  These stay out with the processor — send them on with a challan, or receive them
-                  into a godown when they arrive.
-                </p>
-              )}
-              {/* 🔴 SAY WHY IT IS EMPTY. A dropdown with nothing in it and no
-                      note beside it is indistinguishable from a broken screen, and
-                      it blocks the save — so each reason it can be empty is spelled
-                      out where the operator is looking, and they are different
-                      problems with different fixes.
-
-                      Only on the Location side: the Vendor side is never an empty
-                      dropdown, because when it has no option the radio itself is
-                      disabled and carries the reason. */}
-              {!isLoadingLocations && locationKind === 'location' && receiveInto.length === 0 && (
-                <p style={{ fontSize: 11.5, color: '#b91c1c', margin: '5px 0 0 0' }}>
-                  {knownLocations.length > 0
-                    ? 'Every location set up is a processor, in-transit or customer site. Goods cannot be received into any of those — add a warehouse under Configuration → Locations.'
-                    : locationsError
-                      ? 'Locations could not be loaded — this needs the Locations read permission.'
-                      : 'No location has been set up yet. Add one under Configuration → Locations.'}
-                </p>
-              )}
-            </div>
-          </section>
-
           <section style={{ marginBottom: 20 }}>
             <div
               className="form-field-grid"
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                gap: 14,
+                gridTemplateColumns: '120px 1fr',
+                gap: 16,
+                alignItems: 'start',
+                maxWidth: '600px',
               }}
             >
-              <div>
-                <label style={labelStyle} htmlFor="receipt-date">
-                  Date
-                </label>
+              <label style={{ ...labelStyle, whiteSpace: 'nowrap', marginBottom: 0, marginTop: 10 }}>
+                Received into
+              </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <RadioGroup
+                  name="receive-location-kind"
+                  ariaLabel="Receive into one of our locations, or at the vendor"
+                  value={locationKind}
+                  onChange={(kind) => {
+                    setLocationId(kind === 'vendor' && stayedThere ? stayedThere.id : '');
+                  }}
+                  options={[
+                    { value: 'location', label: LOCATION_KIND_LABELS.location },
+                    {
+                      value: 'vendor',
+                      label: LOCATION_KIND_LABELS.vendor,
+                      disabledReason: atProcessor.reason ?? undefined,
+                    },
+                  ]}
+                />
+                <div style={{ width: 320 }}>
+                  <Select
+                    value={effectiveLocationId}
+                    onChange={setLocationId}
+                    options={receiveInto}
+                    placeholder={isLoadingLocations ? 'Loading…' : 'Select a location…'}
+                    disabled={receiveInto.length === 0}
+                    ariaLabel="Received into location"
+                    fullWidth
+                    portal
+                  />
+                  {stayedThere && effectiveLocationId === stayedThere.id && (
+                    <p style={{ fontSize: 11.5, color: '#b45309', margin: '5px 0 0 0' }}>
+                      These stay out with the processor — send them on with a challan, or receive them
+                      into a godown when they arrive.
+                    </p>
+                  )}
+                  {!isLoadingLocations && locationKind === 'location' && receiveInto.length === 0 && (
+                    <p style={{ fontSize: 11.5, color: '#b91c1c', margin: '5px 0 0 0' }}>
+                      {knownLocations.length > 0
+                        ? 'Every location set up is a processor, in-transit or customer site. Goods cannot be received into any of those — add a warehouse under Configuration → Locations.'
+                        : locationsError
+                          ? 'Locations could not be loaded — this needs the Locations read permission.'
+                          : 'No location has been set up yet. Add one under Configuration → Locations.'}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <label
+                style={{ ...labelStyle, whiteSpace: 'nowrap', marginBottom: 0, alignSelf: 'center' }}
+                htmlFor="receipt-date"
+              >
+                Date
+              </label>
+              <div style={{ width: 320 }}>
                 <DateInput
                   id="receipt-date"
                   value={receiptDate}
                   onChange={setReceiptDate}
-                  style={inputStyle}
+                  style={{ ...inputStyle, width: '100%' }}
                   portal
                 />
               </div>
 
-              {/* No single "Output item" here any more — a step can return
-                    any number of items, and they are listed in the Returned
-                    grid below with their own quantities (§5.7). No "From"
-                    either: it is in the subtitle, where a read-only fact belongs. */}
-
-              {/* Beside the other header facts, exactly where the issue dialog
-                    puts it. It is the one free-text note on the document, not a
-                    footnote to the grids — sitting under three tables it read as
-                    a comment on the last of them. */}
-              <div>
-                <label style={labelStyle} htmlFor="receipt-remarks">
-                  Remarks
-                </label>
+              <label
+                style={{ ...labelStyle, whiteSpace: 'nowrap', marginBottom: 0, alignSelf: 'center' }}
+                htmlFor="receipt-remarks"
+              >
+                Remarks
+              </label>
+              <div style={{ width: 320 }}>
                 <input
                   id="receipt-remarks"
                   type="text"
                   value={remarks}
                   onChange={(e) => setRemarks(e.target.value)}
-                  style={inputStyle}
+                  style={{ ...inputStyle, width: '100%' }}
                 />
               </div>
             </div>
