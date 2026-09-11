@@ -179,7 +179,12 @@ export async function updatePurchaseOrder(
             poData.documents !== undefined
               ? (poData.documents as Prisma.InputJsonValue)
               : undefined,
-          customFields: (poData.customFields ?? {}) as Prisma.InputJsonObject,
+          // Only when sent — `?? {}` here wiped every custom field on any PATCH
+          // that did not carry them (a note, a status change).
+          customFields:
+            poData.customFields !== undefined
+              ? (poData.customFields as Prisma.InputJsonObject)
+              : undefined,
         },
       });
 
