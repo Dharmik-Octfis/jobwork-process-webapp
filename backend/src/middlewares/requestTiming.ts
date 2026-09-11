@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
+import { performance } from 'node:perf_hooks';
 import { poolStats } from '../db/prisma.ts';
 import { runWithDbTally, type DbTally } from '../db/queryTiming.ts';
 
@@ -28,7 +29,7 @@ function safePath(pathname: string): string {
 /**
  * One line per API request, to stdout — which is what Catalyst captures.
  *
- *   GET /api/organizations 200 170ms db=11ms/2q app=159ms up=2s pool=1/5 idle=1 waiting=0
+ *   GET /api/organizations 200 170ms db=11ms/2q app=159ms up=2s rss=221MB busy=12% pool=1/5 idle=1 waiting=0
  *
  * 🔴 **`app` is the number this exists for.** A fixed query shape costs a fixed
  * amount, so time that is NOT `db` is time spent in this process: GC, JIT on a
@@ -46,6 +47,15 @@ function safePath(pathname: string): string {
  *    contention last time. `total`/`max` show how close the pool came to its cap.
  *  - `db=…/Nq` — round-trip count alongside the time, so an N+1 is visible as a
  *    statement count rather than inferred from a duration.
+ *  - `rss` — the process's resident memory when the request finished. AppSail
+ *    runs this at 256MB, and the process sits at ~220MB before its first request
+ *    (measured 2026-09-11), so a slow request near that ceiling points at GC.
+ *  - `busy` — share of this request's wall time the event loop was NOT idle
+ *    (Node's event loop utilization). `db` includes time a Postgres reply waited
+ *    for the loop, so it cannot tell a slow database from a stalled process on
+ *    its own: high `db` with low `busy` is the database; high `busy` is this
+ *    process. Utilization rather than a delay sampler because it is attributable
+ *    per request even when requests overlap, which is exactly the burst case.
  *
  * Deliberately unconditional: no env flag, no production-only branch. The
  * previous version of this middleware was never committed and the diagnostic was
@@ -54,6 +64,7 @@ function safePath(pathname: string): string {
  */
 export function requestTiming(req: Request, res: Response, next: NextFunction): void {
   const startedAt = performance.now();
+  const loopAtStart = performance.eventLoopUtilization();
   const tally: DbTally = { ms: 0, queries: 0 };
 
   // `finish` fires when the last byte is handed to the socket, so it captures
@@ -66,6 +77,8 @@ export function requestTiming(req: Request, res: Response, next: NextFunction): 
     // took the server down on 2026-09-10 the first time this was wired up.
     try {
       const total = performance.now() - startedAt;
+      const busy = performance.eventLoopUtilization(loopAtStart).utilization;
+      const rssMb = process.memoryUsage.rss() / 1_048_576;
       const pool = poolStats();
       // Query string dropped, not just redacted — it is never needed for timing
       // and is where tokens and emails turn up.
@@ -75,6 +88,7 @@ export function requestTiming(req: Request, res: Response, next: NextFunction): 
           `db=${Math.round(tally.ms)}ms/${tally.queries}q ` +
           `app=${Math.round(total - tally.ms)}ms ` +
           `up=${Math.round(process.uptime())}s ` +
+          `rss=${Math.round(rssMb)}MB busy=${Math.round(busy * 100)}% ` +
           `pool=${pool.total}/${pool.max} idle=${pool.idle} waiting=${pool.waiting}`,
       );
     } catch (error) {
