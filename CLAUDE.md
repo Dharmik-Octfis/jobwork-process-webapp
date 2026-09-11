@@ -121,6 +121,34 @@ promotes it to `req.tenantId` after checking `memberships`. Everything downstrea
 - **New tenant table?** Add an RLS policy (copy the two statements at the bottom of
   `migrations/*_enable_rls`) **and** add it to `TENANT_TABLES` in `src/db/rls.test.ts`.
   _A tenant table with no policy is unprotected and nothing will tell you._
+- 🔴 **`migrate diff` IS BLIND TO RLS, so no tool here will ever remind you.** It compares columns,
+  indexes and constraints — never `relrowsecurity`, never `pg_policies`. Two consequences, and both
+  have already cost us: **`db:draft` will not generate the RLS statements** for your new table (write
+  them into the migration by hand), and **`db:check-drift` will never report them missing**. On
+  2026-09-11 a rebuilt database matched the schema — `migrate diff` said "This is an empty migration"
+  — while `item_categories` and three `purchase_order_*` tables had no policy at all and
+  `bill_items` / `bill_activities` / `bill_comments` were gated on the live database but on no
+  migration. `TENANT_TABLES` is the ONLY thing that catches this; forgetting that list is the one
+  step here that fails open.
+- **Enable RLS in a migration, never by hand on the database.** Every hole above came from someone
+  running `ENABLE ROW LEVEL SECURITY` or `CREATE POLICY` straight against the shared database: live
+  looks protected, a database rebuilt from `prisma/migrations` is wide open, and drift says nothing.
+- **Create a policy guarded on `pg_policies`, never `DROP POLICY` + recreate.** `CREATE POLICY` has
+  no `IF NOT EXISTS`, so the obvious idempotent spelling is a drop followed by a create — and
+  migrations here are not transactional, so a failure between the two leaves the table RLS-enabled
+  with **no policy**. `db:apply` blocks `DROP POLICY` for exactly this reason. Copy the guarded
+  `pg_policies` shape from
+  `migrations/20260911150000_enable_rls_on_purchase_orders_and_item_categories`.
+- **Two policy forms.** Direct (`organization_id = current_tenant`) when the table carries its own
+  `organization_id`; join-through the parent when it only has a parent id — `vendor_*` and
+  `purchase_order_*` use `EXISTS (...)`, the `bill_*` children use `bill_id IN (SELECT ...)`. Prefer
+  the direct form and denormalise `organization_id` onto the child, as `batch_units` and
+  `bill_item_batches` do, so a query that reads the child without joining its parent is still covered.
+- 🔴 **A policy on a table with `relrowsecurity = false` does NOTHING** — Postgres does not evaluate
+  policies at all while RLS is off, so `DISABLE ROW LEVEL SECURITY` leaves a table looking protected
+  in `pg_policies` while nothing is enforced. Conversely RLS **on** with no policy is deny-all, which
+  fails closed and loudly. Never turn RLS off on a tenant table; to check what the app would see, run
+  it inside `BEGIN; ... SET ROLE jobwork_app; SELECT count(*) ...; ROLLBACK;` rather than committing.
 
 ## 🔴 Database
 

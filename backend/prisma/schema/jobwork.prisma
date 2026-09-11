@@ -736,6 +736,11 @@ model JobIssue {
 
   @@unique([organizationId, challanNumber])
   @@index([organizationId, jobOrderStepId])
+  /// The overview's activity feed reads every challan on the ORDER, not on one
+  /// step — `buildActivity` in `jobOrders.service.ts` filters exactly these two
+  /// columns. Created live on 2026-09-01 and declared here only on 2026-09-11,
+  /// so `migrate diff` spent ten days wanting to DROP it.
+  @@index([organizationId, jobOrderId])
   @@map("job_issues")
 }
 
@@ -947,6 +952,10 @@ model JobReceipt {
 
   @@unique([organizationId, receiptNumber])
   @@index([organizationId, jobOrderStepId])
+  /// Same reason as `job_issues` — `buildActivity` reads receipts by ORDER, and
+  /// `jobReceipts.service.ts` looks up posted receipts on the order to decide
+  /// whether a batch has anything left to continue.
+  @@index([organizationId, jobOrderId])
   @@map("job_receipts")
 }
 

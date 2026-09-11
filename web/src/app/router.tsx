@@ -35,6 +35,78 @@ import { AppErrorBoundary } from './AppErrorBoundary';
  * chunk fetch overlaps work the page was going to do anyway.
  */
 
+/** Backoff between chunk-fetch attempts, before falling back to a reload. */
+const RETRY_DELAYS_MS = [600, 1_800];
+
+/** Survives a reload; cleared as soon as any chunk loads. */
+const RELOADED_KEY = 'chunkReloadAttempted';
+
+function readAndSetReloaded(): boolean {
+  try {
+    const already = sessionStorage.getItem(RELOADED_KEY) === '1';
+    sessionStorage.setItem(RELOADED_KEY, '1');
+    return already;
+  } catch {
+    // Private mode or blocked storage. Treat as "not yet reloaded" — the flag is
+    // loop protection, not correctness, and one extra reload beats never trying.
+    return false;
+  }
+}
+
+function clearReloaded(): void {
+  try {
+    sessionStorage.removeItem(RELOADED_KEY);
+  } catch {
+    // See above — nothing to do if storage is unavailable.
+  }
+}
+
+/**
+ * Retry a chunk fetch, then reload — because a failed dynamic import has two
+ * causes and only one of them is worth retrying.
+ *
+ * 🔴 `React.lazy` **caches the rejected promise**. Without this, one failed
+ * fetch leaves that route broken for the life of the tab: every later navigation
+ * re-throws the same error into the boundary, and nothing but a manual refresh
+ * recovers it. That is the `Failed to fetch dynamically imported module` seen in
+ * production on 2026-09-10.
+ *
+ *  - **Instance unavailable.** Express serves these chunks from the same process
+ *    as the API (`backend/src/app.ts`), so a cold or restarting container fails
+ *    the fetch. The bytes exist — a retry a moment later gets them.
+ *  - **Stale `index.html` after a deploy.** This document points at hashed
+ *    filenames the new build no longer emits. Retrying can never find them; only
+ *    fetching the new HTML can, which means a reload.
+ *
+ * Hence retry first (cheap, fixes the common case without a flash), reload only
+ * once the bytes look genuinely absent. The reload is capped at one per tab: if
+ * a freshly loaded document still cannot fetch the chunk, staleness was not the
+ * problem and a reload loop would hide the real error behind a flickering page.
+ */
+async function loadWithRetry<M>(load: () => Promise<M>): Promise<M> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt - 1]));
+    }
+    try {
+      const mod = await load();
+      clearReloaded();
+      return mod;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (readAndSetReloaded()) throw lastError;
+
+  window.location.reload();
+  // The document is being replaced — never settle, so nothing renders an error
+  // during the teardown.
+  return new Promise<M>(() => {});
+}
+
 /**
  * `React.lazy` requires a module with a **default** export; every page in this
  * codebase is a named export. This adapts one to the other in a single place
@@ -48,17 +120,14 @@ function lazyPage<M extends Record<string, unknown>, K extends keyof M>(
   load: () => Promise<M>,
   name: K,
 ) {
-  return lazy(() => load().then((m) => ({ default: m[name] as ComponentType })));
+  return lazy(() => loadWithRetry(load).then((m) => ({ default: m[name] as ComponentType })));
 }
 
 const DashboardPage = lazyPage(
   () => import('../features/dashboard/DashboardPage'),
   'DashboardPage',
 );
-const ReportsPage = lazyPage(
-  () => import('../features/reports/ReportsPage'),
-  'ReportsPage',
-);
+const ReportsPage = lazyPage(() => import('../features/reports/ReportsPage'), 'ReportsPage');
 const InventoryValuationSummaryPage = lazyPage(
   () => import('../features/reports/InventoryValuationSummaryPage'),
   'InventoryValuationSummaryPage',

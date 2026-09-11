@@ -4,6 +4,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { Client as PgClient, Pool, type PoolConfig } from 'pg';
 import { PrismaClient } from '../../generated/prisma/client.ts';
 import { env } from '../config/env.ts';
+import { recordDbTime } from './queryTiming.ts';
 
 /**
  * Prisma 7 requires a driver adapter — there is no bare-connection-string mode.
@@ -118,6 +119,7 @@ const globalForDb = globalThis as unknown as {
 };
 
 const pool = globalForDb.prismaPool ?? new Pool(poolConfig);
+
 /**
  * `disposeExternalPool` is what makes `prisma.$disconnect()` in `server.ts` close
  * the sockets. The adapter only ends a pool it created itself; hand it one of ours
@@ -140,13 +142,16 @@ if (!env.isProduction) {
  * under light load means the pool — not the network — is the bottleneck.
  */
 export function poolStats(): { total: number; idle: number; waiting: number; max: number } {
-  // @ts-expect-error Prisma internals
-  const pool = prisma._engine.engine.connectionPool;
+  // 🔴 Read from OUR `pg.Pool`, not from Prisma. This used to reach into
+  // `prisma._engine.engine.connectionPool`, which does not exist under Prisma 7
+  // — with a driver adapter Prisma keeps no pool of its own, the adapter's pool
+  // IS the pool — so the call threw `Cannot read properties of undefined` and
+  // took `/api/diagnostics/latency` with it. Found 2026-09-10.
   return {
     total: pool.totalCount,
     idle: pool.idleCount,
     waiting: pool.waitingCount,
-    max: pool.maxCount,
+    max: poolConfig.max ?? 0,
   };
 }
 
@@ -177,7 +182,30 @@ export async function timeFreshConnection(): Promise<number> {
   }
 }
 
-export const prisma =
+/**
+ * Times every Prisma operation into the in-flight request's tally, for
+ * `middlewares/requestTiming.ts`.
+ *
+ * 🔴 **It must be an extension, not a `pg` hook.** Wrapping `client.query` on
+ * the pool was tried first and reported `db=0ms/0q` for requests that plainly
+ * ran queries: Prisma dispatches through a batching dataloader
+ * (`RequestHandler.singleLoader`), so by the time the driver runs, the
+ * `AsyncLocalStorage` context of the request that asked for the data is gone.
+ * An extension callback runs synchronously in the *caller's* context, which is
+ * the only place the request is still identifiable.
+ *
+ * 🔴 **And it must be cast back to `PrismaClient`.** `$extends` returns a
+ * structurally different type; left as-is, `TenantClient` stops matching and the
+ * mismatch ripples out into service signatures. The cast is honest because this
+ * extension adds no methods and changes no return type — it only observes.
+ *
+ * What this measures is time spent *waiting on Prisma*, which includes queue and
+ * batching delay, not raw SQL time. That is the more useful figure: it is the
+ * time the request actually lost. The `BEGIN`/`COMMIT` around a `runAsTenant`
+ * transaction are not operations and so land in `app` rather than `db` — two
+ * round trips, worth remembering when a transaction-heavy route is being read.
+ */
+const baseClient =
   globalForDb.prismaClient ??
   new PrismaClient({
     adapter,
@@ -185,8 +213,24 @@ export const prisma =
   });
 
 if (!env.isProduction) {
-  globalForDb.prismaClient = prisma;
+  globalForDb.prismaClient = baseClient;
 }
+
+export const prisma = baseClient.$extends({
+  query: {
+    async $allOperations({ args, query, model, operation }) {
+      const startedAt = performance.now();
+      try {
+        return await query(args);
+      } finally {
+        // `model` is undefined for raw calls ($queryRaw, $executeRaw), where
+        // `operation` already names them. Never include `args` — a query's
+        // arguments are the tenant's data, and this string reaches the logs.
+        recordDbTime(performance.now() - startedAt, model ? `${model}.${operation}` : operation);
+      }
+    },
+  },
+}) as unknown as PrismaClient;
 
 /** Transaction-scoped Prisma client handed to `runAsTenant` callbacks. */
 export type TenantClient = Omit<

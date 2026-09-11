@@ -1,0 +1,57 @@
+-- drop_the_dormant_memberships_policy
+--
+-- Removes a `tenant_isolation` policy that exists on the shared database, on a
+-- table where row-level security is OFF. No migration ever created it — it was
+-- applied out-of-band — and it is the last remaining difference between this
+-- repo's migrations and that database: after 20260911170000 the two agree on
+-- 69 tables, 163 indexes, 294 foreign keys and 57 RLS-enabled tables, and
+-- differ only by this one policy, 57 vs 58.
+--
+-- 🔴 IT IS NOT A HAZARD, AND THE EARLIER CLAIM THAT IT WAS IS WITHDRAWN. The
+-- reasoning was that enabling RLS on `memberships` would "activate" the dormant
+-- policy and 403 every request. Measured on the live database, each scenario in
+-- its own rolled-back transaction, counting what `jobwork_app` can see with no
+-- tenant set — which is exactly how `tenantContext` reads this table:
+--
+--     policy present, RLS off  (today)      18 of 18 rows
+--     policy dropped, RLS off               18 of 18 rows   <- identical
+--     policy present, RLS on                 0 rows
+--     policy dropped, RLS on                 0 rows         <- also identical
+--
+-- So the policy is inert while RLS is off, and enabling RLS is catastrophic
+-- whether or not the policy exists. The hazard is `ENABLE ROW LEVEL SECURITY` on
+-- this table, never the policy; dropping it buys no safety and none is claimed.
+--
+-- WHY DO IT THEN. Two reasons, both about being able to trust a check later:
+--   * `rebuild == live` is now an exact, verifiable invariant, and it is worth
+--     being exactly true. One unexplained difference is how a real difference
+--     later gets waved through.
+--   * `pg_policies` is what a security audit reads. A row saying
+--     `memberships: tenant_isolation` invites the conclusion that this table is
+--     tenant-gated. It is deliberately NOT, and permanently so —
+--     `20260716183126_enable_rls` spells out why in full: `tenantContext` reads
+--     `memberships` to discover the tenant, so gating it means the lookup that
+--     SETS the tenant needs the tenant already set. Nobody could authenticate.
+--     Four call sites read this table through the global client, outside any
+--     `runAsTenant`: `tenantContext.ts:79`, `memberDirectory.ts:94`, and two in
+--     `invitations.service.ts`. All four would see zero rows.
+--
+-- IF EXISTS, so it is a no-op on any database rebuilt from these migrations —
+-- which never had the policy — and on this one once applied.
+--
+-- To put it back, if ever needed:
+--   CREATE POLICY tenant_isolation ON "memberships"
+--     USING (organization_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)
+--     WITH CHECK (organization_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
+-- Note that recreating it changes nothing either, for the reasons above.
+
+-- @destructive-ok: `memberships` is a CONTROL-PLANE table, deliberately and
+-- permanently ungated (20260716183126_enable_rls names it as one of the three
+-- that cannot be tenant-scoped without deadlocking login), so the usual reading
+-- of this warning — "a tenant table with no policy leaks across tenants" — does
+-- not apply: there is nothing to leak that app-level scoping is not already
+-- responsible for. `rls.test.ts` asserts this table must NOT have RLS enabled,
+-- and it passes. Measured with RLS off, the app role sees all 18 rows whether the
+-- policy is present or dropped, so removing it changes no row's visibility.
+
+DROP POLICY IF EXISTS tenant_isolation ON "memberships";

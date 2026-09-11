@@ -37,14 +37,23 @@ import { itemCategoriesRouter } from '../modules/settings/inventory/item-categor
 import { listViewsRouter } from '../modules/settings/list-views/listViews.routes.ts';
 import { storageRouter } from '../modules/storage/storage.routes.ts';
 import { diagnosticsRouter } from '../modules/diagnostics/diagnostics.routes.ts';
+import { databaseStatus } from '../db/readiness.ts';
 import { inventoryValuationRouter } from '../modules/reports/inventory-valuation/inventoryValuation.routes.ts';
 import { env } from '../config/env.ts';
 
 /** Mounts every module router under `/api` (architecture §4). */
 export const apiRouter = Router();
 
+// 200 even when the database is unreachable, deliberately: the process IS
+// serving, and a platform that reads this for liveness must not recycle a
+// container over a database it will reconnect to on its own — recycling is the
+// crash loop this endpoint exists to make visible. Read `database` when
+// `/health` answers but real endpoints 500.
 apiRouter.get('/health', (_req, res) => {
-  res.status(200).json({ status: 'ok' });
+  res.status(200).json({
+    status: 'ok',
+    database: databaseStatus().ready ? 'ready' : 'unreachable',
+  });
 });
 
 // Ops-only latency probe. NOT mounted unless a token is configured, so a

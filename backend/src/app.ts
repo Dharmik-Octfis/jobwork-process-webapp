@@ -8,6 +8,7 @@ import { env } from './config/env.ts';
 import swaggerUi from 'swagger-ui-express';
 import { generateOpenApiDocument } from './config/openapi.ts';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler.ts';
+import { requestTiming } from './middlewares/requestTiming.ts';
 import { apiRouter } from './routes/index.ts';
 
 /** Builds the Express app: middleware, then routes, then error handling. */
@@ -38,11 +39,20 @@ export function createApp(): express.Express {
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
   app.use(cookieParser());
 
-  // API Routes
-  app.use('/api', apiRouter);
+  // API Routes. `requestTiming` is mounted on the same path rather than
+  // globally, so static asset requests do not each produce a log line.
+  app.use('/api', requestTiming, apiRouter);
 
-  // Swagger UI Documentation
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(generateOpenApiDocument()));
+  // Swagger UI Documentation.
+  //
+  // 🔴 Not in production. `generateOpenApiDocument()` walks every registered
+  // route and builds the whole document eagerly, right here in `createApp()` —
+  // so in production it spent CPU inside the window AppSail gives a container to
+  // bind its port (see `server.ts`), then held the result in heap for the life
+  // of the instance, on a 256MB box, for a UI no end user opens.
+  if (!env.isProduction) {
+    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(generateOpenApiDocument()));
+  }
 
   // The Vite build (web/) is emitted into `public/` so it ships inside the same
   // AppSail bundle as the API. Same origin, so no CORS and no cross-site cookie.

@@ -98,6 +98,24 @@ const TENANT_TABLES = [
   'item_assembly_comments',
   'item_assembly_activities',
   'item_opening_stock_rows',
+  // 🔴 Gated only on 2026-09-11, in
+  // 20260911150000_enable_rls_on_purchase_orders_and_item_categories, having been
+  // cross-tenant readable until then. All five were created out-of-band — they
+  // still have no `CREATE TABLE` in `prisma/migrations` — so they never went
+  // through the "new tenant table" checklist, and being absent from THIS list is
+  // the reason nothing said so for as long as it lasted. That is the whole
+  // argument for the list existing: it is the only thing that checks.
+  //
+  // `item_categories` holds its own `organization_id` and takes the direct form.
+  // The three `purchase_order_*` children have NO `organization_id` column at
+  // all, so they scope through `purchase_orders` on `purchase_order_id` — the
+  // join-through form, like the `vendor_*` children. `purchase_orders` itself was
+  // already gated out-of-band before that migration restated it.
+  'item_categories',
+  'purchase_orders',
+  'purchase_order_items',
+  'purchase_order_activities',
+  'purchase_order_comments',
 ] as const;
 
 /**
