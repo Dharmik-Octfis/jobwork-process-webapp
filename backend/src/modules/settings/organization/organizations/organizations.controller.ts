@@ -267,31 +267,21 @@ export async function updateOrganization(req: Request, res: Response, next: Next
     if (data.website !== undefined) updateData.website = data.website;
 
     /**
-     * 🔴 THE ANCHOR, AND THE TWO WRITES THAT HAVE TO HAPPEN TOGETHER.
-     *
-     * Setting it is refused when a transaction would fall behind the new day —
-     * the anchor's whole meaning is that nothing does. And moving it MUST carry
-     * the opening stock along, or the organization asserts two dates at once and
-     * the balance as at its own anchor reads zero. Both inside one transaction:
-     * a re-stamp that lands without the column, or the reverse, is worse than
-     * either change alone.
+     * 🔴 THE ANCHOR. Resolved here, WRITTEN AT THE BOTTOM — inside the same
+     * transaction as the re-stamp that has to accompany it.
      *
      * Empty string clears it back to "never migrated" — no anchor, no guard.
+     * `undefined` means the form did not send the field at all, which is not the
+     * same thing and must leave the column alone.
      */
-    if (data.migrationDate !== undefined) {
-      const anchor =
-        data.migrationDate === null || data.migrationDate === ''
+    const anchor =
+      data.migrationDate === undefined
+        ? undefined
+        : data.migrationDate === null || data.migrationDate === ''
           ? null
           : new Date(`${data.migrationDate}T00:00:00.000Z`);
 
-      if (anchor) {
-        await runAsTenant(orgId, async (tx) => {
-          await assertMigrationDateSettable(tx, { organizationId: orgId, date: anchor });
-          await restampOpeningStock(tx, { organizationId: orgId, date: anchor });
-        });
-      }
-      updateData.migrationDate = anchor;
-    }
+    if (anchor !== undefined) updateData.migrationDate = anchor;
 
     if (data.address !== undefined) {
       if (data.address.street_address1 !== undefined)
@@ -304,32 +294,69 @@ export async function updateOrganization(req: Request, res: Response, next: Next
       if (data.address.zip !== undefined) updateData.zip = data.address.zip;
     }
 
-    if (data.settings !== undefined) {
-      // MERGED, not replaced. `settings` is one JSONB bag shared by every
-      // preference the org has — terminology today, more later — and a form that
-      // owns one key would otherwise wipe the ones it does not render. The
-      // Preferences page sends every key it knows about, so a top-level merge
-      // loses nothing and stops the next screen from being the one that does.
-      const current = await prisma.organization.findFirst({
-        where: { id: orgId, isDeleted: false },
-        select: { settings: true },
-      });
-      const existing =
-        current?.settings &&
-        typeof current.settings === 'object' &&
-        !Array.isArray(current.settings)
-          ? (current.settings as Record<string, unknown>)
-          : {};
-      updateData.settings = { ...existing, ...data.settings };
-    }
-
     updateData.updatedBy = userId;
 
-    const updatedOrg = await prisma.organization.update({
-      where: { id: orgId },
-      data: updateData,
-      include: { industry: { select: { name: true } } },
-    });
+    /**
+     * 🔴 ONE TRANSACTION, AND THE ANCHOR IS WHY.
+     *
+     * Setting a migration date is not one write. It has to be refused when a
+     * movement would fall behind the new day — the anchor's whole meaning is that
+     * nothing does — and it has to carry the opening stock onto it, or the
+     * organization asserts two dates at once and the balance as at its own anchor
+     * reads zero.
+     *
+     * Those ran in a transaction of their own until this was fixed, with the
+     * column written by a separate statement afterwards. Anything failing in
+     * between — a crash, a dropped connection — left the opening stock re-dated
+     * onto an anchor the organization does not have, silently, with no error for
+     * anyone to see. A split like that is worse than either change alone, which
+     * is the whole reason they are together now.
+     *
+     * The `settings` read joins them: it is a read-modify-write of one JSONB bag,
+     * and outside the transaction two concurrent saves could lose a key.
+     */
+    const txOptions = anchor
+      ? // The re-stamp is a bulk `updateMany` over every opening row the
+        // organization has — irreducibly larger than an ordinary settings save,
+        // which is what a budget is for. Ordinary saves keep the default.
+        { maxWait: 15_000, timeout: 30_000 }
+      : undefined;
+
+    const updatedOrg = await runAsTenant(
+      orgId,
+      async (tx) => {
+        if (anchor) {
+          await assertMigrationDateSettable(tx, { organizationId: orgId, date: anchor });
+          await restampOpeningStock(tx, { organizationId: orgId, date: anchor });
+        }
+
+        if (data.settings !== undefined) {
+          // MERGED, not replaced. `settings` is one JSONB bag shared by every
+          // preference the org has — terminology today, more later — and a form that
+          // owns one key would otherwise wipe the ones it does not render. The
+          // Preferences page sends every key it knows about, so a top-level merge
+          // loses nothing and stops the next screen from being the one that does.
+          const current = await tx.organization.findFirst({
+            where: { id: orgId, isDeleted: false },
+            select: { settings: true },
+          });
+          const existing =
+            current?.settings &&
+            typeof current.settings === 'object' &&
+            !Array.isArray(current.settings)
+              ? (current.settings as Record<string, unknown>)
+              : {};
+          updateData.settings = { ...existing, ...data.settings };
+        }
+
+        return tx.organization.update({
+          where: { id: orgId },
+          data: updateData,
+          include: { industry: { select: { name: true } } },
+        });
+      },
+      txOptions,
+    );
 
     sendSuccess(res, await mapToZohoFormat(updatedOrg), 'Organization updated successfully.');
   } catch (error) {

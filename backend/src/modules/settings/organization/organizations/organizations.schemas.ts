@@ -13,32 +13,6 @@ export const createOrganizationSchema = openApiRegistry.register(
     baseCurrency: z.string().optional().openapi({ example: 'INR' }),
     taxIdValue: z.string().optional().openapi({ example: '22AAAAA0000A1Z5' }),
 
-    /**
-     * 🔴 THE DAY THIS ORGANIZATION'S BOOKS BEGIN HERE — a COLUMN, and top level
-     * here rather than another key inside `settings`.
-     *
-     * It lived in `settings` until 2026-09-10, as a string nothing on the server
-     * ever read. That is the wrong home twice over: it is a comparison operand
-     * (every document write evaluates it) rather than a preference, and
-     * `settings` is shallow-merged by whichever form last posted, so a page that
-     * does not render this key wipes it — silently re-opening back-dating
-     * everywhere with nothing to report it.
-     *
-     * DATE-ONLY ON THE WIRE, like every other date this API takes. An
-     * offset-bearing ISO would land the anchor on the previous UTC day for an
-     * IST user; `migrationDate.ts` explains why that cannot be papered over
-     * without a per-org timezone.
-     *
-     * Nullable so it can be cleared back to "never migrated".
-     */
-    migrationDate: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a calendar date, as YYYY-MM-DD.')
-      .nullable()
-      .optional()
-      .or(z.literal(''))
-      .openapi({ example: '2026-04-01' }),
-
     dialCode: z.string().optional().openapi({ example: '+91' }),
     phone: z
       .string()
@@ -116,7 +90,38 @@ export const createOrganizationSchema = openApiRegistry.register(
   }),
 );
 
+/**
+ * 🔴 THE DAY THIS ORGANIZATION'S BOOKS BEGIN HERE — a COLUMN, and UPDATE-ONLY.
+ *
+ * Not on the create schema, deliberately. Zoho Books — the model this follows —
+ * asks for it on Settings → Opening Balances, not when an organization is made,
+ * and for good reason: nothing depends on it until opening stock is declared,
+ * and it means nothing to somebody who has not entered an item yet. Putting it
+ * on the create form would ask the least-informed user for the value that, typed
+ * wrong, refuses every document they go on to raise.
+ *
+ * It also lived in `settings` until 2026-09-10, as a string nothing on the
+ * server ever read — the wrong home twice over: it is a comparison operand
+ * (every document write evaluates it) rather than a preference, and `settings`
+ * is shallow-merged by whichever form last posted, so a page that does not
+ * render the key wipes it, silently re-opening back-dating with nothing to
+ * report it.
+ *
+ * DATE-ONLY ON THE WIRE, like every other date this API takes. An offset-bearing
+ * ISO would land the anchor on the previous UTC day for an IST user;
+ * `lib/migrationDate.ts` explains why that cannot be papered over without a
+ * per-org timezone. Empty string and null both clear it back to "never
+ * migrated".
+ */
+const migrationDateField = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a calendar date, as YYYY-MM-DD.')
+  .nullable()
+  .optional()
+  .or(z.literal(''))
+  .openapi({ example: '2026-04-01' });
+
 export const updateOrganizationSchema = openApiRegistry.register(
   'UpdateOrganizationRequest',
-  createOrganizationSchema.partial(),
+  createOrganizationSchema.partial().extend({ migrationDate: migrationDateField }),
 );

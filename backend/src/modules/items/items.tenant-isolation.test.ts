@@ -29,16 +29,23 @@ describe('items — cross-tenant isolation', () => {
     const token = signAccessToken(memberId, 'session-for-test');
 
     const res = await request(createApp())
-      .get(`${itemsUrl(org.id)}?perPage=100&filter=all_items`)
+      .get(`${itemsUrl(org.id)}?perPage=100&filter=all`)
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
     // The list no longer returns a total (counting is opt-in via /count), so the
     // request above asks for a page big enough to hold them all and we count rows.
-    // `filter=all_items` is what makes that count comparable to the census: unlike
-    // vendors and customers, whose default preset is `where: {}`, the item list
-    // defaults to "Active Items" (LIST_FILTERS.item[0]), so the bare request hides
-    // every inactive item and the control silently reads short.
+    //
+    // 🔴 `filter=all` is a KEY IN `listFilters.catalog.ts`, not a free-text label,
+    // and the query schema rejects anything else with a 400. This read
+    // `filter=all_items` — which is not one of the item presets (`all`, `active`,
+    // `inactive`, `goods`, `services`; `all_users` is the MEMBER module's) — so
+    // this control 400'd rather than 200'd, and did so invisibly behind vitest's
+    // old 5s timeout. It is spelled out rather than left to the default because
+    // the count is compared against a census of EVERY item: the day somebody
+    // reorders the presets and the default narrows again, an explicit `all` keeps
+    // reading right where a bare request would silently read short.
+
     const { results } = res.body.data;
     expect(Array.isArray(results)).toBe(true);
     expect(results.length).toBe(org.items);
