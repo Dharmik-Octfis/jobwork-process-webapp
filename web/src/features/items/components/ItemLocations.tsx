@@ -77,9 +77,9 @@ export function ItemLocations({
         (acc, batch) => acc + (Number(batch.quantityIn) || 0),
         0,
       );
-      const onHand = Number(row.stockOnHand ?? row.openingStock ?? batchTotal) || 0;
+      const onHand = Number(row.openingStock ?? row.stockOnHand ?? batchTotal) || 0;
       const committed = Number(row.committedStock ?? 0) || 0;
-      const available = Number(row.availableForSale ?? onHand - committed) || 0;
+      const available = onHand - committed;
       map.set(row.locationId, { onHand, committed, available });
     }
     return map;

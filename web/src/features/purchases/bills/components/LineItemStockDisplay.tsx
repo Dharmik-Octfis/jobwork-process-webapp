@@ -36,7 +36,7 @@ export function LineItemStockDisplay({
   if (locationRow) {
     const batchTotal =
       locationRow.batches?.reduce((acc, b) => acc + (Number(b.quantityIn) || 0), 0) || 0;
-    locationOnHand = Number(locationRow.stockOnHand ?? locationRow.openingStock ?? batchTotal) || 0;
+    locationOnHand = Number(locationRow.openingStock ?? locationRow.stockOnHand ?? batchTotal) || 0;
   }
 
   const deliveryLocationName =
