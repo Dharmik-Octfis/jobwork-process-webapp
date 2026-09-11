@@ -1676,12 +1676,10 @@ export async function getJobOrderOverview(
         }
       : JOB_ORDER_OVERVIEW_INCLUDE;
 
-    console.time('order');
     const order = await tx.jobOrder.findFirst({
       where: { id, organizationId, isDeleted: false },
       include: includeQuery,
     });
-    console.timeEnd('order');
 
     if (!order) throw ApiError.notFound('Job order not found');
 
@@ -1689,22 +1687,18 @@ export async function getJobOrderOverview(
       order.steps = order.steps.filter((s) => s.id === filterStepId);
     }
 
-    console.time('batches');
     const batches = await tx.batch.findMany({
       where: { organizationId, isDeleted: false, sourceDocId: id },
       // 🔴 No `batchNumber` (2026-08-14) — internal key, never leaves the server.
       select: { id: true, supplierBatchRef: true, itemId: true },
     });
-    console.timeEnd('batches');
 
     const stepIds = order.steps.map((s) => s.id);
     const principalItemIds = [
       ...new Set(order.steps.map((s) => s.inputs[0]?.itemId).filter(Boolean)),
     ] as string[];
 
-    console.time('allTotalsMap');
     const allTotalsMap = await getAllStepTotals(tx, organizationId, stepIds);
-    console.timeEnd('allTotalsMap');
 
     const allStepsLightweight = await tx.jobOrderStep.findMany({
       where: { organizationId, jobOrderId: id, isDeleted: false },
@@ -1712,16 +1706,13 @@ export async function getJobOrderOverview(
       orderBy: { seq: 'asc' },
     });
 
-    console.time('allChainBlockedMap');
     const allChainBlockedMap = await getAllChainNotReady(
       tx,
       organizationId,
       id,
       allStepsLightweight,
     );
-    console.timeEnd('allChainBlockedMap');
 
-    console.time('balances');
     const balances =
       principalItemIds.length > 0
         ? await tx.stockLedgerEntry.groupBy({
@@ -1734,7 +1725,6 @@ export async function getJobOrderOverview(
             _sum: { qtyIn: true, qtyOut: true },
           })
         : [];
-    console.timeEnd('balances');
 
     const firstStep = order.steps[0];
     const firstTotals = firstStep ? allTotalsMap.get(firstStep.id) : null;
@@ -1764,7 +1754,6 @@ export async function getJobOrderOverview(
       }
     }
 
-    console.time('unplannedItems');
     const unplannedItems =
       allUnplannedIds.size > 0
         ? await tx.item.findMany({
@@ -1776,7 +1765,6 @@ export async function getJobOrderOverview(
             },
           })
         : [];
-    console.timeEnd('unplannedItems');
 
     const unplannedById = new Map<
       string,

@@ -1,9 +1,37 @@
 import type { NextFunction, Request, Response } from 'express';
 import { performance } from 'node:perf_hooks';
 import { poolStats } from '../db/prisma.ts';
-import { runWithDbTally, type DbTally } from '../db/queryTiming.ts';
+import { newDbTally, runWithDbTally, type DbTally } from '../db/queryTiming.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Above this — or on any 5xx — the request logs a second line breaking `db` down
+ * per operation.
+ *
+ * Set above the slowest routinely-healthy request in production (the jobwork
+ * list endpoints land near 1s) so a breakdown marks a request out instead of
+ * shadowing every line with a second one. 5xx is included unconditionally
+ * because the P2028 failures this was built for abort early and can come back
+ * *faster* than the threshold.
+ */
+const SLOW_REQUEST_MS = 1500;
+
+/**
+ * `db` per operation shape, worst first: `JobOrder.findFirst ×1 4009ms`.
+ *
+ * Grouped rather than chronological, because the shape that matters most here is
+ * a repeat count: an N+1 reads as `×50` on one entry instead of scrolling past
+ * fifty near-identical entries. One line, not one per operation — Catalyst's log
+ * viewer renders every newline as its own row, which is what makes a stack trace
+ * there forty rows deep.
+ */
+function formatBreakdown(tally: DbTally): string {
+  return [...tally.byOp.entries()]
+    .sort(([, a], [, b]) => b.ms - a.ms)
+    .map(([op, { count, ms }]) => `${op} ×${count} ${Math.round(ms)}ms`)
+    .join(' · ');
+}
 
 /**
  * 🔴 **Some path segments are credentials, and a log line is forever.**
@@ -45,8 +73,16 @@ function safePath(pathname: string): string {
  *  - `waiting` — requests queued for a pooled connection. Non-zero under light
  *    load means the pool is the bottleneck; zero is what disproved pool
  *    contention last time. `total`/`max` show how close the pool came to its cap.
- *  - `db=…/Nq` — round-trip count alongside the time, so an N+1 is visible as a
- *    statement count rather than inferred from a duration.
+ *  - `db=…/Nq` — operation count alongside the time, so an N+1 is visible as a
+ *    statement count rather than inferred from a duration. It counts Prisma
+ *    *operations*, not SQL round trips: one `findFirst` carrying a nested
+ *    `include` is 1q here and one query per relation on the wire, which is why
+ *    `8q` can hide twenty round trips.
+ *  - `slow=` — the single worst operation, named. This is what replaced the
+ *    `console.time` pairs in `jobOrders.service.ts`, whose process-global labels
+ *    collided across concurrent requests and printed nonsense (`allTotalsMap:
+ *    18.401s`). Above `SLOW_REQUEST_MS`, or on a 5xx, a second `↳ db` line
+ *    breaks the whole tally down per operation.
  *  - `rss` — the process's resident memory when the request finished. AppSail
  *    runs this at 256MB, and the process sits at ~220MB before its first request
  *    (measured 2026-09-11), so a slow request near that ceiling points at GC.
@@ -65,7 +101,7 @@ function safePath(pathname: string): string {
 export function requestTiming(req: Request, res: Response, next: NextFunction): void {
   const startedAt = performance.now();
   const loopAtStart = performance.eventLoopUtilization();
-  const tally: DbTally = { ms: 0, queries: 0 };
+  const tally = newDbTally();
 
   // `finish` fires when the last byte is handed to the socket, so it captures
   // the whole handler including serialisation — and it fires exactly once,
@@ -83,14 +119,21 @@ export function requestTiming(req: Request, res: Response, next: NextFunction): 
       // Query string dropped, not just redacted — it is never needed for timing
       // and is where tokens and emails turn up.
       const path = safePath(req.originalUrl.split('?')[0] ?? req.originalUrl);
+      const slowest = tally.slowest;
       console.log(
         `${req.method} ${path} ${res.statusCode} ${Math.round(total)}ms ` +
           `db=${Math.round(tally.ms)}ms/${tally.queries}q ` +
           `app=${Math.round(total - tally.ms)}ms ` +
           `up=${Math.round(process.uptime())}s ` +
           `rss=${Math.round(rssMb)}MB busy=${Math.round(busy * 100)}% ` +
-          `pool=${pool.total}/${pool.max} idle=${pool.idle} waiting=${pool.waiting}`,
+          `pool=${pool.total}/${pool.max} idle=${pool.idle} waiting=${pool.waiting}` +
+          (slowest ? ` slow=${slowest.op}:${Math.round(slowest.ms)}ms` : ''),
       );
+
+      // Second line, only when it earns its place — see SLOW_REQUEST_MS.
+      if (tally.byOp.size > 0 && (total >= SLOW_REQUEST_MS || res.statusCode >= 500)) {
+        console.log(`↳ db ${req.method} ${path} ${res.statusCode} — ${formatBreakdown(tally)}`);
+      }
     } catch (error) {
       console.error('requestTiming failed (request itself was unaffected):', error);
     }

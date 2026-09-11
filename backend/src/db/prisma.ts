@@ -218,12 +218,15 @@ if (!env.isProduction) {
 
 export const prisma = baseClient.$extends({
   query: {
-    async $allOperations({ args, query }) {
+    async $allOperations({ args, query, model, operation }) {
       const startedAt = performance.now();
       try {
         return await query(args);
       } finally {
-        recordDbTime(performance.now() - startedAt);
+        // `model` is undefined for raw calls ($queryRaw, $executeRaw), where
+        // `operation` already names them. Never include `args` — a query's
+        // arguments are the tenant's data, and this string reaches the logs.
+        recordDbTime(performance.now() - startedAt, model ? `${model}.${operation}` : operation);
       }
     },
   },
