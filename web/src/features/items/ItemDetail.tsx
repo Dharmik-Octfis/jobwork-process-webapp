@@ -16,6 +16,7 @@ import {
   isOwnLocation,
   type Location,
 } from '../configuration/locations/locations.api';
+import { availableOf, declaredOpeningOf, stockOnHandOf } from './stockFigures';
 
 interface ItemDetailProps {
   itemId: string;
@@ -90,18 +91,17 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     return new Set(allLocations.filter(isOwnLocation).map((l: Location) => l.id));
   }, [allLocations]);
 
-  const totalOpeningStock = useMemo(() => {
+  // 🔴 Two totals, not one. A single figure fed both the "Opening Stock" and the
+  // "Stock on Hand" labels, so whichever field it read, one label lied.
+  const { totalOpeningStock, totalStockOnHand } = useMemo(() => {
     if (Array.isArray(openingStockRows) && openingStockRows.length > 0) {
-      return openingStockRows.reduce((acc, row) => {
-        const batchTotal = Array.isArray(row.batches)
-          ? row.batches.reduce((bAcc, b) => bAcc + (Number(b.quantityIn) || 0), 0)
-          : 0;
-        const stockOnHand =
-          Number(row.openingStock ?? row.stockOnHand ?? batchTotal) || batchTotal || 0;
-        return acc + stockOnHand;
-      }, 0);
+      return {
+        totalOpeningStock: openingStockRows.reduce((acc, row) => acc + declaredOpeningOf(row), 0),
+        totalStockOnHand: openingStockRows.reduce((acc, row) => acc + stockOnHandOf(row), 0),
+      };
     }
-    return Number(item?.openingStock ?? 0);
+    const declared = Number(item?.openingStock ?? 0);
+    return { totalOpeningStock: declared, totalStockOnHand: declared };
   }, [openingStockRows, item]);
 
   const ownPremisesStock = useMemo(() => {
@@ -113,13 +113,9 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
       for (const row of openingStockRows) {
         if (!ownLocationIds.has(row.locationId)) continue;
 
-        const batchTotal = Array.isArray(row.batches)
-          ? row.batches.reduce((bAcc, b) => bAcc + (Number(b.quantityIn) || 0), 0)
-          : 0;
-        const rowOnHand =
-          Number(row.openingStock ?? row.stockOnHand ?? batchTotal) || batchTotal || 0;
+        const rowOnHand = stockOnHandOf(row);
         const rowCommitted = Number(row.committedStock ?? 0) || 0;
-        const rowAvailable = rowOnHand - rowCommitted;
+        const rowAvailable = availableOf(row);
 
         onHand += rowOnHand;
         committed += rowCommitted;
@@ -895,7 +891,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                     >
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
                         <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
-                          {totalOpeningStock.toFixed(2)}
+                          {totalStockOnHand.toFixed(2)}
                         </span>
                         <span style={{ fontSize: '10px', color: '#64748b' }}>
                           {item.unit || 'Qty'}

@@ -198,6 +198,7 @@ export function ItemBatchDetails({
           b.sellingPrice !== null && b.sellingPrice !== undefined ? Number(b.sellingPrice) : null,
         mrp: b.mrp !== null && b.mrp !== undefined ? Number(b.mrp) : null,
         isExpired: !!b.isExpired,
+        isUnallocated: !!b.isUnallocated,
         isInactive,
         units: b.units ?? [],
         untaggedQty: b.untaggedQty ?? 0,
@@ -466,7 +467,18 @@ export function ItemBatchDetails({
                                 internal key, and falling back to it puts the one
                                 identifier the user cannot act on into the column
                                 they identify batches by. */}
-                              {b.batchReference || '-'}
+                              {b.isUnallocated ? (
+                                // Opening stock with no batch yet — it has no
+                                // reference, so it is named by what it is.
+                                <span
+                                  title={`Opening stock not assigned to a ${singular.toLowerCase()} yet. Assign it in Add Opening Stock to issue it.`}
+                                  style={{ color: '#b45309', fontStyle: 'italic' }}
+                                >
+                                  Unallocated
+                                </span>
+                              ) : (
+                                b.batchReference || '-'
+                              )}
                               {b.isInactive && (
                                 <span
                                   style={{

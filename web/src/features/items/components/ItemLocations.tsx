@@ -9,6 +9,7 @@ import {
 } from '../../configuration/locations/locations.api';
 import { itemsApi } from '../items.api';
 import type { ItemOpeningStockLocationRowDto } from '../items.schemas';
+import { availableOf, stockOnHandOf } from '../stockFigures';
 
 // Stable identity so the `useMemo` below doesn't recompute on every render while the query loads.
 const EMPTY_ROWS: ItemOpeningStockLocationRowDto[] = [];
@@ -63,23 +64,16 @@ export function ItemLocations({
     enabled: !!orgId && !!itemId,
   });
 
-  // 🔴 `stockOnHand` FIRST — it is the ledger balance, which is what every other
-  // screen sees. Reading `openingStock` ahead of it froze this column at the
-  // declared figure, so an item that had since been issued to a processor still
-  // showed its full opening quantity here and nowhere else. The declared value and
-  // the batch total survive only as fallbacks for a payload that predates them; a
-  // location drained to 0 must read 0, which is why this tests nullish and not
-  // truthiness.
+  // 🔴 The LIVE balance, via `stockOnHandOf` — reading the declared `openingStock`
+  // here froze this column at the go-live figure, so a bill into head office never
+  // moved it (2026-09-11, the second time this regressed).
   const stockByLocation = useMemo(() => {
     const map = new Map<string, { onHand: number; committed: number; available: number }>();
     for (const row of Array.isArray(openingStockRows) ? openingStockRows : []) {
-      const batchTotal = row.batches.reduce(
-        (acc, batch) => acc + (Number(batch.quantityIn) || 0),
-        0,
-      );
-      const onHand = Number(row.openingStock ?? row.stockOnHand ?? batchTotal) || 0;
+      const onHand = stockOnHandOf(row);
       const committed = Number(row.committedStock ?? 0) || 0;
-      const available = onHand - committed;
+      // Not `onHand - committed`: unallocated opening stock is on hand but not issuable.
+      const available = availableOf(row);
       map.set(row.locationId, { onHand, committed, available });
     }
     return map;

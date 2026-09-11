@@ -19,6 +19,7 @@ import {
   postMovement,
   resolveBatchesForPosting,
   resolveExistingBatchUnits,
+  UNALLOCATED_BATCH_STATE,
   type Ownership,
   type ResolvedBatches,
 } from '../../inventory/stock-ledger/stockLedger.service.ts';
@@ -553,6 +554,8 @@ export async function getOutputBatchOptions(
       organizationId,
       itemId: query.itemId,
       isDeleted: false,
+      // Never offered as something to add to — see `UNALLOCATED_BATCH_STATE`.
+      state: { not: UNALLOCATED_BATCH_STATE },
       ...ownershipWhere,
     };
 
@@ -1210,6 +1213,7 @@ interface ExistingBatch {
   ownerPartyId: string | null;
   parentBatchIds: string[];
   supplierBatchRef: string | null;
+  state: string;
 }
 
 /**
@@ -1262,6 +1266,7 @@ async function loadExistingOutputBatches(
       ownerPartyId: true,
       parentBatchIds: true,
       supplierBatchRef: true,
+      state: true,
     },
   });
   const byId = new Map(rows.map((row) => [row.id, row]));
@@ -1271,6 +1276,13 @@ async function loadExistingOutputBatches(
     if (!batch) {
       throw ApiError.badRequest(
         'One of the batches this receipt adds to no longer exists, or belongs to another organization.',
+      );
+    }
+    // Caught here as well as in `postMovement`, because a draft never posts and
+    // would otherwise park a receipt that can never be opened.
+    if (batch.state === UNALLOCATED_BATCH_STATE) {
+      throw ApiError.badRequest(
+        'A receipt cannot add to unallocated opening stock. Pick a named batch or create a new one.',
       );
     }
     if (batch.itemId !== output.itemId) {

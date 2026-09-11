@@ -13,6 +13,7 @@ import {
   getBalancesByBatch,
   postMovement,
   resolveBatchesForPosting,
+  UNALLOCATED_BATCH_STATE,
   type Ownership,
 } from '../../inventory/stock-ledger/stockLedger.service.ts';
 import { assertLocationsBelongToOrg, resolveProcessorName } from '../jobwork.refs.ts';
@@ -799,6 +800,8 @@ async function resolveLines(
         organizationId,
         id: { in: wanted },
         isDeleted: false,
+        // A draft skips availability, so it is refused here rather than at posting.
+        state: { not: UNALLOCATED_BATCH_STATE },
         itemId: { in: [...itemIds] },
         ownership: context.ownership,
         ...(context.ownership === 'customer' ? { ownerPartyId: context.ownerPartyId } : {}),

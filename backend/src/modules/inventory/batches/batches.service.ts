@@ -6,6 +6,7 @@ import {
   getAvailableBatches,
   getAvailableBatchUnits,
   getBalance,
+  UNALLOCATED_BATCH_STATE,
   type Ownership,
 } from '../stock-ledger/stockLedger.service.ts';
 
@@ -341,6 +342,9 @@ export async function getSourceLocations(
         organizationId,
         itemId: { in: [...query.itemIds] },
         ...(query.ownership ? { ownership: query.ownership } : {}),
+        // What can be issued FROM here — unallocated opening stock cannot, so a
+        // location holding only that would offer a picker with nothing in it.
+        batch: { state: { not: UNALLOCATED_BATCH_STATE } },
       },
       _sum: { qtyIn: true, qtyOut: true },
     });
