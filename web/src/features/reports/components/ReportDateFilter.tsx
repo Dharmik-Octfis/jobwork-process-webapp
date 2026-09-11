@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Calendar as CalendarIcon, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
-import { format, startOfWeek, startOfMonth, startOfYear, subDays, subWeeks, subMonths, subYears, subQuarters, startOfQuarter } from 'date-fns';
+import { format, startOfWeek, startOfMonth, startOfYear, subDays, subWeeks, subMonths, subYears, subQuarters, startOfQuarter, addMonths, getDaysInMonth, setDate, getDay } from 'date-fns';
 
 const PRESETS = [
   { label: 'Today', getValue: () => new Date() },
@@ -126,25 +126,34 @@ export function ReportDateFilter({ value, onChange }: { value: string; onChange:
               </div>
               
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <ChevronLeft size={16} color="#374151" style={{ cursor: 'pointer' }} />
+                <ChevronLeft size={16} color="#374151" style={{ cursor: 'pointer' }} onClick={() => setCustomDate(subMonths(customDate, 1))} />
                 <div style={{ fontSize: '14px', fontWeight: 500 }}>{format(customDate, 'MMM yyyy')}</div>
-                <ChevronRight size={16} color="#374151" style={{ cursor: 'pointer' }} />
+                <ChevronRight size={16} color="#374151" style={{ cursor: 'pointer' }} onClick={() => setCustomDate(addMonths(customDate, 1))} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', fontSize: '12px', color: '#1d4ed8', fontWeight: 600, marginBottom: '8px' }}>
                 <div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', fontSize: '13px', color: '#374151' }}>
-                {Array.from({ length: 30 }).map((_, i) => (
-                  <div key={i} style={{ 
-                    padding: '6px 0', 
-                    borderRadius: '4px',
-                    background: i + 1 === customDate.getDate() ? '#2563eb' : 'transparent',
-                    color: i + 1 === customDate.getDate() ? '#fff' : 'inherit',
-                    cursor: 'pointer'
-                  }}>
-                    {i + 1}
-                  </div>
+                {Array.from({ length: getDay(startOfMonth(customDate)) }).map((_, i) => (
+                  <div key={`empty-${i}`} />
                 ))}
+                {Array.from({ length: getDaysInMonth(customDate) }).map((_, i) => {
+                  const day = i + 1;
+                  return (
+                    <div 
+                      key={day} 
+                      onClick={() => setCustomDate(setDate(customDate, day))}
+                      style={{ 
+                        padding: '6px 0', 
+                        borderRadius: '4px',
+                        background: day === customDate.getDate() ? '#2563eb' : 'transparent',
+                        color: day === customDate.getDate() ? '#fff' : 'inherit',
+                        cursor: 'pointer'
+                      }}>
+                      {day}
+                    </div>
+                  );
+                })}
               </div>
             </div>
             

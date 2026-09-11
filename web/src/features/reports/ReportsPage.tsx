@@ -3,10 +3,35 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { X, Folder, Star } from 'lucide-react';
 import { format } from 'date-fns';
 
+const CATEGORIES = [
+  'Inventory',
+];
+
 export function ReportsPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
-  const [activeCategory, setActiveCategory] = useState('Inventory Valuation');
+  // By default, nothing is selected
+  const [activeCategory, setActiveCategory] = useState('');
+
+  // Favorites state
+  const [favorites, setFavorites] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem(`favorite_reports_${orgId}`);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const toggleFavorite = (reportName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFavorites(prev => {
+      const newFavs = prev.includes(reportName) ? prev.filter(n => n !== reportName) : [...prev, reportName];
+      localStorage.setItem(`favorite_reports_${orgId}`, JSON.stringify(newFavs));
+      return newFavs;
+    });
+  };
+
   const lastVisitedInv = useMemo(() => {
     const visitedStr = localStorage.getItem(`lastVisited_inventoryValuation_${orgId}`);
     if (visitedStr) {
@@ -18,6 +43,22 @@ export function ReportsPage() {
     }
     return null;
   }, [orgId]);
+
+  const reports = [
+    { name: 'Inventory Valuation Summary', category: 'Inventory', lastVisited: lastVisitedInv || '11-09-2026 02:24 PM', route: `/organizations/${orgId}/reports/inventory-valuation-summary` },
+  ];
+
+  const filteredReports = activeCategory
+    ? reports.filter(r => r.category === activeCategory)
+    : reports;
+
+  const sortedReports = [...filteredReports].sort((a, b) => {
+    const aFav = favorites.includes(a.name);
+    const bFav = favorites.includes(b.name);
+    if (aFav && !bFav) return -1;
+    if (!aFav && bFav) return 1;
+    return 0;
+  });
 
   return (
     <div
@@ -74,6 +115,7 @@ export function ReportsPage() {
             display: 'flex',
             flexDirection: 'column',
             padding: '16px 12px',
+            overflowY: 'auto',
           }}
         >
           <div
@@ -88,28 +130,39 @@ export function ReportsPage() {
           >
             Report Category
           </div>
-          <div
-            style={{
-              padding: '8px 12px',
-              cursor: 'pointer',
-              background: activeCategory === 'Inventory Valuation' ? '#f1f5f9' : 'transparent',
-              borderRadius: '6px',
-              color: activeCategory === 'Inventory Valuation' ? '#0f172a' : '#475569',
-              fontWeight: 500,
-              fontSize: '13px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-            }}
-            onClick={() => setActiveCategory('Inventory Valuation')}
-          >
-            <Folder
-              size={16}
-              color={activeCategory === 'Inventory Valuation' ? '#0062ff' : '#94a3b8'}
-              strokeWidth={1.5}
-            />
-            Inventory Valuation
-          </div>
+
+          {CATEGORIES.map((cat) => {
+            const isActive = activeCategory === cat;
+            return (
+              <div
+                key={cat}
+                style={{
+                  padding: '8px 12px',
+                  cursor: 'pointer',
+                  background: isActive ? '#eff6ff' : 'transparent',
+                  borderRadius: '6px',
+                  color: isActive ? '#0062ff' : '#475569',
+                  fontWeight: 500,
+                  fontSize: '13px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  transition: 'background-color 0.15s',
+                  marginBottom: '2px',
+                }}
+                onClick={() => setActiveCategory(cat === activeCategory ? '' : cat)}
+                onMouseEnter={(e) => {
+                  if (!isActive) e.currentTarget.style.backgroundColor = '#f8fafc';
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+              >
+                <Folder size={16} color={isActive ? '#0062ff' : '#94a3b8'} strokeWidth={1.5} />
+                {cat}
+              </div>
+            );
+          })}
         </div>
 
         {/* Main Content */}
@@ -134,7 +187,7 @@ export function ReportsPage() {
               }}
             >
               <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
-                Inventory Valuation
+                {activeCategory || 'All Reports'}
               </h2>
               <span
                 style={{
@@ -146,7 +199,7 @@ export function ReportsPage() {
                   borderRadius: '12px',
                 }}
               >
-                1
+                {sortedReports.length}
               </span>
             </div>
 
@@ -196,27 +249,48 @@ export function ReportsPage() {
                 </tr>
               </thead>
               <tbody>
-                <tr
-                  style={{ borderBottom: '1px solid #eef0f3', cursor: 'pointer', transition: 'background-color 0.15s' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                  onClick={() => navigate(`/organizations/${orgId}/reports/inventory-valuation-summary`)}
-                >
-                  <td style={{ padding: '14px 24px', fontSize: '13px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <Star size={16} color="#cbd5e1" strokeWidth={1.5} />
-                      <span style={{ color: '#0062ff', fontWeight: 500 }}>
-                        Inventory Valuation Summary
-                      </span>
-                    </div>
-                  </td>
-                  <td style={{ padding: '14px 24px', fontSize: '13px', color: '#334155', fontWeight: 400 }}>
-                    System Generated
-                  </td>
-                  <td style={{ padding: '14px 24px', fontSize: '13px', color: '#334155', fontWeight: 400 }}>
-                    {lastVisitedInv || '-'}
-                  </td>
-                </tr>
+                {sortedReports.length > 0 ? (
+                  sortedReports.map((report, idx) => {
+                    const isFav = favorites.includes(report.name);
+                    return (
+                      <tr
+                        key={idx}
+                        style={{ borderBottom: '1px solid #eef0f3', cursor: 'pointer', transition: 'background-color 0.15s' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                        onClick={() => navigate(report.route)}
+                      >
+                        <td style={{ padding: '14px 24px', fontSize: '13px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <Star
+                              size={16}
+                              color={isFav ? "#f59e0b" : "#cbd5e1"}
+                              fill={isFav ? "#f59e0b" : "none"}
+                              strokeWidth={1.5}
+                              onClick={(e) => toggleFavorite(report.name, e)}
+                              style={{ transition: 'all 0.2s' }}
+                            />
+                            <span style={{ color: '#0062ff', fontWeight: 500 }}>
+                              {report.name}
+                            </span>
+                          </div>
+                        </td>
+                        <td style={{ padding: '14px 24px', fontSize: '13px', color: '#334155', fontWeight: 400 }}>
+                          System Generated
+                        </td>
+                        <td style={{ padding: '14px 24px', fontSize: '13px', color: '#334155', fontWeight: 400 }}>
+                          {report.lastVisited}
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={3} style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
+                      No reports found for this category.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Menu, X, Filter, Columns, ChevronDown } from 'lucide-react';
 import { format, endOfDay } from 'date-fns';
@@ -7,7 +7,13 @@ import { AdvancedFilter } from '../../components/ui/AdvancedFilter/AdvancedFilte
 import type { FilterField, FilterCondition } from '../../components/ui/AdvancedFilter/filterUtils';
 import { CustomizeColumnsModal } from '../../components/ui/CustomizeColumnsModal';
 import { ReportDateFilter } from './components/ReportDateFilter';
-import { reportsApi, type InventoryValuationRow, type InventoryValuationQuery } from './reports.api';
+import {
+  reportsApi,
+  type InventoryValuationRow,
+  type InventoryValuationQuery,
+} from './reports.api';
+import { ItemComboBox } from '../../components/ui/ItemComboBox';
+import type { Item } from '../items/items.schemas';
 
 const STOCK_OPTIONS = [
   { label: 'No criteria', value: 'none' },
@@ -24,14 +30,10 @@ const STATUS_OPTIONS = [
   { label: 'Inactive', value: 'inactive' },
 ];
 
-const FILTER_FIELDS: FilterField[] = [
-  { key: 'itemName', label: 'Item Name', dataType: 'string' },
-  { key: 'categoryName', label: 'Category Name', dataType: 'string' }
-];
+// Filter fields are now dynamically generated in the component to access orgId
 
 export function InventoryValuationSummaryPage() {
   const navigate = useNavigate();
-  const today = format(new Date(), 'dd-MM-yyyy');
 
   const [dateRange, setDateRange] = useState('Today');
   const [asOfDate, setAsOfDate] = useState<Date>(new Date());
@@ -40,8 +42,42 @@ export function InventoryValuationSummaryPage() {
   const [conditions, setConditions] = useState<FilterCondition[]>([]);
 
   const [showColumnsModal, setShowColumnsModal] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState<string[]>([
+    'itemName',
+    'stockOnHand',
+    'inventoryAssetValue',
+  ]);
+
+  const formattedAsOfDate = format(asOfDate, 'dd-MM-yyyy');
 
   const { orgId } = useParams<{ orgId: string }>();
+
+  const filterFields = useMemo<FilterField[]>(
+    () => [
+      {
+        key: 'itemName',
+        label: 'Item Name',
+        dataType: 'string',
+        renderInput: ({ value, onChange }) => (
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <ItemComboBox
+              orgId={orgId!}
+              value={(value as string) || ''}
+              initialItem={
+                value ? ({ id: value as string, name: value as string } as unknown as Item) : null
+              }
+              onChange={(item) => onChange(item?.name || '')}
+              placeholder="Search by item name..."
+              portal
+            />
+          </div>
+        ),
+      },
+      { key: 'categoryName', label: 'Category Name', dataType: 'string' },
+    ],
+    [orgId],
+  );
+
   const [data, setData] = useState<InventoryValuationRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -54,12 +90,12 @@ export function InventoryValuationSummaryPage() {
         status: statusFilter as InventoryValuationQuery['status'],
       };
 
-      const itemNameCond = conditions.find(c => c.field === 'itemName');
+      const itemNameCond = conditions.find((c) => c.field === 'itemName');
       if (itemNameCond && itemNameCond.value) {
         query.itemName = itemNameCond.value as string;
       }
 
-      const catNameCond = conditions.find(c => c.field === 'categoryName');
+      const catNameCond = conditions.find((c) => c.field === 'categoryName');
       if (catNameCond && catNameCond.value) {
         query.categoryName = catNameCond.value as string;
       }
@@ -88,7 +124,15 @@ export function InventoryValuationSummaryPage() {
   const totalValue = data.reduce((sum, row) => sum + row.inventoryAssetValue, 0);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f4f5f7', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        background: '#f4f5f7',
+        fontFamily: 'Inter, system-ui, sans-serif',
+      }}
+    >
       {/* Top Header */}
       <div
         style={{
@@ -118,10 +162,22 @@ export function InventoryValuationSummaryPage() {
             <Menu size={18} color="#4b5563" />
           </button>
           <div>
-            <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '2px' }}>Inventory Valuation</div>
-            <div style={{ fontSize: '16px', fontWeight: 500, color: '#111827', display: 'flex', alignItems: 'center' }}>
+            <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '2px' }}>
+              Inventory Valuation
+            </div>
+            <div
+              style={{
+                fontSize: '16px',
+                fontWeight: 500,
+                color: '#111827',
+                display: 'flex',
+                alignItems: 'center',
+              }}
+            >
               Inventory Valuation Summary
-              <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: '6px' }}>• As of {today}</span>
+              <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: '6px' }}>
+                • As of {formattedAsOfDate}
+              </span>
             </div>
           </div>
         </div>
@@ -155,7 +211,16 @@ export function InventoryValuationSummaryPage() {
           gap: '16px',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#4b5563', fontSize: '13px', fontWeight: 500 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            color: '#4b5563',
+            fontSize: '13px',
+            fontWeight: 500,
+          }}
+        >
           <Filter size={14} color="#6b7280" />
           Filters :
         </div>
@@ -218,12 +283,14 @@ export function InventoryValuationSummaryPage() {
           />
 
           <AdvancedFilter
-            fields={FILTER_FIELDS}
+            fields={filterFields}
             conditions={conditions}
             onChange={setConditions}
             align="left"
             matchType="all"
-            triggerIcon={<span style={{ fontSize: '14px', marginRight: '4px', color: '#2563eb' }}>+</span>}
+            triggerIcon={
+              <span style={{ fontSize: '14px', marginRight: '4px', color: '#2563eb' }}>+</span>
+            }
             triggerLabel="More Filters"
           />
 
@@ -263,13 +330,16 @@ export function InventoryValuationSummaryPage() {
           }}
         >
           {/* Top Right Controls in Card */}
-          <div style={{ position: 'absolute', top: '16px', right: '16px', display: 'flex', gap: '16px', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#4b5563' }}>
-              Group By : <span style={{ color: '#111827', fontWeight: 500 }}>Category Name</span>
-              <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#ef4444', display: 'flex', alignItems: 'center' }}><X size={14} /></button>
-              <ChevronDown size={14} style={{ marginLeft: '2px' }} />
-            </div>
-            <div style={{ width: '1px', height: '14px', background: '#e5e7eb' }} />
+          <div
+            style={{
+              position: 'absolute',
+              top: '16px',
+              right: '16px',
+              display: 'flex',
+              gap: '16px',
+              alignItems: 'center',
+            }}
+          >
             <button
               type="button"
               onClick={() => setShowColumnsModal(true)}
@@ -287,40 +357,112 @@ export function InventoryValuationSummaryPage() {
             >
               <Columns size={14} color="#6b7280" />
               Customize Report Columns
-              <span style={{ background: '#eff6ff', color: '#2563eb', padding: '2px 6px', borderRadius: '10px', fontSize: '11px', fontWeight: 600 }}>3</span>
+              <span
+                style={{
+                  background: '#eff6ff',
+                  color: '#2563eb',
+                  padding: '2px 6px',
+                  borderRadius: '10px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                }}
+              >
+                {visibleColumns.length}
+              </span>
             </button>
           </div>
 
           {/* Report Header Text */}
           <div style={{ textAlign: 'center', padding: '56px 0 32px' }}>
-            <div style={{ fontSize: '13px', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', fontWeight: 500 }}>
+            <div
+              style={{
+                fontSize: '13px',
+                color: '#6b7280',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                marginBottom: '8px',
+                fontWeight: 500,
+              }}
+            >
               OCTFIS TECHNO llp
             </div>
-            <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}>
+            <h2
+              style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
+            >
               Inventory Valuation Summary
             </h2>
-            <div style={{ fontSize: '13px', color: '#4b5563' }}>
-              As of {today}
-            </div>
+            <div style={{ fontSize: '13px', color: '#4b5563' }}>As of {formattedAsOfDate}</div>
           </div>
 
           {/* Data Table */}
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb' }}>
-                <th style={thStyle}>ITEM NAME <ChevronDown size={12} color="#9ca3af" style={{ display: 'inline', verticalAlign: 'middle', marginLeft: '4px' }}/></th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>STOCK ON HAND</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>INVENTORY ASSET VALUE</th>
+                {visibleColumns.map((colKey) => {
+                  switch (colKey) {
+                    case 'itemName':
+                      return (
+                        <th key={colKey} style={thStyle}>
+                          ITEM NAME{' '}
+                          <ChevronDown
+                            size={12}
+                            color="#9ca3af"
+                            style={{
+                              display: 'inline',
+                              verticalAlign: 'middle',
+                              marginLeft: '4px',
+                            }}
+                          />
+                        </th>
+                      );
+                    case 'categoryName':
+                      return (
+                        <th key={colKey} style={thStyle}>
+                          CATEGORY NAME
+                        </th>
+                      );
+                    case 'uomName':
+                      return (
+                        <th key={colKey} style={thStyle}>
+                          UNIT
+                        </th>
+                      );
+                    case 'stockOnHand':
+                      return (
+                        <th key={colKey} style={{ ...thStyle, textAlign: 'right' }}>
+                          STOCK ON HAND
+                        </th>
+                      );
+                    case 'inventoryAssetValue':
+                      return (
+                        <th key={colKey} style={{ ...thStyle, textAlign: 'right' }}>
+                          INVENTORY ASSET VALUE
+                        </th>
+                      );
+                    default:
+                      return null;
+                  }
+                })}
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={3} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}>Loading...</td>
+                  <td
+                    colSpan={visibleColumns.length}
+                    style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}
+                  >
+                    Loading...
+                  </td>
                 </tr>
               ) : data.length === 0 ? (
                 <tr>
-                  <td colSpan={3} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}>No data found</td>
+                  <td
+                    colSpan={visibleColumns.length}
+                    style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}
+                  >
+                    No data found
+                  </td>
                 </tr>
               ) : (
                 data.map((row) => (
@@ -328,27 +470,112 @@ export function InventoryValuationSummaryPage() {
                     key={row.itemId}
                     className="table-row-hover"
                     style={{ borderTop: '1px solid #f9fafb', cursor: 'pointer' }}
-                    onClick={() => navigate(`/organizations/${orgId}/reports/inventory-valuation/${row.itemId}`)}
+                    onClick={() =>
+                      navigate(`/organizations/${orgId}/reports/inventory-valuation/${row.itemId}`)
+                    }
                   >
-                    <td style={tdStyle}>
-                      <span style={{ color: '#111827', fontWeight: 500 }}>
-                        {row.itemName}
-                      </span> <span style={{ color: '#9ca3af', fontSize: '12px' }}>({row.uomName || 'unit'})</span>
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{row.stockOnHand.toFixed(2)}</td>
-                    <td style={{ ...tdStyle, textAlign: 'right', color: '#111827', fontWeight: 600 }}>
-                      ₹{row.inventoryAssetValue < 0 ? '-' : ''}{Math.abs(row.inventoryAssetValue).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
+                    {visibleColumns.map((colKey) => {
+                      switch (colKey) {
+                        case 'itemName':
+                          return (
+                            <td key={colKey} style={tdStyle}>
+                              <span style={{ color: '#111827', fontWeight: 500 }}>
+                                {row.itemName}
+                              </span>{' '}
+                              <span style={{ color: '#9ca3af', fontSize: '12px' }}>
+                                ({row.uomName || 'unit'})
+                              </span>
+                            </td>
+                          );
+                        case 'categoryName':
+                          return (
+                            <td key={colKey} style={tdStyle}>
+                              {row.categoryName || '-'}
+                            </td>
+                          );
+                        case 'uomName':
+                          return (
+                            <td key={colKey} style={tdStyle}>
+                              {row.uomName || '-'}
+                            </td>
+                          );
+                        case 'stockOnHand':
+                          return (
+                            <td
+                              key={colKey}
+                              style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}
+                            >
+                              {row.stockOnHand.toFixed(2)}
+                            </td>
+                          );
+                        case 'inventoryAssetValue':
+                          return (
+                            <td
+                              key={colKey}
+                              style={{
+                                ...tdStyle,
+                                textAlign: 'right',
+                                color: '#111827',
+                                fontWeight: 600,
+                              }}
+                            >
+                              ₹{row.inventoryAssetValue < 0 ? '-' : ''}
+                              {Math.abs(row.inventoryAssetValue).toLocaleString('en-IN', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+                          );
+                        default:
+                          return null;
+                      }
+                    })}
                   </tr>
                 ))
               )}
-              <tr style={{ borderTop: '1px solid #e5e7eb' }}>
-                <td style={{ ...tdStyle, fontWeight: 600 }}>Total</td>
-                <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>{totalQty.toFixed(2)}</td>
-                <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: '#111827' }}>
-                  ₹{totalValue < 0 ? '-' : ''}{Math.abs(totalValue).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </td>
-              </tr>
+              {data.length > 0 && (
+                <tr style={{ borderTop: '1px solid #e5e7eb' }}>
+                  {visibleColumns.map((colKey, index) => {
+                    if (index === 0) {
+                      return (
+                        <td key={colKey} style={{ ...tdStyle, fontWeight: 600 }}>
+                          Total
+                        </td>
+                      );
+                    }
+                    if (colKey === 'stockOnHand') {
+                      return (
+                        <td
+                          key={colKey}
+                          style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}
+                        >
+                          {totalQty.toFixed(2)}
+                        </td>
+                      );
+                    }
+                    if (colKey === 'inventoryAssetValue') {
+                      return (
+                        <td
+                          key={colKey}
+                          style={{
+                            ...tdStyle,
+                            textAlign: 'right',
+                            fontWeight: 700,
+                            color: '#111827',
+                          }}
+                        >
+                          ₹{totalValue < 0 ? '-' : ''}
+                          {Math.abs(totalValue).toLocaleString('en-IN', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </td>
+                      );
+                    }
+                    return <td key={colKey} style={tdStyle} />; // Empty cell for non-total columns
+                  })}
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -360,11 +587,16 @@ export function InventoryValuationSummaryPage() {
           onClose={() => setShowColumnsModal(false)}
           catalog={[
             { key: 'itemName', label: 'ITEM NAME', locked: true, defaultVisible: true },
+            { key: 'categoryName', label: 'CATEGORY NAME', defaultVisible: false },
+            { key: 'uomName', label: 'UNIT', defaultVisible: false },
             { key: 'stockOnHand', label: 'STOCK ON HAND', defaultVisible: true },
             { key: 'inventoryAssetValue', label: 'INVENTORY ASSET VALUE', defaultVisible: true },
           ]}
-          visible={['itemName', 'stockOnHand', 'inventoryAssetValue']}
-          onSave={() => setShowColumnsModal(false)}
+          visible={visibleColumns}
+          onSave={(newCols) => {
+            setVisibleColumns(newCols);
+            setShowColumnsModal(false);
+          }}
         />
       )}
     </div>

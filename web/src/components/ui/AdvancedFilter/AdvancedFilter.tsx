@@ -261,7 +261,12 @@ export function AdvancedFilter({
                         className="filter-row-input-wrapper"
                         style={{ display: 'flex', gap: '8px' }}
                       >
-                        {field.dataType === 'select' || field.dataType === 'radio' ? (
+                        {field.renderInput ? (
+                          field.renderInput({
+                            value: condition?.value,
+                            onChange: (val) => updateFieldCondition({ value: val }),
+                          })
+                        ) : field.dataType === 'select' || field.dataType === 'radio' ? (
                           <Select
                             options={
                               field.options?.map((o) => ({

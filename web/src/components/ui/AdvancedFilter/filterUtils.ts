@@ -48,6 +48,7 @@ export interface FilterField {
   label: string;
   dataType: FilterDataType;
   options?: { label: string; value: string | number }[];
+  renderInput?: (props: { value: unknown; onChange: (val: unknown) => void }) => React.ReactNode;
 }
 
 export interface FilterCondition {
