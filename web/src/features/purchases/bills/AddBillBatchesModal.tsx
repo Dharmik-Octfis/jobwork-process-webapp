@@ -193,6 +193,41 @@ export function AddBillBatchesModal({
     return map;
   }, [availableBatches]);
 
+  /**
+   * 🔴 The picker's options: every batch with stock here, PLUS every batch this line
+   * already names. The availability query returns positive balances at this
+   * location only, so a batch saved on a draft (nothing posted yet), one whose stock
+   * has since moved on, or one received elsewhere matched no option — and the
+   * Reference cell of a row the server had just read back rendered empty.
+   */
+  const batchOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const options: { value: string; label: string; availableQty: string | null; units: number }[] =
+      [];
+    for (const b of availableBatches) {
+      // One row per (batch, location) when no location is given — one option each.
+      if (seen.has(b.batchId)) continue;
+      seen.add(b.batchId);
+      options.push({
+        value: b.batchId,
+        label: b.supplierBatchRef || b.manufacturerBatch || 'Stock',
+        availableQty: b.availableQty,
+        units: b.units?.length ?? 0,
+      });
+    }
+    for (const b of initialBatches) {
+      if (!b.batchId || seen.has(b.batchId)) continue;
+      seen.add(b.batchId);
+      options.push({
+        value: b.batchId,
+        label: String(b.supplierBatchRef || b.manufacturerBatch || 'Stock'),
+        availableQty: null,
+        units: b.units?.length ?? 0,
+      });
+    }
+    return options;
+  }, [availableBatches, initialBatches]);
+
   const [batches, setBatches] = useState<BillBatchRow[]>(() =>
     toFormRows(initialBatches, defaultSellingPrice, defaultMrp),
   );
@@ -736,14 +771,11 @@ export function AddBillBatchesModal({
                               value: 'header',
                               disabled: true,
                             },
-                            ...availableBatches.map((b) => ({
-                              value: b.batchId,
-                              label: b.supplierBatchRef || b.manufacturerBatch || 'Stock',
-                              batch: b,
-                            })),
+                            ...batchOptions,
                           ]}
                           value={batch.batchId}
                           dropdownWidth={300}
+                          portal
                           onChange={(val) => {
                             if (val === 'header') return;
                             const b = availableBatches.find((x) => x.batchId === val);
@@ -765,9 +797,25 @@ export function AddBillBatchesModal({
                                     ? String(b.mrp)
                                     : defaultMrp,
                               });
+                              return;
+                            }
+                            // A batch the line already named but with no stock here —
+                            // its fields come from what the server read back.
+                            const saved = initialBatches.find((x) => x.batchId === val);
+                            if (saved) {
+                              const [row] = toFormRows([saved], defaultSellingPrice, defaultMrp);
+                              updateBatchFields(batch.id, {
+                                batchId: row!.batchId,
+                                supplierBatchRef: row!.supplierBatchRef,
+                                manufacturerBatch: row!.manufacturerBatch,
+                                manufacturedDate: row!.manufacturedDate,
+                                expiryDate: row!.expiryDate,
+                                sellingPrice: row!.sellingPrice,
+                                mrp: row!.mrp,
+                              });
                             }
                           }}
-                          placeholder="Search"
+                          placeholder={`Select a ${trackingLabel.singular.toLowerCase()}…`}
                           renderOption={(opt) => {
                             if (opt.value === 'header') {
                               return (
@@ -783,24 +831,43 @@ export function AddBillBatchesModal({
                                 </div>
                               );
                             }
-                            const b = (opt as unknown as { batch: { availableQty: number; units?: unknown[] } }).batch;
+                            const b = opt as unknown as (typeof batchOptions)[number];
                             return (
                               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                  }}
+                                >
                                   <div style={{ fontWeight: 500 }}>{opt.label}</div>
-                                  {unitLabel.enabled && b.units && b.units.length > 0 && (
-                                    <div style={{ fontSize: '11.5px', fontWeight: 500, color: '#64748b' }}>
-                                      {b.units.length}{' '}
-                                      {b.units.length === 1
+                                  {unitLabel.enabled && b.units > 0 && (
+                                    <div
+                                      style={{
+                                        fontSize: '11.5px',
+                                        fontWeight: 500,
+                                        color: '#64748b',
+                                      }}
+                                    >
+                                      {b.units}{' '}
+                                      {b.units === 1
                                         ? unitLabel.singular.toLowerCase()
                                         : unitLabel.plural.toLowerCase()}
                                     </div>
                                   )}
                                 </div>
                                 <div
-                                  style={{ fontSize: '11.5px', fontWeight: 500, color: '#64748b', marginTop: 2 }}
+                                  style={{
+                                    fontSize: '11.5px',
+                                    fontWeight: 500,
+                                    color: '#64748b',
+                                    marginTop: 2,
+                                  }}
                                 >
-                                  Balance in batch: {formatQty(b.availableQty)} {uomLabel}
+                                  {b.availableQty === null
+                                    ? 'No stock at this location'
+                                    : `Balance in batch: ${formatQty(b.availableQty)} ${uomLabel}`}
                                 </div>
                               </div>
                             );

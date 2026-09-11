@@ -99,12 +99,14 @@ const baseBillSchema = z.object({
   totalAmount: z.coerce.number(),
   termsAndConditions: z.string().optional().nullable(),
   attachments: z.array(z.any()).optional().nullable(),
-  status: z.string().default('Draft'),
+  // No default here — see `createBillSchema`. Zod 4's `.partial()` keeps a default,
+  // so every PATCH that omitted `status` used to arrive as "Draft" and withdraw the
+  // bill's stock.
+  status: z.string(),
   customFields: z.record(z.string(), z.unknown()).optional(),
   lineItems: z.array(billItemSchema).min(1),
 });
 
- 
 const validateDueDate = (data: { billDate?: Date; dueDate?: Date | null }) => {
   if (data.billDate && data.dueDate) {
     const billTime = new Date(data.billDate).setHours(0, 0, 0, 0);
@@ -114,10 +116,12 @@ const validateDueDate = (data: { billDate?: Date; dueDate?: Date | null }) => {
   return true;
 };
 
-export const createBillSchema = baseBillSchema.refine(validateDueDate, {
-  message: 'Due date must be equal to or after Bill date',
-  path: ['dueDate'],
-});
+export const createBillSchema = baseBillSchema
+  .extend({ status: z.string().default('Draft') })
+  .refine(validateDueDate, {
+    message: 'Due date must be equal to or after Bill date',
+    path: ['dueDate'],
+  });
 
 export const updateBillSchema = baseBillSchema.partial().refine(validateDueDate, {
   message: 'Due date must be equal to or after Bill date',

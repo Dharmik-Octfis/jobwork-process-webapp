@@ -6,7 +6,7 @@ import {
   getBalance,
   getBalancesByBatchUnit,
 } from '../../inventory/stock-ledger/stockLedger.service.ts';
-import type { CreateBillPayload } from './bills.schemas.ts';
+import { updateBillSchema, type CreateBillPayload } from './bills.schemas.ts';
 
 /**
  * 🔴 THE PROOF THAT THE UNIT LEVEL WORKS ON A REAL DOCUMENT.
@@ -277,7 +277,7 @@ describe('bill → units → ledger', () => {
  * under it, which is why they are fixed and pinned in the same commit.
  */
 describe('bill — the two defects the unit level would have amplified', () => {
-  it('does not post a second time when a bill goes Open → Draft → Open', async () => {
+  it('does not post a second time across repeated Open saves, and refuses Open → Draft', async () => {
     const bill = await createBill(
       orgId,
       userId,
@@ -311,9 +311,12 @@ describe('bill — the two defects the unit level would have amplified', () => {
 
     // Draft → Open: this is the posting.
     await updateBill(orgId, bill.id, userId, { status: 'Open', lineItems } as never);
-    // …and back, and forward again. `updateBillSchema` is `.partial()`, so this
-    // is reachable from the UI.
-    await updateBill(orgId, bill.id, userId, { status: 'Draft' } as never);
+    // Back to Draft is refused since 2026-09-11 — and rolled back whole, so it
+    // leaves nothing on the ledger for the next save to trip over.
+    await expect(
+      updateBill(orgId, bill.id, userId, { status: 'Draft' } as never),
+    ).rejects.toMatchObject({ status: 400 });
+    // Saving the Open bill again is the path that must not double.
     await updateBill(orgId, bill.id, userId, { status: 'Open', lineItems } as never);
 
     const rows = await runAsTenant(orgId, (tx) =>
@@ -681,42 +684,28 @@ describe('bill — editing a posted bill re-posts its stock', () => {
   });
 
   /**
-   * 🔴 A DRAFT HOLDS NO STOCK. Sending a posted bill back to Draft used to leave
-   * every receipt row standing, so the ledger said 150 while the document said
-   * "not posted yet" — and the next Draft → Open would have posted a second time
-   * had the guard not existed.
+   * 🔴 AN OPEN BILL NEVER GOES BACK TO DRAFT (2026-09-11). Until then this test
+   * asserted the opposite — that Draft withdrew the stock and kept the paperwork.
+   * A posted purchase document is corrected by editing it or removed by deleting
+   * it, and both of those already reverse; parking it again only hid stock the
+   * vendor's invoice still claimed.
    */
-  it('withdraws the stock when a posted bill goes back to Draft, but keeps the paperwork', async () => {
+  it('refuses to send a posted bill back to Draft, and leaves its stock alone', async () => {
     const { bill, batchId } = await postedBill([
       { label: 'T-1', quantity: 100 },
       { label: 'T-2', quantity: 50 },
     ]);
-    expect(await liveUnits(batchId)).toHaveLength(2);
 
-    await updateBill(orgId, bill.id, userId, { status: 'Draft' } as never);
+    await expect(
+      updateBill(orgId, bill.id, userId, { status: 'Draft' } as never),
+    ).rejects.toMatchObject({ status: 400 });
 
     const balance = await runAsTenant(orgId, (tx) =>
       getBalance(tx, { organizationId: orgId, batchId }),
     );
-    expect(balance.qty.toString()).toBe('0');
-    expect(balance.value.toString()).toBe('0');
-
-    /**
-     * 🔴 THE STOCK GOES, THE DOCUMENT STAYS — and this assertion is the inverse of
-     * what it was before `bill_item_batches` existed (2026-09-08).
-     *
-     * It used to expect the packages retired, because back then a draft could not
-     * hold anything: the batches were derived from the ledger, so a bill with no
-     * postings read back empty and a taka with no movements was pure litter.
-     *
-     * Now the draft still SAYS it received these two takas — that is what a draft
-     * is — so its packages and its rows survive. Reopening posts them again from
-     * the document rather than asking the user to retype them.
-     */
+    expect(balance.qty.toString()).toBe('150');
     expect(await liveUnits(batchId)).toHaveLength(2);
-
-    const read = await getBillById(orgId, bill.id);
-    expect(read!.lineItems[0]!.batches![0]!.units.map((u) => u.label)).toEqual(['T-1', 'T-2']);
+    expect((await getBillById(orgId, bill.id))!.status).toBe('Open');
   });
 
   /**
@@ -1091,5 +1080,141 @@ describe('bill → posted_at is the bill date', () => {
     );
 
     expect(latest!.postedAt.toISOString()).toBe(MOVED.toISOString());
+  });
+});
+
+/**
+ * 🔴 OPENING A DRAFT FROM ITS DETAIL PAGE POSTS WHAT THE DRAFT SAYS (2026-09-11).
+ *
+ * The "Open Bill" button sends `{ status: 'Open' }` and nothing else. With no
+ * `lineItems` in the payload nothing was written, so nothing posted: the bill
+ * turned Open over an empty ledger, its location's stock never rose, and the
+ * Batch Details tab — which reads the ledger — never showed the batch. Found on
+ * dev as `test-jv-007`.
+ */
+describe('bill — opening a draft with its status alone', () => {
+  const draft = (ref: string) =>
+    createBill(
+      orgId,
+      userId,
+      billPayload(
+        [
+          {
+            supplierBatchRef: ref,
+            quantity: 300,
+            units: [
+              { label: 'T-1', quantity: 100 },
+              { label: 'T-2', quantity: 200 },
+            ],
+          },
+        ],
+        'Draft',
+        300,
+      ),
+    );
+
+  const ledgerOf = (billId: string) =>
+    runAsTenant(orgId, (tx) =>
+      tx.stockLedgerEntry.findMany({
+        where: { organizationId: orgId, sourceDocType: 'bill', sourceDocId: billId },
+      }),
+    );
+
+  it('posts the batches and packages the draft stores', async () => {
+    const bill = await draft(`JV-${unique()}`);
+    const stored = (await getBillById(orgId, bill.id))!.lineItems[0]!.batches![0]!;
+
+    await updateBill(orgId, bill.id, userId, { status: 'Open' } as never);
+
+    const { balance, byUnit } = await runAsTenant(orgId, async (tx) => ({
+      balance: await getBalance(tx, { organizationId: orgId, batchId: stored.batchId! }),
+      byUnit: (
+        await getBalancesByBatchUnit(tx, { organizationId: orgId, batchIds: [stored.batchId!] })
+      ).get(stored.batchId!)!,
+    }));
+    expect(balance.qty.toString()).toBe('300');
+    expect(balance.value.toString()).toBe('3000');
+    // The draft's own packages, topped up — never duplicates under the same tags.
+    expect(byUnit.get(stored.units[0]!.batchUnitId)!.toString()).toBe('100');
+    expect(byUnit.get(stored.units[1]!.batchUnitId)!.toString()).toBe('200');
+    expect(await liveUnitsOf(stored.batchId!)).toHaveLength(2);
+
+    // Filed under the bill's own line, which the status-only save did not replace.
+    const rows = await ledgerOf(bill.id);
+    expect(rows).toHaveLength(2);
+    const lineId = (await getBillById(orgId, bill.id))!.lineItems[0]!.id;
+    expect(rows.every((row) => row.sourceDocLineId === lineId)).toBe(true);
+
+    // And the document reads back exactly once — the rewrite retired the old rows.
+    const read = (await getBillById(orgId, bill.id))!.lineItems[0]!.batches!;
+    expect(read).toHaveLength(1);
+    expect(read[0]!.quantity).toBe(300);
+    expect(read[0]!.units.map((u) => u.label)).toEqual(['T-1', 'T-2']);
+  });
+
+  it('refuses when a batch-tracked line has no batch details yet', async () => {
+    const bill = await createBill(orgId, userId, {
+      ...billPayload(undefined, 'Draft', 40),
+      lineItems: [{ itemId, quantity: 40, rate: 10, amount: 400 }],
+    } as never);
+
+    await expect(
+      updateBill(orgId, bill.id, userId, { status: 'Open' } as never),
+    ).rejects.toMatchObject({ status: 400 });
+
+    expect((await getBillById(orgId, bill.id))!.status).toBe('Draft');
+    expect(await ledgerOf(bill.id)).toHaveLength(0);
+  });
+
+  /** The state the old path left behind. Editing it must repair it — before, an
+   * Open bill only re-posted when it had already posted, so this one never could. */
+  it('posts an Open bill with an empty ledger when its lines are saved', async () => {
+    const bill = await draft(`JV-${unique()}`);
+    const stored = (await getBillById(orgId, bill.id))!.lineItems[0]!.batches![0]!;
+    await runAsTenant(orgId, (tx) =>
+      tx.bill.update({ where: { id: bill.id }, data: { status: 'Open' } }),
+    );
+
+    await updateBill(orgId, bill.id, userId, {
+      status: 'Open',
+      lineItems: [
+        {
+          itemId,
+          quantity: 300,
+          rate: 10,
+          amount: 3000,
+          batches: [
+            {
+              batchId: stored.batchId,
+              quantity: 300,
+              units: stored.units.map((u) => ({
+                batchUnitId: u.batchUnitId,
+                quantity: u.quantity,
+              })),
+            },
+          ],
+        },
+      ],
+    } as never);
+
+    const balance = await runAsTenant(orgId, (tx) =>
+      getBalance(tx, { organizationId: orgId, batchId: stored.batchId! }),
+    );
+    expect(balance.qty.toString()).toBe('300');
+  });
+
+  it('refuses to open a bill with no location instead of posting nothing', async () => {
+    await expect(
+      createBill(orgId, userId, {
+        ...billPayload([{ supplierBatchRef: `JV-${unique()}`, quantity: 10 }], 'Open', 10),
+        locationId: null,
+      } as CreateBillPayload),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  /** Zod 4's `.partial()` keeps a `.default()`, so a PATCH carrying only a note
+   * used to arrive as `status: 'Draft'` and withdraw the bill's stock. */
+  it('does not invent a status for a PATCH that sends none', () => {
+    expect(updateBillSchema.parse({ paymentTerms: 'Net 30' }).status).toBeUndefined();
   });
 });
