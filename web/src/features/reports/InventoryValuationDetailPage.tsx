@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { Menu, X, Filter } from 'lucide-react';
-import { format, subYears, endOfDay } from 'date-fns';
+import { format, subYears, endOfDay, startOfDay } from 'date-fns';
 import { ReportDateFilter } from './components/ReportDateFilter';
 import { reportsApi, type ItemLedgerResponse, type ItemLedgerRow } from './reports.api';
 
@@ -23,7 +23,7 @@ export function InventoryValuationDetailPage() {
     setLoading(true);
     try {
       const response = await reportsApi.getItemLedger(orgId, itemId, {
-        fromDate: fromDate.toISOString(),
+        fromDate: startOfDay(fromDate).toISOString(),
         toDate: endOfDay(toDate).toISOString()
       });
       setData(response);
@@ -39,7 +39,7 @@ export function InventoryValuationDetailPage() {
       if (!orgId || !itemId) return;
       try {
         const response = await reportsApi.getItemLedger(orgId, itemId, {
-          fromDate: fromDate.toISOString(),
+          fromDate: startOfDay(fromDate).toISOString(),
           toDate: endOfDay(toDate).toISOString()
         });
         setData(response);
