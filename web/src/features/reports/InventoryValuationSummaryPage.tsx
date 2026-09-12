@@ -7,10 +7,12 @@ import { AdvancedFilter } from '../../components/ui/AdvancedFilter/AdvancedFilte
 import type { FilterField, FilterCondition } from '../../components/ui/AdvancedFilter/filterUtils';
 import { CustomizeColumnsModal } from '../../components/ui/CustomizeColumnsModal';
 import { ReportDateFilter } from './components/ReportDateFilter';
+import { Pagination } from '../../components/ui/Pagination';
+import { useListSearch } from '../../hooks/useListSearch';
 import {
   reportsApi,
-  type InventoryValuationRow,
   type InventoryValuationQuery,
+  type PaginatedInventoryValuationResponse,
 } from './reports.api';
 import { ItemComboBox } from '../../components/ui/ItemComboBox';
 import type { Item } from '../items/items.schemas';
@@ -78,7 +80,9 @@ export function InventoryValuationSummaryPage() {
     [orgId],
   );
 
-  const [data, setData] = useState<InventoryValuationRow[]>([]);
+  const { page, setPage, perPage, setPerPage } = useListSearch();
+
+  const [data, setData] = useState<PaginatedInventoryValuationResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
@@ -88,6 +92,8 @@ export function InventoryValuationSummaryPage() {
         asOfDate: endOfDay(asOfDate).toISOString(),
         stockAvailability: stockFilter as InventoryValuationQuery['stockAvailability'],
         status: statusFilter as InventoryValuationQuery['status'],
+        page,
+        perPage,
       };
 
       const itemNameCond = conditions.find((c) => c.field === 'itemName');
@@ -100,8 +106,8 @@ export function InventoryValuationSummaryPage() {
         query.categoryName = catNameCond.value as string;
       }
 
-      const rows = await reportsApi.getInventoryValuation(orgId, query);
-      setData(rows);
+      const response = await reportsApi.getInventoryValuation(orgId, query);
+      setData(response);
     } catch (error) {
       console.error('Failed to fetch inventory valuation', error);
     } finally {
@@ -118,10 +124,12 @@ export function InventoryValuationSummaryPage() {
     };
     init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId]);
+  }, [orgId, page, perPage]);
 
-  const totalQty = data.reduce((sum, row) => sum + row.stockOnHand, 0);
-  const totalValue = data.reduce((sum, row) => sum + row.inventoryAssetValue, 0);
+  const rows = data?.results || [];
+  const totalQty = data?.grandTotalQty || 0;
+  const totalValue = data?.grandTotalValue || 0;
+  const total = data?.total || 0;
 
   return (
     <div
@@ -455,7 +463,7 @@ export function InventoryValuationSummaryPage() {
                     Loading...
                   </td>
                 </tr>
-              ) : data.length === 0 ? (
+              ) : rows.length === 0 ? (
                 <tr>
                   <td
                     colSpan={visibleColumns.length}
@@ -465,7 +473,7 @@ export function InventoryValuationSummaryPage() {
                   </td>
                 </tr>
               ) : (
-                data.map((row) => (
+                rows.map((row) => (
                   <tr
                     key={row.itemId}
                     className="table-row-hover"
@@ -533,7 +541,7 @@ export function InventoryValuationSummaryPage() {
                   </tr>
                 ))
               )}
-              {data.length > 0 && (
+              {rows.length > 0 && (
                 <tr style={{ borderTop: '1px solid #e5e7eb' }}>
                   {visibleColumns.map((colKey, index) => {
                     if (index === 0) {
@@ -578,6 +586,20 @@ export function InventoryValuationSummaryPage() {
               )}
             </tbody>
           </table>
+          
+          <Pagination
+            pageContext={{
+              page: data?.page || page,
+              perPage: data?.perPage || perPage,
+              hasMore: data?.page && data?.totalPages ? data.page < data.totalPages : false,
+            }}
+            total={total}
+            page={page}
+            perPage={perPage}
+            onPageChange={setPage}
+            onPerPageChange={setPerPage}
+            onRequestCount={() => {}}
+          />
         </div>
       </div>
 

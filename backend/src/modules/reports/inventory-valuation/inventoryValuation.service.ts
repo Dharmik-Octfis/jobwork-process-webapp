@@ -1,11 +1,11 @@
 import { runAsTenant } from '../../../db/prisma.ts';
-import type { InventoryValuationQuery, InventoryValuationRow, ItemLedgerQuery, ItemLedgerResponse } from './inventoryValuation.schemas.ts';
+import type { InventoryValuationQuery, PaginatedInventoryValuationResponse, ItemLedgerQuery, ItemLedgerResponse } from './inventoryValuation.schemas.ts';
 import { Prisma } from '../../../../generated/prisma/client.ts';
 
 export async function getInventoryValuationSummary(
   organizationId: string,
   _query: InventoryValuationQuery
-): Promise<InventoryValuationRow[]> {
+): Promise<PaginatedInventoryValuationResponse> {
   return runAsTenant(organizationId, async (tx) => {
     // Determine the date filter. The UI passes dd-MM-yyyy or similar? We should probably just use current date if not provided
     // For now we will fetch all ledger entries up to the provided date. If not provided, fetch all.
@@ -79,9 +79,9 @@ export async function getInventoryValuationSummary(
 
     q = Prisma.sql`${q} ORDER BY i.name ASC`;
 
-    const rows = await tx.$queryRaw<RawRow[]>`${q}`;
+    const rawRows = await tx.$queryRaw<RawRow[]>`${q}`;
 
-    return rows.map(row => ({
+    const mappedRows = rawRows.map(row => ({
       itemId: row.itemId,
       itemName: row.itemName,
       categoryName: row.categoryName,
@@ -89,6 +89,25 @@ export async function getInventoryValuationSummary(
       stockOnHand: Number(row.stockOnHand),
       inventoryAssetValue: Number(row.inventoryAssetValue),
     }));
+
+    const totalQty = mappedRows.reduce((sum, row) => sum + row.stockOnHand, 0);
+    const totalValue = mappedRows.reduce((sum, row) => sum + row.inventoryAssetValue, 0);
+
+    const total = mappedRows.length;
+    const page = _query.page || 1;
+    const perPage = _query.perPage || 25;
+    const totalPages = Math.ceil(total / perPage);
+    const paginatedRows = mappedRows.slice((page - 1) * perPage, page * perPage);
+
+    return {
+      results: paginatedRows,
+      total,
+      page,
+      perPage,
+      totalPages,
+      grandTotalQty: totalQty,
+      grandTotalValue: totalValue,
+    };
   });
 }
 
@@ -194,8 +213,9 @@ export async function getItemLedger(
     };
 
     for (const entry of rawEntries) {
-      if (entry.sourceDocId && (docIdsByType as any)[entry.sourceDocType]) {
-        (docIdsByType as any)[entry.sourceDocType].add(entry.sourceDocId);
+      const type = entry.sourceDocType as keyof typeof docIdsByType;
+      if (entry.sourceDocId && docIdsByType[type]) {
+        docIdsByType[type].add(entry.sourceDocId);
       }
     }
 

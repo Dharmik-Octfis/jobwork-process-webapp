@@ -160,5 +160,6 @@ export const endpoints = {
     `/organizations/${orgId}/list-views/${entityType}`,
   reports: {
     inventoryValuation: (orgId: string) => `/organizations/${orgId}/reports/inventory-valuation`,
+    fifoCostLotTracking: (orgId: string) => `/organizations/${orgId}/reports/fifo-cost-lot-tracking`,
   },
 } as const;

@@ -1,14 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
 import { Calendar as CalendarIcon, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
-import { format, startOfWeek, startOfMonth, startOfYear, subDays, subWeeks, subMonths, subYears, subQuarters, startOfQuarter, addMonths, getDaysInMonth, setDate, getDay } from 'date-fns';
+import { format, startOfWeek, startOfMonth, startOfYear, subDays, subWeeks, subMonths, subYears, subQuarters, startOfQuarter, addMonths, getDaysInMonth, setDate, getDay, startOfDay } from 'date-fns';
 
 const PRESETS = [
-  { label: 'Today', getValue: () => new Date() },
+  { label: 'Today', getValue: () => startOfDay(new Date()) },
   { label: 'This Week', getValue: () => startOfWeek(new Date(), { weekStartsOn: 1 }) }, // Assuming Monday start
   { label: 'This Month', getValue: () => startOfMonth(new Date()) },
   { label: 'This Quarter', getValue: () => startOfQuarter(new Date()) },
   { label: 'This Year', getValue: () => startOfYear(new Date()) },
-  { label: 'Yesterday', getValue: () => subDays(new Date(), 1) },
+  { label: 'Yesterday', getValue: () => startOfDay(subDays(new Date(), 1)) },
   { label: 'Previous Week', getValue: () => startOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 1 }) },
   { label: 'Previous Month', getValue: () => startOfMonth(subMonths(new Date(), 1)) },
   { label: 'Previous Quarter', getValue: () => startOfQuarter(subQuarters(new Date(), 1)) },
