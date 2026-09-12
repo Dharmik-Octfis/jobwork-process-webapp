@@ -146,6 +146,9 @@ export const itemOpeningStockLocationRowSchema = z.object({
   openingStock: z.union([z.string(), z.number()]).optional().nullable(),
   openingStockValue: z.union([z.string(), z.number()]).optional().nullable(),
   stockOnHand: z.union([z.string(), z.number()]).optional().nullable(),
+  /** Read-back only: opening stock here not yet assigned to a batch. Inside
+   * `stockOnHand`, outside `availableForSale` — it cannot be issued until assigned. */
+  unallocatedQty: z.union([z.string(), z.number()]).optional().nullable(),
   committedStock: z.union([z.string(), z.number()]).optional().nullable(),
   availableForSale: z.union([z.string(), z.number()]).optional().nullable(),
   batches: z.array(itemOpeningStockBatchSchema),
@@ -180,6 +183,8 @@ export const itemBatchSchema = z.object({
   sellingPrice: z.union([z.string(), z.number()]).optional().nullable(),
   mrp: z.union([z.string(), z.number()]).optional().nullable(),
   isExpired: z.boolean().optional(),
+  /** Opening stock not yet assigned to a batch — no reference, not issuable. */
+  isUnallocated: z.boolean().optional(),
   /**
    * 🔴 THE PACKAGES OF THIS BATCH AT THIS LOCATION, and what is left of each —
    * which is what makes "where is roll T-1" answerable at a glance. A roll at the

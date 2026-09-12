@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { itemsApi } from '../../../items/items.api';
 import type { Location } from '../../../configuration/locations/locations.api';
 import type { ItemOpeningStockLocationRowDto } from '../../../items/items.schemas';
+import { stockOnHandOf } from '../../../items/stockFigures';
 interface LineItemStockDisplayProps {
   orgId: string;
   itemId: string;
@@ -34,9 +35,7 @@ export function LineItemStockDisplay({
   const locationRow = openingStockRows.find((r) => r.locationId === deliveryLocationId);
 
   if (locationRow) {
-    const batchTotal =
-      locationRow.batches?.reduce((acc, b) => acc + (Number(b.quantityIn) || 0), 0) || 0;
-    locationOnHand = Number(locationRow.stockOnHand ?? locationRow.openingStock ?? batchTotal) || 0;
+    locationOnHand = stockOnHandOf(locationRow);
   }
 
   const deliveryLocationName =

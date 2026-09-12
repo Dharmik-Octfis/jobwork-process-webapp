@@ -461,7 +461,8 @@ export function AppLayout() {
     }
   }
 
-  const isSidebarCollapsed = location.pathname.endsWith('/opening-stock');
+  const isSidebarCollapsed =
+    location.pathname.endsWith('/opening-stock') || location.pathname.includes('/reports');
 
   // Remember it only so `/` can send the user back here next visit (OrgRedirect).
   // Not an authorization input: the server re-checks membership on every request.

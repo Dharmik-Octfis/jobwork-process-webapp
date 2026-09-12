@@ -3,17 +3,17 @@ import { openApiRegistry } from '../../../config/openapi.js';
 
 const emptyToNullUuid = z.preprocess(
   (val) => (val === '' ? null : val),
-  z.string().uuid().optional().nullable()
+  z.string().uuid().optional().nullable(),
 );
 
 const emptyToUndefinedUuid = z.preprocess(
   (val) => (val === '' || val === null ? undefined : val),
-  z.string().uuid().optional()
+  z.string().uuid().optional(),
 );
 
 const emptyToNullDate = z.preprocess(
   (val) => (val === '' ? null : val),
-  z.coerce.date().optional().nullable()
+  z.coerce.date().optional().nullable(),
 );
 
 export const purchaseOrderItemSchema = z.object({
@@ -35,7 +35,9 @@ export const purchaseOrderItemSchema = z.object({
 
 const basePurchaseOrderSchema = z.object({
   vendorId: z.string().uuid(),
-  deliveryType: z.enum(['Location', 'Customer']).default('Location'),
+  // No defaults on this base — see `createPurchaseOrderSchema`. Zod 4's `.partial()`
+  // keeps a default, so a PATCH omitting these arrived as Draft / Location.
+  deliveryType: z.enum(['Location', 'Customer']),
   deliveryLocationId: emptyToNullUuid,
   deliveryCustomerId: emptyToNullUuid,
   poNumber: z.string().min(1),
@@ -47,12 +49,12 @@ const basePurchaseOrderSchema = z.object({
   notes: z.string().optional().nullable(),
   termsAndConditions: z.string().optional().nullable(),
   documents: z.array(z.any()).optional().nullable(),
-  status: z.string().default('Draft'),
+  status: z.string(),
   customFields: z.record(z.string(), z.unknown()).optional(),
   lineItems: z.array(purchaseOrderItemSchema).min(1),
 });
 
-// eslint-disable-next-line @typescript-eslint/naming-convention
+ 
 const validateDeliveryDate = (data: { date?: Date; deliveryDate?: Date | null }) => {
   if (data.date && data.deliveryDate) {
     const poTime = new Date(data.date).setHours(0, 0, 0, 0);
@@ -62,15 +64,22 @@ const validateDeliveryDate = (data: { date?: Date; deliveryDate?: Date | null })
   return true;
 };
 
-export const createPurchaseOrderSchema = basePurchaseOrderSchema.refine(validateDeliveryDate, {
-  message: 'Delivery date must be equal to or after PO date',
-  path: ['deliveryDate'],
-});
+export const createPurchaseOrderSchema = basePurchaseOrderSchema
+  .extend({
+    deliveryType: z.enum(['Location', 'Customer']).default('Location'),
+    status: z.string().default('Draft'),
+  })
+  .refine(validateDeliveryDate, {
+    message: 'Delivery date must be equal to or after PO date',
+    path: ['deliveryDate'],
+  });
 
-export const updatePurchaseOrderSchema = basePurchaseOrderSchema.partial().refine(validateDeliveryDate, {
-  message: 'Delivery date must be equal to or after PO date',
-  path: ['deliveryDate'],
-});
+export const updatePurchaseOrderSchema = basePurchaseOrderSchema
+  .partial()
+  .refine(validateDeliveryDate, {
+    message: 'Delivery date must be equal to or after PO date',
+    path: ['deliveryDate'],
+  });
 
 export const purchaseOrderQuerySchema = z.object({
   search: z.string().optional(),
@@ -85,4 +94,3 @@ openApiRegistry.register('PurchaseOrder', createPurchaseOrderSchema);
 export type PurchaseOrderItemPayload = z.infer<typeof purchaseOrderItemSchema>;
 export type CreatePurchaseOrderPayload = z.infer<typeof createPurchaseOrderSchema>;
 export type UpdatePurchaseOrderPayload = z.infer<typeof updatePurchaseOrderSchema>;
-

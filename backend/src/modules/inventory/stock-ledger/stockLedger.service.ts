@@ -66,6 +66,24 @@ export type StockEffect = (typeof STOCK_EFFECTS)[number];
 export const OWNERSHIPS = ['own', 'customer'] as const;
 export type Ownership = (typeof OWNERSHIPS)[number];
 
+/**
+ * 🔴 `batches.state` of the one batch per (item, location) that holds opening
+ * stock declared but not yet assigned to a named batch (2026-09-11).
+ *
+ * Opening stock for a batch-tracked item may state more at a location than its
+ * batch rows add up to. That remainder is real stock, so it goes on the ledger
+ * and counts in stock on hand and valuation, but it cannot be ISSUED until
+ * someone assigns it to a batch from Add Opening Stock. Nothing may move it
+ * except the opening-stock document itself (`postMovement` refuses the rest),
+ * and no picker offers it (`getAvailableBatches`, `getSourceLocations`).
+ *
+ * A state and not a column: `state` is an unconstrained varchar, so this is a
+ * code-only change, the same call as `status = 'draft'` on jobwork documents.
+ */
+export const UNALLOCATED_BATCH_STATE = 'unallocated';
+/** The only document allowed to move an unallocated batch. */
+export const OPENING_STOCK_SOURCE_DOC_TYPE = 'item_opening_stock';
+
 export interface PostMovementInput {
   organizationId: string;
   batchId: string;
@@ -113,13 +131,17 @@ function toDecimal(value: Prisma.Decimal | number | string | undefined): Prisma.
   return new Prisma.Decimal(value);
 }
 
-/** The five fields a ledger row copies off its batch. */
+/** The five fields a ledger row copies off its batch, plus the state that decides
+ * whether anything but opening stock may post against it at all. */
 interface BatchForPosting {
   id: string;
   itemId: string;
   uomId: string | null;
   ownership: string;
   ownerPartyId: string | null;
+  // Required, so every path that builds one has to carry it — an optional field
+  // here would let a hoisted map skip the unallocated guard in silence.
+  state: string;
 }
 
 interface PostableBatch extends BatchForPosting {
@@ -148,6 +170,7 @@ const POSTABLE_BATCH_SELECT = {
   uomId: true,
   ownership: true,
   ownerPartyId: true,
+  state: true,
   _count: { select: { batchUnits: true } },
 } as const;
 
@@ -204,8 +227,8 @@ export async function resolveBatchesForPosting(
  * untagged remainder posted against the same batch is still checked.
  */
 export function asResolvedBatch(batch: BatchForPosting, unitCount = 0): ResolvedBatches {
-  const { id, itemId, uomId, ownership, ownerPartyId } = batch;
-  return new Map([[id, { id, itemId, uomId, ownership, ownerPartyId, unitCount }]]);
+  const { id, itemId, uomId, ownership, ownerPartyId, state } = batch;
+  return new Map([[id, { id, itemId, uomId, ownership, ownerPartyId, state, unitCount }]]);
 }
 
 /**
@@ -263,6 +286,19 @@ export async function postMovement(
       })
       .then((row) => (row ? toPostableBatch(row) : null)));
   if (!batch) throw ApiError.notFound('Batch not found.');
+
+  // Unallocated opening stock moves only through the opening-stock document —
+  // assigning it to a batch there is what releases it. Both directions: a bill or
+  // receipt topping it up would put stock where no picker can reach it.
+  if (
+    batch.state === UNALLOCATED_BATCH_STATE &&
+    input.sourceDocType !== OPENING_STOCK_SOURCE_DOC_TYPE
+  ) {
+    throw ApiError.badRequest(
+      'This is opening stock that has not been assigned to a batch yet. Assign it to a ' +
+        'batch in Add Opening Stock before using it.',
+    );
+  }
 
   const batchUnitId = input.batchUnitId ?? null;
   if (batchUnitId) {
@@ -810,6 +846,9 @@ export async function getAvailableBatches(
       id: { in: positive.map((row) => row.batchId) },
       organizationId: filter.organizationId,
       isDeleted: false,
+      // Unallocated opening stock counts on hand but is never offered — see
+      // `UNALLOCATED_BATCH_STATE`. Dropping it here drops its balance row below.
+      state: { not: UNALLOCATED_BATCH_STATE },
       // The picker's own search. Matches what is on the physical tag and nothing
       // else — `batchNumber` is never rendered, so it is never typed either
       // (2026-08-14). Same two columns as `batches.service.SEARCH_COLUMNS`.
@@ -1278,6 +1317,9 @@ export interface CreateBatchInput {
   sourceDocId?: string | null;
   customFields?: Prisma.InputJsonValue;
   userId?: string | null;
+  /** Mint the holding batch for unassigned opening stock — no reference, and
+   * `state = UNALLOCATED_BATCH_STATE`. Opening stock only. */
+  unallocated?: boolean;
 }
 
 /**
@@ -1334,7 +1376,13 @@ export async function createBatch(tx: TenantClient, input: CreateBatchInput) {
    * the only place the rule can live.
    */
   const supplierBatchRef = input.supplierBatchRef?.trim() || null;
-  if (item.inventoryTracking === 'batch' && !supplierBatchRef) {
+  /* The one exception is the unallocated holding batch: it is never picked, so it
+     needs no label to be picked by, and every surface that shows it names it
+     "Unallocated" off its state. */
+  if (input.unallocated && input.sourceDocType !== OPENING_STOCK_SOURCE_DOC_TYPE) {
+    throw ApiError.badRequest('Only opening stock can hold unallocated stock.');
+  }
+  if (item.inventoryTracking === 'batch' && !supplierBatchRef && !input.unallocated) {
     throw ApiError.badRequest('This item is batch-tracked, so the batch needs a reference.', {
       supplierBatchRef: 'Enter the batch reference.',
     });
@@ -1369,7 +1417,12 @@ export async function createBatch(tx: TenantClient, input: CreateBatchInput) {
 
   return withUniqueViolation('Batch number already exists in this organization.', () =>
     tx.batch.create({
-      data: { ...data, createdBy: input.userId ?? null, updatedBy: input.userId ?? null },
+      data: {
+        ...data,
+        ...(input.unallocated ? { state: UNALLOCATED_BATCH_STATE } : {}),
+        createdBy: input.userId ?? null,
+        updatedBy: input.userId ?? null,
+      },
     }),
   );
 }

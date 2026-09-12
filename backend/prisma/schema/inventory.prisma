@@ -102,7 +102,10 @@ model Batch {
   sourceDocType String? @map("source_doc_type") @db.VarChar(40)
   sourceDocId   String? @map("source_doc_id") @db.Uuid
 
-  /// open | consumed | closed
+  /// open | consumed | closed | unallocated
+  /// `unallocated`: the one batch per (item, location) holding opening stock declared
+  /// but not yet assigned to a named batch — on hand, never issuable
+  /// (`UNALLOCATED_BATCH_STATE` in stockLedger.service.ts).
   state String @default("open") @db.VarChar(20)
 
   /// 🔴 REAL COLUMNS, not `custom_fields`. Until 2026-08-13 all five lived in the

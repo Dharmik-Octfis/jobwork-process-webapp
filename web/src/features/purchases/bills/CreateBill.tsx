@@ -47,6 +47,7 @@ import { AddBillBatchesModal } from './AddBillBatchesModal';
 import { WarehouseLocationsPopover } from './components/WarehouseLocationsPopover';
 import { LineItemStockDisplay } from './components/LineItemStockDisplay';
 import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
+import { invalidateStockQueries } from '../../jobwork/stockCache';
 
 function getImageKey(img: unknown): string | null {
   if (!img) return null;
@@ -140,6 +141,9 @@ export function CreateBill() {
     queryFn: () => fetchBillById(orgId!, poIdToFetch!),
     enabled: Boolean(orgId && poIdToFetch),
   });
+  // Off the SAVED bill, not the form, whose status the footer buttons overwrite.
+  // An Open bill never goes back to Draft — the server refuses it too.
+  const isOpenBill = isEdit && existingPo?.status?.toLowerCase() === 'open';
 
   const { data: sourcePo } = useQuery({
     queryKey: ['purchaseOrder', orgId, fromPo],
@@ -470,6 +474,7 @@ export function CreateBill() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
+      invalidateStockQueries(queryClient, orgId);
       if (id) {
         queryClient.invalidateQueries({ queryKey: ['bill', orgId, id] });
       }
@@ -1616,24 +1621,26 @@ export function CreateBill() {
 
       {/* Fixed Bottom Action Bar */}
       <div className="form-actions-footer page-footer">
-        <button
-          form="create-bill-form"
-          type="submit"
-          onClick={() => setValue('status', 'Draft')}
-          disabled={mutation.isPending}
-          style={{
-            padding: '6px 20px',
-            background: '#f8fafc',
-            color: '#0f172a',
-            border: '1px solid #cbd5e1',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontWeight: 500,
-            fontSize: '13px',
-          }}
-        >
-          {mutation.isPending && watchStatus === 'Draft' ? 'Saving...' : 'Save as Draft'}
-        </button>
+        {!isOpenBill && (
+          <button
+            form="create-bill-form"
+            type="submit"
+            onClick={() => setValue('status', 'Draft')}
+            disabled={mutation.isPending}
+            style={{
+              padding: '6px 20px',
+              background: '#f8fafc',
+              color: '#0f172a',
+              border: '1px solid #cbd5e1',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 500,
+              fontSize: '13px',
+            }}
+          >
+            {mutation.isPending && watchStatus === 'Draft' ? 'Saving...' : 'Save as Draft'}
+          </button>
+        )}
         <button
           form="create-bill-form"
           type="submit"
@@ -1650,7 +1657,11 @@ export function CreateBill() {
             fontSize: '13px',
           }}
         >
-          {mutation.isPending && watchStatus === 'Open' ? 'Saving...' : 'Save as Open'}
+          {mutation.isPending && watchStatus === 'Open'
+            ? 'Saving...'
+            : isOpenBill
+              ? 'Save'
+              : 'Save as Open'}
         </button>
         <button
           type="button"

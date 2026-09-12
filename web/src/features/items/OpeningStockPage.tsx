@@ -16,6 +16,7 @@ import {
   validateBatchUnits,
 } from '../../components/inventory/batchUnits';
 import { formatQty } from '../jobwork/jobwork.schemas';
+import { invalidateStockQueries } from '../jobwork/stockCache';
 import type { ItemOpeningStockLocationRowDto } from './items.schemas';
 
 /** One package inside a declared batch. `id` is the real `batch_units.id` when
@@ -205,7 +206,9 @@ export function OpeningStockPage() {
       itemsApi.saveOpeningStock(orgId!, itemId!, { locationRows: rows }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['itemOpeningStock', orgId, itemId] });
-      await queryClient.invalidateQueries({ queryKey: ['item', orgId, itemId] });
+      // Opening stock moves stock: the Batch Details tab and every picker read the
+      // ledger too, and only the key above used to be refreshed.
+      invalidateStockQueries(queryClient, orgId);
       navigate(`/organizations/${orgId}/items?id=${itemId}`);
     },
   });

@@ -19,7 +19,9 @@ import {
   getBalance,
   getBalanceByLocation,
   getBalancesByBatchUnit,
+  OPENING_STOCK_SOURCE_DOC_TYPE,
   postMovement,
+  UNALLOCATED_BATCH_STATE,
   type ResolvedBatches,
 } from '../inventory/stock-ledger/stockLedger.service.ts';
 import type { ItemOpeningStockDto } from './items.schemas.ts';
@@ -489,6 +491,7 @@ export class ItemsService {
               openingStock: itemOpeningQty,
               openingStockValue: itemOpeningVal,
               stockOnHand: itemOpeningQty,
+              unallocatedQty: 0,
               committedStock: 0,
               availableForSale: itemOpeningQty,
               batches: [],
@@ -503,7 +506,16 @@ export class ItemsService {
       const row = declared.find((d) => d.locationId === locationId);
       // Off the map above — one grouped query, not an aggregate per location.
       const balance = balances.get(locationId) ?? { qty: new Prisma.Decimal(0) };
-      const mine = activeEntries.filter((entry) => entry.locationId === locationId);
+      const here = activeEntries.filter((entry) => entry.locationId === locationId);
+      /* 🔴 The holding batch is NOT a batch row: the form would send it back as a
+         named batch and the save would settle it twice. It is the gap between the
+         declared figure and the rows, which the form already shows. Only opening
+         stock ever moves it, so its opening position is its whole balance. */
+      const isHeld = (entry: OpeningPosition) => entry.batch.state === UNALLOCATED_BATCH_STATE;
+      const mine = here.filter((entry) => !isHeld(entry));
+      const unallocatedQty = here
+        .filter(isHeld)
+        .reduce((sum, entry) => sum.plus(entry.qty), new Prisma.Decimal(0));
 
       out.push({
         id: row?.id ?? locationId,
@@ -516,10 +528,12 @@ export class ItemsService {
           row?.openingStockValuePerUnit !== undefined && row.openingStockValuePerUnit !== null
             ? Number(row.openingStockValuePerUnit)
             : null,
-        /** Live, off the ledger — never a stored copy. */
+        /** Live, off the ledger — never a stored copy. Unallocated stock included. */
         stockOnHand: Number(balance.qty),
+        /** Opening stock here not yet assigned to a batch: counted, not issuable. */
+        unallocatedQty: Number(unallocatedQty),
         committedStock: 0,
-        availableForSale: Number(balance.qty),
+        availableForSale: Number(balance.qty.minus(unallocatedQty)),
         batches: toBatchRows(mine),
       });
     }
@@ -1194,6 +1208,9 @@ export class ItemsService {
           sellingPrice: b.sellingPrice !== null ? Number(b.sellingPrice) : null,
           mrp: b.mrp !== null ? Number(b.mrp) : null,
           isExpired,
+          /** Opening stock not yet assigned to a batch — it has no reference, so the
+           * screen names it off this flag. */
+          isUnallocated: b.state === UNALLOCATED_BATCH_STATE,
           /** The packages of this batch AT THIS LOCATION, and what is left of
            * each. Empty for a batch that has none, which is every batch in an org
            * that never turned the level on. */
@@ -1717,6 +1734,75 @@ export class ItemsService {
           }
         }
 
+        /**
+         * ── 2b. THE UNALLOCATED REMAINDER (2026-09-11). A batch-tracked location
+         *       may state more than its batch rows hold — the rule is only that
+         *       the batches may not exceed it. Until this existed the difference
+         *       was a number on `item_opening_stock_rows` and nothing on the books:
+         *       500 declared with 150 in batches showed 150 on hand.
+         *
+         *       It is now real stock in one holding batch per location, settled by
+         *       delta like every other position — so assigning some of it to a
+         *       named batch on a later save shrinks it by exactly that much, which
+         *       is the only way it is ever released for issue (`postMovement`
+         *       refuses everything else).
+         */
+        if (requiresBatchDetail && rows.length > 0) {
+          const inBatches = rows.reduce(
+            (sum, b) => sum.plus(new Prisma.Decimal(b.quantityIn === '' ? 0 : (b.quantityIn ?? 0))),
+            new Prisma.Decimal(0),
+          );
+          const unallocated = Prisma.Decimal.max(
+            declaredQty.minus(inBatches),
+            new Prisma.Decimal(0),
+          );
+          const holding = [...positions.values()].find(
+            (p) =>
+              p.locationId === locRow.locationId &&
+              p.batch.state === UNALLOCATED_BATCH_STATE &&
+              !p.batch.isDeleted,
+          );
+          if (holding) {
+            claimed.add(key(holding.batchId, holding.batchUnitId, holding.locationId));
+            await this.settleOpening(
+              tx,
+              holding,
+              unallocated,
+              settleContext,
+              settleBatches,
+              settleBalances,
+            );
+          } else if (unallocated.greaterThan(0)) {
+            const batch = await createBatch(tx, {
+              organizationId,
+              itemId,
+              uomId: item.stockingUomId,
+              ownership: data.ownership ?? 'own',
+              ownerPartyId: data.ownership === 'customer' ? (data.ownerPartyId ?? null) : null,
+              sourceDocType: OPENING_STOCK_SOURCE_DOC_TYPE,
+              sourceDocId: itemId,
+              userId,
+              unallocated: true,
+            });
+            await postMovement(
+              tx,
+              {
+                organizationId,
+                batchId: batch.id,
+                locationId: locRow.locationId,
+                movementType: 'opening',
+                qtyIn: unallocated,
+                valueIn: valuePerUnit ? unallocated.times(valuePerUnit) : 0,
+                sourceDocType: OPENING_STOCK_SOURCE_DOC_TYPE,
+                sourceDocId: itemId,
+                postedAt: openingDate,
+                userId,
+              },
+              asResolvedBatch(batch),
+            );
+          }
+        }
+
         // ── 3. No batch rows at all: an `inventoryTracking = 'none'` item, which
         //       declares a bulk quantity and lets the system hold the batch. The
         //       bulk figure is reconciled against whatever batches this document
@@ -1740,6 +1826,17 @@ export class ItemsService {
             .sort((a, b) => b.postedAt.getTime() - a.postedAt.getTime());
           for (const position of here) {
             claimed.add(key(position.batchId, position.batchUnitId, position.locationId));
+          }
+          /* A holding batch left from when this item WAS batch-tracked becomes
+             ordinary bulk stock: an untracked item has no Add-a-batch step to
+             release it, so kept locked it could never be issued at all. */
+          const held = here.filter((p) => p.batch.state === UNALLOCATED_BATCH_STATE);
+          if (!requiresBatchDetail && held.length > 0) {
+            await tx.batch.updateMany({
+              where: { id: { in: held.map((p) => p.batchId) }, organizationId },
+              data: { state: 'open', updatedBy: userId ?? null },
+            });
+            for (const position of held) position.batch.state = 'open';
           }
 
           const current = here.reduce((sum, p) => sum.plus(p.qty), new Prisma.Decimal(0));

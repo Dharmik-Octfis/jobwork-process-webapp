@@ -20,6 +20,7 @@ export function invalidateStockQueries(queryClient: QueryClient, orgId: string |
   if (!orgId) return;
   const LEDGER_DERIVED = [
     'available-batches', // the Issue / Receive batch pickers
+    'availableBatches', // the bill's "Existing batch" picker
     'stock-locations', // which godowns hold an item, and how much
     'itemOpeningStock', // Item → Stock Locations, and the bill line's stock display
     'itemBatches', // Item → Batches

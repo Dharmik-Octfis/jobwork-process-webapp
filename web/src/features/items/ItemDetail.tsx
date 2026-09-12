@@ -11,6 +11,12 @@ import { ItemActivityHistory } from './ItemActivityHistory';
 import { ItemImageGallery } from './components/ItemImageGallery';
 import { CompositeItemsList } from '../inventory/composite-items/CompositeItemsList';
 import { ItemTransactions } from './components/ItemTransactions';
+import {
+  fetchLocations,
+  isOwnLocation,
+  type Location,
+} from '../configuration/locations/locations.api';
+import { availableOf, declaredOpeningOf, stockOnHandOf } from './stockFigures';
 
 interface ItemDetailProps {
   itemId: string;
@@ -75,19 +81,51 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     enabled: Boolean(orgId && itemId),
   });
 
-  const totalOpeningStock = useMemo(() => {
+  const { data: allLocations = [] } = useQuery({
+    queryKey: ['locations', orgId],
+    queryFn: () => fetchLocations(orgId!),
+    enabled: !!orgId,
+  });
+
+  const ownLocationIds = useMemo(() => {
+    return new Set(allLocations.filter(isOwnLocation).map((l: Location) => l.id));
+  }, [allLocations]);
+
+  // 🔴 Two totals, not one. A single figure fed both the "Opening Stock" and the
+  // "Stock on Hand" labels, so whichever field it read, one label lied.
+  const { totalOpeningStock, totalStockOnHand } = useMemo(() => {
     if (Array.isArray(openingStockRows) && openingStockRows.length > 0) {
-      return openingStockRows.reduce((acc, row) => {
-        const batchTotal = Array.isArray(row.batches)
-          ? row.batches.reduce((bAcc, b) => bAcc + (Number(b.quantityIn) || 0), 0)
-          : 0;
-        const stockOnHand =
-          Number(row.stockOnHand ?? row.openingStock ?? batchTotal) || batchTotal || 0;
-        return acc + stockOnHand;
-      }, 0);
+      return {
+        totalOpeningStock: openingStockRows.reduce((acc, row) => acc + declaredOpeningOf(row), 0),
+        totalStockOnHand: openingStockRows.reduce((acc, row) => acc + stockOnHandOf(row), 0),
+      };
     }
-    return Number(item?.openingStock ?? 0);
+    const declared = Number(item?.openingStock ?? 0);
+    return { totalOpeningStock: declared, totalStockOnHand: declared };
   }, [openingStockRows, item]);
+
+  const ownPremisesStock = useMemo(() => {
+    if (Array.isArray(openingStockRows) && openingStockRows.length > 0) {
+      let onHand = 0;
+      let committed = 0;
+      let available = 0;
+
+      for (const row of openingStockRows) {
+        if (!ownLocationIds.has(row.locationId)) continue;
+
+        const rowOnHand = stockOnHandOf(row);
+        const rowCommitted = Number(row.committedStock ?? 0) || 0;
+        const rowAvailable = availableOf(row);
+
+        onHand += rowOnHand;
+        committed += rowCommitted;
+        available += rowAvailable;
+      }
+      return { onHand, committed, available };
+    }
+    const defaultStock = Number(item?.openingStock ?? 0);
+    return { onHand: defaultStock, committed: 0, available: defaultStock };
+  }, [openingStockRows, item, ownLocationIds]);
 
   const deleteMutation = useMutation({
     mutationFn: () => itemsApi.deleteItem(orgId!, itemId),
@@ -119,7 +157,9 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
       name: `Copy of ${item.name}`,
     };
 
-    navigate(`/organizations/${orgId}/items/new`, { state: { itemToClone , returnUrl: location.pathname + location.search } });
+    navigate(`/organizations/${orgId}/items/new`, {
+      state: { itemToClone, returnUrl: location.pathname + location.search },
+    });
   };
 
   if (isLoading) {
@@ -152,7 +192,10 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
       <div className="detail-page-header" style={{ alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <h2 className="detail-title" style={{ fontWeight: 400, fontSize: '24px', color: '#222222', margin: 0 }}>
+            <h2
+              className="detail-title"
+              style={{ fontWeight: 400, fontSize: '24px', color: '#222222', margin: 0 }}
+            >
               {item.name}
             </h2>
             <span
@@ -198,9 +241,13 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
           <button
             onClick={() => {
               if (item.itemStructure === 'composite') {
-                navigate(`/organizations/${orgId}/composite-items/${itemId}/edit`, { state: { returnUrl: location.pathname + location.search } });
+                navigate(`/organizations/${orgId}/composite-items/${itemId}/edit`, {
+                  state: { returnUrl: location.pathname + location.search },
+                });
               } else {
-                navigate(`/organizations/${orgId}/items/${itemId}/edit`, { state: { returnUrl: location.pathname + location.search } });
+                navigate(`/organizations/${orgId}/items/${itemId}/edit`, {
+                  state: { returnUrl: location.pathname + location.search },
+                });
               }
             }}
             style={{
@@ -320,7 +367,15 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
       </div>
 
       {/* Tabs */}
-      <div className="detail-page-tabs" style={{ display: 'flex', gap: '24px', borderBottom: '1px solid var(--color-border)', padding: '0 24px' }}>
+      <div
+        className="detail-page-tabs"
+        style={{
+          display: 'flex',
+          gap: '24px',
+          borderBottom: '1px solid var(--color-border)',
+          padding: '0 24px',
+        }}
+      >
         {[
           'Overview',
           ...(isInventoryTracked ? ['Locations'] : []),
@@ -368,7 +423,9 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>Item Name</div>
+                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
+                      Item Name
+                    </div>
                     <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}>
                       {item.name}
                     </div>
@@ -389,7 +446,9 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>Category</div>
+                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
+                      Category
+                    </div>
                     <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}>
                       {item.category || '-'}
                     </div>
@@ -403,7 +462,9 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>Item Type</div>
+                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
+                      Item Type
+                    </div>
                     <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}>
                       {item.itemStructure}
                     </div>
@@ -411,8 +472,12 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
 
                   {item.hsnCode && (
                     <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                      <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>HSN Code</div>
-                      <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}>
+                      <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
+                        HSN Code
+                      </div>
+                      <div
+                        style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}
+                      >
                         {item.hsnCode}
                       </div>
                     </div>
@@ -434,8 +499,12 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                      <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>Cost Price</div>
-                      <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}>
+                      <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
+                        Cost Price
+                      </div>
+                      <div
+                        style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}
+                      >
                         ₹{item.costPrice ? Number(item.costPrice).toFixed(2) : '0.00'}
                       </div>
                     </div>
@@ -457,8 +526,12 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                      <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>Selling Price</div>
-                      <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}>
+                      <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
+                        Selling Price
+                      </div>
+                      <div
+                        style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}
+                      >
                         ₹{item.sellingPrice ? Number(item.sellingPrice).toFixed(2) : '0.00'}
                       </div>
                     </div>
@@ -557,7 +630,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                       </span>
                       <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
                       <span style={{ fontSize: '13px', fontWeight: 600, color: '#0062ff' }}>
-                        {totalOpeningStock.toFixed(2)}
+                        {ownPremisesStock.onHand.toFixed(2)}
                       </span>
                     </div>
 
@@ -581,7 +654,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                       </span>
                       <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
                       <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
-                        0.00
+                        {ownPremisesStock.committed.toFixed(2)}
                       </span>
                     </div>
 
@@ -605,7 +678,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                       </span>
                       <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
                       <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
-                        {totalOpeningStock.toFixed(2)}
+                        {ownPremisesStock.available.toFixed(2)}
                       </span>
                     </div>
                   </div>
@@ -660,7 +733,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                       </span>
                       <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
                       <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
-                        {totalOpeningStock.toFixed(2)}
+                        {ownPremisesStock.onHand.toFixed(2)}
                       </span>
                     </div>
 
@@ -684,7 +757,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                       </span>
                       <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
                       <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
-                        0.00
+                        {ownPremisesStock.committed.toFixed(2)}
                       </span>
                     </div>
 
@@ -708,7 +781,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                       </span>
                       <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
                       <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
-                        {totalOpeningStock.toFixed(2)}
+                        {ownPremisesStock.available.toFixed(2)}
                       </span>
                     </div>
                   </div>
@@ -818,7 +891,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                     >
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
                         <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
-                          {totalOpeningStock.toFixed(2)}
+                          {totalStockOnHand.toFixed(2)}
                         </span>
                         <span style={{ fontSize: '10px', color: '#64748b' }}>
                           {item.unit || 'Qty'}

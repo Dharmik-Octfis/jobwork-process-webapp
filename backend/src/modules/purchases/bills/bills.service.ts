@@ -41,6 +41,71 @@ function runAsDocument<T>(orgId: string, fn: (tx: TenantClient) => Promise<T>): 
 type BillBatchPayload = NonNullable<BillItemPayload['batches']>[number];
 
 /**
+ * Where an Open bill's stock lands. Checked at the posting, not folded into "is
+ * this posting": `posting = open && locationId` let a location-less bill become
+ * Open while posting nothing at all, which is the silent shape this refuses.
+ */
+function requireReceivingLocation(locationId: string | null): string {
+  if (!locationId) {
+    throw ApiError.badRequest('A bill cannot be opened without a location to receive into.', {
+      locationId: 'Select the location this stock is arriving at.',
+    });
+  }
+  return locationId;
+}
+
+/**
+ * The batches a batch-tracked line receives. An Open bill must name them:
+ * `createBatch` requires a reference, so the whole-line fallback that used to sit
+ * here could only ever fail, and failed on a field the detail page's "Open Bill"
+ * button gives the user no way to fill. A draft may still leave them for later.
+ */
+function batchesToReceive(
+  item: { name: string },
+  payload: BillItemPayload,
+  posting: boolean,
+): BillBatchPayload[] {
+  if (payload.batches?.length) return payload.batches;
+  if (posting) {
+    throw ApiError.badRequest(`Add the batch details for ${item.name} before opening this bill.`, {
+      batches: `${item.name} is batch-tracked, so its batches must be named.`,
+    });
+  }
+  return [];
+}
+
+/**
+ * The batch detail a bill already holds, in the payload shape `receiveBillBatch`
+ * takes — so a draft opened without its lines being re-sent posts exactly what it
+ * says. Every package goes back by id, which makes `receiveBillBatch` top up the
+ * rows the draft created instead of minting duplicates under the same tags.
+ */
+async function storedBatchesByLine(
+  tx: TenantClient,
+  organizationId: string,
+  lineIds: string[],
+): Promise<Map<string, BillBatchPayload[]>> {
+  const rows = await tx.billItemBatch.findMany({
+    where: { organizationId, billItemId: { in: lineIds }, isDeleted: false },
+    select: { billItemId: true, batchId: true, batchUnitId: true, qty: true },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  });
+
+  const byLine = new Map<string, Map<string, BillBatchPayload>>();
+  for (const row of rows) {
+    const batches = byLine.get(row.billItemId) ?? new Map<string, BillBatchPayload>();
+    const batch = batches.get(row.batchId) ?? { batchId: row.batchId, quantity: 0, units: [] };
+    batch.quantity += Number(row.qty);
+    if (row.batchUnitId) {
+      batch.units!.push({ batchUnitId: row.batchUnitId, quantity: Number(row.qty) });
+    }
+    batches.set(row.batchId, batch);
+    byLine.set(row.billItemId, batches);
+  }
+  return new Map([...byLine].map(([lineId, batches]) => [lineId, [...batches.values()]]));
+}
+
+/**
  * 🔴 RECEIVE ONE BATCH OF ONE BILL LINE — the single place both `createBill` and
  * `updateBill` go through.
  *
@@ -236,11 +301,7 @@ async function receiveBillBatch(
    * draft holds no stock, appears in no picker and changes no balance — while its
    * document rows above say exactly what it will receive when it is posted.
    */
-  if (!locationId) {
-    throw ApiError.badRequest('A bill cannot be opened without a location to receive into.', {
-      locationId: 'Select the location this stock is arriving at.',
-    });
-  }
+  const receivingAt = requireReceivingLocation(locationId);
 
   for (const unit of postableUnits) {
     await postMovement(
@@ -249,7 +310,7 @@ async function receiveBillBatch(
         organizationId,
         batchId,
         batchUnitId: unit.id,
-        locationId,
+        locationId: receivingAt,
         movementType: 'receipt',
         qtyIn: unit.qty,
         valueIn: unit.qty.times(rate || 0),
@@ -271,7 +332,7 @@ async function receiveBillBatch(
       {
         organizationId,
         batchId,
-        locationId,
+        locationId: receivingAt,
         movementType: 'receipt',
         qtyIn: untagged,
         valueIn: untagged * (rate || 0),
@@ -803,12 +864,12 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
      * condition only decides `post` — the same shape `jobIssues.service` uses to
      * park a challan without moving anything.
      */
-    const posting = createdBill.status?.toLowerCase() === 'open' && !!createdBill.locationId;
+    const posting = createdBill.status?.toLowerCase() === 'open';
     {
       const itemIds = lineItems.map((li: BillItemPayload) => li.itemId);
       const items = await tx.item.findMany({
         where: { id: { in: itemIds }, organizationId: orgId },
-        select: { id: true, inventoryTracking: true, trackInventory: true },
+        select: { id: true, name: true, inventoryTracking: true, trackInventory: true },
       });
       const itemsById = new Map(items.map((i) => [i.id, i]));
 
@@ -820,18 +881,7 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
         const item = itemsById.get(payload.itemId);
 
         if (item?.trackInventory && item.inventoryTracking !== 'none') {
-          /* 🔴 THE UNNAMED FALLBACK IS A POSTING CONCERN, NOT A DOCUMENT ONE.
-             It exists so an Open bill still moves stock when the user skipped the
-             batch dialog. A DRAFT must not use it: inventing a batch nobody named
-             is both wrong — the user has not decided yet — and impossible, since
-             `createBatch` requires a reference for a batch-tracked item and there
-             is none to give. A draft with no batch detail simply stores none. */
-          const batches = payload.batches?.length
-            ? payload.batches
-            : posting
-              ? [{ quantity: payload.quantity } as BillBatchPayload]
-              : [];
-          for (const b of batches) {
+          for (const b of batchesToReceive(item, payload, posting)) {
             await receiveBillBatch(tx, {
               organizationId: orgId,
               userId: userId || null,
@@ -862,8 +912,7 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
             {
               organizationId: orgId,
               batchId: batch.id,
-              // Non-null by `posting`, which this branch is gated on.
-              locationId: createdBill.locationId!,
+              locationId: requireReceivingLocation(createdBill.locationId),
               movementType: 'receipt',
               qtyIn: payload.quantity,
               valueIn: (payload.rate || 0) * payload.quantity,
@@ -908,6 +957,25 @@ export async function updateBill(
     });
 
     if (!existing) throw ApiError.notFound('Bill not found');
+
+    const effectiveStatus = (billData.status ?? existing.status ?? '').toLowerCase();
+    /**
+     * 🔴 AN OPEN BILL NEVER GOES BACK TO DRAFT (2026-09-11). Once a bill is on the
+     * books it is corrected by editing it — which reverses and re-posts, below —
+     * or withdrawn by deleting it; that is how Zoho Books, SAP and Tally all treat
+     * a posted purchase document. Before this, Save as Draft on an Open bill
+     * quietly took its stock off the books while the vendor's invoice still stood.
+     */
+    if (existing.status.toLowerCase() === 'open' && effectiveStatus === 'draft') {
+      throw ApiError.badRequest(
+        'An open bill cannot be moved back to Draft. Edit and save it, or delete it.',
+        { status: 'An open bill stays open.' },
+      );
+    }
+    const goingOpen = existing.status.toLowerCase() === 'draft' && effectiveStatus === 'open';
+    /* The detail page's "Open Bill" sends the status and nothing else, so the lines
+       and batches to post are the ones the draft already stores. */
+    const openingFromDocument = goingOpen && !lineItems;
 
     let performedBy = 'System';
     if (userId) {
@@ -1017,17 +1085,39 @@ export async function updateBill(
         writtenLines.push({ payload: item, lineId: created.id });
       }
     } else {
-      // No lines in the payload: the rows already on the bill ARE the lines, so
-      // each one pairs with itself and no ordering question arises. They carry no
-      // `batches`, which is what makes the whole-line fallback below apply.
+      /* No lines in the payload: the rows already on the bill ARE the lines, so
+         each one pairs with itself and no ordering question arises.
+
+         🔴 OPENING A DRAFT THIS WAY POSTED NOTHING until 2026-09-11. The lines
+         carried no `batches` and nothing was written, so the bill turned Open with
+         an empty ledger behind it — stock that never arrived at its location and
+         a batch no Batch Details tab could find. Now its stored batch detail rides
+         along and is rewritten below exactly as an edit's would be; the old rows
+         go first because `receiveBillBatch` writes them again. Every other
+         line-less save still carries no batches and never touches the ledger. */
+      const stored = openingFromDocument
+        ? await storedBatchesByLine(
+            tx,
+            orgId,
+            existing.lineItems.map((row) => row.id),
+          )
+        : undefined;
+      if (openingFromDocument) {
+        await tx.billItemBatch.updateMany({
+          where: { organizationId: orgId, billItem: { billId: id } },
+          data: { isDeleted: true, updatedBy: userId },
+        });
+      }
       for (const row of existing.lineItems) {
-        writtenLines.push({ payload: row as unknown as BillItemPayload, lineId: row.id });
+        writtenLines.push({
+          payload: { ...(row as unknown as BillItemPayload), batches: stored?.get(row.id) },
+          lineId: row.id,
+        });
       }
     }
 
     const effectiveLocationId =
       billData.locationId !== undefined ? billData.locationId : existing.locationId;
-    const effectiveStatus = (billData.status ?? existing.status ?? '').toLowerCase();
     // Re-dating a bill re-dates the stock it moved: the reversal below withdraws
     // every old row and this save posts fresh ones, so they must carry the date
     // the bill now says, not the one it used to.
@@ -1038,13 +1128,12 @@ export async function updateBill(
       field: 'billDate',
       label: 'bill',
     });
-    const goingOpen = existing.status.toLowerCase() === 'draft' && effectiveStatus === 'open';
 
     /**
      * 🔴 THE LEDGER IS THE RECORD OF WHETHER THIS BILL HAS POSTED — not a column
-     * on the bill, which `updateBillSchema.partial()` lets an Open → Draft → Open
-     * cycle rewrite freely. A document's movements are exactly the rows carrying
-     * its id, and they are never deleted, so the answer survives any edit.
+     * on the bill. Bills sent back to Draft before that was refused (2026-09-11)
+     * carry a receipt and its reversal, so the answer has to come from the rows,
+     * which are never deleted and survive any edit.
      */
     const alreadyPosted = await tx.stockLedgerEntry.count({
       where: { organizationId: orgId, sourceDocType: 'bill', sourceDocId: id },
@@ -1060,10 +1149,10 @@ export async function updateBill(
      * old postings first keeps the anti-doubling guarantee — the net on the books
      * is always exactly what the payload says — and makes the edit mean something.
      *
-     * 🔴 GOING BACK TO DRAFT WITHDRAWS THE STOCK TOO — a draft holds none. That
-     * is the other half of the same rule, and it is safe for the opposite reason:
-     * there is no re-post to get wrong, because a bill that is not Open does not
-     * post. Reopening it posts again from whatever the payload then says.
+     * A draft holds no stock, so a bill that is not Open also reverses whatever
+     * it still nets on the books. Open → Draft is refused above, so in practice
+     * that only reaches the old drafts sent back before the refusal, which
+     * already net to zero. Being idempotent, the reversal is a no-op there.
      *
      * 🔴 SO THE ONE CASE THAT MUST NOT REVERSE is a payload with no `lineItems`
      * that leaves the bill OPEN — a note, an attachment, a payment term. There
@@ -1073,18 +1162,21 @@ export async function updateBill(
      * lump on an edit that never mentioned them.
      */
     const rewritingLines = Boolean(lineItems);
-    const mustReverse = alreadyPosted > 0 && (rewritingLines || effectiveStatus !== 'open');
 
     /**
      * 🔴 THE DOCUMENT ROWS ARE REWRITTEN WHENEVER THE LINES ARE — draft or open,
      * and independently of whether anything posts. That is what lets a draft be
-     * edited over and over and still read back exactly what was typed.
+     * edited over and over and still read back exactly what was typed. Opening a
+     * draft from its stored rows is the same rewrite, fed from the database.
      */
-    const mustWrite = rewritingLines;
-    const mustPost =
-      effectiveStatus === 'open' &&
-      !!effectiveLocationId &&
-      (goingOpen || (alreadyPosted > 0 && rewritingLines));
+    const mustWrite = rewritingLines || openingFromDocument;
+    const mustReverse = alreadyPosted > 0 && (mustWrite || effectiveStatus !== 'open');
+    /* 🔴 An Open bill whose lines are saved ALWAYS posts what they say. This used to
+       require `alreadyPosted > 0`, which is exactly what an Open bill with an empty
+       ledger lacks — so the bills the status-only "Open Bill" left unposted could
+       never be repaired by editing them. No location is refused inside the posting
+       (`requireReceivingLocation`) rather than silently skipping it. */
+    const mustPost = effectiveStatus === 'open' && (goingOpen || rewritingLines);
 
     // Reversal FIRST and on its own: it withdraws what the OLD payload posted, so
     // it must not see the batches and packages the new one is about to create.
@@ -1101,7 +1193,7 @@ export async function updateBill(
       const itemIds = writtenLines.map((line) => line.payload.itemId);
       const items = await tx.item.findMany({
         where: { id: { in: itemIds }, organizationId: orgId },
-        select: { id: true, inventoryTracking: true, trackInventory: true },
+        select: { id: true, name: true, inventoryTracking: true, trackInventory: true },
       });
       const itemsById = new Map(items.map((i) => [i.id, i]));
 
@@ -1116,13 +1208,7 @@ export async function updateBill(
         const item = itemsById.get(payload.itemId);
 
         if (item?.trackInventory && item.inventoryTracking !== 'none') {
-          // Posting-only, same as on create — a draft never invents a batch.
-          const batches = payload.batches?.length
-            ? payload.batches
-            : mustPost
-              ? [{ quantity: Number(payload.quantity) } as BillBatchPayload]
-              : [];
-          for (const b of batches) {
+          for (const b of batchesToReceive(item, payload, mustPost)) {
             const { unitIds } = await receiveBillBatch(tx, {
               organizationId: orgId,
               userId: userId || null,
@@ -1152,7 +1238,7 @@ export async function updateBill(
             {
               organizationId: orgId,
               batchId: batch.id,
-              locationId: effectiveLocationId!,
+              locationId: requireReceivingLocation(effectiveLocationId),
               movementType: 'receipt',
               qtyIn: Number(payload.quantity),
               valueIn: Number(payload.rate || 0) * Number(payload.quantity),

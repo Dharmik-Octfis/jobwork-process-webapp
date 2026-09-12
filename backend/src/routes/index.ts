@@ -38,6 +38,7 @@ import { listViewsRouter } from '../modules/settings/list-views/listViews.routes
 import { storageRouter } from '../modules/storage/storage.routes.ts';
 import { diagnosticsRouter } from '../modules/diagnostics/diagnostics.routes.ts';
 import { databaseStatus } from '../db/readiness.ts';
+import { inventoryValuationRouter } from '../modules/reports/inventory-valuation/inventoryValuation.routes.ts';
 import { env } from '../config/env.ts';
 
 /** Mounts every module router under `/api` (architecture §4). */
@@ -107,6 +108,7 @@ apiRouter.use('/organizations/:orgId/items', itemsRouter);
 apiRouter.use('/organizations/:orgId/composite-items', compositeItemsHeaderRouter);
 apiRouter.use('/organizations/:orgId/assemblies', assembliesRouter);
 apiRouter.use('/organizations/:orgId/list-views', listViewsRouter);
+apiRouter.use('/organizations/:orgId/reports/inventory-valuation', inventoryValuationRouter);
 apiRouter.use('/organizations/:orgId/seed-data', tenantSeedDataRouter);
 apiRouter.use('/seed-data', globalSeedDataRouter);
 

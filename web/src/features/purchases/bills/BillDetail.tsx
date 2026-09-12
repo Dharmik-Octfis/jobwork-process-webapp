@@ -30,6 +30,7 @@ import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { BillComments } from './BillComments';
 import { BillActivityTimeline } from './BillActivityTimeline';
 import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
+import { invalidateStockQueries } from '../../jobwork/stockCache';
 
 function BillAttachmentLink({ orgId, attachment }: { orgId: string; attachment: BillAttachment }) {
   const isDirectUrl = Boolean(attachment.data || attachment.url);
@@ -129,6 +130,8 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
     mutationFn: () => deleteBill(orgId!, poId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
+      // Deleting a posted bill withdraws its stock.
+      invalidateStockQueries(queryClient, orgId);
       setIsConfirmDeleteOpen(false);
       onClose();
     },
@@ -139,6 +142,8 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bill', orgId, poId] });
       queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
+      // "Open Bill" posts the draft's stock.
+      invalidateStockQueries(queryClient, orgId);
     },
   });
 
@@ -462,8 +467,6 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
             padding: '16px 24px',
           }}
         >
-
-
           {/* PDF View Toggle */}
           <div
             style={{
