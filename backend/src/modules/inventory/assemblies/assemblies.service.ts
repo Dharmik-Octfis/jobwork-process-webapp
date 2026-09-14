@@ -476,8 +476,8 @@ export const assembliesService = {
       for (const line of data.lines) {
         const item = itemById.get(line.itemId);
         if (!item) throw ApiError.notFound('Component item not found.');
-        if (item.itemStructure === 'composite')
-          throw ApiError.badRequest(`Component ${item.name} cannot be a Composite Item.`);
+        // A composite component is consumed from its own batches like any item
+        // (landed-cost plan §6.1) — its recipe was already spent when it was made.
 
         const required = decimal(line.qtyRequired);
         if (required.lessThanOrEqualTo(0)) continue;

@@ -1,7 +1,8 @@
 # Landed cost — rate per output, derived consumption, loss at completion
 
 **Status: planned 2026-09-14, reviewed the same day. Phase 1 (§6.0, both bugs) built 2026-09-14 —
-`jobwork.posting.ts`, guarded by `jobwork.postingGuards.test.ts`; everything after it is not built.** Agreed over 2026-09-12 → 14. This
+`jobwork.posting.ts`, guarded by `jobwork.postingGuards.test.ts`. Phase 2 (§6.1, nested composites +
+cycle check) built 2026-09-14 — `compositeItems.nesting.test.ts`. Everything after it is not built.** Agreed over 2026-09-12 → 14. This
 replaces the step-level `rate` / `rateBasis` cost model described in `JOBWORK_DOMAIN_AND_MODULE_MAP.md`
 §9.1–§9.2.1, and moves tolerance from the process and step onto the item. Those sections,
 `JOBWORK_CORE_WALKTHROUGH.md` and `JOBWORK_UI_FIELD_SOURCES.md` are edited in place **after** the code
