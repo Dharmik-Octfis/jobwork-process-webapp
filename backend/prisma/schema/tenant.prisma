@@ -155,28 +155,30 @@ model User {
   createdJobOrderStepInputs JobOrderStepInput[] @relation("JobOrderStepInputCreatedBy")
   updatedJobOrderStepInputs JobOrderStepInput[] @relation("JobOrderStepInputUpdatedBy")
 
-  createdJobOrderStepInputBatches JobOrderStepInputBatch[] @relation("JobOrderStepInputBatchCreatedBy")
-  updatedJobOrderStepInputBatches JobOrderStepInputBatch[] @relation("JobOrderStepInputBatchUpdatedBy")
-  createdJobOrderStepOutputs      JobOrderStepOutput[]     @relation("JobOrderStepOutputCreatedBy")
-  updatedJobOrderStepOutputs      JobOrderStepOutput[]     @relation("JobOrderStepOutputUpdatedBy")
-  createdJobReceiptOutputs        JobReceiptOutput[]       @relation("JobReceiptOutputCreatedBy")
-  updatedJobReceiptOutputs        JobReceiptOutput[]       @relation("JobReceiptOutputUpdatedBy")
-  createdJobReceiptOutputBatches  JobReceiptOutputBatch[]  @relation("JobReceiptOutputBatchCreatedBy")
-  updatedJobReceiptOutputBatches  JobReceiptOutputBatch[]  @relation("JobReceiptOutputBatchUpdatedBy")
-  createdRejectionReasons         RejectionReason[]        @relation("RejectionReasonCreatedBy")
-  updatedRejectionReasons         RejectionReason[]        @relation("RejectionReasonUpdatedBy")
-  createdCompositeComponents      CompositeItemComponent[] @relation("CompositeComponentCreatedBy")
-  updatedCompositeComponents      CompositeItemComponent[] @relation("CompositeComponentUpdatedBy")
-  createdItemAssemblies           ItemAssembly[]           @relation("ItemAssemblyCreatedBy")
-  updatedItemAssemblies           ItemAssembly[]           @relation("ItemAssemblyUpdatedBy")
-  createdItemAssemblyLines        ItemAssemblyLine[]       @relation("ItemAssemblyLineCreatedBy")
-  updatedItemAssemblyLines        ItemAssemblyLine[]       @relation("ItemAssemblyLineUpdatedBy")
-  createdItemAssemblyComments     ItemAssemblyComment[]    @relation("ItemAssemblyCommentCreatedBy")
-  updatedItemAssemblyComments     ItemAssemblyComment[]    @relation("ItemAssemblyCommentUpdatedBy")
-  createdItemAssemblyActivities   ItemAssemblyActivity[]   @relation("ItemAssemblyActivityCreatedBy")
-  updatedItemAssemblyActivities   ItemAssemblyActivity[]   @relation("ItemAssemblyActivityUpdatedBy")
-  createdItemOpeningStockRows     ItemOpeningStockRow[]    @relation("ItemOpeningStockRowCreatedBy")
-  updatedItemOpeningStockRows     ItemOpeningStockRow[]    @relation("ItemOpeningStockRowUpdatedBy")
+  createdJobOrderStepInputBatches     JobOrderStepInputBatch[]      @relation("JobOrderStepInputBatchCreatedBy")
+  updatedJobOrderStepInputBatches     JobOrderStepInputBatch[]      @relation("JobOrderStepInputBatchUpdatedBy")
+  createdJobOrderStepOutputs          JobOrderStepOutput[]          @relation("JobOrderStepOutputCreatedBy")
+  updatedJobOrderStepOutputs          JobOrderStepOutput[]          @relation("JobOrderStepOutputUpdatedBy")
+  createdJobOrderStepOutputComponents JobOrderStepOutputComponent[] @relation("JobOrderStepOutputComponentCreatedBy")
+  updatedJobOrderStepOutputComponents JobOrderStepOutputComponent[] @relation("JobOrderStepOutputComponentUpdatedBy")
+  createdJobReceiptOutputs            JobReceiptOutput[]            @relation("JobReceiptOutputCreatedBy")
+  updatedJobReceiptOutputs            JobReceiptOutput[]            @relation("JobReceiptOutputUpdatedBy")
+  createdJobReceiptOutputBatches      JobReceiptOutputBatch[]       @relation("JobReceiptOutputBatchCreatedBy")
+  updatedJobReceiptOutputBatches      JobReceiptOutputBatch[]       @relation("JobReceiptOutputBatchUpdatedBy")
+  createdRejectionReasons             RejectionReason[]             @relation("RejectionReasonCreatedBy")
+  updatedRejectionReasons             RejectionReason[]             @relation("RejectionReasonUpdatedBy")
+  createdCompositeComponents          CompositeItemComponent[]      @relation("CompositeComponentCreatedBy")
+  updatedCompositeComponents          CompositeItemComponent[]      @relation("CompositeComponentUpdatedBy")
+  createdItemAssemblies               ItemAssembly[]                @relation("ItemAssemblyCreatedBy")
+  updatedItemAssemblies               ItemAssembly[]                @relation("ItemAssemblyUpdatedBy")
+  createdItemAssemblyLines            ItemAssemblyLine[]            @relation("ItemAssemblyLineCreatedBy")
+  updatedItemAssemblyLines            ItemAssemblyLine[]            @relation("ItemAssemblyLineUpdatedBy")
+  createdItemAssemblyComments         ItemAssemblyComment[]         @relation("ItemAssemblyCommentCreatedBy")
+  updatedItemAssemblyComments         ItemAssemblyComment[]         @relation("ItemAssemblyCommentUpdatedBy")
+  createdItemAssemblyActivities       ItemAssemblyActivity[]        @relation("ItemAssemblyActivityCreatedBy")
+  updatedItemAssemblyActivities       ItemAssemblyActivity[]        @relation("ItemAssemblyActivityUpdatedBy")
+  createdItemOpeningStockRows         ItemOpeningStockRow[]         @relation("ItemOpeningStockRowCreatedBy")
+  updatedItemOpeningStockRows         ItemOpeningStockRow[]         @relation("ItemOpeningStockRowUpdatedBy")
 
   @@map("users")
 }
@@ -331,20 +333,22 @@ model Organization {
   // `organization_id` so it can hold its own RLS policy, exactly like
   // `job_issue_lines` — a child table that has to join its parent to be filtered
   // is a table whose policy is one forgotten join away from leaking.
-  routeStepInputs          RouteStepInput[]
-  routeStepOutputs         RouteStepOutput[]
-  jobOrderStepInputs       JobOrderStepInput[]
-  jobOrderStepInputBatches JobOrderStepInputBatch[]
-  jobOrderStepOutputs      JobOrderStepOutput[]
-  jobReceiptOutputs        JobReceiptOutput[]
-  jobReceiptOutputBatches  JobReceiptOutputBatch[]
-  compositeItemComponents  CompositeItemComponent[]
-  itemAssemblies           ItemAssembly[]
-  itemAssemblyLines        ItemAssemblyLine[]
-  itemAssemblyComments     ItemAssemblyComment[]
-  itemAssemblyActivities   ItemAssemblyActivity[]
-  itemOpeningStockRows     ItemOpeningStockRow[]
-  settings                 Json                    @default("{}") @map("settings")
+  routeStepInputs              RouteStepInput[]
+  routeStepOutputs             RouteStepOutput[]
+  jobOrderStepInputs           JobOrderStepInput[]
+  jobOrderStepInputBatches     JobOrderStepInputBatch[]
+  jobOrderStepOutputs          JobOrderStepOutput[]
+  jobOrderStepOutputComponents JobOrderStepOutputComponent[]
+  jobReceiptOutputs            JobReceiptOutput[]
+  jobReceiptOutputBatches      JobReceiptOutputBatch[]
+  compositeItemComponents      CompositeItemComponent[]
+  itemAssemblies               ItemAssembly[]
+  itemAssemblyLines            ItemAssemblyLine[]
+  itemAssemblyComments         ItemAssemblyComment[]
+  itemAssemblyActivities       ItemAssemblyActivity[]
+  itemOpeningStockRows         ItemOpeningStockRow[]
+  settings                     Json                          @default("{}") @map("settings")
+
   @@map("organizations")
 }
 

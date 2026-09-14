@@ -284,6 +284,10 @@ model RouteStepOutput {
   /// available — 2,910 PCS and 80 KG have no ratio between them.
   isPrimary Boolean @default(false) @map("is_primary")
 
+  /// Charge per ACCEPTED unit of this output — the template's suggestion, copied
+  /// onto the job order. Replaces `RouteStep.rate` (landed-cost plan D1).
+  rate Decimal? @db.Decimal(18, 4)
+
   customFields Json     @default("{}") @map("custom_fields")
   isDeleted    Boolean  @default(false) @map("is_deleted")
   createdBy    String?  @map("created_by") @db.Uuid
@@ -617,6 +621,10 @@ model JobOrderStepOutput {
   /// 🔴 Exactly one per step. See `RouteStepOutput.isPrimary`.
   isPrimary Boolean @default(false) @map("is_primary")
 
+  /// The agreed charge per ACCEPTED unit of this output (landed-cost plan D1–D2).
+  /// NULL = not agreed yet, charged as ₹0; 0 = done free.
+  rate Decimal? @db.Decimal(18, 4)
+
   customFields Json     @default("{}") @map("custom_fields")
   isDeleted    Boolean  @default(false) @map("is_deleted")
   createdBy    String?  @map("created_by") @db.Uuid
@@ -631,9 +639,43 @@ model JobOrderStepOutput {
   createdByUser User?              @relation("JobOrderStepOutputCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User?              @relation("JobOrderStepOutputUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
+  components JobOrderStepOutputComponent[]
+
   @@unique([jobOrderStepId, itemId])
   @@index([organizationId, jobOrderStepId])
   @@map("job_order_step_outputs")
+}
+
+/// The recipe of a composite output, FROZEN when the job order step is written —
+/// the same snapshot rule as every other step field (§2.4). Editing the composite
+/// afterwards must not change what a running job order consumes (landed-cost plan
+/// §5.2). Carries its own `organization_id` for the direct RLS form.
+model JobOrderStepOutputComponent {
+  id                   String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String  @map("organization_id") @db.Uuid
+  jobOrderStepOutputId String  @map("job_order_step_output_id") @db.Uuid
+  componentItemId      String  @map("component_item_id") @db.Uuid
+  /// Same precision as `CompositeItemComponent.qtyPerUnit`, which it copies.
+  qtyPerUnit           Decimal @map("qty_per_unit") @db.Decimal(18, 6)
+  uomId                String? @map("uom_id") @db.Uuid
+  seq                  Int     @default(0)
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  output        JobOrderStepOutput @relation(fields: [jobOrderStepOutputId], references: [id], onDelete: Cascade)
+  componentItem Item               @relation("JobOrderStepOutputComponentItem", fields: [componentItemId], references: [id])
+  uom           UnitOfMeasurement? @relation("JobOrderStepOutputComponentUom", fields: [uomId], references: [id])
+  createdByUser User?              @relation("JobOrderStepOutputComponentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?              @relation("JobOrderStepOutputComponentUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, jobOrderStepOutputId])
+  @@map("job_order_step_output_components")
 }
 
 // ---------------------------------------------------------------------------
@@ -918,6 +960,13 @@ model JobReceipt {
   /// was never physically ours.
   totalReturnedQty Decimal @default(0) @map("total_returned_qty") @db.Decimal(18, 4)
 
+  /// Snapshots written at post (landed-cost plan §5.1): what the consume rows took
+  /// out, and the processing charges on top. Stored because the ledger's `produce`
+  /// value is the two added together and the rate behind the charge stays editable —
+  /// without these a posted receipt cannot explain its own cost.
+  consumedValue      Decimal @default(0) @map("consumed_value") @db.Decimal(18, 4)
+  processChargeTotal Decimal @default(0) @map("process_charge_total") @db.Decimal(18, 4)
+
   /// draft | posted | cancelled. A cancellation posts REVERSING ledger rows and
   /// flips this; it never deletes anything (inventory.prisma).
   ///
@@ -946,8 +995,8 @@ model JobReceipt {
   createdByUser User?        @relation("JobReceiptCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User?        @relation("JobReceiptUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
-  lines        JobReceiptLine[]
-  outputs      JobReceiptOutput[]
+  lines         JobReceiptLine[]
+  outputs       JobReceiptOutput[]
   outputBatches JobReceiptOutputBatch[]
 
   @@unique([organizationId, receiptNumber])
@@ -1001,6 +1050,13 @@ model JobReceiptOutput {
   /// placeholder — offcuts carry no cost until somebody sells them, and the
   /// surviving primary should carry the cost of the whole operation.
   valueShare Decimal? @map("value_share") @db.Decimal(18, 4)
+
+  /// What this row was billed at (defaults from the step output's rate), and the
+  /// split of its value into material and charge — frozen at post (landed-cost
+  /// plan §5.1). The charge is on the accepted quantity only (D2).
+  rate          Decimal? @db.Decimal(18, 4)
+  materialValue Decimal  @default(0) @map("material_value") @db.Decimal(18, 4)
+  processCharge Decimal  @default(0) @map("process_charge") @db.Decimal(18, 4)
 
   /// ⚠️ REDEFINED 2026-08-21: the FIRST batch of each kind on this row. `batches`
   /// below is the complete list — a row may land in several, and a row may top up
