@@ -24,6 +24,7 @@ import {
   resolveProcessorName,
 } from '../jobwork.refs.ts';
 import { POSTED_DOC_STATUS, runAsDocument, type ProcessorType } from '../jobwork.types.ts';
+import { lockJobOrderSteps, lockStep } from '../jobwork.posting.ts';
 import {
   getAllChainNotReady,
   getAllStepTotals,
@@ -690,6 +691,7 @@ export async function manuallyCompleteStep(
 ) {
   return withUniqueViolation('Order already closed or not found', async () => {
     await runAsTenant(organizationId, async (tx) => {
+      await lockStep(tx, organizationId, stepId);
       const step = await tx.jobOrderStep.findFirst({
         where: { id: stepId, jobOrderId, organizationId, isDeleted: false },
         select: { id: true, status: true },
@@ -1605,6 +1607,7 @@ export async function shortCloseJobOrder(
   userId?: string,
 ) {
   return runAsTenant(organizationId, async (tx) => {
+    await lockJobOrderSteps(tx, organizationId, id);
     const existing = await tx.jobOrder.findFirst({
       where: { id, organizationId, isDeleted: false },
       select: { id: true, status: true, remarks: true },

@@ -17,6 +17,7 @@ import {
   type Ownership,
 } from '../../inventory/stock-ledger/stockLedger.service.ts';
 import { assertLocationsBelongToOrg, resolveProcessorName } from '../jobwork.refs.ts';
+import { closedQtyByIssueLine, lockStep } from '../jobwork.posting.ts';
 import {
   HAPPENED_DOC_STATUS,
   POSTED_DOC_STATUS,
@@ -924,6 +925,9 @@ export async function createNewJobIssue(
   // Two ledger rows per line, and a fifty-taka challan is normal — past
   // Prisma's 5-second default (jobwork.types.ts).
   return runAsDocument(organizationId, async (tx) => {
+    // A draft posts nothing, so it has nothing to race.
+    if (!asDraft) await lockStep(tx, organizationId, header.jobOrderStepId);
+
     const existing = existingId
       ? await tx.jobIssue.findFirst({
           where: { id: existingId, organizationId, isDeleted: false },
@@ -1509,6 +1513,14 @@ export async function cancelJobIssue(
   // A cancellation posts one reversing row for every row the challan posted, so
   // it is exactly as big as the challan was.
   return runAsDocument(organizationId, async (tx) => {
+    const target = await tx.jobIssue.findFirst({
+      where: { id, organizationId, isDeleted: false },
+      select: { jobOrderStepId: true },
+    });
+    if (!target) throw ApiError.notFound('Challan not found');
+    // Before the real read, so a receipt posting on this step right now is seen.
+    await lockStep(tx, organizationId, target.jobOrderStepId);
+
     const issue = await tx.jobIssue.findFirst({
       where: { id, organizationId, isDeleted: false },
       include: { lines: { where: { isDeleted: false } } },
@@ -1516,11 +1528,19 @@ export async function cancelJobIssue(
     if (!issue) throw ApiError.notFound('Challan not found');
     if (issue.status === 'cancelled') throw ApiError.conflict('This challan is already cancelled.');
 
-    const received = await tx.jobReceiptLine.aggregate({
-      where: { organizationId, jobIssueId: id, isDeleted: false },
-      _sum: { receivedQty: true },
-    });
-    if ((received._sum.receivedQty ?? new Prisma.Decimal(0)).greaterThan(0)) {
+    /**
+     * 🔴 CONSUMED, NOT "RECEIVED" (landed-cost plan §6.0, bug 1). This summed
+     * `job_receipt_lines.received_qty`, which receipts never write, so it never
+     * fired: a challan a receipt had already consumed could be cancelled, and the
+     * reversal took out of the processor stock that was no longer there. The
+     * ledger has no balance check to stop it going negative.
+     */
+    const closedByLine = await closedQtyByIssueLine(
+      tx,
+      organizationId,
+      issue.lines.map((line) => line.id),
+    );
+    if ([...closedByLine.values()].some((qty) => qty.greaterThan(0))) {
       throw ApiError.conflict(
         'Goods have already been received against this challan, so it cannot be cancelled. ' +
           'Correct it with a receipt instead.',

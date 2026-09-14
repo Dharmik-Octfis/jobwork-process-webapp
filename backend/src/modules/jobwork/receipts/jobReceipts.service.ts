@@ -28,6 +28,7 @@ import {
   assertReceivableLocation,
   assertUomsBelongToOrg,
 } from '../jobwork.refs.ts';
+import { closedQtyByIssueLine, lockStep } from '../jobwork.posting.ts';
 import {
   POSTED_DOC_STATUS,
   SOURCE_DOC_TYPES,
@@ -214,63 +215,6 @@ export async function getReceiptsForStep(organizationId: string, jobOrderStepId:
       orderBy: { receiptDate: 'asc' },
       include: RECEIPT_INCLUDE,
     }),
-  );
-}
-
-/**
- * How much of each issue line has already been received.
- *
- * 🔴 ONE grouped query, never one per line. This was a `jobReceiptLine.aggregate`
- * inside the loop in three places — invisible on a two-line challan and the whole
- * response on a fifty-line one. `Promise.all` could not have rescued it either:
- * every query on `tx` shares one connection and runs in turn.
- */
-async function closedQtyByIssueLine(
-  tx: TenantClient,
-  organizationId: string,
-  lineIds: readonly string[],
-): Promise<Map<string, Prisma.Decimal>> {
-  if (lineIds.length === 0) return new Map();
-  const grouped = await tx.jobReceiptLine.groupBy({
-    by: ['jobIssueLineId'],
-    where: {
-      organizationId,
-      jobIssueLineId: { in: [...lineIds] },
-      isDeleted: false,
-      /**
-       * 🔴 A CANCELLED RECEIPT CLOSES NOTHING (2026-09-02).
-       *
-       * This counted every receipt line ever written, cancelled ones included, so
-       * cancelling a receipt reversed its stock and reopened its challans — and
-       * then left them permanently un-receivable. The challan showed as
-       * `partially_received` with ZERO outstanding, and a second attempt to
-       * receive the same goods was refused with "N more is being received than
-       * these challans still have outstanding."
-       *
-       * A cancellation is the document saying it never happened. The stock,
-       * the challan's status and the quantity it has left to account for all have
-       * to agree about that, and this was the one that did not.
-       *
-       * Found while adding the package level, which is why it is fixed here: a
-       * cancelled receipt now also has to give its package labels back, and
-       * re-entering it is exactly the flow that could not be tested until this
-       * was right.
-       */
-      // Drafts excluded with cancellations: a parked receipt has consumed
-      // nothing, so counting its lines would show a challan as closed while the
-      // goods are still at the processor — and refuse the real receipt when it
-      // arrives, with the same "more is being received than is outstanding"
-      // message described above.
-      jobReceipt: { status: POSTED_DOC_STATUS },
-    },
-    _sum: { issuedQty: true },
-  });
-  // `jobIssueLineId` is nullable — a bulk receipt spanning several challans points
-  // at no single line — so the null group is dropped rather than keyed on.
-  return new Map(
-    grouped.flatMap((row) =>
-      row.jobIssueLineId ? [[row.jobIssueLineId, row._sum.issuedQty ?? ZERO] as const] : [],
-    ),
   );
 }
 
@@ -1527,6 +1471,10 @@ export async function createNewJobReceipt(
   // Consumes fifty, produces fifty, and creates a package per accepted taka —
   // past Prisma's 5-second default (jobwork.types.ts).
   return runAsDocument(organizationId, async (tx) => {
+    // First, so the outstanding quantities below include any receipt that just
+    // posted on this step. A draft consumes nothing and does not lock.
+    if (!asDraft) await lockStep(tx, organizationId, header.jobOrderStepId);
+
     const existing = existingId
       ? await tx.jobReceipt.findFirst({
           where: { id: existingId, organizationId, isDeleted: false },
@@ -2585,6 +2533,13 @@ export async function cancelJobReceipt(
   userId?: string,
 ) {
   return runAsDocument(organizationId, async (tx) => {
+    const target = await tx.jobReceipt.findFirst({
+      where: { id, organizationId, isDeleted: false },
+      select: { jobOrderStepId: true },
+    });
+    if (!target) throw ApiError.notFound('Receipt not found');
+    await lockStep(tx, organizationId, target.jobOrderStepId);
+
     const receipt = await tx.jobReceipt.findFirst({
       where: { id, organizationId, isDeleted: false },
     });
