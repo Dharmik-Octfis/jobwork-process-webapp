@@ -127,4 +127,22 @@ describe('composite recipes — nesting', { timeout: 60_000 }, () => {
       compositeItemsService.update(row.id, redCotton, orgId, { componentItemId: shirt }),
     ).rejects.toThrow(/already contains/i);
   });
+
+  it('adds a single component to a composite, and refuses a cycle through that endpoint', async () => {
+    const cotton = await makeItem('Cotton', 'single');
+    const redCotton = await makeItem('Red Cotton', 'composite');
+    const shirt = await makeItem('Shirt', 'composite');
+    await setRecipe(shirt, [[redCotton, 1.5]]);
+
+    // The Components tab's add — it 404'd for every composite until the parent check read itemStructure.
+    await compositeItemsService.create(redCotton, orgId, {
+      componentItemId: cotton,
+      qtyPerUnit: 1,
+    });
+    expect(await recipeOf(redCotton)).toEqual([cotton]);
+
+    await expect(
+      compositeItemsService.create(redCotton, orgId, { componentItemId: shirt, qtyPerUnit: 1 }),
+    ).rejects.toThrow(/already contains/i);
+  });
 });

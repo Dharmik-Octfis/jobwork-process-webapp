@@ -586,7 +586,9 @@ export class CompositeItemsService {
       const parent = await tx.item.findFirst({
         where: { id: compositeItemId, organizationId, isDeleted: false },
       });
-      if (!parent || parent.itemType !== 'Composite Item') {
+      // `itemStructure`, like every other check here: `itemType` is goods | service
+      // and has never held 'Composite Item', so this 404'd for every composite.
+      if (!parent || parent.itemStructure !== 'composite') {
         throw ApiError.notFound('Composite Item not found');
       }
 
