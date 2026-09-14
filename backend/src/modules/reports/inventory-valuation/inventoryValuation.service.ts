@@ -133,25 +133,42 @@ export async function getItemLedger(
     let openingValue = 0;
 
     let openingQ = Prisma.sql`
+      WITH doc_nets AS (
+        SELECT 
+          l.source_doc_type,
+          l.source_doc_id,
+          SUM(l.qty_in - l.qty_out) AS net_qty,
+          SUM(l.value_in - l.value_out) AS net_value,
+          (
+            SELECT sl.posted_at 
+            FROM stock_ledger sl 
+            WHERE sl.source_doc_id = l.source_doc_id AND sl.item_id = l.item_id
+            ORDER BY sl.created_at DESC 
+            LIMIT 1
+          ) AS real_date
+        FROM stock_ledger l
+        WHERE l.organization_id = ${organizationId}::uuid
+          AND l.item_id = ${itemId}::uuid
+          AND l.ownership = 'own'
+          AND l.stock_effect IN ('both', 'accounting')
+          AND EXISTS (
+            SELECT 1 FROM locations loc 
+            WHERE loc.id = l.location_id 
+            AND (loc.type IS NULL OR loc.type NOT IN ('processor', 'in_transit', 'customer_site'))
+          )
+        GROUP BY l.source_doc_type, l.source_doc_id, l.item_id
+      )
       SELECT 
-        COALESCE(SUM(l.qty_in - l.qty_out), 0) AS "qty",
-        COALESCE(SUM(l.value_in - l.value_out), 0) AS "value"
-      FROM stock_ledger l
-      WHERE l.organization_id = ${organizationId}::uuid
-        AND l.item_id = ${itemId}::uuid
-        AND l.ownership = 'own'
-        AND l.stock_effect IN ('both', 'accounting')
-        AND EXISTS (
-          SELECT 1 FROM locations loc 
-          WHERE loc.id = l.location_id 
-          AND (loc.type IS NULL OR loc.type NOT IN ('processor', 'in_transit', 'customer_site'))
-        )
+        COALESCE(SUM(net_qty), 0) AS "qty",
+        COALESCE(SUM(net_value), 0) AS "value"
+      FROM doc_nets
+      WHERE 1=1
     `;
 
     if (fromDate) {
-      openingQ = Prisma.sql`${openingQ} AND (l.posted_at < ${new Date(fromDate)}::timestamptz OR l.source_doc_type = 'item_opening_stock')`;
+      openingQ = Prisma.sql`${openingQ} AND (real_date < ${new Date(fromDate)}::timestamptz OR source_doc_type = 'item_opening_stock')`;
     } else {
-      openingQ = Prisma.sql`${openingQ} AND l.source_doc_type = 'item_opening_stock'`;
+      openingQ = Prisma.sql`${openingQ} AND source_doc_type = 'item_opening_stock'`;
     }
     
     const openingRes = await tx.$queryRaw<{ qty: number | string | bigint; value: number | string | bigint }[]>`${openingQ}`;
@@ -161,38 +178,54 @@ export async function getItemLedger(
       openingValue = Number(firstRow.value ?? 0);
     }
 
-    // Fetch entries
     let entriesQ = Prisma.sql`
+      WITH doc_nets AS (
+        SELECT 
+          l.source_doc_type AS "sourceDocType",
+          l.source_doc_id AS "sourceDocId",
+          SUM(l.qty_in - l.qty_out) AS net_qty,
+          SUM(l.value_in - l.value_out) AS net_value,
+          (
+            SELECT sl.posted_at 
+            FROM stock_ledger sl 
+            WHERE sl.source_doc_id = l.source_doc_id AND sl.item_id = l.item_id
+            ORDER BY sl.created_at DESC 
+            LIMIT 1
+          ) AS real_date,
+          MIN(l.created_at) AS min_created_at
+        FROM stock_ledger l
+        WHERE l.organization_id = ${organizationId}::uuid
+          AND l.item_id = ${itemId}::uuid
+          AND l.ownership = 'own'
+          AND l.stock_effect IN ('both', 'accounting')
+          AND l.source_doc_type != 'item_opening_stock'
+          AND EXISTS (
+            SELECT 1 FROM locations loc 
+            WHERE loc.id = l.location_id 
+            AND (loc.type IS NULL OR loc.type NOT IN ('processor', 'in_transit', 'customer_site'))
+          )
+        GROUP BY l.source_doc_type, l.source_doc_id, l.item_id
+      )
       SELECT 
-        l.posted_at AS "date",
-        SUM(l.qty_in) AS "qtyIn",
-        SUM(l.qty_out) AS "qtyOut",
-        SUM(l.value_in) AS "valueIn",
-        SUM(l.value_out) AS "valueOut",
-        l.source_doc_type AS "sourceDocType",
-        l.source_doc_id AS "sourceDocId",
-        l.movement_type AS "movementType"
-      FROM stock_ledger l
-      WHERE l.organization_id = ${organizationId}::uuid
-        AND l.item_id = ${itemId}::uuid
-        AND l.ownership = 'own'
-        AND l.stock_effect IN ('both', 'accounting')
-        AND l.source_doc_type != 'item_opening_stock'
-        AND EXISTS (
-          SELECT 1 FROM locations loc 
-          WHERE loc.id = l.location_id 
-          AND (loc.type IS NULL OR loc.type NOT IN ('processor', 'in_transit', 'customer_site'))
-        )
+        real_date AS "date",
+        GREATEST(net_qty, 0) AS "qtyIn",
+        GREATEST(-net_qty, 0) AS "qtyOut",
+        GREATEST(net_value, 0) AS "valueIn",
+        GREATEST(-net_value, 0) AS "valueOut",
+        "sourceDocType",
+        "sourceDocId"
+      FROM doc_nets
+      WHERE (net_qty != 0 OR net_value != 0)
     `;
 
     if (fromDate) {
-      entriesQ = Prisma.sql`${entriesQ} AND l.posted_at >= ${new Date(fromDate)}::timestamptz`;
+      entriesQ = Prisma.sql`${entriesQ} AND real_date >= ${new Date(fromDate)}::timestamptz`;
     }
     if (toDate) {
-      entriesQ = Prisma.sql`${entriesQ} AND l.posted_at <= ${new Date(toDate)}::timestamptz`;
+      entriesQ = Prisma.sql`${entriesQ} AND real_date <= ${new Date(toDate)}::timestamptz`;
     }
 
-    entriesQ = Prisma.sql`${entriesQ} GROUP BY l.posted_at, l.source_doc_type, l.source_doc_id, l.movement_type ORDER BY l.posted_at ASC, MIN(l.created_at) ASC`;
+    entriesQ = Prisma.sql`${entriesQ} ORDER BY real_date ASC, min_created_at ASC`;
 
     const rawEntries = await tx.$queryRaw<{
       date: Date;
@@ -202,7 +235,6 @@ export async function getItemLedger(
       valueOut: number | string;
       sourceDocType: string;
       sourceDocId: string;
-      movementType: string;
     }[]>`${entriesQ}`;
 
     const docIdsByType = {

@@ -1,0 +1,84 @@
+{
+  "debugLogs": [
+    {
+      "step": "first_pass",
+      "batchId": "bc5c7828-773c-4a56-a9f9-f7bc655171ed",
+      "sourceDocType": "bill",
+      "sourceDocId": "06e1755c-7ecb-4e14-8a77-c80ee3a4b217",
+      "netQtyRaw": "20",
+      "netQtyNum": 20
+    },
+    {
+      "step": "first_pass",
+      "batchId": "85e086a5-ab39-4023-86c7-6f787bd74b6a",
+      "sourceDocType": "bill",
+      "sourceDocId": "06e1755c-7ecb-4e14-8a77-c80ee3a4b217",
+      "netQtyRaw": "20",
+      "netQtyNum": 20
+    },
+    {
+      "step": "first_pass",
+      "batchId": "85e086a5-ab39-4023-86c7-6f787bd74b6a",
+      "sourceDocType": "job_issue",
+      "sourceDocId": "45e7ab02-848d-40ce-b0f6-17001f5934f9",
+      "netQtyRaw": "-30",
+      "netQtyNum": -30
+    },
+    {
+      "step": "first_pass",
+      "batchId": "bc5c7828-773c-4a56-a9f9-f7bc655171ed",
+      "sourceDocType": "job_issue",
+      "sourceDocId": "45e7ab02-848d-40ce-b0f6-17001f5934f9",
+      "netQtyRaw": "-20",
+      "netQtyNum": -20
+    },
+    {
+      "step": "first_pass",
+      "batchId": "85e086a5-ab39-4023-86c7-6f787bd74b6a",
+      "sourceDocType": "job_issue",
+      "sourceDocId": "ddb2224d-5fe1-4bcc-b5e5-915a1709c16c",
+      "netQtyRaw": "-10",
+      "netQtyNum": -10
+    },
+    {
+      "step": "first_pass",
+      "batchId": "85e086a5-ab39-4023-86c7-6f787bd74b6a",
+      "sourceDocType": "job_issue",
+      "sourceDocId": "eab3efba-0803-45ae-b42c-f80886fb56e7",
+      "netQtyRaw": "-10",
+      "netQtyNum": -10
+    },
+    {
+      "step": "first_pass",
+      "batchId": "bc5c7828-773c-4a56-a9f9-f7bc655171ed",
+      "sourceDocType": "job_receipt",
+      "sourceDocId": "f7d2790e-8bc6-41c0-b988-b8631d7a457a",
+      "netQtyRaw": "20",
+      "netQtyNum": 20
+    },
+    {
+      "step": "first_pass",
+      "batchId": "85e086a5-ab39-4023-86c7-6f787bd74b6a",
+      "sourceDocType": "job_receipt",
+      "sourceDocId": "f7d2790e-8bc6-41c0-b988-b8631d7a457a",
+      "netQtyRaw": "30",
+      "netQtyNum": 30
+    },
+    {
+      "step": "first_pass",
+      "batchId": "85e086a5-ab39-4023-86c7-6f787bd74b6a",
+      "sourceDocType": "job_receipt",
+      "sourceDocId": "8a14d0fa-5105-4c2d-9ac7-fae0a145648b",
+      "netQtyRaw": "10",
+      "netQtyNum": 10
+    },
+    {
+      "step": "first_pass",
+      "batchId": "85e086a5-ab39-4023-86c7-6f787bd74b6a",
+      "sourceDocType": "job_receipt",
+      "sourceDocId": "9531090f-0155-4318-9ad4-d4c584ab12e5",
+      "netQtyRaw": "10",
+      "netQtyNum": 10
+    }
+  ]
+}

@@ -43,6 +43,13 @@ export function InventoryValuationSummaryPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [conditions, setConditions] = useState<FilterCondition[]>([]);
 
+  const [appliedFilters, setAppliedFilters] = useState({
+    asOfDate: new Date(),
+    stockFilter: 'none',
+    statusFilter: 'all',
+    conditions: [] as FilterCondition[],
+  });
+
   const [showColumnsModal, setShowColumnsModal] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
     'itemName',
@@ -50,7 +57,7 @@ export function InventoryValuationSummaryPage() {
     'inventoryAssetValue',
   ]);
 
-  const formattedAsOfDate = format(asOfDate, 'dd-MM-yyyy');
+  const formattedAsOfDate = format(appliedFilters.asOfDate, 'dd-MM-yyyy');
 
   const { orgId } = useParams<{ orgId: string }>();
 
@@ -89,19 +96,19 @@ export function InventoryValuationSummaryPage() {
     if (!orgId) return;
     try {
       const query: InventoryValuationQuery = {
-        asOfDate: endOfDay(asOfDate).toISOString(),
-        stockAvailability: stockFilter as InventoryValuationQuery['stockAvailability'],
-        status: statusFilter as InventoryValuationQuery['status'],
+        asOfDate: endOfDay(appliedFilters.asOfDate).toISOString(),
+        stockAvailability: appliedFilters.stockFilter as InventoryValuationQuery['stockAvailability'],
+        status: appliedFilters.statusFilter as InventoryValuationQuery['status'],
         page,
         perPage,
       };
 
-      const itemNameCond = conditions.find((c) => c.field === 'itemName');
+      const itemNameCond = appliedFilters.conditions.find((c) => c.field === 'itemName');
       if (itemNameCond && itemNameCond.value) {
         query.itemName = itemNameCond.value as string;
       }
 
-      const catNameCond = conditions.find((c) => c.field === 'categoryName');
+      const catNameCond = appliedFilters.conditions.find((c) => c.field === 'categoryName');
       if (catNameCond && catNameCond.value) {
         query.categoryName = catNameCond.value as string;
       }
@@ -123,8 +130,7 @@ export function InventoryValuationSummaryPage() {
       await fetchData();
     };
     init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, page, perPage]);
+  }, [orgId, page, perPage, appliedFilters]);
 
   const rows = data?.results || [];
   const totalQty = data?.grandTotalQty || 0;
@@ -301,32 +307,32 @@ export function InventoryValuationSummaryPage() {
             }
             triggerLabel="More Filters"
           />
-
           <button
             type="button"
-            onClick={() => {
-              setLoading(true);
-              fetchData();
-            }}
+            onClick={() => setAppliedFilters({ asOfDate, stockFilter, statusFilter, conditions })}
             style={{
-              background: '#059669',
+              padding: '6px 12px',
+              background: '#2563eb',
               color: '#fff',
               border: 'none',
-              borderRadius: '6px',
-              padding: '4px 16px',
-              fontSize: '12px',
+              borderRadius: '4px',
+              fontSize: '13px',
               fontWeight: 500,
               cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
             }}
           >
             Run Report
           </button>
+
         </div>
       </div>
 
       {/* Main Content Area */}
-      <div style={{ padding: '24px', flex: 1, overflowY: 'auto' }}>
+      <div style={{ padding: '12px', flex: 1, overflowY: 'auto' }}>
         <div
           style={{
             background: '#fff',

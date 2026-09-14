@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { format, startOfMonth } from 'date-fns';
+import { format, startOfMonth, startOfDay, endOfDay } from 'date-fns';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { Menu, X, Filter, History } from 'lucide-react';
 import { SearchableSelect } from '../../components/ui/SearchableSelect';
@@ -15,14 +15,21 @@ import type { Item } from '../items/items.schemas';
 export function FifoCostLotTrackingPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
-  
+
   const { page, setPage, perPage, setPerPage } = useListSearch();
 
-  const [dateRange, setDateRange] = useState('This Month');
+  const [dateRangeLabel, setDateRangeLabel] = useState('This Month');
   const [fromDate, setFromDate] = useState<Date | undefined>(startOfMonth(new Date()));
-  const [toDate, setToDate] = useState<Date | undefined>(undefined);
+  const [toDate, setToDate] = useState<Date | undefined>(endOfDay(new Date()));
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [locationId, setLocationId] = useState<string>('all_locations');
+
+  const [appliedFilters, setAppliedFilters] = useState({
+    fromDate: startOfMonth(new Date()) as Date | undefined,
+    toDate: endOfDay(new Date()) as Date | undefined,
+    itemName: undefined as string | undefined,
+    locationName: undefined as string | undefined,
+  });
 
   const { data: locations } = useQuery({
     queryKey: ['locations', orgId],
@@ -35,42 +42,57 @@ export function FifoCostLotTrackingPage() {
     ...(locations?.map((loc) => ({ label: loc.name, value: loc.id })) || []),
   ];
 
-  const [appliedFilters, setAppliedFilters] = useState<{
-    fromDate?: string;
-    toDate?: string;
-    itemName?: string;
-    locationName?: string;
-  }>({
-    fromDate: startOfMonth(new Date()).toISOString(),
-  });
+  const locationName =
+    locationId === 'all_locations'
+      ? undefined
+      : locations?.find((loc) => loc.id === locationId)?.name;
 
   const { data, isFetching: loading } = useQuery({
-    queryKey: ['fifoCostLotTracking', orgId, appliedFilters, page, perPage],
-    queryFn: () => reportsApi.getFifoCostLotTracking(orgId!, { ...appliedFilters, page, perPage }),
+    queryKey: [
+      'fifoCostLotTracking',
+      orgId,
+      appliedFilters.fromDate,
+      appliedFilters.toDate,
+      appliedFilters.itemName,
+      appliedFilters.locationName,
+      page,
+      perPage,
+    ],
+    queryFn: () =>
+      reportsApi.getFifoCostLotTracking(orgId!, {
+        fromDate: appliedFilters.fromDate
+          ? startOfDay(appliedFilters.fromDate).toISOString()
+          : undefined,
+        toDate: appliedFilters.toDate ? endOfDay(appliedFilters.toDate).toISOString() : undefined,
+        itemName: appliedFilters.itemName,
+        locationName: appliedFilters.locationName,
+        page,
+        perPage,
+      }),
     enabled: !!orgId,
   });
 
   const dataRows = data?.results || [];
   const total = data?.total || 0;
 
-  const handleRunReport = () => {
-    setAppliedFilters({
-      fromDate: fromDate?.toISOString(),
-      toDate: toDate?.toISOString(),
-      itemName: selectedItem?.name,
-      locationName: locationId === 'all_locations' ? undefined : locations?.find((loc) => loc.id === locationId)?.name,
-    });
-  };
-
   const renderDocLink = (docType: string, docId: string, label: string) => {
     if (!docId || !docType || !label) return <span style={{ color: '#2563eb' }}>{label}</span>;
     let url: string;
     switch (docType) {
-      case 'bill': url = `/organizations/${orgId}/purchases/bills?id=${docId}`; break;
-      case 'purchase_order': url = `/organizations/${orgId}/purchases/purchase-orders?id=${docId}`; break;
-      case 'job_issue': url = `/organizations/${orgId}/jobwork/issues?id=${docId}`; break;
-      case 'job_receipt': url = `/organizations/${orgId}/jobwork/receipts?id=${docId}`; break;
-      default: return <span style={{ color: '#2563eb' }}>{label}</span>;
+      case 'bill':
+        url = `/organizations/${orgId}/purchases/bills?id=${docId}`;
+        break;
+      case 'purchase_order':
+        url = `/organizations/${orgId}/purchases/purchase-orders?id=${docId}`;
+        break;
+      case 'job_issue':
+        url = `/organizations/${orgId}/jobwork/issues?id=${docId}`;
+        break;
+      case 'job_receipt':
+        url = `/organizations/${orgId}/jobwork/receipts?id=${docId}`;
+        break;
+      default:
+        return <span style={{ color: '#2563eb' }}>{label}</span>;
     }
     return (
       <Link to={url} style={{ color: '#2563eb', textDecoration: 'none' }} title="View Document">
@@ -79,16 +101,29 @@ export function FifoCostLotTrackingPage() {
     );
   };
 
-  const renderPartyLink = (partyId: string | null, partyType: 'vendor' | 'customer' | null, label: string) => {
+  const renderPartyLink = (
+    partyId: string | null,
+    partyType: 'vendor' | 'customer' | null,
+    label: string,
+  ) => {
     if (!partyId || !partyType || !label) return <span style={{ color: '#2563eb' }}>{label}</span>;
     let url: string;
     switch (partyType) {
-      case 'vendor': url = `/organizations/${orgId}/purchases/vendors?id=${partyId}`; break;
-      case 'customer': url = `/organizations/${orgId}/sales/customers?id=${partyId}`; break;
-      default: return <span style={{ color: '#2563eb' }}>{label}</span>;
+      case 'vendor':
+        url = `/organizations/${orgId}/purchases/vendors?id=${partyId}`;
+        break;
+      case 'customer':
+        url = `/organizations/${orgId}/sales/customers?id=${partyId}`;
+        break;
+      default:
+        return <span style={{ color: '#2563eb' }}>{label}</span>;
     }
     return (
-      <Link to={url} style={{ color: '#2563eb', textDecoration: 'none' }} title={`View ${partyType}`}>
+      <Link
+        to={url}
+        style={{ color: '#2563eb', textDecoration: 'none' }}
+        title={`View ${partyType}`}
+      >
         {label}
       </Link>
     );
@@ -147,8 +182,12 @@ export function FifoCostLotTrackingPage() {
             >
               FIFO Cost Lot Tracking
               <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: '6px' }}>
-                • {fromDate ? `From ${format(fromDate, 'dd-MM-yyyy')}` : ''} {toDate ? `To ${format(toDate, 'dd-MM-yyyy')}` : ''}
-                {!fromDate && !toDate && 'All Time'}
+                •{' '}
+                {appliedFilters.fromDate
+                  ? `From ${format(appliedFilters.fromDate, 'dd-MM-yyyy')}`
+                  : ''}{' '}
+                {appliedFilters.toDate ? `To ${format(appliedFilters.toDate, 'dd-MM-yyyy')}` : ''}
+                {!appliedFilters.fromDate && !appliedFilters.toDate && 'All Time'}
               </span>
             </div>
           </div>
@@ -158,7 +197,12 @@ export function FifoCostLotTrackingPage() {
           <button
             type="button"
             onClick={() => navigate(-1)}
-            style={{ ...iconButtonStyle, border: 'none', color: '#ef4444', background: 'transparent' }}
+            style={{
+              ...iconButtonStyle,
+              border: 'none',
+              color: '#ef4444',
+              background: 'transparent',
+            }}
           >
             <X size={20} color="#ef4444" />
           </button>
@@ -176,20 +220,41 @@ export function FifoCostLotTrackingPage() {
           gap: '16px',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#4b5563', fontSize: '13px', fontWeight: 500 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            color: '#4b5563',
+            fontSize: '13px',
+            fontWeight: 500,
+          }}
+        >
           <Filter size={14} color="#6b7280" />
           Filters :
         </div>
 
         <div style={{ display: 'flex', gap: '12px', flex: 1 }}>
-          <ReportDateFilter
-            value={dateRange}
-            onChange={(label, date) => {
-              setDateRange(label);
-              setFromDate(date);
-              setToDate(undefined);
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '12px',
+              color: '#6b7280',
             }}
-          />
+          >
+            <ReportDateFilter
+              labelPrefix="Date Range :"
+              value={dateRangeLabel}
+              isRange={true}
+              onChangeRange={(label, start, end) => {
+                setDateRangeLabel(label);
+                setFromDate(start);
+                setToDate(end);
+              }}
+            />
+          </div>
 
           <ItemSearchableSelect
             orgId={orgId!}
@@ -222,19 +287,23 @@ export function FifoCostLotTrackingPage() {
               </div>
             )}
           />
-
           <button
             type="button"
-            onClick={handleRunReport}
+            onClick={() =>
+              setAppliedFilters({ fromDate, toDate, itemName: selectedItem?.name, locationName })
+            }
             style={{
-              background: '#059669',
+              padding: '6px 12px',
+              background: '#2563eb',
               color: '#fff',
               border: 'none',
-              borderRadius: '6px',
-              padding: '6px 16px',
+              borderRadius: '4px',
               fontSize: '13px',
               fontWeight: 500,
               cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
             }}
           >
@@ -244,7 +313,7 @@ export function FifoCostLotTrackingPage() {
       </div>
 
       {/* Main Content Area */}
-      <div style={{ padding: '24px', flex: 1, overflowY: 'auto' }}>
+      <div style={{ padding: '12px', flex: 1, overflowY: 'auto' }}>
         <div
           style={{
             background: '#fff',
@@ -257,32 +326,76 @@ export function FifoCostLotTrackingPage() {
         >
           {/* Report Header Text */}
           <div style={{ textAlign: 'center', padding: '32px 0 24px' }}>
-            <div style={{ fontSize: '13px', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', fontWeight: 500 }}>
+            <div
+              style={{
+                fontSize: '13px',
+                color: '#6b7280',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                marginBottom: '8px',
+                fontWeight: 500,
+              }}
+            >
               OCTFIS TECHNO llp
             </div>
-            <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}>
+            <h2
+              style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
+            >
               FIFO Cost Lot Tracking
             </h2>
             <div style={{ fontSize: '13px', color: '#4b5563', marginBottom: '4px' }}>
-              {fromDate ? `From ${format(fromDate, 'dd-MM-yyyy')}` : ''} {toDate ? `To ${format(toDate, 'dd-MM-yyyy')}` : ''}
-              {!fromDate && !toDate && 'All Time'}
+              {appliedFilters.fromDate
+                ? `From ${format(appliedFilters.fromDate, 'dd-MM-yyyy')}`
+                : ''}{' '}
+              {appliedFilters.toDate ? `To ${format(appliedFilters.toDate, 'dd-MM-yyyy')}` : ''}
+              {!appliedFilters.fromDate && !appliedFilters.toDate && 'All Time'}
             </div>
-            <div style={{ fontSize: '13px', color: '#4b5563', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
-              <History size={12} color="#6b7280" /> Head Office
+            <div
+              style={{
+                fontSize: '13px',
+                color: '#4b5563',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                gap: '4px',
+                marginBottom: '4px',
+              }}
+            >
+              <History size={12} color="#6b7280" /> {appliedFilters.locationName || 'All Locations'}
             </div>
-            <div style={{ fontSize: '13px', color: '#4b5563', marginBottom: '8px' }}>Report Generation Basis:Product In</div>
+            <div style={{ fontSize: '13px', color: '#4b5563', marginBottom: '8px' }}>
+              Report Generation Basis:Product In
+            </div>
             <div style={{ fontSize: '15px', color: '#111827', fontWeight: 500 }}>Item Name</div>
           </div>
 
           {/* Data Table */}
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: '100%' }}>
+            <table
+              style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                tableLayout: 'fixed',
+                minWidth: '100%',
+              }}
+            >
               <thead>
                 <tr style={{ background: '#f8fafc' }}>
-                  <th colSpan={7} style={{ ...thStyle, textAlign: 'center', borderBottom: '1px solid #e5e7eb', borderRight: '1px solid #e5e7eb' }}>
+                  <th
+                    colSpan={7}
+                    style={{
+                      ...thStyle,
+                      textAlign: 'center',
+                      borderBottom: '1px solid #e5e7eb',
+                      borderRight: '1px solid #e5e7eb',
+                    }}
+                  >
                     PRODUCT IN
                   </th>
-                  <th colSpan={4} style={{ ...thStyle, textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>
+                  <th
+                    colSpan={4}
+                    style={{ ...thStyle, textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}
+                  >
                     PRODUCT OUT
                   </th>
                 </tr>
@@ -293,7 +406,9 @@ export function FifoCostLotTrackingPage() {
                   <th style={{ ...thStyle, textAlign: 'right' }}>QUANTITY</th>
                   <th style={{ ...thStyle, textAlign: 'right' }}>AGE</th>
                   <th style={{ ...thStyle, textAlign: 'right' }}>COST PER UNIT</th>
-                  <th style={{ ...thStyle, textAlign: 'right', borderRight: '1px solid #e5e7eb' }}>TOTAL</th>
+                  <th style={{ ...thStyle, textAlign: 'right', borderRight: '1px solid #e5e7eb' }}>
+                    TOTAL
+                  </th>
 
                   <th style={{ ...thStyle }}>DATE</th>
                   <th style={{ ...thStyle }}>TRANSACTIONS</th>
@@ -304,13 +419,19 @@ export function FifoCostLotTrackingPage() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={11} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280', padding: '24px' }}>
+                    <td
+                      colSpan={11}
+                      style={{ ...tdStyle, textAlign: 'center', color: '#6b7280', padding: '24px' }}
+                    >
                       Loading...
                     </td>
                   </tr>
                 ) : dataRows.length === 0 ? (
                   <tr>
-                    <td colSpan={11} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280', padding: '24px' }}>
+                    <td
+                      colSpan={11}
+                      style={{ ...tdStyle, textAlign: 'center', color: '#6b7280', padding: '24px' }}
+                    >
                       No data found
                     </td>
                   </tr>
@@ -328,16 +449,33 @@ export function FifoCostLotTrackingPage() {
                         {row.inQty > 0 ? (
                           <>
                             <div style={{ color: '#111827', fontWeight: 500 }}>{row.inQty}</div>
-                            <div style={{ color: '#6b7280', fontSize: '12px' }}>{row.inQtyUnit}</div>
+                            <div style={{ color: '#6b7280', fontSize: '12px' }}>
+                              {row.inQtyUnit}
+                            </div>
                             {row.inQtyRemaining > 0 && (
-                              <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '2px' }}>Qty remaining: {row.inQtyRemaining}</div>
+                              <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '2px' }}>
+                                Qty remaining: {row.inQtyRemaining}
+                              </div>
                             )}
                           </>
                         ) : null}
                       </td>
-                      <td style={{ ...tdStyle, verticalAlign: 'top', textAlign: 'right' }}>{row.inAge}</td>
-                      <td style={{ ...tdStyle, verticalAlign: 'top', textAlign: 'right' }}>{row.inCost}</td>
-                      <td style={{ ...tdStyle, verticalAlign: 'top', textAlign: 'right', borderRight: '1px solid #e5e7eb' }}>{row.inTotal}</td>
+                      <td style={{ ...tdStyle, verticalAlign: 'top', textAlign: 'right' }}>
+                        {row.inAge}
+                      </td>
+                      <td style={{ ...tdStyle, verticalAlign: 'top', textAlign: 'right' }}>
+                        {row.inCost}
+                      </td>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          verticalAlign: 'top',
+                          textAlign: 'right',
+                          borderRight: '1px solid #e5e7eb',
+                        }}
+                      >
+                        {row.inTotal}
+                      </td>
 
                       <td style={{ ...tdStyle, verticalAlign: 'top' }}>{row.outDate}</td>
                       <td style={{ ...tdStyle, verticalAlign: 'top' }}>
@@ -350,7 +488,9 @@ export function FifoCostLotTrackingPage() {
                         {row.outQty !== null ? (
                           <>
                             <div style={{ color: '#111827', fontWeight: 500 }}>{row.outQty}</div>
-                            <div style={{ color: '#6b7280', fontSize: '12px' }}>{row.outQtyUnit}</div>
+                            <div style={{ color: '#6b7280', fontSize: '12px' }}>
+                              {row.outQtyUnit}
+                            </div>
                           </>
                         ) : null}
                       </td>
@@ -375,8 +515,28 @@ export function FifoCostLotTrackingPage() {
             onRequestCount={() => {}}
           />
 
-          <div style={{ padding: '16px 24px', fontSize: '12px', color: '#4b5563', borderTop: '1px solid #e5e7eb' }}>
-            **Amount is displayed in your base currency <span style={{ background: '#16a34a', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 500, fontSize: '11px', marginLeft: '4px' }}>INR</span>
+          <div
+            style={{
+              padding: '16px 24px',
+              fontSize: '12px',
+              color: '#4b5563',
+              borderTop: '1px solid #e5e7eb',
+            }}
+          >
+            **Amount is displayed in your base currency{' '}
+            <span
+              style={{
+                background: '#16a34a',
+                color: '#fff',
+                padding: '2px 6px',
+                borderRadius: '4px',
+                fontWeight: 500,
+                fontSize: '11px',
+                marginLeft: '4px',
+              }}
+            >
+              INR
+            </span>
           </div>
         </div>
       </div>

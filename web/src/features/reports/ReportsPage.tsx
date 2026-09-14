@@ -179,7 +179,7 @@ export function ReportsPage() {
         </div>
 
         {/* Main Content */}
-        <div style={{ flex: 1, padding: '24px', overflowY: 'auto', background: '#f8fafc' }}>
+        <div style={{ flex: 1, padding: '12px', overflowY: 'auto', background: '#f8fafc' }}>
           <div
             style={{
               background: '#fff',

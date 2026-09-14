@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { Menu, X, Filter } from 'lucide-react';
-import { format, subYears, endOfDay, startOfDay } from 'date-fns';
+import { format, endOfDay, startOfDay, startOfMonth } from 'date-fns';
 import { ReportDateFilter } from './components/ReportDateFilter';
 import { reportsApi, type ItemLedgerResponse, type ItemLedgerRow } from './reports.api';
 
@@ -9,38 +9,26 @@ export function InventoryValuationDetailPage() {
   const navigate = useNavigate();
   const { orgId, itemId } = useParams<{ orgId: string; itemId: string }>();
 
-  // For fromDate we can default to beginning of the year or similar. Let's use 1 year ago for demo.
-  const [fromDateLabel, setFromDateLabel] = useState('Custom');
-  const [fromDate, setFromDate] = useState<Date>(subYears(new Date(), 1));
-  const [toDateLabel, setToDateLabel] = useState('Today');
+  const [dateRangeLabel, setDateRangeLabel] = useState('This Month');
+  const [fromDate, setFromDate] = useState<Date>(startOfMonth(new Date()));
   const [toDate, setToDate] = useState<Date>(new Date());
   
+  const [appliedFilters, setAppliedFilters] = useState({
+    fromDate: startOfMonth(new Date()),
+    toDate: new Date()
+  });
+
   const [data, setData] = useState<ItemLedgerResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchData = async () => {
-    if (!orgId || !itemId) return;
-    setLoading(true);
-    try {
-      const response = await reportsApi.getItemLedger(orgId, itemId, {
-        fromDate: startOfDay(fromDate).toISOString(),
-        toDate: endOfDay(toDate).toISOString()
-      });
-      setData(response);
-    } catch (error) {
-      console.error('Failed to fetch item ledger', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    const loadInitialData = async () => {
+    const loadData = async () => {
       if (!orgId || !itemId) return;
+      setLoading(true);
       try {
         const response = await reportsApi.getItemLedger(orgId, itemId, {
-          fromDate: startOfDay(fromDate).toISOString(),
-          toDate: endOfDay(toDate).toISOString()
+          fromDate: startOfDay(appliedFilters.fromDate).toISOString(),
+          toDate: endOfDay(appliedFilters.toDate).toISOString()
         });
         setData(response);
       } catch (error) {
@@ -49,14 +37,13 @@ export function InventoryValuationDetailPage() {
         setLoading(false);
       }
     };
-    
-    loadInitialData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, itemId]);
+
+    loadData();
+  }, [orgId, itemId, appliedFilters]);
 
   const getDocLink = (row: ItemLedgerRow) => {
     if (!row.sourceDocId) return null;
-    
+
     // Add routing for specific document types based on standard URL paths in this app
     switch (row.sourceDocType) {
       case 'bill':
@@ -66,7 +53,7 @@ export function InventoryValuationDetailPage() {
       case 'job_receipt':
         return `/organizations/${orgId}/jobwork/receipts`; // Or specific receipt id view
       case 'job_issue':
-        return `/organizations/${orgId}/jobwork/issues`; 
+        return `/organizations/${orgId}/jobwork/issues`;
       case 'purchase_order':
         return `/organizations/${orgId}/purchases/purchase-orders/${row.sourceDocId}/edit`;
       case 'item_opening_stock':
@@ -113,7 +100,7 @@ export function InventoryValuationDetailPage() {
             </div>
           </div>
         </div>
-        
+
         <button
           type="button"
           onClick={() => navigate(-1)}
@@ -149,37 +136,30 @@ export function InventoryValuationDetailPage() {
         </div>
 
         <div style={{ display: 'flex', gap: '12px', flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#6b7280' }}>
-            <span>From:</span>
-            <ReportDateFilter 
-              value={fromDateLabel} 
-              onChange={(label, date) => {
-                setFromDateLabel(label);
-                setFromDate(date);
-              }} 
-            />
-            <span>To:</span>
-            <ReportDateFilter 
-              value={toDateLabel} 
-              onChange={(label, date) => {
-                setToDateLabel(label);
-                setToDate(date);
-              }} 
-            />
-          </div>
-          
+          <ReportDateFilter
+            isRange={true}
+            value={dateRangeLabel}
+            onChangeRange={(label, start, end) => {
+              setDateRangeLabel(label);
+              setFromDate(start);
+              setToDate(end);
+            }}
+          />
           <button
             type="button"
-            onClick={() => fetchData()}
+            onClick={() => setAppliedFilters({ fromDate, toDate })}
             style={{
-              background: '#059669',
+              padding: '6px 12px',
+              background: '#2563eb',
               color: '#fff',
               border: 'none',
-              borderRadius: '6px',
-              padding: '4px 16px',
-              fontSize: '12px',
+              borderRadius: '4px',
+              fontSize: '13px',
               fontWeight: 500,
               cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
             }}
           >
@@ -189,7 +169,7 @@ export function InventoryValuationDetailPage() {
       </div>
 
       {/* Main Content Area */}
-      <div style={{ padding: '24px', flex: 1, overflowY: 'auto' }}>
+      <div style={{ padding: '12px', flex: 1, overflowY: 'auto' }}>
         <div
           style={{
             background: '#fff',
@@ -242,8 +222,8 @@ export function InventoryValuationDetailPage() {
                   return (
                     <tr key={idx} className="table-row-hover" style={{ borderTop: '1px solid #f9fafb' }}>
                       <td style={{ ...tdStyle, fontWeight: 500 }}>
-                        {row.date 
-                          ? format(new Date(row.date), 'dd-MM-yyyy') 
+                        {row.date
+                          ? format(new Date(row.date), 'dd-MM-yyyy')
                           : row.isOpeningStock
                             ? format(fromDate, 'dd-MM-yyyy')
                             : row.isClosingStock
