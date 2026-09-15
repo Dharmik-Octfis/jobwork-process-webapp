@@ -50,7 +50,9 @@ export async function getFifoCostLotTracking(
           l.location_id AS "locationId",
           loc.name AS "locationName",
           CASE 
-            WHEN l.source_doc_type = 'item_opening_stock' THEN '1970-01-01'::timestamptz
+            WHEN l.source_doc_type = 'item_opening_stock' THEN COALESCE((
+              SELECT migration_date FROM organizations WHERE id = ${organizationId}::uuid
+            ), '1970-01-01'::timestamptz)
             ELSE COALESCE((
               SELECT sl.posted_at
               FROM stock_ledger sl
