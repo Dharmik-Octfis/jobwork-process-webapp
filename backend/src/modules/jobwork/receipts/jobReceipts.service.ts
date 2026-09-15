@@ -30,6 +30,13 @@ import {
 } from '../jobwork.refs.ts';
 import { closedQtyByIssueLine, lockStep } from '../jobwork.posting.ts';
 import {
+  materialByOutput,
+  needTable,
+  outputValues,
+  usedByItem,
+  type CostPlan,
+} from './landedCost.ts';
+import {
   POSTED_DOC_STATUS,
   SOURCE_DOC_TYPES,
   isExternalLocation,
@@ -716,24 +723,6 @@ const BATCH_OPTION_SELECT = {
   uomId: true,
 } satisfies Prisma.BatchSelect;
 
-/** What the processor charges for this receipt, per `rateBasis` (§9.2). */
-function processCharge(
-  rate: Prisma.Decimal | null,
-  rateBasis: string | null,
-  issuedQty: Prisma.Decimal,
-  receivedQty: Prisma.Decimal,
-): Prisma.Decimal {
-  if (!rate) return ZERO;
-  switch (rateBasis) {
-    case 'per_issued_unit':
-      return rate.times(issuedQty);
-    case 'per_received_unit':
-      return rate.times(receivedQty);
-    default:
-      return ZERO;
-  }
-}
-
 /**
  * One batch a returned row will land in, resolved from the request but not yet
  * written. Exactly one of the two identifiers is set: `batchId` names an
@@ -823,8 +812,8 @@ interface ResolvedOutput {
   scrapQty: Prisma.Decimal;
   returnedQty: Prisma.Decimal;
   isPrimary: boolean;
-  /** Null on the primary — it takes the remainder of the pot (§9.2.1). */
-  valueShare: Prisma.Decimal | null;
+  /** The rate agreed for this receipt; null takes the job order's (R6). */
+  rate: Prisma.Decimal | null;
   reasonId: string | null;
   responsibility: string | null;
   remarks: string | null;
@@ -892,7 +881,7 @@ function resolveOutputs(
         scrapQty: lineTotals.scrap,
         returnedQty: lineTotals.returned,
         isPrimary: true,
-        valueShare: null,
+        rate: null,
         reasonId: null,
         responsibility: null,
         remarks: null,
@@ -934,9 +923,7 @@ function resolveOutputs(
       scrapQty: new Prisma.Decimal(row.scrapQty ?? 0),
       returnedQty: new Prisma.Decimal(row.returnedQty ?? 0),
       isPrimary,
-      // The primary takes the remainder, so a value typed on it would be
-      // ignored — better to drop it here than to store a number nothing reads.
-      valueShare: isPrimary ? null : new Prisma.Decimal(row.valueShare ?? 0),
+      rate: row.rate == null ? null : new Prisma.Decimal(row.rate),
       reasonId: row.reasonId ?? null,
       responsibility: row.responsibility ?? null,
       remarks: row.remarks?.trim() || null,
@@ -995,42 +982,6 @@ function singleBatchPlan(batchReference: string | null, qty: Prisma.Decimal): Ou
       existingUnits: [],
     },
   ];
-}
-
-/**
- * 🔴 THE VALUE SPLIT (§9.2.1). One pot, several places to put it.
- *
- *     pot = value of everything consumed + the process charge
- *     each by-product → the value the user typed, default ₹0
- *     the primary     → pot − the sum of the by-product values
- *
- * Apportioning by quantity is not available and reaching for it is the trap:
- * 2,910 PCS and 80 KG have no ratio between them, and inventing one would move
- * cost silently between two items every time the yield moved.
- *
- * Value is conserved by construction — the primary takes exactly what is left —
- * so the only way to break it is by-products claiming more than the whole
- * operation was worth, which is refused rather than left to make the primary
- * negative.
- */
-function splitValue(outputs: readonly ResolvedOutput[], pot: Prisma.Decimal) {
-  const byProducts = outputs.filter((row) => !row.isPrimary);
-  const claimed = byProducts.reduce((acc, row) => acc.plus(row.valueShare ?? ZERO), ZERO);
-
-  if (claimed.greaterThan(pot)) {
-    throw new ApiError(
-      400,
-      `The by-products are valued at ${claimed.toString()}, but this operation is only worth ` +
-        `${pot.toDecimalPlaces(4).toString()} in total (material consumed plus the process charge). ` +
-        'The main output would be left carrying a negative cost.',
-      { outputs: 'By-product values cannot exceed the value of the whole operation.' },
-    );
-  }
-
-  const primaryValue = pot.minus(claimed);
-  return new Map(
-    outputs.map((row) => [row.itemId, row.isPrimary ? primaryValue : (row.valueShare ?? ZERO)]),
-  );
 }
 
 /** One batch this receipt actually wrote into, ready to be recorded as a row. */
@@ -1269,25 +1220,99 @@ interface ConsumeAllocation {
    * the roll simply stays at the processor.
    */
   batchUnitId: string | null;
-  /** Which item was consumed — the challan line's own (§5.7). It is what the
-   * process charge is measured against when the rate is per issued unit. */
+  /** Which item was consumed — the challan line's own (§5.7). Material value is
+   * split across outputs per item (R5). */
   itemId: string;
   qty: Prisma.Decimal;
+}
+
+/** A line of a ticked challan, with what is still at the processor on it. */
+interface OpenIssueLine {
+  id: string;
+  jobIssueId: string;
+  batchId: string;
+  batchUnitId: string | null;
+  itemId: string;
+  outstanding: Prisma.Decimal;
+}
+
+async function openIssueLines(
+  tx: TenantClient,
+  organizationId: string,
+  issueIds: readonly string[],
+): Promise<OpenIssueLine[]> {
+  const issueLines = await tx.jobIssueLine.findMany({
+    where: { organizationId, jobIssueId: { in: [...issueIds] }, isDeleted: false },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      jobIssueId: true,
+      batchId: true,
+      batchUnitId: true,
+      qty: true,
+      itemId: true,
+    },
+  });
+  const closedByLine = await closedQtyByIssueLine(
+    tx,
+    organizationId,
+    issueLines.map((line) => line.id),
+  );
+  return issueLines.map(({ qty, ...line }) => ({
+    ...line,
+    outstanding: qty.minus(closedByLine.get(line.id) ?? ZERO),
+  }));
+}
+
+/**
+ * What stops a step's plan from costing a receipt — the same gaps the issue
+ * refuses (V4), plus a composite with no recipe frozen onto it, which only a
+ * step planned before landed costing can have.
+ */
+function costingProblems(step: {
+  inputs: readonly { itemId: string; plannedQty: Prisma.Decimal | null; item: { name: string } }[];
+  outputs: readonly {
+    itemId: string;
+    expectedQty: Prisma.Decimal | null;
+    item: { name: string; itemStructure: string };
+    components: readonly unknown[];
+  }[];
+}): string[] {
+  const inputIds = new Set(step.inputs.map((row) => row.itemId));
+  const noPlanned = step.inputs
+    .filter((row) => !row.plannedQty || row.plannedQty.lessThanOrEqualTo(0))
+    .map((row) => row.item.name);
+  const noExpected = step.outputs
+    .filter((row) => !row.expectedQty || row.expectedQty.lessThanOrEqualTo(0))
+    .map((row) => row.item.name);
+  // A pass-through output draws on itself and needs no recipe (R1).
+  const noRecipe = step.outputs
+    .filter(
+      (row) =>
+        row.item.itemStructure === 'composite' &&
+        row.components.length === 0 &&
+        !inputIds.has(row.itemId),
+    )
+    .map((row) => row.item.name);
+  return [
+    ...(step.outputs.length === 0 ? ['it lists nothing it produces'] : []),
+    ...(noPlanned.length ? [`no planned quantity for ${noPlanned.join(', ')}`] : []),
+    ...(noExpected.length ? [`no expected quantity for ${noExpected.join(', ')}`] : []),
+    ...(noRecipe.length ? [`no recipe frozen onto the job order for ${noRecipe.join(', ')}`] : []),
+  ];
 }
 
 /**
  * Decide which issue lines this receipt consumes, and how much of each.
  *
  * Unit-wise lines name their own issue line, so the answer is given. Bulk lines
- * do not — one typed total closes whatever is still outstanding, oldest first.
+ * do not — one total per item closes whatever is still outstanding, oldest first.
  * FIFO rather than proportional because the batches went out in an order and came
  * back in that order; splitting a bulk return across every open line by ratio
  * invents a mixing that did not happen.
  */
-async function allocateConsumption(
-  tx: TenantClient,
-  organizationId: string,
-  issueIds: readonly string[],
+function allocateConsumption(
+  issueLines: readonly OpenIssueLine[],
   lines: readonly JobReceiptLineInput[],
   /**
    * 🔴 THE DRAFT PATH. Over-receiving stops being an error and becomes a number
@@ -1301,29 +1326,8 @@ async function allocateConsumption(
    * pass runs again at post, and refuses then.
    */
   lenient = false,
-): Promise<ConsumeAllocation[]> {
-  const issueLines = await tx.jobIssueLine.findMany({
-    where: { organizationId, jobIssueId: { in: [...issueIds] }, isDeleted: false },
-    orderBy: { createdAt: 'asc' },
-    select: {
-      id: true,
-      jobIssueId: true,
-      batchId: true,
-      batchUnitId: true,
-      qty: true,
-      itemId: true,
-    },
-  });
-
-  const closedByLine = await closedQtyByIssueLine(
-    tx,
-    organizationId,
-    issueLines.map((line) => line.id),
-  );
-  const outstanding = new Map<string, Prisma.Decimal>();
-  for (const line of issueLines) {
-    outstanding.set(line.id, line.qty.minus(closedByLine.get(line.id) ?? ZERO));
-  }
+): ConsumeAllocation[] {
+  const outstanding = new Map(issueLines.map((line) => [line.id, line.outstanding]));
 
   const allocations: ConsumeAllocation[] = [];
 
@@ -1500,6 +1504,13 @@ export async function createNewJobReceipt(
     });
     if (!step) throw ApiError.notFound('Job order step not found');
     if (step.jobOrder.isDeleted) throw ApiError.notFound('Job order not found');
+    // R9: nothing more comes back against a finished step — what was left at the
+    // processor has been written off, and a receipt now would consume it twice.
+    if (step.status === 'completed' || step.status === 'short_closed') {
+      throw ApiError.conflict(
+        'This step has been completed or closed short, so nothing more can be received against it.',
+      );
+    }
 
     await assertItemsBelongToOrg(tx, organizationId, [header.outputItemId]);
     await assertUomsBelongToOrg(tx, organizationId, [header.outputUomId]);
@@ -1521,6 +1532,8 @@ export async function createNewJobReceipt(
         processorType: true,
         processorId: true,
         processorNameSnapshot: true,
+        // Rework and first-pass challans are costed by different rules (R1).
+        isRework: true,
       },
     });
     if (issues.length !== issueIds.length) {
@@ -1587,29 +1600,6 @@ export async function createNewJobReceipt(
     );
 
     /**
-     * 🔴 A POSTED RECEIPT MUST ACCOUNT FOR MATERIAL THAT WENT OUT.
-     *
-     * Its `produce` rows create stock; its `consume` rows are what that stock is
-     * made of. A receipt accounting for nothing posts only the first half, so
-     * goods appear at a location with no material behind them and every valuation
-     * downstream is costing something out of thin air.
-     *
-     * Removed on 2026-09-04 (`fd2ddfe`) and restored 2026-09-07, because it was
-     * not theoretical: JR-00019 and JR-00020 each posted a single `produce` row
-     * for 30 and 60 shirts against no challan at all, and both had to be
-     * cancelled. The route schema asks the same question
-     * (`createJobReceiptSchema.superRefine`), but the draft-post path never goes
-     * through it — `postJobReceiptDraft` calls this function directly — so the
-     * schema alone left the hole open.
-     *
-     * A DRAFT is exempt, as it is from every other completeness rule: the whole
-     * point is parking a half-typed form.
-     */
-    if (!asDraft && totals.issued.lessThanOrEqualTo(0)) {
-      throw ApiError.badRequest('Say how much of the issued material this receipt accounts for.');
-    }
-
-    /**
      * 🔴 THE SUM CHECK, ENFORCED HERE AND NOT ONLY IN THE SCHEMA.
      *
      * `jobReceiptLineSchema` carries the same rule, but that only runs through
@@ -1641,8 +1631,6 @@ export async function createNewJobReceipt(
         );
       }
     }
-
-    const allocations = await allocateConsumption(tx, organizationId, issueIds, lines, asDraft);
 
     /**
      * 🔴 WHAT CAME BACK (§5.7) — resolved before anything is written, because
@@ -1676,6 +1664,163 @@ export async function createNewJobReceipt(
     }
 
     /**
+     * 🔴 THE LANDED COST (docs/JOBWORK_LANDED_COST_PLAN.md §6.5, R1–R7).
+     *
+     * A receipt no longer settles its challans in full. It works out how much
+     * material what came back used — from the ratio the step's own plan states,
+     * planned input against expected output — unless the processor's figure was
+     * typed, and allocates exactly that, oldest challan line first. Whatever the
+     * plan did not account for stays at the processor until the step is completed.
+     */
+    const reworkChallans = issues.filter((issue) => issue.isRework).length;
+    const isRework = reworkChallans > 0;
+    if (isRework && reworkChallans !== issues.length) {
+      throw new ApiError(
+        400,
+        'Rework and first-pass challans consume different items by different rules, so they ' +
+          'cannot be received on one receipt. Receive them separately.',
+        { issueIds: 'Pick only rework challans, or only first-pass ones.' },
+      );
+    }
+
+    // The plan the receipt is costed by — frozen on the step, read in one query.
+    const planStep = await tx.jobOrderStep.findFirstOrThrow({
+      where: { id: step.id, organizationId },
+      select: {
+        seq: true,
+        inputs: {
+          where: { isDeleted: false },
+          orderBy: { seq: 'asc' },
+          select: { itemId: true, uomId: true, plannedQty: true, item: { select: { name: true } } },
+        },
+        outputs: {
+          where: { isDeleted: false },
+          orderBy: { seq: 'asc' },
+          select: {
+            itemId: true,
+            uomId: true,
+            expectedQty: true,
+            rate: true,
+            item: { select: { name: true, itemStructure: true } },
+            components: {
+              where: { isDeleted: false },
+              orderBy: { seq: 'asc' },
+              select: { componentItemId: true, qtyPerUnit: true },
+            },
+          },
+        },
+      },
+    });
+    const plan: CostPlan = { inputs: planStep.inputs, outputs: planStep.outputs };
+    const plannedOutputByItem = new Map(planStep.outputs.map((row) => [row.itemId, row]));
+    const itemName = (itemId: string) =>
+      [...planStep.inputs, ...planStep.outputs].find((row) => row.itemId === itemId)?.item.name ??
+      'an item';
+
+    // Rework has no plan of its own (R2), and a draft is still being typed.
+    if (!isRework && !asDraft) {
+      const problems = costingProblems(planStep);
+      if (problems.length > 0) {
+        const message =
+          `Step ${planStep.seq} cannot be costed: ${problems.join('; ')}. Complete its plan on the ` +
+          'job order while it is still editable — otherwise it was planned before landed costing, ' +
+          'so complete it or close it short.';
+        throw new ApiError(409, message, { plan: message });
+      }
+      const unplanned = outputRows.filter((row) => !plannedOutputByItem.has(row.itemId));
+      if (unplanned.length > 0) {
+        throw new ApiError(
+          400,
+          'What came back includes an item this step’s plan does not list, so nothing says what ' +
+            'it is made from or what it costs. Add it to the job order first.',
+          { outputs: 'Only items on the step’s plan can be received.' },
+        );
+      }
+    }
+
+    // What is still out on the ticked challans, per line and per item — read once.
+    const issueLines = await openIssueLines(tx, organizationId, issueIds);
+    const outstandingByItem = new Map<string, Prisma.Decimal>();
+    for (const line of issueLines) {
+      outstandingByItem.set(
+        line.itemId,
+        (outstandingByItem.get(line.itemId) ?? ZERO).plus(line.outstanding),
+      );
+    }
+    const inputItemIds = [...outstandingByItem.keys()];
+
+    // A typed Used figure, per item. Zero or blank means "work it out" (R4).
+    const itemOfIssueLine = new Map(issueLines.map((line) => [line.id, line.itemId]));
+    const typedLines = lines.filter((line) => (line.issuedQty ?? 0) > 0);
+    const typedByItem = new Map<string, Prisma.Decimal>();
+    for (const line of typedLines) {
+      const itemId =
+        line.itemId ??
+        (line.jobIssueLineId ? itemOfIssueLine.get(line.jobIssueLineId) : undefined) ??
+        (inputItemIds.length === 1 ? inputItemIds[0] : undefined);
+      // An ambiguous line is refused by `allocateConsumption`, which names the fix.
+      if (!itemId) continue;
+      typedByItem.set(itemId, (typedByItem.get(itemId) ?? ZERO).plus(line.issuedQty!));
+    }
+
+    const needs = needTable(
+      plan,
+      inputItemIds,
+      outputRows.map((row) => ({
+        itemId: row.itemId,
+        acceptedQty: row.acceptedQty,
+        reworkQty: row.reworkQty,
+      })),
+      isRework,
+    );
+    const { used, undrawn } = usedByItem(needs, inputItemIds, typedByItem, outstandingByItem);
+
+    if (!asDraft && undrawn.length > 0) {
+      throw new ApiError(
+        400,
+        `Nothing received on this receipt is made from ${undrawn.map(itemName).join(', ')}, so ` +
+          'there is nothing to carry what it used. Clear the used quantity, or record what was ' +
+          'made from it.',
+        { lines: 'A used quantity needs something received that is made from it.' },
+      );
+    }
+
+    // Typed lines stand as sent; every other item's use is the calculated figure.
+    const calculatedLines: JobReceiptLineInput[] = asDraft
+      ? []
+      : inputItemIds
+          .filter((itemId) => !typedByItem.has(itemId) && (used.get(itemId) ?? ZERO).greaterThan(0))
+          .map((itemId) => ({ itemId, issuedQty: Number(used.get(itemId)), receivedQty: 0 }));
+
+    const usedTotal = [...used.values()].reduce((sum, qty) => sum.plus(qty), ZERO);
+    if (!asDraft && usedTotal.lessThanOrEqualTo(0)) {
+      throw ApiError.badRequest('Say how much of the issued material this receipt accounts for.');
+    }
+
+    const allocations = allocateConsumption(
+      issueLines,
+      [...typedLines, ...calculatedLines],
+      asDraft,
+    );
+
+    // A draft keeps every ticked challan even with nothing typed against it yet —
+    // `postJobReceiptDraft` finds its challans from these lines (§6.5).
+    if (asDraft) {
+      const covered = new Set(allocations.map((row) => row.jobIssueLineId));
+      for (const line of issueLines) {
+        if (covered.has(line.id)) continue;
+        allocations.push({
+          jobIssueId: line.jobIssueId,
+          jobIssueLineId: line.id,
+          batchId: line.batchId,
+          batchUnitId: line.batchUnitId,
+          itemId: line.itemId,
+          qty: ZERO,
+        });
+      }
+    }
+
+    /**
      * 🔴 CHECKED BEFORE A SINGLE ROW IS POSTED, and after the units above are
      * settled — the unit check compares against the item's stocking unit, so it
      * has to run once that is known. A batch this receipt may not add to has to
@@ -1698,32 +1843,21 @@ export async function createNewJobReceipt(
 
     const primaryOutput = outputRows.find((row) => row.isPrimary)!;
 
-    /**
-     * 🔴 THE QUANTITY THE CHARGE IS MEASURED AGAINST, keyed to ONE item.
-     *
-     * `per_issued_unit` means the principal input, `per_received_unit` the
-     * primary output. Summing across a multi-item challan instead would multiply
-     * the rate by 100 PCS + 5 CONE + 300 PCS = 405, which is 405 of nothing —
-     * the same mistake §6.5 refuses everywhere else.
-     */
-    const consumedByItem = new Map<string, Prisma.Decimal>();
-    for (const allocation of allocations) {
-      consumedByItem.set(
-        allocation.itemId,
-        (consumedByItem.get(allocation.itemId) ?? ZERO).plus(allocation.qty),
-      );
-    }
-    const principalInput = await tx.jobOrderStepInput.findFirst({
-      where: { organizationId, jobOrderStepId: step.id, isDeleted: false },
-      orderBy: { seq: 'asc' },
-      select: { itemId: true },
-    });
-    // A step that lists nothing to consume has no principal item, so the
-    // cross-item sum IS the figure — there is only one number in play.
-    const principalItemId = principalInput?.itemId ?? null;
-    const principalConsumedQty = principalItemId
-      ? (consumedByItem.get(principalItemId) ?? ZERO)
-      : totals.issued;
+    // The header's issued total is the principal input's, in its own unit — a sum
+    // across a multi-item challan would be 100 PCS + 5 CONE, which is nothing.
+    const principalItemId = planStep.inputs[0]?.itemId ?? inputItemIds[0] ?? null;
+    const principalConsumedQty = allocations
+      .filter((allocation) => allocation.itemId === principalItemId)
+      .reduce((sum, allocation) => sum.plus(allocation.qty), ZERO);
+
+    // The rate this receipt charges each row at: typed on the receipt, else the
+    // job order's (R6). Rework is charged too — the pieces are accepted now.
+    const rateByItem = new Map(
+      outputRows.map((row) => [
+        row.itemId,
+        row.rate ?? plannedOutputByItem.get(row.itemId)?.rate ?? null,
+      ]),
+    );
 
     const defs = await loadActiveDefinitions(tx, organizationId, 'job_receipt');
     const customFields = validateCustomFields({
@@ -1851,13 +1985,14 @@ export async function createNewJobReceipt(
       ? new Map()
       : await resolveBatchesForPosting(tx, organizationId, consumedBatchIds);
 
-    let consumedValue = ZERO;
+    /** What actually left the ledger, per input item — the material R5 splits. */
+    const consumedValueByItem = new Map<string, Prisma.Decimal>();
     const parentBatchIds = new Set<string>();
     for (const allocation of asDraft ? [] : allocations) {
+      if (allocation.qty.lessThanOrEqualTo(0)) continue;
       const balance = balances.get(allocation.batchId) ?? { qty: ZERO, value: ZERO };
       const unitValue = balance.qty.greaterThan(0) ? balance.value.dividedBy(balance.qty) : ZERO;
       const lineValue = unitValue.times(allocation.qty).toDecimalPlaces(4);
-      consumedValue = consumedValue.plus(lineValue);
       parentBatchIds.add(allocation.batchId);
 
       const posted = await postMovement(
@@ -1886,31 +2021,65 @@ export async function createNewJobReceipt(
         qty: balance.qty.minus(posted.qtyOut),
         value: balance.value.minus(posted.valueOut),
       });
+      consumedValueByItem.set(
+        allocation.itemId,
+        (consumedValueByItem.get(allocation.itemId) ?? ZERO).plus(posted.valueOut),
+      );
     }
+    const consumedValue = [...consumedValueByItem.values()].reduce(
+      (sum, value) => sum.plus(value),
+      ZERO,
+    );
 
     /**
-     * The bill for the work, added to the material's cost. That is what makes
-     * "cost per metre after dyeing" answerable at all — and why `rateBasis` had
-     * to be decided back on the Process master rather than inferred here (§9.2).
+     * 🔴 R5–R7: each input's value follows the rows that drew on it, by need, and
+     * each row adds its own charge. Recomputed from what was POSTED rather than
+     * from the typed-or-calculated quantities, so the ledger and the breakdown
+     * cannot disagree.
      */
-    const charge = processCharge(
-      step.rate,
-      step.rateBasis,
-      principalConsumedQty,
-      primaryOutput.receivedQty,
+    const materialByItem = materialByOutput(needs, consumedValueByItem);
+    const valuesByItem = new Map(
+      outputRows.map((row) => {
+        const material = materialByItem.get(row.itemId) ?? ZERO;
+        return [
+          row.itemId,
+          {
+            material,
+            ...outputValues(
+              material,
+              rateByItem.get(row.itemId) ?? null,
+              row.acceptedQty,
+              row.reworkQty,
+            ),
+          },
+        ];
+      }),
     );
-    // The pot (§9.2.1). Everything that came back shares exactly this and no more.
-    const totalValue = consumedValue.plus(charge);
-    const valueByItem = splitValue(outputRows, totalValue);
+    const splitMaterial = [...valuesByItem.values()].reduce(
+      (sum, row) => sum.plus(row.material),
+      ZERO,
+    );
+    // Consumed value no returned row draws on would vanish from the books. The
+    // undrawn refusal above should make this unreachable; it stays as the net.
+    if (!asDraft && !splitMaterial.equals(consumedValue)) {
+      throw ApiError.conflict(
+        `This receipt consumed material worth ${consumedValue.toString()} but only ` +
+          `${splitMaterial.toString()} of it lands in what came back. Nothing has been posted.`,
+      );
+    }
+    const processChargeTotal = [...valuesByItem.values()].reduce(
+      (sum, row) => sum.plus(row.charge),
+      ZERO,
+    );
 
     /**
      * STEPS 2–4 — a batch per returned ITEM, and the value split across them.
      *
      * 🔴 Scrap and returned quantities take NO share. The whole cost lands on the
      * pieces that survived, which is the point of §5.5: 4,850 good metres that
-     * cost what 5,000 cost. Within one item, accepted and rework then split that
-     * item's share by quantity — legitimate here, and ONLY here, because both
-     * sides are the same item in the same unit.
+     * cost what 5,000 cost. Within one item, accepted and rework split the
+     * material by quantity — legitimate here, and ONLY here, because both sides
+     * are the same item in the same unit — and the charge lands on accepted (R7).
      *
      * 🔴 Rework goes into a batch of its OWN, always (plan §7). Merging it into the
      * accepted batch would lose the piece count rework has to be measured by, and
@@ -2135,18 +2304,7 @@ export async function createNewJobReceipt(
      * leave all three behind with nothing to explain them.
      */
     for (const output of asDraft ? [] : outputRows) {
-      const rowValue = valueByItem.get(output.itemId) ?? ZERO;
-      /**
-       * 🔴 Accepted and rework split the ITEM's share by quantity — legitimate
-       * here, and only here, because both sides are the same item in the same
-       * unit. Through `splitByQty` rather than two independent divisions: two
-       * rounded halves do not add back up to the whole, and the missing paisa
-       * would leave the pot disagreeing with what was posted.
-       */
-      const [acceptedValue, reworkValue] = splitByQty(rowValue, [
-        output.acceptedQty,
-        output.reworkQty,
-      ]) as [Prisma.Decimal, Prisma.Decimal];
+      const { acceptedValue, reworkValue } = valuesByItem.get(output.itemId)!;
 
       const posted = [
         ...(await postSide(output, 'accepted', output.batches, acceptedValue)),
@@ -2216,7 +2374,13 @@ export async function createNewJobReceipt(
           scrapQty: output.scrapQty,
           returnedQty: output.returnedQty,
           isPrimary: output.isPrimary,
-          valueShare: output.valueShare,
+          // No longer drives cost (R5); kept null until Migration 2 drops it.
+          valueShare: null,
+          // 🔴 The breakdown as posted, never re-derived — a later change to the
+          // job order's rate must not rewrite what this receipt cost.
+          rate: rateByItem.get(output.itemId) ?? null,
+          materialValue: valuesByItem.get(output.itemId)?.material ?? ZERO,
+          processCharge: valuesByItem.get(output.itemId)?.charge ?? ZERO,
           // The FIRST batch of each kind, not the only one — see the column's
           // note. `batches` below is the complete record.
           outputBatchId: posted.find((row) => row.kind === 'accepted')?.batchId ?? null,
@@ -2300,7 +2464,7 @@ export async function createNewJobReceipt(
     if (!asDraft) {
       await tx.jobReceipt.update({
         where: { id: receipt.id },
-        data: { outputBatchId, reworkBatchId },
+        data: { outputBatchId, reworkBatchId, consumedValue, processChargeTotal },
       });
     }
 
@@ -2451,6 +2615,7 @@ export async function postJobReceiptDraft(organizationId: string, id: string, us
         scrapQty: Number(output.scrapQty),
         returnedQty: Number(output.returnedQty),
         isPrimary: output.isPrimary,
+        rate: output.rate === null ? null : Number(output.rate),
         reasonId: output.reasonId,
         responsibility: output.responsibility,
         remarks: output.remarks,
@@ -2546,6 +2711,18 @@ export async function cancelJobReceipt(
     if (!receipt) throw ApiError.notFound('Receipt not found');
     if (receipt.status === 'cancelled')
       throw ApiError.conflict('This receipt is already cancelled.');
+
+    // R9: a finished step has had what was left at the processor written off, so
+    // reversing a consume would put material back somewhere the step already closed.
+    const receiptStep = await tx.jobOrderStep.findFirst({
+      where: { id: receipt.jobOrderStepId, organizationId },
+      select: { status: true },
+    });
+    if (receiptStep?.status === 'completed' || receiptStep?.status === 'short_closed') {
+      throw ApiError.conflict(
+        'This receipt’s step has been completed or closed short, so the receipt can no longer be cancelled.',
+      );
+    }
 
     const touched = await tx.jobReceiptOutputBatch.findMany({
       where: { organizationId, jobReceiptId: id, isDeleted: false },

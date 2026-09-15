@@ -81,7 +81,8 @@ async function aStepReadyToReceive(qty: number, value: number) {
         rate: 10,
         rateBasis: 'per_issued_unit',
         inputs: [{ itemId: greyId }],
-        outputs: [{ itemId: dyedId, isPrimary: true }],
+        // ₹10 per accepted metre — the charge lives on the output row (R6).
+        outputs: [{ itemId: dyedId, isPrimary: true, rate: 10 }],
         plannedInputQty: qty,
       },
     ],

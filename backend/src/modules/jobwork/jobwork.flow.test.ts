@@ -298,7 +298,12 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
         rate: step.rate === null ? null : Number(step.rate),
         rateBasis: step.rateBasis as 'per_issued_unit' | 'per_received_unit' | null,
         inputs: step.inputs.map((row) => ({ itemId: row.itemId })),
-        outputs: step.outputs.map((row) => ({ itemId: row.itemId, isPrimary: row.isPrimary })),
+        // The charge lives on the output row (R6): ₹12 a dyed metre, ₹4 a panel.
+        outputs: step.outputs.map((row) => ({
+          itemId: row.itemId,
+          isPrimary: row.isPrimary,
+          rate: index === 0 ? 12 : 4,
+        })),
         expectedYield: step.expectedYield === null ? null : Number(step.expectedYield),
         // The quantity is per item now; step 1's principal row carries the run.
         plannedInputQty: index === 0 ? 5000 : null,
@@ -413,13 +418,14 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
     expect(dyedBatch.parentBatchIds).toContain(inputBatch.id);
     expect(dyedBatch.itemId).toBe(dyedId);
 
-    // The cost of the material plus the dyeing charge landed on the pieces that
-    // survived — 250,000 + (5,000 × 12) = 310,000, split by quantity.
+    // The material splits between accepted and rework by quantity, and the
+    // dyeing charge is on the ACCEPTED metres alone (R6–R7) — the rework pieces
+    // are charged when they are finally accepted, never twice.
     const dyedBalance = await runAsTenant(orgId, (tx) =>
       getBalance(tx, { organizationId: orgId, batchId: dyedBatch.id }),
     );
     expect(dyedBalance.qty.toString()).toBe('4800');
-    expect(Number(dyedBalance.value)).toBeCloseTo((310000 * 4800) / 4850, 0);
+    expect(Number(dyedBalance.value)).toBeCloseTo((250000 * 4800) / 4850 + 4800 * 12, 0);
 
     // ---------------------------------------------------------------------
     // Rework — back to the SAME step, counted as a second attempt
@@ -1519,7 +1525,8 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
             { itemId: buttonId, plannedQty: 300 },
           ],
           outputs: [
-            { itemId: shirtsId, isPrimary: true, expectedQty: 95 },
+            // ₹3 per stitched shirt accepted; rejects are not paid for.
+            { itemId: shirtsId, isPrimary: true, expectedQty: 95, rate: 3 },
             { itemId: rejectsId, expectedQty: 5 },
           ],
         },
@@ -1550,10 +1557,14 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     });
 
     /**
-     * 🔴 THREE ITEMS CONSUMED, TWO RETURNED, and the two sides are unrelated in
+     * 🔴 THREE ITEMS ISSUED, TWO RETURNED, and the two sides are unrelated in
      * both length and unit. Every consumption line names its own item — without
      * that the bulk allocation would settle the panel line by eating the thread,
      * which is simply older.
+     *
+     * Both outputs' recipes draw on the panels alone, so the thread and buttons
+     * are not consumed by any receipt: they stay at the processor until the step
+     * is completed, which is where consumables are accounted for.
      */
     const receipt = await createNewJobReceipt(orgId, {
       jobOrderStepId: step.id,
@@ -1561,8 +1572,8 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       locationId: godownId,
       lines: [
         { itemId: shirtId, issuedQty: 100, receivedQty: 0 },
-        { itemId: threadId, issuedQty: 5, receivedQty: 0 },
-        { itemId: buttonId, issuedQty: 300, receivedQty: 0 },
+        { itemId: threadId, receivedQty: 0 },
+        { itemId: buttonId, receivedQty: 0 },
       ],
       outputs: [
         {
@@ -1572,14 +1583,11 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
           acceptedQty: 92,
           batchReference: 'SHIRT-C1',
         },
-        // A by-product with an explicit value — deducted from the primary's
-        // share, never apportioned by quantity (§9.2.1). Its own batch, so its
-        // own label.
+        // Its own batch, so its own label.
         {
           itemId: rejectsId,
           receivedQty: 8,
           acceptedQty: 8,
-          valueShare: 40,
           batchReference: 'SHIRT-C1/REJ',
         },
       ],
@@ -1594,7 +1602,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     expect(outputs).toHaveLength(2);
     expect(outputs.filter((row) => row.isPrimary)).toHaveLength(1);
     // 🔴 A batch per returned item, each with genealogy back to EVERY batch consumed
-    // — the rejects came from the same panels and thread the shirts did.
+    // — the rejects came from the same panels the shirts did.
     expect(outputs[0]!.outputBatchId).not.toBeNull();
     expect(outputs[1]!.outputBatchId).not.toBeNull();
     expect(outputs[0]!.outputBatchId).not.toBe(outputs[1]!.outputBatchId);
@@ -1603,31 +1611,28 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       tx.batch.findFirstOrThrow({ where: { id: outputs[0]!.outputBatchId! } }),
     );
     expect(shirtBatch.itemId).toBe(shirtsId);
-    for (const consumed of [panelBatch.id, threadBatch.id, buttonBatch.id]) {
-      expect(shirtBatch.parentBatchIds).toContain(consumed);
-    }
+    expect(shirtBatch.parentBatchIds).toContain(panelBatch.id);
+    expect(shirtBatch.parentBatchIds).not.toContain(threadBatch.id);
+    expect(shirtBatch.parentBatchIds).not.toContain(buttonBatch.id);
 
     /**
-     * 🔴 VALUE IS CONSERVED (§9.2.1).
+     * 🔴 VALUE IS CONSERVED (R5–R7).
      *
-     *   pot      = everything consumed + the process charge
-     *   rejects  = the 40 somebody typed
-     *   shirts   = pot − 40
+     *   material = the ₹1,000 of panels, split by need: 92 and 8 of them
+     *   shirts   = 920 + 92 accepted × ₹3
+     *   rejects  = 80, with no rate agreed
      *
-     * The charge is 100 panels × ₹3 — 🔴 keyed to the PRINCIPAL input. Against
-     * the cross-item sum it would have been (100 + 5 + 300) × ₹3, which is 405
-     * of nothing multiplied by a rate.
+     * Never a typed by-product value: the rejects are worth the panels they used.
      */
     const balanceOf = async (batchId: string) =>
       runAsTenant(orgId, (tx) => getBalance(tx, { organizationId: orgId, batchId }));
     const shirtBalance = await balanceOf(outputs[0]!.outputBatchId!);
     const rejectBalance = await balanceOf(outputs[1]!.outputBatchId!);
 
-    const consumedValue = 1000 + 0 + 0; // only the panels were valued
-    const pot = consumedValue + 100 * 3;
-    expect(Number(rejectBalance.value)).toBeCloseTo(40, 4);
-    expect(Number(shirtBalance.value)).toBeCloseTo(pot - 40, 4);
-    expect(Number(shirtBalance.value) + Number(rejectBalance.value)).toBeCloseTo(pot, 4);
+    expect(Number(rejectBalance.value)).toBeCloseTo(80, 4);
+    expect(Number(shirtBalance.value)).toBeCloseTo(920 + 92 * 3, 4);
+    expect(Number(receipt.consumedValue)).toBeCloseTo(1000, 4);
+    expect(Number(receipt.processChargeTotal)).toBeCloseTo(276, 4);
 
     // The header's six totals are the PRIMARY output's, in its own unit — which
     // row that is comes off `isPrimary`, not from a header column any more.
@@ -1647,58 +1652,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
 
     const completed = await manuallyCompleteStep(orgId, jobOrder.id, step.id, undefined);
     expect(completed.steps[0]!.status).toBe('completed');
-  });
-
-  it('refuses by-products worth more than the whole operation', async () => {
-    const stitching = await createNewProcess(orgId, {
-      name: `Stitching ${unique()}`,
-      itemChanges: true,
-    });
-
-    await stockUp(shirtId, 100, 500);
-    const jobOrder = await createNewJobOrder(orgId, {
-      steps: [
-        {
-          processId: stitching.id,
-          processorId: cutterId,
-          inputs: [{ itemId: shirtId, plannedQty: 100 }],
-          outputs: [
-            { itemId: shirtsId, isPrimary: true, expectedQty: 90 },
-            { itemId: rejectsId, expectedQty: 10 },
-          ],
-        },
-      ],
-    });
-    const step = jobOrder.steps[0]!;
-
-    const panelBatch = await runAsTenant(orgId, (tx) =>
-      tx.batch.findFirstOrThrow({
-        where: { organizationId: orgId, itemId: shirtId, isDeleted: false },
-        orderBy: { createdAt: 'desc' },
-        select: { id: true },
-      }),
-    );
-    const issue = await createNewJobIssue(orgId, {
-      jobOrderStepId: step.id,
-      sourceLocationId: godownId,
-      lines: [{ itemId: shirtId, batchId: panelBatch.id, qty: 100 }],
-    });
-
-    // The operation is worth 500. Handing the by-product 900 would leave the
-    // primary carrying a negative cost — which is not a rounding problem, it is
-    // somebody having mistyped what the offcuts are worth.
-    await expect(
-      createNewJobReceipt(orgId, {
-        jobOrderStepId: step.id,
-        issueIds: [issue.id],
-        locationId: godownId,
-        lines: [{ itemId: shirtId, issuedQty: 100, receivedQty: 0 }],
-        outputs: [
-          { itemId: shirtsId, isPrimary: true, receivedQty: 90, acceptedQty: 90 },
-          { itemId: rejectsId, receivedQty: 10, acceptedQty: 10, valueShare: 900 },
-        ],
-      }),
-    ).rejects.toMatchObject({ status: 400 });
   });
 
   it('refuses a bulk receipt that does not say which item it accounts for', async () => {

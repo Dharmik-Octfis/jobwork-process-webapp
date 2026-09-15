@@ -13,7 +13,11 @@ defaulted only on a single-output step, and the grid's Rate column. By decision 
 them, so they go in Phase 7 with the engine that replaces them. Phase 6 (§6.4, V4 and the §3 warnings)
 built 2026-09-15 — `jobIssues.planCheck.test.ts`: every first-pass post is checked (not only the
 first, which is equivalent once a step is locked), and a step listing no output at all is refused too.
-Everything after it is not built.** Agreed over 2026-09-12 → 14. This
+Phase 7a (§6.5 engine, R1–R7 and R9) built 2026-09-15 — `receipts/landedCost.ts`, checked by
+`landedCost.test.ts` (examples A–G) and `jobReceipts.landedCost.test.ts` (the same on real postings):
+a blank or zero Used is calculated, a first-pass receipt refuses an item its step does not plan, and
+rework and first-pass challans cannot share a receipt. Phase 7b (removing step `rate` / `rateBasis`),
+7c (the Receive and receipt screens) and everything after are not built.** Agreed over 2026-09-12 → 14. This
 replaces the step-level `rate` / `rateBasis` cost model described in `JOBWORK_DOMAIN_AND_MODULE_MAP.md`
 §9.1–§9.2.1, and moves tolerance from the process and step onto the item. Those sections,
 `JOBWORK_CORE_WALKTHROUGH.md` and `JOBWORK_UI_FIELD_SOURCES.md` are edited in place **after** the code
