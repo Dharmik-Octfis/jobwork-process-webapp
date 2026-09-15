@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { format, startOfMonth, startOfDay, endOfDay } from 'date-fns';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { Menu, X, Filter, History } from 'lucide-react';
@@ -12,6 +12,56 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchLocations } from '../configuration/locations/locations.api';
 import type { Item } from '../items/items.schemas';
 
+const iconButtonStyle = {
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  borderRadius: '4px',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '6px',
+  boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+};
+
+const filterTriggerStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  border: '1px solid #d1d5db',
+  background: '#fff',
+  padding: '4px 10px',
+  borderRadius: '6px',
+  fontSize: '12px',
+  height: 'auto',
+  minHeight: '0',
+  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+  cursor: 'pointer',
+};
+
+const thStyle = {
+  padding: '12px 10px',
+  textAlign: 'left' as const,
+  fontSize: '11px',
+  fontWeight: 600,
+  color: '#4b5563',
+  textTransform: 'uppercase' as const,
+  letterSpacing: '0.5px',
+  whiteSpace: 'nowrap' as const,
+  borderRight: '1px solid #e5e7eb',
+  borderBottom: '1px solid #e5e7eb',
+};
+
+const tdStyle = {
+  padding: '12px 10px',
+  fontSize: '13px',
+  fontWeight: 500,
+  color: '#1f2937',
+  whiteSpace: 'normal' as const,
+  wordWrap: 'break-word' as const,
+  borderRight: '1px solid #e5e7eb',
+  borderBottom: '1px solid #e5e7eb',
+};
+
 export function FifoCostLotTrackingPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
@@ -23,12 +73,14 @@ export function FifoCostLotTrackingPage() {
   const [toDate, setToDate] = useState<Date | undefined>(endOfDay(new Date()));
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [locationId, setLocationId] = useState<string>('all_locations');
+  const [isProductOut, setIsProductOut] = useState(false);
 
   const [appliedFilters, setAppliedFilters] = useState({
     fromDate: startOfMonth(new Date()) as Date | undefined,
     toDate: endOfDay(new Date()) as Date | undefined,
     itemName: undefined as string | undefined,
     locationName: undefined as string | undefined,
+    reportBasis: 'product_in' as 'product_in' | 'product_out',
   });
 
   const { data: locations } = useQuery({
@@ -55,11 +107,13 @@ export function FifoCostLotTrackingPage() {
       appliedFilters.toDate,
       appliedFilters.itemName,
       appliedFilters.locationName,
+      appliedFilters.reportBasis,
       page,
       perPage,
     ],
     queryFn: () =>
       reportsApi.getFifoCostLotTracking(orgId!, {
+        reportBasis: appliedFilters.reportBasis,
         fromDate: appliedFilters.fromDate
           ? startOfDay(appliedFilters.fromDate).toISOString()
           : undefined,
@@ -74,6 +128,38 @@ export function FifoCostLotTrackingPage() {
 
   const dataRows = data?.results || [];
   const total = data?.total || 0;
+
+  const rowSpans = new Array(dataRows.length).fill(1);
+  const skipLeft = new Array(dataRows.length).fill(false);
+
+  if (dataRows.length > 0) {
+    let groupStart = 0;
+    for (let i = 1; i < dataRows.length; i++) {
+      if (dataRows[i].itemName) {
+        groupStart = i;
+        continue;
+      }
+
+      let isSame = false;
+      if (appliedFilters.reportBasis === 'product_out') {
+        isSame = dataRows[i].outTransaction === dataRows[groupStart].outTransaction &&
+                 dataRows[i].outDate === dataRows[groupStart].outDate &&
+                 dataRows[i].outQty === dataRows[groupStart].outQty;
+      } else {
+        isSame = dataRows[i].inTransaction === dataRows[groupStart].inTransaction &&
+                 dataRows[i].inDate === dataRows[groupStart].inDate &&
+                 dataRows[i].inCost === dataRows[groupStart].inCost &&
+                 dataRows[i].inTotal === dataRows[groupStart].inTotal;
+      }
+
+      if (isSame) {
+        rowSpans[groupStart]++;
+        skipLeft[i] = true;
+      } else {
+        groupStart = i;
+      }
+    }
+  }
 
   const renderDocLink = (docType: string, docId: string, label: string) => {
     if (!docId || !docType || !label) return <span style={{ color: '#2563eb' }}>{label}</span>;
@@ -213,26 +299,27 @@ export function FifoCostLotTrackingPage() {
       <div
         style={{
           display: 'flex',
-          alignItems: 'center',
+          flexDirection: 'column',
           padding: '10px 24px',
           background: '#f9fafb',
           borderBottom: '1px solid #e5e7eb',
           gap: '16px',
         }}
       >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            color: '#4b5563',
-            fontSize: '13px',
-            fontWeight: 500,
-          }}
-        >
-          <Filter size={14} color="#6b7280" />
-          Filters :
-        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', width: '100%' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              color: '#4b5563',
+              fontSize: '13px',
+              fontWeight: 500,
+            }}
+          >
+            <Filter size={14} color="#6b7280" />
+            Filters :
+          </div>
 
         <div style={{ display: 'flex', gap: '12px', flex: 1 }}>
           <div
@@ -290,7 +377,7 @@ export function FifoCostLotTrackingPage() {
           <button
             type="button"
             onClick={() =>
-              setAppliedFilters({ fromDate, toDate, itemName: selectedItem?.name, locationName })
+              setAppliedFilters({ fromDate, toDate, itemName: selectedItem?.name, locationName, reportBasis: isProductOut ? 'product_out' : 'product_in' })
             }
             style={{
               padding: '6px 12px',
@@ -309,6 +396,19 @@ export function FifoCostLotTrackingPage() {
           >
             Run Report
           </button>
+        </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <input
+            type="checkbox"
+            id="productOutBasis"
+            checked={isProductOut}
+            onChange={(e) => setIsProductOut(e.target.checked)}
+            style={{ cursor: 'pointer' }}
+          />
+          <label htmlFor="productOutBasis" style={{ fontSize: '13px', color: '#4b5563', cursor: 'pointer' }}>
+            Generate the report based on the Product Out transactions for the selected date range
+          </label>
         </div>
       </div>
 
@@ -364,9 +464,11 @@ export function FifoCostLotTrackingPage() {
               <History size={12} color="#6b7280" /> {appliedFilters.locationName || 'All Locations'}
             </div>
             <div style={{ fontSize: '13px', color: '#4b5563', marginBottom: '8px' }}>
-              Report Generation Basis:Product In
+              Report Generation Basis:{appliedFilters.reportBasis === 'product_out' ? 'Product Out' : 'Product In'}
             </div>
-            <div style={{ fontSize: '15px', color: '#111827', fontWeight: 500 }}>Item Name</div>
+            {appliedFilters.itemName && (
+              <div style={{ fontSize: '15px', color: '#111827', fontWeight: 500 }}>{appliedFilters.itemName}</div>
+            )}
           </div>
 
           {/* Data Table */}
@@ -381,40 +483,71 @@ export function FifoCostLotTrackingPage() {
             >
               <thead>
                 <tr style={{ background: '#f8fafc' }}>
-                  <th
-                    colSpan={7}
-                    style={{
-                      ...thStyle,
-                      textAlign: 'center',
-                      borderBottom: '1px solid #e5e7eb',
-                      borderRight: '1px solid #e5e7eb',
-                    }}
-                  >
-                    PRODUCT IN
-                  </th>
-                  <th
-                    colSpan={4}
-                    style={{ ...thStyle, textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}
-                  >
-                    PRODUCT OUT
-                  </th>
+                  {appliedFilters.reportBasis === 'product_out' ? (
+                    <>
+                      <th
+                        colSpan={4}
+                        style={{ ...thStyle, textAlign: 'center', borderBottom: '1px solid #e5e7eb', borderRight: '1px solid #e5e7eb' }}
+                      >
+                        PRODUCT OUT
+                      </th>
+                      <th
+                        colSpan={7}
+                        style={{ ...thStyle, textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}
+                      >
+                        PRODUCT IN
+                      </th>
+                    </>
+                  ) : (
+                    <>
+                      <th
+                        colSpan={7}
+                        style={{ ...thStyle, textAlign: 'center', borderBottom: '1px solid #e5e7eb', borderRight: '1px solid #e5e7eb' }}
+                      >
+                        PRODUCT IN
+                      </th>
+                      <th
+                        colSpan={4}
+                        style={{ ...thStyle, textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}
+                      >
+                        PRODUCT OUT
+                      </th>
+                    </>
+                  )}
                 </tr>
-                <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                  <th style={{ ...thStyle }}>DATE</th>
-                  <th style={{ ...thStyle }}>TRANSACTIONS</th>
-                  <th style={{ ...thStyle }}>RECEIVED FROM</th>
-                  <th style={{ ...thStyle, textAlign: 'right' }}>QUANTITY</th>
-                  <th style={{ ...thStyle, textAlign: 'right' }}>AGE</th>
-                  <th style={{ ...thStyle, textAlign: 'right' }}>COST PER UNIT</th>
-                  <th style={{ ...thStyle, textAlign: 'right', borderRight: '1px solid #e5e7eb' }}>
-                    TOTAL
-                  </th>
+                {appliedFilters.reportBasis === 'product_out' ? (
+                  <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                    <th style={{ ...thStyle }}>DATE</th>
+                    <th style={{ ...thStyle }}>TRANSACTIONS</th>
+                    <th style={{ ...thStyle }}>DISPERSED TO</th>
+                    <th style={{ ...thStyle, textAlign: 'right', borderRight: '1px solid #e5e7eb' }}>QTY DISPERSED</th>
 
-                  <th style={{ ...thStyle }}>DATE</th>
-                  <th style={{ ...thStyle }}>TRANSACTIONS</th>
-                  <th style={{ ...thStyle }}>DISPERSED TO</th>
-                  <th style={{ ...thStyle, textAlign: 'right' }}>QTY DISPERSED</th>
-                </tr>
+                    <th style={{ ...thStyle }}>DATE</th>
+                    <th style={{ ...thStyle }}>TRANSACTIONS</th>
+                    <th style={{ ...thStyle }}>RECEIVED FROM</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>QUANTITY</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>AGE</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>COST PER UNIT</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>TOTAL</th>
+                  </tr>
+                ) : (
+                  <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                    <th style={{ ...thStyle }}>DATE</th>
+                    <th style={{ ...thStyle }}>TRANSACTIONS</th>
+                    <th style={{ ...thStyle }}>RECEIVED FROM</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>QUANTITY</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>AGE</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>COST PER UNIT</th>
+                    <th style={{ ...thStyle, textAlign: 'right', borderRight: '1px solid #e5e7eb' }}>
+                      TOTAL
+                    </th>
+
+                    <th style={{ ...thStyle }}>DATE</th>
+                    <th style={{ ...thStyle }}>TRANSACTIONS</th>
+                    <th style={{ ...thStyle }}>DISPERSED TO</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>QTY DISPERSED</th>
+                  </tr>
+                )}
               </thead>
               <tbody>
                 {loading ? (
@@ -436,19 +569,22 @@ export function FifoCostLotTrackingPage() {
                     </td>
                   </tr>
                 ) : (
-                  dataRows.map((row, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                      <td style={{ ...tdStyle, verticalAlign: 'top' }}>{row.inDate}</td>
-                      <td style={{ ...tdStyle, verticalAlign: 'top' }}>
+                  dataRows.map((row, i) => {
+                    const isNewItem = !!row.itemName;
+
+                    const inCols = skipLeft[i] && appliedFilters.reportBasis === 'product_in' ? null : (
+                      <>
+                      <td style={{ ...tdStyle, verticalAlign: 'middle' }} rowSpan={appliedFilters.reportBasis === 'product_in' ? rowSpans[i] : 1}>{row.inDate}</td>
+                      <td style={{ ...tdStyle, verticalAlign: 'middle' }} rowSpan={appliedFilters.reportBasis === 'product_in' ? rowSpans[i] : 1}>
                         {renderDocLink(row.inDocType, row.inDocId, row.inTransaction)}
                       </td>
-                      <td style={{ ...tdStyle, verticalAlign: 'top' }}>
+                      <td style={{ ...tdStyle, verticalAlign: 'middle' }} rowSpan={appliedFilters.reportBasis === 'product_in' ? rowSpans[i] : 1}>
                         {renderPartyLink(row.inPartyId, row.inPartyType, row.inReceivedFrom)}
                       </td>
-                      <td style={{ ...tdStyle, verticalAlign: 'top', textAlign: 'right' }}>
-                        {row.inQty > 0 ? (
+                      <td style={{ ...tdStyle, verticalAlign: 'middle', textAlign: 'right' }} rowSpan={appliedFilters.reportBasis === 'product_in' ? rowSpans[i] : 1}>
+                        {row.inQty !== null && row.inQty > 0 ? (
                           <>
-                            <div style={{ color: '#111827', fontWeight: 500 }}>{row.inQty}</div>
+                            <div style={{ color: '#111827', fontWeight: 600 }}>{row.inQty}</div>
                             <div style={{ color: '#6b7280', fontSize: '12px' }}>
                               {row.inQtyUnit}
                             </div>
@@ -460,42 +596,73 @@ export function FifoCostLotTrackingPage() {
                           </>
                         ) : null}
                       </td>
-                      <td style={{ ...tdStyle, verticalAlign: 'top', textAlign: 'right' }}>
+                      <td style={{ ...tdStyle, verticalAlign: 'middle', textAlign: 'right' }} rowSpan={appliedFilters.reportBasis === 'product_in' ? rowSpans[i] : 1}>
                         {row.inAge}
                       </td>
-                      <td style={{ ...tdStyle, verticalAlign: 'top', textAlign: 'right' }}>
+                      <td style={{ ...tdStyle, verticalAlign: 'middle', textAlign: 'right' }} rowSpan={appliedFilters.reportBasis === 'product_in' ? rowSpans[i] : 1}>
                         {row.inCost}
                       </td>
                       <td
                         style={{
                           ...tdStyle,
-                          verticalAlign: 'top',
+                          verticalAlign: 'middle',
                           textAlign: 'right',
-                          borderRight: '1px solid #e5e7eb',
+                          borderRight: appliedFilters.reportBasis === 'product_out' ? undefined : '1px solid #e5e7eb',
                         }}
+                        rowSpan={appliedFilters.reportBasis === 'product_in' ? rowSpans[i] : 1}
                       >
                         {row.inTotal}
                       </td>
+                      </>
+                    );
 
-                      <td style={{ ...tdStyle, verticalAlign: 'top' }}>{row.outDate}</td>
-                      <td style={{ ...tdStyle, verticalAlign: 'top' }}>
+                    const outCols = skipLeft[i] && appliedFilters.reportBasis === 'product_out' ? null : (
+                      <>
+                      <td style={{ ...tdStyle, verticalAlign: 'middle' }} rowSpan={appliedFilters.reportBasis === 'product_out' ? rowSpans[i] : 1}>{row.outDate}</td>
+                      <td style={{ ...tdStyle, verticalAlign: 'middle' }} rowSpan={appliedFilters.reportBasis === 'product_out' ? rowSpans[i] : 1}>
                         {renderDocLink(row.outDocType, row.outDocId, row.outTransaction)}
                       </td>
-                      <td style={{ ...tdStyle, verticalAlign: 'top' }}>
+                      <td style={{ ...tdStyle, verticalAlign: 'middle' }} rowSpan={appliedFilters.reportBasis === 'product_out' ? rowSpans[i] : 1}>
                         {renderPartyLink(row.outPartyId, row.outPartyType, row.outDispersedTo)}
                       </td>
-                      <td style={{ ...tdStyle, verticalAlign: 'top', textAlign: 'right' }}>
+                      <td style={{ ...tdStyle, verticalAlign: 'middle', textAlign: 'right', borderRight: appliedFilters.reportBasis === 'product_out' ? '1px solid #e5e7eb' : undefined }} rowSpan={appliedFilters.reportBasis === 'product_out' ? rowSpans[i] : 1}>
                         {row.outQty !== null ? (
                           <>
-                            <div style={{ color: '#111827', fontWeight: 500 }}>{row.outQty}</div>
+                            <div style={{ color: '#111827', fontWeight: 600 }}>{row.outQty}</div>
                             <div style={{ color: '#6b7280', fontSize: '12px' }}>
                               {row.outQtyUnit}
                             </div>
                           </>
                         ) : null}
                       </td>
-                    </tr>
-                  ))
+                      </>
+                    );
+
+                    return (
+                      <Fragment key={i}>
+                        {isNewItem && !appliedFilters.itemName && (
+                          <tr style={{ background: '#f8fafc' }}>
+                            <td colSpan={11} style={{ padding: '8px 16px', fontWeight: 600, color: '#111827', fontSize: '13px', textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>
+                              Item Name: {row.itemName}
+                            </td>
+                          </tr>
+                        )}
+                        <tr style={{ borderBottom: '1px solid #f3f4f6' }}>
+                          {appliedFilters.reportBasis === 'product_out' ? (
+                            <>
+                              {outCols}
+                              {inCols}
+                            </>
+                          ) : (
+                            <>
+                              {inCols}
+                              {outCols}
+                            </>
+                          )}
+                        </tr>
+                      </Fragment>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -543,50 +710,3 @@ export function FifoCostLotTrackingPage() {
     </div>
   );
 }
-
-const iconButtonStyle = {
-  background: '#fff',
-  border: '1px solid #e5e7eb',
-  borderRadius: '4px',
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: '6px',
-  boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-};
-
-const filterTriggerStyle = {
-  display: 'flex',
-  alignItems: 'center',
-  border: '1px solid #d1d5db',
-  background: '#fff',
-  padding: '4px 10px',
-  borderRadius: '6px',
-  fontSize: '12px',
-  height: 'auto',
-  minHeight: '0',
-  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-  cursor: 'pointer',
-};
-
-const thStyle = {
-  padding: '12px 10px',
-  textAlign: 'left' as const,
-  fontSize: '11px',
-  fontWeight: 600,
-  color: '#6b7280',
-  textTransform: 'uppercase' as const,
-  letterSpacing: '0.5px',
-  whiteSpace: 'nowrap' as const,
-  borderRight: '1px solid #e5e7eb',
-};
-
-const tdStyle = {
-  padding: '12px 10px',
-  fontSize: '13px',
-  color: '#111827',
-  whiteSpace: 'normal' as const,
-  wordWrap: 'break-word' as const,
-  borderRight: '1px solid #e5e7eb',
-};

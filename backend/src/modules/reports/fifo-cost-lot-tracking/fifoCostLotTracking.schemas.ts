@@ -5,6 +5,7 @@ export const fifoCostLotTrackingQuerySchema = z.object({
   toDate: z.string().optional(),
   itemName: z.string().optional(),
   locationName: z.string().optional(),
+  reportBasis: z.enum(['product_in', 'product_out']).optional().default('product_in'),
   page: z.coerce.number().optional().default(1),
   perPage: z.coerce.number().optional().default(25),
 });

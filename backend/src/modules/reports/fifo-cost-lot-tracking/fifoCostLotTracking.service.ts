@@ -12,11 +12,32 @@ export async function getFifoCostLotTracking(
   _query: FifoCostLotTrackingQuery,
 ): Promise<PaginatedFifoCostLotTrackingResponse> {
   return runAsTenant<PaginatedFifoCostLotTrackingResponse>(organizationId, async (tx) => {
-    const { fromDate, toDate, itemName, locationName } = _query;
+    const { fromDate, toDate, itemName, locationName, reportBasis } = _query;
+    const isProductOut = reportBasis === 'product_out';
+
+    let validItemsQ = Prisma.sql`
+      SELECT "itemId"
+      FROM doc_nets
+      WHERE 1=1
+    `;
+
+    if (isProductOut) {
+      validItemsQ = Prisma.sql`${validItemsQ} AND "netQty" < 0`;
+    } else {
+      validItemsQ = Prisma.sql`${validItemsQ} AND "netQty" > 0`;
+    }
+
+    if (fromDate) {
+      validItemsQ = Prisma.sql`${validItemsQ} AND real_date >= ${new Date(fromDate)}::timestamptz`;
+    }
+    if (toDate) {
+      validItemsQ = Prisma.sql`${validItemsQ} AND real_date <= ${new Date(toDate)}::timestamptz`;
+    }
 
     let q = Prisma.sql`
       WITH doc_nets AS (
         SELECT
+          l.item_id AS "itemId",
           l.batch_id AS "batchId",
           l.source_doc_type AS "sourceDocType",
           l.source_doc_id AS "sourceDocId",
@@ -28,13 +49,16 @@ export async function getFifoCostLotTracking(
           u.unit_name AS "uomName",
           l.location_id AS "locationId",
           loc.name AS "locationName",
-          (
-            SELECT sl.posted_at
-            FROM stock_ledger sl
-            WHERE sl.source_doc_id = l.source_doc_id
-            ORDER BY sl.created_at DESC
-            LIMIT 1
-          ) AS real_date,
+          CASE 
+            WHEN l.source_doc_type = 'item_opening_stock' THEN '1970-01-01'::timestamptz
+            ELSE COALESCE((
+              SELECT sl.posted_at
+              FROM stock_ledger sl
+              WHERE sl.source_doc_id = l.source_doc_id
+              ORDER BY sl.created_at DESC
+              LIMIT 1
+            ), MIN(l.created_at))
+          END AS real_date,
           MIN(l.created_at) AS min_created_at
         FROM stock_ledger l
         JOIN items i ON l.item_id = i.id
@@ -44,10 +68,10 @@ export async function getFifoCostLotTracking(
         LEFT JOIN vendors v ON l.owner_party_id = v.id
         WHERE l.organization_id = ${organizationId}::uuid
           AND l.stock_effect IN ('both', 'accounting', 'physical')
-          AND l.batch_id IS NOT NULL
-          AND l.source_doc_type != 'item_opening_stock'
+          AND (l.batch_id IS NOT NULL OR l.source_doc_type = 'item_opening_stock')
           AND (loc.type IS NULL OR loc.type NOT IN ('processor', 'in_transit', 'customer_site'))
         GROUP BY
+          l.item_id,
           l.batch_id,
           l.source_doc_type,
           l.source_doc_id,
@@ -60,6 +84,7 @@ export async function getFifoCostLotTracking(
           loc.name
       )
       SELECT
+        "itemId",
         "batchId",
         real_date AS "date",
         "sourceDocType",
@@ -75,14 +100,8 @@ export async function getFifoCostLotTracking(
         min_created_at AS "createdAt"
       FROM doc_nets
       WHERE "netQty" != 0
+        AND "itemId" IN (${validItemsQ})
     `;
-
-    if (fromDate) {
-      q = Prisma.sql`${q} AND real_date >= ${new Date(fromDate)}::timestamptz`;
-    }
-    if (toDate) {
-      q = Prisma.sql`${q} AND real_date <= ${new Date(toDate)}::timestamptz`;
-    }
 
     if (itemName) {
       q = Prisma.sql`${q} AND "itemName" ILIKE ${'%' + itemName + '%'}`;
@@ -91,11 +110,16 @@ export async function getFifoCostLotTracking(
     if (locationName) {
       q = Prisma.sql`${q} AND "locationName" ILIKE ${'%' + locationName + '%'}`;
     }
+    
+    if (toDate) {
+      q = Prisma.sql`${q} AND real_date <= ${new Date(toDate)}::timestamptz`;
+    }
 
     q = Prisma.sql`${q} ORDER BY real_date ASC, min_created_at ASC`;
 
     const rawEntries = await tx.$queryRaw<
       {
+        itemId: string;
         batchId: string;
         date: Date;
         createdAt: Date;
@@ -205,16 +229,8 @@ export async function getFifoCostLotTracking(
         }),
       );
     }
-    // if (docIdsByType.inventory_adjustment.size > 0) {
-    //   const docs = await tx.inventoryAdjustment.findMany({ where: { id: { in: Array.from(docIdsByType.inventory_adjustment) } }, select: { id: true, adjustmentNumber: true } });
-    //   docs.forEach(d => docInfo.set(d.id, { number: d.adjustmentNumber, partyName: null }));
-    // }
-    // if (docIdsByType.invoice.size > 0) {
-    //   const docs = await tx.invoice.findMany({ where: { id: { in: Array.from(docIdsByType.invoice) } }, select: { id: true, invoiceNumber: true } });
-    //   docs.forEach(d => docInfo.set(d.id, { number: d.invoiceNumber, partyName: null }));
-    // }
 
-    type InEvent = {
+    type LedgerEvent = {
       date: Date;
       createdAt: Date;
       transaction: string;
@@ -228,22 +244,15 @@ export async function getFifoCostLotTracking(
       partyId: string | null;
       partyType: 'vendor' | 'customer' | null;
     };
-    type OutEvent = {
-      date: Date;
-      createdAt: Date;
-      transaction: string;
-      partyName: string;
-      qty: number;
-      uom: string;
-      docType: string;
-      docId: string;
-      partyId: string | null;
-      partyType: 'vendor' | 'customer' | null;
+    
+    type ItemLedger = {
+      itemName: string;
+      itemId: string;
+      inEvents: LedgerEvent[];
+      outEvents: LedgerEvent[];
     };
-    const batches = new Map<
-      string,
-      { inEvents: InEvent[]; outEvents: OutEvent[]; qtyRemaining: number }
-    >();
+    
+    const items = new Map<string, ItemLedger>();
 
     for (const entry of rawEntries) {
       const netQty = Number(entry.netQty);
@@ -253,17 +262,19 @@ export async function getFifoCostLotTracking(
       const vIn = netValue > 0 ? netValue : 0;
 
       const qOut = netQty < 0 ? Math.abs(netQty) : 0;
-      const _vOut = netValue < 0 ? Math.abs(netValue) : 0;
 
-      // Group entirely by item name to allow merging of same-document entries across different batches
-      const metaBatchId = entry.itemName || 'Unknown Item';
+      const itemId = entry.itemId;
 
-      if (!batches.has(metaBatchId)) {
-        batches.set(metaBatchId, { inEvents: [], outEvents: [], qtyRemaining: 0 });
+      if (!items.has(itemId)) {
+        items.set(itemId, {
+          itemName: entry.itemName || 'Unknown Item',
+          itemId: entry.itemId,
+          inEvents: [],
+          outEvents: [],
+        });
       }
 
-      const batch = batches.get(metaBatchId)!;
-      batch.qtyRemaining += qIn - qOut;
+      const item = items.get(itemId)!;
 
       let docLabel = entry.sourceDocType;
       if (docLabel === 'bill') docLabel = 'Bill';
@@ -271,7 +282,7 @@ export async function getFifoCostLotTracking(
       if (docLabel === 'job_receipt') docLabel = 'Job Receipt';
       if (docLabel === 'job_issue') docLabel = 'Job Issue';
       if (docLabel === 'purchase_order') docLabel = 'Purchase Order';
-      if (docLabel === 'item_opening_stock') docLabel = 'Opening Stock';
+      if (docLabel === 'item_opening_stock') docLabel = 'Opening Balance'; 
       if (docLabel === 'inventory_adjustment') docLabel = 'Inventory Adjustment By Quantity';
       if (docLabel === 'assembly') docLabel = 'Assemblies';
 
@@ -286,13 +297,13 @@ export async function getFifoCostLotTracking(
       const partyType = partyId ? info?.partyType || defaultPartyType : null;
 
       if (qIn > 0) {
-        const existingIn = batch.inEvents.find((e) => e.docId === entry.sourceDocId);
+        const existingIn = item.inEvents.find((e) => e.docId === entry.sourceDocId && e.docType === entry.sourceDocType && Math.abs(e.cost - (vIn/qIn)) < 0.001);
         if (existingIn) {
           existingIn.qty += qIn;
           existingIn.total += vIn;
           existingIn.cost = Math.abs(existingIn.total / existingIn.qty);
         } else {
-          batch.inEvents.push({
+          item.inEvents.push({
             date: entry.date,
             createdAt: entry.createdAt,
             transaction: transactionStr,
@@ -310,17 +321,19 @@ export async function getFifoCostLotTracking(
       }
 
       if (qOut > 0) {
-        const existingOut = batch.outEvents.find((e) => e.docId === entry.sourceDocId);
+        const existingOut = item.outEvents.find((e) => e.docId === entry.sourceDocId && e.docType === entry.sourceDocType);
         if (existingOut) {
           existingOut.qty += qOut;
         } else {
-          batch.outEvents.push({
+          item.outEvents.push({
             date: entry.date,
             createdAt: entry.createdAt,
             transaction: transactionStr,
             partyName: finalPartyName,
             qty: qOut,
             uom: entry.uomName || 'unit',
+            cost: 0,
+            total: 0,
             docType: entry.sourceDocType,
             docId: entry.sourceDocId || '',
             partyId,
@@ -331,84 +344,134 @@ export async function getFifoCostLotTracking(
     }
 
     const rows: FifoCostLotTrackingRow[] = [];
+    const sortedItems = Array.from(items.values()).sort((a, b) => a.itemName.localeCompare(b.itemName));
 
-    const sortedBatches = Array.from(batches.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    let currentItemName = '';
 
-    for (const [itemName, batch] of sortedBatches) {
-      // Sort inEvents and outEvents chronologically
-      batch.inEvents.sort((a, b) => {
+    for (const item of sortedItems) {
+      item.inEvents.sort((a, b) => {
         const timeDiff = a.date.getTime() - b.date.getTime();
         return timeDiff !== 0 ? timeDiff : a.createdAt.getTime() - b.createdAt.getTime();
       });
-      batch.outEvents.sort((a, b) => {
+      item.outEvents.sort((a, b) => {
         const timeDiff = a.date.getTime() - b.date.getTime();
         return timeDiff !== 0 ? timeDiff : a.createdAt.getTime() - b.createdAt.getTime();
       });
 
-      let inIdx = 0;
-      let outIdx = 0;
-      let isFirstItemRow = true;
+      let isFirstItemRow = false;
 
-      while (inIdx < batch.inEvents.length || outIdx < batch.outEvents.length) {
-        const inEv = batch.inEvents[inIdx];
-        const outEv = batch.outEvents[outIdx];
+      if (item.itemName !== currentItemName) {
+        isFirstItemRow = true;
+        currentItemName = item.itemName;
+      }
+      
+      // Pre-calculate remaining quantities for each IN lot
+      let totalOutForItem = item.outEvents.reduce((sum, e) => sum + e.qty, 0);
+      const originalInQty = new Map<LedgerEvent, number>();
+      const inQtyRemainingMap = new Map<LedgerEvent, number>();
+      for (const inEv of item.inEvents) {
+        originalInQty.set(inEv, inEv.qty);
+        const consumed = Math.min(inEv.qty, totalOutForItem);
+        inQtyRemainingMap.set(inEv, inEv.qty - consumed);
+        totalOutForItem -= consumed;
+      }
+      
+      const filterFromDate = fromDate ? new Date(fromDate).getTime() : 0;
+      const filterToDate = toDate ? new Date(toDate).getTime() : Infinity;
 
-        let printIn = false;
-        let printOut = false;
+      let inIndex = 0;
+      let outIndex = 0;
+      const inEvPrinted = new Set<LedgerEvent>();
+
+      while (inIndex < item.inEvents.length || outIndex < item.outEvents.length) {
+        const inEv = item.inEvents[inIndex];
+        const outEv = item.outEvents[outIndex];
+
+        let outQtyToPrint = 0;
+        let matchQty = 0;
 
         if (inEv && outEv) {
-          
-          // Or strictly compare date then createdAt
-          const isBeforeOrEqual = 
-            inEv.date.getTime() < outEv.date.getTime() ||
-            (inEv.date.getTime() === outEv.date.getTime() && inEv.createdAt.getTime() <= outEv.createdAt.getTime());
-
-          if (isBeforeOrEqual) {
-            // Pair them!
-            printIn = true;
-            printOut = true;
-          } else {
-            // OUT happened before IN, print OUT alone
-            printOut = true;
-          }
-        } else if (inEv) {
-          printIn = true;
+          matchQty = Math.min(inEv.qty, outEv.qty);
+          outQtyToPrint = matchQty;
         } else if (outEv) {
-          printOut = true;
+          outQtyToPrint = outEv.qty;
         }
 
-        const ageStr = printIn && inEv ? differenceInDays(new Date(), inEv.date) > 0 ? `${differenceInDays(new Date(), inEv.date)} Days` : '' : '';
+        let shouldPrintPair = false;
+        
+        if (isProductOut) {
+          if (outEv) {
+            const outTime = outEv.date.getTime();
+            if (outTime >= filterFromDate && outTime <= filterToDate) {
+              shouldPrintPair = true;
+            }
+          }
+        } else {
+          if (inEv) {
+            const inTime = inEv.date.getTime();
+            if (inTime >= filterFromDate && inTime <= filterToDate) {
+              if (outEv && matchQty > 0) {
+                shouldPrintPair = true;
+                inEvPrinted.add(inEv);
+              } else {
+                if (!inEvPrinted.has(inEv)) {
+                  shouldPrintPair = true;
+                  inEvPrinted.add(inEv);
+                }
+              }
+            }
+          }
+        }
 
-        rows.push({
-          itemName: isFirstItemRow ? itemName : '',
-          inDate: printIn && inEv ? format(inEv.date, 'dd-MM-yyyy') : null,
-          inTransaction: printIn && inEv ? inEv.transaction : '',
-          inReceivedFrom: printIn && inEv ? inEv.partyName : '',
-          inQty: printIn && inEv ? inEv.qty : null,
-          inQtyUnit: printIn && inEv ? inEv.uom : '',
-          inQtyRemaining: printIn && inIdx === batch.inEvents.length - 1 ? batch.qtyRemaining : 0,
-          inAge: ageStr,
-          inCost: printIn && inEv ? inEv.cost.toFixed(2) : '',
-          inTotal: printIn && inEv ? inEv.total.toFixed(2) : '',
-          inDocType: printIn && inEv ? inEv.docType : '',
-          inDocId: printIn && inEv ? inEv.docId : '',
-          inPartyId: printIn && inEv ? inEv.partyId : null,
-          inPartyType: printIn && inEv ? inEv.partyType : null,
-          
-          outDate: printOut && outEv ? format(outEv.date, 'dd-MM-yyyy') : null,
-          outTransaction: printOut && outEv ? outEv.transaction : '',
-          outDispersedTo: printOut && outEv ? outEv.partyName : '',
-          outQty: printOut && outEv ? outEv.qty : null,
-          outQtyUnit: printOut && outEv ? outEv.uom : '',
-          outDocType: printOut && outEv ? outEv.docType : '',
-          outDocId: printOut && outEv ? outEv.docId : '',
-          outPartyId: printOut && outEv ? outEv.partyId : null,
-          outPartyType: printOut && outEv ? outEv.partyType : null,
-        });
+        if (shouldPrintPair) {
+          const ageStr = inEv && differenceInDays(new Date(), inEv.date) > 0 ? `${differenceInDays(new Date(), inEv.date)} Days` : '';
+          const origQty = inEv ? (originalInQty.get(inEv) || inEv.qty) : 0;
+          const remaining = inEv ? (inQtyRemainingMap.get(inEv) || 0) : 0;
 
-        isFirstItemRow = false;
-        if (printIn) inIdx++;
-        if (printOut) outIdx++;
+          // If we print an untouched lot in Product In mode, outEv might be defined but not matching (or outEv is null).
+          // Actually, if matchQty == 0, we should treat outEv as null for printing purposes.
+          const printOutEv = (outEv && (isProductOut || matchQty > 0)) ? outEv : null;
+
+          rows.push({
+            itemName: isFirstItemRow ? item.itemName : '',
+            
+            inDate: inEv ? format(inEv.date, 'dd-MM-yyyy') : null,
+            inTransaction: inEv ? inEv.transaction : '',
+            inReceivedFrom: inEv ? inEv.partyName : '',
+            inQty: inEv ? Number(origQty.toFixed(4)) : null,
+            inQtyUnit: inEv ? inEv.uom : '',
+            inQtyRemaining: inEv ? Number(remaining.toFixed(4)) : 0,
+            inAge: ageStr,
+            inCost: inEv ? inEv.cost.toFixed(2) : '',
+            inTotal: inEv ? (origQty * inEv.cost).toFixed(2) : '',
+            inDocType: inEv ? inEv.docType : '',
+            inDocId: inEv ? inEv.docId : '',
+            inPartyId: inEv ? inEv.partyId : null,
+            inPartyType: inEv ? inEv.partyType : null,
+
+            outDate: printOutEv ? format(printOutEv.date, 'dd-MM-yyyy') : null,
+            outTransaction: printOutEv ? printOutEv.transaction : '',
+            outDispersedTo: printOutEv ? printOutEv.partyName : '',
+            outQty: printOutEv ? Number(outQtyToPrint.toFixed(4)) : null,
+            outQtyUnit: printOutEv ? printOutEv.uom : '',
+            outDocType: printOutEv ? printOutEv.docType : '',
+            outDocId: printOutEv ? printOutEv.docId : '',
+            outPartyId: printOutEv ? printOutEv.partyId : null,
+            outPartyType: printOutEv ? printOutEv.partyType : null,
+          });
+          isFirstItemRow = false;
+        }
+
+        if (inEv && outEv) {
+          inEv.qty -= matchQty;
+          outEv.qty -= matchQty;
+          if (inEv.qty <= 0.0001) inIndex++;
+          if (outEv.qty <= 0.0001) outIndex++;
+        } else if (inEv) {
+          inIndex++;
+        } else if (outEv) {
+          outIndex++;
+        }
       }
     }
 

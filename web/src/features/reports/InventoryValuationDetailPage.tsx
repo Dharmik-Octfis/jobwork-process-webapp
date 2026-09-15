@@ -64,7 +64,7 @@ export function InventoryValuationDetailPage() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f4f5f7', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f4f5f7', fontFamily: '"Open Sans", "WebFont", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
       {/* Top Header */}
       <div
         style={{
@@ -216,46 +216,62 @@ export function InventoryValuationDetailPage() {
                   <td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}>No data found</td>
                 </tr>
               ) : (
-                data.rows.map((row, idx) => {
+                data.rows.map((row, idx, arr) => {
+                  let rowSpan = 1;
+                  if (row.transactionDetails !== '') {
+                    let j = idx + 1;
+                    while (j < arr.length && arr[j].transactionDetails === '') {
+                      rowSpan++;
+                      j++;
+                    }
+                  } else {
+                    rowSpan = 0;
+                  }
+
                   const isSpecial = row.isOpeningStock || row.isClosingStock;
                   const docLink = getDocLink(row);
+                  
                   return (
-                    <tr key={idx} className="table-row-hover" style={{ borderTop: '1px solid #f9fafb' }}>
-                      <td style={{ ...tdStyle, fontWeight: 500 }}>
-                        {row.date
-                          ? format(new Date(row.date), 'dd-MM-yyyy')
-                          : row.isOpeningStock
-                            ? format(fromDate, 'dd-MM-yyyy')
-                            : row.isClosingStock
-                              ? format(toDate, 'dd-MM-yyyy')
-                              : ''}
-                      </td>
-                      <td style={tdStyle}>
-                        {isSpecial ? (
-                          <span style={{ color: '#059669', fontStyle: 'italic', fontWeight: 500 }}>
-                            {row.transactionDetails}
-                          </span>
-                        ) : docLink ? (
-                          <Link to={docLink} style={{ color: '#2563eb', textDecoration: 'none', fontWeight: 500 }}>
-                            {row.transactionDetails} {row.sourceDocNumber ? '# ' + row.sourceDocNumber : (row.sourceDocId ? '# ' + row.sourceDocId.substring(0,8) : '')}
-                          </Link>
-                        ) : (
-                          <span style={{ fontWeight: 500 }}>{row.transactionDetails}</span>
-                        )}
-                      </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: row.quantity < 0 ? '#ef4444' : '#111827' }}>
+                    <tr key={idx} className="table-row-hover">
+                      {rowSpan > 0 && (
+                        <td style={{ ...tdStyle, verticalAlign: 'top', fontWeight: 500 }} rowSpan={rowSpan}>
+                          {row.date
+                            ? format(new Date(row.date), 'dd-MM-yyyy')
+                            : row.isOpeningStock
+                              ? format(fromDate, 'dd-MM-yyyy')
+                              : row.isClosingStock
+                                ? format(toDate, 'dd-MM-yyyy')
+                                : ''}
+                        </td>
+                      )}
+                      {rowSpan > 0 && (
+                        <td style={{ ...tdStyle, verticalAlign: 'top' }} rowSpan={rowSpan}>
+                          {isSpecial ? (
+                            <span style={{ color: '#059669', fontStyle: 'italic' }}>
+                              {row.transactionDetails}
+                            </span>
+                          ) : docLink ? (
+                            <Link to={docLink} style={{ color: '#2563eb', textDecoration: 'none' }}>
+                              {row.transactionDetails} {row.sourceDocNumber ? '# ' + row.sourceDocNumber : (row.sourceDocId ? '# ' + row.sourceDocId.substring(0,8) : '')}
+                            </Link>
+                          ) : (
+                            <span>{row.transactionDetails}</span>
+                          )}
+                        </td>
+                      )}
+                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500, color: row.quantity < 0 ? '#ef4444' : '#222' }}>
                         {row.quantity !== 0 ? row.quantity.toFixed(2) : ''}
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>
+                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
                         {row.unitCost !== null ? row.unitCost.toFixed(2) : ''}
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>
+                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
                         {row.totalCost !== 0 ? row.totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''}
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>
+                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
                         {row.stockOnHand.toFixed(2)}
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', color: '#111827', fontWeight: 600 }}>
+                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
                         {row.inventoryAssetValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                     </tr>
@@ -271,19 +287,20 @@ export function InventoryValuationDetailPage() {
 }
 
 const thStyle = {
-  padding: '12px 24px',
+  padding: '10px 15px',
   textAlign: 'left' as const,
   fontSize: '11px',
   fontWeight: 600,
-  color: '#6b7280',
+  color: '#333333',
   textTransform: 'uppercase' as const,
-  background: '#f9fafb',
-  letterSpacing: '0.5px',
+  background: '#fafafa',
+  letterSpacing: '0.3px',
+  border: '1px solid #eeeeee',
 };
 
 const tdStyle = {
-  padding: '12px 24px',
+  padding: '12px 15px',
   fontSize: '13px',
-  color: '#111827',
-  borderBottom: '1px solid #f3f4f6',
+  color: '#222222',
+  border: '1px solid #eeeeee',
 };

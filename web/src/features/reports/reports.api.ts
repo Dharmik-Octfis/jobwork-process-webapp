@@ -66,6 +66,7 @@ export interface FifoCostLotTrackingQuery {
   locationName?: string;
   page?: number;
   perPage?: number;
+  reportBasis?: 'product_in' | 'product_out';
 }
 
 export interface PaginatedFifoCostLotTrackingResponse {
@@ -80,7 +81,7 @@ export interface FifoCostLotTrackingRow {
   inDate: string | null;
   inTransaction: string;
   inReceivedFrom: string;
-  inQty: number;
+  inQty: number | null;
   inQtyUnit: string;
   inQtyRemaining: number;
   inAge: string;
@@ -92,6 +93,7 @@ export interface FifoCostLotTrackingRow {
 
   inPartyId: string | null;
   inPartyType: 'vendor' | 'customer' | null;
+  itemName?: string;
 
   outDate: string | null;
   outTransaction: string;

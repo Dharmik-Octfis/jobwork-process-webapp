@@ -156,7 +156,7 @@ export async function getItemLedger(
             WHERE loc.id = l.location_id 
             AND (loc.type IS NULL OR loc.type NOT IN ('processor', 'in_transit', 'customer_site'))
           )
-        GROUP BY l.source_doc_type, l.source_doc_id, l.item_id
+        GROUP BY l.source_doc_type, l.source_doc_id, l.item_id, l.batch_id
       )
       SELECT 
         COALESCE(SUM(net_qty), 0) AS "qty",
@@ -183,6 +183,7 @@ export async function getItemLedger(
         SELECT 
           l.source_doc_type AS "sourceDocType",
           l.source_doc_id AS "sourceDocId",
+          l.batch_id AS "batchId",
           SUM(l.qty_in - l.qty_out) AS net_qty,
           SUM(l.value_in - l.value_out) AS net_value,
           (
@@ -204,7 +205,7 @@ export async function getItemLedger(
             WHERE loc.id = l.location_id 
             AND (loc.type IS NULL OR loc.type NOT IN ('processor', 'in_transit', 'customer_site'))
           )
-        GROUP BY l.source_doc_type, l.source_doc_id, l.item_id
+        GROUP BY l.source_doc_type, l.source_doc_id, l.item_id, l.batch_id
       )
       SELECT 
         real_date AS "date",
@@ -237,6 +238,33 @@ export async function getItemLedger(
       sourceDocId: string;
     }[]>`${entriesQ}`;
 
+    // Merge consecutive entries from the same document that have the same unit cost
+    const mergedEntries: typeof rawEntries = [];
+    for (const entry of rawEntries) {
+      if (mergedEntries.length > 0) {
+        const last = mergedEntries[mergedEntries.length - 1];
+        if (last && last.sourceDocId && last.sourceDocId === entry.sourceDocId) {
+          const lastQty = Number(last.qtyIn) - Number(last.qtyOut);
+          const lastVal = Number(last.valueIn) - Number(last.valueOut);
+          const lastUc = lastQty !== 0 ? Math.abs(lastVal / lastQty) : null;
+
+          const currQty = Number(entry.qtyIn) - Number(entry.qtyOut);
+          const currVal = Number(entry.valueIn) - Number(entry.valueOut);
+          const currUc = currQty !== 0 ? Math.abs(currVal / currQty) : null;
+
+          // Merge if unit costs match and they are both IN or both OUT
+          if (lastUc !== null && currUc !== null && Math.abs(lastUc - currUc) < 0.0001 && Math.sign(lastQty) === Math.sign(currQty)) {
+            last.qtyIn = Number(last.qtyIn) + Number(entry.qtyIn);
+            last.qtyOut = Number(last.qtyOut) + Number(entry.qtyOut);
+            last.valueIn = Number(last.valueIn) + Number(entry.valueIn);
+            last.valueOut = Number(last.valueOut) + Number(entry.valueOut);
+            continue;
+          }
+        }
+      }
+      mergedEntries.push({ ...entry });
+    }
+
     const docIdsByType = {
       job_issue: new Set<string>(),
       job_receipt: new Set<string>(),
@@ -244,7 +272,7 @@ export async function getItemLedger(
       purchase_order: new Set<string>(),
     };
 
-    for (const entry of rawEntries) {
+    for (const entry of mergedEntries) {
       const type = entry.sourceDocType as keyof typeof docIdsByType;
       if (entry.sourceDocId && docIdsByType[type]) {
         docIdsByType[type].add(entry.sourceDocId);
@@ -285,8 +313,9 @@ export async function getItemLedger(
 
     let currentQty = openingQty;
     let currentValue = openingValue;
+    let previousSourceDocId: string | null = null;
 
-    for (const entry of rawEntries) {
+    for (const entry of mergedEntries) {
       const qIn = Number(entry.qtyIn);
       const qOut = Number(entry.qtyOut);
       const vIn = Number(entry.valueIn);
@@ -312,17 +341,20 @@ export async function getItemLedger(
         unitCost = Math.abs(valChange / qtyChange);
       }
 
+      const isSameAsPrevious = entry.sourceDocId && entry.sourceDocId === previousSourceDocId;
+      previousSourceDocId = entry.sourceDocId || null;
+
       rows.push({
-        date: entry.date.toISOString(),
-        transactionDetails,
+        date: isSameAsPrevious ? null : entry.date.toISOString(),
+        transactionDetails: isSameAsPrevious ? '' : transactionDetails,
         quantity: qtyChange,
         unitCost,
         totalCost: valChange,
         stockOnHand: currentQty,
         inventoryAssetValue: currentValue,
-        sourceDocType: entry.sourceDocType,
-        sourceDocId: entry.sourceDocId,
-        sourceDocNumber: entry.sourceDocId ? docNumbers.get(entry.sourceDocId) || null : null
+        sourceDocType: isSameAsPrevious ? null : entry.sourceDocType,
+        sourceDocId: isSameAsPrevious ? null : entry.sourceDocId,
+        sourceDocNumber: isSameAsPrevious ? null : (entry.sourceDocId ? docNumbers.get(entry.sourceDocId) || null : null)
       });
     }
 
