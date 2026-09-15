@@ -10,6 +10,7 @@ import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldVal
 import {
   EXTERNAL_LOCATION_TYPES,
   RECEIPT_STATUS_META,
+  formatMoney,
   formatQty,
   statusMeta,
   toNumber,
@@ -260,6 +261,15 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
   const issued = toNumber(receipt.totalIssuedQty);
   const received = toNumber(receipt.totalReceivedQty);
   const actualYield = issued > 0 ? received / issued : null;
+  const materialTotal = toNumber(receipt.consumedValue);
+  const chargeTotal = toNumber(receipt.processChargeTotal);
+  /* A draft has consumed nothing, and a receipt posted before landed costing
+     stored no breakdown — both read as a dash rather than a confident ₹0. */
+  const costed =
+    receipt.status !== 'draft' &&
+    (materialTotal > 0 ||
+      chargeTotal > 0 ||
+      receipt.outputs.some((row) => row.rate !== null && row.rate !== undefined));
 
   return (
     <div style={{ background: '#fff', minHeight: '100%' }}>
@@ -525,6 +535,21 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
                   )}
                 </td>
               </tr>
+              <tr>
+                {/* 🔴 As posted (landed-cost R5–R7) — never re-derived, so a later
+                    change to the job order's rate cannot rewrite it. */}
+                <td style={rowLabel}>Cost</td>
+                <td style={rowValue}>
+                  {costed ? (
+                    <>
+                      {formatMoney(materialTotal)} material + {formatMoney(chargeTotal)} charges ={' '}
+                      <strong>{formatMoney(materialTotal + chargeTotal)}</strong>
+                    </>
+                  ) : (
+                    '-'
+                  )}
+                </td>
+              </tr>
               {receipt.outputBatch && (
                 <tr>
                   <td style={rowLabel}>Output {singular.toLowerCase()}</td>
@@ -560,7 +585,7 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
 
         <div style={{ border: '1px solid #eef0f3', borderRadius: 4, overflowX: 'auto' }}>
           <div className="responsive-table-wrapper">
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1000 }}>
               {/*
               🔴 WHAT CAME BACK, one row per item (§5.7).
 
@@ -590,6 +615,18 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
                     Scrap
                   </th>
                   <th style={th} scope="col">
+                    Rate
+                  </th>
+                  <th style={th} scope="col">
+                    Material
+                  </th>
+                  <th style={th} scope="col">
+                    Charge
+                  </th>
+                  <th style={th} scope="col">
+                    Per unit
+                  </th>
+                  <th style={th} scope="col">
                     Reason
                   </th>
                 </tr>
@@ -597,16 +634,28 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
               <tbody>
                 {receipt.outputs.length === 0 && (
                   <tr>
-                    <td style={{ ...td, color: '#94a3b8' }} colSpan={6}>
+                    <td style={{ ...td, color: '#94a3b8' }} colSpan={10}>
                       Nothing recorded as returned on this receipt.
                     </td>
                   </tr>
                 )}
-                {receipt.outputs.map((row) => (
-                  <tr key={row.id} style={{ borderBottom: '1px solid #eef0f3' }}>
-                    <td style={{ ...td, fontWeight: 500, color: '#111' }}>
-                      {row.item?.name ?? '-'}
-                      {/* 🔴 EVERY batch this row wrote into, as chips rather than
+                {receipt.outputs.map((row) => {
+                  const accepted = toNumber(row.acceptedQty);
+                  const rework = toNumber(row.reworkQty);
+                  const material = toNumber(row.materialValue);
+                  const charge = toNumber(row.processCharge);
+                  // What a good unit landed at: its share of the material plus the
+                  // whole charge (R7) — rework carries material only.
+                  const perUnit =
+                    accepted > 0
+                      ? ((material * accepted) / (accepted + rework) + charge) / accepted
+                      : null;
+                  const unitLabel = row.uom?.symbol ?? row.uom?.unitName ?? 'unit';
+                  return (
+                    <tr key={row.id} style={{ borderBottom: '1px solid #eef0f3' }}>
+                      <td style={{ ...td, fontWeight: 500, color: '#111' }}>
+                        {row.item?.name ?? '-'}
+                        {/* 🔴 EVERY batch this row wrote into, as chips rather than
                         grey text — they are identifiers somebody reads off a tag
                         and types into a search box, not a footnote. Green is the
                         stock you can issue onward; amber is the rework, kept in
@@ -616,43 +665,56 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
                         since 2026-08-21 those two name only the FIRST of each
                         kind, so a split delivery rendered from them shows one
                         batch and hides the rest. */}
-                      {row.batches.length > 0 && (
-                        <span style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-                          {row.batches.map((allocation) => (
-                            <BatchChip
-                              key={allocation.id}
-                              batch={allocation.batch.supplierBatchRef ?? '—'}
-                              qty={formatQty(allocation.qty)}
-                              tone={allocation.kind === 'rework' ? 'rework' : 'good'}
-                              /* Worth saying: this delivery continued a batch that
+                        {row.batches.length > 0 && (
+                          <span style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                            {row.batches.map((allocation) => (
+                              <BatchChip
+                                key={allocation.id}
+                                batch={allocation.batch.supplierBatchRef ?? '—'}
+                                qty={formatQty(allocation.qty)}
+                                tone={allocation.kind === 'rework' ? 'rework' : 'good'}
+                                /* Worth saying: this delivery continued a batch that
                                already existed rather than starting a new lot. */
-                              isTopUp={!allocation.isNewBatch}
-                            />
-                          ))}
+                                isTopUp={!allocation.isNewBatch}
+                              />
+                            ))}
+                          </span>
+                        )}
+                      </td>
+                      <td style={td}>
+                        {formatQty(row.receivedQty)}{' '}
+                        <span style={{ color: '#94a3b8' }}>
+                          {row.uom?.symbol ?? row.uom?.unitName ?? ''}
                         </span>
-                      )}
-                    </td>
-                    <td style={td}>
-                      {formatQty(row.receivedQty)}{' '}
-                      <span style={{ color: '#94a3b8' }}>
-                        {row.uom?.symbol ?? row.uom?.unitName ?? ''}
-                      </span>
-                    </td>
-                    <td style={td}>{formatQty(row.acceptedQty)}</td>
-                    <td style={td}>{formatQty(row.reworkQty)}</td>
-                    <td style={td}>{formatQty(row.scrapQty)}</td>
-                    <td style={{ ...td, whiteSpace: 'pre-wrap' }}>
-                      {/* Free text since 2026-08-21; `reason` is what receipts
+                      </td>
+                      <td style={td}>{formatQty(row.acceptedQty)}</td>
+                      <td style={td}>{formatQty(row.reworkQty)}</td>
+                      <td style={td}>{formatQty(row.scrapQty)}</td>
+                      <td style={td}>
+                        {row.rate === null || row.rate === undefined
+                          ? '-'
+                          : `${formatMoney(row.rate)} / ${unitLabel}`}
+                      </td>
+                      <td style={td}>{costed ? formatMoney(material) : '-'}</td>
+                      <td style={td}>{costed ? formatMoney(charge) : '-'}</td>
+                      <td style={{ ...td, fontWeight: 600, color: '#111' }}>
+                        {costed && perUnit !== null
+                          ? `${formatMoney(perUnit)} / ${unitLabel}`
+                          : '-'}
+                      </td>
+                      <td style={{ ...td, whiteSpace: 'pre-wrap' }}>
+                        {/* Free text since 2026-08-21; `reason` is what receipts
                         posted before that carry. */}
-                      {row.remarks || row.reason?.name || '-'}
-                      {row.responsibility && (
-                        <span style={{ display: 'block', fontSize: 11, color: '#94a3b8' }}>
-                          {row.responsibility === 'ours' ? 'Our fault' : 'Their fault'}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                        {row.remarks || row.reason?.name || '-'}
+                        {row.responsibility && (
+                          <span style={{ display: 'block', fontSize: 11, color: '#94a3b8' }}>
+                            {row.responsibility === 'ours' ? 'Our fault' : 'Their fault'}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

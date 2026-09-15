@@ -18,8 +18,15 @@ Phase 7a (§6.5 engine, R1–R7 and R9) built 2026-09-15 — `receipts/landedCos
 a blank or zero Used is calculated, a first-pass receipt refuses an item its step does not plan, and
 rework and first-pass challans cannot share a receipt. Phase 7b built 2026-09-15: step `rate` /
 `rateBasis` and `Process.rateBasis` are read and written by nothing — schemas, services, forms, detail
-pages and the process list column — while their columns stay for Migration 2. Phase 7c (the Receive and
-receipt screens) and everything after are not built.** Agreed over 2026-09-12 → 14. This
+pages and the process list column — while their columns stay for Migration 2. Phase 7c built
+2026-09-15: the receive prefill carries each open line's cost per unit, and the Receive screen previews
+R1–R7 (`receiptCostPreview`) with a Used grid and a Rate per row; the receipt page shows the stored
+breakdown. Phase 8 built 2026-09-15 — `jobOrders.writeOff.ts`, `jobOrders.completion.test.ts`:
+completion and close short scrap the remainder at the processor as `job_order_step` rows, completion
+is refused while drafts exist, and a completed step refuses issues and challan cancels. Phase 9 built
+2026-09-15: the overview shows still-at-processor and written-off per input and running landed cost
+per accepted unit per output; tests 16 and the rest of 9 added. Phase 10 (Migration 2) and 11 (the
+docs) are not done, and no screen from phases 4–9 has been walked in a browser yet.** Agreed over 2026-09-12 → 14. This
 replaces the step-level `rate` / `rateBasis` cost model described in `JOBWORK_DOMAIN_AND_MODULE_MAP.md`
 §9.1–§9.2.1, and moves tolerance from the process and step onto the item. Those sections,
 `JOBWORK_CORE_WALKTHROUGH.md` and `JOBWORK_UI_FIELD_SOURCES.md` are edited in place **after** the code

@@ -2,7 +2,12 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Pencil, X } from 'lucide-react';
 import { Spinner } from '../../../components/ui/Spinner';
-import { formatQty, processorTypeLabel, type StepItemRowRead } from '../jobwork.schemas';
+import {
+  formatMoney,
+  formatQty,
+  processorTypeLabel,
+  type StepItemRowRead,
+} from '../jobwork.schemas';
 import { fetchRouteById } from './processRoutes.api';
 
 interface Props {
@@ -31,6 +36,12 @@ function ItemLines({ rows }: { rows: StepItemRowRead[] }) {
           <span key={row.id} style={{ display: 'block' }}>
             {row.item?.name ?? 'Item'}
             {qty ? ` — ${qty}${unit ? ` ${unit}` : ''}` : unit ? ` (${unit})` : ''}
+            {/* Outputs only: the suggested charge per accepted unit (landed-cost D1). */}
+            {row.rate !== null && row.rate !== undefined && (
+              <span style={{ marginLeft: 6, fontSize: 11, color: '#64748b' }}>
+                {formatMoney(row.rate)} / {unit || 'unit'}
+              </span>
+            )}
             {row.isPrimary && (
               <span style={{ marginLeft: 6, fontSize: 11, color: '#047857' }}>Main</span>
             )}

@@ -185,6 +185,9 @@ export const SOURCE_DOC_TYPES = {
   jobOrderMaterialIn: 'job_order_material_in',
   jobIssue: 'job_issue',
   jobReceipt: 'job_receipt',
+  /** The completion write-off (landed-cost R8): `sourceDocId` is the step,
+   * `sourceDocLineId` the challan line whose remainder was scrapped. */
+  jobOrderStep: 'job_order_step',
 } as const;
 
 /**

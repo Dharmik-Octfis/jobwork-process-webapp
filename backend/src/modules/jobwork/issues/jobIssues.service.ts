@@ -963,6 +963,13 @@ export async function createNewJobIssue(
         'This job order is closed, so nothing more can be issued against it.',
       );
     }
+    // R9: what was left at the processor has been written off, so a finished step
+    // takes no more material — a draft included, since it could never post.
+    if (step.status === 'completed' || step.status === 'short_closed') {
+      throw ApiError.conflict(
+        'This step has been completed or closed short, so nothing more can be issued against it.',
+      );
+    }
     const isRework = header.isRework ?? false;
 
     /**
@@ -1566,6 +1573,18 @@ export async function cancelJobIssue(
     });
     if (!issue) throw ApiError.notFound('Challan not found');
     if (issue.status === 'cancelled') throw ApiError.conflict('This challan is already cancelled.');
+
+    // R9: reversing it would put material back at a processor the finished step
+    // has already written off.
+    const issueStep = await tx.jobOrderStep.findFirst({
+      where: { id: issue.jobOrderStepId, organizationId },
+      select: { status: true },
+    });
+    if (issueStep?.status === 'completed' || issueStep?.status === 'short_closed') {
+      throw ApiError.conflict(
+        'This step has been completed or closed short, so its challans can no longer be cancelled.',
+      );
+    }
 
     /**
      * 🔴 CONSUMED, NOT "RECEIVED" (landed-cost plan §6.0, bug 1). This summed

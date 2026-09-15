@@ -1,6 +1,6 @@
 import { Prisma } from '../../../generated/prisma/client.ts';
 import type { TenantClient } from '../../db/prisma.ts';
-import { POSTED_DOC_STATUS } from './jobwork.types.ts';
+import { POSTED_DOC_STATUS, SOURCE_DOC_TYPES } from './jobwork.types.ts';
 
 /**
  * What a posting may still consume, and the lock that keeps that answer true
@@ -49,7 +49,9 @@ export async function lockJobOrderSteps(
 }
 
 /**
- * How much of each issue line has already been received.
+ * How much of each issue line is no longer at the processor: consumed by posted
+ * receipts, plus whatever a completed step wrote off (landed-cost R8) — net, so a
+ * reversal of a write-off would give the quantity back.
  *
  * 🔴 ONE grouped query, never one per line. This was a `jobReceiptLine.aggregate`
  * inside the loop in three places — invisible on a two-line challan and the whole
@@ -93,9 +95,29 @@ export async function closedQtyByIssueLine(
   });
   // `jobIssueLineId` is nullable — a bulk receipt spanning several challans points
   // at no single line — so the null group is dropped rather than keyed on.
-  return new Map(
+  const closed = new Map(
     grouped.flatMap((row) =>
       row.jobIssueLineId ? [[row.jobIssueLineId, row._sum.issuedQty ?? ZERO] as const] : [],
     ),
   );
+
+  const writtenOff = await tx.stockLedgerEntry.groupBy({
+    by: ['sourceDocLineId'],
+    where: {
+      organizationId,
+      sourceDocType: SOURCE_DOC_TYPES.jobOrderStep,
+      sourceDocLineId: { in: [...lineIds] },
+    },
+    _sum: { qtyOut: true, qtyIn: true },
+  });
+  for (const row of writtenOff) {
+    if (!row.sourceDocLineId) continue;
+    closed.set(
+      row.sourceDocLineId,
+      (closed.get(row.sourceDocLineId) ?? ZERO)
+        .plus(row._sum.qtyOut ?? ZERO)
+        .minus(row._sum.qtyIn ?? ZERO),
+    );
+  }
+  return closed;
 }

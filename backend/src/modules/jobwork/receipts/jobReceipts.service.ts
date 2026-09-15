@@ -246,6 +246,12 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
           include: {
             item: { select: { id: true, name: true, sku: true } },
             uom: { select: { id: true, unitName: true, symbol: true } },
+            // The recipe frozen onto the step — what the cost preview draws by (R1).
+            components: {
+              where: { isDeleted: false },
+              orderBy: { seq: 'asc' },
+              select: { componentItemId: true, qtyPerUnit: true },
+            },
           },
         },
         inputs: {
@@ -285,6 +291,8 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
         destination: { select: { id: true, name: true } },
         lines: {
           where: { isDeleted: false },
+          // Oldest first, the order `allocateConsumption` walks them in.
+          orderBy: { createdAt: 'asc' },
           include: {
             item: { select: { id: true, name: true, sku: true } },
             uom: { select: { id: true, unitName: true, symbol: true } },
@@ -301,6 +309,34 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
       organizationId,
       issues.flatMap((issue) => issue.lines.map((line) => line.id)),
     );
+
+    /**
+     * What a unit of each line's batch is worth where it stands — the price the
+     * Receive screen's cost preview values material at (landed-cost §6.7). One
+     * grouped read per place the challans went, which is a single place on every
+     * ordinary step; never a read per line.
+     */
+    const unitCostByLine = new Map<string, Prisma.Decimal>();
+    const linesByDestination = new Map<string, { id: string; batchId: string }[]>();
+    for (const issue of issues) {
+      const atDestination = linesByDestination.get(issue.destinationLocationId) ?? [];
+      atDestination.push(...issue.lines.map((line) => ({ id: line.id, batchId: line.batchId })));
+      linesByDestination.set(issue.destinationLocationId, atDestination);
+    }
+    for (const [locationId, atDestination] of linesByDestination) {
+      const balances = await getBalancesByBatch(tx, {
+        organizationId,
+        locationId,
+        batchIds: [...new Set(atDestination.map((line) => line.batchId))],
+      });
+      for (const line of atDestination) {
+        const balance = balances.get(line.batchId);
+        unitCostByLine.set(
+          line.id,
+          balance && balance.qty.greaterThan(0) ? balance.value.dividedBy(balance.qty) : ZERO,
+        );
+      }
+    }
 
     const rows = [];
     for (const issue of issues) {
@@ -322,6 +358,7 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
           // The label, not the internal number (2026-08-14).
           batchReference: line.batch.supplierBatchRef,
           issuedQty: outstanding.toString(),
+          unitCost: (unitCostByLine.get(line.id) ?? ZERO).toDecimalPlaces(6).toString(),
         });
       }
     }
@@ -366,6 +403,8 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
         uomSymbol: row.uom?.symbol ?? row.uom?.unitName ?? null,
         isPrimary: row.isPrimary,
         expectedQty: row.expectedQty?.toString() ?? null,
+        // The agreed charge per accepted unit, which the Rate box opens with (R6).
+        rate: row.rate?.toString() ?? null,
       })),
     };
   });

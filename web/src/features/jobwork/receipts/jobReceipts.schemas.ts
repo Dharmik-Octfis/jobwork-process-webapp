@@ -59,6 +59,9 @@ export const jobReceiptSchema = z.object({
   totalReworkQty: z.union([z.string(), z.number()]),
   totalScrapQty: z.union([z.string(), z.number()]),
   totalReturnedQty: z.union([z.string(), z.number()]),
+  /** What the consumes posted, and the charges on top — the receipt's cost. */
+  consumedValue: decimalString.optional(),
+  processChargeTotal: decimalString.optional(),
   status: z.string(),
   remarks: z.string().nullable(),
   lines: z.array(jobReceiptLineSchema).default([]),
@@ -83,6 +86,11 @@ export const jobReceiptSchema = z.object({
         reworkQty: decimalString,
         scrapQty: decimalString,
         isPrimary: z.boolean(),
+        /** 🔴 The cost as posted (landed-cost R5–R7), never re-derived. Zero on a
+         * draft, which has consumed nothing yet. */
+        rate: decimalString.optional(),
+        materialValue: decimalString.optional(),
+        processCharge: decimalString.optional(),
         item: itemRefSchema.nullable().optional(),
         uom: uomRefSchema.nullable().optional(),
         /** Older receipts only — the gate types free text now, which lands in
@@ -194,7 +202,10 @@ export const receivePrefillSchema = z.object({
       /** The label, not the internal number (2026-08-14). Null for untracked
        * stock, whose batches are not meant to be identified on screen. */
       batchReference: z.string().nullable(),
+      /** What is still out on this line. */
       issuedQty: z.string(),
+      /** The batch's cost per unit at the processor — the preview's material price. */
+      unitCost: z.string().default('0'),
     }),
   ),
   /**
@@ -211,6 +222,8 @@ export const receivePrefillSchema = z.object({
         uomSymbol: z.string().nullable(),
         isPrimary: z.boolean(),
         expectedQty: z.string().nullable(),
+        /** The step's agreed charge per accepted unit — the Rate box's opening value. */
+        rate: z.string().nullable().optional(),
       }),
     )
     .default([]),
@@ -226,6 +239,8 @@ export interface JobReceiptLineData {
   itemId?: string | null;
   jobIssueId?: string | null;
   jobIssueLineId?: string | null;
+  /** How much of the item this receipt USED. Omitted, the server works it out
+   * from the job order's plan (landed-cost R4). */
   issuedQty?: number;
   receivedQty: number;
   acceptedQty?: number;
@@ -245,11 +260,10 @@ export interface JobReceiptOutputData {
   reworkQty?: number;
   scrapQty?: number;
   returnedQty?: number;
-  /** Exactly one row is the main output — it absorbs the pot less whatever the
-   * by-products were given (§9.2.1). */
+  /** The row the header's six totals describe. */
   isPrimary?: boolean;
-  /** By-products only; null on the main output, which takes the remainder. */
-  valueShare?: number | null;
+  /** Charge per accepted unit for this receipt. Omitted, the step's rate applies. */
+  rate?: number | null;
   reasonId?: string | null;
   responsibility?: string | null;
   remarks?: string | null;

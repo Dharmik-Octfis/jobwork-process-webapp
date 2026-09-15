@@ -13,6 +13,7 @@ import { createNewJobIssue } from '../issues/jobIssues.service.ts';
 import {
   cancelJobReceipt,
   createNewJobReceipt,
+  getReceivePrefill,
   postJobReceiptDraft,
 } from './jobReceipts.service.ts';
 
@@ -250,6 +251,26 @@ async function dyeingRun() {
 }
 
 describe('receipt — landed cost on real postings', { timeout: 120_000 }, () => {
+  it('prefills what the cost preview needs: unit cost at the processor, rate and recipe', async () => {
+    const run = await dyeingRun();
+    const prefill = await getReceivePrefill(orgId, run.stepId);
+    expect(prefill.lines).toHaveLength(1);
+    expect(prefill.lines[0]!.unitCost).toBe('10');
+    expect(prefill.outputs[0]!.rate).toBe('12');
+
+    const cotton = await makeItem('Cotton');
+    const redCotton = await makeItem('Red Cotton', { composite: true });
+    await recipe(redCotton, [[cotton, 1]]);
+    const { stepId } = await planStep(
+      [{ itemId: cotton, plannedQty: 100 }],
+      [{ itemId: redCotton, expectedQty: 95, rate: 5 }],
+    );
+    const composite = await getReceivePrefill(orgId, stepId);
+    expect(composite.step.outputs[0]!.components.map((row) => row.componentItemId)).toEqual([
+      cotton,
+    ]);
+  });
+
   it('A: consumes by the plan ratio and stores the breakdown on both partial receipts', async () => {
     const run = await dyeingRun();
 
@@ -572,5 +593,78 @@ describe('receipt — what the engine refuses', { timeout: 120_000 }, () => {
     const posted = await postJobReceiptDraft(orgId, draft.id);
     expect(posted.status).toBe('posted');
     expect(posted.outputs[0]!.materialValue.toString()).toBe('5263.158');
+  });
+});
+
+describe('receipt — the plan it is costed by', { timeout: 120_000 }, () => {
+  it('16: splits by the recipe frozen on the job order, not a later edit to it', async () => {
+    const cotton = await makeItem('Cotton');
+    const red = await makeItem('Red', { composite: true });
+    const green = await makeItem('Green', { composite: true });
+    await recipe(red, [[cotton, 1]]);
+    await recipe(green, [[cotton, 1]]);
+    const batch = await seedStock(cotton, 200, 10);
+    const { stepId } = await planStep(
+      [{ itemId: cotton, plannedQty: 200 }],
+      [
+        { itemId: red, expectedQty: 100 },
+        { itemId: green, expectedQty: 100 },
+      ],
+    );
+    const challan = await issue(stepId, [{ itemId: cotton, batchId: batch.id, qty: 200 }]);
+
+    // Green now takes three metres a piece — on the item, after the order froze it.
+    // Read live, it would carry 750 of the 1,000 and Red only 250.
+    await runAsTenant(orgId, (tx) =>
+      tx.compositeItemComponent.updateMany({
+        where: { organizationId: orgId, compositeItemId: green },
+        data: { qtyPerUnit: 3 },
+      }),
+    );
+
+    const receipt = await receive(
+      stepId,
+      [challan.id],
+      [cotton],
+      [
+        { itemId: red, accepted: 50 },
+        { itemId: green, accepted: 50 },
+      ],
+    );
+    const material = new Map(
+      receipt.outputs.map((row) => [row.itemId, row.materialValue.toString()]),
+    );
+    expect(material.get(red)).toBe('500');
+    expect(material.get(green)).toBe('500');
+  });
+
+  it('G: refuses a typed Used above what is still out, and a draft keeps a typed figure', async () => {
+    const cotton = await makeItem('Cotton');
+    const loose = await makeItem('Loose Dyed', { untracked: true });
+    const batch = await seedStock(cotton, 1000, 10);
+    const { stepId } = await planStep(
+      [{ itemId: cotton, plannedQty: 1000 }],
+      [{ itemId: loose, expectedQty: 950, rate: 12 }],
+    );
+    const challan = await issue(stepId, [{ itemId: cotton, batchId: batch.id, qty: 1000 }]);
+
+    await expect(
+      receive(stepId, [challan.id], [cotton], [{ itemId: loose, accepted: 500 }], {
+        [cotton]: 1200,
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+
+    const draft = await receive(
+      stepId,
+      [challan.id],
+      [cotton],
+      [{ itemId: loose, accepted: 500 }],
+      { [cotton]: 540 },
+      'draft',
+    );
+    expect(draft.lines.reduce((sum, line) => sum + Number(line.issuedQty), 0)).toBe(540);
+
+    const posted = await postJobReceiptDraft(orgId, draft.id);
+    expect(posted.outputs[0]!.materialValue.toString()).toBe('5400');
   });
 });

@@ -25,6 +25,7 @@ import {
 } from '../jobwork.refs.ts';
 import { POSTED_DOC_STATUS, runAsDocument, type ProcessorType } from '../jobwork.types.ts';
 import { lockJobOrderSteps, lockStep } from '../jobwork.posting.ts';
+import { writeOffStep } from './jobOrders.writeOff.ts';
 import {
   getAllChainNotReady,
   getAllStepTotals,
@@ -690,6 +691,14 @@ async function loadExistingSteps(tx: TenantClient, organizationId: string, jobOr
   });
 }
 
+/**
+ * Complete a step: a human saying nothing more is coming back (landed-cost D7).
+ *
+ * 🔴 Whatever is still at the processor is written off in the same transaction
+ * (R8), and the step is then closed to every document (R9) — so a draft still
+ * parked against it would be a document that can never post. Those are refused
+ * by name rather than silently stranded. There is no reopen.
+ */
 export async function manuallyCompleteStep(
   organizationId: string,
   jobOrderId: string,
@@ -697,16 +706,43 @@ export async function manuallyCompleteStep(
   userId: string | undefined,
 ) {
   return withUniqueViolation('Order already closed or not found', async () => {
-    await runAsTenant(organizationId, async (tx) => {
+    // A fifty-line challan writes fifty scrap rows (jobwork.types.ts).
+    await runAsDocument(organizationId, async (tx) => {
       await lockStep(tx, organizationId, stepId);
       const step = await tx.jobOrderStep.findFirst({
         where: { id: stepId, jobOrderId, organizationId, isDeleted: false },
-        select: { id: true, status: true },
+        select: { id: true, seq: true, status: true },
       });
       if (!step) throw ApiError.notFound('Step not found.');
       if (step.status === 'completed' || step.status === 'short_closed') {
         throw ApiError.conflict('Step is already completed or closed short.');
       }
+
+      const draftIssues = await tx.jobIssue.findMany({
+        where: { organizationId, jobOrderStepId: step.id, isDeleted: false, status: 'draft' },
+        select: { challanNumber: true },
+      });
+      const draftReceipts = await tx.jobReceipt.findMany({
+        where: { organizationId, jobOrderStepId: step.id, isDeleted: false, status: 'draft' },
+        select: { receiptNumber: true },
+      });
+      const drafts = [
+        ...draftIssues.map((row) => row.challanNumber),
+        ...draftReceipts.map((row) => row.receiptNumber),
+      ];
+      if (drafts.length > 0) {
+        throw new ApiError(
+          409,
+          `Step ${step.seq} still has drafts parked against it: ${drafts.join(', ')}. Post or ` +
+            'delete them first — once the step is completed they can never be posted.',
+          { drafts: drafts.join(', ') },
+        );
+      }
+
+      await writeOffStep(tx, organizationId, step.id, {
+        reason: 'Step completed — still at the processor, written off as job order loss.',
+        userId,
+      });
 
       await tx.jobOrderStep.update({
         where: { id: step.id },
@@ -1775,6 +1811,9 @@ export async function deleteJobOrderById(organizationId: string, id: string, use
  * `jobOrders.status.ts`. It is sticky, so a stray later receipt cannot quietly
  * reopen the order, and the reason is appended to `remarks` because a decision
  * with no recorded why is a decision nobody can review.
+ *
+ * 🔴 Every step it closes has its remainder at the processor written off first
+ * (landed-cost R8), exactly as completing that step would.
  */
 export async function shortCloseJobOrder(
   organizationId: string,
@@ -1782,7 +1821,7 @@ export async function shortCloseJobOrder(
   reason: string,
   userId?: string,
 ) {
-  return runAsTenant(organizationId, async (tx) => {
+  return runAsDocument(organizationId, async (tx) => {
     await lockJobOrderSteps(tx, organizationId, id);
     const existing = await tx.jobOrder.findFirst({
       where: { id, organizationId, isDeleted: false },
@@ -1794,6 +1833,23 @@ export async function shortCloseJobOrder(
     }
 
     const note = `Closed short: ${reason.trim()}`;
+    const closing = await tx.jobOrderStep.findMany({
+      where: {
+        organizationId,
+        jobOrderId: id,
+        isDeleted: false,
+        status: { notIn: ['completed', 'short_closed'] },
+      },
+      orderBy: { seq: 'asc' },
+      select: { id: true },
+    });
+    for (const step of closing) {
+      await writeOffStep(tx, organizationId, step.id, {
+        reason: `${note} — still at the processor, written off as job order loss.`,
+        userId,
+      });
+    }
+
     await tx.jobOrderStep.updateMany({
       where: {
         organizationId,
@@ -1974,7 +2030,8 @@ export async function getJobOrderOverview(
       // changes (jobOrders.status.ts).
       const issuedD = totals.issuedQty;
       const consumedD = totals.consumedQty;
-      const outstanding = issuedD.minus(consumedD);
+      // A completed step's remainder was written off — it is no longer out (R8).
+      const outstanding = issuedD.minus(consumedD).minus(totals.writtenOffQty);
       return {
         ...step,
         totals: {
@@ -1986,6 +2043,8 @@ export async function getJobOrderOverview(
           scrapQty: totals.scrapQty.toString(),
           returnedQty: totals.returnedQty.toString(),
           outstandingQty: outstanding.toString(),
+          writtenOffQty: totals.writtenOffQty.toString(),
+          writtenOffValue: totals.writtenOffValue.toString(),
           issueCount: totals.issueCount,
           receiptCount: totals.receiptCount,
         },
@@ -2083,6 +2142,28 @@ function buildItemTotals(
   const unitOf = (uom: { symbol: string | null; unitName: string } | null | undefined) =>
     uom ? (uom.symbol ?? uom.unitName) : null;
 
+  /** Where an input's material stands (landed-cost §6.7): still at the processor
+   * until the step is completed, then written off as job order loss. */
+  const atProcessor = (flow: ItemFlow | undefined) => {
+    if (!flow) return { stillOutQty: '0', writtenOffQty: '0', writtenOffValue: '0' };
+    const stillOut = flow.issuedQty.minus(flow.consumedQty).minus(flow.writtenOffQty);
+    return {
+      stillOutQty: stillOut.greaterThan(0) ? stillOut.toString() : '0',
+      writtenOffQty: flow.writtenOffQty.toString(),
+      writtenOffValue: flow.writtenOffValue.toString(),
+    };
+  };
+
+  /** What an output's accepted goods have landed at so far, per unit — running,
+   * from every posted receipt's stored breakdown. Null until something is accepted. */
+  const landedOf = (flow: OutputFlow | undefined) => ({
+    acceptedQty: (flow?.acceptedQty ?? new Prisma.Decimal(0)).toString(),
+    landedCostPerUnit:
+      flow && flow.acceptedQty.greaterThan(0)
+        ? flow.landedValue.dividedBy(flow.acceptedQty).toDecimalPlaces(4).toString()
+        : null,
+  });
+
   /**
    * 🔴 WHAT MOVED, and nothing else.
    *
@@ -2107,6 +2188,7 @@ function buildItemTotals(
         plannedQty: plannedQ?.toString() ?? null,
         issuedQty: issued.toString(),
         remainingQty: remainingQ ? (remainingQ.greaterThan(0) ? remainingQ.toString() : '0') : null,
+        ...atProcessor(issuedByItem.get(row.itemId)),
       };
     }),
     ...[...issuedByItem.values()]
@@ -2120,6 +2202,7 @@ function buildItemTotals(
         plannedQty: null,
         issuedQty: flow.issuedQty.toString(),
         remainingQty: null,
+        ...atProcessor(flow),
       })),
   ];
 
@@ -2137,6 +2220,7 @@ function buildItemTotals(
         expectedQty: expectedQ?.toString() ?? null,
         receivedQty: received.toString(),
         remainingQty: remainingQ ? (remainingQ.greaterThan(0) ? remainingQ.toString() : '0') : null,
+        ...landedOf(receivedByItem.get(row.itemId)),
       };
     }),
     ...[...receivedByItem.values()]
@@ -2152,6 +2236,7 @@ function buildItemTotals(
         expectedQty: null,
         receivedQty: flow.receivedQty.toString(),
         remainingQty: null,
+        ...landedOf(flow),
       })),
   ];
 

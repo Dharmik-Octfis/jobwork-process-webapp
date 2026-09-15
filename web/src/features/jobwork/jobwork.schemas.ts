@@ -38,6 +38,15 @@ export function qtyWithUnit(
   return unit ? `${formatQty(value)} ${unit}` : formatQty(value);
 }
 
+/** ₹ to two places, Indian digit grouping — "₹11,263.16". */
+export function formatMoney(value: string | number | null | undefined): string {
+  const n = toNumber(value);
+  return `₹${(Number.isFinite(n) ? n : 0).toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 /** Whole days between a past date and now, floored. Negative dates read as 0. */
 export function daysSince(date: string | Date | null | undefined): number | null {
   if (!date) return null;
@@ -419,6 +428,188 @@ export function planWarnings(
     }
   }
   return warnings;
+}
+
+/**
+ * 🔴 THE RECEIPT COST PREVIEW — the client's copy of the server's landed-cost
+ * engine (`receipts/landedCost.ts`, plan R1–R7). Keep the two in step.
+ *
+ * It only lets the gate see the figure before pressing Receive: the server works
+ * the same thing out from what it actually posts, and that is the number stored.
+ */
+export interface CostPreviewPlan {
+  inputs: readonly { itemId: string; plannedQty: number | null }[];
+  outputs: readonly {
+    itemId: string;
+    expectedQty: number | null;
+    components: readonly { componentItemId: string; qtyPerUnit: number }[];
+  }[];
+}
+
+/** One open challan line, oldest first — the order the server allocates in. */
+export interface CostPreviewLine {
+  itemId: string;
+  outstanding: number;
+  /** The batch's cost per unit at the processor. */
+  unitCost: number;
+}
+
+export interface CostPreviewReturned {
+  itemId: string;
+  acceptedQty: number;
+  reworkQty: number;
+  rate: number | null;
+}
+
+export interface UsedPreview {
+  outstanding: number;
+  /** The plan's figure (R3), before any cap. */
+  calculated: number;
+  /** What is used when nothing is typed: the calculation, capped at what is out. */
+  suggested: number;
+  used: number;
+  /** Material value of `used`, FIFO across the lines. */
+  value: number;
+  /** The calculation ran past what is out — a warning, never a refusal (R4). */
+  capped: boolean;
+  /** Typed above what is out — the server refuses it. */
+  overOutstanding: boolean;
+  /** Typed, but nothing received draws on it — the server refuses it. */
+  undrawn: boolean;
+}
+
+export interface OutputCostPreview {
+  material: number;
+  charge: number;
+  /** Material on the accepted side plus the whole charge (R7). */
+  acceptedValue: number;
+  perUnit: number | null;
+}
+
+const round4 = (value: number) => Math.round(value * 10_000) / 10_000;
+
+/** `splitByQty`: shares by weight, the last taking the remainder so nothing is lost. */
+function splitByWeight(total: number, weights: readonly number[]): number[] {
+  const sum = weights.reduce((acc, weight) => acc + weight, 0);
+  if (sum <= 0) return weights.map(() => 0);
+  let given = 0;
+  return weights.map((weight, index) => {
+    if (index === weights.length - 1) return round4(total - given);
+    const share = round4((total * weight) / sum);
+    given += share;
+    return share;
+  });
+}
+
+/** R1 — how much of an input one unit of an output draws. */
+function drawPerUnit(
+  plan: CostPreviewPlan,
+  outputItemId: string,
+  inputItemId: string,
+  rework: boolean,
+): number {
+  if (rework) return outputItemId === inputItemId ? 1 : 0;
+  const inputIds = new Set(plan.inputs.map((row) => row.itemId));
+  if (inputIds.has(outputItemId)) return outputItemId === inputItemId ? 1 : 0;
+  const planned = plan.outputs.find((row) => row.itemId === outputItemId);
+  if (planned && planned.components.length > 0) {
+    return planned.components.find((row) => row.componentItemId === inputItemId)?.qtyPerUnit ?? 0;
+  }
+  return inputIds.size === 1 && inputIds.has(inputItemId) ? 1 : 0;
+}
+
+export function receiptCostPreview(input: {
+  plan: CostPreviewPlan;
+  rework: boolean;
+  lines: readonly CostPreviewLine[];
+  returned: readonly CostPreviewReturned[];
+  /** Typed Used figures by item; an item absent here is calculated. */
+  typed: ReadonlyMap<string, number>;
+}): { used: Map<string, UsedPreview>; rows: Map<string, OutputCostPreview> } {
+  const { plan, rework, lines, returned, typed } = input;
+
+  const outstanding = new Map<string, number>();
+  for (const line of lines) {
+    outstanding.set(line.itemId, round4((outstanding.get(line.itemId) ?? 0) + line.outstanding));
+  }
+
+  // R2 + R3: need = (accepted + rework) × w × planned ÷ Σ(expected × w).
+  const needs = new Map<string, Map<string, number>>();
+  for (const inputItemId of outstanding.keys()) {
+    let ratio = 1;
+    if (!rework) {
+      const planned = plan.inputs.find((row) => row.itemId === inputItemId)?.plannedQty ?? 0;
+      const denominator = plan.outputs.reduce(
+        (sum, row) =>
+          sum + (row.expectedQty ?? 0) * drawPerUnit(plan, row.itemId, inputItemId, false),
+        0,
+      );
+      if (planned <= 0 || denominator <= 0) continue;
+      ratio = planned / denominator;
+    }
+    const byOutput = new Map<string, number>();
+    for (const row of returned) {
+      const draw = drawPerUnit(plan, row.itemId, inputItemId, rework);
+      const units = row.acceptedQty + row.reworkQty;
+      if (draw <= 0 || units <= 0) continue;
+      const need = round4(units * draw * ratio);
+      if (need > 0) byOutput.set(row.itemId, need);
+    }
+    if (byOutput.size > 0) needs.set(inputItemId, byOutput);
+  }
+
+  // R4 + R5: what each input uses, what that is worth, and where the value goes.
+  const used = new Map<string, UsedPreview>();
+  const material = new Map<string, number>();
+  for (const [itemId, out] of outstanding) {
+    const byOutput = needs.get(itemId);
+    const calculated = round4([...(byOutput?.values() ?? [])].reduce((sum, n) => sum + n, 0));
+    const suggested = Math.min(calculated, out);
+    const typedQty = typed.get(itemId);
+    const qty = typedQty ?? suggested;
+
+    let left = qty;
+    let value = 0;
+    for (const line of lines) {
+      if (line.itemId !== itemId || left <= 0) continue;
+      const take = Math.min(left, line.outstanding);
+      value = round4(value + take * line.unitCost);
+      left = round4(left - take);
+    }
+
+    used.set(itemId, {
+      outstanding: out,
+      calculated,
+      suggested,
+      used: qty,
+      value,
+      capped: typedQty === undefined && calculated - out > 0.001,
+      overOutstanding: typedQty !== undefined && typedQty - out > 0.00005,
+      undrawn: typedQty !== undefined && typedQty > 0 && calculated <= 0,
+    });
+
+    if (!byOutput) continue;
+    const shares = splitByWeight(value, [...byOutput.values()]);
+    [...byOutput.keys()].forEach((outputItemId, index) => {
+      material.set(outputItemId, round4((material.get(outputItemId) ?? 0) + (shares[index] ?? 0)));
+    });
+  }
+
+  // R6 + R7: the charge is on accepted only, and lands on the accepted side.
+  const rows = new Map<string, OutputCostPreview>();
+  for (const row of returned) {
+    const rowMaterial = material.get(row.itemId) ?? 0;
+    const charge = round4((row.rate ?? 0) * row.acceptedQty);
+    const [materialAccepted = 0] = splitByWeight(rowMaterial, [row.acceptedQty, row.reworkQty]);
+    const acceptedValue = round4(materialAccepted + charge);
+    rows.set(row.itemId, {
+      material: rowMaterial,
+      charge,
+      acceptedValue,
+      perUnit: row.acceptedQty > 0 ? acceptedValue / row.acceptedQty : null,
+    });
+  }
+  return { used, rows };
 }
 
 /**
