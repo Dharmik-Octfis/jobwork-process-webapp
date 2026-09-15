@@ -12,7 +12,7 @@ import { PROCESSOR_TYPES } from '../jobwork.types.ts';
  * order step → the document, and each level overrides only what it actually
  * knows. A route that says nothing about rate must fall THROUGH to the process,
  * not overwrite it with a zero — so "not set" has to be expressible, and `0` has
- * to mean zero. That is why `rate`, `tolerancePct` and the four item/uom fields
+ * to mean zero. That is why `rate` and the four item/uom fields
  * are `.nullable().optional()` rather than defaulted here.
  *
  * There is no `customFields` here, on the route or on its steps. Routes left
@@ -89,7 +89,6 @@ export const routeStepSchema = z.object({
    * yield of 4, and capping it at 1 would reject a whole class of real work.
    */
   expectedYield: z.coerce.number().positive().nullable().optional(),
-  tolerancePct: z.coerce.number().min(0).max(100).nullable().optional(),
 
   remarks: z.string().trim().max(2000).nullable().optional(),
 });

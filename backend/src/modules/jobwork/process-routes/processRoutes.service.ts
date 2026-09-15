@@ -299,7 +299,6 @@ function stepData(step: RouteStepInput, index: number) {
     rate: step.rate ?? null,
     rateBasis: step.rateBasis ?? null,
     expectedYield: step.expectedYield ?? null,
-    tolerancePct: step.tolerancePct ?? null,
     remarks: step.remarks?.trim() || null,
   };
 }

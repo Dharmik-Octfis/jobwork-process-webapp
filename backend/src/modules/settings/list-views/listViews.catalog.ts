@@ -174,7 +174,6 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'code', label: 'Code', defaultVisible: true },
     { key: 'rateBasis', label: 'Rate Basis', defaultVisible: true },
     { key: 'itemChanges', label: 'Changes Item', defaultVisible: true },
-    { key: 'defaultTolerancePct', label: 'Tolerance %' },
     { key: 'description', label: 'Description' },
     { key: 'createdAt', label: 'Created At' },
     { key: 'updatedAt', label: 'Last Modified' },

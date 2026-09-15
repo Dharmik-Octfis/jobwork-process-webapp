@@ -46,16 +46,22 @@ export function ProcessDetail({ processId, onClose }: Props) {
     <div style={{ background: '#fff', minHeight: '100%' }}>
       <header className="detail-page-header">
         <div>
-          <h2 className="detail-title" style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}>
+          <h2
+            className="detail-title"
+            style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}
+          >
             {process.name}
           </h2>
           {process.code && <span style={{ fontSize: 12, color: '#64748b' }}>{process.code}</span>}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="action-btn"
+          <button
+            className="action-btn"
             type="button"
             onClick={() =>
-              navigate(`/organizations/${orgId}/settings/jobwork/processes/${process.id}/edit`, { state: { returnUrl: location.pathname + location.search } })
+              navigate(`/organizations/${orgId}/settings/jobwork/processes/${process.id}/edit`, {
+                state: { returnUrl: location.pathname + location.search },
+              })
             }
             style={{
               display: 'flex',
@@ -102,39 +108,33 @@ export function ProcessDetail({ processId, onClose }: Props) {
         )}
 
         <div className="responsive-table-wrapper">
-<table style={{ borderCollapse: 'collapse' }}>
-          <tbody>
-            <tr>
-              <td style={rowLabel}>Rate basis</td>
-              <td style={{ padding: '6px 0', ...rowValue }}>{rateBasisLabel(process.rateBasis)}</td>
-            </tr>
-            <tr>
-              <td style={rowLabel}>Output item</td>
-              <td style={{ padding: '6px 0' }}>
-                <Flag
-                  on={process.itemChanges}
-                  yes="Different item comes back"
-                  no="Same item comes back"
-                />
-              </td>
-            </tr>
-            {/* Receipt mode and batch mixing are not shown: both described
+          <table style={{ borderCollapse: 'collapse' }}>
+            <tbody>
+              <tr>
+                <td style={rowLabel}>Rate basis</td>
+                <td style={{ padding: '6px 0', ...rowValue }}>
+                  {rateBasisLabel(process.rateBasis)}
+                </td>
+              </tr>
+              <tr>
+                <td style={rowLabel}>Output item</td>
+                <td style={{ padding: '6px 0' }}>
+                  <Flag
+                    on={process.itemChanges}
+                    yes="Different item comes back"
+                    no="Same item comes back"
+                  />
+                </td>
+              </tr>
+              {/* Receipt mode and batch mixing are not shown: both described
                 taka-level behaviour, and issue and receive are batch level now. */}
-            <tr>
-              <td style={rowLabel}>Default tolerance</td>
-              <td style={{ padding: '6px 0', ...rowValue }}>
-                {process.defaultTolerancePct === null
-                  ? 'No default'
-                  : `${process.defaultTolerancePct}%`}
-              </td>
-            </tr>
-            {/* Default issue/receive unit are not shown: a step transacts in its
+              {/* Default issue/receive unit are not shown: a step transacts in its
                 items' stocking units, so an org-wide default here was a guess
                 about one item. Custom fields went with them — `process` is no
                 longer a custom-field module. */}
-          </tbody>
-        </table>
-</div>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

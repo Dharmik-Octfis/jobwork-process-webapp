@@ -41,9 +41,6 @@ export const processSchema = z.object({
   description: z.string().nullable(),
   itemChanges: z.boolean(),
   rateBasis: z.string(),
-  // Prisma serialises Decimal as a string over JSON; a plain `z.number()` here
-  // would reject "2.500" and blank the whole row.
-  defaultTolerancePct: z.union([z.string(), z.number()]).nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -56,7 +53,6 @@ export const createProcessSchema = z.object({
   description: z.string().nullable().optional(),
   itemChanges: z.boolean().optional(),
   rateBasis: z.string().optional(),
-  defaultTolerancePct: z.number().min(0).max(100).nullable().optional(),
 });
 
 export type CreateProcessData = z.infer<typeof createProcessSchema>;

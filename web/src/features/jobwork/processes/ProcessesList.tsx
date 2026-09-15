@@ -30,8 +30,6 @@ function renderProcessCell(process: Process, key: string): string {
       return rateBasisLabel(process.rateBasis);
     case 'itemChanges':
       return process.itemChanges ? 'New item' : 'Same item';
-    case 'defaultTolerancePct':
-      return process.defaultTolerancePct === null ? '-' : `${process.defaultTolerancePct}%`;
     case 'createdAt':
     case 'updatedAt':
       return formatDate(process[key]);
@@ -115,8 +113,12 @@ export function ProcessesList() {
         flexDirection: 'column',
       }}
     >
-      <div className={`master-detail-container ${selectedId ? 'has-selection' : ''}`} style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
-        <div className="master-pane"
+      <div
+        className={`master-detail-container ${selectedId ? 'has-selection' : ''}`}
+        style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}
+      >
+        <div
+          className="master-pane"
           style={{
             flex: selectedId ? '0 0 320px' : 1,
             borderRight: selectedId ? '1px solid #eef0f3' : 'none',
@@ -167,7 +169,11 @@ export function ProcessesList() {
               )}
               <button
                 type="button"
-                onClick={() => navigate(`/organizations/${orgId}/settings/jobwork/processes/new`, { state: { returnUrl: location.pathname + location.search } })}
+                onClick={() =>
+                  navigate(`/organizations/${orgId}/settings/jobwork/processes/new`, {
+                    state: { returnUrl: location.pathname + location.search },
+                  })
+                }
                 style={{
                   background: '#186337',
                   color: 'white',
@@ -234,7 +240,11 @@ export function ProcessesList() {
                 </p>
                 <button
                   type="button"
-                  onClick={() => navigate(`/organizations/${orgId}/settings/jobwork/processes/new`, { state: { returnUrl: location.pathname + location.search } })}
+                  onClick={() =>
+                    navigate(`/organizations/${orgId}/settings/jobwork/processes/new`, {
+                      state: { returnUrl: location.pathname + location.search },
+                    })
+                  }
                   style={{
                     background: '#28a745',
                     color: 'white',
@@ -303,98 +313,98 @@ export function ProcessesList() {
               </div>
             ) : (
               <div className="responsive-table-wrapper">
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                <thead>
-                  <tr
-                    style={{
-                      background: '#f9f9fb',
-                      borderTop: '1px solid #eef0f3',
-                      borderBottom: '1px solid #eef0f3',
-                    }}
-                  >
-                    {columns.map((col) => (
-                      <th key={col.key} style={headerStyle} scope="col">
-                        {col.label}
-                      </th>
-                    ))}
-                    {/* No visible label — the column is icon buttons, each of
-                        which carries its own aria-label naming the row. */}
-                    <th style={{ ...headerStyle, width: 60 }} scope="col" aria-label="Actions" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {processes.map((process) => (
-                    /**
-                     * The whole row opens the process. The LOCKED column stays a
-                     * real `<button>` underneath it: a row `onClick` is invisible
-                     * to Tab, so it is the mouse convenience and the button is the
-                     * control (CLAUDE.md).
-                     */
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <thead>
                     <tr
-                      key={process.id}
-                      onClick={() => openDetail(process.id)}
-                      style={{ borderBottom: '1px solid #eef0f3', cursor: 'pointer' }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      style={{
+                        background: '#f9f9fb',
+                        borderTop: '1px solid #eef0f3',
+                        borderBottom: '1px solid #eef0f3',
+                      }}
                     >
                       {columns.map((col) => (
-                        <td
-                          key={col.key}
-                          style={{ padding: '12px 16px', fontSize: 13, color: '#333' }}
-                        >
-                          {col.locked ? (
-                            <button
-                              type="button"
-                              onClick={() => openDetail(process.id)}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                padding: 0,
-                                font: 'inherit',
-                                fontWeight: 500,
-                                color: '#0062ff',
-                                cursor: 'pointer',
-                                textAlign: 'left',
-                              }}
-                            >
-                              {renderProcessCell(process, col.key)}
-                            </button>
-                          ) : (
-                            renderProcessCell(process, col.key)
-                          )}
-                        </td>
+                        <th key={col.key} style={headerStyle} scope="col">
+                          {col.label}
+                        </th>
                       ))}
-                      <td style={{ padding: '12px 16px' }}>
-                        <button
-                          type="button"
-                          // Deleting must not also open the row underneath it.
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setToDelete(process);
-                          }}
-                          title={`Delete ${process.name}`}
-                          aria-label={`Delete ${process.name}`}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: 28,
-                            height: 28,
-                            border: '1px solid #e2e8f0',
-                            borderRadius: 4,
-                            background: '#fff',
-                            cursor: 'pointer',
-                            color: '#94a3b8',
-                          }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </td>
+                      {/* No visible label — the column is icon buttons, each of
+                        which carries its own aria-label naming the row. */}
+                      <th style={{ ...headerStyle, width: 60 }} scope="col" aria-label="Actions" />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-                  </div>
+                  </thead>
+                  <tbody>
+                    {processes.map((process) => (
+                      /**
+                       * The whole row opens the process. The LOCKED column stays a
+                       * real `<button>` underneath it: a row `onClick` is invisible
+                       * to Tab, so it is the mouse convenience and the button is the
+                       * control (CLAUDE.md).
+                       */
+                      <tr
+                        key={process.id}
+                        onClick={() => openDetail(process.id)}
+                        style={{ borderBottom: '1px solid #eef0f3', cursor: 'pointer' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        {columns.map((col) => (
+                          <td
+                            key={col.key}
+                            style={{ padding: '12px 16px', fontSize: 13, color: '#333' }}
+                          >
+                            {col.locked ? (
+                              <button
+                                type="button"
+                                onClick={() => openDetail(process.id)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  font: 'inherit',
+                                  fontWeight: 500,
+                                  color: '#0062ff',
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                }}
+                              >
+                                {renderProcessCell(process, col.key)}
+                              </button>
+                            ) : (
+                              renderProcessCell(process, col.key)
+                            )}
+                          </td>
+                        ))}
+                        <td style={{ padding: '12px 16px' }}>
+                          <button
+                            type="button"
+                            // Deleting must not also open the row underneath it.
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setToDelete(process);
+                            }}
+                            title={`Delete ${process.name}`}
+                            aria-label={`Delete ${process.name}`}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: 28,
+                              height: 28,
+                              border: '1px solid #e2e8f0',
+                              borderRadius: 4,
+                              background: '#fff',
+                              cursor: 'pointer',
+                              color: '#94a3b8',
+                            }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
 

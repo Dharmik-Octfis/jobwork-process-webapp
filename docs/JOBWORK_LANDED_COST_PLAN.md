@@ -5,8 +5,9 @@
 cycle check) built 2026-09-14 — `compositeItems.nesting.test.ts`. Phase 3 (Migration 1,
 `20260914124636_landed_cost`) applied to the shared database 2026-09-14; its backfills set 58 job
 order output rates, 7 route output rates and 101 input tolerances, and four step rates did not move
-(JO-00001 ×2, JO-00021, JO-00024 on OCTFIS TECHNO LLP) — re-enter them before Migration 2. Everything
-after it is not built.** Agreed over 2026-09-12 → 14. This
+(JO-00001 ×2, JO-00021, JO-00024 on OCTFIS TECHNO LLP) — re-enter them before Migration 2. Phase 4
+(§6.2, item-wise tolerance) built 2026-09-15 — `jobOrders.itemTolerance.test.ts`. Everything after it
+is not built.** Agreed over 2026-09-12 → 14. This
 replaces the step-level `rate` / `rateBasis` cost model described in `JOBWORK_DOMAIN_AND_MODULE_MAP.md`
 §9.1–§9.2.1, and moves tolerance from the process and step onto the item. Those sections,
 `JOBWORK_CORE_WALKTHROUGH.md` and `JOBWORK_UI_FIELD_SOURCES.md` are edited in place **after** the code

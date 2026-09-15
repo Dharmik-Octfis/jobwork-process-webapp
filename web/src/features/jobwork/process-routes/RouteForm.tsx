@@ -69,7 +69,6 @@ function toFormSteps(route?: Partial<Route>): RouteStepData[] {
       isPrimary: Boolean(row.isPrimary),
     })),
     expectedYield: step.expectedYield === null ? null : Number(step.expectedYield),
-    tolerancePct: step.tolerancePct === null ? null : Number(step.tolerancePct),
     remarks: step.remarks,
   }));
 }
@@ -191,7 +190,8 @@ export function RouteForm({ initialData, onSubmit, isPending, onCancel, fieldErr
         <StepsGrid steps={steps} onChange={setSteps} errors={fieldErrors} showInputQty />
       </section>
 
-      <div className="form-actions-footer"
+      <div
+        className="form-actions-footer"
         style={{
           height: 44,
           boxSizing: 'border-box',

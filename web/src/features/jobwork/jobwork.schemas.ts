@@ -174,8 +174,8 @@ export interface StepItemRow {
   uomId?: string | null;
   /** Inputs, job orders only. */
   plannedQty?: number | null;
-  /** Inputs, job orders only. Blank falls through to the step's — fabric at 3%
-   * beside thread at 25%, because small quantities vary more. */
+  /** Inputs, job orders only. Copied from the item when it is picked; a blank row
+   * is filled with the item's default on save (landed-cost plan D10). */
   tolerancePct?: number | null;
   /** Outputs, job orders only. */
   expectedQty?: number | null;
@@ -212,7 +212,6 @@ export interface StepGridRow {
   inputs?: StepItemRow[];
   outputs?: StepItemRow[];
   expectedYield?: number | null;
-  tolerancePct?: number | null;
   /** Job orders only — a template has no quantity to plan. */
   plannedInputQty?: number | null;
   remarks?: string | null;
@@ -228,7 +227,6 @@ export const emptyStep = (): StepGridRow => ({
   inputs: [emptyStepItem()],
   outputs: [emptyStepItem()],
   expectedYield: null,
-  tolerancePct: null,
   plannedInputQty: null,
   remarks: null,
 });
@@ -372,9 +370,9 @@ export function primaryOutputIndex(rows: readonly StepItemRow[]): number {
  * 🔴 WHAT THE EXPECTED BOX WILL BE FILLED WITH IF IT IS LEFT BLANK — the client's
  * copy of the server's `derivedExpectedQty` (§6.3).
  *
- * Shown as a grey placeholder rather than written into the row, for the same
- * reason as the tolerance one: a value copied in freezes, and nothing could then
- * tell it apart from a number somebody typed on purpose.
+ * Shown as a grey placeholder rather than written into the row: a value copied in
+ * freezes, and nothing could then tell it apart from a number somebody typed on
+ * purpose.
  *
  * `null` means the server will store nothing either, and the box is genuinely
  * asking. That happens on exactly the case worth asking about — the output's unit
@@ -538,7 +536,7 @@ export const stepItemRowSchema = z.object({
   itemId: z.string(),
   uomId: z.string().nullable(),
   plannedQty: decimalString.optional(),
-  /** Inputs only — blank falls through to the step's. */
+  /** Inputs only — copied from the item on the job order (landed-cost plan D10). */
   tolerancePct: decimalString.optional(),
   expectedQty: decimalString.optional(),
   fromStock: z.boolean().optional(),

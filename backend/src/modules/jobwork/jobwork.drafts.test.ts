@@ -99,7 +99,6 @@ async function makeOrder() {
         rate: 10,
         inputs: [{ itemId: greyId }],
         outputs: [{ itemId: dyedId, isPrimary: true }],
-        tolerancePct: 5,
       },
       {
         processId: finishing.id,
@@ -121,7 +120,6 @@ async function makeOrder() {
       rateBasis: step.rateBasis as 'per_issued_unit' | 'per_received_unit' | null,
       inputs: step.inputs.map((row) => ({ itemId: row.itemId })),
       outputs: step.outputs.map((row) => ({ itemId: row.itemId, isPrimary: row.isPrimary })),
-      tolerancePct: step.tolerancePct === null ? null : Number(step.tolerancePct),
       plannedInputQty: index === 0 ? 1000 : null,
     })),
   });

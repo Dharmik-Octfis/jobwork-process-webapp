@@ -72,9 +72,9 @@ export const stepInputRowSchema = z.object({
    * batch-tracked items get the picker, and planning without naming batches stays
    * perfectly valid. */
   plannedBatches: z.array(plannedBatchRowSchema).optional(),
-  /** Over-issue allowance for THIS item. Null falls through to the step's —
-   * which is why it is nullable and not defaulted: 0 means no tolerance at all
-   * and must be distinguishable from "not set" (§2.5). */
+  /** Over-issue allowance for THIS item. Left out, the server copies the item's
+   * default (landed-cost plan D10); 0 means no tolerance at all and must stay
+   * distinguishable from "not set". */
   tolerancePct: z.coerce.number().min(0).max(100).nullable().optional(),
 });
 
@@ -148,7 +148,6 @@ export const jobOrderStepSchema = z.object({
   outputs: z.array(stepOutputRowSchema).optional(),
 
   expectedYield: z.coerce.number().positive().nullable().optional(),
-  tolerancePct: z.coerce.number().min(0).max(100).nullable().optional(),
   plannedInputQty: z.coerce.number().min(0).nullable().optional(),
 
   remarks: z.string().trim().max(2000).nullable().optional(),

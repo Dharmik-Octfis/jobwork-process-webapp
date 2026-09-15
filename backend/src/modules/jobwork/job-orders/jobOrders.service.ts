@@ -227,8 +227,9 @@ interface ResolvedInput {
   itemId: string;
   uomId: string | null;
   plannedQty: number | null;
-  /** Null falls through to the step's at issue time — never defaulted here, or
-   * "not set" and "no tolerance at all" become the same value. */
+  /** A blank row is filled from the item's `defaultTolerancePct` in `buildSteps` —
+   * copied, not linked, so editing the item later never loosens a running order's
+   * limit (landed-cost plan D10). 0 = none allowed; null = unchecked. */
   tolerancePct: number | null;
   fromStock: boolean;
   /** The planner's batch note. Empty for every untracked item and for anyone who
@@ -392,10 +393,9 @@ function classifyStepInputs(
  * Fill each step's blanks from the Process master — the last link of the default
  * chain (§2.5), running Process → route step → job order step → document.
  *
- * `??`, never `||`. A tolerance of 0 means "no tolerance at all" and must not
- * fall through to the process's 2%; a rate of 0 means free-of-charge and must
- * not be replaced either. The distinction between "unset" and "zero" is the
- * whole reason these columns are nullable.
+ * `??`, never `||`: a rate of 0 means free-of-charge and must not be replaced.
+ * Tolerance is not filled here — it is the item's, copied per input row in
+ * `buildSteps` (landed-cost plan D10).
  *
  * The items are NOT set here — they are two lists now (`resolveStepRows`), and
  * the units that follow them cannot be known until every step's items are. See
@@ -403,19 +403,12 @@ function classifyStepInputs(
  */
 function applyStepDefaults(
   step: JobOrderStepInput,
-  process: {
-    name: string;
-    rateBasis: string;
-    defaultTolerancePct: Prisma.Decimal | null;
-  },
+  process: { name: string; rateBasis: string },
 ): JobOrderStepInput & { processNameSnapshot: string } {
   return {
     ...step,
     processNameSnapshot: process.name,
     rateBasis: step.rateBasis ?? (process.rateBasis as JobOrderStepInput['rateBasis']),
-    tolerancePct:
-      step.tolerancePct ??
-      (process.defaultTolerancePct === null ? null : Number(process.defaultTolerancePct)),
   };
 }
 
@@ -780,7 +773,6 @@ async function buildSteps(
       name: true,
       rateBasis: true,
       itemChanges: true,
-      defaultTolerancePct: true,
     },
   });
   const byId = new Map(processes.map((p) => [p.id, p]));
@@ -829,14 +821,25 @@ async function buildSteps(
   const chainItems = itemIds.length
     ? await tx.item.findMany({
         where: { id: { in: itemIds }, organizationId, isDeleted: false },
-        select: { id: true, stockingUomId: true },
+        select: { id: true, stockingUomId: true, defaultTolerancePct: true },
       })
     : [];
   const stockingUomByItem = new Map(chainItems.map((item) => [item.id, item.stockingUomId]));
+  const toleranceByItem = new Map(
+    chainItems.map((item) => [
+      item.id,
+      item.defaultTolerancePct === null ? null : Number(item.defaultTolerancePct),
+    ]),
+  );
 
   const withUnits = resolved.map((step) => ({
     ...step,
-    resolvedInputs: applyRowUnits(step.resolvedInputs, stockingUomByItem),
+    // A blank row takes the item's tolerance as a COPY (landed-cost plan D10), so a
+    // later edit to the item never loosens this order's limit. `??`: 0 stays 0.
+    resolvedInputs: applyRowUnits(step.resolvedInputs, stockingUomByItem).map((row) => ({
+      ...row,
+      tolerancePct: row.tolerancePct ?? toleranceByItem.get(row.itemId) ?? null,
+    })),
     resolvedOutputs: applyRowUnits(step.resolvedOutputs, stockingUomByItem),
   }));
 
@@ -863,7 +866,6 @@ async function buildSteps(
       rate: step.rate ?? null,
       rateBasis: step.rateBasis ?? null,
       expectedYield: step.expectedYield ?? null,
-      tolerancePct: step.tolerancePct ?? null,
       plannedInputQty: step.plannedInputQty,
       remarks: step.remarks?.trim() || null,
       customFields: step.customFields,

@@ -150,7 +150,6 @@ const cellReadOnly: React.CSSProperties = {
  * `Select`, which renders a button with no id to point `htmlFor` at — the control
  * carries its own `ariaLabel` instead. The native inputs do get real labels. */
 
-
 const iconButton: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
@@ -211,17 +210,6 @@ interface ItemListProps {
   /** The per-item over-issue box. Job orders only — separate from `showQty`
    * because a route carries a default quantity but no tolerance. */
   showTolerance?: boolean;
-  /**
-   * 🔴 The STEP's tolerance, shown greyed inside each blank row's box.
-   *
-   * Blank on a row does not mean "no tolerance" — it means "use the step's"
-   * (`jobIssues.service.ts` resolves `row.tolerancePct ?? step.tolerancePct`), and
-   * an empty box reads as exactly the opposite. A placeholder rather than a value
-   * written into the row: a copy freezes at the moment it is made, so changing the
-   * step afterwards would strand stale numbers that nothing could distinguish from
-   * ones somebody typed deliberately.
-   */
-  stepTolerancePct?: number | null;
   /**
    * …and the same trick on the quantity box: what the server will store if this
    * row is left blank, or `null` when it will store nothing and the box is really
@@ -294,7 +282,6 @@ function ItemList({
   portalMenus,
   showQty,
   showTolerance,
-  stepTolerancePct,
   qtyPlaceholderFor,
   disabled,
   stepIndex,
@@ -436,6 +423,11 @@ function ItemList({
                       update(rowIndex, {
                         itemId: item?.id ?? '',
                         uomId: item ? unitOfItem(item) : null,
+                        // A COPY of the item's tolerance, re-taken on every pick, so
+                        // editing the item later never loosens this order (D10).
+                        ...(isInput && showTolerance
+                          ? { tolerancePct: item?.defaultTolerancePct ?? null }
+                          : {}),
                       });
                     }}
                     placeholder="Select an item…"
@@ -510,8 +502,8 @@ function ItemList({
                   </div>
                 )}
 
-                {/* Blank means "use the step's" — fabric at 3% beside thread at
-                    25%, because small quantities vary more. */}
+                {/* Per item — fabric at 3% beside thread at 25%, because small
+                    quantities vary more. Copied from the item when it is picked. */}
                 {showTolerance && isInput && (
                   <div style={{ flex: '0 0 66px' }}>
                     <label htmlFor={`${qtyId}-tol`} style={srOnly}>
@@ -531,14 +523,17 @@ function ItemList({
                         })
                       }
                       disabled={disabled}
-                      /* The step's own figure, greyed. Blank here means "use the
-                         step's", and an empty box reads as "no tolerance" — the
-                         opposite of what it does. */
-                      placeholder={stepTolerancePct != null ? String(stepTolerancePct) : 'tol %'}
+                      /* A blank row is saved with the item's default (a row copied
+                         from a route has none yet), so that is the grey figure. */
+                      placeholder={
+                        itemById.get(row.itemId)?.defaultTolerancePct != null
+                          ? String(itemById.get(row.itemId)?.defaultTolerancePct)
+                          : 'tol %'
+                      }
                       title={
-                        stepTolerancePct != null
-                          ? `Over-issue allowance for this item. Left blank it uses the step’s ${stepTolerancePct}%.`
-                          : 'Over-issue allowance for this item. Blank uses the step’s, and the step has none set.'
+                        itemById.get(row.itemId)?.defaultTolerancePct != null
+                          ? `Over-issue allowance for this item. Left blank it saves the item’s ${itemById.get(row.itemId)?.defaultTolerancePct}%.`
+                          : 'Over-issue allowance for this item. Left blank there is no limit — the item has no default.'
                       }
                       style={cellInput}
                     />
@@ -963,7 +958,10 @@ export function StepsGrid<T extends StepGridRow>({
                 }}
               >
                 {/* 1. Process */}
-                <div className="form-field-grid" style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}>
+                <div
+                  className="form-field-grid"
+                  style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
+                >
                   <span style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>Process*</span>
                   <div style={{ width: '100%' }}>
                     <ProcessSelect
@@ -984,11 +982,6 @@ export function StepsGrid<T extends StepGridRow>({
                                 ]
                               : step.outputs,
                           rateBasis: step.rateBasis ?? process.rateBasis,
-                          tolerancePct:
-                            step.tolerancePct ??
-                            (process.defaultTolerancePct === null
-                              ? null
-                              : Number(process.defaultTolerancePct)),
                         })
                       }
                       disabled={readOnly}
@@ -999,34 +992,11 @@ export function StepsGrid<T extends StepGridRow>({
                   </div>
                 </div>
 
-                {/* 2. Tolerance */}
-                <div className="form-field-grid" style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}>
-                  <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }} htmlFor={field('tolerance')}>
-                    Tolerance % — all items
-                  </label>
-                  <div style={{ width: '100%' }}>
-                    <input
-                      id={field('tolerance')}
-                      type="number"
-                      onWheel={blurOnWheel}
-                      step="0.001"
-                      min="0"
-                      max="100"
-                      value={step.tolerancePct ?? ''}
-                      onChange={(e) =>
-                        update(index, {
-                          tolerancePct: e.target.value === '' ? null : Number(e.target.value),
-                        })
-                      }
-                      disabled={readOnly}
-                      style={{ ...cellInput, width: '100%' }}
-                      title="How much over the plan may be issued. Any item can override it on its own row."
-                    />
-                  </div>
-                </div>
-
                 {/* 3. Done by */}
-                <div className="form-field-grid" style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}>
+                <div
+                  className="form-field-grid"
+                  style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
+                >
                   <span style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>Done by</span>
                   <div style={{ width: '100%' }}>
                     <Select
@@ -1049,7 +1019,10 @@ export function StepsGrid<T extends StepGridRow>({
                 </div>
 
                 {/* 4. Processor */}
-                <div className="form-field-grid" style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}>
+                <div
+                  className="form-field-grid"
+                  style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
+                >
                   <span style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
                     {step.processorType === 'internal' ? 'Work centre' : 'Processor'}
                   </span>
@@ -1098,8 +1071,14 @@ export function StepsGrid<T extends StepGridRow>({
                 </div>
 
                 {/* 5. Rate */}
-                <div className="form-field-grid" style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}>
-                  <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }} htmlFor={field('rate')}>
+                <div
+                  className="form-field-grid"
+                  style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
+                >
+                  <label
+                    style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}
+                    htmlFor={field('rate')}
+                  >
                     Rate
                   </label>
                   <div style={{ width: '100%' }}>
@@ -1111,7 +1090,9 @@ export function StepsGrid<T extends StepGridRow>({
                       min="0"
                       value={step.rate ?? ''}
                       onChange={(e) =>
-                        update(index, { rate: e.target.value === '' ? null : Number(e.target.value) })
+                        update(index, {
+                          rate: e.target.value === '' ? null : Number(e.target.value),
+                        })
                       }
                       disabled={readOnly}
                       style={{ ...cellInput, width: '100%' }}
@@ -1119,8 +1100,13 @@ export function StepsGrid<T extends StepGridRow>({
                   </div>
                 </div>
 
-                <div className="form-field-grid" style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}>
-                  <span style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>Rate basis</span>
+                <div
+                  className="form-field-grid"
+                  style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
+                >
+                  <span style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
+                    Rate basis
+                  </span>
                   <div style={{ width: '100%' }}>
                     <Select
                       value={step.rateBasis ?? ''}
@@ -1171,7 +1157,6 @@ export function StepsGrid<T extends StepGridRow>({
                   portalMenus={portalMenus}
                   showQty={showPlannedQty || showInputQty}
                   showTolerance={showPlannedQty}
-                  stepTolerancePct={step.tolerancePct ?? null}
                   disabled={readOnly}
                   stepIndex={index}
                   stepNumber={stepNo}

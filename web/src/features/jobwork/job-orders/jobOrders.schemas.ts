@@ -30,7 +30,6 @@ export const jobOrderStepSchema = z.object({
   rate: decimalString,
   rateBasis: z.string().nullable(),
   expectedYield: decimalString,
-  tolerancePct: decimalString,
   plannedInputQty: decimalString,
   status: z.string(),
   remarks: z.string().nullable(),
@@ -85,14 +84,16 @@ export type JobOrder = z.infer<typeof jobOrderSchema>;
 
 export const jobOrderWithStepsSchema = z.object({
   id: z.string(),
-  steps: z.array(
-    z.object({
-      id: z.string(),
-      seq: z.number(),
-      processNameSnapshot: z.string(),
-      processorNameSnapshot: z.string().nullable(),
-    })
-  ).default([]),
+  steps: z
+    .array(
+      z.object({
+        id: z.string(),
+        seq: z.number(),
+        processNameSnapshot: z.string(),
+        processorNameSnapshot: z.string().nullable(),
+      }),
+    )
+    .default([]),
 });
 
 export type JobOrderWithSteps = z.infer<typeof jobOrderWithStepsSchema>;
@@ -298,7 +299,6 @@ export interface JobOrderStepData {
   inputs?: StepItemRow[];
   outputs?: StepItemRow[];
   expectedYield?: number | null;
-  tolerancePct?: number | null;
   plannedInputQty?: number | null;
   remarks?: string | null;
 }

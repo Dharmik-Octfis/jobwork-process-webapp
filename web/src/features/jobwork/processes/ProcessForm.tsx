@@ -1,4 +1,3 @@
-import { blurOnWheel } from '../../../components/ui/blurOnWheel';
 import { Controller, useForm } from 'react-hook-form';
 import { Select } from '../../../components/ui/Select';
 import { RATE_BASIS_OPTIONS, type CreateProcessData, type Process } from './processes.schemas';
@@ -60,10 +59,6 @@ export function ProcessForm({ initialData, onSubmit, isPending, onCancel }: Proc
       description: initialData?.description ?? '',
       itemChanges: initialData?.itemChanges ?? false,
       rateBasis: initialData?.rateBasis ?? 'per_issued_unit',
-      defaultTolerancePct:
-        initialData?.defaultTolerancePct === null || initialData?.defaultTolerancePct === undefined
-          ? null
-          : Number(initialData.defaultTolerancePct),
     },
   });
 
@@ -72,15 +67,6 @@ export function ProcessForm({ initialData, onSubmit, isPending, onCancel }: Proc
       ...data,
       code: data.code?.trim() || null,
       description: data.description?.trim() || null,
-      // An empty tolerance is null, not 0 — "no default" and "no tolerance at
-      // all" are different answers, and 0 would silently block every receipt
-      // that is a gram over.
-      defaultTolerancePct:
-        data.defaultTolerancePct === null ||
-        data.defaultTolerancePct === undefined ||
-        Number.isNaN(data.defaultTolerancePct)
-          ? null
-          : Number(data.defaultTolerancePct),
     });
   };
 
@@ -199,30 +185,6 @@ export function ProcessForm({ initialData, onSubmit, isPending, onCancel }: Proc
           />
         </div>
 
-        <div style={{ marginBottom: 20 }}>
-          <label style={labelStyle} htmlFor="process-tolerance">
-            Default Tolerance %
-          </label>
-          <input
-            id="process-tolerance"
-            type="number"
-            onWheel={blurOnWheel}
-            step="0.001"
-            min="0"
-            max="100"
-            {...register('defaultTolerancePct', {
-              setValueAs: (v) => (v === '' || v === null ? null : Number(v)),
-              min: { value: 0, message: 'Tolerance cannot be negative' },
-              max: { value: 100, message: 'Tolerance cannot exceed 100%' },
-            })}
-            style={inputStyle}
-            placeholder="Leave blank for no default"
-          />
-          {errors.defaultTolerancePct && (
-            <span style={errorStyle}>{errors.defaultTolerancePct.message}</span>
-          )}
-        </div>
-
         {/*
           ⚠️ "Default Issue Unit" and "Default Receive Unit" are not asked any
           more. A step transacts in its ITEMS' stocking units (§5.1), so an
@@ -236,7 +198,8 @@ export function ProcessForm({ initialData, onSubmit, isPending, onCancel }: Proc
         */}
       </section>
 
-      <div className="form-actions-footer"
+      <div
+        className="form-actions-footer"
         style={{
           height: 44,
           boxSizing: 'border-box',

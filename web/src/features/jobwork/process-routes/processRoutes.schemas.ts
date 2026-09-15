@@ -26,7 +26,6 @@ export const routeStepSchema = z.object({
   rate: decimalString,
   rateBasis: z.string().nullable(),
   expectedYield: decimalString,
-  tolerancePct: decimalString,
   remarks: z.string().nullable(),
 
   /** 🔴 What the step consumes and produces (§5.7). The only place the items live
@@ -79,7 +78,6 @@ export interface RouteStepData {
   inputs?: StepItemRow[];
   outputs?: StepItemRow[];
   expectedYield?: number | null;
-  tolerancePct?: number | null;
   remarks?: string | null;
 }
 

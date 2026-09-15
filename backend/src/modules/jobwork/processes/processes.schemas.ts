@@ -32,13 +32,7 @@ export const createProcessSchema = openApiRegistry.register(
 
     rateBasis: z.enum(RATE_BASES).optional(),
 
-    /**
-     * Percent. Nullable because "no default" is a real answer and is NOT the same
-     * as 0, which means "no tolerance at all". Capped at 100 — a tolerance above
-     * that would let a step receive more than twice what it issued without a
-     * warning, which is a data-entry error every time.
-     */
-    defaultTolerancePct: z.coerce.number().min(0).max(100).nullable().optional(),
+    // No tolerance here any more: it is a property of the ITEM (landed-cost plan D10).
   }),
 );
 

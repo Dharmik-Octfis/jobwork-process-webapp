@@ -240,7 +240,6 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
       name: 'Dyeing',
       // The same roll comes back, so goods can be received taka by taka.
       rateBasis: 'per_issued_unit',
-      defaultTolerancePct: 5,
     });
 
     const cutting = await createNewProcess(orgId, {
@@ -260,7 +259,6 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
           rate: 12,
           inputs: [{ itemId: greyId }],
           outputs: [{ itemId: dyedId, isPrimary: true }],
-          tolerancePct: 5,
         },
         {
           processId: cutting.id,
@@ -300,7 +298,6 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
         inputs: step.inputs.map((row) => ({ itemId: row.itemId })),
         outputs: step.outputs.map((row) => ({ itemId: row.itemId, isPrimary: row.isPrimary })),
         expectedYield: step.expectedYield === null ? null : Number(step.expectedYield),
-        tolerancePct: step.tolerancePct === null ? null : Number(step.tolerancePct),
         // The quantity is per item now; step 1's principal row carries the run.
         plannedInputQty: index === 0 ? 5000 : null,
       })),
@@ -1326,11 +1323,10 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
           processId: stitching.id,
           processorId: cutterId,
           inputs: [
-            { itemId: shirtId, plannedQty: 100 },
-            { itemId: threadId, plannedQty: 5 },
+            { itemId: shirtId, plannedQty: 100, tolerancePct: 0 },
+            { itemId: threadId, plannedQty: 5, tolerancePct: 0 },
           ],
           outputs: [{ itemId: shirtsId, isPrimary: true }],
-          tolerancePct: 0,
         },
       ],
     });

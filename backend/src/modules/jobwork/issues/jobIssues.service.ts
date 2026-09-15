@@ -230,11 +230,10 @@ const QTY_EPSILON = new Prisma.Decimal('0.00005');
  * `step.plannedInputQty` is the principal input's copy of the same number and is
  * the fallback until Migration A's backfill has reached every step.
  *
- * 🔴 THE PERCENTAGE IS PER ITEM TOO, falling through to the step's. Fabric may
- * allow 3% while thread allows 25% — small quantities vary more — and one
- * percentage across three items is either too tight for one or meaningless for
- * another. `??`, never `||`: a row that says 0 means no tolerance at all and
- * must not fall through to the step's 5%.
+ * 🔴 THE PERCENTAGE IS THE ROW'S AND NOTHING ELSE (landed-cost plan D10). Fabric
+ * may allow 3% while thread allows 25% — small quantities vary more. The row was
+ * copied from the item when the job order was saved; the step-level tolerance it
+ * used to fall through to is gone. A row that says 0 means no tolerance at all.
  *
  * An item with no plan is not checked, and neither is one where nothing set a
  * percentage. "Nobody said how much thread" is not "zero thread is allowed", and
@@ -243,7 +242,7 @@ const QTY_EPSILON = new Prisma.Decimal('0.00005');
 async function assertWithinTolerance(
   tx: TenantClient,
   organizationId: string,
-  step: { id: string; tolerancePct: Prisma.Decimal | null; plannedInputQty: Prisma.Decimal | null },
+  step: { id: string; plannedInputQty: Prisma.Decimal | null },
   qtyByItem: ReadonlyMap<string, Prisma.Decimal>,
   overrideReason: string | null | undefined,
 ) {
@@ -269,7 +268,7 @@ async function assertWithinTolerance(
       (itemId === principalItemId || inputs.length === 0 ? step.plannedInputQty : null);
     if (!planned || planned.lessThanOrEqualTo(0)) continue;
 
-    const tolerancePct = row?.tolerancePct ?? step.tolerancePct;
+    const tolerancePct = row?.tolerancePct ?? null;
     if (tolerancePct === null) continue;
 
     const already = await tx.jobIssueLine.aggregate({
