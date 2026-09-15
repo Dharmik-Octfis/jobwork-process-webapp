@@ -73,7 +73,7 @@ Almost every "why is it built like that?" question resolves to one of these two.
 ### 1.1 A job order is a SNAPSHOT, not a link
 
 When a job order is created from a route, the route is read **exactly once** and never again. Every
-value — process name, rate, processor — is _copied_ into the job order's own rows.
+value — process name, processor, each output's rate — is _copied_ into the job order's own rows.
 
 This is why `job_order_steps` carries `processNameSnapshot` and `processorNameSnapshot` beside the
 ids. It looks redundant. It is not: **the rate on a released order is a number somebody agreed with a
@@ -105,13 +105,13 @@ A Process is a single operation your shop does or buys: Dyeing, Cutting, Stitchi
 once. It holds _defaults_ and _behavioural flags_ — never quantities, never a price for a specific
 job.
 
-| Field                 | Source | What it decides                                                                                                                                                 |
-| --------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`                | typed  | Unique per organisation. Deleting and re-creating "Dyeing" **revives** the old row rather than failing — a soft-deleted row still holds its unique key          |
-| `code`, `description` | typed  | Free text. Nothing derives meaning from either                                                                                                                  |
-| `itemChanges`         | typed  | **Does what comes back differ from what went in?** Cutting: yes (fabric → panels). Washing: no. Drives whether the form seeds the output as a copy of the input |
-| `rateBasis`           | typed  | `per_issued_unit` \| `per_received_unit` — do you pay for what you sent or for what came back? Copied down to each step, overridable there                      |
-| `defaultTolerancePct` | typed  | The over-issue allowance a step inherits when it states none. 🔴 `null` ≠ `0` — null means "no default set", zero means "no tolerance whatsoever"               |
+| Field                     | Source | What it decides                                                                                                                                                 |
+| ------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                    | typed  | Unique per organisation. Deleting and re-creating "Dyeing" **revives** the old row rather than failing — a soft-deleted row still holds its unique key          |
+| `code`, `description`     | typed  | Free text. Nothing derives meaning from either                                                                                                                  |
+| `itemChanges`             | typed  | **Does what comes back differ from what went in?** Cutting: yes (fabric → panels). Washing: no. Drives whether the form seeds the output as a copy of the input |
+| ~~`rateBasis`~~           | —      | **Gone, 2026-09-15.** Every charge is rate × accepted qty on an output row (§4.4). The column is dropped by landed-cost Migration 2                             |
+| ~~`defaultTolerancePct`~~ | —      | **Gone, 2026-09-15.** Tolerance belongs to the ITEM (`items.defaultTolerancePct`) and is copied onto each consumed row (§4.3)                                   |
 
 ---
 
@@ -126,12 +126,12 @@ Each step lists what it **consumes** and what it **produces** — as two lists, 
 Stitching consumes panels _and_ thread _and_ buttons, and returns shirts _and_ rejects. One item in,
 one item out was never enough to describe real work.
 
-| Table                | One row is                | Key fields                                                                                                                             |
-| -------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `routes`             | The template header       | `name`, `code`, `description`                                                                                                          |
-| `route_steps`        | One operation in sequence | `seq` (1…n), `processId`, `processorType`, `processorId`, `workCentreLocationId`, `rate`, `rateBasis`, `expectedYield`, `tolerancePct` |
-| `route_step_inputs`  | What the step consumes    | `seq`, `itemId`, `uomId`, `plannedQty` — the quantity this shop _usually_ runs                                                         |
-| `route_step_outputs` | What the step produces    | `seq`, `itemId`, `uomId`, `isPrimary` — 🔴 **no quantities at all**                                                                    |
+| Table                | One row is                | Key fields                                                                                                          |
+| -------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `routes`             | The template header       | `name`, `code`, `description`                                                                                       |
+| `route_steps`        | One operation in sequence | `seq` (1…n), `processId`, `processorType`, `processorId`, `workCentreLocationId`, `expectedYield`                   |
+| `route_step_inputs`  | What the step consumes    | `seq`, `itemId`, `uomId`, `plannedQty` — the quantity this shop _usually_ runs                                      |
+| `route_step_outputs` | What the step produces    | `seq`, `itemId`, `uomId`, `isPrimary`, `rate` — the suggested charge per accepted unit. 🔴 **No quantities at all** |
 
 **Why outputs carry no quantity.** What comes back is a per-run answer. A template that guessed it
 would put a number on the receipt screen nobody had reason to believe. The consumed side carries a
@@ -179,9 +179,9 @@ nothing to the ledger.
 | `processorType`                        | typed          | `vendor` \| `customer` \| `internal`. Internal means in-house, so a work centre replaces the vendor                            |
 | `processorId`, `processorNameSnapshot` | **snapshot**   | Who does the work. Name frozen — a vendor deleted next year must still print on this order                                     |
 | `workCentreLocationId`                 | typed          | Only for `internal`. Mutually exclusive with `processorId`                                                                     |
-| `rate`, `rateBasis`                    | typed          | What you pay. Blank `rateBasis` inherits the process's                                                                         |
+| ~~`rate`, `rateBasis`~~                | —              | **Gone, 2026-09-15** — the rate is on each output row (§4.4). Dropped by Migration 2                                           |
 | `expectedYield`                        | typed          | The conversion ratio when the unit changes — 0.6 turns 4,800 M into 2,880 PCS. Not on the grid today; arrives via route or API |
-| `tolerancePct`                         | typed          | The step's over-issue allowance. Each consumed item may override it on its own row                                             |
+| ~~`tolerancePct`~~                     | —              | **Gone, 2026-09-15** — tolerance is per consumed row (§4.3). Dropped by Migration 2                                            |
 | `plannedInputQty`                      | **derived**    | A copy of the principal input's quantity, kept in step with it                                                                 |
 | `status`                               | **derived**    | `pending → issued → partially_received → completed`, or `short_closed`                                                         |
 
@@ -193,26 +193,31 @@ nothing to the ledger.
 
 ### 4.3 What a step consumes — `job_order_step_inputs`
 
-| Field             | Source       | Role                                                                                                                                                                                                  |
-| ----------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `seq`             | renumbered   | Row order. **Row 1 is the principal input** — what the step is fundamentally about                                                                                                                    |
-| `itemId`, `uomId` | **forced**   | 🔴 The unit is always the **item's own stocking unit**, never chosen. A document disagreeing with the ledger about units is how a challan and the stock record describe one movement two ways         |
-| `plannedQty`      | typed        | How much to consume. Left blank on a chain-fed row, it takes whatever the steps above still have spare                                                                                                |
-| `tolerancePct`    | typed        | Per item, because small quantities vary proportionally more — fabric at 3% beside thread at 25%. Blank inherits the step's, and the box shows the step's figure greyed so blank never reads as "none" |
-| `fromStock`       | **computed** | **Where does this item come from?** `false` = an earlier step in this order produces it. `true` = it comes off the shelf. Computed at save by walking the earlier steps; a client cannot send it      |
+| Field             | Source       | Role                                                                                                                                                                                                                                                                                   |
+| ----------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `seq`             | renumbered   | Row order. **Row 1 is the principal input** — what the step is fundamentally about                                                                                                                                                                                                     |
+| `itemId`, `uomId` | **forced**   | 🔴 The unit is always the **item's own stocking unit**, never chosen. A document disagreeing with the ledger about units is how a challan and the stock record describe one movement two ways                                                                                          |
+| `plannedQty`      | typed        | How much to consume. Left blank on a chain-fed row, it takes whatever the steps above still have spare. 🔴 Required, with every output's `expectedQty`, before the step's first challan posts — every receipt is costed from the two (§6.5)                                            |
+| `tolerancePct`    | typed        | Per item, because small quantities vary proportionally more — fabric at 3% beside thread at 25%. Copied from the item's `defaultTolerancePct` when the item is picked, editable; a blank row is refilled from the item on save. The over-issue ceiling reads this row and nothing else |
+| `fromStock`       | **computed** | **Where does this item come from?** `false` = an earlier step in this order produces it. `true` = it comes off the shelf. Computed at save by walking the earlier steps; a client cannot send it                                                                                       |
 
 ### 4.4 What a step produces — `job_order_step_outputs`
 
-| Field             | Source               | Role                                                                                                                                                                                                                |
-| ----------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `seq`             | renumbered           | Row order                                                                                                                                                                                                           |
-| `itemId`, `uomId` | **forced**           | Same rule — the item's own stocking unit                                                                                                                                                                            |
-| `expectedQty`     | typed **or derived** | How much should come back. Derived only where there is a basis: a stated yield, or the same unit on both sides. Metres in and pieces out with no yield has **no derivable answer**, so the box stays empty and asks |
-| `isPrimary`       | **computed**         | Exactly one per step — **the output that absorbs the step's cost**. Offcuts are a by-product and carry none. Defaults to the first row                                                                              |
+| Field             | Source               | Role                                                                                                                                                                                                        |
+| ----------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `seq`             | renumbered           | Row order                                                                                                                                                                                                   |
+| `itemId`, `uomId` | **forced**           | Same rule — the item's own stocking unit                                                                                                                                                                    |
+| `expectedQty`     | typed **or derived** | How much should come back. Defaulted only on a step with a **single output** in the input's unit; otherwise typed. With the inputs' `plannedQty` it states the plan ratio every receipt is costed by (§6.5) |
+| `isPrimary`       | **computed**         | Exactly one per step — the row a receipt header's totals describe. Defaults to the first row. It no longer carries the step's cost (§6.5)                                                                   |
+| `rate`            | typed                | Charge per **accepted** unit of this output, copied from the route output. `null` = none agreed, `0` = free                                                                                                 |
+| `components`      | **snapshot**         | A composite output's recipe, frozen into `job_order_step_output_components` at save — what receipts draw by. Editing the item's recipe afterwards changes no running order                                  |
 
-🔴 **Why one output must be primary.** The step's whole cost — material consumed plus the vendor's
-charge — has to land somewhere. Two primaries would pay for the operation twice; none would lose the
-cost entirely. It cannot be split by quantity either, because 2,880 PCS and 80 KG have no ratio.
+🔴 **What a step may look like, checked at save (V1–V3).** A step consuming more than one item may only
+produce **composites**, whose recipe says what each output is made from, and every component must be
+one of the step's inputs. An output that is itself one of the inputs — washing fabric with detergent —
+passes straight through and is exempt. A single-input step whose output changes unit has that output
+only. Those are what let every output carry its own cost without comparing pieces with kilograms
+(§6.5).
 
 ---
 
@@ -251,7 +256,7 @@ You do not issue "100 metres" — you issue **100 metres from batch BATCH-0042**
 storekeeper has to be at the rack: the planner, days earlier, could not know which batches would be on
 the shelf today.
 
-### 5.3 Three guards before it saves
+### 5.3 The guards before it saves
 
 1. **The chain.** A step past the first cannot issue until the step before it has returned
    _something_. Until then there is physically nothing to send on. **Any amount unblocks it**, so
@@ -260,7 +265,8 @@ the shelf today.
 2. **The item set.** Every line must name an item the step declared it consumes. You can send less,
    or skip an item entirely; you cannot invent one.
 3. **The tolerance ceiling.** Per item, cumulative across every challan for that step:
-   `planned × (1 + tolerancePct ÷ 100)`. Over it the save is refused until a reason is typed. Rework
+   `planned × (1 + the row's tolerancePct ÷ 100)`; a row with no percentage is unchecked. Over it the
+   save is refused until a reason is typed. Rework
    issues are excluded from the running total.
 4. **The batch, when the item is batch-tracked.** 🔴 An item at `inventoryTracking = 'batch'` cannot
    be issued without naming the batch it goes out of — `resolveLines` returns 400 with
@@ -270,6 +276,11 @@ the shelf today.
    refuses batch-less opening stock, so the two screens now say the same thing. Items at
    `inventoryTracking = 'none'` are unaffected — a bare quantity is exactly what that setting means
    (§10.5).
+5. **The plan (V4).** A posted first-pass challan is refused while any input row has no planned
+   quantity or any output no expected one. Once a challan exists the step cannot be re-planned, and
+   every receipt is costed from those numbers (§6.5). Drafts and rework challans are exempt.
+6. **The step is still open (R9).** Nothing is issued against — and no challan is cancelled on — a
+   completed or closed-short step, whose remainder has already been written off (§8.1).
 
 ### 5.4 The ledger writes — two rows per line
 
@@ -316,15 +327,16 @@ itself.
 | `locationId`                                                                                  | Where the goods landed — ours again, so a godown                                                                                            |
 | `outputBatchId`, `reworkBatchId`                                                              | ⚠️ The **first** accepted / rework batch of the primary output — see §6.4. Shortcuts back; `Batch.parentBatchIds` is what carries genealogy |
 | `totalIssuedQty` … `totalReturnedQty`                                                         | The six summed totals. Refused unless the split adds up                                                                                     |
+| `consumedValue`, `processChargeTotal`                                                         | What the consumes posted, and the charges on top — the receipt's cost, stored as posted (§6.5)                                              |
 | `status`                                                                                      | `posted` \| `cancelled`. A cancellation posts **reversing** rows; it never deletes anything                                                 |
 
 ### 6.3 Three child tables, different lengths
 
-| Table                        | Answers                                                        | Notable fields                                                                                                      |
-| ---------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `job_receipt_lines`          | What was **consumed** — closes the challan lines that went out | `jobIssueId`, `jobIssueLineId`, `issuedQty`, `receivedQty`, the four buckets                                        |
-| `job_receipt_outputs`        | What **returned** — one row per item that came back            | `itemId`, `receivedQty`, the four buckets, `isPrimary`, `valueShare`, `outputBatchId`, `reasonId`, `responsibility` |
-| `job_receipt_output_batches` | **Which batches** each returned row landed in — §6.4           | `kind` (`accepted` \| `rework`), `batchId`, `qty`, `isNewBatch`                                                     |
+| Table                        | Answers                                                        | Notable fields                                                                                                                                  |
+| ---------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `job_receipt_lines`          | What was **consumed** — closes the challan lines that went out | `jobIssueId`, `jobIssueLineId`, `issuedQty`, `receivedQty`, the four buckets                                                                    |
+| `job_receipt_outputs`        | What **returned** — one row per item that came back            | `itemId`, `receivedQty`, the four buckets, `isPrimary`, `rate`, `materialValue`, `processCharge`, `outputBatchId`, `reasonId`, `responsibility` |
+| `job_receipt_output_batches` | **Which batches** each returned row landed in — §6.4           | `kind` (`accepted` \| `rework`), `batchId`, `qty`, `isNewBatch`                                                                                 |
 
 The first two are separate because they are genuinely different lengths. Cutting consumes one fabric
 and returns panels, offcuts and waste; stitching consumes three items and returns two. One table
@@ -361,8 +373,9 @@ things:
   nobody received, and neither is recoverable from the document afterwards.
 - Accepted and rework **never share a batch**. Merged, the piece count rework has to be measured by
   is gone and the re-issue cannot send back only the pieces that failed.
-- Scrap and returned goods get **no batch at all** — scrap's cost stays inside the batch that
-  survived (§5.5) and returned goods never entered stock (§6.4 of the domain map).
+- Scrap and returned goods get **no batch at all** — a planned loss's cost stays inside the batches
+  that survived, what the receipts never used is written off at completion (§8.1), and returned
+  goods never entered stock (§6.4 of the domain map).
 - An existing batch must match on **item, unit, and the ownership pair**. The third is the dangerous
   one: merging customer-owned inward jobwork into own stock silently converts somebody else's goods
   into our asset.
@@ -397,6 +410,28 @@ this receipt** has taken quantity **out** of one. Quantity somebody else put _in
 must stay so: a batch created by an earlier receipt and topped up by this one carries that earlier
 `produce` forever.
 
+### 6.5 How a receipt is costed (landed cost, 2026-09-15)
+
+A receipt **no longer settles its challans in full**. It works out how much of each input the goods
+that came back used, consumes exactly that, and leaves the rest at the processor. The rules live in
+`receipts/landedCost.ts`; `docs/JOBWORK_LANDED_COST_PLAN.md` §3 numbers them R1–R9.
+
+| Question                                  | Answer                                                                                                                                                                                                          |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| How much of an input one unit draws (`w`) | The output's recipe quantity, from the snapshot on the job order, for a composite · 1 for a plain output of a single-input step · 1 against itself for an output that is also an input, and on a rework receipt |
+| The plan ratio (`k`)                      | `planned ÷ Σ(expected × w)` per input item — it carries the expected loss and, across a unit change, the conversion. Rework uses `k = 1`                                                                        |
+| Need                                      | `(accepted + rework) × w × k`, to 4 dp                                                                                                                                                                          |
+| Used                                      | The typed figure (refused above what is still out, or when nothing returned draws on the item), else `min(need, still out)` — a cap is a warning, never a refusal. Allocated oldest challan line first          |
+| Material value per row                    | Each input's consumed value split across the rows that draw on it **by need**, through `splitByQty`                                                                                                             |
+| Charge per row                            | `rate × accepted`. The rate on the receipt row, else the job order output's; `null` = ₹0                                                                                                                        |
+| Accepted vs rework                        | The row's material splits by quantity; the charge lands on accepted only                                                                                                                                        |
+| Stored                                    | `rate`, `materialValue`, `processCharge` on each output row; `consumedValue`, `processChargeTotal` on the header — never re-derived                                                                             |
+
+**What it refuses:** an item the step's plan does not list (first pass); a composite output with no
+recipe frozen onto the job order; rework and first-pass challans on one receipt; any receipt, or
+receipt cancellation, on a completed or closed-short step. The Receive screen previews the same
+arithmetic per row (`receiptCostPreview`), but the server's figure is the one that posts.
+
 ---
 
 ## 7. Batches and the ledger
@@ -420,13 +455,14 @@ it was created later. Parentage lives in the array and nowhere else.
 
 ### 7.2 Movement types
 
-| Type                           | Written by               | Means                                             |
-| ------------------------------ | ------------------------ | ------------------------------------------------- |
-| `transfer_out` / `transfer_in` | Issue                    | Same goods, new location. Net zero                |
-| `consume`                      | Receipt                  | The issued material is used up at the processor   |
-| `produce`                      | Receipt                  | A new item exists, in a new batch, at your godown |
-| `receipt` / `opening`          | Purchase / opening stock | Stock enters the books from outside               |
-| `reversal`                     | Cancellation             | The opposite of a posted row. Never a delete      |
+| Type                           | Written by                  | Means                                                                                             |
+| ------------------------------ | --------------------------- | ------------------------------------------------------------------------------------------------- |
+| `transfer_out` / `transfer_in` | Issue                       | Same goods, new location. Net zero                                                                |
+| `consume`                      | Receipt                     | What the returned goods used, at the processor                                                    |
+| `produce`                      | Receipt                     | A new item exists, in a new batch, at your godown                                                 |
+| `receipt` / `opening`          | Purchase / opening stock    | Stock enters the books from outside                                                               |
+| `reversal`                     | Cancellation                | The opposite of a posted row. Never a delete                                                      |
+| `scrap`                        | Complete step / Close short | What was still at the processor, written off as job order loss (`sourceDocType = job_order_step`) |
 
 ---
 
@@ -436,23 +472,45 @@ Both `job_orders.status` and `job_order_steps.status` are recomputed from the do
 them. The API refuses to accept either — a list page saying "completed" beside an overview that adds
 up the receipts and disagrees is worse than no status at all.
 
-| Step status          | Means                                                              |
-| -------------------- | ------------------------------------------------------------------ |
-| `pending`            | Nothing issued yet                                                 |
-| `issued`             | Material is out; nothing accounted for yet                         |
-| `partially_received` | Some items back, some still at the processor                       |
-| `completed`          | **Every item** issued has been fully accounted for                 |
-| `short_closed`       | A human decision: finished, and the numbers do not balance. Sticky |
+| Step status          | Means                                                                |
+| -------------------- | -------------------------------------------------------------------- |
+| `pending`            | Nothing issued yet                                                   |
+| `issued`             | Material is out; nothing accounted for yet                           |
+| `partially_received` | Some items back, some still at the processor                         |
+| `completed`          | A human marked it complete. What was still out is written off (§8.1) |
+| `short_closed`       | A human decision: finished, and the numbers do not balance. Sticky   |
 
-🔴 **Completion is judged per item, on the input side** — consumed against issued, never received
-against issued. Both are in the input's own unit, so the comparison means something on every step.
-Judging by what came back would work for dyeing (metres in, metres out) and be nonsense for cutting,
-where a perfectly finished step would sit at `partially_received` forever because 2,880 is less than
-4,950.
+🔴 **Completion is a decision, not a sum** (2026-08-24). Arithmetic decides everything below it —
+`issued` and `partially_received` are judged per item, on the input side, consumed against issued,
+never received against issued, because both are in the input's own unit (2,880 pieces against 4,950
+metres compares nothing). But a step whose paperwork balances is still `partially_received` until
+somebody presses **Mark as complete** — and with landed costing the paperwork rarely balances anyway,
+because receipts leave unplanned loss at the processor.
 
 The order rolls up from its steps: `draft` until the first issue, then `in_progress`, then
 `completed`. `short_closed` and `cancelled` are **sticky** — once set, the roll-up returns early and
 the label never changes on its own.
+
+### 8.1 Completing a step writes off what is left (2026-09-15)
+
+**Writes:** `stock_ledger` (`scrap`, one row per open challan line) · `job_order_steps`
+
+Receipts consume only what the plan says the goods used, so a step ends with material still standing
+at the processor. **Mark as complete** is somebody saying none of it is coming back:
+
+- every posted challan line's remainder — `qty − used by posted receipts − already written off` — is
+  scrapped where it stands, same batch and same package, **however small**, so a completed step
+  leaves exactly nothing at the processor;
+- it is valued at that batch's running cost there, and that value is **job order loss** — reported
+  on the Overview per input item, never loaded back onto output batches that may already have moved
+  on. Customer-owned stock writes off at zero value;
+- each row carries `sourceDocType = job_order_step`, `sourceDocId` = the step and `sourceDocLineId` =
+  the challan line, which is how `closedQtyByIssueLine` counts it as no longer out.
+
+It is **refused while a draft challan or receipt is parked on the step** (a draft there could never
+post), and refused — rather than posted into a negative balance — when the ledger holds less at the
+processor than the challans say is out. **Close short** writes off every step it closes the same way.
+There is no reopen: afterwards the step accepts no issue, receipt, or cancellation.
 
 ---
 
@@ -490,42 +548,45 @@ pieces.
 Step 1's status flips to `issued`. Step 2 is still blocked — nothing has come back from step 1, so
 there is physically nothing to cut.
 
-### Day 9 — the dyer returns 4,950 M
+### Day 9 — the dyer returns 4,930 M
 
-Of which 4,900 accepted, 30 rework, 20 scrap.
+4,900 accepted, 30 rework.
 
 The 4,900 accepted metres came back as **two dye lots**, kept apart, so the operator allocates them
 to two batches in the Add Batches grid: 3,000 to `DY-23` and 1,900 to `DY-24`.
 
 | Table                        | Rows | Contents                                                                                 |
 | ---------------------------- | ---- | ---------------------------------------------------------------------------------------- |
-| `job_receipts`               | 1    | `RC-0019` · received 4,950 · accepted 4,900 · rework 30 · scrap 20                       |
-| `job_receipt_lines`          | 1    | Closes issue line from `JI-0031` · `issuedQty` 5,000                                     |
+| `job_receipts`               | 1    | `RC-0019` · received 4,930 · accepted 4,900 · rework 30 · cost stored                    |
+| `job_receipt_lines`          | 1    | Against `JI-0031`'s line · `issuedQty` 4,979.7980                                        |
 | `job_receipt_outputs`        | 1    | Dyed Fabric · `isPrimary` · the four buckets                                             |
 | `job_receipt_output_batches` | 3    | accepted → `DY-23` 3,000, `DY-24` 1,900 · rework → `DY-23/RW` 30 — all `isNewBatch` true |
 | `batches`                    | 3    | All three, each with `parentBatchIds = [BATCH-0088]`                                     |
 
-| Movement  | Batch        | Location      |    Qty | Note                  |
-| --------- | ------------ | ------------- | -----: | --------------------- |
-| `consume` | `BATCH-0088` | Sunrise Dyers | −5,000 | The grey is used up   |
-| `produce` | `DY-23`      | Main Godown   | +3,000 | Accepted, first lot   |
-| `produce` | `DY-24`      | Main Godown   | +1,900 | Accepted, second lot  |
-| `produce` | `DY-23/RW`   | Main Godown   |    +30 | Rework, kept separate |
+| Movement  | Batch        | Location      |         Qty | Note                             |
+| --------- | ------------ | ------------- | ----------: | -------------------------------- |
+| `consume` | `BATCH-0088` | Sunrise Dyers | −4,979.7980 | What the goods used, by the plan |
+| `produce` | `DY-23`      | Main Godown   |      +3,000 | Accepted, first lot              |
+| `produce` | `DY-24`      | Main Godown   |      +1,900 | Accepted, second lot             |
+| `produce` | `DY-23/RW`   | Main Godown   |         +30 | Rework, kept separate            |
 
-The pot — ₹250,000 consumed plus the process charge — is split across the four surviving metres by
-quantity, and the **last batch takes the remainder** rather than its own rounded share, so the total
-posted equals the pot exactly. Scrap takes none of it: the 20 scrapped metres' cost stays inside the
-batches that survived, which is what makes 4,900 good metres carry what 5,000 cost.
+**How much grey this used comes from the plan** (§6.5): 5,000 M planned for 4,950 M expected, so
+every metre back used 1.0101 M, and 4,930 back used **4,979.7980 M** — the planned 1% shrinkage
+included. That is all that is consumed, worth ₹248,989.90. The material splits between accepted and
+rework by quantity; the output's rate × 4,900 accepted is added to the accepted side only; and across
+the two accepted batches the **last batch takes the remainder**, so the batches hold exactly what was
+posted.
 
-The missing 50 metres never appear as a row — they are **issued minus received**, which is exactly
-how wastage is reported. Step 1 becomes `completed`; step 2 unblocks; the order moves to
-`in_progress`.
+The other **20.2020 M stays at Sunrise Dyers** — still out, not wastage. The next delivery can use
+it; if none comes, completing the step writes it off as job order loss (§8.1). Step 1 is
+`partially_received`; step 2 unblocks; the order moves to `in_progress`.
 
 **Where the balance stands:**
 
 ```
-Grey Fabric @ Main Godown      0
-Dyed Fabric @ Main Godown  4,930   (3,000 DY-23 + 1,900 DY-24 + 30 rework)
+Grey Fabric @ Main Godown          0
+Grey Fabric @ Sunrise Dyers  20.2020   (still out — written off if the step is completed)
+Dyed Fabric @ Main Godown      4,930   (3,000 DY-23 + 1,900 DY-24 + 30 rework)
 ```
 
 ### Day 12 — the dyer sends the rest of DY-23
@@ -572,8 +633,8 @@ relationship between them is per-job.
 
 ### 10.3 `null` is not `0`
 
-Repeatedly and deliberately. `tolerancePct = null` means "nothing set, inherit"; `0` means "no
-tolerance whatsoever". `rate = 0` means free of charge, not unpriced. Every inheritance in this
+Repeatedly and deliberately. `tolerancePct = null` on a consumed row means "not checked"; `0` means "no
+tolerance whatsoever". An output's `rate = null` means none agreed and charges ₹0; `rate = 0` means agreed as free. Every inheritance in this
 module uses `??`, never `||`, for exactly this reason.
 
 ### 10.4 A soft-deleted row still holds its unique key
