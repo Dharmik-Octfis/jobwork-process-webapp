@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate,  useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { X } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { Spinner } from '../../../components/ui/Spinner';
 import { fetchJobOrderById, updateJobOrder } from './jobOrders.api';
 import type { UpdateJobOrderData } from './jobOrders.schemas';
@@ -25,10 +26,10 @@ import { JobOrderForm } from './JobOrderForm';
  * refuses a stale form, so this page never has to be the thing that is right.
  */
 export function EditJobOrder() {
-  const navigate = useNavigate();  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { orgId, id } = useParams<{ orgId: string; id: string }>();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [message, setMessage] = useState<string | null>(null);
 
   /**
    * Back to the LIST with this order still selected, not to the standalone
@@ -55,8 +56,12 @@ export function EditJobOrder() {
       navigate(backPath);
     },
     onError: (error: AxiosError<{ message?: string; details?: Record<string, string> }>) => {
-      setFieldErrors(error.response?.data?.details ?? {});
-      setMessage(error.response?.data?.message ?? 'Failed to update job order');
+      const details = error.response?.data?.details ?? {};
+      setFieldErrors(details);
+      // The field's own words say more than the envelope's generic message.
+      toast.error(
+        Object.values(details)[0] ?? error.response?.data?.message ?? 'Failed to update job order',
+      );
     },
   });
 
@@ -137,34 +142,18 @@ export function EditJobOrder() {
           <X size={20} />
         </button>
       </header>
-      {message && (
-        <p
-          style={{
-            fontSize: 13,
-            color: '#b91c1c',
-            background: '#fef2f2',
-            borderBottom: '1px solid #fecaca',
-            padding: '10px 24px',
-            margin: 0,
-          }}
-          role="alert"
-        >
-          {message}
-        </p>
-      )}
-        <JobOrderForm
-          initialData={jobOrder}
-          // Material In posted its ledger rows when the order was created. There
-          // is no second one: correcting posted stock is an adjustment, not an edit.
-          onSubmit={(data) => {
-            setFieldErrors({});
-            setMessage(null);
-            mutation.mutate(data);
-          }}
-          isPending={mutation.isPending}
-          onCancel={() => navigate(backPath)}
-          fieldErrors={fieldErrors}
-        />
+      <JobOrderForm
+        initialData={jobOrder}
+        // Material In posted its ledger rows when the order was created. There
+        // is no second one: correcting posted stock is an adjustment, not an edit.
+        onSubmit={(data) => {
+          setFieldErrors({});
+          mutation.mutate(data);
+        }}
+        isPending={mutation.isPending}
+        onCancel={() => navigate(backPath)}
+        fieldErrors={fieldErrors}
+      />
     </div>
   );
 }

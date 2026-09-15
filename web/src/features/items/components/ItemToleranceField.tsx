@@ -12,12 +12,14 @@ interface ItemToleranceFieldProps {
  */
 export function ItemToleranceField({ value, onChange, error }: ItemToleranceFieldProps) {
   return (
+    // Same label column as the Inventory Tracking row above, so the two inputs line up.
     <div
-      style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, flexWrap: 'wrap' }}
+      className="form-field-grid"
+      style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: 12 }}
     >
       <label
         htmlFor="item-default-tolerance"
-        style={{ fontSize: 13, color: '#4b5563', fontWeight: 500, whiteSpace: 'nowrap' }}
+        style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}
       >
         Tolerance %
       </label>
@@ -37,6 +39,8 @@ export function ItemToleranceField({ value, onChange, error }: ItemToleranceFiel
           title="How far over the plan a job order may issue this item. Copied onto each job order when the item is picked."
           style={{
             width: '140px',
+            maxWidth: '100%',
+            boxSizing: 'border-box',
             padding: '8px 12px',
             borderRadius: '4px',
             border: error ? '1px solid #ef4444' : '1px solid #d1d5db',

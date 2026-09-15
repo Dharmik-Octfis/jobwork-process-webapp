@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
+import { toast } from 'react-hot-toast';
 import { DateInput } from '../../../components/ui/DateInput';
 import { Select } from '../../../components/ui/Select';
 import { SplitButton } from '../../../components/ui/SplitButton';
@@ -183,6 +184,9 @@ const numberCell: React.CSSProperties = {
   minHeight: 28,
 };
 
+// Errors are this border plus a toast — never a sentence under the field (CLAUDE.md → Frontend).
+const numberCellError: React.CSSProperties = { ...numberCell, borderColor: '#ef4444' };
+
 const sectionHeading: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 600,
@@ -256,7 +260,10 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
     }
     return typed;
   });
-  const [error, setError] = useState<string | null>(null);
+  /** The server's `details`, keyed by payload path (`outputs.0.rate`, `issueIds`). */
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const errorAt = (path: string) =>
+    Object.entries(fieldErrors).find(([key]) => key === path || key.startsWith(`${path}.`))?.[1];
   /**
    * What could not be carried over from the draft. Derived, not state: it is a
    * fact about the draft that never changes while this form is open.
@@ -869,8 +876,14 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
       }
       onReceived(data.id, saveAsDraft);
     },
-    onError: (err: AxiosError<{ message?: string }>) => {
-      setError(err.response?.data?.message ?? 'Could not post this receipt');
+    onMutate: () => setFieldErrors({}),
+    onError: (err: AxiosError<{ message?: string; details?: Record<string, string> }>) => {
+      const details = err.response?.data?.details ?? {};
+      setFieldErrors(details);
+      // "Please check the highlighted fields" names no field — lead with the first one's reason.
+      toast.error(
+        Object.values(details)[0] ?? err.response?.data?.message ?? 'Could not post this receipt',
+      );
     },
   });
 
@@ -986,23 +999,6 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
         </div>
       )}
 
-      {error && (
-        <p
-          style={{
-            fontSize: 13,
-            color: '#b91c1c',
-            background: '#fef2f2',
-            border: '1px solid #fecaca',
-            borderRadius: 4,
-            padding: '8px 12px',
-            margin: '0 0 16px 0',
-          }}
-          role="alert"
-        >
-          {error}
-        </p>
-      )}
-
       {/* Amber, not red: nothing has gone wrong — this says which part of the
           draft could not be carried over, and it is the one thing the user has
           to redo before receiving. */}
@@ -1069,6 +1065,7 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                     options={receiveInto}
                     placeholder={isLoadingLocations ? 'Loading…' : 'Select a location…'}
                     disabled={receiveInto.length === 0}
+                    hasError={Boolean(fieldErrors.locationId)}
                     ariaLabel="Received into location"
                     fullWidth
                     portal
@@ -1159,7 +1156,8 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                     gap: 8,
                     alignItems: 'center',
                     padding: '8px 12px',
-                    border: '1px solid #e2e8f0',
+                    // No challan ticked posts no lines — the server refuses both keys.
+                    border: `1px solid ${fieldErrors.issueIds || fieldErrors.lines ? '#ef4444' : '#e2e8f0'}`,
                     borderRadius: 4,
                     fontSize: 13,
                     color: '#334155',
@@ -1268,6 +1266,10 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                       </tr>
                     )}
                     {effectiveReturned.map((row) => {
+                      // Index in the posted `outputs`, which drops rows with no item.
+                      const outputPath = `outputs.${effectiveReturned
+                        .filter((r) => r.itemId)
+                        .indexOf(row)}`;
                       const cell = (field: 'receivedQty' | 'reworkQty', label: string) => (
                         <td style={td}>
                           <input
@@ -1281,7 +1283,9 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                             onChange={(e) =>
                               updateReturned(row.key, { [field]: Number(e.target.value) || 0 })
                             }
-                            style={numberCell}
+                            style={
+                              fieldErrors[`${outputPath}.${field}`] ? numberCellError : numberCell
+                            }
                           />
                         </td>
                       );
@@ -1315,7 +1319,7 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                                     background: '#fef3c7',
                                     color: '#92400e',
                                   }}
-                                  title={`This item is ${trackingLabel.singular.toLowerCase()}-tracked, so the ${trackingLabel.plural.toLowerCase()} it lands in have to be named.`}
+                                  title={`${trackingLabel.plural} must be named`}
                                 >
                                   {trackingLabel.singular} required
                                 </span>
@@ -1346,7 +1350,9 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                                   rate: e.target.value === '' ? null : Number(e.target.value),
                                 })
                               }
-                              style={numberCell}
+                              style={
+                                fieldErrors[`${outputPath}.rate`] ? numberCellError : numberCell
+                              }
                             />
                           </td>
                           <td style={{ ...td, fontSize: 12, lineHeight: 1.45 }}>
@@ -1410,7 +1416,12 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                               placeholder="Reason"
                               maxLength={2000}
                               onChange={(e) => updateReturned(row.key, { remarks: e.target.value })}
-                              style={{ ...numberCell, textAlign: 'left' }}
+                              style={{
+                                ...(fieldErrors[`${outputPath}.remarks`]
+                                  ? numberCellError
+                                  : numberCell),
+                                textAlign: 'left',
+                              }}
                             />
                           </td>
                         </tr>
@@ -1490,7 +1501,8 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.map((row) => {
+                      {rows.map((row, lineIndex) => {
+                        const usedError = errorAt(`lines.${lineIndex}`);
                         const used = row.itemId ? cost?.used.get(row.itemId) : undefined;
                         const edited = row.itemId ? (usedEdits[row.itemId] ?? null) : null;
                         return (
@@ -1520,7 +1532,7 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                                     [itemId]: e.target.value === '' || !(qty > 0) ? null : qty,
                                   }));
                                 }}
-                                style={numberCell}
+                                style={usedError ? numberCellError : numberCell}
                               />
                               {used && edited !== null && (
                                 <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 3 }}>

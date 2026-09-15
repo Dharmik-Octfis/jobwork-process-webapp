@@ -136,6 +136,8 @@ const cellInput: React.CSSProperties = {
   minHeight: 30,
 };
 
+const cellInputError: React.CSSProperties = { ...cellInput, borderColor: '#ef4444' };
+
 /** A value the server owns. Same box as `cellInput` so the row does not jump, but
  * flat and grey so it reads as a stated fact rather than an empty control. Not
  * focusable on purpose — there is nothing here to change. */
@@ -371,11 +373,7 @@ function ItemList({
               cursor: disabled || mirrorRows.length === 0 ? 'default' : 'pointer',
               whiteSpace: 'nowrap',
             }}
-            title={
-              mirrorRows.length === 0
-                ? 'List what the step consumes first, then this copies it here.'
-                : 'Copy every item from CONSUMES into PRODUCES. Each row stays editable; unticking clears them.'
-            }
+            title={mirrorRows.length === 0 ? 'Add consumed items first' : 'Copy consumed items'}
           >
             <input
               type="checkbox"
@@ -399,8 +397,38 @@ function ItemList({
           <p style={{ fontSize: 11, color: '#94a3b8', margin: 0, lineHeight: 1.5 }}>{emptyHint}</p>
         )}
 
+        {/* Same flex bases and wrap as the rows below, so each caption breaks onto
+            the same line as its box on a narrow screen. The boxes keep their own
+            screen-reader labels, hence aria-hidden. */}
+        {rows.length > 0 && (
+          <div
+            aria-hidden="true"
+            style={{
+              display: 'flex',
+              gap: 6,
+              flexWrap: 'wrap',
+              fontSize: 11,
+              fontWeight: 600,
+              color: '#64748b',
+            }}
+          >
+            <span style={{ flex: '2 1 150px', minWidth: 0 }}>Item</span>
+            <span style={{ flex: '0 0 62px' }}>Unit</span>
+            {showQty && (
+              <span style={{ flex: '0 0 84px' }}>{isInput ? 'Qty' : 'Qty (Expected)'}</span>
+            )}
+            {showTolerance && isInput && <span style={{ flex: '0 0 66px' }}>Tolerance</span>}
+            {showRate && !isInput && <span style={{ flex: '0 0 84px' }}>Rate</span>}
+            <span style={{ flex: '0 0 26px' }} />
+          </div>
+        )}
+
         {rows.map((row, rowIndex) => {
-          const rowError = errors?.[`steps.${stepIndex}.${side}.${rowIndex}.itemId`];
+          const rowKey = `steps.${stepIndex}.${side}.${rowIndex}`;
+          const fieldError = (field: string) => errors?.[`${rowKey}.${field}`];
+          const rowError = Object.entries(errors ?? {}).find(
+            ([key]) => key === rowKey || key.startsWith(`${rowKey}.`),
+          )?.[1];
           const unit = itemUnit(row.itemId);
           const badge = badgeFor(row, rowIndex);
           // Advisory, so it never blocks the button and never colours the box the
@@ -445,7 +473,7 @@ function ItemList({
                       });
                     }}
                     placeholder="Select an item…"
-                    hasError={Boolean(rowError)}
+                    hasError={Boolean(fieldError('itemId'))}
                     disabled={disabled}
                     portal={portalMenus}
                     name={`step-${stepIndex}-${side}-${rowIndex}-item`}
@@ -469,6 +497,7 @@ function ItemList({
                       onChange={(value) => update(rowIndex, { uomId: value || null })}
                       options={uomOptions}
                       disabled={disabled}
+                      hasError={Boolean(fieldError('uomId'))}
                       ariaLabel={`Step ${stepNumber} ${isInput ? 'input' : 'output'} ${rowIndex + 1} unit`}
                       minWidth={0}
                       portal={portalMenus}
@@ -501,26 +530,19 @@ function ItemList({
                          stops reading as "expect nothing". No placeholder means
                          the server stores nothing either and the box is genuinely
                          asking — see `derivedExpectedQty`. */
-                      /* On a job order a blank reads as NEEDED: the step's first
-                         challan cannot go out until every row has a quantity
-                         (landed-cost plan D11). A quiet marker, never a save error. */
                       placeholder={
                         derivedQty !== null
                           ? formatQty(derivedQty)
                           : isInput && !showTolerance
                             ? 'qty'
-                            : 'needed'
+                            : '100'
                       }
-                      title={
-                        isInput
-                          ? showTolerance
-                            ? 'How much of this item the step consumes — needed before its first challan can be issued.'
-                            : 'How much of this item the step consumes'
-                          : derivedQty !== null
-                            ? `How much of this item is expected back. Left blank it plans ${formatQty(derivedQty)} — the quantity that goes in.`
-                            : 'How much of this item is expected back — needed before this step’s first challan can be issued, and what every receipt is costed against.'
+                      title={isInput ? 'Quantity consumed' : 'Expected quantity'}
+                      style={
+                        fieldError(isInput ? 'plannedQty' : 'expectedQty')
+                          ? cellInputError
+                          : cellInput
                       }
-                      style={cellInput}
                     />
                   </div>
                 )}
@@ -553,12 +575,8 @@ function ItemList({
                           ? String(itemById.get(row.itemId)?.defaultTolerancePct)
                           : 'tol %'
                       }
-                      title={
-                        itemById.get(row.itemId)?.defaultTolerancePct != null
-                          ? `Over-issue allowance for this item. Left blank it saves the item’s ${itemById.get(row.itemId)?.defaultTolerancePct}%.`
-                          : 'Over-issue allowance for this item. Left blank there is no limit — the item has no default.'
-                      }
-                      style={cellInput}
+                      title="Over-issue allowance %"
+                      style={fieldError('tolerancePct') ? cellInputError : cellInput}
                     />
                   </div>
                 )}
@@ -583,9 +601,9 @@ function ItemList({
                         })
                       }
                       disabled={disabled}
-                      placeholder={unit ? `₹ / ${unit.label}` : '₹ / unit'}
-                      title={`Charge per accepted ${unit?.label ?? 'unit'} of this item. Leave blank if it is not agreed yet; 0 means done free.`}
-                      style={cellInput}
+                      placeholder="10"
+                      title={`Rate per ${unit?.label ?? 'unit'}`}
+                      style={fieldError('rate') ? cellInputError : cellInput}
                     />
                   </div>
                 )}
@@ -622,7 +640,8 @@ function ItemList({
                     {badge.text}
                   </span>
                 )}
-                {rowError && <span style={{ fontSize: 11, color: '#e54d4d' }}>{rowError}</span>}
+                {/* No error sentence here — the field goes red and the toast carries
+                    the message (CLAUDE.md → Frontend). */}
                 {/* Amber, not red, and it sits beside the badge rather than
                     replacing it: the row is saveable exactly as it stands. */}
                 {!rowError && warning && (
@@ -645,8 +664,8 @@ function ItemList({
                     disabled={disabled || !(row.plannedQty && row.plannedQty > 0)}
                     title={
                       row.plannedQty && row.plannedQty > 0
-                        ? `Note which ${trackingLabel.plural.toLowerCase()} this is planned to come out of. Nothing is reserved.`
-                        : `Enter a quantity first — ${trackingLabel.plural.toLowerCase()} are planned against it.`
+                        ? `Plan ${trackingLabel.plural.toLowerCase()}`
+                        : 'Enter a quantity first'
                     }
                     style={{
                       padding: 0,
@@ -926,16 +945,6 @@ export function StepsGrid<T extends StepGridRow>({
     <div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {steps.map((step, index) => {
-          /**
-           * A server error on either list is keyed to the row it landed on —
-           * over-planned quantity (§6.4), a repeated item, two primary outputs.
-           * Anything on this step turns the whole block red, so the step is
-           * findable before the row is.
-           */
-          const chainError = Object.entries(errors ?? {}).find(
-            ([key]) =>
-              key.startsWith(`steps.${index}.inputs`) || key.startsWith(`steps.${index}.outputs`),
-          )?.[1];
           // Position in the order, not in this array — they differ when appending.
           const stepNo = index + 1 + seqOffset;
           // Frozen: work has already gone out at or after this position (§6.6).
@@ -962,9 +971,10 @@ export function StepsGrid<T extends StepGridRow>({
             <div
               key={index}
               style={{
-                border: `1px solid ${chainError ? '#fecaca' : '#eef0f3'}`,
+                // Errors colour the field they belong to, never the whole step.
+                border: '1px solid #eef0f3',
                 borderRadius: 6,
-                background: chainError ? '#fef2f2' : '#fff',
+                background: '#fff',
               }}
             >
               <div
@@ -974,7 +984,7 @@ export function StepsGrid<T extends StepGridRow>({
                   justifyContent: 'space-between',
                   gap: 12,
                   padding: '8px 14px',
-                  background: chainError ? '#fef2f2' : '#f9f9fb',
+                  background: '#f9f9fb',
                   borderBottom: '1px solid #eef0f3',
                   borderTopLeftRadius: 6,
                   borderTopRightRadius: 6,
@@ -1121,6 +1131,7 @@ export function StepsGrid<T extends StepGridRow>({
                           ...workCentres.map((l) => ({ value: l.id, label: l.name })),
                         ]}
                         disabled={true}
+                        hasError={Boolean(errors?.[`steps.${index}.workCentreLocationId`])}
                         ariaLabel={`Step ${stepNo} work centre`}
                         fullWidth
                         portal={portalMenus}
@@ -1147,6 +1158,7 @@ export function StepsGrid<T extends StepGridRow>({
                                 }))),
                         ]}
                         disabled={readOnly}
+                        hasError={Boolean(errors?.[`steps.${index}.processorId`])}
                         ariaLabel={`Step ${stepNo} processor`}
                         fullWidth
                         portal={portalMenus}
