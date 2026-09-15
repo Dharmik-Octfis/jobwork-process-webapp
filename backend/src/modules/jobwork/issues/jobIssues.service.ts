@@ -983,6 +983,46 @@ export async function createNewJobIssue(
       if (notReady) throw ApiError.conflict(notReady);
     }
 
+    /**
+     * 🔴 THE PLAN MUST BE COMPLETE BEFORE MATERIAL LEAVES (landed-cost plan D11, V4).
+     *
+     * Every receipt is costed by planned input against expected output, and once a
+     * challan exists the step cannot be re-planned — so a gap left now can never be
+     * filled. Checked here and not at job order save, because a half-planned order
+     * must still save. Drafts send nothing; rework re-issues what came back rather
+     * than drawing on the plan.
+     */
+    if (!isRework && !asDraft) {
+      const plannedRows = await tx.jobOrderStepInput.findMany({
+        where: { organizationId, jobOrderStepId: step.id, isDeleted: false },
+        orderBy: { seq: 'asc' },
+        select: { plannedQty: true, item: { select: { name: true } } },
+      });
+      const expectedRows = await tx.jobOrderStepOutput.findMany({
+        where: { organizationId, jobOrderStepId: step.id, isDeleted: false },
+        orderBy: { seq: 'asc' },
+        select: { expectedQty: true, item: { select: { name: true } } },
+      });
+      const noPlanned = plannedRows
+        .filter((row) => !row.plannedQty || row.plannedQty.lessThanOrEqualTo(0))
+        .map((row) => row.item.name);
+      const noExpected = expectedRows
+        .filter((row) => !row.expectedQty || row.expectedQty.lessThanOrEqualTo(0))
+        .map((row) => row.item.name);
+      const gaps = [
+        ...(expectedRows.length === 0 ? ['it lists nothing it produces'] : []),
+        ...(noPlanned.length ? [`no planned quantity for ${noPlanned.join(', ')}`] : []),
+        ...(noExpected.length ? [`no expected quantity for ${noExpected.join(', ')}`] : []),
+      ];
+      if (gaps.length > 0) {
+        const message =
+          `Step ${step.seq} of ${step.jobOrder.jobOrderNumber} cannot send material yet: ` +
+          `${gaps.join('; ')}. Complete the plan on the job order first — every receipt is ` +
+          'costed from it.';
+        throw new ApiError(400, message, { plan: message });
+      }
+    }
+
     const allowed = await allowedItems(tx, organizationId, step, isRework);
     if (allowed.length === 0) {
       throw ApiError.badRequest(

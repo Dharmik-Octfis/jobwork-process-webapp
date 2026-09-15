@@ -10,7 +10,10 @@ order output rates, 7 route output rates and 101 input tolerances, and four step
 2026-09-15 — `jobOrders.stepShape.test.ts`: rate per output row, recipe snapshots, V1–V3, Expected
 defaulted only on a single-output step, and the grid's Rate column. By decision (2026-09-15) the step
 `rate` / `rateBasis` and `Process.rateBasis` are NOT removed yet — today's receipt costing still reads
-them, so they go in Phase 7 with the engine that replaces them. Everything after it is not built.** Agreed over 2026-09-12 → 14. This
+them, so they go in Phase 7 with the engine that replaces them. Phase 6 (§6.4, V4 and the §3 warnings)
+built 2026-09-15 — `jobIssues.planCheck.test.ts`: every first-pass post is checked (not only the
+first, which is equivalent once a step is locked), and a step listing no output at all is refused too.
+Everything after it is not built.** Agreed over 2026-09-12 → 14. This
 replaces the step-level `rate` / `rateBasis` cost model described in `JOBWORK_DOMAIN_AND_MODULE_MAP.md`
 §9.1–§9.2.1, and moves tolerance from the process and step onto the item. Those sections,
 `JOBWORK_CORE_WALKTHROUGH.md` and `JOBWORK_UI_FIELD_SOURCES.md` are edited in place **after** the code

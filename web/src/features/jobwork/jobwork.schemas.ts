@@ -340,6 +340,116 @@ export function overPlanWarning(
   return `Only ${formatQty(Math.max(spare, 0))} comes back from the steps above — the rest has to come from stock.`;
 }
 
+/** One side of a step's plan, in numbers — grid rows and saved rows both map to it. */
+export interface PlanInputRow {
+  itemId: string;
+  uomId?: string | null;
+  plannedQty?: number | null;
+}
+export interface PlanOutputRow {
+  itemId: string;
+  uomId?: string | null;
+  expectedQty?: number | null;
+}
+/** A composite's recipe; `null` for a plain item; `undefined` while not yet known. */
+export type RecipeLookup = (
+  itemId: string,
+) => readonly { componentItemId: string; qtyPerUnit: number }[] | null | undefined;
+
+/**
+ * 🔴 WHAT STOPS A STEP'S FIRST CHALLAN — the client's copy of the server's V4 check
+ * in `jobIssues.service.ts` (landed-cost plan D11). Item ids, so each screen names
+ * them its own way. Keep the two in step.
+ */
+export function planGaps(inputs: readonly PlanInputRow[], outputs: readonly PlanOutputRow[]) {
+  const listedOutputs = outputs.filter((row) => row.itemId);
+  return {
+    noOutputs: listedOutputs.length === 0,
+    noPlanned: inputs
+      .filter((row) => row.itemId && !(row.plannedQty && row.plannedQty > 0))
+      .map((row) => row.itemId),
+    noExpected: listedOutputs
+      .filter((row) => !(row.expectedQty && row.expectedQty > 0))
+      .map((row) => row.itemId),
+  };
+}
+
+/**
+ * 🔴 THE PLAN WARNINGS (landed-cost plan §3) — said, never enforced, keyed by the
+ * INPUT item they concern.
+ *
+ *   · less planned in than the expected output needs — fabric does stretch;
+ *   · Expected equal to Planned on a plain same-unit step — no loss is planned, so
+ *     shrinkage lands as job order loss instead of inside the landed cost;
+ *   · an input nothing produced is made from — written off at completion.
+ *
+ * What an output draws from an input is R1: itself when it passes straight through,
+ * its recipe quantity when it is a composite, 1 when it is a plain output of a
+ * single-input step. A plain output in a different unit carries a conversion, not a
+ * loss, so it is not compared. Nothing is said while any output's recipe is unknown —
+ * a guess here would be a false "nothing is made from this".
+ */
+export function planWarnings(
+  inputs: readonly PlanInputRow[],
+  outputs: readonly PlanOutputRow[],
+  recipeOf: RecipeLookup,
+): Map<string, string> {
+  const warnings = new Map<string, string>();
+  const ins = inputs.filter((row) => row.itemId);
+  const outs = outputs.filter((row) => row.itemId);
+  if (ins.length === 0 || outs.length === 0) return warnings;
+  const inputIds = new Set(ins.map((row) => row.itemId));
+  if (outs.some((out) => !inputIds.has(out.itemId) && recipeOf(out.itemId) === undefined)) {
+    return warnings;
+  }
+
+  const draw = (out: PlanOutputRow, inputId: string): { qty: number; plain: boolean } | null => {
+    if (inputIds.has(out.itemId)) return out.itemId === inputId ? { qty: 1, plain: true } : null;
+    const recipe = recipeOf(out.itemId);
+    if (recipe) {
+      const component = recipe.find((row) => row.componentItemId === inputId);
+      return component ? { qty: component.qtyPerUnit, plain: false } : null;
+    }
+    return ins.length === 1 ? { qty: 1, plain: true } : null;
+  };
+
+  for (const input of ins) {
+    const draws = outs
+      .map((out) => ({ out, by: draw(out, input.itemId) }))
+      .filter((row): row is { out: PlanOutputRow; by: { qty: number; plain: boolean } } =>
+        Boolean(row.by),
+      );
+    if (draws.length === 0) {
+      warnings.set(
+        input.itemId,
+        'Nothing listed as produced is made from this, so none of it is consumed — whatever is sent is written off when the step is completed.',
+      );
+      continue;
+    }
+
+    const planned = input.plannedQty;
+    if (!planned || draws.some((row) => !row.out.expectedQty)) continue;
+    const comparable = draws.every(
+      (row) => !row.by.plain || (row.out.uomId ?? null) === (input.uomId ?? null),
+    );
+    if (!comparable) continue;
+
+    const need = roundQty(draws.reduce((sum, row) => sum + row.out.expectedQty! * row.by.qty, 0));
+    if (roundQty(planned) < need) {
+      warnings.set(
+        input.itemId,
+        `${formatQty(planned)} planned, but the expected output needs ${formatQty(need)} — fine if it stretches, otherwise check the quantities.`,
+      );
+    } else if (roundQty(planned) === need && draws.every((row) => row.by.plain)) {
+      warnings.set(
+        input.itemId,
+        'Expected equals planned, so no loss is planned — any shrinkage will be booked as job order loss, not as part of the landed cost.',
+      );
+    }
+  }
+  return warnings;
+}
+
 /**
  * 🔴 WHERE THE STOCK IS STILL AWAY FROM US. Re-exported, not redefined: the list
  * now lives beside the `Location` type it tests (`configuration/locations`),
@@ -552,6 +662,11 @@ export const stepItemRowSchema = z.object({
   /** Inputs only. Hydrated with the batch's label and godown so the grid can render
    * a saved plan without a second round trip. */
   plannedBatches: z.array(plannedBatchReadSchema).default([]),
+  /** Outputs only, on the Overview payload — the composite's recipe frozen onto the
+   * step (§5.2), which the Issue screen's plan warnings read. */
+  components: z
+    .array(z.object({ componentItemId: z.string(), qtyPerUnit: decimalString }))
+    .default([]),
 });
 
 export type StepItemRowRead = z.infer<typeof stepItemRowSchema>;

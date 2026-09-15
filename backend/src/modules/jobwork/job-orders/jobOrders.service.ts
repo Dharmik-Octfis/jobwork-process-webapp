@@ -1070,7 +1070,16 @@ const STEP_OVERVIEW_INCLUDE = {
   outputs: {
     where: { isDeleted: false },
     orderBy: { seq: 'asc' },
-    include: ROW_OVERVIEW_INCLUDE,
+    include: {
+      ...ROW_OVERVIEW_INCLUDE,
+      // The frozen recipe (§5.2), scalars only — the Issue screen's plan warnings
+      // read what each output draws on from it.
+      components: {
+        where: { isDeleted: false },
+        orderBy: { seq: 'asc' },
+        select: { componentItemId: true, qtyPerUnit: true },
+      },
+    },
   },
   process: { select: { id: true, name: true, code: true } },
   workCentre: { select: { id: true, name: true } },

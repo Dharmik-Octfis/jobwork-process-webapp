@@ -553,6 +553,9 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
           processId: process.id,
           processorId: dyerId,
           inputs: [{ itemId: greyId, plannedQty: 200 }],
+          // A step must say what it produces before material leaves (V4); one
+          // output in the same unit takes its Expected from the plan.
+          outputs: [{ itemId: dyedId, isPrimary: true }],
         },
       ],
     });
@@ -583,6 +586,7 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
           processId: process.id,
           processorId: dyerId,
           inputs: [{ itemId: greyId, plannedQty: 100 }],
+          outputs: [{ itemId: dyedId, isPrimary: true }],
         },
       ],
     });
@@ -1454,7 +1458,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
             { itemId: dyedId, plannedQty: 100 },
             { itemId: shirtId, plannedQty: 50 },
           ],
-          outputs: [{ itemId: shirtsId, isPrimary: true }],
+          // Pieces from metres, so nothing defaults it — and the plan check (V4)
+          // would otherwise refuse before the batch rule this test is about.
+          outputs: [{ itemId: shirtsId, isPrimary: true, expectedQty: 50 }],
         },
       ],
     });
@@ -1512,7 +1518,10 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
             { itemId: threadId, plannedQty: 5 },
             { itemId: buttonId, plannedQty: 300 },
           ],
-          outputs: [{ itemId: shirtsId, isPrimary: true }, { itemId: rejectsId }],
+          outputs: [
+            { itemId: shirtsId, isPrimary: true, expectedQty: 95 },
+            { itemId: rejectsId, expectedQty: 5 },
+          ],
         },
       ],
     });
@@ -1653,7 +1662,10 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
           processId: stitching.id,
           processorId: cutterId,
           inputs: [{ itemId: shirtId, plannedQty: 100 }],
-          outputs: [{ itemId: shirtsId, isPrimary: true }, { itemId: rejectsId }],
+          outputs: [
+            { itemId: shirtsId, isPrimary: true, expectedQty: 90 },
+            { itemId: rejectsId, expectedQty: 10 },
+          ],
         },
       ],
     });

@@ -1,6 +1,6 @@
 import { blurOnWheel } from '../../components/ui/blurOnWheel';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { fetchAvailableBatches } from './batches/batches.api';
@@ -9,6 +9,7 @@ import { selectionKey } from './issues/batchSelection';
 import { ItemComboBox } from '../../components/ui/ItemComboBox';
 import { Select } from '../../components/ui/Select';
 import { useUoms } from '../inventory/uom/uom.api';
+import { compositeItemsApi } from '../inventory/composite-items/compositeItems.api';
 import { itemsApi } from '../items/items.api';
 import type { Item } from '../items/items.schemas';
 import { fetchVendors } from '../purchases/vendors/vendors.api';
@@ -25,8 +26,10 @@ import {
   feedsSteps,
   formatQty,
   overPlanWarning,
+  planWarnings,
   primaryOutputIndex,
   producedByStep,
+  type RecipeLookup,
   type StepGridRow,
   type StepItemRow,
 } from './jobwork.schemas';
@@ -499,15 +502,24 @@ function ItemList({
                          stops reading as "expect nothing". No placeholder means
                          the server stores nothing either and the box is genuinely
                          asking — see `derivedExpectedQty`. */
+                      /* On a job order a blank reads as NEEDED: the step's first
+                         challan cannot go out until every row has a quantity
+                         (landed-cost plan D11). A quiet marker, never a save error. */
                       placeholder={
-                        derivedQty !== null ? formatQty(derivedQty) : isInput ? 'qty' : 'expected'
+                        derivedQty !== null
+                          ? formatQty(derivedQty)
+                          : isInput && !showTolerance
+                            ? 'qty'
+                            : 'needed'
                       }
                       title={
                         isInput
-                          ? 'How much of this item the step consumes'
+                          ? showTolerance
+                            ? 'How much of this item the step consumes — needed before its first challan can be issued.'
+                            : 'How much of this item the step consumes'
                           : derivedQty !== null
                             ? `How much of this item is expected back. Left blank it plans ${formatQty(derivedQty)} — the quantity that goes in.`
-                            : 'How much of this item is expected back. It returns in a different unit from what goes in, so nothing can be assumed — state it, or the next step has no quantity to plan from.'
+                            : 'How much of this item is expected back — needed before this step’s first challan can be issued, and what every receipt is costed against.'
                       }
                       style={cellInput}
                     />
@@ -766,6 +778,41 @@ export function StepsGrid<T extends StepGridRow>({
   const uomById = new Map(uoms.map((u) => [u.id, u]));
 
   /**
+   * The live recipe of every composite the grid produces — the plan warnings read
+   * what each output is made from (landed-cost plan §3). One cached request per
+   * composite, on the composite pages' own key so an edit there refreshes it here.
+   * Job orders only: a route holds no quantities to warn about.
+   */
+  const compositeOutputIds = [
+    ...new Set(
+      steps
+        .flatMap((step) => (step.outputs ?? []).map((row) => row.itemId))
+        .filter((id) => id && itemById.get(id)?.itemStructure === 'composite'),
+    ),
+  ];
+  const recipeQueries = useQueries({
+    queries: compositeOutputIds.map((id) => ({
+      queryKey: ['compositeComponents', orgId, id],
+      queryFn: () => compositeItemsApi.getComponents(orgId!, id),
+      enabled: Boolean(orgId) && Boolean(showPlannedQty),
+    })),
+  });
+  const recipeByItem = new Map(
+    compositeOutputIds.map((id, i) => [id, recipeQueries[i]?.data] as const),
+  );
+  const recipeOf: RecipeLookup = (itemId) => {
+    const item = itemById.get(itemId);
+    if (!item) return undefined;
+    if (item.itemStructure !== 'composite') return null;
+    return recipeByItem
+      .get(itemId)
+      ?.map((row) => ({
+        componentItemId: row.componentItemId,
+        qtyPerUnit: Number(row.qtyPerUnit),
+      }));
+  };
+
+  /**
    * An item's stocking unit — the id a row carries and the label it prints.
    * `null` means the item cannot answer (no stocking uom yet), and the caller
    * then shows the dropdown, which is exactly what the server does
@@ -898,6 +945,10 @@ export function StepsGrid<T extends StepGridRow>({
           // Frozen: work has already gone out at or after this position (§6.6).
           const locked = index < lockedCount;
           const readOnly = disabled || locked;
+          // Job orders only; one map per step, read by every input row below (§3).
+          const stepWarnings = showPlannedQty
+            ? planWarnings(step.inputs ?? [], step.outputs ?? [], recipeOf)
+            : new Map<string, string>();
 
           /**
            * A step that lists no inputs of its own takes what the step above
@@ -1216,7 +1267,9 @@ export function StepsGrid<T extends StepGridRow>({
                      against and a note here could only be guesswork. */
                   warningFor={
                     showPlannedQty
-                      ? (row) => overPlanWarning(steps, index, row, priorSpare)
+                      ? (row) =>
+                          stepWarnings.get(row.itemId) ??
+                          overPlanWarning(steps, index, row, priorSpare)
                       : undefined
                   }
                   badgeFor={(row) => {
