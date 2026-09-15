@@ -25,8 +25,14 @@ breakdown. Phase 8 built 2026-09-15 — `jobOrders.writeOff.ts`, `jobOrders.comp
 completion and close short scrap the remainder at the processor as `job_order_step` rows, completion
 is refused while drafts exist, and a completed step refuses issues and challan cancels. Phase 9 built
 2026-09-15: the overview shows still-at-processor and written-off per input and running landed cost
-per accepted unit per output; tests 16 and the rest of 9 added. Phase 10 (Migration 2) and 11 (the
-docs) are not done, and no screen from phases 4–9 has been walked in a browser yet.** Agreed over 2026-09-12 → 14. This
+per accepted unit per output; tests 16 and the rest of 9 added. Phase 11 done 2026-09-15: the domain
+map's §9 and Appendix A, the core walkthrough and the UI field sources now describe this model, and the
+appendix figures were recomputed under it. Phase 10 (Migration 2) is written —
+`20260915072825_drop_step_rate_tolerance_and_basis`, with the eight fields removed from the Prisma
+schema — and applied to the developers' `jobwork_local` only (2026-09-15), where the suites, the RLS
+check and a read-only pass over QC's copied data all came back clean. It must not reach QC's
+`jobwork_dev` until jobwork.octfis.com runs this code. No screen from phases 4–9 has been walked in a
+browser yet.** Agreed over 2026-09-12 → 14. This
 replaces the step-level `rate` / `rateBasis` cost model described in `JOBWORK_DOMAIN_AND_MODULE_MAP.md`
 §9.1–§9.2.1, and moves tolerance from the process and step onto the item. Those sections,
 `JOBWORK_CORE_WALKTHROUGH.md` and `JOBWORK_UI_FIELD_SOURCES.md` are edited in place **after** the code
