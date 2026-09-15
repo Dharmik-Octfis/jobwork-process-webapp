@@ -47,6 +47,7 @@ export interface FilterField {
   key: string;
   label: string;
   dataType: FilterDataType;
+  group?: string;
   options?: { label: string; value: string | number }[];
   renderInput?: (props: { value: unknown; onChange: (val: unknown) => void }) => React.ReactNode;
 }

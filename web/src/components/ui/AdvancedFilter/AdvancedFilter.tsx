@@ -28,6 +28,7 @@ interface AdvancedFilterProps {
   onMatchTypeChange?: (matchType: 'any' | 'all') => void;
   align?: 'left' | 'right';
   leftOffset?: number;
+  liveUpdate?: boolean;
 }
 
 export function AdvancedFilter({
@@ -40,6 +41,7 @@ export function AdvancedFilter({
   leftOffset = 0,
   triggerLabel,
   triggerIcon,
+  liveUpdate = false,
 }: AdvancedFilterProps & { triggerLabel?: string; triggerIcon?: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
   const [localConditions, setLocalConditions] = useState<FilterCondition[]>(conditions);
@@ -76,7 +78,12 @@ export function AdvancedFilter({
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as Element;
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(target) &&
+        !target.closest('[role="listbox"]')
+      ) {
         setIsOpen(false);
       }
     }
@@ -152,8 +159,33 @@ export function AdvancedFilter({
           </div>
 
           <div className="filter-body">
-            {fields.map((field) => {
-              const condition = localConditions.find((c) => c.field === field.key);
+            {(() => {
+              const groupedFields = fields.reduce((acc, field) => {
+                const group = field.group || 'Other';
+                if (!acc[group]) acc[group] = [];
+                acc[group].push(field);
+                return acc;
+              }, {} as Record<string, FilterField[]>);
+
+              const hasGroups = Object.keys(groupedFields).length > 1 || (Object.keys(groupedFields).length === 1 && Object.keys(groupedFields)[0] !== 'Other');
+
+              return Object.entries(groupedFields).map(([group, groupFields], groupIndex) => (
+                <div key={group}>
+                  {hasGroups && group !== 'Other' && (
+                    <div style={{ 
+                      padding: groupIndex > 0 ? '16px 12px 6px 12px' : '8px 12px 6px 12px', 
+                      fontSize: '11px', 
+                      fontWeight: 600, 
+                      color: '#94a3b8', 
+                      letterSpacing: '0.04em',
+                      textTransform: 'uppercase', 
+                      background: 'transparent'
+                    }}>
+                      {group}
+                    </div>
+                  )}
+                  {groupFields.map((field) => {
+                    const condition = localConditions.find((c) => c.field === field.key);
               const operators = getOperatorsForType(field.dataType);
               const currentOperator = condition?.operator || operators[0].value;
               const isExpanded = expandedFields.has(field.key);
@@ -173,6 +205,9 @@ export function AdvancedFilter({
                   });
                 }
                 setLocalConditions(newConditions);
+                if (liveUpdate) {
+                  onChange(newConditions.filter(hasValidValue));
+                }
               };
 
               const isNoVal = isNoValueOperator(currentOperator);
@@ -357,6 +392,9 @@ export function AdvancedFilter({
                 </div>
               );
             })}
+                </div>
+              ));
+            })()}
           </div>
 
           <div className="filter-footer">

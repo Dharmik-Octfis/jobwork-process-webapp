@@ -7,6 +7,10 @@ export interface InventoryValuationQuery {
   status?: 'all' | 'active' | 'inactive';
   itemName?: string;
   categoryName?: string;
+  locationId?: string;
+  sku?: string;
+  hsnCode?: string;
+  itemCustomFields?: Record<string, unknown>;
   page?: number;
   perPage?: number;
 }
@@ -14,8 +18,11 @@ export interface InventoryValuationQuery {
 export interface InventoryValuationRow {
   itemId: string;
   itemName: string;
+  sku: string | null;
+  hsnCode: string | null;
   categoryName: string | null;
   uomName: string | null;
+  customFields: Record<string, unknown>;
   stockOnHand: number;
   inventoryAssetValue: number;
 }

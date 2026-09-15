@@ -11,9 +11,10 @@ interface CategorySelectDropdownProps {
   value: string | null;
   onChange: (value: string) => void;
   error?: boolean;
+  hideManageButton?: boolean;
 }
 
-export function CategorySelectDropdown({ value, onChange, error }: CategorySelectDropdownProps) {
+export function CategorySelectDropdown({ value, onChange, error, hideManageButton }: CategorySelectDropdownProps) {
   const { orgId } = useParams<{ orgId: string }>();
   const [search, setSearch] = useState('');
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
@@ -230,41 +231,43 @@ export function CategorySelectDropdown({ value, onChange, error }: CategorySelec
                 )}
               </div>
 
-              <div
-                style={{
-                  borderTop: '1px solid #e2e8f0',
-                  padding: '4px',
-                  background: '#f8fafc',
-                  borderBottomLeftRadius: '6px',
-                  borderBottomRightRadius: '6px',
-                }}
-              >
-                <button
-                  type="button"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    closeMenu();
-                    setIsManageModalOpen(true);
-                  }}
+              {!hideManageButton && (
+                <div
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    width: '100%',
-                    padding: '8px',
-                    border: 'none',
-                    background: 'transparent',
-                    color: '#2563eb',
-                    fontSize: 13,
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    textAlign: 'left',
+                    borderTop: '1px solid #e2e8f0',
+                    padding: '4px',
+                    background: '#f8fafc',
+                    borderBottomLeftRadius: '6px',
+                    borderBottomRightRadius: '6px',
                   }}
                 >
-                  <Settings size={14} />
-                  Manage Categories
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      closeMenu();
+                      setIsManageModalOpen(true);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      width: '100%',
+                      padding: '8px',
+                      border: 'none',
+                      background: 'transparent',
+                      color: '#2563eb',
+                      fontSize: 13,
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <Settings size={14} />
+                    Manage Categories
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>

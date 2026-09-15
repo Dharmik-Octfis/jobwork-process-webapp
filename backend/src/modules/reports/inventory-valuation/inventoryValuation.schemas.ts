@@ -6,6 +6,10 @@ export const inventoryValuationQuerySchema = z.object({
   status: z.enum(['all', 'active', 'inactive']).optional().default('all'),
   itemName: z.string().optional(),
   categoryName: z.string().optional(),
+  locationId: z.string().optional(),
+  sku: z.string().optional(),
+  hsnCode: z.string().optional(),
+  itemCustomFields: z.record(z.string(), z.unknown()).optional(),
   page: z.coerce.number().optional().default(1),
   perPage: z.coerce.number().optional().default(25),
 });
@@ -27,7 +31,11 @@ export interface InventoryValuationRow {
   itemName: string;
   categoryName: string | null;
   uomName: string | null;
+  sku: string | null;
+  hsnCode: string | null;
+  customFields: Record<string, unknown>;
   stockOnHand: number;
+  inventoryAssetValue: number;
 }
 
 export const itemLedgerQuerySchema = z.object({

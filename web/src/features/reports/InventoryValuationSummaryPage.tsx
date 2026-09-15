@@ -16,7 +16,12 @@ import {
 } from './reports.api';
 import { ItemComboBox } from '../../components/ui/ItemComboBox';
 import type { Item } from '../items/items.schemas';
-
+import { CategorySelectDropdown } from '../items/components/CategorySelectDropdown';
+import { useQuery } from '@tanstack/react-query';
+import { fetchLocations } from '../configuration/locations/locations.api';
+import { LocalComboBox } from '../../components/ui/LocalComboBox';
+import { useActiveCustomFields } from '../custom-fields/customFields.api';
+import type { FilterDataType } from '../../components/ui/AdvancedFilter/filterUtils';
 const STOCK_OPTIONS = [
   { label: 'No criteria', value: 'none' },
   { label: 'Greater than zero', value: 'gt' },
@@ -61,12 +66,47 @@ export function InventoryValuationSummaryPage() {
 
   const { orgId } = useParams<{ orgId: string }>();
 
+  const { data: locations = [] } = useQuery({
+    queryKey: ['locations', orgId],
+    queryFn: () => fetchLocations(orgId!),
+    enabled: Boolean(orgId),
+  });
+
+  const { data: customFields = [] } = useActiveCustomFields(orgId, 'item');
+
+  const locationOptions = useMemo(
+    () => locations.map((loc) => ({ label: loc.name, value: loc.id })),
+    [locations]
+  );
+
+  const customFilterFields = useMemo(() => {
+    return customFields.map((cf) => {
+      let dataType: FilterDataType = 'string';
+      if (cf.dataType === 'number' || cf.dataType === 'decimal') dataType = 'number';
+      else if (cf.dataType === 'date') dataType = 'date';
+      else if (cf.dataType === 'checkbox') dataType = 'boolean';
+      else if (cf.dataType === 'select') dataType = 'select';
+      else if (cf.dataType === 'multi_select') dataType = 'multi_select';
+
+      const options = cf.config?.options?.map((opt) => ({ label: opt.label, value: opt.id }));
+
+      return {
+        key: cf.key,
+        label: cf.label,
+        dataType,
+        group: 'Item',
+        options,
+      } as FilterField;
+    });
+  }, [customFields]);
+
   const filterFields = useMemo<FilterField[]>(
     () => [
       {
         key: 'itemName',
         label: 'Item Name',
         dataType: 'string',
+        group: 'Report',
         renderInput: ({ value, onChange }) => (
           <div style={{ flex: 1, minWidth: 200 }}>
             <ItemComboBox
@@ -82,9 +122,53 @@ export function InventoryValuationSummaryPage() {
           </div>
         ),
       },
-      { key: 'categoryName', label: 'Category Name', dataType: 'string' },
+      {
+        key: 'categoryName',
+        label: 'Category Name',
+        dataType: 'string',
+        group: 'Report',
+        renderInput: ({ value, onChange }) => (
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <CategorySelectDropdown
+              value={(value as string) || ''}
+              onChange={(val) => onChange(val)}
+              hideManageButton={true}
+            />
+          </div>
+        ),
+      },
+      {
+        key: 'locationId',
+        label: 'Location',
+        dataType: 'string',
+        group: 'Locations',
+        renderInput: ({ value, onChange }) => (
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <LocalComboBox
+              options={locationOptions}
+              value={(value as string) || null}
+              onChange={(val) => onChange(val || '')}
+              placeholder="Select location..."
+              portal
+            />
+          </div>
+        ),
+      },
+      {
+        key: 'sku',
+        label: 'SKU',
+        dataType: 'string',
+        group: 'Item',
+      },
+      {
+        key: 'hsnCode',
+        label: 'HSN Code',
+        dataType: 'string',
+        group: 'Item',
+      },
+      ...customFilterFields,
     ],
-    [orgId],
+    [orgId, locationOptions, customFilterFields]
   );
 
   const { page, setPage, perPage, setPerPage } = useListSearch();
@@ -111,6 +195,33 @@ export function InventoryValuationSummaryPage() {
       const catNameCond = appliedFilters.conditions.find((c) => c.field === 'categoryName');
       if (catNameCond && catNameCond.value) {
         query.categoryName = catNameCond.value as string;
+      }
+
+      const locationCond = appliedFilters.conditions.find((c) => c.field === 'locationId');
+      if (locationCond && locationCond.value) {
+        query.locationId = locationCond.value as string;
+      }
+
+      const skuCond = appliedFilters.conditions.find((c) => c.field === 'sku');
+      if (skuCond && skuCond.value) {
+        query.sku = skuCond.value as string;
+      }
+
+      const hsnCodeCond = appliedFilters.conditions.find((c) => c.field === 'hsnCode');
+      if (hsnCodeCond && hsnCodeCond.value) {
+        query.hsnCode = hsnCodeCond.value as string;
+      }
+
+      // Extract custom fields conditions
+      const customFieldKeys = new Set(customFields.map((cf) => cf.key));
+      const itemCustomFields: Record<string, unknown> = {};
+      appliedFilters.conditions.forEach((c) => {
+        if (customFieldKeys.has(c.field) && c.value !== undefined && c.value !== null && c.value !== '') {
+          itemCustomFields[c.field] = c.value;
+        }
+      });
+      if (Object.keys(itemCustomFields).length > 0) {
+        query.itemCustomFields = itemCustomFields;
       }
 
       const response = await reportsApi.getInventoryValuation(orgId, query);
@@ -306,6 +417,7 @@ export function InventoryValuationSummaryPage() {
               <span style={{ fontSize: '14px', marginRight: '4px', color: '#2563eb' }}>+</span>
             }
             triggerLabel="More Filters"
+            liveUpdate={true}
           />
           <button
             type="button"
@@ -435,6 +547,18 @@ export function InventoryValuationSummaryPage() {
                           CATEGORY NAME
                         </th>
                       );
+                    case 'sku':
+                      return (
+                        <th key={colKey} style={thStyle}>
+                          SKU
+                        </th>
+                      );
+                    case 'hsnCode':
+                      return (
+                        <th key={colKey} style={thStyle}>
+                          HSN CODE
+                        </th>
+                      );
                     case 'uomName':
                       return (
                         <th key={colKey} style={thStyle}>
@@ -454,6 +578,15 @@ export function InventoryValuationSummaryPage() {
                         </th>
                       );
                     default:
+                      if (colKey.startsWith('cf_')) {
+                        const cfKey = colKey.replace('cf_', '');
+                        const cfLabel = customFields.find((cf) => cf.key === cfKey)?.label || cfKey;
+                        return (
+                          <th key={colKey} style={thStyle}>
+                            {cfLabel.toUpperCase()}
+                          </th>
+                        );
+                      }
                       return null;
                   }
                 })}
@@ -507,6 +640,18 @@ export function InventoryValuationSummaryPage() {
                               {row.categoryName || '-'}
                             </td>
                           );
+                        case 'sku':
+                          return (
+                            <td key={colKey} style={tdStyle}>
+                              {row.sku || '-'}
+                            </td>
+                          );
+                        case 'hsnCode':
+                          return (
+                            <td key={colKey} style={tdStyle}>
+                              {row.hsnCode || '-'}
+                            </td>
+                          );
                         case 'uomName':
                           return (
                             <td key={colKey} style={tdStyle}>
@@ -541,6 +686,15 @@ export function InventoryValuationSummaryPage() {
                             </td>
                           );
                         default:
+                          if (colKey.startsWith('cf_')) {
+                            const cfKey = colKey.replace('cf_', '');
+                            const cfValue = row.customFields?.[cfKey];
+                            return (
+                              <td key={colKey} style={tdStyle}>
+                                {cfValue !== undefined && cfValue !== null ? String(cfValue) : '-'}
+                              </td>
+                            );
+                          }
                           return null;
                       }
                     })}
@@ -616,6 +770,13 @@ export function InventoryValuationSummaryPage() {
           catalog={[
             { key: 'itemName', label: 'ITEM NAME', locked: true, defaultVisible: true },
             { key: 'categoryName', label: 'CATEGORY NAME', defaultVisible: false },
+            { key: 'sku', label: 'SKU', defaultVisible: false },
+            { key: 'hsnCode', label: 'HSN CODE', defaultVisible: false },
+            ...customFields.map((cf) => ({
+              key: `cf_${cf.key}`,
+              label: cf.label.toUpperCase(),
+              defaultVisible: false,
+            })),
             { key: 'uomName', label: 'UNIT', defaultVisible: false },
             { key: 'stockOnHand', label: 'STOCK ON HAND', defaultVisible: true },
             { key: 'inventoryAssetValue', label: 'INVENTORY ASSET VALUE', defaultVisible: true },

@@ -20,13 +20,16 @@ export async function getInventoryValuationSummary(
       inventoryAssetValue: string | number | bigint;
     };
 
-    const { asOfDate, stockAvailability = 'none', status = 'all', itemName, categoryName } = _query;
+    const { asOfDate, stockAvailability = 'none', status = 'all', itemName, categoryName, locationId, sku, hsnCode, itemCustomFields } = _query;
 
     let q = Prisma.sql`
       SELECT 
         i.id AS "itemId",
         i.name AS "itemName",
         i.category AS "categoryName",
+        i.sku AS "sku",
+        i.hsn_code AS "hsnCode",
+        i.custom_fields AS "customFields",
         u.unit_name AS "uomName",
         COALESCE(SUM(l.qty_in - l.qty_out), 0) AS "stockOnHand",
         COALESCE(SUM(l.value_in - l.value_out), 0) AS "inventoryAssetValue"
@@ -36,6 +39,7 @@ export async function getInventoryValuationSummary(
         AND l.organization_id = ${organizationId}::uuid 
         AND l.ownership = 'own'
         AND l.stock_effect IN ('both', 'accounting')
+        ${locationId ? Prisma.sql`AND l.location_id = ${locationId}::uuid` : Prisma.empty}
         AND EXISTS (
           SELECT 1 FROM locations loc 
           WHERE loc.id = l.location_id 
@@ -63,7 +67,23 @@ export async function getInventoryValuationSummary(
       q = Prisma.sql`${q} AND i.category ILIKE ${'%' + categoryName + '%'}`;
     }
 
-    q = Prisma.sql`${q} GROUP BY i.id, i.name, i.category, u.unit_name`;
+    if (sku) {
+      q = Prisma.sql`${q} AND i.sku ILIKE ${'%' + sku + '%'}`;
+    }
+
+    if (hsnCode) {
+      q = Prisma.sql`${q} AND i.hsn_code ILIKE ${'%' + hsnCode + '%'}`;
+    }
+
+    if (itemCustomFields) {
+      for (const [key, val] of Object.entries(itemCustomFields)) {
+        if (val !== undefined && val !== null && val !== '') {
+          q = Prisma.sql`${q} AND i.custom_fields->>${key} ILIKE ${'%' + String(val) + '%'}`;
+        }
+      }
+    }
+
+    q = Prisma.sql`${q} GROUP BY i.id, i.name, i.category, i.sku, i.hsn_code, i.custom_fields, u.unit_name`;
 
     if (stockAvailability === 'gt') {
       q = Prisma.sql`${q} HAVING COALESCE(SUM(l.qty_in - l.qty_out), 0) > 0`;
@@ -79,12 +99,22 @@ export async function getInventoryValuationSummary(
 
     q = Prisma.sql`${q} ORDER BY i.name ASC`;
 
-    const rawRows = await tx.$queryRaw<RawRow[]>`${q}`;
+    // Add sku, hsnCode, customFields to RawRow typing
+    type ExtendedRawRow = RawRow & {
+      sku: string | null;
+      hsnCode: string | null;
+      customFields: Record<string, unknown>;
+    };
+
+    const rawRows = await tx.$queryRaw<ExtendedRawRow[]>`${q}`;
 
     const mappedRows = rawRows.map(row => ({
       itemId: row.itemId,
       itemName: row.itemName,
       categoryName: row.categoryName,
+      sku: row.sku,
+      hsnCode: row.hsnCode,
+      customFields: row.customFields || {},
       uomName: row.uomName,
       stockOnHand: Number(row.stockOnHand),
       inventoryAssetValue: Number(row.inventoryAssetValue),
