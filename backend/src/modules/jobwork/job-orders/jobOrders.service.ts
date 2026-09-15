@@ -237,11 +237,22 @@ interface ResolvedInput {
   plannedBatches: PlannedBatchRow[];
 }
 
+interface RecipeRow {
+  componentItemId: string;
+  qtyPerUnit: Prisma.Decimal;
+  uomId: string | null;
+  seq: number;
+}
+
 interface ResolvedOutput {
   itemId: string;
   uomId: string | null;
   expectedQty: number | null;
   isPrimary: boolean;
+  /** Charge per ACCEPTED unit (landed-cost plan D1–D2). */
+  rate: number | null;
+  /** The composite's recipe, frozen onto the step (§5.2). Empty for a plain item. */
+  components: RecipeRow[];
 }
 
 interface ResolvedStep extends JobOrderStepInput {
@@ -332,6 +343,9 @@ function flagPrimaryOutput(rows: readonly StepOutputRow[], stepIndex: number): R
     uomId: row.uomId ?? null,
     expectedQty: row.expectedQty ?? null,
     isPrimary: flagged.length === 1 ? Boolean(row.isPrimary) : index === 0,
+    rate: row.rate ?? null,
+    // Filled in `buildSteps`, once one query has read every composite's recipe.
+    components: [],
   }));
 }
 
@@ -555,10 +569,15 @@ function planQuantities(steps: ResolvedStep[], seeded: ReadonlyMap<string, numbe
     });
 
     const principal = resolvedInputs[0] ?? null;
+    // 🔴 Only on a single-output step (landed-cost plan §6.3). With two outputs
+    // sharing one input, handing the primary the WHOLE planned input distorts the
+    // plan ratio every receipt is costed by, and books the gap as false loss.
+    const derivable = step.resolvedOutputs.length === 1;
     const resolvedOutputs = step.resolvedOutputs.map((row) => ({
       ...row,
       expectedQty:
-        row.expectedQty ?? derivedExpectedQty(row, principal, step.expectedYield ?? null),
+        row.expectedQty ??
+        (derivable ? derivedExpectedQty(row, principal, step.expectedYield ?? null) : null),
     }));
 
     // Added AFTER this step's own inputs are settled: a step does not feed itself,
@@ -756,11 +775,98 @@ function priorFrom(steps: readonly ExistingStep[], startSeq: number): PriorSteps
   return { producedItemIds, producedQty, startSeq };
 }
 
+/**
+ * 🔴 WHAT A STEP MAY LOOK LIKE (landed-cost plan §3, V1–V3) — so that every output
+ * can later be costed by what it is made from.
+ *
+ *   V1  more than one input item → every output is a composite, whose recipe says
+ *       what it is made from. There is no "made from" column (D3).
+ *   V2  every component of an output composite is one of the step's inputs, and a
+ *       composite with no recipe is refused.
+ *   V3  one input, and an output in a different unit → that output is the step's
+ *       only one: a plan cannot relate metres to pieces and to anything else (D12).
+ *
+ * An output that is itself one of the inputs passes straight through — washing
+ * fabric with detergent — and is exempt from V1 and V2. A step that lists no inputs
+ * yet is a draft being typed, with nothing to check V1 or V2 against.
+ *
+ * Only steps being written are checked: a locked step already has documents and
+ * cannot be re-planned, so it is never passed in here.
+ */
+function assertStepShape(
+  step: {
+    resolvedInputs: readonly { itemId: string; uomId: string | null }[];
+    resolvedOutputs: readonly { itemId: string; uomId: string | null }[];
+  },
+  stepIndex: number,
+  itemById: ReadonlyMap<string, { name: string; itemStructure: string }>,
+  recipeByComposite: ReadonlyMap<string, readonly RecipeRow[]>,
+  nameById: ReadonlyMap<string, string>,
+) {
+  const inputIds = new Set(step.resolvedInputs.map((row) => row.itemId));
+  const nameOf = (id: string) => itemById.get(id)?.name ?? nameById.get(id) ?? 'An item';
+  const refuse = (rowIndex: number, message: string): never => {
+    throw new ApiError(400, `Step ${stepIndex + 1}: ${message}`, {
+      [`steps.${stepIndex}.outputs.${rowIndex}.itemId`]: message,
+    });
+  };
+
+  if (inputIds.size > 0) {
+    for (const [rowIndex, output] of step.resolvedOutputs.entries()) {
+      if (inputIds.has(output.itemId)) continue;
+      const isComposite = itemById.get(output.itemId)?.itemStructure === 'composite';
+
+      if (inputIds.size > 1 && !isComposite) {
+        refuse(
+          rowIndex,
+          `${nameOf(output.itemId)} is not a composite item. A step that consumes several items ` +
+            'can only produce composites, whose recipe says what each is made from.',
+        );
+      }
+      if (!isComposite) continue;
+
+      const components = recipeByComposite.get(output.itemId) ?? [];
+      if (components.length === 0) {
+        refuse(
+          rowIndex,
+          `${nameOf(output.itemId)} has no recipe yet, so nothing says what it is made from. ` +
+            'Add its components first.',
+        );
+      }
+      const missing = components.find((row) => !inputIds.has(row.componentItemId));
+      if (missing) {
+        refuse(
+          rowIndex,
+          `${nameOf(output.itemId)} is made from ${nameOf(missing.componentItemId)}, which this ` +
+            'step does not consume. Add it to the inputs, or pick a different output.',
+        );
+      }
+    }
+  }
+
+  if (inputIds.size === 1 && step.resolvedOutputs.length > 1) {
+    const inputUom = step.resolvedInputs[0]!.uomId;
+    const changed = step.resolvedOutputs.findIndex(
+      (row) => inputUom !== null && row.uomId !== null && row.uomId !== inputUom,
+    );
+    if (changed >= 0) {
+      refuse(
+        changed,
+        `${nameOf(step.resolvedOutputs[changed]!.itemId)} comes back in a different unit from ` +
+          'what goes in, so it has to be this step’s only output.',
+      );
+    }
+  }
+}
+
 async function buildSteps(
   tx: TenantClient,
   organizationId: string,
   steps: readonly JobOrderStepInput[],
   prior: PriorSteps = NO_PRIOR_STEPS,
+  /** Where `steps` begin in the grid the client holds. The update path builds only
+   * the tail past the work front, and an error keyed from 0 would mark the wrong row. */
+  indexOffset = 0,
 ) {
   const processes = await tx.process.findMany({
     where: {
@@ -789,7 +895,7 @@ async function buildSteps(
     // null) and still saves; tightening it here would block a legitimate
     // work-in-progress. It is refused where it becomes a real problem: the Issue
     // dialog, which has nothing to offer and says so.
-    const { inputs, outputs } = resolveStepRows(step, index);
+    const { inputs, outputs } = resolveStepRows(step, index + indexOffset);
 
     resolved.push({
       ...applyStepDefaults(step, process),
@@ -803,13 +909,13 @@ async function buildSteps(
         fromStock: true,
         plannedBatches: row.plannedBatches ?? [],
       })),
-      resolvedOutputs: flagPrimaryOutput(outputs, index),
+      resolvedOutputs: flagPrimaryOutput(outputs, index + indexOffset),
     });
   }
 
   // One query for every item any step touches, so the units below are the items'
-  // own rather than an org-wide guess off the process master. Names are not
-  // selected: nothing on this path renders one any more.
+  // own rather than an org-wide guess off the process master. Names and structure
+  // ride along for the shape rules.
   const itemIds = [
     ...new Set(
       resolved.flatMap((step) => [
@@ -821,9 +927,16 @@ async function buildSteps(
   const chainItems = itemIds.length
     ? await tx.item.findMany({
         where: { id: { in: itemIds }, organizationId, isDeleted: false },
-        select: { id: true, stockingUomId: true, defaultTolerancePct: true },
+        select: {
+          id: true,
+          name: true,
+          itemStructure: true,
+          stockingUomId: true,
+          defaultTolerancePct: true,
+        },
       })
     : [];
+  const itemById = new Map(chainItems.map((item) => [item.id, item]));
   const stockingUomByItem = new Map(chainItems.map((item) => [item.id, item.stockingUomId]));
   const toleranceByItem = new Map(
     chainItems.map((item) => [
@@ -831,6 +944,39 @@ async function buildSteps(
       item.defaultTolerancePct === null ? null : Number(item.defaultTolerancePct),
     ]),
   );
+
+  // Every composite output's recipe in ONE query, never one per row — it is both
+  // what V2 checks and what the step freezes (§5.2).
+  const compositeIds = [
+    ...new Set(
+      resolved
+        .flatMap((step) => step.resolvedOutputs.map((row) => row.itemId))
+        .filter((id) => itemById.get(id)?.itemStructure === 'composite'),
+    ),
+  ];
+  const recipeRows = compositeIds.length
+    ? await tx.compositeItemComponent.findMany({
+        where: { organizationId, compositeItemId: { in: compositeIds }, isDeleted: false },
+        orderBy: [{ seq: 'asc' }, { createdAt: 'asc' }],
+        select: {
+          compositeItemId: true,
+          componentItemId: true,
+          qtyPerUnit: true,
+          uomId: true,
+          seq: true,
+          component: { select: { name: true } },
+        },
+      })
+    : [];
+  const recipeByComposite = new Map<string, RecipeRow[]>();
+  const componentNameById = new Map<string, string>();
+  for (const { compositeItemId, component, ...row } of recipeRows) {
+    recipeByComposite.set(compositeItemId, [
+      ...(recipeByComposite.get(compositeItemId) ?? []),
+      row,
+    ]);
+    componentNameById.set(row.componentItemId, component.name);
+  }
 
   const withUnits = resolved.map((step) => ({
     ...step,
@@ -840,8 +986,15 @@ async function buildSteps(
       ...row,
       tolerancePct: row.tolerancePct ?? toleranceByItem.get(row.itemId) ?? null,
     })),
-    resolvedOutputs: applyRowUnits(step.resolvedOutputs, stockingUomByItem),
+    resolvedOutputs: applyRowUnits(step.resolvedOutputs, stockingUomByItem).map((row) => ({
+      ...row,
+      components: recipeByComposite.get(row.itemId) ?? [],
+    })),
   }));
+
+  for (const [index, step] of withUnits.entries()) {
+    assertStepShape(step, index + indexOffset, itemById, recipeByComposite, componentNameById);
+  }
 
   classifyStepInputs(withUnits, prior.producedItemIds);
 
@@ -1265,8 +1418,22 @@ async function writeSteps(
             uomId: output.uomId,
             expectedQty: output.expectedQty,
             isPrimary: output.isPrimary,
+            rate: output.rate,
             createdBy: userId ?? null,
             updatedBy: userId ?? null,
+            // The recipe, frozen with the step (§5.2): a later edit to the composite
+            // never changes what this order consumes.
+            components: {
+              create: output.components.map((component) => ({
+                organizationId,
+                componentItemId: component.componentItemId,
+                qtyPerUnit: component.qtyPerUnit,
+                uomId: component.uomId,
+                seq: component.seq,
+                createdBy: userId ?? null,
+                updatedBy: userId ?? null,
+              })),
+            },
           })),
         },
       },
@@ -1364,7 +1531,13 @@ export async function updateJobOrderById(
     const frontSeq = locked.at(-1)?.seq ?? 0;
     const tail = steps.slice(lockedLive.length);
     const stepRows = tail.length
-      ? await buildSteps(tx, organizationId, tail, priorFrom(locked, frontSeq + 1))
+      ? await buildSteps(
+          tx,
+          organizationId,
+          tail,
+          priorFrom(locked, frontSeq + 1),
+          lockedLive.length,
+        )
       : [];
 
     /**

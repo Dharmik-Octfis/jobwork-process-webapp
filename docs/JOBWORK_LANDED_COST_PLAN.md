@@ -6,8 +6,11 @@ cycle check) built 2026-09-14 — `compositeItems.nesting.test.ts`. Phase 3 (Mig
 `20260914124636_landed_cost`) applied to the shared database 2026-09-14; its backfills set 58 job
 order output rates, 7 route output rates and 101 input tolerances, and four step rates did not move
 (JO-00001 ×2, JO-00021, JO-00024 on OCTFIS TECHNO LLP) — re-enter them before Migration 2. Phase 4
-(§6.2, item-wise tolerance) built 2026-09-15 — `jobOrders.itemTolerance.test.ts`. Everything after it
-is not built.** Agreed over 2026-09-12 → 14. This
+(§6.2, item-wise tolerance) built 2026-09-15 — `jobOrders.itemTolerance.test.ts`. Phase 5 (§6.3) built
+2026-09-15 — `jobOrders.stepShape.test.ts`: rate per output row, recipe snapshots, V1–V3, Expected
+defaulted only on a single-output step, and the grid's Rate column. By decision (2026-09-15) the step
+`rate` / `rateBasis` and `Process.rateBasis` are NOT removed yet — today's receipt costing still reads
+them, so they go in Phase 7 with the engine that replaces them. Everything after it is not built.** Agreed over 2026-09-12 → 14. This
 replaces the step-level `rate` / `rateBasis` cost model described in `JOBWORK_DOMAIN_AND_MODULE_MAP.md`
 §9.1–§9.2.1, and moves tolerance from the process and step onto the item. Those sections,
 `JOBWORK_CORE_WALKTHROUGH.md` and `JOBWORK_UI_FIELD_SOURCES.md` are edited in place **after** the code
@@ -104,6 +107,9 @@ not re-validated):
 - V1: more than one distinct input item → every output item is `item_structure = 'composite'`.
 - V2: every component of an output composite is one of the step's input items; a composite with an empty
   recipe is refused.
+- Exempt from V1 and V2: an output that is itself one of the step's input items — washing fabric with
+  detergent, fabric in and fabric out. It passes through and draws on itself at `w = 1`, so R1 needs the
+  same exemption. (Found 2026-09-15 while building phase 5.)
 - V3: one input, and an output in a different unit from it → that output is the step's **only** output
   (D12). `Σ expected × w` cannot add pieces to metres.
 

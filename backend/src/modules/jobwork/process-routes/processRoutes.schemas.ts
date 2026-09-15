@@ -51,6 +51,9 @@ export const routeStepRowSchema = z.object({
    * is a real answer that must stay distinguishable from it (§2.5). */
   plannedQty: z.coerce.number().min(0).nullable().optional(),
   isPrimary: z.boolean().optional(),
+  /** Outputs only — the template's suggested charge per accepted unit, copied onto
+   * a job order (landed-cost plan D1). */
+  rate: z.coerce.number().min(0).nullable().optional(),
 });
 
 export type RouteStepRow = z.infer<typeof routeStepRowSchema>;

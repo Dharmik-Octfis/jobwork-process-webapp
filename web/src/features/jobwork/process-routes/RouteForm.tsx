@@ -67,6 +67,7 @@ function toFormSteps(route?: Partial<Route>): RouteStepData[] {
       itemId: row.itemId,
       uomId: row.uomId,
       isPrimary: Boolean(row.isPrimary),
+      rate: num(row.rate),
     })),
     expectedYield: step.expectedYield === null ? null : Number(step.expectedYield),
     remarks: step.remarks,

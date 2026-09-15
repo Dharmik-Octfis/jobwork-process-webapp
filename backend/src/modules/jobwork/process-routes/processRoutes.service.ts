@@ -155,6 +155,8 @@ interface ResolvedRow {
    * output, where the template has nothing to say. */
   plannedQty: number | null;
   isPrimary: boolean;
+  /** Produced side only — the suggested charge per accepted unit. */
+  rate: number | null;
 }
 
 interface ResolvedRouteStep {
@@ -192,6 +194,7 @@ function resolveStepRows(step: RouteStepInput, index: number): ResolvedRouteStep
       uomId: row.uomId ?? null,
       plannedQty: row.plannedQty ?? null,
       isPrimary: false,
+      rate: null,
     })),
     outputs: flagPrimaryOutput(outputs, index),
   };
@@ -233,6 +236,7 @@ function flagPrimaryOutput(rows: readonly RouteStepRow[], stepIndex: number): Re
     // field this side does not have. What comes back is a per-run answer.
     plannedQty: null,
     isPrimary: flagged.length === 1 ? Boolean(row.isPrimary) : index === 0,
+    rate: row.rate ?? null,
   }));
 }
 
@@ -390,6 +394,7 @@ async function createSteps(
             itemId: row.itemId,
             uomId: row.uomId,
             isPrimary: row.isPrimary,
+            rate: row.rate,
             createdBy: userId ?? null,
             updatedBy: userId ?? null,
           })),

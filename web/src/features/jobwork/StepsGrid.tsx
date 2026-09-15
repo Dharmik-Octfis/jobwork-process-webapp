@@ -210,6 +210,11 @@ interface ItemListProps {
   /** The per-item over-issue box. Job orders only — separate from `showQty`
    * because a route carries a default quantity but no tolerance. */
   showTolerance?: boolean;
+  /** Outputs only: the charge per accepted unit box (landed-cost plan D1). */
+  showRate?: boolean;
+  /** A one-line remark under the list's header — today, that a step with several
+   * inputs may only produce composites (V1). */
+  note?: string | null;
   /**
    * …and the same trick on the quantity box: what the server will store if this
    * row is left blank, or `null` when it will store nothing and the box is really
@@ -282,6 +287,8 @@ function ItemList({
   portalMenus,
   showQty,
   showTolerance,
+  showRate,
+  note,
   qtyPlaceholderFor,
   disabled,
   stepIndex,
@@ -381,6 +388,9 @@ function ItemList({
       </div>
 
       <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {note && (
+          <p style={{ fontSize: 11, color: '#475569', margin: 0, lineHeight: 1.5 }}>{note}</p>
+        )}
         {/* 🔴 An empty list means an empty list. Nothing is added behind your
             back — what these rows say is exactly what is written. */}
         {rows.length === 0 && (
@@ -400,7 +410,9 @@ function ItemList({
           const qtyId = `step-${stepIndex}-${side}-${rowIndex}-qty`;
           return (
             <div key={rowIndex} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {/* Wraps on a phone: an output row carries item, unit, expected, rate
+                  and remove, which is wider than 390px. */}
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                 {/* 🔴 A SEARCHING PICKER, not a dropdown of every item in the org.
                     A plain `Select` had to be handed the whole catalogue up front,
                     which is one long request before the form is usable and an
@@ -535,6 +547,33 @@ function ItemList({
                           ? `Over-issue allowance for this item. Left blank it saves the item’s ${itemById.get(row.itemId)?.defaultTolerancePct}%.`
                           : 'Over-issue allowance for this item. Left blank there is no limit — the item has no default.'
                       }
+                      style={cellInput}
+                    />
+                  </div>
+                )}
+
+                {/* The charge per ACCEPTED unit of this output (landed-cost plan
+                    D1–D2): blank is "not agreed yet", 0 is "done free". */}
+                {showRate && !isInput && (
+                  <div style={{ flex: '0 0 84px' }}>
+                    <label htmlFor={`${qtyId}-rate`} style={srOnly}>
+                      {`Step ${stepNumber} rate per ${unit?.label ?? 'unit'} for output ${rowIndex + 1}`}
+                    </label>
+                    <input
+                      id={`${qtyId}-rate`}
+                      type="number"
+                      onWheel={blurOnWheel}
+                      step="0.01"
+                      min="0"
+                      value={row.rate ?? ''}
+                      onChange={(e) =>
+                        update(rowIndex, {
+                          rate: e.target.value === '' ? null : Number(e.target.value),
+                        })
+                      }
+                      disabled={disabled}
+                      placeholder={unit ? `₹ / ${unit.label}` : '₹ / unit'}
+                      title={`Charge per accepted ${unit?.label ?? 'unit'} of this item. Leave blank if it is not agreed yet; 0 means done free.`}
                       style={cellInput}
                     />
                   </div>
@@ -1207,6 +1246,12 @@ export function StepsGrid<T extends StepGridRow>({
                   portalMenus={portalMenus}
                   mirrorSource={step.inputs ?? []}
                   showQty={showPlannedQty}
+                  showRate
+                  note={
+                    (step.inputs ?? []).filter((row) => row.itemId).length > 1
+                      ? 'Several items go in, so each item listed here must be a composite whose recipe says what it is made from — unless it is one of the items going in.'
+                      : null
+                  }
                   emptyHint="Nothing listed — this step will produce nothing."
                   /* Job orders only. A route holds no output quantities at all,
                      so there is nothing for it to preview. */

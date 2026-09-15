@@ -179,6 +179,8 @@ export interface StepItemRow {
   tolerancePct?: number | null;
   /** Outputs, job orders only. */
   expectedQty?: number | null;
+  /** Outputs — charge per accepted unit, on routes and job orders (D1). */
+  rate?: number | null;
   /** Outputs only — the one that absorbs the step's cost (§9.2.1). No longer
    * asked for on the grid; see `primaryOutputIndex`. */
   isPrimary?: boolean;
@@ -387,6 +389,8 @@ export function derivedExpectedQty(
   unitOf: (itemId: string | null | undefined) => string | null,
 ): number | null {
   const outputs = step.outputs ?? [];
+  // Single-output steps only — the server's own rule (landed-cost plan §6.3).
+  if (outputs.filter((row) => row.itemId).length !== 1) return null;
   if (rowIndex !== primaryOutputIndex(outputs)) return null;
 
   const row = outputs[rowIndex];
@@ -539,6 +543,8 @@ export const stepItemRowSchema = z.object({
   /** Inputs only — copied from the item on the job order (landed-cost plan D10). */
   tolerancePct: decimalString.optional(),
   expectedQty: decimalString.optional(),
+  /** Outputs only — charge per accepted unit. */
+  rate: decimalString.optional(),
   fromStock: z.boolean().optional(),
   isPrimary: z.boolean().optional(),
   item: itemRefSchema.nullable().optional(),

@@ -105,6 +105,7 @@ function toOutputRows(rows: StepItemRowRead[] = []): StepItemRow[] {
     uomId: row.uomId,
     expectedQty: num(row.expectedQty),
     isPrimary: Boolean(row.isPrimary),
+    rate: num(row.rate),
   }));
 }
 

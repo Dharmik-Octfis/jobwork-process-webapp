@@ -94,6 +94,9 @@ export const stepOutputRowSchema = z.object({
   uomId: nullableUuid,
   expectedQty: z.coerce.number().min(0).nullable().optional(),
   isPrimary: z.boolean().optional(),
+  /** Charge per ACCEPTED unit of this output (landed-cost plan D1–D2). Null = not
+   * agreed yet; 0 = done free. */
+  rate: z.coerce.number().min(0).nullable().optional(),
 });
 
 export type StepOutputRow = z.infer<typeof stepOutputRowSchema>;

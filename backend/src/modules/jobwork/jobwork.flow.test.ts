@@ -214,6 +214,8 @@ afterAll(async () => {
     await tx.stockLedgerEntry.deleteMany({ where: { organizationId: orgId } });
     await tx.batch.deleteMany({ where: { organizationId: orgId } });
     await tx.process.deleteMany({ where: { organizationId: orgId } });
+    // Recipes hold RESTRICT keys to items, so they go first.
+    await tx.compositeItemComponent.deleteMany({ where: { organizationId: orgId } });
     await tx.item.deleteMany({ where: { organizationId: orgId } });
     await tx.location.deleteMany({ where: { organizationId: orgId } });
     await tx.vendor.deleteMany({ where: { organizationId: orgId } });
@@ -859,7 +861,12 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       });
       coneId = cone.id;
 
-      const make = async (name: string, unit: string, uomId: string) => {
+      const make = async (
+        name: string,
+        unit: string,
+        uomId: string,
+        itemStructure: 'single' | 'composite' = 'single',
+      ) => {
         const item = await tx.item.create({
           data: {
             organizationId: orgId,
@@ -868,6 +875,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
             unit,
             stockingUomId: uomId,
             inventoryTracking: 'none',
+            itemStructure,
           },
           select: { id: true },
         });
@@ -876,9 +884,20 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
 
       threadId = await make('Thread', 'Cone', coneId);
       buttonId = await make('Buttons', 'Piece', pieceId);
-      shirtsId = await make('Stitched Shirts', 'Piece', pieceId);
-      rejectsId = await make('Reject Shirts', 'Piece', pieceId);
+      // Composites made from the panels: a step with several inputs may only produce
+      // composites whose recipe it covers (landed-cost plan V1–V2), and every
+      // stitching step below consumes the panels, whatever else it takes.
+      shirtsId = await make('Stitched Shirts', 'Piece', pieceId, 'composite');
+      rejectsId = await make('Reject Shirts', 'Piece', pieceId, 'composite');
       offcutsId = await make('Fabric Offcuts', 'Metre', metreId);
+      await tx.compositeItemComponent.createMany({
+        data: [shirtsId, rejectsId].map((compositeItemId) => ({
+          organizationId: orgId,
+          compositeItemId,
+          componentItemId: shirtId,
+          qtyPerUnit: 1,
+        })),
+      });
     });
   });
 
@@ -1028,7 +1047,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
           processorId: cutterId,
           expectedYield: 0.6,
           inputs: [{ itemId: dyedId, plannedQty: 4800 }],
-          outputs: [{ itemId: shirtId, isPrimary: true }, { itemId: offcutsId }],
+          // Panels only: metres in and pieces out cannot share a step with a second
+          // output (landed-cost plan V3), so the offcuts are not listed.
+          outputs: [{ itemId: shirtId, isPrimary: true }],
         },
         {
           processId: stitching.id,
@@ -1040,9 +1061,8 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     });
 
     const [cut, stitch] = jobOrder.steps;
-    // 4,800 m × 0.6 — the yield plans the primary output and nothing else.
+    // 4,800 m × 0.6 — the yield plans the output.
     expect(Number(cut!.outputs[0]!.expectedQty)).toBe(2880);
-    expect(cut!.outputs[1]!.expectedQty).toBeNull();
 
     // 🔴 The panels come from the step above; the thread comes from the godown.
     // Both save. That is the whole of §6.4.

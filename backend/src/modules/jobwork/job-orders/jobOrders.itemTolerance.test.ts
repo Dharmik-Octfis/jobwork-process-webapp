@@ -24,7 +24,6 @@ let metreId: string;
 let godownId: string;
 let dyerId: string;
 let processId: string;
-let dyedId: string;
 
 async function makeItem(name: string, defaultTolerancePct: number | null) {
   return runAsTenant(orgId, async (tx) => {
@@ -76,7 +75,9 @@ const orderFor = (inputs: { itemId: string; plannedQty: number; tolerancePct?: n
         processorType: 'vendor',
         processorId: dyerId,
         inputs,
-        outputs: [{ itemId: dyedId, isPrimary: true }],
+        // The first input passes through — the output is beside the point here, and
+        // a pass-through is exempt from the several-inputs rule (landed-cost plan V1).
+        outputs: [{ itemId: inputs[0]!.itemId, isPrimary: true }],
       },
     ],
   });
@@ -125,7 +126,6 @@ beforeAll(async () => {
     ).id;
   });
 
-  dyedId = await makeItem('Dyed', null);
   processId = (await createNewProcess(orgId, { name: `Dyeing ${unique()}` })).id;
 });
 
