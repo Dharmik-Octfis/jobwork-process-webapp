@@ -3,10 +3,9 @@ import { z } from 'zod';
 /**
  * Shapes and labels shared across the four jobwork document modules.
  *
- * Mirrors the backend's `jobwork.types.ts`. The two lists are kept in step by
- * hand — the same arrangement `processes.schemas.ts` already has for
- * `RATE_BASES` — because the alternative is generating types from OpenAPI, which
- * this codebase does not do.
+ * Mirrors the backend's `jobwork.types.ts`. The two are kept in step by hand,
+ * because the alternative is generating types from OpenAPI, which this codebase
+ * does not do.
  */
 
 /** Prisma serialises Decimal as a STRING over JSON. A `z.number()` here would
@@ -37,30 +36,6 @@ export function qtyWithUnit(
   unit: string | null | undefined,
 ): string {
   return unit ? `${formatQty(value)} ${unit}` : formatQty(value);
-}
-
-/**
- * What one step costs to have done.
- *
- * 🔴 Mirrors `processCharge` in `jobReceipts.service.ts` — keep the two in step,
- * or the page previews a figure the receipt does not bill. It lives here rather
- * than beside either screen because the Overview now shows the order's total as
- * well as the step's, and two copies of a money calculation is one too many.
- *
- * `null` means no rate was agreed, which is a different fact from zero.
- */
-export function stepCharge(input: {
-  rate: string | number | null;
-  rateBasis: string | null;
-  issuedQty: string | number | null;
-  receivedQty: string | number | null;
-}): number | null {
-  if (input.rate === null || input.rate === '') return null;
-  const qty =
-    input.rateBasis === 'per_received_unit'
-      ? toNumber(input.receivedQty)
-      : toNumber(input.issuedQty);
-  return toNumber(input.rate) * qty;
 }
 
 /** Whole days between a past date and now, floored. Negative dates read as 0. */
@@ -208,8 +183,6 @@ export interface StepGridRow {
   processorType?: string;
   processorId?: string | null;
   workCentreLocationId?: string | null;
-  rate?: number | null;
-  rateBasis?: string | null;
   /** 🔴 What the step consumes and what it produces (§5.7). */
   inputs?: StepItemRow[];
   outputs?: StepItemRow[];
@@ -224,8 +197,6 @@ export const emptyStep = (): StepGridRow => ({
   processorType: 'vendor',
   processorId: null,
   workCentreLocationId: null,
-  rate: null,
-  rateBasis: null,
   inputs: [emptyStepItem()],
   outputs: [emptyStepItem()],
   expectedYield: null,

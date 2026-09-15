@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Pencil, X } from 'lucide-react';
 import { Spinner } from '../../../components/ui/Spinner';
-import { rateBasisLabel } from '../processes/processes.schemas';
 import { formatQty, processorTypeLabel, type StepItemRowRead } from '../jobwork.schemas';
 import { fetchRouteById } from './processRoutes.api';
 
@@ -193,14 +192,6 @@ export function RouteDetail({ routeId, onClose }: Props) {
                 </Row>
                 <Row label="Produces">
                   {step.outputs.length === 0 ? 'Unchanged' : <ItemLines rows={step.outputs} />}
-                </Row>
-                <Row label="Rate">
-                  {step.rate === null ? '-' : formatQty(step.rate)}
-                  {step.rateBasis && (
-                    <span style={{ display: 'block', fontSize: 11, color: '#64748b' }}>
-                      {rateBasisLabel(step.rateBasis)}
-                    </span>
-                  )}
                 </Row>
                 <Row label="Yield">
                   {step.expectedYield === null ? '-' : formatQty(step.expectedYield)}

@@ -404,12 +404,11 @@ function classifyStepInputs(
 }
 
 /**
- * Fill each step's blanks from the Process master — the last link of the default
- * chain (§2.5), running Process → route step → job order step → document.
+ * Freeze the Process master's name onto the step (§2.4).
  *
- * `??`, never `||`: a rate of 0 means free-of-charge and must not be replaced.
- * Tolerance is not filled here — it is the item's, copied per input row in
- * `buildSteps` (landed-cost plan D10).
+ * Nothing else comes from the process any more: the rate is per output row and
+ * its basis is gone (landed-cost plan D1–D2), and tolerance is the item's, copied
+ * per input row in `buildSteps` (D10).
  *
  * The items are NOT set here — they are two lists now (`resolveStepRows`), and
  * the units that follow them cannot be known until every step's items are. See
@@ -417,13 +416,9 @@ function classifyStepInputs(
  */
 function applyStepDefaults(
   step: JobOrderStepInput,
-  process: { name: string; rateBasis: string },
+  process: { name: string },
 ): JobOrderStepInput & { processNameSnapshot: string } {
-  return {
-    ...step,
-    processNameSnapshot: process.name,
-    rateBasis: step.rateBasis ?? (process.rateBasis as JobOrderStepInput['rateBasis']),
-  };
+  return { ...step, processNameSnapshot: process.name };
 }
 
 /**
@@ -877,7 +872,6 @@ async function buildSteps(
     select: {
       id: true,
       name: true,
-      rateBasis: true,
       itemChanges: true,
     },
   });
@@ -1016,8 +1010,6 @@ async function buildSteps(
         step.processorId,
       ),
       workCentreLocationId: step.workCentreLocationId ?? null,
-      rate: step.rate ?? null,
-      rateBasis: step.rateBasis ?? null,
       expectedYield: step.expectedYield ?? null,
       plannedInputQty: step.plannedInputQty,
       remarks: step.remarks?.trim() || null,

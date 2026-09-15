@@ -3,7 +3,6 @@ import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Pencil, X } from 'lucide-react';
 import { Spinner } from '../../../components/ui/Spinner';
 import { fetchProcessById } from './processes.api';
-import { rateBasisLabel } from './processes.schemas';
 
 interface Props {
   processId: string;
@@ -110,12 +109,6 @@ export function ProcessDetail({ processId, onClose }: Props) {
         <div className="responsive-table-wrapper">
           <table style={{ borderCollapse: 'collapse' }}>
             <tbody>
-              <tr>
-                <td style={rowLabel}>Rate basis</td>
-                <td style={{ padding: '6px 0', ...rowValue }}>
-                  {rateBasisLabel(process.rateBasis)}
-                </td>
-              </tr>
               <tr>
                 <td style={rowLabel}>Output item</td>
                 <td style={{ padding: '6px 0' }}>

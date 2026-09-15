@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { openApiRegistry } from '../../../config/openapi.ts';
-import { RATE_BASES } from './processes.types.ts';
 
 /**
  * Request shapes for the Processes module.
@@ -30,9 +29,8 @@ export const createProcessSchema = openApiRegistry.register(
     /** The output is a DIFFERENT item from the input (§5.1) — cloth in, shirt out. */
     itemChanges: z.boolean().optional(),
 
-    rateBasis: z.enum(RATE_BASES).optional(),
-
-    // No tolerance here any more: it is a property of the ITEM (landed-cost plan D10).
+    // No rate basis: the charge is rate × accepted on each output row (landed-cost
+    // plan D1–D2). No tolerance either: it is a property of the ITEM (D10).
   }),
 );
 

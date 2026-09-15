@@ -127,8 +127,6 @@ export const jobReceiptSchema = z.object({
       seq: z.number(),
       processNameSnapshot: z.string(),
       expectedYield: decimalString,
-      rate: decimalString,
-      rateBasis: z.string().nullable(),
     })
     .optional(),
   /** `type` is what tells an ordinary receipt from a dispatch-onward one: an
@@ -159,8 +157,6 @@ export const receivePrefillSchema = z.object({
     processNameSnapshot: z.string(),
     jobOrderId: z.string(),
     expectedYield: decimalString,
-    rate: decimalString,
-    rateBasis: z.string().nullable(),
     process: z.object({ id: z.string(), name: z.string() }),
     jobOrder: z.object({ id: z.string(), jobOrderNumber: z.string(), ownership: z.string() }),
     /** 🔴 What the step plans to consume and produce — the only source for the

@@ -84,10 +84,7 @@ async function seedStock(itemId: string, qty: number, value = 0) {
 
 /** A fresh two-step order with its own stock, so each test is independent. */
 async function makeOrder() {
-  const dyeing = await createNewProcess(orgId, {
-    name: `Dyeing ${unique()}`,
-    rateBasis: 'per_issued_unit',
-  });
+  const dyeing = await createNewProcess(orgId, { name: `Dyeing ${unique()}` });
   const finishing = await createNewProcess(orgId, { name: `Finishing ${unique()}` });
 
   const route = await createNewRoute(orgId, {
@@ -96,14 +93,12 @@ async function makeOrder() {
       {
         processId: dyeing.id,
         processorId: dyerId,
-        rate: 10,
         inputs: [{ itemId: greyId }],
         outputs: [{ itemId: dyedId, isPrimary: true }],
       },
       {
         processId: finishing.id,
         processorId: dyerId,
-        rate: 4,
         inputs: [{ itemId: dyedId }],
         outputs: [{ itemId: dyedId, isPrimary: true }],
       },
@@ -116,8 +111,6 @@ async function makeOrder() {
       processId: step.processId,
       processorType: step.processorType as ProcessorType,
       processorId: step.processorId,
-      rate: step.rate === null ? null : Number(step.rate),
-      rateBasis: step.rateBasis as 'per_issued_unit' | 'per_received_unit' | null,
       inputs: step.inputs.map((row) => ({ itemId: row.itemId })),
       outputs: step.outputs.map((row) => ({ itemId: row.itemId, isPrimary: row.isPrimary })),
       plannedInputQty: index === 0 ? 1000 : null,

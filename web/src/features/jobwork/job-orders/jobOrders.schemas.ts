@@ -27,8 +27,6 @@ export const jobOrderStepSchema = z.object({
   processorId: z.string().nullable(),
   processorNameSnapshot: z.string().nullable(),
   workCentreLocationId: z.string().nullable(),
-  rate: decimalString,
-  rateBasis: z.string().nullable(),
   expectedYield: decimalString,
   plannedInputQty: decimalString,
   status: z.string(),
@@ -287,8 +285,6 @@ export interface JobOrderStepData {
   processorType?: string;
   processorId?: string | null;
   workCentreLocationId?: string | null;
-  rate?: number | null;
-  rateBasis?: string | null;
   /**
    * 🔴 The two lists (§5.7).
    *

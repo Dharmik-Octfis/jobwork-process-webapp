@@ -16,7 +16,6 @@ import { fetchVendors } from '../purchases/vendors/vendors.api';
 import { fetchCustomers } from '../sales/customers/customers.api';
 import { fetchLocations } from '../configuration/locations/locations.api';
 import { ProcessSelect } from './processes/ProcessSelect';
-import { RATE_BASIS_OPTIONS } from './processes/processes.schemas';
 import { useTrackingLabel, useBatchUnitLabel } from '../../hooks/useTrackingLabel';
 import {
   PROCESSOR_TYPE_OPTIONS,
@@ -804,12 +803,10 @@ export function StepsGrid<T extends StepGridRow>({
     const item = itemById.get(itemId);
     if (!item) return undefined;
     if (item.itemStructure !== 'composite') return null;
-    return recipeByItem
-      .get(itemId)
-      ?.map((row) => ({
-        componentItemId: row.componentItemId,
-        qtyPerUnit: Number(row.qtyPerUnit),
-      }));
+    return recipeByItem.get(itemId)?.map((row) => ({
+      componentItemId: row.componentItemId,
+      qtyPerUnit: Number(row.qtyPerUnit),
+    }));
   };
 
   /**
@@ -939,7 +936,6 @@ export function StepsGrid<T extends StepGridRow>({
             ([key]) =>
               key.startsWith(`steps.${index}.inputs`) || key.startsWith(`steps.${index}.outputs`),
           )?.[1];
-          const field = (id: string) => `step-${index}-${id}`;
           // Position in the order, not in this array — they differ when appending.
           const stepNo = index + 1 + seqOffset;
           // Frozen: work has already gone out at or after this position (§6.6).
@@ -1071,7 +1067,6 @@ export function StepsGrid<T extends StepGridRow>({
                                   },
                                 ]
                               : step.outputs,
-                          rateBasis: step.rateBasis ?? process.rateBasis,
                         })
                       }
                       disabled={readOnly}
@@ -1160,55 +1155,7 @@ export function StepsGrid<T extends StepGridRow>({
                   </div>
                 </div>
 
-                {/* 5. Rate */}
-                <div
-                  className="form-field-grid"
-                  style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
-                >
-                  <label
-                    style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}
-                    htmlFor={field('rate')}
-                  >
-                    Rate
-                  </label>
-                  <div style={{ width: '100%' }}>
-                    <input
-                      id={field('rate')}
-                      type="number"
-                      onWheel={blurOnWheel}
-                      step="0.01"
-                      min="0"
-                      value={step.rate ?? ''}
-                      onChange={(e) =>
-                        update(index, {
-                          rate: e.target.value === '' ? null : Number(e.target.value),
-                        })
-                      }
-                      disabled={readOnly}
-                      style={{ ...cellInput, width: '100%' }}
-                    />
-                  </div>
-                </div>
-
-                <div
-                  className="form-field-grid"
-                  style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
-                >
-                  <span style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
-                    Rate basis
-                  </span>
-                  <div style={{ width: '100%' }}>
-                    <Select
-                      value={step.rateBasis ?? ''}
-                      onChange={(value) => update(index, { rateBasis: value || null })}
-                      options={[{ value: '', label: 'From the process' }, ...RATE_BASIS_OPTIONS]}
-                      disabled={readOnly}
-                      ariaLabel={`Step ${stepNo} rate basis`}
-                      fullWidth
-                      portal={portalMenus}
-                    />
-                  </div>
-                </div>
+                {/* No step rate: each output row carries its own (landed-cost D1). */}
               </div>
 
               {/*

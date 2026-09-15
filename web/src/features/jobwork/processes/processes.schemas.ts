@@ -8,30 +8,11 @@ import { paginatedSchema, type Paginated } from '../../../lib/pagination';
  * is allowed to offer, so the wording on the form matters as much as the column:
  *
  *   itemChanges         the thing that comes back is a different item
- *   rateBasis           which quantity the processor's rate multiplies
  *
- * ⚠️ `requiresSingleBatch` was a third and is gone (2026-08-17) — see the
- * tombstone on the Prisma model before considering it back.
+ * ⚠️ `requiresSingleBatch` was a second and is gone (2026-08-17) — see the
+ * tombstone on the Prisma model before considering it back. `rateBasis` went with
+ * the landed-cost redesign: the charge is rate × accepted on each output row.
  */
-
-/**
- * Mirrors `RATE_BASES` in the backend's processes.types.ts — keep the two in step
- * or the form offers a value the API rejects.
- *
- * `per_kg` and `lump_sum` went on 2026-08-10: neither had a number to multiply
- * (nothing captures weight, and a lump sum billed in full for a step that
- * received nothing). `rateBasisLabel` still falls back to the raw value, so a
- * legacy row that somehow escaped the data migration reads as `per_kg` rather
- * than as a blank cell.
- */
-export const RATE_BASIS_OPTIONS = [
-  { value: 'per_issued_unit', label: 'Per unit issued' },
-  { value: 'per_received_unit', label: 'Per unit received' },
-] as const;
-
-export function rateBasisLabel(value: string | null | undefined): string {
-  return RATE_BASIS_OPTIONS.find((o) => o.value === value)?.label ?? value ?? '-';
-}
 
 export const processSchema = z.object({
   id: z.string().uuid(),
@@ -40,7 +21,6 @@ export const processSchema = z.object({
   code: z.string().nullable(),
   description: z.string().nullable(),
   itemChanges: z.boolean(),
-  rateBasis: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -52,7 +32,6 @@ export const createProcessSchema = z.object({
   code: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
   itemChanges: z.boolean().optional(),
-  rateBasis: z.string().optional(),
 });
 
 export type CreateProcessData = z.infer<typeof createProcessSchema>;

@@ -20,7 +20,7 @@ import type { CreateRouteInput, RouteStepInput, RouteStepRow } from './processRo
  *
  * `JobOrderStep` is a full snapshot of what a route step said at that moment
  * (field-sources §2.4). Everything in this file is therefore free to change
- * later: renaming a route, re-rating a step, deleting the whole thing — none of
+ * later: renaming a route, re-rating an output, deleting the whole thing — none of
  * it can reach a job order that is already running. That is not a limitation to
  * work around, it is the reason routes are safe to edit at all. The rate on a
  * released order is a number someone agreed with a processor.
@@ -300,8 +300,6 @@ function stepData(step: RouteStepInput, index: number) {
     processorType: step.processorType ?? 'vendor',
     processorId: step.processorId ?? null,
     workCentreLocationId: step.workCentreLocationId ?? null,
-    rate: step.rate ?? null,
-    rateBasis: step.rateBasis ?? null,
     expectedYield: step.expectedYield ?? null,
     remarks: step.remarks?.trim() || null,
   };

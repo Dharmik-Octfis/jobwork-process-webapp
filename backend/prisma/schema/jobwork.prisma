@@ -11,8 +11,6 @@
 ///   itemChanges          the thing that comes back is a DIFFERENT item (cloth → shirt).
 ///                        Domain doc §5.1: a changed unit means a changed item, never
 ///                        a conversion factor.
-///   rateBasis            how the processor charges (§9.2). Decides which quantity the
-///                        cost is multiplied by, so it cannot be inferred later.
 ///
 /// ⚠️ `preservesPackaging` was a third, and went with package-level tracking on
 /// 2026-08-12. It existed only to decide unit-wise vs bulk receipt; with quantity
@@ -41,11 +39,8 @@ model Process {
   /// true when the output is a different item from the input (§5.1).
   itemChanges Boolean @default(false) @map("item_changes")
 
-  /// per_issued_unit | per_received_unit
-  /// `per_kg` and `lump_sum` were dropped 2026-08-10 and their stored values
-  /// rewritten to per_issued_unit: neither had a number this system holds — there
-  /// is no weight to multiply, and a lump sum billed in full against a step that
-  /// received nothing.
+  /// ⚠️ Read and written by nothing since landed-cost phase 7b (2026-09-15): the
+  /// charge is rate × accepted on each output row. Dropped in Migration 2.
   rateBasis String @default("per_issued_unit") @map("rate_basis") @db.VarChar(30)
 
   /// Default over-receipt allowance, in percent. Nullable: "no default" is a real
@@ -153,6 +148,8 @@ model RouteStep {
   /// Where an `internal` step happens — a `work_centre` location.
   workCentreLocationId String? @map("work_centre_location_id") @db.Uuid
 
+  /// ⚠️ Read and written by nothing since landed-cost phase 7b — the rate is on
+  /// `RouteStepOutput`. Both dropped in Migration 2.
   rate      Decimal? @db.Decimal(18, 4)
   rateBasis String?  @map("rate_basis") @db.VarChar(30)
 
@@ -414,6 +411,8 @@ model JobOrderStep {
   processorNameSnapshot String? @map("processor_name_snapshot") @db.VarChar(255)
   workCentreLocationId  String? @map("work_centre_location_id") @db.Uuid
 
+  /// ⚠️ Read and written by nothing since landed-cost phase 7b — the rate is on
+  /// `JobOrderStepOutput`. Both dropped in Migration 2.
   rate      Decimal? @db.Decimal(18, 4)
   rateBasis String?  @map("rate_basis") @db.VarChar(30)
 

@@ -98,8 +98,6 @@ const RECEIPT_INCLUDE = {
       seq: true,
       processNameSnapshot: true,
       expectedYield: true,
-      rate: true,
-      rateBasis: true,
     },
   },
   // `type` rides along so the document can say the goods never came back — a

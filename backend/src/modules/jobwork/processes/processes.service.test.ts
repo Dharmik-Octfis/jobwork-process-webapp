@@ -68,7 +68,6 @@ describe('processes — the full CRUD path', () => {
       code: 'DYE',
       description: 'Wet processing',
       itemChanges: true,
-      rateBasis: 'per_received_unit',
     });
 
     expect(created.name).toBe(name);
@@ -84,7 +83,6 @@ describe('processes — the full CRUD path', () => {
     const updated = await updateProcessById(orgId, created.id, {
       name,
       code: 'DYE2',
-      rateBasis: 'per_issued_unit',
     });
     expect(updated.code).toBe('DYE2');
     // Not sent on the update, so it falls back to its default rather than

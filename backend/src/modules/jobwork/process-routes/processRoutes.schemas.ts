@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { openApiRegistry } from '../../../config/openapi.ts';
-import { RATE_BASES } from '../processes/processes.types.ts';
 import { PROCESSOR_TYPES } from '../jobwork.types.ts';
 
 /**
@@ -10,10 +9,10 @@ import { PROCESSOR_TYPES } from '../jobwork.types.ts';
  *
  * The default chain (field-sources §2.5) runs Process master → route step → job
  * order step → the document, and each level overrides only what it actually
- * knows. A route that says nothing about rate must fall THROUGH to the process,
- * not overwrite it with a zero — so "not set" has to be expressible, and `0` has
- * to mean zero. That is why `rate` and the four item/uom fields
- * are `.nullable().optional()` rather than defaulted here.
+ * knows. A route that says nothing about a value must not overwrite it with a
+ * zero — so "not set" has to be expressible, and `0` has to mean zero. That is
+ * why an output's `rate` and the item/uom fields are `.nullable().optional()`
+ * rather than defaulted here.
  *
  * There is no `customFields` here, on the route or on its steps. Routes left
  * `ENTITY_TYPES` on 2026-08-10 for the reason processes did a few hours earlier:
@@ -74,8 +73,7 @@ export const routeStepSchema = z.object({
   /** Only meaningful when `processorType = 'internal'`. */
   workCentreLocationId: nullableUuid,
 
-  rate: z.coerce.number().min(0).nullable().optional(),
-  rateBasis: z.enum(RATE_BASES).nullable().optional(),
+  // No step rate: the suggested charge is per output row (landed-cost plan D1).
 
   /**
    * 🔴 What the step consumes and what it produces (§5.7). These replaced four

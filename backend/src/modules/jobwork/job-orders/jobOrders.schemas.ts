@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { openApiRegistry } from '../../../config/openapi.ts';
-import { RATE_BASES } from '../processes/processes.types.ts';
 import { PROCESSOR_TYPES } from '../jobwork.types.ts';
 import { OWNERSHIPS } from '../../inventory/stock-ledger/stockLedger.service.ts';
 
@@ -135,8 +134,7 @@ export const jobOrderStepSchema = z.object({
   processorId: nullableUuid,
   workCentreLocationId: nullableUuid,
 
-  rate: z.coerce.number().min(0).nullable().optional(),
-  rateBasis: z.enum(RATE_BASES).nullable().optional(),
+  // No step rate: the charge is per output row (landed-cost plan D1).
 
   /**
    * 🔴 What the step consumes and what it produces (§5.7). These replaced four

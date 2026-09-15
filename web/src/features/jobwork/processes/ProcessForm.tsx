@@ -1,6 +1,5 @@
-import { Controller, useForm } from 'react-hook-form';
-import { Select } from '../../../components/ui/Select';
-import { RATE_BASIS_OPTIONS, type CreateProcessData, type Process } from './processes.schemas';
+import { useForm } from 'react-hook-form';
+import type { CreateProcessData, Process } from './processes.schemas';
 
 export interface ProcessFormProps {
   initialData?: Partial<Process>;
@@ -49,7 +48,6 @@ const errorStyle: React.CSSProperties = {
 export function ProcessForm({ initialData, onSubmit, isPending, onCancel }: ProcessFormProps) {
   const {
     register,
-    control,
     handleSubmit,
     formState: { errors },
   } = useForm<CreateProcessData>({
@@ -58,7 +56,6 @@ export function ProcessForm({ initialData, onSubmit, isPending, onCancel }: Proc
       code: initialData?.code ?? '',
       description: initialData?.description ?? '',
       itemChanges: initialData?.itemChanges ?? false,
-      rateBasis: initialData?.rateBasis ?? 'per_issued_unit',
     },
   });
 
@@ -151,52 +148,17 @@ export function ProcessForm({ initialData, onSubmit, isPending, onCancel }: Proc
         </label>
       </section>
 
-      <section style={{ maxWidth: 640, marginBottom: 32 }}>
-        <h2
-          style={{
-            fontSize: 13,
-            fontWeight: 600,
-            color: '#111',
-            margin: '0 0 16px 0',
-            textTransform: 'uppercase',
-            letterSpacing: 0.4,
-          }}
-        >
-          Defaults
-        </h2>
+      {/*
+        ⚠️ The "Defaults" section is gone. "Default Issue Unit" and "Default
+        Receive Unit" went first: a step transacts in its ITEMS' stocking units
+        (§5.1), so an org-wide default was a guess about one item. "Rate Basis"
+        went with the landed-cost redesign — the charge is rate × accepted on
+        each output row of the job order.
 
-        <div style={{ marginBottom: 20 }}>
-          <label style={labelStyle} htmlFor="process-rate-basis">
-            Rate Basis
-          </label>
-          <Controller
-            name="rateBasis"
-            control={control}
-            render={({ field }) => (
-              <Select
-                value={field.value ?? 'per_issued_unit'}
-                onChange={field.onChange}
-                options={[...RATE_BASIS_OPTIONS]}
-                ariaLabel="Rate basis"
-                fullWidth={false}
-                minWidth={440}
-              />
-            )}
-          />
-        </div>
-
-        {/*
-          ⚠️ "Default Issue Unit" and "Default Receive Unit" are not asked any
-          more. A step transacts in its ITEMS' stocking units (§5.1), so an
-          org-wide default set here was a guess about one item — and applying it
-          is what let a challan and the stock ledger describe one movement in two
-          different units. The columns are gone too; see the drop migration.
-
-          The Custom Fields section went with them: `process` left ENTITY_TYPES,
-          because the operation master is a short list of names an org types once
-          and per-org fields on it were a section nobody filled in.
-        */}
-      </section>
+        The Custom Fields section went too: `process` left ENTITY_TYPES, because
+        the operation master is a short list of names an org types once and
+        per-org fields on it were a section nobody filled in.
+      */}
 
       <div
         className="form-actions-footer"

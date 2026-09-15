@@ -53,8 +53,6 @@ function toFormSteps(route?: Partial<Route>): RouteStepData[] {
     processorType: step.processorType,
     processorId: step.processorId,
     workCentreLocationId: step.workCentreLocationId,
-    rate: step.rate === null ? null : Number(step.rate),
-    rateBasis: step.rateBasis,
     // 🔴 The template's bill of materials (§5.7). The consumed side carries a
     // default quantity a job order copies once; the produced side carries none,
     // because what comes back is a per-run answer.

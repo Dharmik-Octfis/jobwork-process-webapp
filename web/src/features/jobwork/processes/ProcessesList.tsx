@@ -12,7 +12,7 @@ import { useListSearch } from '../../../hooks/useListSearch';
 import { formatDate } from '../../../lib/formatDate';
 import { deleteProcess, fetchProcessCount, fetchProcesses } from './processes.api';
 import { ProcessDetail } from './ProcessDetail';
-import { rateBasisLabel, type Process } from './processes.schemas';
+import type { Process } from './processes.schemas';
 
 /**
  * How each selectable column renders. Keys match the backend catalog
@@ -26,8 +26,6 @@ import { rateBasisLabel, type Process } from './processes.schemas';
  */
 function renderProcessCell(process: Process, key: string): string {
   switch (key) {
-    case 'rateBasis':
-      return rateBasisLabel(process.rateBasis);
     case 'itemChanges':
       return process.itemChanges ? 'New item' : 'Same item';
     case 'createdAt':
@@ -306,7 +304,7 @@ export function ProcessesList() {
                       {process.name}
                     </span>
                     <span style={{ fontSize: 12, color: '#64748b' }}>
-                      {process.code || rateBasisLabel(process.rateBasis)}
+                      {process.code || renderProcessCell(process, 'itemChanges')}
                     </span>
                   </button>
                 ))}

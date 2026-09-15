@@ -240,16 +240,12 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
     // ---------------------------------------------------------------------
     const dyeing = await createNewProcess(orgId, {
       name: 'Dyeing',
-      // The same roll comes back, so goods can be received taka by taka.
-      rateBasis: 'per_issued_unit',
     });
 
     const cutting = await createNewProcess(orgId, {
       name: 'Cutting',
       // Cloth in, panels out — a different item in a different unit.
       itemChanges: true,
-      // The roll is destroyed, so only a bulk quantity can be received.
-      rateBasis: 'per_received_unit',
     });
 
     const route = await createNewRoute(orgId, {
@@ -258,14 +254,12 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
         {
           processId: dyeing.id,
           processorId: dyerId,
-          rate: 12,
           inputs: [{ itemId: greyId }],
           outputs: [{ itemId: dyedId, isPrimary: true }],
         },
         {
           processId: cutting.id,
           processorId: cutterId,
-          rate: 4,
           inputs: [{ itemId: dyedId }],
           outputs: [{ itemId: shirtId, isPrimary: true }],
           expectedYield: 0.6,
@@ -295,8 +289,6 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
         processId: step.processId,
         processorType: step.processorType as ProcessorType,
         processorId: step.processorId,
-        rate: step.rate === null ? null : Number(step.rate),
-        rateBasis: step.rateBasis as 'per_issued_unit' | 'per_received_unit' | null,
         inputs: step.inputs.map((row) => ({ itemId: row.itemId })),
         // The charge lives on the output row (R6): ₹12 a dyed metre, ₹4 a panel.
         outputs: step.outputs.map((row) => ({
@@ -1503,8 +1495,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
       itemChanges: true,
-      // Stitching destroys the bundle, so goods come back as a bulk quantity.
-      rateBasis: 'per_issued_unit',
     });
 
     await stockUp(threadId, 20);
@@ -1516,9 +1506,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
         {
           processId: stitching.id,
           processorId: cutterId,
-          // ₹3 per panel issued — 🔴 per PANEL, not per (panel + cone + button).
-          rate: 3,
-          rateBasis: 'per_issued_unit',
           inputs: [
             { itemId: shirtId, plannedQty: 100 },
             { itemId: threadId, plannedQty: 5 },

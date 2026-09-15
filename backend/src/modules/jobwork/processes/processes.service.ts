@@ -76,7 +76,6 @@ function writableFields(data: CreateProcessInput) {
     code: data.code?.trim() || null,
     description: data.description?.trim() || null,
     itemChanges: data.itemChanges ?? false,
-    rateBasis: data.rateBasis ?? 'per_issued_unit',
   };
 }
 
