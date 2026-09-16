@@ -6,6 +6,7 @@ import { useParams } from 'react-router-dom';
 import { fetchAvailableBatches } from './batches/batches.api';
 import { AddBatchesModal } from './issues/AddBatchesModal';
 import { selectionKey } from './issues/batchSelection';
+import { InfoTip } from '../../components/ui/InfoTip';
 import { ItemComboBox } from '../../components/ui/ItemComboBox';
 import { Select } from '../../components/ui/Select';
 import { useUoms } from '../inventory/uom/uom.api';
@@ -404,10 +405,10 @@ function ItemList({
 
         {/* Same flex bases and wrap as the rows below, so each caption breaks onto
             the same line as its box on a narrow screen. The boxes keep their own
-            screen-reader labels, hence aria-hidden. */}
+            screen-reader labels, hence aria-hidden on the caption TEXT — not on the
+            row, which would hide the info button while Tab still reaches it. */}
         {rows.length > 0 && (
           <div
-            aria-hidden="true"
             style={{
               display: 'flex',
               gap: 6,
@@ -417,17 +418,46 @@ function ItemList({
               color: '#64748b',
             }}
           >
-            <span style={{ flex: '2 1 150px', minWidth: 0 }}>Item</span>
-            <span style={{ flex: '0 0 62px' }}>Unit</span>
+            <span aria-hidden="true" style={{ flex: '2 1 150px', minWidth: 0 }}>
+              Item
+            </span>
+            <span aria-hidden="true" style={{ flex: '0 0 62px' }}>
+              Unit
+            </span>
             {showQty && (
-              <span style={{ flex: '0 0 84px', ...(qtyRequired ? { color: '#ef4444' } : {}) }}>
-                {isInput ? 'Qty' : 'Qty (Expected)'}
-                {qtyRequired && '*'}
+              <span
+                style={{
+                  flex: '0 0 84px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  ...(qtyRequired ? { color: '#ef4444' } : {}),
+                }}
+              >
+                <span aria-hidden="true">
+                  {isInput ? 'Planned' : 'Expected'}
+                  {qtyRequired && '*'}
+                </span>
+                {qtyRequired && (
+                  <InfoTip label={isInput ? 'About planned quantity' : 'About expected quantity'}>
+                    {isInput
+                      ? 'Quantity you plan to send to the processor. Landed cost is calculated from it.'
+                      : 'Good quantity you expect to receive back. Landed cost is calculated from it.'}
+                  </InfoTip>
+                )}
               </span>
             )}
-            {showTolerance && isInput && <span style={{ flex: '0 0 76px' }}>Tolerance (%)</span>}
-            {showRate && !isInput && <span style={{ flex: '0 0 84px' }}>Rate</span>}
-            <span style={{ flex: '0 0 26px' }} />
+            {showTolerance && isInput && (
+              <span aria-hidden="true" style={{ flex: '0 0 76px' }}>
+                Tolerance (%)
+              </span>
+            )}
+            {showRate && !isInput && (
+              <span aria-hidden="true" style={{ flex: '0 0 84px' }}>
+                Rate
+              </span>
+            )}
+            <span aria-hidden="true" style={{ flex: '0 0 26px' }} />
           </div>
         )}
 

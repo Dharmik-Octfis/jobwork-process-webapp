@@ -1,0 +1,44 @@
+.button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+/* 44px tap target without growing the caption row it sits in. */
+.button::before {
+  content: '';
+  position: absolute;
+  inset: -14px;
+}
+
+.button:hover,
+.button[aria-expanded='true'] {
+  color: #475569;
+}
+
+.tip {
+  position: fixed;
+  /* Above Modal's overlay (1100), like the portalled Select menu. */
+  z-index: 1200;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 8px 20px -6px rgba(15, 23, 42, 0.18);
+  color: #334155;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  white-space: normal;
+}
