@@ -72,9 +72,8 @@ model Item {
   /// line. Nothing reads it yet.
   defaultRouteId String? @map("default_route_id") @db.Uuid
 
-  /// Over-issue allowance, copied onto a job order step's input row when this item
-  /// is picked there (landed-cost plan D10). Never read live by a running order.
-  defaultTolerancePct Decimal? @map("default_tolerance_pct") @db.Decimal(6, 3)
+  /// ⚠️ `defaultTolerancePct` was dropped 2026-09-16: tolerance is typed per job
+  /// order input row (`JobOrderStepInput.tolerancePct`), never inherited from the item.
 
   /// Frozen recipe rows on job order steps where this item is a component.
   jobOrderStepOutputComponentRows JobOrderStepOutputComponent[] @relation("JobOrderStepOutputComponentItem")

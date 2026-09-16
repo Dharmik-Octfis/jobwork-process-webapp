@@ -8,11 +8,10 @@ import { createNewJobIssue } from '../issues/jobIssues.service.ts';
 import { createNewJobOrder } from './jobOrders.service.ts';
 
 /**
- * 🔴 Tolerance is a property of the ITEM (landed-cost plan D10, §8 tests 18–20).
+ * 🔴 Tolerance is typed per job order input row, and nothing fills it in.
  *
- * Picking an item on a job order input row copies its default; the over-issue
- * ceiling reads that row and nothing else. The Process and step tolerances it used
- * to fall through to are gone.
+ * The item default it used to be copied from was removed 2026-09-16; the Process
+ * and step tolerances before that. The over-issue ceiling reads the row alone.
  *
  * Every row is created by this file and hard-deleted afterwards (CLAUDE.md).
  */
@@ -25,7 +24,7 @@ let godownId: string;
 let dyerId: string;
 let processId: string;
 
-async function makeItem(name: string, defaultTolerancePct: number | null) {
+async function makeItem(name: string) {
   return runAsTenant(orgId, async (tx) => {
     const item = await tx.item.create({
       data: {
@@ -36,7 +35,6 @@ async function makeItem(name: string, defaultTolerancePct: number | null) {
         stockingUomId: metreId,
         inventoryTracking: 'batch',
         trackInventory: true,
-        defaultTolerancePct,
       },
       select: { id: true },
     });
@@ -151,34 +149,25 @@ afterAll(async () => {
   await deleteTestOrganization(orgId);
 });
 
-describe('item-wise tolerance', { timeout: 60_000 }, () => {
-  it('copies the item’s default onto a blank row, and a typed value wins', async () => {
-    const fabricId = await makeItem('Fabric', 5);
-    const threadId = await makeItem('Thread', 25);
+describe('row-wise tolerance', { timeout: 60_000 }, () => {
+  it('stores each typed value as typed, 0 included, and leaves a blank row blank', async () => {
+    const fabricId = await makeItem('Fabric');
+    const threadId = await makeItem('Thread');
+    const buttonId = await makeItem('Button');
 
     const order = await orderFor([
       { itemId: fabricId, plannedQty: 100 },
       { itemId: threadId, plannedQty: 10, tolerancePct: 2 },
+      { itemId: buttonId, plannedQty: 50, tolerancePct: 0 },
     ]);
 
-    expect(await toleranceOnRows(order.steps[0]!.id)).toEqual(['5', '2']);
-  });
-
-  it('keeps a row’s copy when the item’s default is edited afterwards', async () => {
-    const fabricId = await makeItem('Fabric', 5);
-    const order = await orderFor([{ itemId: fabricId, plannedQty: 100 }]);
-
-    await runAsTenant(orgId, (tx) =>
-      tx.item.update({ where: { id: fabricId }, data: { defaultTolerancePct: 50 } }),
-    );
-
-    expect(await toleranceOnRows(order.steps[0]!.id)).toEqual(['5']);
+    expect(await toleranceOnRows(order.steps[0]!.id)).toEqual([null, '2', '0']);
   });
 
   it('measures the over-issue ceiling against the row alone', async () => {
-    const fabricId = await makeItem('Fabric', 5);
+    const fabricId = await makeItem('Fabric');
     const batch = await seedStock(fabricId, 200);
-    const order = await orderFor([{ itemId: fabricId, plannedQty: 100 }]);
+    const order = await orderFor([{ itemId: fabricId, plannedQty: 100, tolerancePct: 5 }]);
 
     // 100 planned + 5% = 105. 106 is over.
     await expect(
@@ -198,7 +187,7 @@ describe('item-wise tolerance', { timeout: 60_000 }, () => {
   });
 
   it('leaves a row with no percentage unchecked', async () => {
-    const fabricId = await makeItem('Fabric', null);
+    const fabricId = await makeItem('Fabric');
     const batch = await seedStock(fabricId, 300);
     const order = await orderFor([{ itemId: fabricId, plannedQty: 100 }]);
 

@@ -38,10 +38,6 @@ export function toItemResponse(item: Record<string, unknown> | null | undefined)
       item.openingStockValuePerUnit !== null && item.openingStockValuePerUnit !== undefined
         ? Number(item.openingStockValuePerUnit)
         : null,
-    defaultTolerancePct:
-      item.defaultTolerancePct !== null && item.defaultTolerancePct !== undefined
-        ? Number(item.defaultTolerancePct)
-        : null,
   };
 }
 

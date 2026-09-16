@@ -465,11 +465,6 @@ function ItemList({
                       update(rowIndex, {
                         itemId: item?.id ?? '',
                         uomId: item ? unitOfItem(item) : null,
-                        // A COPY of the item's tolerance, re-taken on every pick, so
-                        // editing the item later never loosens this order (D10).
-                        ...(isInput && showTolerance
-                          ? { tolerancePct: item?.defaultTolerancePct ?? null }
-                          : {}),
                       });
                     }}
                     placeholder="Select an item…"
@@ -548,7 +543,7 @@ function ItemList({
                 )}
 
                 {/* Per item — fabric at 3% beside thread at 25%, because small
-                    quantities vary more. Copied from the item when it is picked. */}
+                    quantities vary more. Typed here; blank means unchecked. */}
                 {showTolerance && isInput && (
                   <div style={{ flex: '0 0 66px' }}>
                     <label htmlFor={`${qtyId}-tol`} style={srOnly}>
@@ -568,13 +563,7 @@ function ItemList({
                         })
                       }
                       disabled={disabled}
-                      /* A blank row is saved with the item's default (a row copied
-                         from a route has none yet), so that is the grey figure. */
-                      placeholder={
-                        itemById.get(row.itemId)?.defaultTolerancePct != null
-                          ? String(itemById.get(row.itemId)?.defaultTolerancePct)
-                          : 'tol %'
-                      }
+                      placeholder="tol %"
                       title="Over-issue allowance %"
                       style={fieldError('tolerancePct') ? cellInputError : cellInput}
                     />

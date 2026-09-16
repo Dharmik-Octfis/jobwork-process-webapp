@@ -14,7 +14,6 @@ import { useUoms } from '../uom/uom.api';
 import { UomFormModal } from '../uom/UomFormModal';
 import { Plus, Trash2, X } from 'lucide-react';
 import { ItemComboBox } from '../../../components/ui/ItemComboBox';
-import { ItemToleranceField } from '../../items/components/ItemToleranceField';
 
 import { MultiSelectItemModal } from '../../items/components/MultiSelectItemModal';
 import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
@@ -83,7 +82,6 @@ export function CreateCompositeItemPage({
           itemToClone.openingStock !== null && itemToClone.openingStock !== undefined
             ? Number(itemToClone.openingStock)
             : null,
-        defaultTolerancePct: itemToClone.defaultTolerancePct ?? null,
         openingStockValuePerUnit:
           itemToClone.openingStockValuePerUnit !== null &&
           itemToClone.openingStockValuePerUnit !== undefined
@@ -1726,14 +1724,6 @@ export function CreateCompositeItemPage({
                   </label>
                 </div>
               </div>
-
-              <ItemToleranceField
-                value={formData.defaultTolerancePct}
-                onChange={(value) =>
-                  setFormData((prev) => ({ ...prev, defaultTolerancePct: value }))
-                }
-                error={errors.defaultTolerancePct}
-              />
 
               {formData.inventoryTracking === 'none' && (
                 <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>

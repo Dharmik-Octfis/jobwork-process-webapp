@@ -72,9 +72,6 @@ export const itemSchema = openApiRegistry.register(
     inventoryTracking: INVENTORY_TRACKING.optional(),
     openingStock: z.number().nullable().optional(),
     openingStockValuePerUnit: z.number().nullable().optional(),
-    /** Over-issue allowance copied onto a job order input row when this item is
-     * picked (landed-cost plan D10). Null = no default; 0 = none allowed. */
-    defaultTolerancePct: z.number().min(0).max(100).nullable().optional(),
     customFields: z.record(z.string(), z.unknown()).optional(),
     createdAt: z.string().optional(),
     updatedAt: z.string().optional(),

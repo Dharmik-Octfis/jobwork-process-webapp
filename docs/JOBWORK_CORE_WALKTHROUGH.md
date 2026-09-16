@@ -111,7 +111,7 @@ job.
 | `code`, `description`     | typed  | Free text. Nothing derives meaning from either                                                                                                                  |
 | `itemChanges`             | typed  | **Does what comes back differ from what went in?** Cutting: yes (fabric → panels). Washing: no. Drives whether the form seeds the output as a copy of the input |
 | ~~`rateBasis`~~           | —      | **Gone, 2026-09-15.** Every charge is rate × accepted qty on an output row (§4.4). The column is dropped by landed-cost Migration 2                             |
-| ~~`defaultTolerancePct`~~ | —      | **Gone, 2026-09-15.** Tolerance belongs to the ITEM (`items.defaultTolerancePct`) and is copied onto each consumed row (§4.3)                                   |
+| ~~`defaultTolerancePct`~~ | —      | **Gone, 2026-09-15.** Tolerance is typed on each consumed row of the job order (§4.3); the item-level default that briefly replaced it went on 2026-09-16       |
 
 ---
 
@@ -193,13 +193,13 @@ nothing to the ledger.
 
 ### 4.3 What a step consumes — `job_order_step_inputs`
 
-| Field             | Source       | Role                                                                                                                                                                                                                                                                                   |
-| ----------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `seq`             | renumbered   | Row order. **Row 1 is the principal input** — what the step is fundamentally about                                                                                                                                                                                                     |
-| `itemId`, `uomId` | **forced**   | 🔴 The unit is always the **item's own stocking unit**, never chosen. A document disagreeing with the ledger about units is how a challan and the stock record describe one movement two ways                                                                                          |
-| `plannedQty`      | typed        | How much to consume. Left blank on a chain-fed row, it takes whatever the steps above still have spare. 🔴 Required, with every output's `expectedQty`, before the step's first challan posts — every receipt is costed from the two (§6.5)                                            |
-| `tolerancePct`    | typed        | Per item, because small quantities vary proportionally more — fabric at 3% beside thread at 25%. Copied from the item's `defaultTolerancePct` when the item is picked, editable; a blank row is refilled from the item on save. The over-issue ceiling reads this row and nothing else |
-| `fromStock`       | **computed** | **Where does this item come from?** `false` = an earlier step in this order produces it. `true` = it comes off the shelf. Computed at save by walking the earlier steps; a client cannot send it                                                                                       |
+| Field             | Source       | Role                                                                                                                                                                                                                                                                                                                  |
+| ----------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `seq`             | renumbered   | Row order. **Row 1 is the principal input** — what the step is fundamentally about                                                                                                                                                                                                                                    |
+| `itemId`, `uomId` | **forced**   | 🔴 The unit is always the **item's own stocking unit**, never chosen. A document disagreeing with the ledger about units is how a challan and the stock record describe one movement two ways                                                                                                                         |
+| `plannedQty`      | typed        | How much to consume. Left blank on a chain-fed row, it takes whatever the steps above still have spare. 🔴 Required, with every output's `expectedQty`, before the step's first challan posts — every receipt is costed from the two (§6.5)                                                                           |
+| `tolerancePct`    | typed        | Per item, because small quantities vary proportionally more — fabric at 3% beside thread at 25%. Typed per run, never inherited — the item default was removed 2026-09-16 because the allowance is not fixed for an item. Blank = unchecked, 0 = none allowed. The over-issue ceiling reads this row and nothing else |
+| `fromStock`       | **computed** | **Where does this item come from?** `false` = an earlier step in this order produces it. `true` = it comes off the shelf. Computed at save by walking the earlier steps; a client cannot send it                                                                                                                      |
 
 ### 4.4 What a step produces — `job_order_step_outputs`
 

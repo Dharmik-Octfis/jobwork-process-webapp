@@ -228,9 +228,8 @@ interface ResolvedInput {
   itemId: string;
   uomId: string | null;
   plannedQty: number | null;
-  /** A blank row is filled from the item's `defaultTolerancePct` in `buildSteps` —
-   * copied, not linked, so editing the item later never loosens a running order's
-   * limit (landed-cost plan D10). 0 = none allowed; null = unchecked. */
+  /** Typed on the row and stored as typed — nothing fills a blank one in.
+   * 0 = none allowed; null = unchecked. */
   tolerancePct: number | null;
   fromStock: boolean;
   /** The planner's batch note. Empty for every untracked item and for anyone who
@@ -408,8 +407,7 @@ function classifyStepInputs(
  * Freeze the Process master's name onto the step (§2.4).
  *
  * Nothing else comes from the process any more: the rate is per output row and
- * its basis is gone (landed-cost plan D1–D2), and tolerance is the item's, copied
- * per input row in `buildSteps` (D10).
+ * its basis is gone (landed-cost plan D1–D2), and tolerance is typed per input row.
  *
  * The items are NOT set here — they are two lists now (`resolveStepRows`), and
  * the units that follow them cannot be known until every step's items are. See
@@ -962,18 +960,11 @@ async function buildSteps(
           name: true,
           itemStructure: true,
           stockingUomId: true,
-          defaultTolerancePct: true,
         },
       })
     : [];
   const itemById = new Map(chainItems.map((item) => [item.id, item]));
   const stockingUomByItem = new Map(chainItems.map((item) => [item.id, item.stockingUomId]));
-  const toleranceByItem = new Map(
-    chainItems.map((item) => [
-      item.id,
-      item.defaultTolerancePct === null ? null : Number(item.defaultTolerancePct),
-    ]),
-  );
 
   // Every composite output's recipe in ONE query, never one per row — it is both
   // what V2 checks and what the step freezes (§5.2).
@@ -1010,12 +1001,7 @@ async function buildSteps(
 
   const withUnits = resolved.map((step) => ({
     ...step,
-    // A blank row takes the item's tolerance as a COPY (landed-cost plan D10), so a
-    // later edit to the item never loosens this order's limit. `??`: 0 stays 0.
-    resolvedInputs: applyRowUnits(step.resolvedInputs, stockingUomByItem).map((row) => ({
-      ...row,
-      tolerancePct: row.tolerancePct ?? toleranceByItem.get(row.itemId) ?? null,
-    })),
+    resolvedInputs: applyRowUnits(step.resolvedInputs, stockingUomByItem),
     resolvedOutputs: applyRowUnits(step.resolvedOutputs, stockingUomByItem).map((row) => ({
       ...row,
       components: recipeByComposite.get(row.itemId) ?? [],

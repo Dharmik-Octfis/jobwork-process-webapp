@@ -15,7 +15,6 @@ import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { UomFormModal } from '../uom/UomFormModal';
 import { Plus } from 'lucide-react';
 import { ItemComboBox } from '../../../components/ui/ItemComboBox';
-import { ItemToleranceField } from '../../items/components/ItemToleranceField';
 import type { Item } from '../../items/items.schemas';
 import { Trash2 } from 'lucide-react';
 import { MultiSelectItemModal } from '../../items/components/MultiSelectItemModal';
@@ -237,7 +236,6 @@ export function EditCompositeItemPage() {
         rawItem.openingStock !== null && rawItem.openingStock !== undefined
           ? Number(rawItem.openingStock)
           : null,
-      defaultTolerancePct: rawItem.defaultTolerancePct ?? null,
       openingStockValuePerUnit:
         rawItem.openingStockValuePerUnit !== null && rawItem.openingStockValuePerUnit !== undefined
           ? Number(rawItem.openingStockValuePerUnit)
@@ -1637,14 +1635,6 @@ export function EditCompositeItemPage() {
                       )}
                     </div>
                   </div>
-
-                  <ItemToleranceField
-                    value={formData.defaultTolerancePct}
-                    onChange={(value) =>
-                      setFormData((prev) => ({ ...prev, defaultTolerancePct: value }))
-                    }
-                    error={errors.defaultTolerancePct}
-                  />
 
                   {formData.inventoryTracking === 'none' && (
                     <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>

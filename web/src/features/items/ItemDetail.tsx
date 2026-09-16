@@ -482,19 +482,6 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                       </div>
                     </div>
                   )}
-
-                  {item.defaultTolerancePct !== null && item.defaultTolerancePct !== undefined && (
-                    <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                      <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
-                        Tolerance
-                      </div>
-                      <div
-                        style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}
-                      >
-                        {Number(item.defaultTolerancePct)}%
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
 

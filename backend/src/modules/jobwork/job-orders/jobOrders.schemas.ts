@@ -71,9 +71,8 @@ export const stepInputRowSchema = z.object({
    * batch-tracked items get the picker, and planning without naming batches stays
    * perfectly valid. */
   plannedBatches: z.array(plannedBatchRowSchema).optional(),
-  /** Over-issue allowance for THIS item. Left out, the server copies the item's
-   * default (landed-cost plan D10); 0 means no tolerance at all and must stay
-   * distinguishable from "not set". */
+  /** Over-issue allowance for THIS item. Left out, the row is unchecked; 0 means no
+   * tolerance at all and must stay distinguishable from "not set". */
   tolerancePct: z.coerce.number().min(0).max(100).nullable().optional(),
 });
 

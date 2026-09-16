@@ -231,9 +231,9 @@ const QTY_EPSILON = new Prisma.Decimal('0.00005');
  * the fallback until Migration A's backfill has reached every step.
  *
  * 🔴 THE PERCENTAGE IS THE ROW'S AND NOTHING ELSE (landed-cost plan D10). Fabric
- * may allow 3% while thread allows 25% — small quantities vary more. The row was
- * copied from the item when the job order was saved; the step-level tolerance it
- * used to fall through to is gone. A row that says 0 means no tolerance at all.
+ * may allow 3% while thread allows 25% — small quantities vary more. The planner
+ * types it on the job order; nothing inherits it from the item or the step. A row
+ * that says 0 means no tolerance at all.
  *
  * An item with no plan is not checked, and neither is one where nothing set a
  * percentage. "Nobody said how much thread" is not "zero thread is allowed", and

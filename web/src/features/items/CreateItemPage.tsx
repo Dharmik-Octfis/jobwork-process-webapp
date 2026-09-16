@@ -13,7 +13,6 @@ import { useUoms } from '../inventory/uom/uom.api.ts';
 import { UomFormModal } from '../inventory/uom/UomFormModal.tsx';
 import { Plus, X } from 'lucide-react';
 import { useTrackingLabel } from '../../hooks/useTrackingLabel.ts';
-import { ItemToleranceField } from './components/ItemToleranceField.tsx';
 
 interface CreateItemPageProps {
   isModal?: boolean;
@@ -69,7 +68,6 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
           itemToClone.openingStock !== null && itemToClone.openingStock !== undefined
             ? Number(itemToClone.openingStock)
             : null,
-        defaultTolerancePct: itemToClone.defaultTolerancePct ?? null,
         openingStockValuePerUnit:
           itemToClone.openingStockValuePerUnit !== null &&
           itemToClone.openingStockValuePerUnit !== undefined
@@ -1121,14 +1119,6 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       )}
                     </div>
                   </div>
-
-                  <ItemToleranceField
-                    value={formData.defaultTolerancePct}
-                    onChange={(value) =>
-                      setFormData((prev) => ({ ...prev, defaultTolerancePct: value }))
-                    }
-                    error={errors.defaultTolerancePct}
-                  />
 
                   {formData.inventoryTracking === 'none' && (
                     <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>

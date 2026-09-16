@@ -30,7 +30,7 @@ export const createProcessSchema = openApiRegistry.register(
     itemChanges: z.boolean().optional(),
 
     // No rate basis: the charge is rate × accepted on each output row (landed-cost
-    // plan D1–D2). No tolerance either: it is a property of the ITEM (D10).
+    // plan D1–D2). No tolerance either: it is typed per job order input row.
   }),
 );
 

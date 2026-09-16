@@ -42,8 +42,6 @@ export const itemSchema = z.object({
   isPurchaseInfo: z.boolean().default(true),
   costPrice: z.number({ message: 'Cost price is required' }).min(0, 'Cost price must be positive'),
   purchaseDescription: z.string().nullable().optional(),
-  /** Copied onto a job order input row when this item is picked there. */
-  defaultTolerancePct: z.number().nullable().optional(),
   packaging: z.string().max(100).nullable().optional(),
   deliveryDate: z.string().nullable().optional(),
 
@@ -93,12 +91,6 @@ export const itemFormSchema = z.object({
   isPurchaseInfo: z.boolean().default(true),
   costPrice: z.number({ message: 'Cost price is required' }).min(0, 'Cost price must be positive'),
   purchaseDescription: z.string().optional().nullable(),
-  defaultTolerancePct: z
-    .number()
-    .min(0, 'Tolerance cannot be negative')
-    .max(100, 'Tolerance cannot exceed 100%')
-    .nullable()
-    .optional(),
   packaging: z.string().optional().nullable(),
 
   frontImage: z.union([itemImageAttachmentSchema, z.string()]).nullable().optional(),

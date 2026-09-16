@@ -14,7 +14,6 @@ import { useActiveCustomFields } from '../custom-fields/customFields.api.ts';
 import { UomFormModal } from '../inventory/uom/UomFormModal.tsx';
 import { Plus } from 'lucide-react';
 import { useTrackingLabel } from '../../hooks/useTrackingLabel.ts';
-import { ItemToleranceField } from './components/ItemToleranceField.tsx';
 
 export function EditItemPage() {
   const { id, orgId } = useParams<{ id: string; orgId: string }>();
@@ -107,7 +106,6 @@ export function EditItemPage() {
         rawItem.openingStock !== null && rawItem.openingStock !== undefined
           ? Number(rawItem.openingStock)
           : null,
-      defaultTolerancePct: rawItem.defaultTolerancePct ?? null,
       openingStockValuePerUnit:
         rawItem.openingStockValuePerUnit !== null && rawItem.openingStockValuePerUnit !== undefined
           ? Number(rawItem.openingStockValuePerUnit)
@@ -1062,14 +1060,6 @@ export function EditItemPage() {
                       )}
                     </div>
                   </div>
-
-                  <ItemToleranceField
-                    value={formData.defaultTolerancePct}
-                    onChange={(value) =>
-                      setFormData((prev) => ({ ...prev, defaultTolerancePct: value }))
-                    }
-                    error={errors.defaultTolerancePct}
-                  />
 
                   {formData.inventoryTracking === 'none' && (
                     <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>
