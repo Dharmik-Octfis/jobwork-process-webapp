@@ -129,34 +129,67 @@ export function FifoCostLotTrackingPage() {
   const dataRows = data?.results || [];
   const total = data?.total || 0;
 
-  const rowSpans = new Array(dataRows.length).fill(1);
+  const leftRowSpans = new Array(dataRows.length).fill(1);
   const skipLeft = new Array(dataRows.length).fill(false);
+  const rightRowSpans = new Array(dataRows.length).fill(1);
+  const skipRight = new Array(dataRows.length).fill(false);
+  
+  const displayOutQty = new Array(dataRows.length).fill(0);
+  dataRows.forEach((row, i) => displayOutQty[i] = row.outQty || 0);
 
   if (dataRows.length > 0) {
-    let groupStart = 0;
+    let leftGroupStart = 0;
+    let rightGroupStart = 0;
+    
     for (let i = 1; i < dataRows.length; i++) {
       if (dataRows[i].itemName) {
-        groupStart = i;
+        leftGroupStart = i;
+        rightGroupStart = i;
         continue;
       }
 
-      let isSame = false;
+      // Left side grouping
+      let isLeftSame = false;
       if (appliedFilters.reportBasis === 'product_out') {
-        isSame = dataRows[i].outTransaction === dataRows[groupStart].outTransaction &&
-                 dataRows[i].outDate === dataRows[groupStart].outDate &&
-                 dataRows[i].outQty === dataRows[groupStart].outQty;
+        if (dataRows[i].outTransaction && dataRows[i].outTransaction === dataRows[leftGroupStart].outTransaction) {
+          isLeftSame = true;
+        }
       } else {
-        isSame = dataRows[i].inTransaction === dataRows[groupStart].inTransaction &&
-                 dataRows[i].inDate === dataRows[groupStart].inDate &&
-                 dataRows[i].inCost === dataRows[groupStart].inCost &&
-                 dataRows[i].inTotal === dataRows[groupStart].inTotal;
+        if (dataRows[i].inTransaction && dataRows[i].inTransaction === dataRows[leftGroupStart].inTransaction) {
+          isLeftSame = true;
+        }
       }
 
-      if (isSame) {
-        rowSpans[groupStart]++;
+      if (isLeftSame) {
+        leftRowSpans[leftGroupStart]++;
         skipLeft[i] = true;
+        if (appliedFilters.reportBasis === 'product_out') {
+          displayOutQty[leftGroupStart] += (dataRows[i].outQty || 0);
+        }
       } else {
-        groupStart = i;
+        leftGroupStart = i;
+      }
+
+      // Right side grouping
+      let isRightSame = false;
+      if (appliedFilters.reportBasis === 'product_out') {
+        if (dataRows[i].inTransaction && dataRows[i].inTransaction === dataRows[rightGroupStart].inTransaction) {
+          isRightSame = true;
+        }
+      } else {
+        if (dataRows[i].outTransaction && dataRows[i].outTransaction === dataRows[rightGroupStart].outTransaction) {
+          isRightSame = true;
+        }
+      }
+
+      if (isRightSame) {
+        rightRowSpans[rightGroupStart]++;
+        skipRight[i] = true;
+        if (appliedFilters.reportBasis === 'product_in') {
+          displayOutQty[rightGroupStart] += (dataRows[i].outQty || 0);
+        }
+      } else {
+        rightGroupStart = i;
       }
     }
   }
@@ -572,16 +605,24 @@ export function FifoCostLotTrackingPage() {
                   dataRows.map((row, i) => {
                     const isNewItem = !!row.itemName;
 
-                    const inCols = skipLeft[i] && appliedFilters.reportBasis === 'product_in' ? null : (
+                    const inIsLeft = appliedFilters.reportBasis === 'product_in';
+                    const inSkip = inIsLeft ? skipLeft[i] : skipRight[i];
+                    const inRowSpan = inIsLeft ? leftRowSpans[i] : rightRowSpans[i];
+
+                    const outIsLeft = appliedFilters.reportBasis === 'product_out';
+                    const outSkip = outIsLeft ? skipLeft[i] : skipRight[i];
+                    const outRowSpan = outIsLeft ? leftRowSpans[i] : rightRowSpans[i];
+
+                    const inCols = inSkip ? null : (
                       <>
-                      <td style={{ ...tdStyle, verticalAlign: 'middle' }} rowSpan={appliedFilters.reportBasis === 'product_in' ? rowSpans[i] : 1}>{row.inDate}</td>
-                      <td style={{ ...tdStyle, verticalAlign: 'middle' }} rowSpan={appliedFilters.reportBasis === 'product_in' ? rowSpans[i] : 1}>
+                      <td style={{ ...tdStyle, verticalAlign: 'middle' }} rowSpan={inRowSpan}>{row.inDate}</td>
+                      <td style={{ ...tdStyle, verticalAlign: 'middle' }} rowSpan={inRowSpan}>
                         {renderDocLink(row.inDocType, row.inDocId, row.inTransaction)}
                       </td>
-                      <td style={{ ...tdStyle, verticalAlign: 'middle' }} rowSpan={appliedFilters.reportBasis === 'product_in' ? rowSpans[i] : 1}>
+                      <td style={{ ...tdStyle, verticalAlign: 'middle' }} rowSpan={inRowSpan}>
                         {renderPartyLink(row.inPartyId, row.inPartyType, row.inReceivedFrom)}
                       </td>
-                      <td style={{ ...tdStyle, verticalAlign: 'middle', textAlign: 'right' }} rowSpan={appliedFilters.reportBasis === 'product_in' ? rowSpans[i] : 1}>
+                      <td style={{ ...tdStyle, verticalAlign: 'middle', textAlign: 'right' }} rowSpan={inRowSpan}>
                         {row.inQty !== null && row.inQty > 0 ? (
                           <>
                             <div style={{ color: '#111827', fontWeight: 600 }}>{row.inQty}</div>
@@ -596,10 +637,10 @@ export function FifoCostLotTrackingPage() {
                           </>
                         ) : null}
                       </td>
-                      <td style={{ ...tdStyle, verticalAlign: 'middle', textAlign: 'right' }} rowSpan={appliedFilters.reportBasis === 'product_in' ? rowSpans[i] : 1}>
+                      <td style={{ ...tdStyle, verticalAlign: 'middle', textAlign: 'right' }} rowSpan={inRowSpan}>
                         {row.inAge}
                       </td>
-                      <td style={{ ...tdStyle, verticalAlign: 'middle', textAlign: 'right' }} rowSpan={appliedFilters.reportBasis === 'product_in' ? rowSpans[i] : 1}>
+                      <td style={{ ...tdStyle, verticalAlign: 'middle', textAlign: 'right' }} rowSpan={inRowSpan}>
                         {row.inCost}
                       </td>
                       <td
@@ -609,26 +650,26 @@ export function FifoCostLotTrackingPage() {
                           textAlign: 'right',
                           borderRight: appliedFilters.reportBasis === 'product_out' ? undefined : '1px solid #e5e7eb',
                         }}
-                        rowSpan={appliedFilters.reportBasis === 'product_in' ? rowSpans[i] : 1}
+                        rowSpan={inRowSpan}
                       >
                         {row.inTotal}
                       </td>
                       </>
                     );
 
-                    const outCols = skipLeft[i] && appliedFilters.reportBasis === 'product_out' ? null : (
+                    const outCols = outSkip ? null : (
                       <>
-                      <td style={{ ...tdStyle, verticalAlign: 'middle' }} rowSpan={appliedFilters.reportBasis === 'product_out' ? rowSpans[i] : 1}>{row.outDate}</td>
-                      <td style={{ ...tdStyle, verticalAlign: 'middle' }} rowSpan={appliedFilters.reportBasis === 'product_out' ? rowSpans[i] : 1}>
+                      <td style={{ ...tdStyle, verticalAlign: 'middle' }} rowSpan={outRowSpan}>{row.outDate}</td>
+                      <td style={{ ...tdStyle, verticalAlign: 'middle' }} rowSpan={outRowSpan}>
                         {renderDocLink(row.outDocType, row.outDocId, row.outTransaction)}
                       </td>
-                      <td style={{ ...tdStyle, verticalAlign: 'middle' }} rowSpan={appliedFilters.reportBasis === 'product_out' ? rowSpans[i] : 1}>
+                      <td style={{ ...tdStyle, verticalAlign: 'middle' }} rowSpan={outRowSpan}>
                         {renderPartyLink(row.outPartyId, row.outPartyType, row.outDispersedTo)}
                       </td>
-                      <td style={{ ...tdStyle, verticalAlign: 'middle', textAlign: 'right', borderRight: appliedFilters.reportBasis === 'product_out' ? '1px solid #e5e7eb' : undefined }} rowSpan={appliedFilters.reportBasis === 'product_out' ? rowSpans[i] : 1}>
+                      <td style={{ ...tdStyle, verticalAlign: 'middle', textAlign: 'right', borderRight: appliedFilters.reportBasis === 'product_out' ? '1px solid #e5e7eb' : undefined }} rowSpan={outRowSpan}>
                         {row.outQty !== null ? (
                           <>
-                            <div style={{ color: '#111827', fontWeight: 600 }}>{row.outQty}</div>
+                            <div style={{ color: '#111827', fontWeight: 600 }}>{Number(displayOutQty[i].toFixed(4))}</div>
                             <div style={{ color: '#6b7280', fontSize: '12px' }}>
                               {row.outQtyUnit}
                             </div>
