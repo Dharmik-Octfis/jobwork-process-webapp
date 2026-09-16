@@ -211,6 +211,10 @@ interface ItemListProps {
   /** 🔴 True wherever this grid sits inside a `Modal` — see `ItemComboBox`. */
   portalMenus?: boolean;
   showQty?: boolean;
+  /** Job orders only: the quantity is required before the step's first challan
+   * posts (landed-cost V4). Captioned as required, never blocks the save — a
+   * half-planned order must still save. A route's quantity is only a default. */
+  qtyRequired?: boolean;
   /** The per-item over-issue box. Job orders only — separate from `showQty`
    * because a route carries a default quantity but no tolerance. */
   showTolerance?: boolean;
@@ -290,6 +294,7 @@ function ItemList({
   uomOptions,
   portalMenus,
   showQty,
+  qtyRequired,
   showTolerance,
   showRate,
   note,
@@ -415,9 +420,12 @@ function ItemList({
             <span style={{ flex: '2 1 150px', minWidth: 0 }}>Item</span>
             <span style={{ flex: '0 0 62px' }}>Unit</span>
             {showQty && (
-              <span style={{ flex: '0 0 84px' }}>{isInput ? 'Qty' : 'Qty (Expected)'}</span>
+              <span style={{ flex: '0 0 84px', ...(qtyRequired ? { color: '#ef4444' } : {}) }}>
+                {isInput ? 'Qty' : 'Qty (Expected)'}
+                {qtyRequired && '*'}
+              </span>
             )}
-            {showTolerance && isInput && <span style={{ flex: '0 0 66px' }}>Tolerance</span>}
+            {showTolerance && isInput && <span style={{ flex: '0 0 76px' }}>Tolerance (%)</span>}
             {showRate && !isInput && <span style={{ flex: '0 0 84px' }}>Rate</span>}
             <span style={{ flex: '0 0 26px' }} />
           </div>
@@ -520,6 +528,7 @@ function ItemList({
                         update(rowIndex, isInput ? { plannedQty: value } : { expectedQty: value });
                       }}
                       disabled={disabled}
+                      aria-required={qtyRequired || undefined}
                       /* 🔴 Grey, never written into the row. It says what the
                          server will store if this is left blank, so an empty box
                          stops reading as "expect nothing". No placeholder means
@@ -545,7 +554,7 @@ function ItemList({
                 {/* Per item — fabric at 3% beside thread at 25%, because small
                     quantities vary more. Typed here; blank means unchecked. */}
                 {showTolerance && isInput && (
-                  <div style={{ flex: '0 0 66px' }}>
+                  <div style={{ flex: '0 0 76px' }}>
                     <label htmlFor={`${qtyId}-tol`} style={srOnly}>
                       {`Step ${stepNumber} tolerance percent for row ${rowIndex + 1}`}
                     </label>
@@ -1194,6 +1203,7 @@ export function StepsGrid<T extends StepGridRow>({
                   uomOptions={uomOptions}
                   portalMenus={portalMenus}
                   showQty={showPlannedQty || showInputQty}
+                  qtyRequired={showPlannedQty}
                   showTolerance={showPlannedQty}
                   disabled={readOnly}
                   stepIndex={index}
@@ -1247,6 +1257,7 @@ export function StepsGrid<T extends StepGridRow>({
                   portalMenus={portalMenus}
                   mirrorSource={step.inputs ?? []}
                   showQty={showPlannedQty}
+                  qtyRequired={showPlannedQty}
                   showRate
                   note={
                     (step.inputs ?? []).filter((row) => row.itemId).length > 1
