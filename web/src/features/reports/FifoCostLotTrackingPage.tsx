@@ -682,29 +682,6 @@ export function FifoCostLotTrackingPage() {
             onRequestCount={() => {}}
           />
 
-          <div
-            style={{
-              padding: '16px 24px',
-              fontSize: '12px',
-              color: '#4b5563',
-              borderTop: '1px solid #e5e7eb',
-            }}
-          >
-            **Amount is displayed in your base currency{' '}
-            <span
-              style={{
-                background: '#16a34a',
-                color: '#fff',
-                padding: '2px 6px',
-                borderRadius: '4px',
-                fontWeight: 500,
-                fontSize: '11px',
-                marginLeft: '4px',
-              }}
-            >
-              INR
-            </span>
-          </div>
         </div>
       </div>
     </div>
