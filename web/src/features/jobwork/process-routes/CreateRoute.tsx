@@ -8,7 +8,8 @@ import type { CreateRouteData } from './processRoutes.schemas';
 import { RouteForm } from './RouteForm';
 
 export function CreateRoute() {
-  const navigate = useNavigate();  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { orgId } = useParams<{ orgId: string }>();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
@@ -32,9 +33,16 @@ export function CreateRoute() {
 
   return (
     <div
-      style={{ background: '#fff', minHeight: '100%', display: 'flex', flexDirection: 'column' }}
+      style={{
+        background: '#fff',
+        minHeight: '100%',
+        flexShrink: 0,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
     >
-      <header className="detail-page-header"
+      <header
+        className="detail-page-header"
         style={{
           display: 'flex',
           alignItems: 'center',

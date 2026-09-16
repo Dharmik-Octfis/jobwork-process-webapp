@@ -680,7 +680,10 @@ export function AppLayout() {
 
         {/* Page Content. Suspense sits INSIDE <main> so a route chunk still
             loading swaps only this area — the sidebar and header stay on screen.
-            Every page under this layout is lazy (see app/router.tsx). */}
+            Every page under this layout is lazy (see app/router.tsx).
+            A page that scrolls with <main> needs `flexShrink: 0` on its root: this is a
+            flex column, so without it the root is squeezed to the viewport and the
+            content below the fold spills out of its background as a grey strip. */}
         <main
           id="app-main-content"
           style={{
@@ -896,35 +899,37 @@ function ModuleNavGroup({
               <span style={{ fontSize: 13, marginLeft: 4 }}>{module.name}</span>
             </div>
 
-            {(isHovered || isActive) && module.code !== 'DASHBOARD' && module.code !== 'REPORTS' && (
-              <button
-                onClick={handlePlusClick}
-                title={`Create new ${module.name.toLowerCase()}`}
-                style={{
-                  position: 'absolute',
-                  right: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: '32px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: 'none',
-                  borderTopRightRadius: 'var(--radius-md)',
-                  borderBottomRightRadius: 'var(--radius-md)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')
-                }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')
-                }
-              >
-                <Plus size={16} color="#fff" strokeWidth={2.5} />
-              </button>
-            )}
+            {(isHovered || isActive) &&
+              module.code !== 'DASHBOARD' &&
+              module.code !== 'REPORTS' && (
+                <button
+                  onClick={handlePlusClick}
+                  title={`Create new ${module.name.toLowerCase()}`}
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: '32px',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    border: 'none',
+                    borderTopRightRadius: 'var(--radius-md)',
+                    borderBottomRightRadius: 'var(--radius-md)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')
+                  }
+                >
+                  <Plus size={16} color="#fff" strokeWidth={2.5} />
+                </button>
+              )}
           </>
         )}
       </NavLink>
@@ -976,35 +981,37 @@ function ModuleNavGroup({
         {({ isActive }) => (
           <>
             <span>{module.name}</span>
-            {(isHovered || isActive) && module.code !== 'DASHBOARD' && module.code !== 'REPORTS' && (
-              <button
-                onClick={handlePlusClick}
-                title={`Create new ${module.name.toLowerCase()}`}
-                style={{
-                  position: 'absolute',
-                  right: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: '32px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: 'none',
-                  borderTopRightRadius: '4px',
-                  borderBottomRightRadius: '4px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')
-                }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')
-                }
-              >
-                <Plus size={16} color="#fff" strokeWidth={2.5} />
-              </button>
-            )}
+            {(isHovered || isActive) &&
+              module.code !== 'DASHBOARD' &&
+              module.code !== 'REPORTS' && (
+                <button
+                  onClick={handlePlusClick}
+                  title={`Create new ${module.name.toLowerCase()}`}
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: '32px',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    border: 'none',
+                    borderTopRightRadius: '4px',
+                    borderBottomRightRadius: '4px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')
+                  }
+                >
+                  <Plus size={16} color="#fff" strokeWidth={2.5} />
+                </button>
+              )}
           </>
         )}
       </NavLink>
