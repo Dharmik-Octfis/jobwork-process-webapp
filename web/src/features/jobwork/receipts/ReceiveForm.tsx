@@ -7,6 +7,7 @@ import { DateInput } from '../../../components/ui/DateInput';
 import { Select } from '../../../components/ui/Select';
 import { SplitButton } from '../../../components/ui/SplitButton';
 import { RadioGroup } from '../../../components/ui/RadioGroup';
+import { InfoTip } from '../../../components/ui/InfoTip';
 import {
   LOCATION_KIND_LABELS,
   fetchLocations,
@@ -1615,13 +1616,13 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
             */}
           {rows.length > 0 && (
             <section style={{ marginBottom: 20 }}>
-              <h3 style={sectionHeading}>Material used</h3>
-              <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 8px 0', lineHeight: 1.5 }}>
-                Worked out from the job order&apos;s plan as quantities are typed above. Type the
-                processor&apos;s own figure to use that instead; clear it to go back to the
-                calculation. Whatever is not used stays with the processor — unless its challan is
-                closed, which uses all of it.
-              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, margin: '0 0 10px 0' }}>
+                <h3 style={{ ...sectionHeading, margin: 0 }}>Material used</h3>
+                <InfoTip label="About material used">
+                  Calculated from the plan. Type the processor&apos;s figure to override. Unused
+                  material stays with the processor unless the challan is closed.
+                </InfoTip>
+              </div>
               {mixedRework && (
                 <p role="alert" style={{ fontSize: 12, color: '#b91c1c', margin: '0 0 8px 0' }}>
                   Rework and first-pass challans are costed differently and cannot be received
