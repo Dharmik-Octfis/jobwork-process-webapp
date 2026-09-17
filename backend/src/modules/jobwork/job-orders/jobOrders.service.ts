@@ -669,6 +669,9 @@ async function loadExistingSteps(tx: TenantClient, organizationId: string, jobOr
       seq: true,
       isDeleted: true,
       processNameSnapshot: true,
+      status: true,
+      processorType: true,
+      processorId: true,
       inputs: {
         where: { isDeleted: false },
         select: { itemId: true, plannedQty: true, fromStock: true },
@@ -1536,6 +1539,33 @@ export async function updateJobOrderById(
 
     assertLockedStepsUnchanged(lockedLive, steps);
 
+    /**
+     * 🔴 THE ONE FIELD A LOCKED STEP STILL TAKES: its processor. On a step it is
+     * only the Issue screen's default — each challan snapshots its own processor,
+     * receipts inherit theirs from the challans, and nothing costs or allocates by
+     * the step's. So changing it rewrites no document already raised. Everything
+     * else on a locked step stays ignored, as above. Not "Done by": switching to
+     * in-house needs a work centre, which is a different destination. Not on a
+     * finished step either — it takes no more challans, so there is nothing to
+     * default.
+     */
+    for (const [index, stored] of lockedLive.entries()) {
+      const sentProcessorId = steps[index]?.processorId;
+      if (sentProcessorId === undefined || sentProcessorId === stored.processorId) continue;
+      if (stored.processorType === 'internal') continue;
+      if (stored.status === 'completed' || stored.status === 'short_closed') continue;
+      const processorNameSnapshot = await resolveProcessorName(
+        tx,
+        organizationId,
+        stored.processorType as ProcessorType,
+        sentProcessorId,
+      );
+      await tx.jobOrderStep.updateMany({
+        where: { id: stored.id, organizationId },
+        data: { processorId: sentProcessorId, processorNameSnapshot, updatedBy: userId ?? null },
+      });
+    }
+
     await assertStepRefs(tx, organizationId, steps.slice(lockedLive.length));
 
     let customFields: Prisma.InputJsonValue | undefined;
@@ -1630,8 +1660,9 @@ function lockedPrefix(steps: readonly ExistingStep[]): ExistingStep[] {
 /**
  * The payload must still begin with the locked steps, in order, by id.
  *
- * Their content is never read — the stored rows are authoritative — so this is
- * purely a proof that the client is editing the grid it was shown. A stale form
+ * Their content is never read here — the stored rows are authoritative, apart from
+ * the processor, which the caller applies — so this is purely a proof that the
+ * client is editing the grid it was shown. A stale form
  * that would drop or reorder a step with a challan against it is refused here
  * rather than allowed to cascade.
  */

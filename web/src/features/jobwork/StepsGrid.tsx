@@ -119,6 +119,9 @@ interface Props<T extends StepGridRow> {
    * started steps after it.
    */
   lockedCount?: number;
+  /** Positions of completed or closed-short steps. A locked step's processor stays
+   * editable — it only defaults the next challan — unless the step takes no more. */
+  finishedSteps?: ReadonlySet<number>;
   /**
    * 🔴 True wherever this grid is rendered inside a `Modal` — today, the append
    * dialog. The item picker's menu is otherwise clipped by the dialog's scrolling
@@ -791,6 +794,7 @@ export function StepsGrid<T extends StepGridRow>({
   priorProducers,
   priorSpare,
   lockedCount = 0,
+  finishedSteps,
   portalMenus,
 }: Props<T>) {
   const { orgId } = useParams<{ orgId: string }>();
@@ -978,6 +982,10 @@ export function StepsGrid<T extends StepGridRow>({
           // Frozen: work has already gone out at or after this position (§6.6).
           const locked = index < lockedCount;
           const readOnly = disabled || locked;
+          // The server applies the same rule (`updateJobOrderById`).
+          const processorEditable =
+            !disabled &&
+            (!locked || (step.processorType !== 'internal' && !finishedSteps?.has(index)));
           // Job orders only; one map per step, read by every input row below (§3).
           const stepWarnings = showPlannedQty
             ? planWarnings(step.inputs ?? [], step.outputs ?? [], recipeOf)
@@ -1024,7 +1032,9 @@ export function StepsGrid<T extends StepGridRow>({
                       with no explanation, reads as a bug in the form. */}
                   {locked && (
                     <span style={{ ...chipStyle, background: '#f1f5f9', color: '#475569' }}>
-                      Already sent out — locked
+                      {processorEditable
+                        ? 'Already sent out — only the processor can change'
+                        : 'Already sent out — locked'}
                     </span>
                   )}
                 </span>
@@ -1185,7 +1195,7 @@ export function StepsGrid<T extends StepGridRow>({
                                   label: v.companyName || v.contactName,
                                 }))),
                         ]}
-                        disabled={readOnly}
+                        disabled={!processorEditable}
                         hasError={Boolean(errors?.[`steps.${index}.processorId`])}
                         ariaLabel={`Step ${stepNo} processor`}
                         fullWidth

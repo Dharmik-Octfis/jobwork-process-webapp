@@ -228,6 +228,14 @@ export function JobOrderForm({
         (count, step, index) => (step.status !== 'pending' ? index + 1 : count),
         0,
       );
+  // Finished steps take no more challans, so even their processor stays locked.
+  const finishedSteps = new Set(
+    isClone
+      ? []
+      : (initialData?.steps ?? []).flatMap((step, index) =>
+          step.status === 'completed' || step.status === 'short_closed' ? [index] : [],
+        ),
+  );
 
   const { data: routesPage } = useQuery({
     queryKey: ['routes', orgId, 'job-order-form'],
@@ -616,6 +624,7 @@ export function JobOrderForm({
              never be planned into another's order (§5.3). */
               ownership={ownership}
               lockedCount={lockedCount}
+              finishedSteps={finishedSteps}
             />
           </section>
 

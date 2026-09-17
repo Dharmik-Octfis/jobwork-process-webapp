@@ -619,6 +619,11 @@ Everything at or behind that line is frozen, **including untouched steps sitting
 ones**, because removing one would renumber the started steps after it and their numbers are printed
 on paperwork.
 
+**One exception (2026-09-17): a frozen step's processor.** On the step it is only the Issue screen's
+default — every challan snapshots its own processor and receipts inherit from the challans — so it
+may be changed, and only the next challan feels it. "Done by" stays frozen, as does the processor of a
+completed or closed-short step, which takes no more challans.
+
 > 🔴 **The cascade that eats your challans.** Saving an order **hard-deletes** steps before rewriting
 > them, and both `job_issues` and `job_receipts` are `onDelete: Cascade` off the step. If that delete
 > is ever run unscoped over a running order, **every challan and receipt on it is silently destroyed**
