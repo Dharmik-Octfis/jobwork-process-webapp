@@ -201,6 +201,7 @@ export function AddStepsDialog({
         seqOffset={startSeq - 1}
         priorProducers={priorProducers}
         priorSpare={priorSpare}
+        unassignedProcessorLabel="Decide when issuing"
         /* Inside a Modal — the item picker's menu is clipped by the dialog's
            scrolling body without this (CLAUDE.md). */
         portalMenus

@@ -625,6 +625,7 @@ export function JobOrderForm({
               ownership={ownership}
               lockedCount={lockedCount}
               finishedSteps={finishedSteps}
+              unassignedProcessorLabel="Decide when issuing"
             />
           </section>
 

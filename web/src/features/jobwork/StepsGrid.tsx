@@ -128,6 +128,9 @@ interface Props<T extends StepGridRow> {
    * body on both axes and most of the list is unreachable (CLAUDE.md).
    */
   portalMenus?: boolean;
+  /** The blank processor option. A route defers it to the job order; a job order
+   * defers it to the Issue screen, which refuses to post without one. */
+  unassignedProcessorLabel?: string;
 }
 
 const cellInput: React.CSSProperties = {
@@ -796,6 +799,7 @@ export function StepsGrid<T extends StepGridRow>({
   lockedCount = 0,
   finishedSteps,
   portalMenus,
+  unassignedProcessorLabel = 'Decide per job order',
 }: Props<T>) {
   const { orgId } = useParams<{ orgId: string }>();
   const { data: uoms = [] } = useUoms(orgId!);
@@ -1179,7 +1183,7 @@ export function StepsGrid<T extends StepGridRow>({
                         value={step.processorId ?? ''}
                         onChange={(value) => update(index, { processorId: value || null })}
                         options={[
-                          { value: '', label: 'Decide per job order' },
+                          { value: '', label: unassignedProcessorLabel },
                           ...(step.processorType === 'customer'
                             ? (customersPage?.results ?? []).map((c) => ({
                                 value: c.id,
