@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Suspense } from 'react';
+import { useState, useRef, useEffect, Suspense, type SVGProps } from 'react';
 import { createPortal } from 'react-dom';
 import {
   NavLink,
@@ -704,6 +704,24 @@ export function AppLayout() {
   );
 }
 
+const ToteBagIcon = ({ size = 24, ...props }: SVGProps<SVGSVGElement> & { size?: number | string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <rect x="4" y="8" width="16" height="13" rx="2" />
+    <path d="M8 8V6a4 4 0 0 1 8 0v2" />
+  </svg>
+);
+
 function ModuleNavGroup({
   module,
   depth = 0,
@@ -717,7 +735,7 @@ function ModuleNavGroup({
   onToggle?: (id: string) => void;
   isSidebarCollapsed?: boolean;
 }) {
-  const Icon = module.icon && ICON_MAP[module.icon] ? ICON_MAP[module.icon] : FileText;
+  const Icon = module.code === 'INVENTORY' ? ToteBagIcon : (module.icon && ICON_MAP[module.icon] ? ICON_MAP[module.icon] : FileText);
   const { orgId } = useParams<{ orgId: string }>();
   const effectiveOrgId = orgId || localStorage.getItem(LAST_ORG_KEY) || undefined;
   const to = navPath(module.code, effectiveOrgId);
@@ -781,8 +799,8 @@ function ModuleNavGroup({
             style={{
               display: 'flex',
               alignItems: 'center',
-              padding: '8px 14px',
-              paddingLeft: 14 + depth * 12,
+              padding: '8px 4px',
+              paddingLeft: 4,
               borderRadius: 'var(--radius-md)',
               background: 'transparent',
               border: 'none',
@@ -799,7 +817,7 @@ function ModuleNavGroup({
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 'var(--space-2)',
+                gap: 4,
                 width: '100%',
               }}
             >
@@ -808,7 +826,8 @@ function ModuleNavGroup({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  width: 16,
+                  width: 14,
+                  marginLeft: depth * 20,
                   transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
                   transition: 'transform 0.2s ease',
                 }}
@@ -816,7 +835,7 @@ function ModuleNavGroup({
                 <ChevronRight size={14} />
               </div>
               {depth === 0 && <Icon size={16} />}
-              <span style={{ fontSize: 13, marginLeft: 4 }}>{module.name}</span>
+              <span style={{ fontSize: 13, marginLeft: 6 }}>{module.name}</span>
             </div>
           </button>
 
@@ -869,8 +888,8 @@ function ModuleNavGroup({
         style={({ isActive }) => ({
           display: 'flex',
           alignItems: 'center',
-          padding: '8px 14px',
-          paddingLeft: 14 + depth * 12,
+          padding: '8px 4px',
+          paddingLeft: 4,
           paddingRight: '36px',
           justifyContent: 'space-between',
           borderRadius: 'var(--radius-md)',
@@ -890,13 +909,13 @@ function ModuleNavGroup({
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 'var(--space-2)',
+                gap: 4,
                 justifyContent: 'flex-start',
               }}
             >
-              <div style={{ width: 16 }}></div>
+              <div style={{ width: 14 + depth * 20 }}></div>
               {depth === 0 && <Icon size={16} />}
-              <span style={{ fontSize: 13, marginLeft: 4 }}>{module.name}</span>
+              <span style={{ fontSize: 13, marginLeft: 6 }}>{module.name}</span>
             </div>
 
             {(isHovered || isActive) &&
