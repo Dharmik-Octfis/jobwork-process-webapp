@@ -70,6 +70,7 @@ export async function getFifoCostLotTracking(
         LEFT JOIN vendors v ON l.owner_party_id = v.id
         WHERE l.organization_id = ${organizationId}::uuid
           AND l.stock_effect IN ('both', 'accounting', 'physical')
+          AND l.source_doc_type != 'job_receipt'
           AND (l.batch_id IS NOT NULL OR l.source_doc_type = 'item_opening_stock')
           AND (loc.type IS NULL OR loc.type NOT IN ('processor', 'in_transit', 'customer_site'))
         GROUP BY

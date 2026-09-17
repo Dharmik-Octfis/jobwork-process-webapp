@@ -39,6 +39,7 @@ export async function getInventoryValuationSummary(
         AND l.organization_id = ${organizationId}::uuid 
         AND l.ownership = 'own'
         AND l.stock_effect IN ('both', 'accounting')
+        AND l.source_doc_type != 'job_receipt'
         ${locationId ? Prisma.sql`AND l.location_id = ${locationId}::uuid` : Prisma.empty}
         AND EXISTS (
           SELECT 1 FROM locations loc 
@@ -181,6 +182,7 @@ export async function getItemLedger(
           AND l.item_id = ${itemId}::uuid
           AND l.ownership = 'own'
           AND l.stock_effect IN ('both', 'accounting')
+          AND l.source_doc_type != 'job_receipt'
           AND EXISTS (
             SELECT 1 FROM locations loc 
             WHERE loc.id = l.location_id 
@@ -230,6 +232,7 @@ export async function getItemLedger(
           AND l.ownership = 'own'
           AND l.stock_effect IN ('both', 'accounting')
           AND l.source_doc_type != 'item_opening_stock'
+          AND l.source_doc_type != 'job_receipt'
           AND EXISTS (
             SELECT 1 FROM locations loc 
             WHERE loc.id = l.location_id 
