@@ -394,6 +394,17 @@ sendSuccess(res, null, 'Vendor deleted.'); // 200, no payload
   `Select a work centre…`. One verb across the whole app, matching `components/ui/Select.tsx`'s
   default of `Select…`. Applies to input placeholders and to the empty option of a dropdown; prose
   and headings are free to read however they read best.
+- 🔴 **Field messages stay short — no sentence under a field, no paragraph in a hover.** A field
+  error is the **red border on that field plus a toast** carrying the message (`toast.error`, first
+  value of the server's `details`). Never render the error text below the input, and never turn a
+  whole section/step red — only the offending field. Server `details` are often a full sentence
+  ("Maroon Pieces comes back in a different unit from what goes in, so it has to be this step's only
+  output.") and under a narrow grid cell they wreck the layout. A `title` tooltip is a few words
+  (`Expected quantity`, `Rate per m`), never an explanation. When a field genuinely needs a longer
+  explanation, put an **info icon** beside its label and show the text from there — there is no
+  shared info-icon component yet, so build it once in `components/ui/` (keyboard-focusable
+  `<button>`) the first time one is needed. Worked example: `jobwork/StepsGrid.tsx` +
+  `job-orders/CreateJobOrder.tsx`.
 - **A dropdown inside a `Modal` must be portalled to `document.body` and positioned `fixed`.** The
   dialog body is a scroll container and cards inside it set `overflow: hidden` for their rounded
   corners, so a `position: absolute` menu is clipped to the card — it opens _inside_ the section and

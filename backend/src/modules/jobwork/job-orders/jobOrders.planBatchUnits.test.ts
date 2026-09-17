@@ -92,8 +92,6 @@ function orderWith(plannedQty: number, plannedBatches: unknown[]) {
         processId,
         processorType: 'vendor',
         processorId: dyerId,
-        rate: 10,
-        rateBasis: 'per_issued_unit',
         inputs: [{ itemId: greyId, plannedQty, plannedBatches }],
         outputs: [{ itemId: dyedId, isPrimary: true }],
         plannedInputQty: plannedQty,
@@ -164,7 +162,7 @@ beforeAll(async () => {
     ).id;
   });
 
-  processId = (await createNewProcess(orgId, { name: 'Dyeing', rateBasis: 'per_issued_unit' })).id;
+  processId = (await createNewProcess(orgId, { name: 'Dyeing' })).id;
 });
 
 afterAll(async () => {

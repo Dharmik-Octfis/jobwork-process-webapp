@@ -14,7 +14,13 @@ import {
 } from '../../configuration/locations/locations.api';
 import { fetchStockLocations } from '../batches/batches.api';
 import { itemsApi } from '../../items/items.api';
-import { EXTERNAL_LOCATION_TYPES, formatQty, toNumber } from '../jobwork.schemas';
+import {
+  EXTERNAL_LOCATION_TYPES,
+  formatMoney,
+  formatQty,
+  receiptCostPreview,
+  toNumber,
+} from '../jobwork.schemas';
 import { invalidateStockQueries } from '../stockCache';
 import type { JobOrder, OverviewStep } from '../job-orders/jobOrders.schemas';
 import {
@@ -102,8 +108,9 @@ interface ReturnedRow {
   acceptedQty: number;
   reworkQty: number;
   returnedQty: number;
-  /** By-products only. The FIRST row takes whatever is left of the pot. */
-  valueShare: number | null;
+  /** Charge per ACCEPTED unit — opens with the step's rate, editable here
+   * (landed-cost R6). Null means none agreed, which charges nothing. */
+  rate: number | null;
   /**
    * 🔴 FREE TEXT, not the rejection-reason list (2026-08-21) — it posts as the
    * row's `remarks`.
@@ -176,6 +183,9 @@ const numberCell: React.CSSProperties = {
   minHeight: 28,
 };
 
+// Errors are this border plus a toast — never a sentence under the field (CLAUDE.md → Frontend).
+const numberCellError: React.CSSProperties = { ...numberCell, borderColor: '#ef4444' };
+
 const sectionHeading: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 600,
@@ -196,9 +206,9 @@ const sectionHeading: React.CSSProperties = {
  *
  * 2. 🔴 TWO BOXES, AND THE REST IS ARITHMETIC. The operator types what arrived
  *    and how much of it has to go back for rework; Good is the difference, and
- *    SCRAP IS NOT ASKED FOR AT ALL — process loss is what was sent less what came
- *    back, which the documents already know (see the loss strip below). A typed
- *    scrap box was a third number that could contradict the other two.
+ *    SCRAP IS NOT ASKED FOR AT ALL. What the goods used of each input is worked
+ *    out from the job order's plan (landed-cost R4) and may be typed over; what
+ *    was sent and not used stays with the processor until the step is completed.
  */
 export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Props) {
   const { orgId } = useParams<{ orgId: string }>();
@@ -228,13 +238,47 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
    * user's job, not a guess the system makes by pre-selecting every open
    * challan against the processor's historical load.
    */
+  /**
+   * 🔴 The ticked challans this receipt CLOSES (challan-closure R10). Never a
+   * default (C3): a pre-ticked Close would empty challans on every partial receipt.
+   * A draft restores what it saved.
+   */
+  const [closedIds, setClosedIds] = useState<string[]>(() =>
+    draft
+      ? [
+          ...new Set(
+            draft.lines.flatMap((line) =>
+              line.closesChallan && line.jobIssueId ? [line.jobIssueId] : [],
+            ),
+          ),
+        ]
+      : [],
+  );
   const [returnedEdits, setReturnedEdits] = useState<ReturnedRow[] | null>(null);
   const [receiptDate, setReceiptDate] = useState(
     (draft?.receiptDate ?? new Date().toISOString()).slice(0, 10),
   );
   const [locationId, setLocationId] = useState(draft?.locationId ?? '');
   const [remarks, setRemarks] = useState(draft?.remarks ?? '');
-  const [error, setError] = useState<string | null>(null);
+  /**
+   * 🔴 THE USED FIGURES SOMEBODY TYPED, per input item. An item absent (or null)
+   * follows the calculation — so clearing a box hands it back to the plan.
+   * A draft restores what it saved: only typed lines carry a quantity there.
+   */
+  const [usedEdits, setUsedEdits] = useState<Record<string, number | null>>(() => {
+    const typed: Record<string, number | null> = {};
+    for (const line of draft?.lines ?? []) {
+      const itemId = line.jobIssueLine?.item?.id;
+      const qty = toNumber(line.issuedQty);
+      if (!itemId || qty <= 0) continue;
+      typed[itemId] = Number(((typed[itemId] ?? 0) + qty).toFixed(4));
+    }
+    return typed;
+  });
+  /** The server's `details`, keyed by payload path (`outputs.0.rate`, `issueIds`). */
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const errorAt = (path: string) =>
+    Object.entries(fieldErrors).find(([key]) => key === path || key.startsWith(`${path}.`))?.[1];
   /**
    * What could not be carried over from the draft. Derived, not state: it is a
    * fact about the draft that never changes while this form is open.
@@ -431,7 +475,22 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
   const inUnit = inUom?.symbol ?? inUom?.unitName ?? '';
 
   // Checked challans. By default, none are checked (unlike before where all were).
-  const selectedIssueIds = pickedIssueIds;
+  // A draft may name a challan another receipt has closed since; it cannot be
+  // received against, and is not on screen to untick, so it is dropped (R14).
+  const selectedIssueIds = useMemo(
+    () =>
+      pickedIssueIds.filter(
+        (id) => !(prefill?.closedIssues ?? []).some((issue) => issue.id === id),
+      ),
+    [pickedIssueIds, prefill],
+  );
+  // Unticking a challan un-closes it — closing needs the challan on the receipt.
+  const closedIssueIds = useMemo(
+    () => closedIds.filter((id) => selectedIssueIds.includes(id)),
+    [closedIds, selectedIssueIds],
+  );
+  const challanNumberOf = (id: string) =>
+    prefill?.issues.find((issue) => issue.id === id)?.challanNumber ?? 'the challan';
   /* A draft saved before the filter came back may name an unrelated processor's
      location. Ignoring it rather than carrying it forward keeps the field honest —
      held as a hidden value it is not in the dropdown, so the operator sees a blank
@@ -551,7 +610,13 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
         // Always zero. This form never sends anything else — goods refused at the
         // gate never entered stock — so there is nothing to restore.
         returnedQty: 0,
-        valueShare: null,
+        // What the draft billed, else the step's agreed rate.
+        rate:
+          row?.rate !== null && row?.rate !== undefined
+            ? toNumber(row.rate)
+            : output.rate !== null && output.rate !== undefined
+              ? toNumber(output.rate)
+              : null,
         remarks: row?.remarks ?? '',
         batches: [] as BatchAllocation[],
         reworkBatches: [] as BatchAllocation[],
@@ -565,24 +630,86 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
   const effectiveReturned: ReturnedRow[] = returnedRows;
 
   /**
-   * 🔴 HOW MUCH OF WHAT WAS SENT THIS RECEIPT ACCOUNTS FOR — derived wherever it
-   * can be, asked for only where it cannot.
+   * 🔴 WHAT IS STILL OUT, per item — the Material used grid's rows.
    *
-   * There used to be a whole grid for this. For the ordinary jobwork step it was
-   * a grid of numbers the screen already knew: when the item that went out is the
-   * item that comes back — washing, dyeing, checking, packing — what this receipt
-   * consumes IS what came back, and typing it again is a second chance to get it
-   * wrong.
-   *
-   * 🔴 A receipt settles the challans it names, in full — what was sent and did
-   * not come back is process loss (see `lossByItem`). The alternative, leaving
-   * the remainder outstanding at the processor, was a checkbox, and on a
-   * transforming step it pulled a second grid of quantities onto a dialog that
-   * already carries three. Splitting one delivery over two receipts is done by
-   * un-ticking the challan that is not settled yet, which the section above
-   * already offers.
+   * A receipt no longer settles its challans in full (landed-cost 2026-09-15). It
+   * uses what the job order's plan says the returned goods took, or the figure
+   * typed over it, and whatever is left stays with the processor — for the next
+   * delivery, or to be written off when the step is completed.
    */
   const rows: Row[] = outstandingRows;
+
+  const pickedIssues = (prefill?.issues ?? []).filter((issue) =>
+    selectedIssueIds.includes(issue.id),
+  );
+  // Rework draws on the output item itself, first-pass on the plan; the server
+  // refuses the two on one receipt, so the screen says so before Receive.
+  const isRework = pickedIssues.length > 0 && pickedIssues.every((issue) => issue.isRework);
+  const mixedRework = pickedIssues.some((issue) => issue.isRework) && !isRework;
+
+  /** 🔴 The cost preview — the server's engine, mirrored. The server's figure posts. */
+  const cost = useMemo(() => {
+    if (!prefill) return null;
+    return receiptCostPreview({
+      plan: {
+        inputs: prefill.step.inputs.map((row) => ({
+          itemId: row.itemId,
+          plannedQty:
+            row.plannedQty === null || row.plannedQty === undefined
+              ? null
+              : toNumber(row.plannedQty),
+        })),
+        outputs: prefill.step.outputs.map((row) => ({
+          itemId: row.itemId,
+          expectedQty:
+            row.expectedQty === null || row.expectedQty === undefined
+              ? null
+              : toNumber(row.expectedQty),
+          components: row.components.map((component) => ({
+            componentItemId: component.componentItemId,
+            qtyPerUnit: toNumber(component.qtyPerUnit),
+          })),
+        })),
+      },
+      rework: isRework,
+      lines: prefill.lines
+        .filter((line) => line.itemId && selectedIssueIds.includes(line.jobIssueId))
+        .map((line) => ({
+          itemId: line.itemId!,
+          outstanding: toNumber(line.issuedQty),
+          unitCost: toNumber(line.unitCost),
+          closed: closedIssueIds.includes(line.jobIssueId),
+        })),
+      returned: effectiveReturned.map((row) => ({
+        itemId: row.itemId,
+        acceptedQty: row.acceptedQty,
+        reworkQty: row.reworkQty,
+        rate: row.rate,
+      })),
+      typed: new Map(
+        Object.entries(usedEdits).filter(
+          (entry): entry is [string, number] => entry[1] !== null && entry[1] > 0,
+        ),
+      ),
+    });
+  }, [prefill, selectedIssueIds, closedIssueIds, isRework, effectiveReturned, usedEdits]);
+
+  /** Which closed challans still hold each item — named under its Used box (R11). */
+  const closingChallansByItem = useMemo(() => {
+    const byItem = new Map<string, string[]>();
+    for (const line of prefill?.lines ?? []) {
+      if (!line.itemId || !closedIssueIds.includes(line.jobIssueId)) continue;
+      const names = byItem.get(line.itemId) ?? [];
+      if (!names.includes(line.challanNumber)) names.push(line.challanNumber);
+      byItem.set(line.itemId, names);
+    }
+    return byItem;
+  }, [prefill, closedIssueIds]);
+
+  /** A typed Used the server will refuse — above what is out, or drawn on by nothing. */
+  const usedBlocked = [...(cost?.used.values() ?? [])].some(
+    (row) => row.overOutstanding || row.undrawn,
+  );
 
   const totals = useMemo(
     () => ({
@@ -697,62 +824,6 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
         sideIncomplete(row.reworkQty, row.reworkBatches)),
   );
 
-  /** What this receipt consumes, per item — for the preview, which must say what
-   * will be written rather than one cross-unit total. */
-  const consumedByItem = useMemo(() => {
-    const byItem = new Map<string, { itemId: string; name: string; unit: string; qty: number }>();
-    for (const row of rows) {
-      const key = row.itemId ?? 'unknown';
-      const existing = byItem.get(key);
-      if (existing) {
-        existing.qty += row.issuedQty;
-        continue;
-      }
-      byItem.set(key, {
-        itemId: key,
-        name: row.itemName || step.inputs[0]?.item?.name || 'the input item',
-        unit: row.unit || inUnit,
-        qty: row.issuedQty,
-      });
-    }
-    return [...byItem.values()];
-  }, [rows, step, inUnit]);
-
-  /**
-   * 🔴 PROCESS LOSS — what was sent, less what came back. Computed, never typed.
-   *
-   * This is what the Scrap box used to ask for, and the box could contradict it:
-   * three numbers where the documents already fix two. A dyer given 500 m who
-   * hands back 480 m lost 20 m in the bath, and nobody has to declare that.
-   *
-   * 🔴 PER ITEM, AND ONLY FOR AN ITEM ON BOTH SIDES. Quantities never subtract
-   * across items or units (§6.5) — 500 m of fabric less 300 shirts is a number in
-   * no unit at all. So a transforming step shows no loss here, correctly: its
-   * yield is the yield strip's job, and the two are not the same question.
-   *
-   * ⚠️ It is THIS RECEIPT's loss. `rows` carries what is still out and being
-   * accounted for now, so a partial receipt reports its own shortfall, and the
-   * step's lifetime figure only settles once everything sent has been received.
-   */
-  const lossByItem = useMemo(() => {
-    const receivedByItem = new Map<string, number>();
-    for (const row of effectiveReturned) {
-      receivedByItem.set(row.itemId, (receivedByItem.get(row.itemId) ?? 0) + row.receivedQty);
-    }
-    return (
-      consumedByItem
-        .map((row) => ({
-          ...row,
-          qty: Number((row.qty - (receivedByItem.get(row.itemId) ?? 0)).toFixed(4)),
-        }))
-        /* 🔴 A POSITIVE received quantity, not merely a row: a row exists for
-           every item sent to the step, sitting at zero until somebody types into
-           it, and reading those as loss turns a cutting step's whole fabric
-           issue into process loss because none of the fabric "came back". */
-        .filter((row) => (receivedByItem.get(row.itemId) ?? 0) > 0 && row.qty > 0.00005)
-    );
-  }, [consumedByItem, effectiveReturned]);
-
   /**
    * One mutation for both buttons, taking the mode as its argument — the same
    * shape as the Issue form's, and for the same reason: an identical payload
@@ -769,7 +840,9 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
         itemId: row.itemId,
         jobIssueId: row.jobIssueId,
         jobIssueLineId: row.jobIssueLineId,
-        issuedQty: row.issuedQty,
+        // 🔴 Typed, or omitted so the server works it out from the plan (R4) —
+        // never the whole outstanding quantity, which settled the challan in full.
+        issuedQty: row.itemId ? (usedEdits[row.itemId] ?? undefined) : undefined,
         receivedQty: 0,
         acceptedQty: 0,
         reworkQty: 0,
@@ -787,6 +860,7 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
         jobOrderStepId: step.id,
         receiptDate: receiptDate || undefined,
         issueIds: selectedIssueIds,
+        closedIssueIds,
         locationId: effectiveLocationId,
         lines,
         outputs: effectiveReturned
@@ -813,22 +887,11 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
             reworkBatches: row.reworkBatches.length
               ? row.reworkBatches.map(toBatchPayload)
               : undefined,
-            // 🔴 Position, not a control. The first returned item carries the
-            // cost of the operation; every other row takes the value typed for
-            // it (§9.2.1). A radio asking which was which decided nothing in the
-            // common case — one item back — and was one more thing to get wrong
-            // in the uncommon one.
+            // Position, not a control: the header's six totals describe the first
+            // row. Cost no longer depends on it — every row carries its own (R5–R7).
             isPrimary: index === 0,
-            /**
-             * ⚠️ Not asked for any more — every by-product is recorded at ZERO
-             * and the first row absorbs the whole pot.
-             *
-             * That is the domain's own default and the honest one (§9.2.1):
-             * offcuts carry no cost until somebody sells them, and the surviving
-             * product should carry the cost of the whole operation. A box for it
-             * only earns its place once by-products are actually being sold.
-             */
-            valueShare: index === 0 ? null : 0,
+            // What this receipt bills per accepted unit, edited or as prefilled.
+            rate: row.rate,
             // The gate's own words. `reasonId` is not sent at all any more — see
             // the note on `ReturnedRow.remarks`.
             remarks: row.remarks.trim() || null,
@@ -857,8 +920,11 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
       }
       onReceived(data.id, saveAsDraft);
     },
-    onError: (err: AxiosError<{ message?: string }>) => {
-      setError(err.response?.data?.message ?? 'Could not post this receipt');
+    onMutate: () => setFieldErrors({}),
+    onError: (err: AxiosError<{ message?: string; details?: Record<string, string> }>) => {
+      const details = err.response?.data?.details ?? {};
+      // Highlight only — the global mutation handler shows the one toast (app/queryClient.ts).
+      setFieldErrors(details);
     },
   });
 
@@ -868,6 +934,8 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
     unallocatedRows.length === 0 &&
     effectiveReturned.every((row) => Boolean(row.itemId)) &&
     totals.received > 0 &&
+    !mixedRework &&
+    !usedBlocked &&
     !mutation.isPending;
 
   /**
@@ -972,23 +1040,6 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
         </div>
       )}
 
-      {error && (
-        <p
-          style={{
-            fontSize: 13,
-            color: '#b91c1c',
-            background: '#fef2f2',
-            border: '1px solid #fecaca',
-            borderRadius: 4,
-            padding: '8px 12px',
-            margin: '0 0 16px 0',
-          }}
-          role="alert"
-        >
-          {error}
-        </p>
-      )}
-
       {/* Amber, not red: nothing has gone wrong — this says which part of the
           draft could not be carried over, and it is the one thing the user has
           to redo before receiving. */}
@@ -1026,7 +1077,9 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                 maxWidth: '600px',
               }}
             >
-              <label style={{ ...labelStyle, whiteSpace: 'nowrap', marginBottom: 0, marginTop: 10 }}>
+              <label
+                style={{ ...labelStyle, whiteSpace: 'nowrap', marginBottom: 0, marginTop: 10 }}
+              >
                 Received into
               </label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1053,30 +1106,38 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                     options={receiveInto}
                     placeholder={isLoadingLocations ? 'Loading…' : 'Select a location…'}
                     disabled={receiveInto.length === 0}
+                    hasError={Boolean(fieldErrors.locationId)}
                     ariaLabel="Received into location"
                     fullWidth
                     portal
                   />
                   {stayedThere && effectiveLocationId === stayedThere.id && (
                     <p style={{ fontSize: 11.5, color: '#b45309', margin: '5px 0 0 0' }}>
-                      These stay out with the processor — send them on with a challan, or receive them
-                      into a godown when they arrive.
+                      These stay out with the processor — send them on with a challan, or receive
+                      them into a godown when they arrive.
                     </p>
                   )}
-                  {!isLoadingLocations && locationKind === 'location' && receiveInto.length === 0 && (
-                    <p style={{ fontSize: 11.5, color: '#b91c1c', margin: '5px 0 0 0' }}>
-                      {knownLocations.length > 0
-                        ? 'Every location set up is a processor, in-transit or customer site. Goods cannot be received into any of those — add a warehouse under Configuration → Locations.'
-                        : locationsError
-                          ? 'Locations could not be loaded — this needs the Locations read permission.'
-                          : 'No location has been set up yet. Add one under Configuration → Locations.'}
-                    </p>
-                  )}
+                  {!isLoadingLocations &&
+                    locationKind === 'location' &&
+                    receiveInto.length === 0 && (
+                      <p style={{ fontSize: 11.5, color: '#b91c1c', margin: '5px 0 0 0' }}>
+                        {knownLocations.length > 0
+                          ? 'Every location set up is a processor, in-transit or customer site. Goods cannot be received into any of those — add a warehouse under Configuration → Locations.'
+                          : locationsError
+                            ? 'Locations could not be loaded — this needs the Locations read permission.'
+                            : 'No location has been set up yet. Add one under Configuration → Locations.'}
+                      </p>
+                    )}
                 </div>
               </div>
 
               <label
-                style={{ ...labelStyle, whiteSpace: 'nowrap', marginBottom: 0, alignSelf: 'center' }}
+                style={{
+                  ...labelStyle,
+                  whiteSpace: 'nowrap',
+                  marginBottom: 0,
+                  alignSelf: 'center',
+                }}
                 htmlFor="receipt-date"
               >
                 Date
@@ -1092,7 +1153,12 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
               </div>
 
               <label
-                style={{ ...labelStyle, whiteSpace: 'nowrap', marginBottom: 0, alignSelf: 'center' }}
+                style={{
+                  ...labelStyle,
+                  whiteSpace: 'nowrap',
+                  marginBottom: 0,
+                  alignSelf: 'center',
+                }}
                 htmlFor="receipt-remarks"
               >
                 Remarks
@@ -1116,49 +1182,163 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                 wrongly even then: nothing was ever scrapped by ticking a box. A
                 challan now stays out until its material is accounted for, so
                 there is nothing to warn about. */}
-            <h3 style={sectionHeading}>Received against</h3>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                flexWrap: 'wrap',
+                marginBottom: 10,
+              }}
+            >
+              <h3 style={{ ...sectionHeading, margin: 0 }}>Received against</h3>
+              {/* A job finishing normally closes every challan — eight hand-ticks is
+                  how one gets missed. */}
+              {selectedIssueIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setClosedIds(
+                      closedIssueIds.length === selectedIssueIds.length ? [] : selectedIssueIds,
+                    )
+                  }
+                  style={{
+                    minHeight: 44,
+                    padding: '0 4px',
+                    border: 'none',
+                    background: 'none',
+                    color: '#0062ff',
+                    fontSize: 12.5,
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {closedIssueIds.length === selectedIssueIds.length
+                    ? 'Keep all open'
+                    : 'Close all'}
+                </button>
+              )}
+            </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-              {prefill.issues.length === 0 && (
+              {prefill.issues.length === 0 && prefill.closedIssues.length === 0 && (
                 <span style={{ fontSize: 13, color: '#64748b' }}>
                   Nothing is currently out against this step.
                 </span>
               )}
-              {prefill.issues.map((issue) => (
-                <label
+              {prefill.issues.map((issue) => {
+                const ticked = selectedIssueIds.includes(issue.id);
+                const closed = closedIssueIds.includes(issue.id);
+                const hasError =
+                  Boolean(fieldErrors.issueIds || fieldErrors.lines) ||
+                  (closed && Boolean(fieldErrors.closedIssueIds));
+                return (
+                  <div
+                    key={issue.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'stretch',
+                      // No challan ticked posts no lines — the server refuses both keys.
+                      border: `1px solid ${hasError ? '#ef4444' : closed ? '#fcd34d' : '#e2e8f0'}`,
+                      background: closed ? '#fffbeb' : '#fff',
+                      borderRadius: 4,
+                      fontSize: 13,
+                      color: '#334155',
+                    }}
+                  >
+                    <label
+                      style={{
+                        display: 'flex',
+                        gap: 8,
+                        alignItems: 'center',
+                        minHeight: 44,
+                        padding: '0 12px',
+                        boxSizing: 'border-box',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={ticked}
+                        onChange={(e) =>
+                          setPickedIssueIds(
+                            e.target.checked
+                              ? [...selectedIssueIds, issue.id]
+                              : selectedIssueIds.filter((id) => id !== issue.id),
+                          )
+                        }
+                      />
+                      {issue.challanNumber}
+                      <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                        {formatQty(issue.totalQty)} {inUnit}
+                        {issue.isRework ? ` · rework #${issue.attemptNo}` : ''}
+                      </span>
+                    </label>
+                    {/* 🔴 Per challan, never per receipt (C1) — and only on a ticked
+                        one, since closing consumes what this receipt draws on it. */}
+                    {ticked && (
+                      <label
+                        style={{
+                          display: 'flex',
+                          gap: 6,
+                          alignItems: 'center',
+                          minHeight: 44,
+                          padding: '0 12px',
+                          boxSizing: 'border-box',
+                          borderLeft: `1px solid ${closed ? '#fcd34d' : '#e2e8f0'}`,
+                          fontSize: 12.5,
+                          color: closed ? '#92400e' : '#475569',
+                          fontWeight: closed ? 600 : 400,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={closed}
+                          aria-label={`Close ${issue.challanNumber} — nothing more comes back on it`}
+                          onChange={(e) =>
+                            setClosedIds(
+                              e.target.checked
+                                ? [...closedIssueIds, issue.id]
+                                : closedIssueIds.filter((id) => id !== issue.id),
+                            )
+                          }
+                        />
+                        Close
+                      </label>
+                    )}
+                  </div>
+                );
+              })}
+              {/* Closed by a posted receipt: not receivable, and not silently gone —
+                  cancelling that receipt is how it reopens (R14). */}
+              {prefill.closedIssues.map((issue) => (
+                <div
                   key={issue.id}
                   style={{
                     display: 'flex',
                     gap: 8,
                     alignItems: 'center',
-                    padding: '8px 12px',
-                    border: '1px solid #e2e8f0',
+                    minHeight: 44,
+                    padding: '0 12px',
+                    boxSizing: 'border-box',
+                    border: '1px dashed #e2e8f0',
                     borderRadius: 4,
                     fontSize: 13,
-                    color: '#334155',
-                    cursor: 'pointer',
+                    color: '#94a3b8',
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={selectedIssueIds.includes(issue.id)}
-                    onChange={(e) =>
-                      // The first tick materialises the "all open" default
-                      // into a real list, and every one after edits it.
-                      setPickedIssueIds(
-                        e.target.checked
-                          ? [...selectedIssueIds, issue.id]
-                          : selectedIssueIds.filter((id) => id !== issue.id),
-                      )
-                    }
-                  />
                   {issue.challanNumber}
-                  <span style={{ fontSize: 11, color: '#94a3b8' }}>
-                    {formatQty(issue.totalQty)} {inUnit}
-                    {issue.isRework ? ` · rework #${issue.attemptNo}` : ''}
-                  </span>
-                </label>
+                  <span style={{ fontSize: 11 }}>Closed · {issue.closedByReceiptNumber}</span>
+                </div>
               ))}
             </div>
+            {closedIssueIds.length > 0 && (
+              <p style={{ fontSize: 12, color: '#92400e', margin: '8px 0 0 0' }}>
+                Nothing more can be received on {closedIssueIds.map(challanNumberOf).join(', ')}{' '}
+                unless this receipt is cancelled.
+              </p>
+            )}
           </section>
 
           {/*
@@ -1181,12 +1361,14 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                       floor is what put a horizontal scrollbar under a dialog that
                       is already 1100px wide. */}
                   <colgroup>
-                    <col style={{ width: '24%' }} />
-                    <col style={{ width: '11%' }} />
-                    <col style={{ width: '11%' }} />
-                    <col style={{ width: '11%' }} />
-                    <col style={{ width: '22%' }} />
-                    <col style={{ width: '21%' }} />
+                    <col style={{ width: '17%' }} />
+                    <col style={{ width: '9%' }} />
+                    <col style={{ width: '9%' }} />
+                    <col style={{ width: '8%' }} />
+                    <col style={{ width: '9%' }} />
+                    <col style={{ width: '18%' }} />
+                    <col style={{ width: '15%' }} />
+                    <col style={{ width: '15%' }} />
                   </colgroup>
                   <thead>
                     <tr style={{ background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
@@ -1201,6 +1383,13 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                       </th>
                       <th style={th} scope="col">
                         Good
+                      </th>
+                      <th style={th} scope="col">
+                        Rate
+                      </th>
+                      {/* A preview of what the server will post — material + charge. */}
+                      <th style={th} scope="col">
+                        Cost
                       </th>
                       <th style={th} scope="col">
                         {trackingLabel.plural}
@@ -1218,7 +1407,7 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                     {effectiveReturned.length === 0 && (
                       <tr>
                         <td
-                          colSpan={6}
+                          colSpan={8}
                           style={{
                             padding: 24,
                             textAlign: 'center',
@@ -1231,6 +1420,10 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                       </tr>
                     )}
                     {effectiveReturned.map((row) => {
+                      // Index in the posted `outputs`, which drops rows with no item.
+                      const outputPath = `outputs.${effectiveReturned
+                        .filter((r) => r.itemId)
+                        .indexOf(row)}`;
                       const cell = (field: 'receivedQty' | 'reworkQty', label: string) => (
                         <td style={td}>
                           <input
@@ -1244,11 +1437,14 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                             onChange={(e) =>
                               updateReturned(row.key, { [field]: Number(e.target.value) || 0 })
                             }
-                            style={numberCell}
+                            style={
+                              fieldErrors[`${outputPath}.${field}`] ? numberCellError : numberCell
+                            }
                           />
                         </td>
                       );
                       const tracked = batchRefRequired(row);
+                      const preview = cost?.rows.get(row.itemId);
                       return (
                         <tr key={row.key} style={{ borderBottom: '1px solid #f4f5f7' }}>
                           {/* 🔴 Read-only. The step says which items come back; see
@@ -1277,7 +1473,7 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                                     background: '#fef3c7',
                                     color: '#92400e',
                                   }}
-                                  title={`This item is ${trackingLabel.singular.toLowerCase()}-tracked, so the ${trackingLabel.plural.toLowerCase()} it lands in have to be named.`}
+                                  title={`${trackingLabel.plural} must be named`}
                                 >
                                   {trackingLabel.singular} required
                                 </span>
@@ -1291,6 +1487,46 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                               as their answer rather than a third thing to fill. */}
                           <td style={{ ...td, fontWeight: 600, color: '#111' }}>
                             {row.receivedQty > 0 ? formatQty(row.acceptedQty) : '—'}
+                          </td>
+                          {/* Per ACCEPTED unit (R6): rework is charged when the
+                              pieces are finally accepted, never twice. */}
+                          <td style={td}>
+                            <input
+                              type="number"
+                              onWheel={blurOnWheel}
+                              step="0.01"
+                              min="0"
+                              aria-label={`Rate per ${row.unit || 'unit'} for ${row.itemName}`}
+                              value={row.rate ?? ''}
+                              placeholder="0"
+                              onChange={(e) =>
+                                updateReturned(row.key, {
+                                  rate: e.target.value === '' ? null : Number(e.target.value),
+                                })
+                              }
+                              style={
+                                fieldErrors[`${outputPath}.rate`] ? numberCellError : numberCell
+                              }
+                            />
+                          </td>
+                          <td style={{ ...td, fontSize: 12, lineHeight: 1.45 }}>
+                            {preview && row.receivedQty > 0 ? (
+                              <>
+                                <div style={{ color: '#64748b' }}>
+                                  {formatMoney(preview.material)} + {formatMoney(preview.charge)}
+                                </div>
+                                <div style={{ fontWeight: 600, color: '#111' }}>
+                                  = {formatMoney(preview.material + preview.charge)}
+                                </div>
+                                {preview.perUnit !== null && (
+                                  <div style={{ color: '#64748b' }}>
+                                    {formatMoney(preview.perUnit)} / {row.unit || 'unit'}
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              '—'
+                            )}
                           </td>
                           {/* 🔴 WHERE THESE GOODS WILL LIVE. What a processor hands
                               back is physically new and has no number of its own,
@@ -1334,7 +1570,12 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                               placeholder="Reason"
                               maxLength={2000}
                               onChange={(e) => updateReturned(row.key, { remarks: e.target.value })}
-                              style={{ ...numberCell, textAlign: 'left' }}
+                              style={{
+                                ...(fieldErrors[`${outputPath}.remarks`]
+                                  ? numberCellError
+                                  : numberCell),
+                                textAlign: 'left',
+                              }}
                             />
                           </td>
                         </tr>
@@ -1362,54 +1603,140 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
           </section>
 
           {/*
-              🔴 WHAT THIS RECEIPT CONSUMES — nothing here asks for it.
+              🔴 MATERIAL USED — per input item, below what came back because it is
+              worked out FROM it (landed-cost R3–R4).
 
-              On the ordinary step the item that went out is the item that comes
-              back, so the answer IS what came back and a grid for it was a screen
-              full of numbers the dialog already had.
-
-              🔴 And the "nothing more is coming back for this step" checkbox went
-              with it (2026-08-21). A receipt settles the challans it names in
-              full; the shortfall is process loss, which the strip below states as
-              a consequence of the two figures above it rather than asking for it
-              as a third. A delivery that only settles part of what is out is two
-              receipts, each naming its own challan — which the section above
-              already offers. The typed consumption grid for a TRANSFORMING step
-              only ever appeared behind that checkbox, so it went too.
+              The box is empty until somebody types: its placeholder is the plan's
+              figure, which is what posts. A typed figure is the processor's own
+              and wins; clearing it hands the item back to the calculation. What is
+              not used stays with the processor — it replaced "settles in full" and
+              the process-loss strip, because loss is only known when the step is
+              completed, not on one consignment.
             */}
-          {/* 🔴 PROCESS LOSS ONLY — where the Scrap box went. Stated as a
-                consequence of the two typed numbers rather than as a question, so
-                it can never disagree with them.
-
-                🔴 Actual yield / Expected / Variance went with the checkbox
-                (2026-08-21). They changed no decision at the gate — nobody
-                refuses a delivery because the yield is 2% off — and yield is a
-                report, measured over a step's whole life, not over the one
-                consignment standing in front of the operator. It is on the job
-                order overview, where it can be read against every receipt. */}
-          {lossByItem.length > 0 && (
-            <div
-              style={{
-                display: 'flex',
-                gap: 20,
-                flexWrap: 'wrap',
-                marginBottom: 20,
-                padding: '10px 14px',
-                background: '#f8fafc',
-                borderRadius: 4,
-                fontSize: 12,
-                color: '#475569',
-              }}
-            >
-              {lossByItem.map((row) => (
-                <span key={`loss-strip-${row.itemId}`}>
-                  Process loss ({row.name}):{' '}
-                  <strong style={{ color: '#b45309' }}>
-                    {formatQty(row.qty)} {row.unit}
-                  </strong>
-                </span>
-              ))}
-            </div>
+          {rows.length > 0 && (
+            <section style={{ marginBottom: 20 }}>
+              <h3 style={sectionHeading}>Material used</h3>
+              <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 8px 0', lineHeight: 1.5 }}>
+                Worked out from the job order&apos;s plan as quantities are typed above. Type the
+                processor&apos;s own figure to use that instead; clear it to go back to the
+                calculation. Whatever is not used stays with the processor — unless its challan is
+                closed, which uses all of it.
+              </p>
+              {mixedRework && (
+                <p role="alert" style={{ fontSize: 12, color: '#b91c1c', margin: '0 0 8px 0' }}>
+                  Rework and first-pass challans are costed differently and cannot be received
+                  together — untick one kind.
+                </p>
+              )}
+              <div style={{ border: '1px solid #eef0f3', borderRadius: 4 }}>
+                <div className="responsive-table-wrapper">
+                  <table
+                    style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}
+                  >
+                    <colgroup>
+                      <col style={{ width: '34%' }} />
+                      <col style={{ width: '18%' }} />
+                      <col style={{ width: '30%' }} />
+                      <col style={{ width: '18%' }} />
+                    </colgroup>
+                    <thead>
+                      <tr style={{ background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
+                        <th style={th} scope="col">
+                          Item
+                        </th>
+                        <th style={th} scope="col">
+                          Still out
+                        </th>
+                        <th style={th} scope="col">
+                          Used
+                        </th>
+                        <th style={th} scope="col">
+                          Value
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row, lineIndex) => {
+                        const used = row.itemId ? cost?.used.get(row.itemId) : undefined;
+                        // Below the floor is marked here and refused with a toast on save (R11).
+                        const usedError = errorAt(`lines.${lineIndex}`) || used?.belowFloor;
+                        const edited = row.itemId ? (usedEdits[row.itemId] ?? null) : null;
+                        const closingChallans = row.itemId
+                          ? (closingChallansByItem.get(row.itemId) ?? [])
+                          : [];
+                        return (
+                          <tr key={row.key} style={{ borderBottom: '1px solid #f4f5f7' }}>
+                            <td style={td}>
+                              <div style={{ fontWeight: 600, color: '#111' }}>{row.itemName}</div>
+                            </td>
+                            <td style={td}>
+                              {formatQty(row.issuedQty)} {row.unit}
+                            </td>
+                            <td style={td}>
+                              <input
+                                type="number"
+                                onWheel={blurOnWheel}
+                                step="0.0001"
+                                min="0"
+                                aria-label={`Used of ${row.itemName}`}
+                                value={edited ?? ''}
+                                placeholder={used ? formatQty(used.suggested) : '0'}
+                                disabled={!row.itemId}
+                                onChange={(e) => {
+                                  const itemId = row.itemId;
+                                  if (!itemId) return;
+                                  const qty = Number(e.target.value);
+                                  setUsedEdits((current) => ({
+                                    ...current,
+                                    [itemId]: e.target.value === '' || !(qty > 0) ? null : qty,
+                                  }));
+                                }}
+                                style={usedError ? numberCellError : numberCell}
+                              />
+                              {used && edited !== null && (
+                                <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 3 }}>
+                                  Calculated {formatQty(used.suggested)} {row.unit}
+                                </div>
+                              )}
+                              {/* Without these two lines a closure's figure looks invented. */}
+                              {used && used.floor > 0 && (
+                                <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 3 }}>
+                                  <div>
+                                    ↳ plan needs {formatQty(used.calculated)} {row.unit}
+                                  </div>
+                                  <div style={{ color: '#92400e' }}>
+                                    ↳ {formatQty(used.floor)} {row.unit} required by closing{' '}
+                                    {closingChallans.join(', ')}
+                                  </div>
+                                </div>
+                              )}
+                              {used?.capped && (
+                                <div style={{ fontSize: 11.5, color: '#b45309', marginTop: 3 }}>
+                                  The plan calls for {formatQty(used.calculated)}, but only{' '}
+                                  {formatQty(used.outstanding)} is still out on the ticked challans.
+                                </div>
+                              )}
+                              {used?.overOutstanding && (
+                                <div style={{ fontSize: 11.5, color: '#b91c1c', marginTop: 3 }}>
+                                  Only {formatQty(used.outstanding)} {row.unit} is still out.
+                                </div>
+                              )}
+                              {used?.undrawn && (
+                                <div style={{ fontSize: 11.5, color: '#b91c1c', marginTop: 3 }}>
+                                  Nothing received above is made from this, so nothing can carry
+                                  what it used.
+                                </div>
+                              )}
+                            </td>
+                            <td style={td}>{used ? formatMoney(used.value) : '—'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
           )}
 
           {/* No "Additional fields" block here. The gate is the wrong place for

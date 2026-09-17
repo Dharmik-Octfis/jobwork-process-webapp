@@ -78,10 +78,9 @@ async function aStepReadyToReceive(qty: number, value: number) {
         processId,
         processorType: 'vendor',
         processorId: dyerId,
-        rate: 10,
-        rateBasis: 'per_issued_unit',
         inputs: [{ itemId: greyId }],
-        outputs: [{ itemId: dyedId, isPrimary: true }],
+        // ₹10 per accepted metre — the charge lives on the output row (R6).
+        outputs: [{ itemId: dyedId, isPrimary: true, rate: 10 }],
         plannedInputQty: qty,
       },
     ],
@@ -167,7 +166,7 @@ beforeAll(async () => {
     ).id;
   });
 
-  processId = (await createNewProcess(orgId, { name: 'Dyeing', rateBasis: 'per_issued_unit' })).id;
+  processId = (await createNewProcess(orgId, { name: 'Dyeing' })).id;
 });
 
 afterAll(async () => {

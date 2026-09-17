@@ -53,8 +53,6 @@ function toFormSteps(route?: Partial<Route>): RouteStepData[] {
     processorType: step.processorType,
     processorId: step.processorId,
     workCentreLocationId: step.workCentreLocationId,
-    rate: step.rate === null ? null : Number(step.rate),
-    rateBasis: step.rateBasis,
     // 🔴 The template's bill of materials (§5.7). The consumed side carries a
     // default quantity a job order copies once; the produced side carries none,
     // because what comes back is a per-run answer.
@@ -67,9 +65,9 @@ function toFormSteps(route?: Partial<Route>): RouteStepData[] {
       itemId: row.itemId,
       uomId: row.uomId,
       isPrimary: Boolean(row.isPrimary),
+      rate: num(row.rate),
     })),
     expectedYield: step.expectedYield === null ? null : Number(step.expectedYield),
-    tolerancePct: step.tolerancePct === null ? null : Number(step.tolerancePct),
     remarks: step.remarks,
   }));
 }
@@ -191,7 +189,8 @@ export function RouteForm({ initialData, onSubmit, isPending, onCancel, fieldErr
         <StepsGrid steps={steps} onChange={setSteps} errors={fieldErrors} showInputQty />
       </section>
 
-      <div className="form-actions-footer"
+      <div
+        className="form-actions-footer"
         style={{
           height: 44,
           boxSizing: 'border-box',

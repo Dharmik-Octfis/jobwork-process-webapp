@@ -3,8 +3,8 @@ import { runAsTenant, type TenantClient } from '../../db/prisma.ts';
 /**
  * The vocabularies Sprints 2–4 share, in one file rather than five.
  *
- * Same convention as `processes/processes.types.ts`: a `String @db.VarChar(n)`
- * with a `// a | b | c` comment in the schema, and the list in code. This
+ * A `String @db.VarChar(n)` with a `// a | b | c` comment in the schema, and
+ * the list in code. This
  * codebase has zero Prisma `enum` blocks, so adding a value is a code change
  * with no migration — and the price of that is exactly this file, because the
  * database will happily store a typo.
@@ -185,6 +185,9 @@ export const SOURCE_DOC_TYPES = {
   jobOrderMaterialIn: 'job_order_material_in',
   jobIssue: 'job_issue',
   jobReceipt: 'job_receipt',
+  /** The completion write-off (landed-cost R8): `sourceDocId` is the step,
+   * `sourceDocLineId` the challan line whose remainder was scrapped. */
+  jobOrderStep: 'job_order_step',
 } as const;
 
 /**

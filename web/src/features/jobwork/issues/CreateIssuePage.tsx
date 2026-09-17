@@ -74,7 +74,13 @@ export function CreateIssuePage() {
 
   return (
     <div
-      style={{ background: '#fff', minHeight: '100%', display: 'flex', flexDirection: 'column' }}
+      style={{
+        background: '#fff',
+        minHeight: '100%',
+        flexShrink: 0,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
     >
       <header
         className="detail-page-header"
@@ -127,15 +133,23 @@ export function CreateIssuePage() {
         {/* Hidden while editing a draft: the step is fixed by the document, and
               the two pickers would offer to move lines onto a step that may not
               consume their items. */}
-        <div 
-          style={{ 
-            marginBottom: 24, 
+        <div
+          style={{
+            marginBottom: 24,
             paddingBottom: 24,
             borderBottom: '1px solid #e2e8f0',
             display: draft ? 'none' : undefined,
           }}
         >
-          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '16px', maxWidth: '480px', alignItems: 'center' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '120px 1fr',
+              gap: '16px',
+              maxWidth: '480px',
+              alignItems: 'center',
+            }}
+          >
             <label style={{ fontSize: 13, color: '#4b5563', margin: 0, fontWeight: 500 }}>
               Job Order
             </label>

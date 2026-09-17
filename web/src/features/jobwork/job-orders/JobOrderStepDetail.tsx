@@ -5,6 +5,7 @@ import {
   ISSUE_STATUS_META,
   RECEIPT_STATUS_META,
   STEP_STATUS_META,
+  formatMoney,
   formatQty,
   processorTypeLabel,
   qtyWithUnit,
@@ -96,9 +97,7 @@ export function JobOrderStepDetail({
   onComplete,
   onOpenDocument,
 }: Props) {
-
   const meta = statusMeta(STEP_STATUS_META, step.status);
-
 
   // The principal input's and primary output's units, read off the two lists —
   // the four scalars that used to mirror them went with Migration B (2026-08-12).
@@ -133,7 +132,10 @@ export function JobOrderStepDetail({
             {step.seq}
           </span>
           <div>
-            <h3 className="detail-title" style={{ fontSize: 14, fontWeight: 600, color: '#111', margin: 0 }}>
+            <h3
+              className="detail-title"
+              style={{ fontSize: 14, fontWeight: 600, color: '#111', margin: 0 }}
+            >
               {step.processNameSnapshot}
             </h3>
             <span style={{ fontSize: 12, color: '#64748b' }}>
@@ -151,7 +153,8 @@ export function JobOrderStepDetail({
               {step.blockedReason ?? 'This step has nothing listed to issue.'}
             </span>
           )}
-          <button className="action-btn"
+          <button
+            className="action-btn"
             type="button"
             onClick={() => onIssue(step)}
             disabled={!step.canIssue}
@@ -166,7 +169,8 @@ export function JobOrderStepDetail({
             <Send size={14} /> <span className="action-btn-text">Issue</span>
           </button>
           {step.canReceive && (
-            <button className="action-btn"
+            <button
+              className="action-btn"
               type="button"
               onClick={() => onReceive(step)}
               style={{
@@ -246,7 +250,13 @@ export function JobOrderStepDetail({
                 qty: qtyWithUnit(row.issuedQty, row.uomSymbol),
                 muted: toNumber(row.issuedQty) === 0,
                 planned: row.plannedQty ? qtyWithUnit(row.plannedQty, row.uomSymbol) : undefined,
-                remaining: row.remainingQty ? qtyWithUnit(row.remainingQty, row.uomSymbol) : undefined,
+                remaining: row.remainingQty
+                  ? qtyWithUnit(row.remainingQty, row.uomSymbol)
+                  : undefined,
+                // 🔴 Where the material stands — three states, not two: still at the
+                // processor, on a closed challan (consumed into cost, challan-closure
+                // R10), or written off as job order loss when the step completed (R8).
+                detail: materialStanding(row),
               }))}
               empty="Nothing issued yet."
             />
@@ -263,14 +273,24 @@ export function JobOrderStepDetail({
                 qty: qtyWithUnit(row.receivedQty, row.uomSymbol),
                 muted: toNumber(row.receivedQty) === 0,
                 planned: row.expectedQty ? qtyWithUnit(row.expectedQty, row.uomSymbol) : undefined,
-                remaining: row.remainingQty ? qtyWithUnit(row.remainingQty, row.uomSymbol) : undefined,
+                remaining: row.remainingQty
+                  ? qtyWithUnit(row.remainingQty, row.uomSymbol)
+                  : undefined,
+                // The running landed cost, from what each receipt stored when it
+                // posted. Hidden at zero: receipts posted before landed costing
+                // stored no breakdown, and ₹0.00 would read as free.
+                detail:
+                  row.landedCostPerUnit !== null && toNumber(row.landedCostPerUnit) > 0
+                    ? {
+                        text: `${formatMoney(row.landedCostPerUnit)} / ${row.uomSymbol ?? 'unit'} landed · ${qtyWithUnit(row.acceptedQty, row.uomSymbol)} accepted`,
+                        tone: 'muted' as const,
+                      }
+                    : undefined,
               }))}
               empty="Nothing back yet."
             />
           </div>
         </div>
-
-
       </div>
 
       <div style={{ padding: '14px 16px', borderTop: '1px solid #eef0f3', background: '#fcfcfd' }}>
@@ -280,7 +300,13 @@ export function JobOrderStepDetail({
   );
 }
 
-export function ActivityTabs({ events, onOpen }: { events: ActivityEvent[], onOpen: (event: ActivityEvent) => void }) {
+export function ActivityTabs({
+  events,
+  onOpen,
+}: {
+  events: ActivityEvent[];
+  onOpen: (event: ActivityEvent) => void;
+}) {
   const [activeTab, setActiveTab] = useState<'issue' | 'receipt' | null>(null);
   const issues = events.filter((e) => e.kind === 'issue');
   const receipts = events.filter((e) => e.kind === 'receipt');
@@ -297,7 +323,14 @@ export function ActivityTabs({ events, onOpen }: { events: ActivityEvent[], onOp
 
   return (
     <div style={{ border: '1px solid #eef0f3', borderRadius: 6, background: '#fff' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'stretch', borderBottom: activeTab ? '1px solid #eef0f3' : '1px solid transparent' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'stretch',
+          borderBottom: activeTab ? '1px solid #eef0f3' : '1px solid transparent',
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'stretch' }}>
           <button
             type="button"
@@ -318,11 +351,20 @@ export function ActivityTabs({ events, onOpen }: { events: ActivityEvent[], onOp
             }}
           >
             Issues
-            <span style={{ fontSize: 12, background: '#f1f5f9', color: '#3b82f6', padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>
+            <span
+              style={{
+                fontSize: 12,
+                background: '#f1f5f9',
+                color: '#3b82f6',
+                padding: '2px 8px',
+                borderRadius: 12,
+                fontWeight: 600,
+              }}
+            >
               {issues.length}
             </span>
           </button>
-          
+
           <div style={{ width: 2, background: '#e2e8f0', margin: '12px 0', borderRadius: 2 }} />
 
           <button
@@ -344,7 +386,16 @@ export function ActivityTabs({ events, onOpen }: { events: ActivityEvent[], onOp
             }}
           >
             Receives
-            <span style={{ fontSize: 12, background: '#f1f5f9', color: '#3b82f6', padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>
+            <span
+              style={{
+                fontSize: 12,
+                background: '#f1f5f9',
+                color: '#3b82f6',
+                padding: '2px 8px',
+                borderRadius: 12,
+                fontWeight: 600,
+              }}
+            >
               {receipts.length}
             </span>
           </button>
@@ -370,83 +421,172 @@ export function ActivityTabs({ events, onOpen }: { events: ActivityEvent[], onOp
             fill="none"
             style={{
               transform: activeTab ? 'rotate(180deg)' : 'rotate(0deg)',
-              transition: 'transform 0.2s'
+              transition: 'transform 0.2s',
             }}
           >
-            <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path
+              d="M1 1L5 5L9 1"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </button>
       </div>
-      
+
       {activeTab && (
         <div style={{ padding: '0 16px 16px 16px' }}>
           <div className="responsive-table-wrapper">
-<table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 12 }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: 'left', fontSize: 12, color: '#64748b', paddingBottom: 8, fontWeight: 500, borderBottom: '1px solid #eef0f3' }}>
-                  Date
-                </th>
-                <th style={{ textAlign: 'left', fontSize: 12, color: '#64748b', paddingBottom: 8, fontWeight: 500, borderBottom: '1px solid #eef0f3' }}>
-                  {activeTab === 'issue' ? 'Issue Number' : 'Receive Number'}
-                </th>
-                <th style={{ textAlign: 'left', fontSize: 12, color: '#64748b', paddingBottom: 8, fontWeight: 500, borderBottom: '1px solid #eef0f3' }}>
-                  Done By
-                </th>
-                <th style={{ textAlign: 'left', fontSize: 12, color: '#64748b', paddingBottom: 8, fontWeight: 500, borderBottom: '1px solid #eef0f3' }}>
-                  Processor
-                </th>
-                <th style={{ textAlign: 'left', fontSize: 12, color: '#64748b', paddingBottom: 8, fontWeight: 500, borderBottom: '1px solid #eef0f3' }}>
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {activeEvents.map((event) => (
-                <tr key={event.id}>
-                  <td style={{ padding: '12px 0', fontSize: 13, color: '#334155', borderBottom: '1px solid #f8fafc' }}>
-                    {formatDate(event.date)}
-                  </td>
-                  <td style={{ padding: '12px 0', fontSize: 13, borderBottom: '1px solid #f8fafc' }}>
-                    <button
-                      type="button"
-                      onClick={() => onOpen(event)}
-                      style={{
-                        color: '#2563eb',
-                        background: 'none',
-                        border: 'none',
-                        padding: 0,
-                        cursor: 'pointer',
-                        font: 'inherit',
-                        fontWeight: 500,
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
-                      onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
-                    >
-                      {event.number}
-                    </button>
-                  </td>
-                  <td style={{ padding: '12px 0', fontSize: 13, color: '#334155', borderBottom: '1px solid #f8fafc' }}>
-                    {event.processorType ? processorTypeLabel(event.processorType) : '-'}
-                  </td>
-                  <td style={{ padding: '12px 0', fontSize: 13, color: '#334155', borderBottom: '1px solid #f8fafc' }}>
-                    {event.partyName || '-'}
-                  </td>
-                  <td style={{ padding: '12px 0', fontSize: 13, color: '#334155', borderBottom: '1px solid #f8fafc' }}>
-                    <DocumentStatusPill event={event} />
-                  </td>
-                </tr>
-              ))}
-              {activeEvents.length === 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 12 }}>
+              <thead>
                 <tr>
-                  <td colSpan={5} style={{ padding: '24px 0', textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>
-                    No {activeTab === 'issue' ? 'issues' : 'receives'} found.
-                  </td>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      fontSize: 12,
+                      color: '#64748b',
+                      paddingBottom: 8,
+                      fontWeight: 500,
+                      borderBottom: '1px solid #eef0f3',
+                    }}
+                  >
+                    Date
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      fontSize: 12,
+                      color: '#64748b',
+                      paddingBottom: 8,
+                      fontWeight: 500,
+                      borderBottom: '1px solid #eef0f3',
+                    }}
+                  >
+                    {activeTab === 'issue' ? 'Issue Number' : 'Receive Number'}
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      fontSize: 12,
+                      color: '#64748b',
+                      paddingBottom: 8,
+                      fontWeight: 500,
+                      borderBottom: '1px solid #eef0f3',
+                    }}
+                  >
+                    Done By
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      fontSize: 12,
+                      color: '#64748b',
+                      paddingBottom: 8,
+                      fontWeight: 500,
+                      borderBottom: '1px solid #eef0f3',
+                    }}
+                  >
+                    Processor
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      fontSize: 12,
+                      color: '#64748b',
+                      paddingBottom: 8,
+                      fontWeight: 500,
+                      borderBottom: '1px solid #eef0f3',
+                    }}
+                  >
+                    Status
+                  </th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-</div>
+              </thead>
+              <tbody>
+                {activeEvents.map((event) => (
+                  <tr key={event.id}>
+                    <td
+                      style={{
+                        padding: '12px 0',
+                        fontSize: 13,
+                        color: '#334155',
+                        borderBottom: '1px solid #f8fafc',
+                      }}
+                    >
+                      {formatDate(event.date)}
+                    </td>
+                    <td
+                      style={{ padding: '12px 0', fontSize: 13, borderBottom: '1px solid #f8fafc' }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onOpen(event)}
+                        style={{
+                          color: '#2563eb',
+                          background: 'none',
+                          border: 'none',
+                          padding: 0,
+                          cursor: 'pointer',
+                          font: 'inherit',
+                          fontWeight: 500,
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
+                        onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+                      >
+                        {event.number}
+                      </button>
+                    </td>
+                    <td
+                      style={{
+                        padding: '12px 0',
+                        fontSize: 13,
+                        color: '#334155',
+                        borderBottom: '1px solid #f8fafc',
+                      }}
+                    >
+                      {event.processorType ? processorTypeLabel(event.processorType) : '-'}
+                    </td>
+                    <td
+                      style={{
+                        padding: '12px 0',
+                        fontSize: 13,
+                        color: '#334155',
+                        borderBottom: '1px solid #f8fafc',
+                      }}
+                    >
+                      {event.partyName || '-'}
+                    </td>
+                    <td
+                      style={{
+                        padding: '12px 0',
+                        fontSize: 13,
+                        color: '#334155',
+                        borderBottom: '1px solid #f8fafc',
+                      }}
+                    >
+                      <DocumentStatusPill event={event} />
+                    </td>
+                  </tr>
+                ))}
+                {activeEvents.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      style={{
+                        padding: '24px 0',
+                        textAlign: 'center',
+                        fontSize: 13,
+                        color: '#94a3b8',
+                      }}
+                    >
+                      No {activeTab === 'issue' ? 'issues' : 'receives'} found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
@@ -461,6 +601,30 @@ interface MovementRow {
   muted: boolean;
   planned?: string;
   remaining?: string;
+  /** One line under the item: where its material stands, or what it landed at. */
+  detail?: { text: string; tone: 'muted' | 'loss' };
+}
+
+function materialStanding(row: {
+  uomSymbol: string | null;
+  stillOutQty: string;
+  closedQty: string;
+  writtenOffQty: string;
+  writtenOffValue: string;
+}): MovementRow['detail'] {
+  const parts = [
+    toNumber(row.stillOutQty) > 0
+      ? `${qtyWithUnit(row.stillOutQty, row.uomSymbol)} still at the processor`
+      : null,
+    toNumber(row.closedQty) > 0
+      ? `${qtyWithUnit(row.closedQty, row.uomSymbol)} on closed challans`
+      : null,
+    toNumber(row.writtenOffQty) > 0
+      ? `${qtyWithUnit(row.writtenOffQty, row.uomSymbol)} written off · ${formatMoney(row.writtenOffValue)} loss`
+      : null,
+  ].filter((part): part is string => part !== null);
+  if (parts.length === 0) return undefined;
+  return { text: parts.join(' · '), tone: toNumber(row.writtenOffQty) > 0 ? 'loss' : 'muted' };
 }
 
 /**
@@ -490,37 +654,71 @@ function MovementList({
 
   return (
     <div className="responsive-table-wrapper">
-<table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8 }}>
-      <thead>
-        <tr>
-          <th style={{ ...thStyle, textAlign: 'left' }}>Item</th>
-          <th style={{ ...thStyle }}>Plan</th>
-          <th style={{ ...thStyle }}>{actionLabel}</th>
-          <th style={{ ...thStyle }}>Rem</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row.key}>
-            <td style={{ padding: '6px 8px 6px 0', verticalAlign: 'top' }}>
-              <div style={{ fontSize: 12, color: '#334155', fontWeight: 500 }}>{row.name}</div>
-              <div style={{ fontSize: 10, color: '#94a3b8' }}>{row.note}</div>
-            </td>
-            <td style={{ padding: '6px 8px 6px 0', verticalAlign: 'top', textAlign: 'center', fontSize: 12, color: '#475569' }}>
-              {row.planned || '—'}
-            </td>
-            <td style={{ padding: '6px 8px 6px 0', verticalAlign: 'top', textAlign: 'center', fontSize: 12, color: row.muted ? '#cbd5e1' : '#475569', whiteSpace: 'nowrap' }}>
-              {row.qty}
-            </td>
-            <td style={{ padding: '6px 0', verticalAlign: 'top', textAlign: 'center', fontSize: 12, color: '#475569' }}>
-              {row.remaining || '—'}
-            </td>
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8 }}>
+        <thead>
+          <tr>
+            <th style={{ ...thStyle, textAlign: 'left' }}>Item</th>
+            <th style={{ ...thStyle }}>Plan</th>
+            <th style={{ ...thStyle }}>{actionLabel}</th>
+            <th style={{ ...thStyle }}>Rem</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
-</div>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.key}>
+              <td style={{ padding: '6px 8px 6px 0', verticalAlign: 'top' }}>
+                <div style={{ fontSize: 12, color: '#334155', fontWeight: 500 }}>{row.name}</div>
+                <div style={{ fontSize: 10, color: '#94a3b8' }}>{row.note}</div>
+                {row.detail && (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      marginTop: 2,
+                      color: row.detail.tone === 'loss' ? '#b45309' : '#64748b',
+                    }}
+                  >
+                    {row.detail.text}
+                  </div>
+                )}
+              </td>
+              <td
+                style={{
+                  padding: '6px 8px 6px 0',
+                  verticalAlign: 'top',
+                  textAlign: 'center',
+                  fontSize: 12,
+                  color: '#475569',
+                }}
+              >
+                {row.planned || '—'}
+              </td>
+              <td
+                style={{
+                  padding: '6px 8px 6px 0',
+                  verticalAlign: 'top',
+                  textAlign: 'center',
+                  fontSize: 12,
+                  color: row.muted ? '#cbd5e1' : '#475569',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {row.qty}
+              </td>
+              <td
+                style={{
+                  padding: '6px 0',
+                  verticalAlign: 'top',
+                  textAlign: 'center',
+                  fontSize: 12,
+                  color: '#475569',
+                }}
+              >
+                {row.remaining || '—'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
-
-

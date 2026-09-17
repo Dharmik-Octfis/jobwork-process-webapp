@@ -17,6 +17,7 @@ import {
   type Ownership,
 } from '../../inventory/stock-ledger/stockLedger.service.ts';
 import { assertLocationsBelongToOrg, resolveProcessorName } from '../jobwork.refs.ts';
+import { closedQtyByIssueLine, lockStep } from '../jobwork.posting.ts';
 import {
   HAPPENED_DOC_STATUS,
   POSTED_DOC_STATUS,
@@ -229,11 +230,10 @@ const QTY_EPSILON = new Prisma.Decimal('0.00005');
  * `step.plannedInputQty` is the principal input's copy of the same number and is
  * the fallback until Migration A's backfill has reached every step.
  *
- * 🔴 THE PERCENTAGE IS PER ITEM TOO, falling through to the step's. Fabric may
- * allow 3% while thread allows 25% — small quantities vary more — and one
- * percentage across three items is either too tight for one or meaningless for
- * another. `??`, never `||`: a row that says 0 means no tolerance at all and
- * must not fall through to the step's 5%.
+ * 🔴 THE PERCENTAGE IS THE ROW'S AND NOTHING ELSE (landed-cost plan D10). Fabric
+ * may allow 3% while thread allows 25% — small quantities vary more. The planner
+ * types it on the job order; nothing inherits it from the item or the step. A row
+ * that says 0 means no tolerance at all.
  *
  * An item with no plan is not checked, and neither is one where nothing set a
  * percentage. "Nobody said how much thread" is not "zero thread is allowed", and
@@ -242,7 +242,7 @@ const QTY_EPSILON = new Prisma.Decimal('0.00005');
 async function assertWithinTolerance(
   tx: TenantClient,
   organizationId: string,
-  step: { id: string; tolerancePct: Prisma.Decimal | null; plannedInputQty: Prisma.Decimal | null },
+  step: { id: string; plannedInputQty: Prisma.Decimal | null },
   qtyByItem: ReadonlyMap<string, Prisma.Decimal>,
   overrideReason: string | null | undefined,
 ) {
@@ -268,7 +268,7 @@ async function assertWithinTolerance(
       (itemId === principalItemId || inputs.length === 0 ? step.plannedInputQty : null);
     if (!planned || planned.lessThanOrEqualTo(0)) continue;
 
-    const tolerancePct = row?.tolerancePct ?? step.tolerancePct;
+    const tolerancePct = row?.tolerancePct ?? null;
     if (tolerancePct === null) continue;
 
     const already = await tx.jobIssueLine.aggregate({
@@ -924,6 +924,9 @@ export async function createNewJobIssue(
   // Two ledger rows per line, and a fifty-taka challan is normal — past
   // Prisma's 5-second default (jobwork.types.ts).
   return runAsDocument(organizationId, async (tx) => {
+    // A draft posts nothing, so it has nothing to race.
+    if (!asDraft) await lockStep(tx, organizationId, header.jobOrderStepId);
+
     const existing = existingId
       ? await tx.jobIssue.findFirst({
           where: { id: existingId, organizationId, isDeleted: false },
@@ -960,6 +963,13 @@ export async function createNewJobIssue(
         'This job order is closed, so nothing more can be issued against it.',
       );
     }
+    // R9: what was left at the processor has been written off, so a finished step
+    // takes no more material — a draft included, since it could never post.
+    if (step.status === 'completed' || step.status === 'short_closed') {
+      throw ApiError.conflict(
+        'This step has been completed or closed short, so nothing more can be issued against it.',
+      );
+    }
     const isRework = header.isRework ?? false;
 
     /**
@@ -978,6 +988,46 @@ export async function createNewJobIssue(
     if (!isRework && !asDraft) {
       const notReady = await chainNotReady(tx, organizationId, step.jobOrderId, step);
       if (notReady) throw ApiError.conflict(notReady);
+    }
+
+    /**
+     * 🔴 THE PLAN MUST BE COMPLETE BEFORE MATERIAL LEAVES (landed-cost plan D11, V4).
+     *
+     * Every receipt is costed by planned input against expected output, and once a
+     * challan exists the step cannot be re-planned — so a gap left now can never be
+     * filled. Checked here and not at job order save, because a half-planned order
+     * must still save. Drafts send nothing; rework re-issues what came back rather
+     * than drawing on the plan.
+     */
+    if (!isRework && !asDraft) {
+      const plannedRows = await tx.jobOrderStepInput.findMany({
+        where: { organizationId, jobOrderStepId: step.id, isDeleted: false },
+        orderBy: { seq: 'asc' },
+        select: { plannedQty: true, item: { select: { name: true } } },
+      });
+      const expectedRows = await tx.jobOrderStepOutput.findMany({
+        where: { organizationId, jobOrderStepId: step.id, isDeleted: false },
+        orderBy: { seq: 'asc' },
+        select: { expectedQty: true, item: { select: { name: true } } },
+      });
+      const noPlanned = plannedRows
+        .filter((row) => !row.plannedQty || row.plannedQty.lessThanOrEqualTo(0))
+        .map((row) => row.item.name);
+      const noExpected = expectedRows
+        .filter((row) => !row.expectedQty || row.expectedQty.lessThanOrEqualTo(0))
+        .map((row) => row.item.name);
+      const gaps = [
+        ...(expectedRows.length === 0 ? ['it lists nothing it produces'] : []),
+        ...(noPlanned.length ? [`no planned quantity for ${noPlanned.join(', ')}`] : []),
+        ...(noExpected.length ? [`no expected quantity for ${noExpected.join(', ')}`] : []),
+      ];
+      if (gaps.length > 0) {
+        const message =
+          `Step ${step.seq} of ${step.jobOrder.jobOrderNumber} cannot send material yet: ` +
+          `${gaps.join('; ')}. Complete the plan on the job order first — every receipt is ` +
+          'costed from it.';
+        throw new ApiError(400, message, { plan: message });
+      }
     }
 
     const allowed = await allowedItems(tx, organizationId, step, isRework);
@@ -1509,6 +1559,14 @@ export async function cancelJobIssue(
   // A cancellation posts one reversing row for every row the challan posted, so
   // it is exactly as big as the challan was.
   return runAsDocument(organizationId, async (tx) => {
+    const target = await tx.jobIssue.findFirst({
+      where: { id, organizationId, isDeleted: false },
+      select: { jobOrderStepId: true },
+    });
+    if (!target) throw ApiError.notFound('Challan not found');
+    // Before the real read, so a receipt posting on this step right now is seen.
+    await lockStep(tx, organizationId, target.jobOrderStepId);
+
     const issue = await tx.jobIssue.findFirst({
       where: { id, organizationId, isDeleted: false },
       include: { lines: { where: { isDeleted: false } } },
@@ -1516,11 +1574,31 @@ export async function cancelJobIssue(
     if (!issue) throw ApiError.notFound('Challan not found');
     if (issue.status === 'cancelled') throw ApiError.conflict('This challan is already cancelled.');
 
-    const received = await tx.jobReceiptLine.aggregate({
-      where: { organizationId, jobIssueId: id, isDeleted: false },
-      _sum: { receivedQty: true },
+    // R9: reversing it would put material back at a processor the finished step
+    // has already written off.
+    const issueStep = await tx.jobOrderStep.findFirst({
+      where: { id: issue.jobOrderStepId, organizationId },
+      select: { status: true },
     });
-    if ((received._sum.receivedQty ?? new Prisma.Decimal(0)).greaterThan(0)) {
+    if (issueStep?.status === 'completed' || issueStep?.status === 'short_closed') {
+      throw ApiError.conflict(
+        'This step has been completed or closed short, so its challans can no longer be cancelled.',
+      );
+    }
+
+    /**
+     * 🔴 CONSUMED, NOT "RECEIVED" (landed-cost plan §6.0, bug 1). This summed
+     * `job_receipt_lines.received_qty`, which receipts never write, so it never
+     * fired: a challan a receipt had already consumed could be cancelled, and the
+     * reversal took out of the processor stock that was no longer there. The
+     * ledger has no balance check to stop it going negative.
+     */
+    const closedByLine = await closedQtyByIssueLine(
+      tx,
+      organizationId,
+      issue.lines.map((line) => line.id),
+    );
+    if ([...closedByLine.values()].some((qty) => qty.greaterThan(0))) {
       throw ApiError.conflict(
         'Goods have already been received against this challan, so it cannot be cancelled. ' +
           'Correct it with a receipt instead.',

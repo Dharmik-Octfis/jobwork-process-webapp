@@ -620,7 +620,13 @@ export function OpeningStockPage() {
 
   return (
     <div
-      style={{ background: '#fff', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}
+      style={{
+        background: '#fff',
+        minHeight: '100%',
+        flexShrink: 0,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
     >
       <div
         style={{

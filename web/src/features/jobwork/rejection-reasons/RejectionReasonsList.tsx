@@ -123,7 +123,7 @@ export function RejectionReasonsList() {
   };
 
   return (
-    <div style={{ background: '#fff', minHeight: '100%' }}>
+    <div style={{ background: '#fff', minHeight: '100%', flexShrink: 0 }}>
       <header
         style={{
           display: 'flex',
@@ -171,87 +171,87 @@ export function RejectionReasonsList() {
           </div>
         ) : (
           <div className="responsive-table-wrapper">
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
-                <th style={th} scope="col">
-                  Reason
-                </th>
-                <th style={th} scope="col">
-                  Code
-                </th>
-                <th style={th} scope="col">
-                  Usually
-                </th>
-                <th style={{ ...th, width: 90 }} scope="col" aria-label="Actions" />
-              </tr>
-            </thead>
-            <tbody>
-              {reasons.map((reason) => (
-                <tr key={reason.id} style={{ borderBottom: '1px solid #eef0f3' }}>
-                  <td style={{ ...td, fontWeight: 500, color: '#111' }}>
-                    {reason.name}
-                    {reason.description && (
-                      <span style={{ display: 'block', fontSize: 11, color: '#94a3b8' }}>
-                        {reason.description}
-                      </span>
-                    )}
-                  </td>
-                  <td style={td}>{reason.code ?? '-'}</td>
-                  <td style={td}>
-                    {reason.defaultResponsibility === 'ours'
-                      ? 'Our fault'
-                      : reason.defaultResponsibility === 'theirs'
-                        ? 'Their fault'
-                        : '—'}
-                  </td>
-                  <td style={td}>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button
-                        type="button"
-                        onClick={() => openEdit(reason)}
-                        aria-label={`Edit ${reason.name}`}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          width: 28,
-                          height: 28,
-                          border: '1px solid #e2e8f0',
-                          borderRadius: 4,
-                          background: '#fff',
-                          cursor: 'pointer',
-                          color: '#64748b',
-                        }}
-                      >
-                        <Pencil size={13} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setToDelete(reason)}
-                        aria-label={`Delete ${reason.name}`}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          width: 28,
-                          height: 28,
-                          border: '1px solid #e2e8f0',
-                          borderRadius: 4,
-                          background: '#fff',
-                          cursor: 'pointer',
-                          color: '#94a3b8',
-                        }}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </td>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
+                  <th style={th} scope="col">
+                    Reason
+                  </th>
+                  <th style={th} scope="col">
+                    Code
+                  </th>
+                  <th style={th} scope="col">
+                    Usually
+                  </th>
+                  <th style={{ ...th, width: 90 }} scope="col" aria-label="Actions" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-                  </div>
+              </thead>
+              <tbody>
+                {reasons.map((reason) => (
+                  <tr key={reason.id} style={{ borderBottom: '1px solid #eef0f3' }}>
+                    <td style={{ ...td, fontWeight: 500, color: '#111' }}>
+                      {reason.name}
+                      {reason.description && (
+                        <span style={{ display: 'block', fontSize: 11, color: '#94a3b8' }}>
+                          {reason.description}
+                        </span>
+                      )}
+                    </td>
+                    <td style={td}>{reason.code ?? '-'}</td>
+                    <td style={td}>
+                      {reason.defaultResponsibility === 'ours'
+                        ? 'Our fault'
+                        : reason.defaultResponsibility === 'theirs'
+                          ? 'Their fault'
+                          : '—'}
+                    </td>
+                    <td style={td}>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => openEdit(reason)}
+                          aria-label={`Edit ${reason.name}`}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: 28,
+                            height: 28,
+                            border: '1px solid #e2e8f0',
+                            borderRadius: 4,
+                            background: '#fff',
+                            cursor: 'pointer',
+                            color: '#64748b',
+                          }}
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setToDelete(reason)}
+                          aria-label={`Delete ${reason.name}`}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: 28,
+                            height: 28,
+                            border: '1px solid #e2e8f0',
+                            borderRadius: 4,
+                            background: '#fff',
+                            cursor: 'pointer',
+                            color: '#94a3b8',
+                          }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 

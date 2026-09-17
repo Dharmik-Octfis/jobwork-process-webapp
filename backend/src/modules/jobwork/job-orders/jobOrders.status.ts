@@ -52,6 +52,42 @@ export interface ItemFlow {
   itemId: string;
   issuedQty: Prisma.Decimal;
   consumedQty: Prisma.Decimal;
+  /** Scrapped at the processor when the step was completed — job order loss
+   * (landed-cost R8). Net of any reversal. */
+  writtenOffQty: Prisma.Decimal;
+  writtenOffValue: Prisma.Decimal;
+  /** Issued on challans a posted receipt closed (challan-closure R10) — consumed
+   * into cost, as opposed to still out or written off. */
+  closedQty: Prisma.Decimal;
+}
+
+const emptyFlow = (itemId: string): ItemFlow => ({
+  itemId,
+  issuedQty: ZERO,
+  consumedQty: ZERO,
+  writtenOffQty: ZERO,
+  writtenOffValue: ZERO,
+  closedQty: ZERO,
+});
+
+/** The challans among `receiptIds`' lines that a receipt closed — one read. */
+async function closedIssueIds(
+  tx: TenantClient,
+  organizationId: string,
+  receiptIds: readonly string[],
+): Promise<Set<string>> {
+  if (receiptIds.length === 0) return new Set();
+  const rows = await tx.jobReceiptLine.findMany({
+    where: {
+      organizationId,
+      jobReceiptId: { in: [...receiptIds] },
+      closesChallan: true,
+      isDeleted: false,
+    },
+    distinct: ['jobIssueId'],
+    select: { jobIssueId: true },
+  });
+  return new Set(rows.flatMap((row) => (row.jobIssueId ? [row.jobIssueId] : [])));
 }
 
 /**
@@ -71,6 +107,28 @@ export interface OutputFlow {
   reworkQty: Prisma.Decimal;
   scrapQty: Prisma.Decimal;
   returnedQty: Prisma.Decimal;
+  /** What the ACCEPTED goods landed at, summed from each posted receipt's stored
+   * breakdown — divide by `acceptedQty` for the running cost per unit (R7). */
+  landedValue: Prisma.Decimal;
+}
+
+/**
+ * One receipt row's cost that stays with its accepted goods: their share of the
+ * material, by quantity, plus the whole charge — rework carries material only (R7).
+ * Per ROW, because the share is a ratio and summed rows would blur it.
+ */
+function acceptedLandedValue(sum: {
+  acceptedQty: Prisma.Decimal | null;
+  reworkQty: Prisma.Decimal | null;
+  materialValue: Prisma.Decimal | null;
+  processCharge: Prisma.Decimal | null;
+}): Prisma.Decimal {
+  const accepted = sum.acceptedQty ?? ZERO;
+  const units = accepted.plus(sum.reworkQty ?? ZERO);
+  const material = units.greaterThan(0)
+    ? (sum.materialValue ?? ZERO).times(accepted).dividedBy(units)
+    : ZERO;
+  return material.plus(sum.processCharge ?? ZERO);
 }
 
 export interface StepTotals {
@@ -92,6 +150,9 @@ export interface StepTotals {
    * forbids everywhere else: treating a changed unit as a conversion (§5.1).
    */
   consumedQty: Prisma.Decimal;
+  /** Cross-item, like the two above — `perItem` is the truth on a multi-item step. */
+  writtenOffQty: Prisma.Decimal;
+  writtenOffValue: Prisma.Decimal;
   receivedQty: Prisma.Decimal;
   acceptedQty: Prisma.Decimal;
   reworkQty: Prisma.Decimal;
@@ -160,6 +221,7 @@ export async function getStepTotals(
   const perItem = await getItemFlows(
     tx,
     organizationId,
+    jobOrderStepId,
     issues.map((issue) => issue.id),
     receiptIds,
   );
@@ -171,6 +233,8 @@ export async function getStepTotals(
     // rest of the scalars in Migration B (plan §12.1).
     issuedQty: perItem.reduce((acc, row) => acc.plus(row.issuedQty), ZERO),
     consumedQty: perItem.reduce((acc, row) => acc.plus(row.consumedQty), ZERO),
+    writtenOffQty: perItem.reduce((acc, row) => acc.plus(row.writtenOffQty), ZERO),
+    writtenOffValue: perItem.reduce((acc, row) => acc.plus(row.writtenOffValue), ZERO),
     receivedQty: sum(receipts, 'totalReceivedQty'),
     acceptedQty: sum(receipts, 'totalAcceptedQty'),
     reworkQty: sum(receipts, 'totalReworkQty'),
@@ -196,8 +260,9 @@ async function getOutputFlows(
   receiptIds: readonly string[],
 ): Promise<OutputFlow[]> {
   if (receiptIds.length === 0) return [];
+  // Per receipt row as well as per item — the landed value is a ratio per row.
   const rows = await tx.jobReceiptOutput.groupBy({
-    by: ['itemId'],
+    by: ['itemId', 'jobReceiptId'],
     where: { organizationId, jobReceiptId: { in: [...receiptIds] }, isDeleted: false },
     _sum: {
       receivedQty: true,
@@ -205,16 +270,30 @@ async function getOutputFlows(
       reworkQty: true,
       scrapQty: true,
       returnedQty: true,
+      materialValue: true,
+      processCharge: true,
     },
   });
-  return rows.map((row) => ({
-    itemId: row.itemId,
-    receivedQty: row._sum.receivedQty ?? ZERO,
-    acceptedQty: row._sum.acceptedQty ?? ZERO,
-    reworkQty: row._sum.reworkQty ?? ZERO,
-    scrapQty: row._sum.scrapQty ?? ZERO,
-    returnedQty: row._sum.returnedQty ?? ZERO,
-  }));
+  const flows = new Map<string, OutputFlow>();
+  for (const row of rows) {
+    const flow = flows.get(row.itemId) ?? {
+      itemId: row.itemId,
+      receivedQty: ZERO,
+      acceptedQty: ZERO,
+      reworkQty: ZERO,
+      scrapQty: ZERO,
+      returnedQty: ZERO,
+      landedValue: ZERO,
+    };
+    flow.receivedQty = flow.receivedQty.plus(row._sum.receivedQty ?? ZERO);
+    flow.acceptedQty = flow.acceptedQty.plus(row._sum.acceptedQty ?? ZERO);
+    flow.reworkQty = flow.reworkQty.plus(row._sum.reworkQty ?? ZERO);
+    flow.scrapQty = flow.scrapQty.plus(row._sum.scrapQty ?? ZERO);
+    flow.returnedQty = flow.returnedQty.plus(row._sum.returnedQty ?? ZERO);
+    flow.landedValue = flow.landedValue.plus(acceptedLandedValue(row._sum));
+    flows.set(row.itemId, flow);
+  }
+  return [...flows.values()];
 }
 
 /**
@@ -232,6 +311,7 @@ async function getOutputFlows(
 async function getItemFlows(
   tx: TenantClient,
   organizationId: string,
+  jobOrderStepId: string,
   issueIds: readonly string[],
   receiptIds: readonly string[],
 ): Promise<ItemFlow[]> {
@@ -239,19 +319,39 @@ async function getItemFlows(
   const of = (itemId: string) => {
     const existing = flows.get(itemId);
     if (existing) return existing;
-    const created = { itemId, issuedQty: ZERO, consumedQty: ZERO };
+    const created = emptyFlow(itemId);
     flows.set(itemId, created);
     return created;
   };
 
+  // Nothing is ever written off a step with no challans, so this read waits on one.
+  if (issueIds.length > 0) {
+    const writtenOff = await tx.stockLedgerEntry.groupBy({
+      by: ['itemId'],
+      where: {
+        organizationId,
+        sourceDocType: SOURCE_DOC_TYPES.jobOrderStep,
+        sourceDocId: jobOrderStepId,
+      },
+      _sum: { qtyOut: true, qtyIn: true, valueOut: true, valueIn: true },
+    });
+    for (const row of writtenOff) {
+      const flow = of(row.itemId);
+      flow.writtenOffQty = (row._sum.qtyOut ?? ZERO).minus(row._sum.qtyIn ?? ZERO);
+      flow.writtenOffValue = (row._sum.valueOut ?? ZERO).minus(row._sum.valueIn ?? ZERO);
+    }
+  }
+
   if (issueIds.length > 0) {
     const lines = await tx.jobIssueLine.findMany({
       where: { organizationId, jobIssueId: { in: [...issueIds] }, isDeleted: false },
-      select: { qty: true, itemId: true },
+      select: { qty: true, itemId: true, jobIssueId: true },
     });
+    const closed = await closedIssueIds(tx, organizationId, receiptIds);
     for (const line of lines) {
       const flow = of(line.itemId);
       flow.issuedQty = flow.issuedQty.plus(line.qty);
+      if (closed.has(line.jobIssueId)) flow.closedQty = flow.closedQty.plus(line.qty);
     }
   }
 
@@ -502,6 +602,20 @@ export async function getAllStepTotals(
         })
       : [];
 
+  // Every step's write-off in one read (landed-cost R8), keyed back by `sourceDocId`.
+  const allWrittenOff =
+    issueIds.length > 0
+      ? await tx.stockLedgerEntry.groupBy({
+          by: ['itemId', 'sourceDocId'],
+          where: {
+            organizationId,
+            sourceDocType: SOURCE_DOC_TYPES.jobOrderStep,
+            sourceDocId: { in: stepIds },
+          },
+          _sum: { qtyOut: true, qtyIn: true, valueOut: true, valueIn: true },
+        })
+      : [];
+
   const allOutputs =
     receiptIds.length > 0
       ? await tx.jobReceiptOutput.groupBy({
@@ -513,9 +627,13 @@ export async function getAllStepTotals(
             reworkQty: true,
             scrapQty: true,
             returnedQty: true,
+            materialValue: true,
+            processCharge: true,
           },
         })
       : [];
+
+  const allClosed = await closedIssueIds(tx, organizationId, receiptIds);
 
   const sum = (rows: { [k: string]: unknown }[], key: string) =>
     rows.reduce((acc, row) => acc.plus(new Prisma.Decimal(String(row[key] ?? 0))), ZERO);
@@ -536,17 +654,28 @@ export async function getAllStepTotals(
     const of = (itemId: string) => {
       const existing = flows.get(itemId);
       if (existing) return existing;
-      const created = { itemId, issuedQty: ZERO, consumedQty: ZERO };
+      const created = emptyFlow(itemId);
       flows.set(itemId, created);
       return created;
     };
     for (const line of stepLines) {
       const flow = of(line.itemId);
       flow.issuedQty = flow.issuedQty.plus(line.qty);
+      if (allClosed.has(line.jobIssueId)) flow.closedQty = flow.closedQty.plus(line.qty);
     }
     for (const row of stepConsumed) {
       const flow = of(row.itemId);
       flow.consumedQty = flow.consumedQty.plus(row._sum.qtyOut ?? ZERO);
+    }
+    for (const row of allWrittenOff) {
+      if (row.sourceDocId !== stepId) continue;
+      const flow = of(row.itemId);
+      flow.writtenOffQty = flow.writtenOffQty
+        .plus(row._sum.qtyOut ?? ZERO)
+        .minus(row._sum.qtyIn ?? ZERO);
+      flow.writtenOffValue = flow.writtenOffValue
+        .plus(row._sum.valueOut ?? ZERO)
+        .minus(row._sum.valueIn ?? ZERO);
     }
     const perItem = [...flows.values()];
 
@@ -561,6 +690,7 @@ export async function getAllStepTotals(
         reworkQty: ZERO,
         scrapQty: ZERO,
         returnedQty: ZERO,
+        landedValue: ZERO,
       };
       outFlows.set(itemId, created);
       return created;
@@ -572,12 +702,15 @@ export async function getAllStepTotals(
       flow.reworkQty = flow.reworkQty.plus(row._sum.reworkQty ?? ZERO);
       flow.scrapQty = flow.scrapQty.plus(row._sum.scrapQty ?? ZERO);
       flow.returnedQty = flow.returnedQty.plus(row._sum.returnedQty ?? ZERO);
+      flow.landedValue = flow.landedValue.plus(acceptedLandedValue(row._sum));
     }
     const perOutput = [...outFlows.values()];
 
     result.set(stepId, {
       issuedQty: perItem.reduce((acc, row) => acc.plus(row.issuedQty), ZERO),
       consumedQty: perItem.reduce((acc, row) => acc.plus(row.consumedQty), ZERO),
+      writtenOffQty: perItem.reduce((acc, row) => acc.plus(row.writtenOffQty), ZERO),
+      writtenOffValue: perItem.reduce((acc, row) => acc.plus(row.writtenOffValue), ZERO),
       receivedQty: sum(stepReceipts, 'totalReceivedQty'),
       acceptedQty: sum(stepReceipts, 'totalAcceptedQty'),
       reworkQty: sum(stepReceipts, 'totalReworkQty'),

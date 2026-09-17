@@ -24,6 +24,8 @@ import {
   resolveProcessorName,
 } from '../jobwork.refs.ts';
 import { POSTED_DOC_STATUS, runAsDocument, type ProcessorType } from '../jobwork.types.ts';
+import { lockJobOrderSteps, lockStep } from '../jobwork.posting.ts';
+import { writeOffStep } from './jobOrders.writeOff.ts';
 import {
   getAllChainNotReady,
   getAllStepTotals,
@@ -226,8 +228,8 @@ interface ResolvedInput {
   itemId: string;
   uomId: string | null;
   plannedQty: number | null;
-  /** Null falls through to the step's at issue time — never defaulted here, or
-   * "not set" and "no tolerance at all" become the same value. */
+  /** Typed on the row and stored as typed — nothing fills a blank one in.
+   * 0 = none allowed; null = unchecked. */
   tolerancePct: number | null;
   fromStock: boolean;
   /** The planner's batch note. Empty for every untracked item and for anyone who
@@ -235,11 +237,22 @@ interface ResolvedInput {
   plannedBatches: PlannedBatchRow[];
 }
 
+interface RecipeRow {
+  componentItemId: string;
+  qtyPerUnit: Prisma.Decimal;
+  uomId: string | null;
+  seq: number;
+}
+
 interface ResolvedOutput {
   itemId: string;
   uomId: string | null;
   expectedQty: number | null;
   isPrimary: boolean;
+  /** Charge per ACCEPTED unit (landed-cost plan D1–D2). */
+  rate: number | null;
+  /** The composite's recipe, frozen onto the step (§5.2). Empty for a plain item. */
+  components: RecipeRow[];
 }
 
 interface ResolvedStep extends JobOrderStepInput {
@@ -330,6 +343,9 @@ function flagPrimaryOutput(rows: readonly StepOutputRow[], stepIndex: number): R
     uomId: row.uomId ?? null,
     expectedQty: row.expectedQty ?? null,
     isPrimary: flagged.length === 1 ? Boolean(row.isPrimary) : index === 0,
+    rate: row.rate ?? null,
+    // Filled in `buildSteps`, once one query has read every composite's recipe.
+    components: [],
   }));
 }
 
@@ -388,13 +404,10 @@ function classifyStepInputs(
 }
 
 /**
- * Fill each step's blanks from the Process master — the last link of the default
- * chain (§2.5), running Process → route step → job order step → document.
+ * Freeze the Process master's name onto the step (§2.4).
  *
- * `??`, never `||`. A tolerance of 0 means "no tolerance at all" and must not
- * fall through to the process's 2%; a rate of 0 means free-of-charge and must
- * not be replaced either. The distinction between "unset" and "zero" is the
- * whole reason these columns are nullable.
+ * Nothing else comes from the process any more: the rate is per output row and
+ * its basis is gone (landed-cost plan D1–D2), and tolerance is typed per input row.
  *
  * The items are NOT set here — they are two lists now (`resolveStepRows`), and
  * the units that follow them cannot be known until every step's items are. See
@@ -402,20 +415,9 @@ function classifyStepInputs(
  */
 function applyStepDefaults(
   step: JobOrderStepInput,
-  process: {
-    name: string;
-    rateBasis: string;
-    defaultTolerancePct: Prisma.Decimal | null;
-  },
+  process: { name: string },
 ): JobOrderStepInput & { processNameSnapshot: string } {
-  return {
-    ...step,
-    processNameSnapshot: process.name,
-    rateBasis: step.rateBasis ?? (process.rateBasis as JobOrderStepInput['rateBasis']),
-    tolerancePct:
-      step.tolerancePct ??
-      (process.defaultTolerancePct === null ? null : Number(process.defaultTolerancePct)),
-  };
+  return { ...step, processNameSnapshot: process.name };
 }
 
 /**
@@ -561,10 +563,15 @@ function planQuantities(steps: ResolvedStep[], seeded: ReadonlyMap<string, numbe
     });
 
     const principal = resolvedInputs[0] ?? null;
+    // 🔴 Only on a single-output step (landed-cost plan §6.3). With two outputs
+    // sharing one input, handing the primary the WHOLE planned input distorts the
+    // plan ratio every receipt is costed by, and books the gap as false loss.
+    const derivable = step.resolvedOutputs.length === 1;
     const resolvedOutputs = step.resolvedOutputs.map((row) => ({
       ...row,
       expectedQty:
-        row.expectedQty ?? derivedExpectedQty(row, principal, step.expectedYield ?? null),
+        row.expectedQty ??
+        (derivable ? derivedExpectedQty(row, principal, step.expectedYield ?? null) : null),
     }));
 
     // Added AFTER this step's own inputs are settled: a step does not feed itself,
@@ -662,6 +669,9 @@ async function loadExistingSteps(tx: TenantClient, organizationId: string, jobOr
       seq: true,
       isDeleted: true,
       processNameSnapshot: true,
+      status: true,
+      processorType: true,
+      processorId: true,
       inputs: {
         where: { isDeleted: false },
         select: { itemId: true, plannedQty: true, fromStock: true },
@@ -682,6 +692,14 @@ async function loadExistingSteps(tx: TenantClient, organizationId: string, jobOr
   });
 }
 
+/**
+ * Complete a step: a human saying nothing more is coming back (landed-cost D7).
+ *
+ * 🔴 Whatever is still at the processor is written off in the same transaction
+ * (R8), and the step is then closed to every document (R9) — so a draft still
+ * parked against it would be a document that can never post. Those are refused
+ * by name rather than silently stranded. There is no reopen.
+ */
 export async function manuallyCompleteStep(
   organizationId: string,
   jobOrderId: string,
@@ -689,15 +707,43 @@ export async function manuallyCompleteStep(
   userId: string | undefined,
 ) {
   return withUniqueViolation('Order already closed or not found', async () => {
-    await runAsTenant(organizationId, async (tx) => {
+    // A fifty-line challan writes fifty scrap rows (jobwork.types.ts).
+    await runAsDocument(organizationId, async (tx) => {
+      await lockStep(tx, organizationId, stepId);
       const step = await tx.jobOrderStep.findFirst({
         where: { id: stepId, jobOrderId, organizationId, isDeleted: false },
-        select: { id: true, status: true },
+        select: { id: true, seq: true, status: true },
       });
       if (!step) throw ApiError.notFound('Step not found.');
       if (step.status === 'completed' || step.status === 'short_closed') {
         throw ApiError.conflict('Step is already completed or closed short.');
       }
+
+      const draftIssues = await tx.jobIssue.findMany({
+        where: { organizationId, jobOrderStepId: step.id, isDeleted: false, status: 'draft' },
+        select: { challanNumber: true },
+      });
+      const draftReceipts = await tx.jobReceipt.findMany({
+        where: { organizationId, jobOrderStepId: step.id, isDeleted: false, status: 'draft' },
+        select: { receiptNumber: true },
+      });
+      const drafts = [
+        ...draftIssues.map((row) => row.challanNumber),
+        ...draftReceipts.map((row) => row.receiptNumber),
+      ];
+      if (drafts.length > 0) {
+        throw new ApiError(
+          409,
+          `Step ${step.seq} still has drafts parked against it: ${drafts.join(', ')}. Post or ` +
+            'delete them first — once the step is completed they can never be posted.',
+          { drafts: drafts.join(', ') },
+        );
+      }
+
+      await writeOffStep(tx, organizationId, step.id, {
+        reason: 'Step completed — still at the processor, written off as job order loss.',
+        userId,
+      });
 
       await tx.jobOrderStep.update({
         where: { id: step.id },
@@ -761,11 +807,98 @@ function priorFrom(steps: readonly ExistingStep[], startSeq: number): PriorSteps
   return { producedItemIds, producedQty, startSeq };
 }
 
+/**
+ * 🔴 WHAT A STEP MAY LOOK LIKE (landed-cost plan §3, V1–V3) — so that every output
+ * can later be costed by what it is made from.
+ *
+ *   V1  more than one input item → every output is a composite, whose recipe says
+ *       what it is made from. There is no "made from" column (D3).
+ *   V2  every component of an output composite is one of the step's inputs, and a
+ *       composite with no recipe is refused.
+ *   V3  one input, and an output in a different unit → that output is the step's
+ *       only one: a plan cannot relate metres to pieces and to anything else (D12).
+ *
+ * An output that is itself one of the inputs passes straight through — washing
+ * fabric with detergent — and is exempt from V1 and V2. A step that lists no inputs
+ * yet is a draft being typed, with nothing to check V1 or V2 against.
+ *
+ * Only steps being written are checked: a locked step already has documents and
+ * cannot be re-planned, so it is never passed in here.
+ */
+function assertStepShape(
+  step: {
+    resolvedInputs: readonly { itemId: string; uomId: string | null }[];
+    resolvedOutputs: readonly { itemId: string; uomId: string | null }[];
+  },
+  stepIndex: number,
+  itemById: ReadonlyMap<string, { name: string; itemStructure: string }>,
+  recipeByComposite: ReadonlyMap<string, readonly RecipeRow[]>,
+  nameById: ReadonlyMap<string, string>,
+) {
+  const inputIds = new Set(step.resolvedInputs.map((row) => row.itemId));
+  const nameOf = (id: string) => itemById.get(id)?.name ?? nameById.get(id) ?? 'An item';
+  const refuse = (rowIndex: number, message: string): never => {
+    throw new ApiError(400, `Step ${stepIndex + 1}: ${message}`, {
+      [`steps.${stepIndex}.outputs.${rowIndex}.itemId`]: message,
+    });
+  };
+
+  if (inputIds.size > 0) {
+    for (const [rowIndex, output] of step.resolvedOutputs.entries()) {
+      if (inputIds.has(output.itemId)) continue;
+      const isComposite = itemById.get(output.itemId)?.itemStructure === 'composite';
+
+      if (inputIds.size > 1 && !isComposite) {
+        refuse(
+          rowIndex,
+          `${nameOf(output.itemId)} is not a composite item. A step that consumes several items ` +
+            'can only produce composites, whose recipe says what each is made from.',
+        );
+      }
+      if (!isComposite) continue;
+
+      const components = recipeByComposite.get(output.itemId) ?? [];
+      if (components.length === 0) {
+        refuse(
+          rowIndex,
+          `${nameOf(output.itemId)} has no recipe yet, so nothing says what it is made from. ` +
+            'Add its components first.',
+        );
+      }
+      const missing = components.find((row) => !inputIds.has(row.componentItemId));
+      if (missing) {
+        refuse(
+          rowIndex,
+          `${nameOf(output.itemId)} is made from ${nameOf(missing.componentItemId)}, which this ` +
+            'step does not consume. Add it to the inputs, or pick a different output.',
+        );
+      }
+    }
+  }
+
+  if (inputIds.size === 1 && step.resolvedOutputs.length > 1) {
+    const inputUom = step.resolvedInputs[0]!.uomId;
+    const changed = step.resolvedOutputs.findIndex(
+      (row) => inputUom !== null && row.uomId !== null && row.uomId !== inputUom,
+    );
+    if (changed >= 0) {
+      refuse(
+        changed,
+        `${nameOf(step.resolvedOutputs[changed]!.itemId)} comes back in a different unit from ` +
+          'what goes in, so it has to be this step’s only output.',
+      );
+    }
+  }
+}
+
 async function buildSteps(
   tx: TenantClient,
   organizationId: string,
   steps: readonly JobOrderStepInput[],
   prior: PriorSteps = NO_PRIOR_STEPS,
+  /** Where `steps` begin in the grid the client holds. The update path builds only
+   * the tail past the work front, and an error keyed from 0 would mark the wrong row. */
+  indexOffset = 0,
 ) {
   const processes = await tx.process.findMany({
     where: {
@@ -776,9 +909,7 @@ async function buildSteps(
     select: {
       id: true,
       name: true,
-      rateBasis: true,
       itemChanges: true,
-      defaultTolerancePct: true,
     },
   });
   const byId = new Map(processes.map((p) => [p.id, p]));
@@ -795,7 +926,7 @@ async function buildSteps(
     // null) and still saves; tightening it here would block a legitimate
     // work-in-progress. It is refused where it becomes a real problem: the Issue
     // dialog, which has nothing to offer and says so.
-    const { inputs, outputs } = resolveStepRows(step, index);
+    const { inputs, outputs } = resolveStepRows(step, index + indexOffset);
 
     resolved.push({
       ...applyStepDefaults(step, process),
@@ -809,13 +940,13 @@ async function buildSteps(
         fromStock: true,
         plannedBatches: row.plannedBatches ?? [],
       })),
-      resolvedOutputs: flagPrimaryOutput(outputs, index),
+      resolvedOutputs: flagPrimaryOutput(outputs, index + indexOffset),
     });
   }
 
   // One query for every item any step touches, so the units below are the items'
-  // own rather than an org-wide guess off the process master. Names are not
-  // selected: nothing on this path renders one any more.
+  // own rather than an org-wide guess off the process master. Names and structure
+  // ride along for the shape rules.
   const itemIds = [
     ...new Set(
       resolved.flatMap((step) => [
@@ -827,16 +958,62 @@ async function buildSteps(
   const chainItems = itemIds.length
     ? await tx.item.findMany({
         where: { id: { in: itemIds }, organizationId, isDeleted: false },
-        select: { id: true, stockingUomId: true },
+        select: {
+          id: true,
+          name: true,
+          itemStructure: true,
+          stockingUomId: true,
+        },
       })
     : [];
+  const itemById = new Map(chainItems.map((item) => [item.id, item]));
   const stockingUomByItem = new Map(chainItems.map((item) => [item.id, item.stockingUomId]));
+
+  // Every composite output's recipe in ONE query, never one per row — it is both
+  // what V2 checks and what the step freezes (§5.2).
+  const compositeIds = [
+    ...new Set(
+      resolved
+        .flatMap((step) => step.resolvedOutputs.map((row) => row.itemId))
+        .filter((id) => itemById.get(id)?.itemStructure === 'composite'),
+    ),
+  ];
+  const recipeRows = compositeIds.length
+    ? await tx.compositeItemComponent.findMany({
+        where: { organizationId, compositeItemId: { in: compositeIds }, isDeleted: false },
+        orderBy: [{ seq: 'asc' }, { createdAt: 'asc' }],
+        select: {
+          compositeItemId: true,
+          componentItemId: true,
+          qtyPerUnit: true,
+          uomId: true,
+          seq: true,
+          component: { select: { name: true } },
+        },
+      })
+    : [];
+  const recipeByComposite = new Map<string, RecipeRow[]>();
+  const componentNameById = new Map<string, string>();
+  for (const { compositeItemId, component, ...row } of recipeRows) {
+    recipeByComposite.set(compositeItemId, [
+      ...(recipeByComposite.get(compositeItemId) ?? []),
+      row,
+    ]);
+    componentNameById.set(row.componentItemId, component.name);
+  }
 
   const withUnits = resolved.map((step) => ({
     ...step,
     resolvedInputs: applyRowUnits(step.resolvedInputs, stockingUomByItem),
-    resolvedOutputs: applyRowUnits(step.resolvedOutputs, stockingUomByItem),
+    resolvedOutputs: applyRowUnits(step.resolvedOutputs, stockingUomByItem).map((row) => ({
+      ...row,
+      components: recipeByComposite.get(row.itemId) ?? [],
+    })),
   }));
+
+  for (const [index, step] of withUnits.entries()) {
+    assertStepShape(step, index + indexOffset, itemById, recipeByComposite, componentNameById);
+  }
 
   classifyStepInputs(withUnits, prior.producedItemIds);
 
@@ -858,10 +1035,7 @@ async function buildSteps(
         step.processorId,
       ),
       workCentreLocationId: step.workCentreLocationId ?? null,
-      rate: step.rate ?? null,
-      rateBasis: step.rateBasis ?? null,
       expectedYield: step.expectedYield ?? null,
-      tolerancePct: step.tolerancePct ?? null,
       plannedInputQty: step.plannedInputQty,
       remarks: step.remarks?.trim() || null,
       customFields: step.customFields,
@@ -913,7 +1087,16 @@ const STEP_OVERVIEW_INCLUDE = {
   outputs: {
     where: { isDeleted: false },
     orderBy: { seq: 'asc' },
-    include: ROW_OVERVIEW_INCLUDE,
+    include: {
+      ...ROW_OVERVIEW_INCLUDE,
+      // The frozen recipe (§5.2), scalars only — the Issue screen's plan warnings
+      // read what each output draws on from it.
+      components: {
+        where: { isDeleted: false },
+        orderBy: { seq: 'asc' },
+        select: { componentItemId: true, qtyPerUnit: true },
+      },
+    },
   },
   process: { select: { id: true, name: true, code: true } },
   workCentre: { select: { id: true, name: true } },
@@ -1261,8 +1444,22 @@ async function writeSteps(
             uomId: output.uomId,
             expectedQty: output.expectedQty,
             isPrimary: output.isPrimary,
+            rate: output.rate,
             createdBy: userId ?? null,
             updatedBy: userId ?? null,
+            // The recipe, frozen with the step (§5.2): a later edit to the composite
+            // never changes what this order consumes.
+            components: {
+              create: output.components.map((component) => ({
+                organizationId,
+                componentItemId: component.componentItemId,
+                qtyPerUnit: component.qtyPerUnit,
+                uomId: component.uomId,
+                seq: component.seq,
+                createdBy: userId ?? null,
+                updatedBy: userId ?? null,
+              })),
+            },
           })),
         },
       },
@@ -1342,6 +1539,33 @@ export async function updateJobOrderById(
 
     assertLockedStepsUnchanged(lockedLive, steps);
 
+    /**
+     * 🔴 THE ONE FIELD A LOCKED STEP STILL TAKES: its processor. On a step it is
+     * only the Issue screen's default — each challan snapshots its own processor,
+     * receipts inherit theirs from the challans, and nothing costs or allocates by
+     * the step's. So changing it rewrites no document already raised. Everything
+     * else on a locked step stays ignored, as above. Not "Done by": switching to
+     * in-house needs a work centre, which is a different destination. Not on a
+     * finished step either — it takes no more challans, so there is nothing to
+     * default.
+     */
+    for (const [index, stored] of lockedLive.entries()) {
+      const sentProcessorId = steps[index]?.processorId;
+      if (sentProcessorId === undefined || sentProcessorId === stored.processorId) continue;
+      if (stored.processorType === 'internal') continue;
+      if (stored.status === 'completed' || stored.status === 'short_closed') continue;
+      const processorNameSnapshot = await resolveProcessorName(
+        tx,
+        organizationId,
+        stored.processorType as ProcessorType,
+        sentProcessorId,
+      );
+      await tx.jobOrderStep.updateMany({
+        where: { id: stored.id, organizationId },
+        data: { processorId: sentProcessorId, processorNameSnapshot, updatedBy: userId ?? null },
+      });
+    }
+
     await assertStepRefs(tx, organizationId, steps.slice(lockedLive.length));
 
     let customFields: Prisma.InputJsonValue | undefined;
@@ -1360,7 +1584,13 @@ export async function updateJobOrderById(
     const frontSeq = locked.at(-1)?.seq ?? 0;
     const tail = steps.slice(lockedLive.length);
     const stepRows = tail.length
-      ? await buildSteps(tx, organizationId, tail, priorFrom(locked, frontSeq + 1))
+      ? await buildSteps(
+          tx,
+          organizationId,
+          tail,
+          priorFrom(locked, frontSeq + 1),
+          lockedLive.length,
+        )
       : [];
 
     /**
@@ -1430,8 +1660,9 @@ function lockedPrefix(steps: readonly ExistingStep[]): ExistingStep[] {
 /**
  * The payload must still begin with the locked steps, in order, by id.
  *
- * Their content is never read — the stored rows are authoritative — so this is
- * purely a proof that the client is editing the grid it was shown. A stale form
+ * Their content is never read here — the stored rows are authoritative, apart from
+ * the processor, which the caller applies — so this is purely a proof that the
+ * client is editing the grid it was shown. A stale form
  * that would drop or reorder a step with a challan against it is refused here
  * rather than allowed to cascade.
  */
@@ -1597,6 +1828,9 @@ export async function deleteJobOrderById(organizationId: string, id: string, use
  * `jobOrders.status.ts`. It is sticky, so a stray later receipt cannot quietly
  * reopen the order, and the reason is appended to `remarks` because a decision
  * with no recorded why is a decision nobody can review.
+ *
+ * 🔴 Every step it closes has its remainder at the processor written off first
+ * (landed-cost R8), exactly as completing that step would.
  */
 export async function shortCloseJobOrder(
   organizationId: string,
@@ -1604,7 +1838,8 @@ export async function shortCloseJobOrder(
   reason: string,
   userId?: string,
 ) {
-  return runAsTenant(organizationId, async (tx) => {
+  return runAsDocument(organizationId, async (tx) => {
+    await lockJobOrderSteps(tx, organizationId, id);
     const existing = await tx.jobOrder.findFirst({
       where: { id, organizationId, isDeleted: false },
       select: { id: true, status: true, remarks: true },
@@ -1615,6 +1850,23 @@ export async function shortCloseJobOrder(
     }
 
     const note = `Closed short: ${reason.trim()}`;
+    const closing = await tx.jobOrderStep.findMany({
+      where: {
+        organizationId,
+        jobOrderId: id,
+        isDeleted: false,
+        status: { notIn: ['completed', 'short_closed'] },
+      },
+      orderBy: { seq: 'asc' },
+      select: { id: true },
+    });
+    for (const step of closing) {
+      await writeOffStep(tx, organizationId, step.id, {
+        reason: `${note} — still at the processor, written off as job order loss.`,
+        userId,
+      });
+    }
+
     await tx.jobOrderStep.updateMany({
       where: {
         organizationId,
@@ -1795,7 +2047,8 @@ export async function getJobOrderOverview(
       // changes (jobOrders.status.ts).
       const issuedD = totals.issuedQty;
       const consumedD = totals.consumedQty;
-      const outstanding = issuedD.minus(consumedD);
+      // A completed step's remainder was written off — it is no longer out (R8).
+      const outstanding = issuedD.minus(consumedD).minus(totals.writtenOffQty);
       return {
         ...step,
         totals: {
@@ -1807,6 +2060,8 @@ export async function getJobOrderOverview(
           scrapQty: totals.scrapQty.toString(),
           returnedQty: totals.returnedQty.toString(),
           outstandingQty: outstanding.toString(),
+          writtenOffQty: totals.writtenOffQty.toString(),
+          writtenOffValue: totals.writtenOffValue.toString(),
           issueCount: totals.issueCount,
           receiptCount: totals.receiptCount,
         },
@@ -1904,6 +2159,32 @@ function buildItemTotals(
   const unitOf = (uom: { symbol: string | null; unitName: string } | null | undefined) =>
     uom ? (uom.symbol ?? uom.unitName) : null;
 
+  /** Where an input's material stands (landed-cost §6.7): still at the processor,
+   * on a challan a receipt closed (consumed into cost, challan-closure R10), or
+   * written off as job order loss when the step was completed. */
+  const atProcessor = (flow: ItemFlow | undefined) => {
+    if (!flow) {
+      return { stillOutQty: '0', closedQty: '0', writtenOffQty: '0', writtenOffValue: '0' };
+    }
+    const stillOut = flow.issuedQty.minus(flow.consumedQty).minus(flow.writtenOffQty);
+    return {
+      stillOutQty: stillOut.greaterThan(0) ? stillOut.toString() : '0',
+      closedQty: flow.closedQty.toString(),
+      writtenOffQty: flow.writtenOffQty.toString(),
+      writtenOffValue: flow.writtenOffValue.toString(),
+    };
+  };
+
+  /** What an output's accepted goods have landed at so far, per unit — running,
+   * from every posted receipt's stored breakdown. Null until something is accepted. */
+  const landedOf = (flow: OutputFlow | undefined) => ({
+    acceptedQty: (flow?.acceptedQty ?? new Prisma.Decimal(0)).toString(),
+    landedCostPerUnit:
+      flow && flow.acceptedQty.greaterThan(0)
+        ? flow.landedValue.dividedBy(flow.acceptedQty).toDecimalPlaces(4).toString()
+        : null,
+  });
+
   /**
    * 🔴 WHAT MOVED, and nothing else.
    *
@@ -1928,6 +2209,7 @@ function buildItemTotals(
         plannedQty: plannedQ?.toString() ?? null,
         issuedQty: issued.toString(),
         remainingQty: remainingQ ? (remainingQ.greaterThan(0) ? remainingQ.toString() : '0') : null,
+        ...atProcessor(issuedByItem.get(row.itemId)),
       };
     }),
     ...[...issuedByItem.values()]
@@ -1941,6 +2223,7 @@ function buildItemTotals(
         plannedQty: null,
         issuedQty: flow.issuedQty.toString(),
         remainingQty: null,
+        ...atProcessor(flow),
       })),
   ];
 
@@ -1958,6 +2241,7 @@ function buildItemTotals(
         expectedQty: expectedQ?.toString() ?? null,
         receivedQty: received.toString(),
         remainingQty: remainingQ ? (remainingQ.greaterThan(0) ? remainingQ.toString() : '0') : null,
+        ...landedOf(receivedByItem.get(row.itemId)),
       };
     }),
     ...[...receivedByItem.values()]
@@ -1973,6 +2257,7 @@ function buildItemTotals(
         expectedQty: null,
         receivedQty: flow.receivedQty.toString(),
         remainingQty: null,
+        ...landedOf(flow),
       })),
   ];
 

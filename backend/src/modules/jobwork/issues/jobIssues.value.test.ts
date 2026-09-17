@@ -85,7 +85,7 @@ beforeAll(async () => {
     ).id;
   });
 
-  processId = (await createNewProcess(orgId, { name: 'Dyeing', rateBasis: 'per_issued_unit' })).id;
+  processId = (await createNewProcess(orgId, { name: 'Dyeing' })).id;
 });
 
 afterAll(async () => {
@@ -144,8 +144,6 @@ describe('issue — two lines drawing on one batch', { timeout: 60_000 }, () => 
           processId,
           processorType: 'vendor',
           processorId: dyerId,
-          rate: 10,
-          rateBasis: 'per_issued_unit',
           inputs: [{ itemId: greyId }],
           outputs: [{ itemId: dyedId, isPrimary: true }],
           plannedInputQty: 2,

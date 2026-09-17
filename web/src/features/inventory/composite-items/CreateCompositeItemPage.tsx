@@ -326,14 +326,18 @@ export function CreateCompositeItemPage({
   return (
     <div
       className={isModal ? '' : 'page-container'}
-      style={isModal ? {
-        padding: 0,
-        margin: 0,
-        background: '#fff',
-        width: '100%',
-        minHeight: 'auto',
-        display: 'block',
-      } : undefined}
+      style={
+        isModal
+          ? {
+              padding: 0,
+              margin: 0,
+              background: '#fff',
+              width: '100%',
+              minHeight: 'auto',
+              display: 'block',
+            }
+          : undefined
+      }
     >
       <style>{`
         .composite-item-row {
@@ -360,15 +364,19 @@ export function CreateCompositeItemPage({
           background-color: #ffffff;
         }
       `}</style>
-      
+
       <div
         className={isModal ? '' : 'page-header'}
-        style={isModal ? {
-          padding: '20px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        } : undefined}
+        style={
+          isModal
+            ? {
+                padding: '20px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }
+            : undefined
+        }
       >
         <h1
           style={{
@@ -383,7 +391,12 @@ export function CreateCompositeItemPage({
         {!isModal && (
           <button
             type="button"
-            onClick={() => navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/composite-items`)}
+            onClick={() =>
+              navigate(
+                (location.state as { returnUrl?: string })?.returnUrl ||
+                  `/organizations/${orgId}/composite-items`,
+              )
+            }
             style={{
               background: 'none',
               border: 'none',
@@ -401,7 +414,10 @@ export function CreateCompositeItemPage({
         )}
       </div>
 
-      <div className={isModal ? '' : 'page-body'} style={isModal ? { padding: '0 20px 20px' } : undefined}>
+      <div
+        className={isModal ? '' : 'page-body'}
+        style={isModal ? { padding: '0 20px 20px' } : undefined}
+      >
         <form
           id="create-composite-item-form"
           onSubmit={handleSubmit}
@@ -419,10 +435,10 @@ export function CreateCompositeItemPage({
                 gap: '14px',
               }}
             >
-              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
-                  alignItems: 'center',
-                  gap: '16px',
-                 }}>
+              <div
+                className="form-field-grid"
+                style={{ gridTemplateColumns: '140px 524px', alignItems: 'center', gap: '16px' }}
+              >
                 <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>Name*</label>
                 <div>
                   <input
@@ -448,10 +464,14 @@ export function CreateCompositeItemPage({
                 </div>
               </div>
 
-              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
+              <div
+                className="form-field-grid"
+                style={{
+                  gridTemplateColumns: '140px 524px',
                   alignItems: 'flex-start',
                   gap: '16px',
-                 }}>
+                }}
+              >
                 <label
                   style={{ fontSize: 13, color: '#ef4444', fontWeight: 500, paddingTop: '2px' }}
                 >
@@ -529,10 +549,10 @@ export function CreateCompositeItemPage({
                 </div>
               </div>
 
-              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
-                  alignItems: 'center',
-                  gap: '16px',
-                 }}>
+              <div
+                className="form-field-grid"
+                style={{ gridTemplateColumns: '140px 524px', alignItems: 'center', gap: '16px' }}
+              >
                 <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>SKU*</label>
                 <div>
                   <input
@@ -553,11 +573,11 @@ export function CreateCompositeItemPage({
                   )}
                 </div>
               </div>
- 
-              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
-                  alignItems: 'center',
-                  gap: '16px',
-                 }}>
+
+              <div
+                className="form-field-grid"
+                style={{ gridTemplateColumns: '140px 524px', alignItems: 'center', gap: '16px' }}
+              >
                 <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>Category</label>
                 <CategorySelectDropdown
                   value={formData.category || null}
@@ -566,10 +586,10 @@ export function CreateCompositeItemPage({
                 />
               </div>
 
-              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
-                  alignItems: 'center',
-                  gap: '16px',
-                 }}>
+              <div
+                className="form-field-grid"
+                style={{ gridTemplateColumns: '140px 524px', alignItems: 'center', gap: '16px' }}
+              >
                 <div />
                 <label
                   style={{
@@ -598,10 +618,10 @@ export function CreateCompositeItemPage({
                 </label>
               </div>
 
-              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
-                  alignItems: 'center',
-                  gap: '16px',
-                 }}>
+              <div
+                className="form-field-grid"
+                style={{ gridTemplateColumns: '140px 524px', alignItems: 'center', gap: '16px' }}
+              >
                 <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>Unit*</label>
                 <div>
                   <div
@@ -661,7 +681,12 @@ export function CreateCompositeItemPage({
                             ? [{ value: '', label: `${formData.unit} — no stocking unit set` }]
                             : []),
                         ]}
-                        buttonStyle={{ border: 'none', height: '100%', padding: '0 12px', fontSize: 13 }}
+                        buttonStyle={{
+                          border: 'none',
+                          height: '100%',
+                          padding: '0 12px',
+                          fontSize: 13,
+                        }}
                         actionItem={
                           <button
                             type="button"
@@ -698,10 +723,10 @@ export function CreateCompositeItemPage({
                 </div>
               </div>
 
-              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 524px',
-                  alignItems: 'center',
-                  gap: '16px',
-                 }}>
+              <div
+                className="form-field-grid"
+                style={{ gridTemplateColumns: '140px 524px', alignItems: 'center', gap: '16px' }}
+              >
                 <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>HSN Code</label>
                 <input
                   name="hsnCode"
@@ -738,228 +763,238 @@ export function CreateCompositeItemPage({
                 Associate Items*
               </div>
               <div style={{ width: '100%', overflow: 'visible' }}>
-                    <table
-                style={{
-                  width: '100%',
-                  borderCollapse: 'collapse',
-                  border: '1px solid #cbd5e1',
-                  marginTop: '8px',
-                }}
-              >
-                <thead style={{ background: '#f8fafc' }}>
-                  <tr>
-                    <th
-                      style={{
-                        textAlign: 'left',
-                        padding: '12px',
-                        fontSize: 12,
-                        fontWeight: 500,
-                        color: '#64748b',
-                        border: '1px solid #cbd5e1',
-                      }}
-                    >
-                      Item Details
-                    </th>
-                    <th
-                      style={{
-                        textAlign: 'left',
-                        padding: '12px',
-                        fontSize: 12,
-                        fontWeight: 500,
-                        color: '#64748b',
-                        border: '1px solid #cbd5e1',
-                        width: '100px',
-                      }}
-                    >
-                      Quantity
-                    </th>
-                    <th
-                      style={{
-                        textAlign: 'right',
-                        padding: '12px',
-                        fontSize: 12,
-                        fontWeight: 500,
-                        color: '#64748b',
-                        border: '1px solid #cbd5e1',
-                        width: '120px',
-                      }}
-                    >
-                      Selling Price
-                    </th>
-                    <th
-                      style={{
-                        textAlign: 'right',
-                        padding: '12px',
-                        fontSize: 12,
-                        fontWeight: 500,
-                        color: '#64748b',
-                        border: '1px solid #cbd5e1',
-                        width: '120px',
-                      }}
-                    >
-                      Cost Price
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {components.map((comp, idx) => (
-                    <tr key={idx} className="composite-item-row">
-                      <td style={{ padding: '12px', border: '1px solid #cbd5e1' }}>
-                        <ItemComboBox
-                          orgId={orgId!}
-                          value={comp.componentItemId || ''}
-                          initialItem={comp.itemDetails}
-                          onChange={(item) =>
-                            handleComponentChange(
-                              idx,
-                              'componentItemId',
-                              item?.id || '',
-                              item ?? null,
-                            )
-                          }
-                          onOpenMultiSelect={() => {
-                            setMultiSelectTargetIndex(idx);
-                            setIsMultiSelectItemModalOpen(true);
-                          }}
-                          hasError={!comp.componentItemId && Object.keys(errors).length > 0}
-                        />
-                        {comp.itemDetails?.sku && (
-                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
-                            SKU: {comp.itemDetails.sku}
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ padding: '12px', border: '1px solid #cbd5e1' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.0001"
-                          value={comp.qtyPerUnit || ''}
-                          onChange={(e) =>
-                            handleComponentChange(
-                              idx,
-                              'qtyPerUnit',
-                              parseFloat(e.target.value) || 0,
-                            )
-                          }
-                          className="qty-input"
-                          style={{
-                            width: '100%',
-                            height: '36px',
-                            padding: '6px',
-                            textAlign: 'right',
-                            fontSize: 14,
-                            fontWeight: 500,
-                            color: '#1e293b',
-                            outline: 'none',
-                          }}
-                        />
-                        <div
-                          style={{
-                            fontSize: 11,
-                            color: '#64748b',
-                            marginTop: 4,
-                            textAlign: 'right',
-                          }}
-                        >
-                          ₹{Number(comp.itemDetails?.sellingPrice ?? 0).toFixed(2)} per unit
-                        </div>
-                      </td>
-                      <td
-                        style={{
-                          padding: '12px',
-                          border: '1px solid #cbd5e1',
-                          textAlign: 'right',
-                          fontSize: 12,
-                        }}
-                      >
-                        {(
-                          Number(comp.itemDetails?.sellingPrice ?? 0) * (comp.qtyPerUnit || 0)
-                        ).toFixed(2)}
-                      </td>
-                      <td
-                        style={{
-                          position: 'relative',
-                          padding: '12px',
-                          border: '1px solid #cbd5e1',
-                          textAlign: 'right',
-                          fontSize: 12,
-                        }}
-                      >
-                        {(
-                          Number(comp.itemDetails?.costPrice ?? 0) * (comp.qtyPerUnit || 0)
-                        ).toFixed(2)}
-                        <button
-                          type="button"
-                          className="delete-btn"
-                          onClick={() => handleRemoveComponent(idx)}
-                          style={{
-                            position: 'absolute',
-                            left: '100%',
-                            marginLeft: '12px',
-                            top: '50%',
-                            transform: 'translateY(-50%)',
-                            color: '#ef4444',
-                            background: 'transparent',
-                            border: 'none',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot
+                <table
                   style={{
-                    background: '#f8fafc',
-                    borderTop: '1px solid #cbd5e1',
+                    width: '100%',
+                    borderCollapse: 'collapse',
                     border: '1px solid #cbd5e1',
+                    marginTop: '8px',
                   }}
                 >
-                  <tr>
-                    <td
-                      colSpan={2}
-                      style={{
-                        padding: '12px',
-                        textAlign: 'right',
-                        fontSize: 13,
-                        color: '#64748b',
-                        fontWeight: 500,
-                      }}
-                    >
-                      Total (₹)
-                    </td>
-                    <td
-                      style={{ padding: '12px', textAlign: 'right', fontSize: 13, fontWeight: 600 }}
-                    >
-                      {components
-                        .reduce(
-                          (sum, c) =>
-                            sum + Number(c.itemDetails?.sellingPrice ?? 0) * (c.qtyPerUnit || 0),
-                          0,
-                        )
-                        .toFixed(2)}
-                    </td>
-                    <td
-                      style={{ padding: '12px', textAlign: 'right', fontSize: 13, fontWeight: 600 }}
-                    >
-                      {components
-                        .reduce(
-                          (sum, c) =>
-                            sum + Number(c.itemDetails?.costPrice ?? 0) * (c.qtyPerUnit || 0),
-                          0,
-                        )
-                        .toFixed(2)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-                  </div>
+                  <thead style={{ background: '#f8fafc' }}>
+                    <tr>
+                      <th
+                        style={{
+                          textAlign: 'left',
+                          padding: '12px',
+                          fontSize: 12,
+                          fontWeight: 500,
+                          color: '#64748b',
+                          border: '1px solid #cbd5e1',
+                        }}
+                      >
+                        Item Details
+                      </th>
+                      <th
+                        style={{
+                          textAlign: 'left',
+                          padding: '12px',
+                          fontSize: 12,
+                          fontWeight: 500,
+                          color: '#64748b',
+                          border: '1px solid #cbd5e1',
+                          width: '100px',
+                        }}
+                      >
+                        Quantity
+                      </th>
+                      <th
+                        style={{
+                          textAlign: 'right',
+                          padding: '12px',
+                          fontSize: 12,
+                          fontWeight: 500,
+                          color: '#64748b',
+                          border: '1px solid #cbd5e1',
+                          width: '120px',
+                        }}
+                      >
+                        Selling Price
+                      </th>
+                      <th
+                        style={{
+                          textAlign: 'right',
+                          padding: '12px',
+                          fontSize: 12,
+                          fontWeight: 500,
+                          color: '#64748b',
+                          border: '1px solid #cbd5e1',
+                          width: '120px',
+                        }}
+                      >
+                        Cost Price
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {components.map((comp, idx) => (
+                      <tr key={idx} className="composite-item-row">
+                        <td style={{ padding: '12px', border: '1px solid #cbd5e1' }}>
+                          <ItemComboBox
+                            orgId={orgId!}
+                            value={comp.componentItemId || ''}
+                            initialItem={comp.itemDetails}
+                            onChange={(item) =>
+                              handleComponentChange(
+                                idx,
+                                'componentItemId',
+                                item?.id || '',
+                                item ?? null,
+                              )
+                            }
+                            onOpenMultiSelect={() => {
+                              setMultiSelectTargetIndex(idx);
+                              setIsMultiSelectItemModalOpen(true);
+                            }}
+                            hasError={!comp.componentItemId && Object.keys(errors).length > 0}
+                          />
+                          {comp.itemDetails?.sku && (
+                            <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                              SKU: {comp.itemDetails.sku}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #cbd5e1' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.0001"
+                            value={comp.qtyPerUnit || ''}
+                            onChange={(e) =>
+                              handleComponentChange(
+                                idx,
+                                'qtyPerUnit',
+                                parseFloat(e.target.value) || 0,
+                              )
+                            }
+                            className="qty-input"
+                            style={{
+                              width: '100%',
+                              height: '36px',
+                              padding: '6px',
+                              textAlign: 'right',
+                              fontSize: 14,
+                              fontWeight: 500,
+                              color: '#1e293b',
+                              outline: 'none',
+                            }}
+                          />
+                          <div
+                            style={{
+                              fontSize: 11,
+                              color: '#64748b',
+                              marginTop: 4,
+                              textAlign: 'right',
+                            }}
+                          >
+                            ₹{Number(comp.itemDetails?.sellingPrice ?? 0).toFixed(2)} per unit
+                          </div>
+                        </td>
+                        <td
+                          style={{
+                            padding: '12px',
+                            border: '1px solid #cbd5e1',
+                            textAlign: 'right',
+                            fontSize: 12,
+                          }}
+                        >
+                          {(
+                            Number(comp.itemDetails?.sellingPrice ?? 0) * (comp.qtyPerUnit || 0)
+                          ).toFixed(2)}
+                        </td>
+                        <td
+                          style={{
+                            position: 'relative',
+                            padding: '12px',
+                            border: '1px solid #cbd5e1',
+                            textAlign: 'right',
+                            fontSize: 12,
+                          }}
+                        >
+                          {(
+                            Number(comp.itemDetails?.costPrice ?? 0) * (comp.qtyPerUnit || 0)
+                          ).toFixed(2)}
+                          <button
+                            type="button"
+                            className="delete-btn"
+                            onClick={() => handleRemoveComponent(idx)}
+                            style={{
+                              position: 'absolute',
+                              left: '100%',
+                              marginLeft: '12px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              color: '#ef4444',
+                              background: 'transparent',
+                              border: 'none',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot
+                    style={{
+                      background: '#f8fafc',
+                      borderTop: '1px solid #cbd5e1',
+                      border: '1px solid #cbd5e1',
+                    }}
+                  >
+                    <tr>
+                      <td
+                        colSpan={2}
+                        style={{
+                          padding: '12px',
+                          textAlign: 'right',
+                          fontSize: 13,
+                          color: '#64748b',
+                          fontWeight: 500,
+                        }}
+                      >
+                        Total (₹)
+                      </td>
+                      <td
+                        style={{
+                          padding: '12px',
+                          textAlign: 'right',
+                          fontSize: 13,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {components
+                          .reduce(
+                            (sum, c) =>
+                              sum + Number(c.itemDetails?.sellingPrice ?? 0) * (c.qtyPerUnit || 0),
+                            0,
+                          )
+                          .toFixed(2)}
+                      </td>
+                      <td
+                        style={{
+                          padding: '12px',
+                          textAlign: 'right',
+                          fontSize: 13,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {components
+                          .reduce(
+                            (sum, c) =>
+                              sum + Number(c.itemDetails?.costPrice ?? 0) * (c.qtyPerUnit || 0),
+                            0,
+                          )
+                          .toFixed(2)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
               <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
                 <button
                   type="button"
@@ -1017,240 +1052,241 @@ export function CreateCompositeItemPage({
                   Associate Services*
                 </div>
                 <div style={{ width: '100%', overflow: 'visible' }}>
-                    <table
-                  style={{
-                    width: '100%',
-                    borderCollapse: 'collapse',
-                    border: '1px solid #cbd5e1',
-                    marginTop: '8px',
-                  }}
-                >
-                  <thead style={{ background: '#f8fafc' }}>
-                    <tr>
-                      <th
-                        style={{
-                          textAlign: 'left',
-                          padding: '12px',
-                          fontSize: 12,
-                          fontWeight: 500,
-                          color: '#64748b',
-                          border: '1px solid #cbd5e1',
-                        }}
-                      >
-                        Service Details
-                      </th>
-                      <th
-                        style={{
-                          textAlign: 'left',
-                          padding: '12px',
-                          fontSize: 12,
-                          fontWeight: 500,
-                          color: '#64748b',
-                          border: '1px solid #cbd5e1',
-                          width: '100px',
-                        }}
-                      >
-                        Quantity
-                      </th>
-                      <th
-                        style={{
-                          textAlign: 'right',
-                          padding: '12px',
-                          fontSize: 12,
-                          fontWeight: 500,
-                          color: '#64748b',
-                          border: '1px solid #cbd5e1',
-                          width: '120px',
-                        }}
-                      >
-                        Selling Price
-                      </th>
-                      <th
-                        style={{
-                          textAlign: 'right',
-                          padding: '12px',
-                          fontSize: 12,
-                          fontWeight: 500,
-                          color: '#64748b',
-                          border: '1px solid #cbd5e1',
-                          width: '120px',
-                        }}
-                      >
-                        Cost Price
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {services.map((svc, idx) => (
-                      <tr key={idx} className="composite-item-row">
-                        <td style={{ padding: '12px', border: '1px solid #cbd5e1' }}>
-                          <ItemComboBox
-                            orgId={orgId!}
-                            filter="services"
-                            value={svc.componentItemId || ''}
-                            initialItem={svc.itemDetails}
-                            onChange={(item) =>
-                              handleServiceChange(
-                                idx,
-                                'componentItemId',
-                                item?.id || '',
-                                item ?? null,
-                              )
-                            }
-                            onOpenMultiSelect={() => {
-                              setMultiSelectServiceTargetIndex(idx);
-                              setIsMultiSelectServiceModalOpen(true);
-                            }}
-                            hasError={!svc.componentItemId && Object.keys(errors).length > 0}
-                          />
-                          {svc.itemDetails?.sku && (
-                            <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
-                              SKU: {svc.itemDetails.sku}
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ padding: '12px', border: '1px solid #cbd5e1' }}>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.0001"
-                            value={svc.qtyPerUnit || ''}
-                            onChange={(e) =>
-                              handleServiceChange(
-                                idx,
-                                'qtyPerUnit',
-                                parseFloat(e.target.value) || 0,
-                              )
-                            }
-                            className="qty-input"
-                            style={{
-                              width: '100%',
-                              height: '36px',
-                              padding: '6px',
-                              textAlign: 'right',
-                              fontSize: 14,
-                              fontWeight: 500,
-                              color: '#1e293b',
-                              outline: 'none',
-                            }}
-                          />
-                          <div
-                            style={{
-                              fontSize: 11,
-                              color: '#64748b',
-                              marginTop: 4,
-                              textAlign: 'right',
-                            }}
-                          >
-                            ₹{Number(svc.itemDetails?.sellingPrice ?? 0).toFixed(2)} per unit
-                          </div>
-                        </td>
-                        <td
-                          style={{
-                            padding: '12px',
-                            border: '1px solid #cbd5e1',
-                            textAlign: 'right',
-                            fontSize: 12,
-                          }}
-                        >
-                          {(
-                            Number(svc.itemDetails?.sellingPrice ?? 0) * (svc.qtyPerUnit || 0)
-                          ).toFixed(2)}
-                        </td>
-                        <td
-                          style={{
-                            position: 'relative',
-                            padding: '12px',
-                            border: '1px solid #cbd5e1',
-                            textAlign: 'right',
-                            fontSize: 12,
-                          }}
-                        >
-                          {(
-                            Number(svc.itemDetails?.costPrice ?? 0) * (svc.qtyPerUnit || 0)
-                          ).toFixed(2)}
-                          <button
-                            type="button"
-                            className="delete-btn"
-                            onClick={() => handleRemoveService(idx)}
-                            style={{
-                              position: 'absolute',
-                              left: '100%',
-                              marginLeft: '12px',
-                              top: '50%',
-                              transform: 'translateY(-50%)',
-                              color: '#ef4444',
-                              background: 'transparent',
-                              border: 'none',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot
+                  <table
                     style={{
-                      background: '#f8fafc',
-                      borderTop: '1px solid #cbd5e1',
+                      width: '100%',
+                      borderCollapse: 'collapse',
                       border: '1px solid #cbd5e1',
+                      marginTop: '8px',
                     }}
                   >
-                    <tr>
-                      <td
-                        colSpan={2}
-                        style={{
-                          padding: '12px',
-                          textAlign: 'right',
-                          fontSize: 13,
-                          color: '#64748b',
-                          fontWeight: 500,
-                        }}
-                      >
-                        Total (₹)
-                      </td>
-                      <td
-                        style={{
-                          padding: '12px',
-                          textAlign: 'right',
-                          fontSize: 13,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {services
-                          .reduce(
-                            (sum, svc) =>
-                              sum +
-                              Number(svc.itemDetails?.sellingPrice ?? 0) * (svc.qtyPerUnit || 0),
-                            0,
-                          )
-                          .toFixed(2)}
-                      </td>
-                      <td
-                        style={{
-                          padding: '12px',
-                          textAlign: 'right',
-                          fontSize: 13,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {services
-                          .reduce(
-                            (sum, svc) =>
-                              sum + Number(svc.itemDetails?.costPrice ?? 0) * (svc.qtyPerUnit || 0),
-                            0,
-                          )
-                          .toFixed(2)}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-                  </div>
+                    <thead style={{ background: '#f8fafc' }}>
+                      <tr>
+                        <th
+                          style={{
+                            textAlign: 'left',
+                            padding: '12px',
+                            fontSize: 12,
+                            fontWeight: 500,
+                            color: '#64748b',
+                            border: '1px solid #cbd5e1',
+                          }}
+                        >
+                          Service Details
+                        </th>
+                        <th
+                          style={{
+                            textAlign: 'left',
+                            padding: '12px',
+                            fontSize: 12,
+                            fontWeight: 500,
+                            color: '#64748b',
+                            border: '1px solid #cbd5e1',
+                            width: '100px',
+                          }}
+                        >
+                          Quantity
+                        </th>
+                        <th
+                          style={{
+                            textAlign: 'right',
+                            padding: '12px',
+                            fontSize: 12,
+                            fontWeight: 500,
+                            color: '#64748b',
+                            border: '1px solid #cbd5e1',
+                            width: '120px',
+                          }}
+                        >
+                          Selling Price
+                        </th>
+                        <th
+                          style={{
+                            textAlign: 'right',
+                            padding: '12px',
+                            fontSize: 12,
+                            fontWeight: 500,
+                            color: '#64748b',
+                            border: '1px solid #cbd5e1',
+                            width: '120px',
+                          }}
+                        >
+                          Cost Price
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {services.map((svc, idx) => (
+                        <tr key={idx} className="composite-item-row">
+                          <td style={{ padding: '12px', border: '1px solid #cbd5e1' }}>
+                            <ItemComboBox
+                              orgId={orgId!}
+                              filter="services"
+                              value={svc.componentItemId || ''}
+                              initialItem={svc.itemDetails}
+                              onChange={(item) =>
+                                handleServiceChange(
+                                  idx,
+                                  'componentItemId',
+                                  item?.id || '',
+                                  item ?? null,
+                                )
+                              }
+                              onOpenMultiSelect={() => {
+                                setMultiSelectServiceTargetIndex(idx);
+                                setIsMultiSelectServiceModalOpen(true);
+                              }}
+                              hasError={!svc.componentItemId && Object.keys(errors).length > 0}
+                            />
+                            {svc.itemDetails?.sku && (
+                              <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                                SKU: {svc.itemDetails.sku}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ padding: '12px', border: '1px solid #cbd5e1' }}>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.0001"
+                              value={svc.qtyPerUnit || ''}
+                              onChange={(e) =>
+                                handleServiceChange(
+                                  idx,
+                                  'qtyPerUnit',
+                                  parseFloat(e.target.value) || 0,
+                                )
+                              }
+                              className="qty-input"
+                              style={{
+                                width: '100%',
+                                height: '36px',
+                                padding: '6px',
+                                textAlign: 'right',
+                                fontSize: 14,
+                                fontWeight: 500,
+                                color: '#1e293b',
+                                outline: 'none',
+                              }}
+                            />
+                            <div
+                              style={{
+                                fontSize: 11,
+                                color: '#64748b',
+                                marginTop: 4,
+                                textAlign: 'right',
+                              }}
+                            >
+                              ₹{Number(svc.itemDetails?.sellingPrice ?? 0).toFixed(2)} per unit
+                            </div>
+                          </td>
+                          <td
+                            style={{
+                              padding: '12px',
+                              border: '1px solid #cbd5e1',
+                              textAlign: 'right',
+                              fontSize: 12,
+                            }}
+                          >
+                            {(
+                              Number(svc.itemDetails?.sellingPrice ?? 0) * (svc.qtyPerUnit || 0)
+                            ).toFixed(2)}
+                          </td>
+                          <td
+                            style={{
+                              position: 'relative',
+                              padding: '12px',
+                              border: '1px solid #cbd5e1',
+                              textAlign: 'right',
+                              fontSize: 12,
+                            }}
+                          >
+                            {(
+                              Number(svc.itemDetails?.costPrice ?? 0) * (svc.qtyPerUnit || 0)
+                            ).toFixed(2)}
+                            <button
+                              type="button"
+                              className="delete-btn"
+                              onClick={() => handleRemoveService(idx)}
+                              style={{
+                                position: 'absolute',
+                                left: '100%',
+                                marginLeft: '12px',
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                color: '#ef4444',
+                                background: 'transparent',
+                                border: 'none',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot
+                      style={{
+                        background: '#f8fafc',
+                        borderTop: '1px solid #cbd5e1',
+                        border: '1px solid #cbd5e1',
+                      }}
+                    >
+                      <tr>
+                        <td
+                          colSpan={2}
+                          style={{
+                            padding: '12px',
+                            textAlign: 'right',
+                            fontSize: 13,
+                            color: '#64748b',
+                            fontWeight: 500,
+                          }}
+                        >
+                          Total (₹)
+                        </td>
+                        <td
+                          style={{
+                            padding: '12px',
+                            textAlign: 'right',
+                            fontSize: 13,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {services
+                            .reduce(
+                              (sum, svc) =>
+                                sum +
+                                Number(svc.itemDetails?.sellingPrice ?? 0) * (svc.qtyPerUnit || 0),
+                              0,
+                            )
+                            .toFixed(2)}
+                        </td>
+                        <td
+                          style={{
+                            padding: '12px',
+                            textAlign: 'right',
+                            fontSize: 13,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {services
+                            .reduce(
+                              (sum, svc) =>
+                                sum +
+                                Number(svc.itemDetails?.costPrice ?? 0) * (svc.qtyPerUnit || 0),
+                              0,
+                            )
+                            .toFixed(2)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               </div>
             )}
           </div>
@@ -1271,289 +1307,323 @@ export function CreateCompositeItemPage({
             }}
           >
             <div style={{ maxWidth: '900px', width: '100%' }}>
-              <div className="form-field-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', alignItems: 'start' }}>
-              {/* Sales Information */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div
-                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                >
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
-                    Sales Information
-                  </div>
-                  <label
+              <div
+                className="form-field-grid"
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '24px',
+                  alignItems: 'start',
+                }}
+              >
+                {/* Sales Information */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div
                     style={{
                       display: 'flex',
+                      justifyContent: 'space-between',
                       alignItems: 'center',
-                      gap: 8,
-                      cursor: 'pointer',
-                      fontSize: 13,
-                      fontWeight: 500,
                     }}
                   >
-                    <input
-                      type="checkbox"
-                      name="isSalesInfo"
-                      checked={formData.isSalesInfo}
-                      onChange={handleChange}
-                    />
-                    Sellable
-                  </label>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  <div className="form-field-grid" style={{ gridTemplateColumns: '130px 1fr',
-                      alignItems: 'center',
-                      gap: 12,
-                     }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
+                      Sales Information
+                    </div>
                     <label
                       style={{
-                        fontSize: 12,
-                        color: formData.isSalesInfo ? '#ef4444' : '#000',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        cursor: 'pointer',
+                        fontSize: 13,
                         fontWeight: 500,
                       }}
                     >
-                      Selling Price<span style={{ color: '#ef4444', marginLeft: '4px' }}>*</span>
+                      <input
+                        type="checkbox"
+                        name="isSalesInfo"
+                        checked={formData.isSalesInfo}
+                        onChange={handleChange}
+                      />
+                      Sellable
                     </label>
-                    <div style={{ position: 'relative', width: '100%' }}>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <div
+                      className="form-field-grid"
+                      style={{ gridTemplateColumns: '130px 1fr', alignItems: 'center', gap: 12 }}
+                    >
+                      <label
+                        style={{
+                          fontSize: 12,
+                          color: formData.isSalesInfo ? '#ef4444' : '#000',
+                          fontWeight: 500,
+                        }}
+                      >
+                        Selling Price<span style={{ color: '#ef4444', marginLeft: '4px' }}>*</span>
+                      </label>
+                      <div style={{ position: 'relative', width: '100%' }}>
+                        <input
+                          type="number"
+                          step="0.01"
+                          name="sellingPrice"
+                          value={formData.sellingPrice || ''}
+                          onChange={handleChange}
+                          disabled={!formData.isSalesInfo}
+                          style={{
+                            width: '100%',
+                            height: '36px',
+                            padding: '8px 110px 8px 12px',
+                            borderRadius: '4px',
+                            border: errors.sellingPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
+                            fontSize: 13,
+                            backgroundColor: formData.isSalesInfo ? '#fff' : '#f1f5f9',
+                            color: formData.isSalesInfo ? '#000' : '#94a3b8',
+                            cursor: formData.isSalesInfo ? 'text' : 'not-allowed',
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleCopySellingPriceFromTotal}
+                          disabled={!formData.isSalesInfo}
+                          style={{
+                            position: 'absolute',
+                            right: '10px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            background: 'none',
+                            border: 'none',
+                            color: formData.isSalesInfo ? '#0062ff' : '#94a3b8',
+                            fontSize: 12,
+                            cursor: formData.isSalesInfo ? 'pointer' : 'not-allowed',
+                            padding: 0,
+                          }}
+                        >
+                          Copy from total
+                        </button>
+                      </div>
+                      {errors.sellingPrice && (
+                        <span
+                          style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}
+                        >
+                          {errors.sellingPrice}
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      className="form-field-grid"
+                      style={{ gridTemplateColumns: '130px 1fr', alignItems: 'center', gap: 12 }}
+                    >
+                      <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>MRP</label>
                       <input
                         type="number"
                         step="0.01"
-                        name="sellingPrice"
-                        value={formData.sellingPrice || ''}
-                        onChange={handleChange}
+                        value={(formData.customFields?.mrp as string) || ''}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            customFields: {
+                              ...prev.customFields,
+                              mrp: parseFloat(e.target.value) || '',
+                            },
+                          }))
+                        }
                         disabled={!formData.isSalesInfo}
                         style={{
                           width: '100%',
                           height: '36px',
-                          padding: '8px 110px 8px 12px',
+                          padding: '8px 12px',
                           borderRadius: '4px',
-                          border: errors.sellingPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
+                          border: '1px solid #d1d5db',
                           fontSize: 13,
                           backgroundColor: formData.isSalesInfo ? '#fff' : '#f1f5f9',
                           color: formData.isSalesInfo ? '#000' : '#94a3b8',
                           cursor: formData.isSalesInfo ? 'text' : 'not-allowed',
                         }}
                       />
-                      <button
-                        type="button"
-                        onClick={handleCopySellingPriceFromTotal}
-                        disabled={!formData.isSalesInfo}
+                    </div>
+
+                    <div
+                      className="form-field-grid"
+                      style={{
+                        gridTemplateColumns: '130px 1fr',
+                        alignItems: 'flex-start',
+                        gap: 12,
+                      }}
+                    >
+                      <label
                         style={{
-                          position: 'absolute',
-                          right: '10px',
-                          top: '50%',
-                          transform: 'translateY(-50%)',
-                          background: 'none',
-                          border: 'none',
-                          color: formData.isSalesInfo ? '#0062ff' : '#94a3b8',
-                          fontSize: 12,
-                          cursor: formData.isSalesInfo ? 'pointer' : 'not-allowed',
-                          padding: 0,
+                          fontSize: 13,
+                          color: '#4b5563',
+                          fontWeight: 500,
+                          paddingTop: '8px',
                         }}
                       >
-                        Copy from total
-                      </button>
+                        Sales Description
+                      </label>
+                      <textarea
+                        name="salesDescription"
+                        value={formData.salesDescription || ''}
+                        onChange={(e) =>
+                          handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
+                        }
+                        rows={3}
+                        disabled={!formData.isSalesInfo}
+                        style={{
+                          width: '100%',
+                          height: '36px',
+                          padding: '8px 12px',
+                          borderRadius: '4px',
+                          border: '1px solid #d1d5db',
+                          fontSize: 13,
+                          resize: 'vertical',
+                          backgroundColor: formData.isSalesInfo ? '#fff' : '#f1f5f9',
+                          color: formData.isSalesInfo ? '#000' : '#94a3b8',
+                          cursor: formData.isSalesInfo ? 'text' : 'not-allowed',
+                        }}
+                      />
                     </div>
-                    {errors.sellingPrice && (
-                      <span
-                        style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}
-                      >
-                        {errors.sellingPrice}
-                      </span>
-                    )}
-                  </div>
-                  <div className="form-field-grid" style={{ gridTemplateColumns: '130px 1fr',
-                      alignItems: 'center',
-                      gap: 12,
-                     }}>
-                    <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>MRP</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={(formData.customFields?.mrp as string) || ''}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          customFields: {
-                            ...prev.customFields,
-                            mrp: parseFloat(e.target.value) || '',
-                          },
-                        }))
-                      }
-                      disabled={!formData.isSalesInfo}
-                      style={{
-                        width: '100%',
-                        height: '36px',
-                        padding: '8px 12px',
-                        borderRadius: '4px',
-                        border: '1px solid #d1d5db',
-                        fontSize: 13,
-                        backgroundColor: formData.isSalesInfo ? '#fff' : '#f1f5f9',
-                        color: formData.isSalesInfo ? '#000' : '#94a3b8',
-                        cursor: formData.isSalesInfo ? 'text' : 'not-allowed',
-                      }}
-                    />
-                  </div>
-
-                  <div className="form-field-grid" style={{ gridTemplateColumns: '130px 1fr',
-                      alignItems: 'flex-start',
-                      gap: 12,
-                     }}>
-                    <label
-                      style={{ fontSize: 13, color: '#4b5563', fontWeight: 500, paddingTop: '8px' }}
-                    >
-                      Sales Description
-                    </label>
-                    <textarea
-                      name="salesDescription"
-                      value={formData.salesDescription || ''}
-                      onChange={(e) =>
-                        handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
-                      }
-                      rows={3}
-                      disabled={!formData.isSalesInfo}
-                      style={{
-                        width: '100%',
-                        height: '36px',
-                        padding: '8px 12px',
-                        borderRadius: '4px',
-                        border: '1px solid #d1d5db',
-                        fontSize: 13,
-                        resize: 'vertical',
-                        backgroundColor: formData.isSalesInfo ? '#fff' : '#f1f5f9',
-                        color: formData.isSalesInfo ? '#000' : '#94a3b8',
-                        cursor: formData.isSalesInfo ? 'text' : 'not-allowed',
-                      }}
-                    />
                   </div>
                 </div>
-              </div>
 
-              {/* Purchase Information */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div
-                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                >
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
-                    Purchase Information
-                  </div>
-                  <label
+                {/* Purchase Information */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div
                     style={{
                       display: 'flex',
+                      justifyContent: 'space-between',
                       alignItems: 'center',
-                      gap: 8,
-                      cursor: 'pointer',
-                      fontSize: 13,
-                      fontWeight: 500,
                     }}
                   >
-                    <input
-                      type="checkbox"
-                      name="isPurchaseInfo"
-                      checked={formData.isPurchaseInfo}
-                      onChange={handleChange}
-                    />
-                    Purchasable
-                  </label>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  <div className="form-field-grid" style={{ gridTemplateColumns: '130px 1fr',
-                      alignItems: 'center',
-                      gap: 12,
-                     }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
+                      Purchase Information
+                    </div>
                     <label
                       style={{
-                        fontSize: 12,
-                        color: formData.isPurchaseInfo ? '#ef4444' : '#000',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        cursor: 'pointer',
+                        fontSize: 13,
                         fontWeight: 500,
                       }}
                     >
-                      Cost Price<span style={{ color: '#ef4444', marginLeft: '4px' }}>*</span>
-                    </label>
-                    <div style={{ position: 'relative', width: '100%' }}>
                       <input
-                        type="number"
-                        step="0.01"
-                        name="costPrice"
-                        value={formData.costPrice || ''}
+                        type="checkbox"
+                        name="isPurchaseInfo"
+                        checked={formData.isPurchaseInfo}
                         onChange={handleChange}
+                      />
+                      Purchasable
+                    </label>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <div
+                      className="form-field-grid"
+                      style={{ gridTemplateColumns: '130px 1fr', alignItems: 'center', gap: 12 }}
+                    >
+                      <label
+                        style={{
+                          fontSize: 12,
+                          color: formData.isPurchaseInfo ? '#ef4444' : '#000',
+                          fontWeight: 500,
+                        }}
+                      >
+                        Cost Price<span style={{ color: '#ef4444', marginLeft: '4px' }}>*</span>
+                      </label>
+                      <div style={{ position: 'relative', width: '100%' }}>
+                        <input
+                          type="number"
+                          step="0.01"
+                          name="costPrice"
+                          value={formData.costPrice || ''}
+                          onChange={handleChange}
+                          disabled={!formData.isPurchaseInfo}
+                          style={{
+                            width: '100%',
+                            height: '36px',
+                            padding: '8px 110px 8px 12px',
+                            borderRadius: '4px',
+                            border: errors.costPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
+                            fontSize: 13,
+                            backgroundColor: formData.isPurchaseInfo ? '#fff' : '#f1f5f9',
+                            color: formData.isPurchaseInfo ? '#000' : '#94a3b8',
+                            cursor: formData.isPurchaseInfo ? 'text' : 'not-allowed',
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleCopyCostPriceFromTotal}
+                          disabled={!formData.isPurchaseInfo}
+                          style={{
+                            position: 'absolute',
+                            right: '10px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            background: 'none',
+                            border: 'none',
+                            color: formData.isPurchaseInfo ? '#0062ff' : '#94a3b8',
+                            fontSize: 12,
+                            cursor: formData.isPurchaseInfo ? 'pointer' : 'not-allowed',
+                            padding: 0,
+                          }}
+                        >
+                          Copy from total
+                        </button>
+                      </div>
+                      {errors.costPrice && (
+                        <span
+                          style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}
+                        >
+                          {errors.costPrice}
+                        </span>
+                      )}
+                    </div>
+
+                    <div
+                      className="form-field-grid"
+                      style={{
+                        gridTemplateColumns: '130px 1fr',
+                        alignItems: 'flex-start',
+                        gap: 12,
+                      }}
+                    >
+                      <label
+                        style={{
+                          fontSize: 13,
+                          color: '#4b5563',
+                          fontWeight: 500,
+                          paddingTop: '8px',
+                        }}
+                      >
+                        Purchase Description
+                      </label>
+                      <textarea
+                        name="purchaseDescription"
+                        value={formData.purchaseDescription || ''}
+                        onChange={(e) =>
+                          handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
+                        }
+                        rows={3}
                         disabled={!formData.isPurchaseInfo}
                         style={{
                           width: '100%',
                           height: '36px',
-                          padding: '8px 110px 8px 12px',
+                          padding: '8px 12px',
                           borderRadius: '4px',
-                          border: errors.costPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
+                          border: '1px solid #d1d5db',
                           fontSize: 13,
+                          resize: 'vertical',
                           backgroundColor: formData.isPurchaseInfo ? '#fff' : '#f1f5f9',
                           color: formData.isPurchaseInfo ? '#000' : '#94a3b8',
                           cursor: formData.isPurchaseInfo ? 'text' : 'not-allowed',
                         }}
                       />
-                      <button
-                        type="button"
-                        onClick={handleCopyCostPriceFromTotal}
-                        disabled={!formData.isPurchaseInfo}
-                        style={{
-                          position: 'absolute',
-                          right: '10px',
-                          top: '50%',
-                          transform: 'translateY(-50%)',
-                          background: 'none',
-                          border: 'none',
-                          color: formData.isPurchaseInfo ? '#0062ff' : '#94a3b8',
-                          fontSize: 12,
-                          cursor: formData.isPurchaseInfo ? 'pointer' : 'not-allowed',
-                          padding: 0,
-                        }}
-                      >
-                        Copy from total
-                      </button>
                     </div>
-                    {errors.costPrice && (
-                      <span
-                        style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}
-                      >
-                        {errors.costPrice}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="form-field-grid" style={{ gridTemplateColumns: '130px 1fr',
-                      alignItems: 'flex-start',
-                      gap: 12,
-                     }}>
-                    <label
-                      style={{ fontSize: 13, color: '#4b5563', fontWeight: 500, paddingTop: '8px' }}
-                    >
-                      Purchase Description
-                    </label>
-                    <textarea
-                      name="purchaseDescription"
-                      value={formData.purchaseDescription || ''}
-                      onChange={(e) =>
-                        handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
-                      }
-                      rows={3}
-                      disabled={!formData.isPurchaseInfo}
-                      style={{
-                        width: '100%',
-                        height: '36px',
-                        padding: '8px 12px',
-                        borderRadius: '4px',
-                        border: '1px solid #d1d5db',
-                        fontSize: 13,
-                        resize: 'vertical',
-                        backgroundColor: formData.isPurchaseInfo ? '#fff' : '#f1f5f9',
-                        color: formData.isPurchaseInfo ? '#000' : '#94a3b8',
-                        cursor: formData.isPurchaseInfo ? 'text' : 'not-allowed',
-                      }}
-                    />
                   </div>
                 </div>
               </div>
-            </div>
             </div>
           </div>
 
@@ -1574,131 +1644,145 @@ export function CreateCompositeItemPage({
             }}
           >
             <div style={{ maxWidth: '900px', width: '100%' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
-                Additional Information
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
+                  Additional Information
+                </div>
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    fontSize: 13,
+                    color: '#1e293b',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!formData.customFields?.trackBinLocation}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        customFields: { ...prev.customFields, trackBinLocation: e.target.checked },
+                      }))
+                    }
+                  />
+                  Track Bin location for this item
+                </label>
               </div>
-              <label
+
+              <div
                 style={{
                   display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  fontSize: 13,
-                  color: '#1e293b',
-                  cursor: 'pointer',
+                  flexDirection: 'column',
+                  gap: '16px',
+                  marginTop: '16px',
+                  paddingTop: '16px',
+                  borderTop: '1px solid #e2e8f0',
                 }}
               >
-                <input
-                  type="checkbox"
-                  checked={!!formData.customFields?.trackBinLocation}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      customFields: { ...prev.customFields, trackBinLocation: e.target.checked },
-                    }))
-                  }
-                />
-                Track Bin location for this item
-              </label>
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '16px',
-                marginTop: '16px',
-                paddingTop: '16px',
-                borderTop: '1px solid #e2e8f0',
-              }}
-            >
-              <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
-                Advanced Inventory Tracking
-              </div>
-              <div style={{ display: 'flex', gap: 16 }}>
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    fontSize: 13,
-                    cursor: 'pointer',
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="inventoryTracking"
-                    value="none"
-                    checked={formData.inventoryTracking === 'none'}
-                    onChange={() => handleRadioChange('inventoryTracking', 'none')}
-                  />{' '}
-                  None
-                </label>
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    fontSize: 13,
-                    cursor: 'pointer',
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="inventoryTracking"
-                    value="batch"
-                    checked={formData.inventoryTracking === 'batch'}
-                    onChange={() => handleRadioChange('inventoryTracking', 'batch')}
-                  />{' '}
-                  {singular}
-                </label>
-              </div>
-            </div>
-
-            {formData.inventoryTracking === 'none' && (
-              <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                    Opening Stock
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="openingStock"
-                    value={formData.openingStock || ''}
-                    onChange={handleChange}
-                    style={{
-                      width: '140px',
-                      height: '36px',
-                      padding: '8px 12px',
-                      borderRadius: '4px',
-                      border: '1px solid #d1d5db',
-                      fontSize: 13,
-                    }}
-                  />
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
+                  Advanced Inventory Tracking
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                    Value of Opening Stock (per quantity)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="openingStockValuePerUnit"
-                    value={formData.openingStockValuePerUnit || ''}
-                    onChange={handleChange}
+                <div style={{ display: 'flex', gap: 16 }}>
+                  <label
                     style={{
-                      width: '140px',
-                      height: '36px',
-                      padding: '8px 12px',
-                      borderRadius: '4px',
-                      border: '1px solid #d1d5db',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
                       fontSize: 13,
+                      cursor: 'pointer',
                     }}
-                  />
+                  >
+                    <input
+                      type="radio"
+                      name="inventoryTracking"
+                      value="none"
+                      checked={formData.inventoryTracking === 'none'}
+                      onChange={() => handleRadioChange('inventoryTracking', 'none')}
+                    />{' '}
+                    None
+                  </label>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 13,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="inventoryTracking"
+                      value="batch"
+                      checked={formData.inventoryTracking === 'batch'}
+                      onChange={() => handleRadioChange('inventoryTracking', 'batch')}
+                    />{' '}
+                    {singular}
+                  </label>
                 </div>
               </div>
-            )}
+
+              {formData.inventoryTracking === 'none' && (
+                <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <label
+                      style={{
+                        fontSize: 13,
+                        color: '#4b5563',
+                        fontWeight: 500,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Opening Stock
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      name="openingStock"
+                      value={formData.openingStock || ''}
+                      onChange={handleChange}
+                      style={{
+                        width: '140px',
+                        height: '36px',
+                        padding: '8px 12px',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        fontSize: 13,
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <label
+                      style={{
+                        fontSize: 13,
+                        color: '#4b5563',
+                        fontWeight: 500,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Value of Opening Stock (per quantity)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      name="openingStockValuePerUnit"
+                      value={formData.openingStockValuePerUnit || ''}
+                      onChange={handleChange}
+                      style={{
+                        width: '140px',
+                        height: '36px',
+                        padding: '8px 12px',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        fontSize: 13,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1739,17 +1823,21 @@ export function CreateCompositeItemPage({
 
       <div
         className={isModal ? 'modal-footer' : 'form-actions-footer page-footer'}
-        style={isModal ? {
-          padding: '16px 20px',
-          borderTop: '1px solid #eef0f3',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          position: 'sticky',
-          bottom: 0,
-          background: '#fff',
-          zIndex: 100,
-        } : undefined}
+        style={
+          isModal
+            ? {
+                padding: '16px 20px',
+                borderTop: '1px solid #eef0f3',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                position: 'sticky',
+                bottom: 0,
+                background: '#fff',
+                zIndex: 100,
+              }
+            : undefined
+        }
       >
         <button
           form="create-composite-item-form"

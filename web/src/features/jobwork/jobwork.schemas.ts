@@ -3,10 +3,9 @@ import { z } from 'zod';
 /**
  * Shapes and labels shared across the four jobwork document modules.
  *
- * Mirrors the backend's `jobwork.types.ts`. The two lists are kept in step by
- * hand — the same arrangement `processes.schemas.ts` already has for
- * `RATE_BASES` — because the alternative is generating types from OpenAPI, which
- * this codebase does not do.
+ * Mirrors the backend's `jobwork.types.ts`. The two are kept in step by hand,
+ * because the alternative is generating types from OpenAPI, which this codebase
+ * does not do.
  */
 
 /** Prisma serialises Decimal as a STRING over JSON. A `z.number()` here would
@@ -39,28 +38,13 @@ export function qtyWithUnit(
   return unit ? `${formatQty(value)} ${unit}` : formatQty(value);
 }
 
-/**
- * What one step costs to have done.
- *
- * 🔴 Mirrors `processCharge` in `jobReceipts.service.ts` — keep the two in step,
- * or the page previews a figure the receipt does not bill. It lives here rather
- * than beside either screen because the Overview now shows the order's total as
- * well as the step's, and two copies of a money calculation is one too many.
- *
- * `null` means no rate was agreed, which is a different fact from zero.
- */
-export function stepCharge(input: {
-  rate: string | number | null;
-  rateBasis: string | null;
-  issuedQty: string | number | null;
-  receivedQty: string | number | null;
-}): number | null {
-  if (input.rate === null || input.rate === '') return null;
-  const qty =
-    input.rateBasis === 'per_received_unit'
-      ? toNumber(input.receivedQty)
-      : toNumber(input.issuedQty);
-  return toNumber(input.rate) * qty;
+/** ₹ to two places, Indian digit grouping — "₹11,263.16". */
+export function formatMoney(value: string | number | null | undefined): string {
+  const n = toNumber(value);
+  return `₹${(Number.isFinite(n) ? n : 0).toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 /** Whole days between a past date and now, floored. Negative dates read as 0. */
@@ -174,11 +158,13 @@ export interface StepItemRow {
   uomId?: string | null;
   /** Inputs, job orders only. */
   plannedQty?: number | null;
-  /** Inputs, job orders only. Blank falls through to the step's — fabric at 3%
-   * beside thread at 25%, because small quantities vary more. */
+  /** Inputs, job orders only. Copied from the item when it is picked; a blank row
+   * is filled with the item's default on save (landed-cost plan D10). */
   tolerancePct?: number | null;
   /** Outputs, job orders only. */
   expectedQty?: number | null;
+  /** Outputs — charge per accepted unit, on routes and job orders (D1). */
+  rate?: number | null;
   /** Outputs only — the one that absorbs the step's cost (§9.2.1). No longer
    * asked for on the grid; see `primaryOutputIndex`. */
   isPrimary?: boolean;
@@ -206,13 +192,10 @@ export interface StepGridRow {
   processorType?: string;
   processorId?: string | null;
   workCentreLocationId?: string | null;
-  rate?: number | null;
-  rateBasis?: string | null;
   /** 🔴 What the step consumes and what it produces (§5.7). */
   inputs?: StepItemRow[];
   outputs?: StepItemRow[];
   expectedYield?: number | null;
-  tolerancePct?: number | null;
   /** Job orders only — a template has no quantity to plan. */
   plannedInputQty?: number | null;
   remarks?: string | null;
@@ -223,12 +206,9 @@ export const emptyStep = (): StepGridRow => ({
   processorType: 'vendor',
   processorId: null,
   workCentreLocationId: null,
-  rate: null,
-  rateBasis: null,
   inputs: [emptyStepItem()],
   outputs: [emptyStepItem()],
   expectedYield: null,
-  tolerancePct: null,
   plannedInputQty: null,
   remarks: null,
 });
@@ -340,6 +320,320 @@ export function overPlanWarning(
   return `Only ${formatQty(Math.max(spare, 0))} comes back from the steps above — the rest has to come from stock.`;
 }
 
+/** One side of a step's plan, in numbers — grid rows and saved rows both map to it. */
+export interface PlanInputRow {
+  itemId: string;
+  uomId?: string | null;
+  plannedQty?: number | null;
+}
+export interface PlanOutputRow {
+  itemId: string;
+  uomId?: string | null;
+  expectedQty?: number | null;
+}
+/** A composite's recipe; `null` for a plain item; `undefined` while not yet known. */
+export type RecipeLookup = (
+  itemId: string,
+) => readonly { componentItemId: string; qtyPerUnit: number }[] | null | undefined;
+
+/**
+ * 🔴 WHAT STOPS A STEP'S FIRST CHALLAN — the client's copy of the server's V4 check
+ * in `jobIssues.service.ts` (landed-cost plan D11). Item ids, so each screen names
+ * them its own way. Keep the two in step.
+ */
+export function planGaps(inputs: readonly PlanInputRow[], outputs: readonly PlanOutputRow[]) {
+  const listedOutputs = outputs.filter((row) => row.itemId);
+  return {
+    noOutputs: listedOutputs.length === 0,
+    noPlanned: inputs
+      .filter((row) => row.itemId && !(row.plannedQty && row.plannedQty > 0))
+      .map((row) => row.itemId),
+    noExpected: listedOutputs
+      .filter((row) => !(row.expectedQty && row.expectedQty > 0))
+      .map((row) => row.itemId),
+  };
+}
+
+/**
+ * 🔴 THE PLAN WARNINGS (landed-cost plan §3) — said, never enforced, keyed by the
+ * INPUT item they concern.
+ *
+ *   · less planned in than the expected output needs — fabric does stretch;
+ *   · Expected equal to Planned on a plain same-unit step — no loss is planned, so
+ *     shrinkage lands as job order loss instead of inside the landed cost;
+ *   · an input nothing produced is made from — written off at completion.
+ *
+ * What an output draws from an input is R1: itself when it passes straight through,
+ * its recipe quantity when it is a composite, 1 when it is a plain output of a
+ * single-input step. A plain output in a different unit carries a conversion, not a
+ * loss, so it is not compared. Nothing is said while any output's recipe is unknown —
+ * a guess here would be a false "nothing is made from this".
+ */
+export function planWarnings(
+  inputs: readonly PlanInputRow[],
+  outputs: readonly PlanOutputRow[],
+  recipeOf: RecipeLookup,
+): Map<string, string> {
+  const warnings = new Map<string, string>();
+  const ins = inputs.filter((row) => row.itemId);
+  const outs = outputs.filter((row) => row.itemId);
+  if (ins.length === 0 || outs.length === 0) return warnings;
+  const inputIds = new Set(ins.map((row) => row.itemId));
+  if (outs.some((out) => !inputIds.has(out.itemId) && recipeOf(out.itemId) === undefined)) {
+    return warnings;
+  }
+
+  const draw = (out: PlanOutputRow, inputId: string): { qty: number; plain: boolean } | null => {
+    if (inputIds.has(out.itemId)) return out.itemId === inputId ? { qty: 1, plain: true } : null;
+    const recipe = recipeOf(out.itemId);
+    if (recipe) {
+      const component = recipe.find((row) => row.componentItemId === inputId);
+      return component ? { qty: component.qtyPerUnit, plain: false } : null;
+    }
+    return ins.length === 1 ? { qty: 1, plain: true } : null;
+  };
+
+  for (const input of ins) {
+    const draws = outs
+      .map((out) => ({ out, by: draw(out, input.itemId) }))
+      .filter((row): row is { out: PlanOutputRow; by: { qty: number; plain: boolean } } =>
+        Boolean(row.by),
+      );
+    if (draws.length === 0) {
+      warnings.set(
+        input.itemId,
+        'Nothing listed as produced is made from this, so none of it is consumed — whatever is sent is written off when the step is completed.',
+      );
+      continue;
+    }
+
+    const planned = input.plannedQty;
+    if (!planned || draws.some((row) => !row.out.expectedQty)) continue;
+    const comparable = draws.every(
+      (row) => !row.by.plain || (row.out.uomId ?? null) === (input.uomId ?? null),
+    );
+    if (!comparable) continue;
+
+    const need = roundQty(draws.reduce((sum, row) => sum + row.out.expectedQty! * row.by.qty, 0));
+    if (roundQty(planned) < need) {
+      warnings.set(
+        input.itemId,
+        `${formatQty(planned)} planned, but the expected output needs ${formatQty(need)} — fine if it stretches, otherwise check the quantities.`,
+      );
+    } else if (roundQty(planned) === need && draws.every((row) => row.by.plain)) {
+      warnings.set(
+        input.itemId,
+        'Expected equals planned, so no loss is planned — any shrinkage will be booked as job order loss, not as part of the landed cost.',
+      );
+    }
+  }
+  return warnings;
+}
+
+/**
+ * 🔴 THE RECEIPT COST PREVIEW — the client's copy of the server's landed-cost
+ * engine (`receipts/landedCost.ts`, plan R1–R7) and of challan closure R11–R12
+ * (`usedByItem`'s floor, `allocateConsumption`'s closed-first walk). Keep the two
+ * in step.
+ *
+ * It only lets the gate see the figure before pressing Receive: the server works
+ * the same thing out from what it actually posts, and that is the number stored.
+ */
+export interface CostPreviewPlan {
+  inputs: readonly { itemId: string; plannedQty: number | null }[];
+  outputs: readonly {
+    itemId: string;
+    expectedQty: number | null;
+    components: readonly { componentItemId: string; qtyPerUnit: number }[];
+  }[];
+}
+
+/** One open challan line, oldest first — the order the server allocates in. */
+export interface CostPreviewLine {
+  itemId: string;
+  outstanding: number;
+  /** The batch's cost per unit at the processor. */
+  unitCost: number;
+  /** On a challan this receipt closes — consumed to zero, and served first (R11–R12). */
+  closed?: boolean;
+}
+
+export interface CostPreviewReturned {
+  itemId: string;
+  acceptedQty: number;
+  reworkQty: number;
+  rate: number | null;
+}
+
+export interface UsedPreview {
+  outstanding: number;
+  /** The plan's figure (R3), before any cap. */
+  calculated: number;
+  /** What the closed challans still hold of this item — used at least this (R11). */
+  floor: number;
+  /** What is used when nothing is typed: the calculation raised to the floor,
+   * capped at what is out. */
+  suggested: number;
+  used: number;
+  /** Material value of `used`, FIFO across the lines. */
+  value: number;
+  /** The calculation ran past what is out — a warning, never a refusal (R4). */
+  capped: boolean;
+  /** Typed above what is out — the server refuses it. */
+  overOutstanding: boolean;
+  /** Typed, but nothing received draws on it — the server refuses it. */
+  undrawn: boolean;
+  /** Typed below what closing consumes — the server refuses it (R11). */
+  belowFloor: boolean;
+  /** On a closed challan, but nothing received draws on it — the server refuses it (R13). */
+  closedUndrawn: boolean;
+}
+
+export interface OutputCostPreview {
+  material: number;
+  charge: number;
+  /** Material on the accepted side plus the whole charge (R7). */
+  acceptedValue: number;
+  perUnit: number | null;
+}
+
+const round4 = (value: number) => Math.round(value * 10_000) / 10_000;
+
+/** `splitByQty`: shares by weight, the last taking the remainder so nothing is lost. */
+function splitByWeight(total: number, weights: readonly number[]): number[] {
+  const sum = weights.reduce((acc, weight) => acc + weight, 0);
+  if (sum <= 0) return weights.map(() => 0);
+  let given = 0;
+  return weights.map((weight, index) => {
+    if (index === weights.length - 1) return round4(total - given);
+    const share = round4((total * weight) / sum);
+    given += share;
+    return share;
+  });
+}
+
+/** R1 — how much of an input one unit of an output draws. */
+function drawPerUnit(
+  plan: CostPreviewPlan,
+  outputItemId: string,
+  inputItemId: string,
+  rework: boolean,
+): number {
+  if (rework) return outputItemId === inputItemId ? 1 : 0;
+  const inputIds = new Set(plan.inputs.map((row) => row.itemId));
+  if (inputIds.has(outputItemId)) return outputItemId === inputItemId ? 1 : 0;
+  const planned = plan.outputs.find((row) => row.itemId === outputItemId);
+  if (planned && planned.components.length > 0) {
+    return planned.components.find((row) => row.componentItemId === inputItemId)?.qtyPerUnit ?? 0;
+  }
+  return inputIds.size === 1 && inputIds.has(inputItemId) ? 1 : 0;
+}
+
+export function receiptCostPreview(input: {
+  plan: CostPreviewPlan;
+  rework: boolean;
+  lines: readonly CostPreviewLine[];
+  returned: readonly CostPreviewReturned[];
+  /** Typed Used figures by item; an item absent here is calculated. */
+  typed: ReadonlyMap<string, number>;
+}): { used: Map<string, UsedPreview>; rows: Map<string, OutputCostPreview> } {
+  const { plan, rework, lines, returned, typed } = input;
+
+  const outstanding = new Map<string, number>();
+  for (const line of lines) {
+    outstanding.set(line.itemId, round4((outstanding.get(line.itemId) ?? 0) + line.outstanding));
+  }
+
+  // R2 + R3: need = (accepted + rework) × w × planned ÷ Σ(expected × w).
+  const needs = new Map<string, Map<string, number>>();
+  for (const inputItemId of outstanding.keys()) {
+    let ratio = 1;
+    if (!rework) {
+      const planned = plan.inputs.find((row) => row.itemId === inputItemId)?.plannedQty ?? 0;
+      const denominator = plan.outputs.reduce(
+        (sum, row) =>
+          sum + (row.expectedQty ?? 0) * drawPerUnit(plan, row.itemId, inputItemId, false),
+        0,
+      );
+      if (planned <= 0 || denominator <= 0) continue;
+      ratio = planned / denominator;
+    }
+    const byOutput = new Map<string, number>();
+    for (const row of returned) {
+      const draw = drawPerUnit(plan, row.itemId, inputItemId, rework);
+      const units = row.acceptedQty + row.reworkQty;
+      if (draw <= 0 || units <= 0) continue;
+      const need = round4(units * draw * ratio);
+      if (need > 0) byOutput.set(row.itemId, need);
+    }
+    if (byOutput.size > 0) needs.set(inputItemId, byOutput);
+  }
+
+  // R12: closed challans' lines first, then oldest first — a stable sort keeps both orders.
+  const walk = [...lines].sort((a, b) => Number(Boolean(b.closed)) - Number(Boolean(a.closed)));
+
+  // R4 + R5 + R11: what each input uses, what that is worth, and where the value goes.
+  const used = new Map<string, UsedPreview>();
+  const material = new Map<string, number>();
+  for (const [itemId, out] of outstanding) {
+    const byOutput = needs.get(itemId);
+    const calculated = round4([...(byOutput?.values() ?? [])].reduce((sum, n) => sum + n, 0));
+    const floor = round4(
+      lines
+        .filter((line) => line.closed && line.itemId === itemId)
+        .reduce((sum, line) => sum + line.outstanding, 0),
+    );
+    const suggested = Math.min(Math.max(calculated, floor), out);
+    const typedQty = typed.get(itemId);
+    const qty = typedQty ?? suggested;
+
+    let left = qty;
+    let value = 0;
+    for (const line of walk) {
+      if (line.itemId !== itemId || left <= 0) continue;
+      const take = Math.min(left, line.outstanding);
+      value = round4(value + take * line.unitCost);
+      left = round4(left - take);
+    }
+
+    used.set(itemId, {
+      outstanding: out,
+      calculated,
+      floor,
+      suggested,
+      used: qty,
+      value,
+      capped: typedQty === undefined && calculated - out > 0.001,
+      overOutstanding: typedQty !== undefined && typedQty - out > 0.00005,
+      undrawn: typedQty !== undefined && typedQty > 0 && calculated <= 0,
+      belowFloor: typedQty !== undefined && floor - typedQty > 0.00005,
+      closedUndrawn: floor > 0 && calculated <= 0,
+    });
+
+    if (!byOutput) continue;
+    const shares = splitByWeight(value, [...byOutput.values()]);
+    [...byOutput.keys()].forEach((outputItemId, index) => {
+      material.set(outputItemId, round4((material.get(outputItemId) ?? 0) + (shares[index] ?? 0)));
+    });
+  }
+
+  // R6 + R7: the charge is on accepted only, and lands on the accepted side.
+  const rows = new Map<string, OutputCostPreview>();
+  for (const row of returned) {
+    const rowMaterial = material.get(row.itemId) ?? 0;
+    const charge = round4((row.rate ?? 0) * row.acceptedQty);
+    const [materialAccepted = 0] = splitByWeight(rowMaterial, [row.acceptedQty, row.reworkQty]);
+    const acceptedValue = round4(materialAccepted + charge);
+    rows.set(row.itemId, {
+      material: rowMaterial,
+      charge,
+      acceptedValue,
+      perUnit: row.acceptedQty > 0 ? acceptedValue / row.acceptedQty : null,
+    });
+  }
+  return { used, rows };
+}
+
 /**
  * 🔴 WHERE THE STOCK IS STILL AWAY FROM US. Re-exported, not redefined: the list
  * now lives beside the `Location` type it tests (`configuration/locations`),
@@ -372,9 +666,9 @@ export function primaryOutputIndex(rows: readonly StepItemRow[]): number {
  * 🔴 WHAT THE EXPECTED BOX WILL BE FILLED WITH IF IT IS LEFT BLANK — the client's
  * copy of the server's `derivedExpectedQty` (§6.3).
  *
- * Shown as a grey placeholder rather than written into the row, for the same
- * reason as the tolerance one: a value copied in freezes, and nothing could then
- * tell it apart from a number somebody typed on purpose.
+ * Shown as a grey placeholder rather than written into the row: a value copied in
+ * freezes, and nothing could then tell it apart from a number somebody typed on
+ * purpose.
  *
  * `null` means the server will store nothing either, and the box is genuinely
  * asking. That happens on exactly the case worth asking about — the output's unit
@@ -389,6 +683,8 @@ export function derivedExpectedQty(
   unitOf: (itemId: string | null | undefined) => string | null,
 ): number | null {
   const outputs = step.outputs ?? [];
+  // Single-output steps only — the server's own rule (landed-cost plan §6.3).
+  if (outputs.filter((row) => row.itemId).length !== 1) return null;
   if (rowIndex !== primaryOutputIndex(outputs)) return null;
 
   const row = outputs[rowIndex];
@@ -538,9 +834,11 @@ export const stepItemRowSchema = z.object({
   itemId: z.string(),
   uomId: z.string().nullable(),
   plannedQty: decimalString.optional(),
-  /** Inputs only — blank falls through to the step's. */
+  /** Inputs only — copied from the item on the job order (landed-cost plan D10). */
   tolerancePct: decimalString.optional(),
   expectedQty: decimalString.optional(),
+  /** Outputs only — charge per accepted unit. */
+  rate: decimalString.optional(),
   fromStock: z.boolean().optional(),
   isPrimary: z.boolean().optional(),
   item: itemRefSchema.nullable().optional(),
@@ -548,6 +846,11 @@ export const stepItemRowSchema = z.object({
   /** Inputs only. Hydrated with the batch's label and godown so the grid can render
    * a saved plan without a second round trip. */
   plannedBatches: z.array(plannedBatchReadSchema).default([]),
+  /** Outputs only, on the Overview payload — the composite's recipe frozen onto the
+   * step (§5.2), which the Issue screen's plan warnings read. */
+  components: z
+    .array(z.object({ componentItemId: z.string(), qtyPerUnit: decimalString }))
+    .default([]),
 });
 
 export type StepItemRowRead = z.infer<typeof stepItemRowSchema>;
