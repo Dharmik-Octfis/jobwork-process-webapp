@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { Menu, X, Filter } from 'lucide-react';
-import { format, subYears, endOfDay, startOfDay } from 'date-fns';
+import { format, endOfDay, startOfDay, startOfMonth } from 'date-fns';
 import { ReportDateFilter } from './components/ReportDateFilter';
 import { reportsApi, type ItemLedgerResponse, type ItemLedgerRow } from './reports.api';
 
@@ -9,38 +9,26 @@ export function InventoryValuationDetailPage() {
   const navigate = useNavigate();
   const { orgId, itemId } = useParams<{ orgId: string; itemId: string }>();
 
-  // For fromDate we can default to beginning of the year or similar. Let's use 1 year ago for demo.
-  const [fromDateLabel, setFromDateLabel] = useState('Custom');
-  const [fromDate, setFromDate] = useState<Date>(subYears(new Date(), 1));
-  const [toDateLabel, setToDateLabel] = useState('Today');
+  const [dateRangeLabel, setDateRangeLabel] = useState('This Month');
+  const [fromDate, setFromDate] = useState<Date>(startOfMonth(new Date()));
   const [toDate, setToDate] = useState<Date>(new Date());
   
+  const [appliedFilters, setAppliedFilters] = useState({
+    fromDate: startOfMonth(new Date()),
+    toDate: new Date()
+  });
+
   const [data, setData] = useState<ItemLedgerResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchData = async () => {
-    if (!orgId || !itemId) return;
-    setLoading(true);
-    try {
-      const response = await reportsApi.getItemLedger(orgId, itemId, {
-        fromDate: startOfDay(fromDate).toISOString(),
-        toDate: endOfDay(toDate).toISOString()
-      });
-      setData(response);
-    } catch (error) {
-      console.error('Failed to fetch item ledger', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    const loadInitialData = async () => {
+    const loadData = async () => {
       if (!orgId || !itemId) return;
+      setLoading(true);
       try {
         const response = await reportsApi.getItemLedger(orgId, itemId, {
-          fromDate: startOfDay(fromDate).toISOString(),
-          toDate: endOfDay(toDate).toISOString()
+          fromDate: startOfDay(appliedFilters.fromDate).toISOString(),
+          toDate: endOfDay(appliedFilters.toDate).toISOString()
         });
         setData(response);
       } catch (error) {
@@ -49,14 +37,13 @@ export function InventoryValuationDetailPage() {
         setLoading(false);
       }
     };
-    
-    loadInitialData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, itemId]);
+
+    loadData();
+  }, [orgId, itemId, appliedFilters]);
 
   const getDocLink = (row: ItemLedgerRow) => {
     if (!row.sourceDocId) return null;
-    
+
     // Add routing for specific document types based on standard URL paths in this app
     switch (row.sourceDocType) {
       case 'bill':
@@ -66,7 +53,7 @@ export function InventoryValuationDetailPage() {
       case 'job_receipt':
         return `/organizations/${orgId}/jobwork/receipts`; // Or specific receipt id view
       case 'job_issue':
-        return `/organizations/${orgId}/jobwork/issues`; 
+        return `/organizations/${orgId}/jobwork/issues`;
       case 'purchase_order':
         return `/organizations/${orgId}/purchases/purchase-orders/${row.sourceDocId}/edit`;
       case 'item_opening_stock':
@@ -77,7 +64,7 @@ export function InventoryValuationDetailPage() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f4f5f7', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f4f5f7', fontFamily: '"Open Sans", "WebFont", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
       {/* Top Header */}
       <div
         style={{
@@ -113,7 +100,7 @@ export function InventoryValuationDetailPage() {
             </div>
           </div>
         </div>
-        
+
         <button
           type="button"
           onClick={() => navigate(-1)}
@@ -149,37 +136,30 @@ export function InventoryValuationDetailPage() {
         </div>
 
         <div style={{ display: 'flex', gap: '12px', flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#6b7280' }}>
-            <span>From:</span>
-            <ReportDateFilter 
-              value={fromDateLabel} 
-              onChange={(label, date) => {
-                setFromDateLabel(label);
-                setFromDate(date);
-              }} 
-            />
-            <span>To:</span>
-            <ReportDateFilter 
-              value={toDateLabel} 
-              onChange={(label, date) => {
-                setToDateLabel(label);
-                setToDate(date);
-              }} 
-            />
-          </div>
-          
+          <ReportDateFilter
+            isRange={true}
+            value={dateRangeLabel}
+            onChangeRange={(label, start, end) => {
+              setDateRangeLabel(label);
+              setFromDate(start);
+              setToDate(end);
+            }}
+          />
           <button
             type="button"
-            onClick={() => fetchData()}
+            onClick={() => setAppliedFilters({ fromDate, toDate })}
             style={{
-              background: '#059669',
+              padding: '6px 12px',
+              background: '#2563eb',
               color: '#fff',
               border: 'none',
-              borderRadius: '6px',
-              padding: '4px 16px',
-              fontSize: '12px',
+              borderRadius: '4px',
+              fontSize: '13px',
               fontWeight: 500,
               cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
             }}
           >
@@ -189,7 +169,7 @@ export function InventoryValuationDetailPage() {
       </div>
 
       {/* Main Content Area */}
-      <div style={{ padding: '24px', flex: 1, overflowY: 'auto' }}>
+      <div style={{ padding: '12px', flex: 1, overflowY: 'auto' }}>
         <div
           style={{
             background: '#fff',
@@ -236,46 +216,62 @@ export function InventoryValuationDetailPage() {
                   <td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}>No data found</td>
                 </tr>
               ) : (
-                data.rows.map((row, idx) => {
+                data.rows.map((row, idx, arr) => {
+                  let rowSpan = 1;
+                  if (row.transactionDetails !== '') {
+                    let j = idx + 1;
+                    while (j < arr.length && arr[j].transactionDetails === '') {
+                      rowSpan++;
+                      j++;
+                    }
+                  } else {
+                    rowSpan = 0;
+                  }
+
                   const isSpecial = row.isOpeningStock || row.isClosingStock;
                   const docLink = getDocLink(row);
+                  
                   return (
-                    <tr key={idx} className="table-row-hover" style={{ borderTop: '1px solid #f9fafb' }}>
-                      <td style={{ ...tdStyle, fontWeight: 500 }}>
-                        {row.date 
-                          ? format(new Date(row.date), 'dd-MM-yyyy') 
-                          : row.isOpeningStock
-                            ? format(fromDate, 'dd-MM-yyyy')
-                            : row.isClosingStock
-                              ? format(toDate, 'dd-MM-yyyy')
-                              : ''}
-                      </td>
-                      <td style={tdStyle}>
-                        {isSpecial ? (
-                          <span style={{ color: '#059669', fontStyle: 'italic', fontWeight: 500 }}>
-                            {row.transactionDetails}
-                          </span>
-                        ) : docLink ? (
-                          <Link to={docLink} style={{ color: '#2563eb', textDecoration: 'none', fontWeight: 500 }}>
-                            {row.transactionDetails} {row.sourceDocNumber ? '# ' + row.sourceDocNumber : (row.sourceDocId ? '# ' + row.sourceDocId.substring(0,8) : '')}
-                          </Link>
-                        ) : (
-                          <span style={{ fontWeight: 500 }}>{row.transactionDetails}</span>
-                        )}
-                      </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: row.quantity < 0 ? '#ef4444' : '#111827' }}>
+                    <tr key={idx} className="table-row-hover">
+                      {rowSpan > 0 && (
+                        <td style={{ ...tdStyle, verticalAlign: 'top', fontWeight: 500 }} rowSpan={rowSpan}>
+                          {row.date
+                            ? format(new Date(row.date), 'dd-MM-yyyy')
+                            : row.isOpeningStock
+                              ? format(fromDate, 'dd-MM-yyyy')
+                              : row.isClosingStock
+                                ? format(toDate, 'dd-MM-yyyy')
+                                : ''}
+                        </td>
+                      )}
+                      {rowSpan > 0 && (
+                        <td style={{ ...tdStyle, verticalAlign: 'top' }} rowSpan={rowSpan}>
+                          {isSpecial ? (
+                            <span style={{ color: '#059669', fontStyle: 'italic' }}>
+                              {row.transactionDetails}
+                            </span>
+                          ) : docLink ? (
+                            <Link to={docLink} style={{ color: '#2563eb', textDecoration: 'none' }}>
+                              {row.transactionDetails} {row.sourceDocNumber ? '# ' + row.sourceDocNumber : (row.sourceDocId ? '# ' + row.sourceDocId.substring(0,8) : '')}
+                            </Link>
+                          ) : (
+                            <span>{row.transactionDetails}</span>
+                          )}
+                        </td>
+                      )}
+                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500, color: row.quantity < 0 ? '#ef4444' : '#222' }}>
                         {row.quantity !== 0 ? row.quantity.toFixed(2) : ''}
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>
+                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
                         {row.unitCost !== null ? row.unitCost.toFixed(2) : ''}
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>
+                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
                         {row.totalCost !== 0 ? row.totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''}
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>
+                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
                         {row.stockOnHand.toFixed(2)}
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', color: '#111827', fontWeight: 600 }}>
+                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
                         {row.inventoryAssetValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                     </tr>
@@ -291,19 +287,20 @@ export function InventoryValuationDetailPage() {
 }
 
 const thStyle = {
-  padding: '12px 24px',
+  padding: '10px 15px',
   textAlign: 'left' as const,
   fontSize: '11px',
   fontWeight: 600,
-  color: '#6b7280',
+  color: '#333333',
   textTransform: 'uppercase' as const,
-  background: '#f9fafb',
-  letterSpacing: '0.5px',
+  background: '#fafafa',
+  letterSpacing: '0.3px',
+  border: '1px solid #eeeeee',
 };
 
 const tdStyle = {
-  padding: '12px 24px',
+  padding: '12px 15px',
   fontSize: '13px',
-  color: '#111827',
-  borderBottom: '1px solid #f3f4f6',
+  color: '#222222',
+  border: '1px solid #eeeeee',
 };

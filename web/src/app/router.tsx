@@ -136,6 +136,10 @@ const InventoryValuationDetailPage = lazyPage(
   () => import('../features/reports/InventoryValuationDetailPage'),
   'InventoryValuationDetailPage',
 );
+const FifoCostLotTrackingPage = lazyPage(
+  () => import('../features/reports/FifoCostLotTrackingPage'),
+  'FifoCostLotTrackingPage',
+);
 const PurchasesPage = lazyPage(
   () => import('../features/purchases/PurchasesPage'),
   'PurchasesPage',
@@ -362,6 +366,7 @@ export const router = createBrowserRouter([
                   { path: '/organizations/:orgId/reports', element: <ReportsPage /> },
                   { path: '/organizations/:orgId/reports/inventory-valuation-summary', element: <InventoryValuationSummaryPage /> },
                   { path: '/organizations/:orgId/reports/inventory-valuation/:itemId', element: <InventoryValuationDetailPage /> },
+                  { path: '/organizations/:orgId/reports/fifo-cost-lot-tracking', element: <FifoCostLotTrackingPage /> },
                   { path: '/organizations/:orgId/purchases', element: <PurchasesPage /> },
                   { path: '/organizations/:orgId/purchases/vendors', element: <VendorsList /> },
                   {

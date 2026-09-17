@@ -663,7 +663,7 @@ export function CreateAssemblyPage() {
                           width: '140px',
                         }}
                       >
-                        Quantity Available
+                        Qty Available (All Locations)
                       </th>
                     </tr>
                   </thead>
@@ -934,8 +934,9 @@ export function CreateAssemblyPage() {
                                           lineHeight: 1.4,
                                         }}
                                       >
-                                        The available stock for this item is less than the total
-                                        quantity required for this assembly.
+                                        The global stock for this item is less than the total
+                                        quantity required. Note: Even if global stock is sufficient,
+                                        you must ensure the stock is physically present at the selected location.
                                         <div
                                           style={{
                                             content: '""',

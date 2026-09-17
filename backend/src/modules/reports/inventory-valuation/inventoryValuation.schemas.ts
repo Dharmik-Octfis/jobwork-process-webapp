@@ -6,17 +6,36 @@ export const inventoryValuationQuerySchema = z.object({
   status: z.enum(['all', 'active', 'inactive']).optional().default('all'),
   itemName: z.string().optional(),
   categoryName: z.string().optional(),
-  // Pagination could be added here if needed
+  locationId: z.string().optional(),
+  sku: z.string().optional(),
+  hsnCode: z.string().optional(),
+  itemCustomFields: z.record(z.string(), z.unknown()).optional(),
+  page: z.coerce.number().optional().default(1),
+  perPage: z.coerce.number().optional().default(25),
 });
 
 export type InventoryValuationQuery = z.infer<typeof inventoryValuationQuerySchema>;
+
+export interface PaginatedInventoryValuationResponse {
+  results: InventoryValuationRow[];
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+  grandTotalQty: number;
+  grandTotalValue: number;
+}
 
 export interface InventoryValuationRow {
   itemId: string;
   itemName: string;
   categoryName: string | null;
   uomName: string | null;
+  sku: string | null;
+  hsnCode: string | null;
+  customFields: Record<string, unknown>;
   stockOnHand: number;
+  inventoryAssetValue: number;
 }
 
 export const itemLedgerQuerySchema = z.object({

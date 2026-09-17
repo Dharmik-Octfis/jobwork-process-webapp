@@ -7,14 +7,21 @@ import { AdvancedFilter } from '../../components/ui/AdvancedFilter/AdvancedFilte
 import type { FilterField, FilterCondition } from '../../components/ui/AdvancedFilter/filterUtils';
 import { CustomizeColumnsModal } from '../../components/ui/CustomizeColumnsModal';
 import { ReportDateFilter } from './components/ReportDateFilter';
+import { Pagination } from '../../components/ui/Pagination';
+import { useListSearch } from '../../hooks/useListSearch';
 import {
   reportsApi,
-  type InventoryValuationRow,
   type InventoryValuationQuery,
+  type PaginatedInventoryValuationResponse,
 } from './reports.api';
 import { ItemComboBox } from '../../components/ui/ItemComboBox';
 import type { Item } from '../items/items.schemas';
-
+import { CategorySelectDropdown } from '../items/components/CategorySelectDropdown';
+import { useQuery } from '@tanstack/react-query';
+import { fetchLocations, isOwnLocation } from '../configuration/locations/locations.api';
+import { LocalComboBox } from '../../components/ui/LocalComboBox';
+import { useActiveCustomFields } from '../custom-fields/customFields.api';
+import type { FilterDataType } from '../../components/ui/AdvancedFilter/filterUtils';
 const STOCK_OPTIONS = [
   { label: 'No criteria', value: 'none' },
   { label: 'Greater than zero', value: 'gt' },
@@ -41,6 +48,13 @@ export function InventoryValuationSummaryPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [conditions, setConditions] = useState<FilterCondition[]>([]);
 
+  const [appliedFilters, setAppliedFilters] = useState({
+    asOfDate: new Date(),
+    stockFilter: 'none',
+    statusFilter: 'all',
+    conditions: [] as FilterCondition[],
+  });
+
   const [showColumnsModal, setShowColumnsModal] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
     'itemName',
@@ -48,9 +62,43 @@ export function InventoryValuationSummaryPage() {
     'inventoryAssetValue',
   ]);
 
-  const formattedAsOfDate = format(asOfDate, 'dd-MM-yyyy');
+  const formattedAsOfDate = format(appliedFilters.asOfDate, 'dd-MM-yyyy');
 
   const { orgId } = useParams<{ orgId: string }>();
+
+  const { data: locations = [] } = useQuery({
+    queryKey: ['locations', orgId],
+    queryFn: () => fetchLocations(orgId!),
+    enabled: Boolean(orgId),
+  });
+
+  const { data: customFields = [] } = useActiveCustomFields(orgId, 'item');
+
+  const locationOptions = useMemo(
+    () => locations.filter(isOwnLocation).map((loc) => ({ label: loc.name, value: loc.id })),
+    [locations]
+  );
+
+  const customFilterFields = useMemo(() => {
+    return customFields.map((cf) => {
+      let dataType: FilterDataType = 'string';
+      if (cf.dataType === 'number' || cf.dataType === 'decimal') dataType = 'number';
+      else if (cf.dataType === 'date') dataType = 'date';
+      else if (cf.dataType === 'checkbox') dataType = 'boolean';
+      else if (cf.dataType === 'select') dataType = 'select';
+      else if (cf.dataType === 'multi_select') dataType = 'multi_select';
+
+      const options = cf.config?.options?.map((opt) => ({ label: opt.label, value: opt.id }));
+
+      return {
+        key: cf.key,
+        label: cf.label,
+        dataType,
+        group: 'Item',
+        options,
+      } as FilterField;
+    });
+  }, [customFields]);
 
   const filterFields = useMemo<FilterField[]>(
     () => [
@@ -58,6 +106,7 @@ export function InventoryValuationSummaryPage() {
         key: 'itemName',
         label: 'Item Name',
         dataType: 'string',
+        group: 'Report',
         renderInput: ({ value, onChange }) => (
           <div style={{ flex: 1, minWidth: 200 }}>
             <ItemComboBox
@@ -73,35 +122,110 @@ export function InventoryValuationSummaryPage() {
           </div>
         ),
       },
-      { key: 'categoryName', label: 'Category Name', dataType: 'string' },
+      {
+        key: 'categoryName',
+        label: 'Category Name',
+        dataType: 'string',
+        group: 'Report',
+        renderInput: ({ value, onChange }) => (
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <CategorySelectDropdown
+              value={(value as string) || ''}
+              onChange={(val) => onChange(val)}
+              hideManageButton={true}
+            />
+          </div>
+        ),
+      },
+      {
+        key: 'locationId',
+        label: 'Location',
+        dataType: 'string',
+        group: 'Locations',
+        renderInput: ({ value, onChange }) => (
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <LocalComboBox
+              options={locationOptions}
+              value={(value as string) || null}
+              onChange={(val) => onChange(val || '')}
+              placeholder="Select location..."
+              portal
+            />
+          </div>
+        ),
+      },
+      {
+        key: 'sku',
+        label: 'SKU',
+        dataType: 'string',
+        group: 'Item',
+      },
+      {
+        key: 'hsnCode',
+        label: 'HSN Code',
+        dataType: 'string',
+        group: 'Item',
+      },
+      ...customFilterFields,
     ],
-    [orgId],
+    [orgId, locationOptions, customFilterFields]
   );
 
-  const [data, setData] = useState<InventoryValuationRow[]>([]);
+  const { page, setPage, perPage, setPerPage } = useListSearch();
+
+  const [data, setData] = useState<PaginatedInventoryValuationResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
     if (!orgId) return;
     try {
       const query: InventoryValuationQuery = {
-        asOfDate: endOfDay(asOfDate).toISOString(),
-        stockAvailability: stockFilter as InventoryValuationQuery['stockAvailability'],
-        status: statusFilter as InventoryValuationQuery['status'],
+        asOfDate: endOfDay(appliedFilters.asOfDate).toISOString(),
+        stockAvailability: appliedFilters.stockFilter as InventoryValuationQuery['stockAvailability'],
+        status: appliedFilters.statusFilter as InventoryValuationQuery['status'],
+        page,
+        perPage,
       };
 
-      const itemNameCond = conditions.find((c) => c.field === 'itemName');
+      const itemNameCond = appliedFilters.conditions.find((c) => c.field === 'itemName');
       if (itemNameCond && itemNameCond.value) {
         query.itemName = itemNameCond.value as string;
       }
 
-      const catNameCond = conditions.find((c) => c.field === 'categoryName');
+      const catNameCond = appliedFilters.conditions.find((c) => c.field === 'categoryName');
       if (catNameCond && catNameCond.value) {
         query.categoryName = catNameCond.value as string;
       }
 
-      const rows = await reportsApi.getInventoryValuation(orgId, query);
-      setData(rows);
+      const locationCond = appliedFilters.conditions.find((c) => c.field === 'locationId');
+      if (locationCond && locationCond.value) {
+        query.locationId = locationCond.value as string;
+      }
+
+      const skuCond = appliedFilters.conditions.find((c) => c.field === 'sku');
+      if (skuCond && skuCond.value) {
+        query.sku = skuCond.value as string;
+      }
+
+      const hsnCodeCond = appliedFilters.conditions.find((c) => c.field === 'hsnCode');
+      if (hsnCodeCond && hsnCodeCond.value) {
+        query.hsnCode = hsnCodeCond.value as string;
+      }
+
+      // Extract custom fields conditions
+      const customFieldKeys = new Set(customFields.map((cf) => cf.key));
+      const itemCustomFields: Record<string, unknown> = {};
+      appliedFilters.conditions.forEach((c) => {
+        if (customFieldKeys.has(c.field) && c.value !== undefined && c.value !== null && c.value !== '') {
+          itemCustomFields[c.field] = c.value;
+        }
+      });
+      if (Object.keys(itemCustomFields).length > 0) {
+        query.itemCustomFields = itemCustomFields;
+      }
+
+      const response = await reportsApi.getInventoryValuation(orgId, query);
+      setData(response);
     } catch (error) {
       console.error('Failed to fetch inventory valuation', error);
     } finally {
@@ -117,11 +241,12 @@ export function InventoryValuationSummaryPage() {
       await fetchData();
     };
     init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId]);
+  }, [orgId, page, perPage, appliedFilters]);
 
-  const totalQty = data.reduce((sum, row) => sum + row.stockOnHand, 0);
-  const totalValue = data.reduce((sum, row) => sum + row.inventoryAssetValue, 0);
+  const rows = data?.results || [];
+  const totalQty = data?.grandTotalQty || 0;
+  const totalValue = data?.grandTotalValue || 0;
+  const total = data?.total || 0;
 
   return (
     <div
@@ -292,33 +417,34 @@ export function InventoryValuationSummaryPage() {
               <span style={{ fontSize: '14px', marginRight: '4px', color: '#2563eb' }}>+</span>
             }
             triggerLabel="More Filters"
+            liveUpdate={true}
           />
-
           <button
             type="button"
-            onClick={() => {
-              setLoading(true);
-              fetchData();
-            }}
+            onClick={() => setAppliedFilters({ asOfDate, stockFilter, statusFilter, conditions })}
             style={{
-              background: '#059669',
+              padding: '6px 12px',
+              background: '#2563eb',
               color: '#fff',
               border: 'none',
-              borderRadius: '6px',
-              padding: '4px 16px',
-              fontSize: '12px',
+              borderRadius: '4px',
+              fontSize: '13px',
               fontWeight: 500,
               cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
             }}
           >
             Run Report
           </button>
+
         </div>
       </div>
 
       {/* Main Content Area */}
-      <div style={{ padding: '24px', flex: 1, overflowY: 'auto' }}>
+      <div style={{ padding: '12px', flex: 1, overflowY: 'auto' }}>
         <div
           style={{
             background: '#fff',
@@ -421,6 +547,18 @@ export function InventoryValuationSummaryPage() {
                           CATEGORY NAME
                         </th>
                       );
+                    case 'sku':
+                      return (
+                        <th key={colKey} style={thStyle}>
+                          SKU
+                        </th>
+                      );
+                    case 'hsnCode':
+                      return (
+                        <th key={colKey} style={thStyle}>
+                          HSN CODE
+                        </th>
+                      );
                     case 'uomName':
                       return (
                         <th key={colKey} style={thStyle}>
@@ -440,6 +578,15 @@ export function InventoryValuationSummaryPage() {
                         </th>
                       );
                     default:
+                      if (colKey.startsWith('cf_')) {
+                        const cfKey = colKey.replace('cf_', '');
+                        const cfLabel = customFields.find((cf) => cf.key === cfKey)?.label || cfKey;
+                        return (
+                          <th key={colKey} style={thStyle}>
+                            {cfLabel.toUpperCase()}
+                          </th>
+                        );
+                      }
                       return null;
                   }
                 })}
@@ -455,7 +602,7 @@ export function InventoryValuationSummaryPage() {
                     Loading...
                   </td>
                 </tr>
-              ) : data.length === 0 ? (
+              ) : rows.length === 0 ? (
                 <tr>
                   <td
                     colSpan={visibleColumns.length}
@@ -465,7 +612,7 @@ export function InventoryValuationSummaryPage() {
                   </td>
                 </tr>
               ) : (
-                data.map((row) => (
+                rows.map((row) => (
                   <tr
                     key={row.itemId}
                     className="table-row-hover"
@@ -491,6 +638,18 @@ export function InventoryValuationSummaryPage() {
                           return (
                             <td key={colKey} style={tdStyle}>
                               {row.categoryName || '-'}
+                            </td>
+                          );
+                        case 'sku':
+                          return (
+                            <td key={colKey} style={tdStyle}>
+                              {row.sku || '-'}
+                            </td>
+                          );
+                        case 'hsnCode':
+                          return (
+                            <td key={colKey} style={tdStyle}>
+                              {row.hsnCode || '-'}
                             </td>
                           );
                         case 'uomName':
@@ -527,13 +686,22 @@ export function InventoryValuationSummaryPage() {
                             </td>
                           );
                         default:
+                          if (colKey.startsWith('cf_')) {
+                            const cfKey = colKey.replace('cf_', '');
+                            const cfValue = row.customFields?.[cfKey];
+                            return (
+                              <td key={colKey} style={tdStyle}>
+                                {cfValue !== undefined && cfValue !== null ? String(cfValue) : '-'}
+                              </td>
+                            );
+                          }
                           return null;
                       }
                     })}
                   </tr>
                 ))
               )}
-              {data.length > 0 && (
+              {rows.length > 0 && (
                 <tr style={{ borderTop: '1px solid #e5e7eb' }}>
                   {visibleColumns.map((colKey, index) => {
                     if (index === 0) {
@@ -578,6 +746,20 @@ export function InventoryValuationSummaryPage() {
               )}
             </tbody>
           </table>
+          
+          <Pagination
+            pageContext={{
+              page: data?.page || page,
+              perPage: data?.perPage || perPage,
+              hasMore: data?.page && data?.totalPages ? data.page < data.totalPages : false,
+            }}
+            total={total}
+            page={page}
+            perPage={perPage}
+            onPageChange={setPage}
+            onPerPageChange={setPerPage}
+            onRequestCount={() => {}}
+          />
         </div>
       </div>
 
@@ -588,6 +770,13 @@ export function InventoryValuationSummaryPage() {
           catalog={[
             { key: 'itemName', label: 'ITEM NAME', locked: true, defaultVisible: true },
             { key: 'categoryName', label: 'CATEGORY NAME', defaultVisible: false },
+            { key: 'sku', label: 'SKU', defaultVisible: false },
+            { key: 'hsnCode', label: 'HSN CODE', defaultVisible: false },
+            ...customFields.map((cf) => ({
+              key: `cf_${cf.key}`,
+              label: cf.label.toUpperCase(),
+              defaultVisible: false,
+            })),
             { key: 'uomName', label: 'UNIT', defaultVisible: false },
             { key: 'stockOnHand', label: 'STOCK ON HAND', defaultVisible: true },
             { key: 'inventoryAssetValue', label: 'INVENTORY ASSET VALUE', defaultVisible: true },

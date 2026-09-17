@@ -9,16 +9,16 @@ export const inventoryValuationRouter = Router({ mergeParams: true });
 
 inventoryValuationRouter.use(authenticate, tenantContext);
 
-// Use batch:read as the required permission for this report since it accesses stock ledger info
+// Use reports:read as the required permission for all reports
 inventoryValuationRouter.get(
   '/',
-  requirePermission('batch:read'),
+  requirePermission('reports:read'),
   getInventoryValuation
 );
 
 inventoryValuationRouter.get(
   '/:itemId',
-  requirePermission('batch:read'),
+  requirePermission('reports:read'),
   getItemLedger
 );
 

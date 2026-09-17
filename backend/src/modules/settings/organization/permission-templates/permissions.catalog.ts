@@ -165,6 +165,13 @@ const MODULE_GROUPS: readonly {
       { resource: 'custom_field', label: 'Custom Fields' },
     ],
   },
+  {
+    key: 'reports',
+    label: 'Reports',
+    resources: [
+      { resource: 'reports', label: 'Reports', actions: ['read'] },
+    ],
+  },
 ];
 
 /** Grouped for the admin UI. Flattened into `ALL_PERMISSIONS` below. */

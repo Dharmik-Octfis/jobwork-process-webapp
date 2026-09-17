@@ -87,7 +87,7 @@
 .filter-row-container {
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid #eef0f3;
+  border-bottom: none;
 }
 
 .filter-row-container:last-child {
@@ -99,12 +99,18 @@
   justify-content: space-between;
   align-items: center;
   width: 100%;
-  padding: 6px 4px;
+  padding: 8px 12px;
   cursor: pointer;
+  border-radius: 6px;
+  transition: background-color 0.15s;
+}
+
+.filter-row-header:hover {
+  background-color: #f1f5f9;
 }
 
 .filter-row-header:hover .filter-row-title {
-  color: #2563eb;
+  color: #1e293b;
 }
 
 .filter-row-title {

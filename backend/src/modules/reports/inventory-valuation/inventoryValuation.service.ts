@@ -1,11 +1,11 @@
 import { runAsTenant } from '../../../db/prisma.ts';
-import type { InventoryValuationQuery, InventoryValuationRow, ItemLedgerQuery, ItemLedgerResponse } from './inventoryValuation.schemas.ts';
+import type { InventoryValuationQuery, PaginatedInventoryValuationResponse, ItemLedgerQuery, ItemLedgerResponse } from './inventoryValuation.schemas.ts';
 import { Prisma } from '../../../../generated/prisma/client.ts';
 
 export async function getInventoryValuationSummary(
   organizationId: string,
   _query: InventoryValuationQuery
-): Promise<InventoryValuationRow[]> {
+): Promise<PaginatedInventoryValuationResponse> {
   return runAsTenant(organizationId, async (tx) => {
     // Determine the date filter. The UI passes dd-MM-yyyy or similar? We should probably just use current date if not provided
     // For now we will fetch all ledger entries up to the provided date. If not provided, fetch all.
@@ -20,13 +20,16 @@ export async function getInventoryValuationSummary(
       inventoryAssetValue: string | number | bigint;
     };
 
-    const { asOfDate, stockAvailability = 'none', status = 'all', itemName, categoryName } = _query;
+    const { asOfDate, stockAvailability = 'none', status = 'all', itemName, categoryName, locationId, sku, hsnCode, itemCustomFields } = _query;
 
     let q = Prisma.sql`
       SELECT 
         i.id AS "itemId",
         i.name AS "itemName",
         i.category AS "categoryName",
+        i.sku AS "sku",
+        i.hsn_code AS "hsnCode",
+        i.custom_fields AS "customFields",
         u.unit_name AS "uomName",
         COALESCE(SUM(l.qty_in - l.qty_out), 0) AS "stockOnHand",
         COALESCE(SUM(l.value_in - l.value_out), 0) AS "inventoryAssetValue"
@@ -36,6 +39,8 @@ export async function getInventoryValuationSummary(
         AND l.organization_id = ${organizationId}::uuid 
         AND l.ownership = 'own'
         AND l.stock_effect IN ('both', 'accounting')
+        AND l.source_doc_type != 'job_receipt'
+        ${locationId ? Prisma.sql`AND l.location_id = ${locationId}::uuid` : Prisma.empty}
         AND EXISTS (
           SELECT 1 FROM locations loc 
           WHERE loc.id = l.location_id 
@@ -63,7 +68,23 @@ export async function getInventoryValuationSummary(
       q = Prisma.sql`${q} AND i.category ILIKE ${'%' + categoryName + '%'}`;
     }
 
-    q = Prisma.sql`${q} GROUP BY i.id, i.name, i.category, u.unit_name`;
+    if (sku) {
+      q = Prisma.sql`${q} AND i.sku ILIKE ${'%' + sku + '%'}`;
+    }
+
+    if (hsnCode) {
+      q = Prisma.sql`${q} AND i.hsn_code ILIKE ${'%' + hsnCode + '%'}`;
+    }
+
+    if (itemCustomFields) {
+      for (const [key, val] of Object.entries(itemCustomFields)) {
+        if (val !== undefined && val !== null && val !== '') {
+          q = Prisma.sql`${q} AND i.custom_fields->>${key} ILIKE ${'%' + String(val) + '%'}`;
+        }
+      }
+    }
+
+    q = Prisma.sql`${q} GROUP BY i.id, i.name, i.category, i.sku, i.hsn_code, i.custom_fields, u.unit_name`;
 
     if (stockAvailability === 'gt') {
       q = Prisma.sql`${q} HAVING COALESCE(SUM(l.qty_in - l.qty_out), 0) > 0`;
@@ -79,16 +100,45 @@ export async function getInventoryValuationSummary(
 
     q = Prisma.sql`${q} ORDER BY i.name ASC`;
 
-    const rows = await tx.$queryRaw<RawRow[]>`${q}`;
+    // Add sku, hsnCode, customFields to RawRow typing
+    type ExtendedRawRow = RawRow & {
+      sku: string | null;
+      hsnCode: string | null;
+      customFields: Record<string, unknown>;
+    };
 
-    return rows.map(row => ({
+    const rawRows = await tx.$queryRaw<ExtendedRawRow[]>`${q}`;
+
+    const mappedRows = rawRows.map(row => ({
       itemId: row.itemId,
       itemName: row.itemName,
       categoryName: row.categoryName,
+      sku: row.sku,
+      hsnCode: row.hsnCode,
+      customFields: row.customFields || {},
       uomName: row.uomName,
       stockOnHand: Number(row.stockOnHand),
       inventoryAssetValue: Number(row.inventoryAssetValue),
     }));
+
+    const totalQty = mappedRows.reduce((sum, row) => sum + row.stockOnHand, 0);
+    const totalValue = mappedRows.reduce((sum, row) => sum + row.inventoryAssetValue, 0);
+
+    const total = mappedRows.length;
+    const page = _query.page || 1;
+    const perPage = _query.perPage || 25;
+    const totalPages = Math.ceil(total / perPage);
+    const paginatedRows = mappedRows.slice((page - 1) * perPage, page * perPage);
+
+    return {
+      results: paginatedRows,
+      total,
+      page,
+      perPage,
+      totalPages,
+      grandTotalQty: totalQty,
+      grandTotalValue: totalValue,
+    };
   });
 }
 
@@ -114,25 +164,43 @@ export async function getItemLedger(
     let openingValue = 0;
 
     let openingQ = Prisma.sql`
+      WITH doc_nets AS (
+        SELECT 
+          l.source_doc_type,
+          l.source_doc_id,
+          SUM(l.qty_in - l.qty_out) AS net_qty,
+          SUM(l.value_in - l.value_out) AS net_value,
+          (
+            SELECT sl.posted_at 
+            FROM stock_ledger sl 
+            WHERE sl.source_doc_id = l.source_doc_id AND sl.item_id = l.item_id
+            ORDER BY sl.created_at DESC 
+            LIMIT 1
+          ) AS real_date
+        FROM stock_ledger l
+        WHERE l.organization_id = ${organizationId}::uuid
+          AND l.item_id = ${itemId}::uuid
+          AND l.ownership = 'own'
+          AND l.stock_effect IN ('both', 'accounting')
+          AND l.source_doc_type != 'job_receipt'
+          AND EXISTS (
+            SELECT 1 FROM locations loc 
+            WHERE loc.id = l.location_id 
+            AND (loc.type IS NULL OR loc.type NOT IN ('processor', 'in_transit', 'customer_site'))
+          )
+        GROUP BY l.source_doc_type, l.source_doc_id, l.item_id, l.batch_id
+      )
       SELECT 
-        COALESCE(SUM(l.qty_in - l.qty_out), 0) AS "qty",
-        COALESCE(SUM(l.value_in - l.value_out), 0) AS "value"
-      FROM stock_ledger l
-      WHERE l.organization_id = ${organizationId}::uuid
-        AND l.item_id = ${itemId}::uuid
-        AND l.ownership = 'own'
-        AND l.stock_effect IN ('both', 'accounting')
-        AND EXISTS (
-          SELECT 1 FROM locations loc 
-          WHERE loc.id = l.location_id 
-          AND (loc.type IS NULL OR loc.type NOT IN ('processor', 'in_transit', 'customer_site'))
-        )
+        COALESCE(SUM(net_qty), 0) AS "qty",
+        COALESCE(SUM(net_value), 0) AS "value"
+      FROM doc_nets
+      WHERE 1=1
     `;
 
     if (fromDate) {
-      openingQ = Prisma.sql`${openingQ} AND (l.posted_at < ${new Date(fromDate)}::timestamptz OR l.source_doc_type = 'item_opening_stock')`;
+      openingQ = Prisma.sql`${openingQ} AND (real_date < ${new Date(fromDate)}::timestamptz OR source_doc_type = 'item_opening_stock')`;
     } else {
-      openingQ = Prisma.sql`${openingQ} AND l.source_doc_type = 'item_opening_stock'`;
+      openingQ = Prisma.sql`${openingQ} AND source_doc_type = 'item_opening_stock'`;
     }
     
     const openingRes = await tx.$queryRaw<{ qty: number | string | bigint; value: number | string | bigint }[]>`${openingQ}`;
@@ -142,38 +210,56 @@ export async function getItemLedger(
       openingValue = Number(firstRow.value ?? 0);
     }
 
-    // Fetch entries
     let entriesQ = Prisma.sql`
+      WITH doc_nets AS (
+        SELECT 
+          l.source_doc_type AS "sourceDocType",
+          l.source_doc_id AS "sourceDocId",
+          l.batch_id AS "batchId",
+          SUM(l.qty_in - l.qty_out) AS net_qty,
+          SUM(l.value_in - l.value_out) AS net_value,
+          (
+            SELECT sl.posted_at 
+            FROM stock_ledger sl 
+            WHERE sl.source_doc_id = l.source_doc_id AND sl.item_id = l.item_id
+            ORDER BY sl.created_at DESC 
+            LIMIT 1
+          ) AS real_date,
+          MIN(l.created_at) AS min_created_at
+        FROM stock_ledger l
+        WHERE l.organization_id = ${organizationId}::uuid
+          AND l.item_id = ${itemId}::uuid
+          AND l.ownership = 'own'
+          AND l.stock_effect IN ('both', 'accounting')
+          AND l.source_doc_type != 'item_opening_stock'
+          AND l.source_doc_type != 'job_receipt'
+          AND EXISTS (
+            SELECT 1 FROM locations loc 
+            WHERE loc.id = l.location_id 
+            AND (loc.type IS NULL OR loc.type NOT IN ('processor', 'in_transit', 'customer_site'))
+          )
+        GROUP BY l.source_doc_type, l.source_doc_id, l.item_id, l.batch_id
+      )
       SELECT 
-        l.posted_at AS "date",
-        SUM(l.qty_in) AS "qtyIn",
-        SUM(l.qty_out) AS "qtyOut",
-        SUM(l.value_in) AS "valueIn",
-        SUM(l.value_out) AS "valueOut",
-        l.source_doc_type AS "sourceDocType",
-        l.source_doc_id AS "sourceDocId",
-        l.movement_type AS "movementType"
-      FROM stock_ledger l
-      WHERE l.organization_id = ${organizationId}::uuid
-        AND l.item_id = ${itemId}::uuid
-        AND l.ownership = 'own'
-        AND l.stock_effect IN ('both', 'accounting')
-        AND l.source_doc_type != 'item_opening_stock'
-        AND EXISTS (
-          SELECT 1 FROM locations loc 
-          WHERE loc.id = l.location_id 
-          AND (loc.type IS NULL OR loc.type NOT IN ('processor', 'in_transit', 'customer_site'))
-        )
+        real_date AS "date",
+        GREATEST(net_qty, 0) AS "qtyIn",
+        GREATEST(-net_qty, 0) AS "qtyOut",
+        GREATEST(net_value, 0) AS "valueIn",
+        GREATEST(-net_value, 0) AS "valueOut",
+        "sourceDocType",
+        "sourceDocId"
+      FROM doc_nets
+      WHERE (net_qty != 0 OR net_value != 0)
     `;
 
     if (fromDate) {
-      entriesQ = Prisma.sql`${entriesQ} AND l.posted_at >= ${new Date(fromDate)}::timestamptz`;
+      entriesQ = Prisma.sql`${entriesQ} AND real_date >= ${new Date(fromDate)}::timestamptz`;
     }
     if (toDate) {
-      entriesQ = Prisma.sql`${entriesQ} AND l.posted_at <= ${new Date(toDate)}::timestamptz`;
+      entriesQ = Prisma.sql`${entriesQ} AND real_date <= ${new Date(toDate)}::timestamptz`;
     }
 
-    entriesQ = Prisma.sql`${entriesQ} GROUP BY l.posted_at, l.source_doc_type, l.source_doc_id, l.movement_type ORDER BY l.posted_at ASC, MIN(l.created_at) ASC`;
+    entriesQ = Prisma.sql`${entriesQ} ORDER BY real_date ASC, min_created_at ASC`;
 
     const rawEntries = await tx.$queryRaw<{
       date: Date;
@@ -183,8 +269,34 @@ export async function getItemLedger(
       valueOut: number | string;
       sourceDocType: string;
       sourceDocId: string;
-      movementType: string;
     }[]>`${entriesQ}`;
+
+    // Merge consecutive entries from the same document that have the same unit cost
+    const mergedEntries: typeof rawEntries = [];
+    for (const entry of rawEntries) {
+      if (mergedEntries.length > 0) {
+        const last = mergedEntries[mergedEntries.length - 1];
+        if (last && last.sourceDocId && last.sourceDocId === entry.sourceDocId) {
+          const lastQty = Number(last.qtyIn) - Number(last.qtyOut);
+          const lastVal = Number(last.valueIn) - Number(last.valueOut);
+          const lastUc = lastQty !== 0 ? Math.abs(lastVal / lastQty) : null;
+
+          const currQty = Number(entry.qtyIn) - Number(entry.qtyOut);
+          const currVal = Number(entry.valueIn) - Number(entry.valueOut);
+          const currUc = currQty !== 0 ? Math.abs(currVal / currQty) : null;
+
+          // Merge if unit costs match and they are both IN or both OUT
+          if (lastUc !== null && currUc !== null && Math.abs(lastUc - currUc) < 0.0001 && Math.sign(lastQty) === Math.sign(currQty)) {
+            last.qtyIn = Number(last.qtyIn) + Number(entry.qtyIn);
+            last.qtyOut = Number(last.qtyOut) + Number(entry.qtyOut);
+            last.valueIn = Number(last.valueIn) + Number(entry.valueIn);
+            last.valueOut = Number(last.valueOut) + Number(entry.valueOut);
+            continue;
+          }
+        }
+      }
+      mergedEntries.push({ ...entry });
+    }
 
     const docIdsByType = {
       job_issue: new Set<string>(),
@@ -193,9 +305,10 @@ export async function getItemLedger(
       purchase_order: new Set<string>(),
     };
 
-    for (const entry of rawEntries) {
-      if (entry.sourceDocId && (docIdsByType as any)[entry.sourceDocType]) {
-        (docIdsByType as any)[entry.sourceDocType].add(entry.sourceDocId);
+    for (const entry of mergedEntries) {
+      const type = entry.sourceDocType as keyof typeof docIdsByType;
+      if (entry.sourceDocId && docIdsByType[type]) {
+        docIdsByType[type].add(entry.sourceDocId);
       }
     }
 
@@ -233,8 +346,9 @@ export async function getItemLedger(
 
     let currentQty = openingQty;
     let currentValue = openingValue;
+    let previousSourceDocId: string | null = null;
 
-    for (const entry of rawEntries) {
+    for (const entry of mergedEntries) {
       const qIn = Number(entry.qtyIn);
       const qOut = Number(entry.qtyOut);
       const vIn = Number(entry.valueIn);
@@ -260,17 +374,20 @@ export async function getItemLedger(
         unitCost = Math.abs(valChange / qtyChange);
       }
 
+      const isSameAsPrevious = entry.sourceDocId && entry.sourceDocId === previousSourceDocId;
+      previousSourceDocId = entry.sourceDocId || null;
+
       rows.push({
-        date: entry.date.toISOString(),
-        transactionDetails,
+        date: isSameAsPrevious ? null : entry.date.toISOString(),
+        transactionDetails: isSameAsPrevious ? '' : transactionDetails,
         quantity: qtyChange,
         unitCost,
         totalCost: valChange,
         stockOnHand: currentQty,
         inventoryAssetValue: currentValue,
-        sourceDocType: entry.sourceDocType,
-        sourceDocId: entry.sourceDocId,
-        sourceDocNumber: entry.sourceDocId ? docNumbers.get(entry.sourceDocId) || null : null
+        sourceDocType: isSameAsPrevious ? null : entry.sourceDocType,
+        sourceDocId: isSameAsPrevious ? null : entry.sourceDocId,
+        sourceDocNumber: isSameAsPrevious ? null : (entry.sourceDocId ? docNumbers.get(entry.sourceDocId) || null : null)
       });
     }
 
