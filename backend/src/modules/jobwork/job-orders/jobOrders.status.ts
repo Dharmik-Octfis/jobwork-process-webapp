@@ -56,6 +56,9 @@ export interface ItemFlow {
    * (landed-cost R8). Net of any reversal. */
   writtenOffQty: Prisma.Decimal;
   writtenOffValue: Prisma.Decimal;
+  /** Issued on challans a posted receipt closed (challan-closure R10) — consumed
+   * into cost, as opposed to still out or written off. */
+  closedQty: Prisma.Decimal;
 }
 
 const emptyFlow = (itemId: string): ItemFlow => ({
@@ -64,7 +67,28 @@ const emptyFlow = (itemId: string): ItemFlow => ({
   consumedQty: ZERO,
   writtenOffQty: ZERO,
   writtenOffValue: ZERO,
+  closedQty: ZERO,
 });
+
+/** The challans among `receiptIds`' lines that a receipt closed — one read. */
+async function closedIssueIds(
+  tx: TenantClient,
+  organizationId: string,
+  receiptIds: readonly string[],
+): Promise<Set<string>> {
+  if (receiptIds.length === 0) return new Set();
+  const rows = await tx.jobReceiptLine.findMany({
+    where: {
+      organizationId,
+      jobReceiptId: { in: [...receiptIds] },
+      closesChallan: true,
+      isDeleted: false,
+    },
+    distinct: ['jobIssueId'],
+    select: { jobIssueId: true },
+  });
+  return new Set(rows.flatMap((row) => (row.jobIssueId ? [row.jobIssueId] : [])));
+}
 
 /**
  * 🔴 ONE RETURNED ITEM'S TOTALS — the output side, and a separate shape from
@@ -321,11 +345,13 @@ async function getItemFlows(
   if (issueIds.length > 0) {
     const lines = await tx.jobIssueLine.findMany({
       where: { organizationId, jobIssueId: { in: [...issueIds] }, isDeleted: false },
-      select: { qty: true, itemId: true },
+      select: { qty: true, itemId: true, jobIssueId: true },
     });
+    const closed = await closedIssueIds(tx, organizationId, receiptIds);
     for (const line of lines) {
       const flow = of(line.itemId);
       flow.issuedQty = flow.issuedQty.plus(line.qty);
+      if (closed.has(line.jobIssueId)) flow.closedQty = flow.closedQty.plus(line.qty);
     }
   }
 
@@ -607,6 +633,8 @@ export async function getAllStepTotals(
         })
       : [];
 
+  const allClosed = await closedIssueIds(tx, organizationId, receiptIds);
+
   const sum = (rows: { [k: string]: unknown }[], key: string) =>
     rows.reduce((acc, row) => acc.plus(new Prisma.Decimal(String(row[key] ?? 0))), ZERO);
 
@@ -633,6 +661,7 @@ export async function getAllStepTotals(
     for (const line of stepLines) {
       const flow = of(line.itemId);
       flow.issuedQty = flow.issuedQty.plus(line.qty);
+      if (allClosed.has(line.jobIssueId)) flow.closedQty = flow.closedQty.plus(line.qty);
     }
     for (const row of stepConsumed) {
       const flow = of(row.itemId);

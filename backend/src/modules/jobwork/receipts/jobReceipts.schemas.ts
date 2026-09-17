@@ -411,6 +411,15 @@ export const createJobReceiptSchema = openApiRegistry.register(
        * consignments together (§6.1). */
       issueIds: z.array(z.string().uuid()),
 
+      /**
+       * 🔴 The ticked challans this receipt CLOSES — nothing more comes back on
+       * them, so everything still out on each is consumed here and lands in the
+       * goods' cost (challan-closure R10). Per challan, never per receipt: the last
+       * lot may finish one challan and not another. Each must also be in
+       * `issueIds`. Omitted means none.
+       */
+      closedIssueIds: z.array(z.string().uuid()).optional(),
+
       /** Defaults to the step's receive item. Editable: what comes back is
        * sometimes not what was planned, and forcing a job order edit to record that
        * is how people stop recording it. */
@@ -451,6 +460,13 @@ export const createJobReceiptSchema = openApiRegistry.register(
       saveAsDraft: z.boolean().optional(),
     })
     .superRefine((data, ctx) => {
+      if ((data.closedIssueIds ?? []).some((id) => !data.issueIds.includes(id))) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'A challan can only be closed by a receipt that is received against it.',
+          path: ['closedIssueIds'],
+        });
+      }
       if (!data.saveAsDraft) {
         if (data.issueIds.length === 0) {
           ctx.addIssue({

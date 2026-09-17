@@ -1164,6 +1164,12 @@ model JobReceiptLine {
   issuedQty   Decimal @default(0) @map("issued_qty") @db.Decimal(18, 4)
   receivedQty Decimal @default(0) @map("received_qty") @db.Decimal(18, 4)
 
+  /// Landed-cost R10: this receipt closed the line's challan — nothing more comes
+  /// back on it, so everything outstanding was consumed here. Recorded, not
+  /// inferred from a zero balance, so a deliberate closure can be told apart from
+  /// a challan that merely came out even. Counts only while the receipt is posted.
+  closesChallan Boolean @default(false) @map("closes_challan")
+
   acceptedQty Decimal @default(0) @map("accepted_qty") @db.Decimal(18, 4)
   reworkQty   Decimal @default(0) @map("rework_qty") @db.Decimal(18, 4)
   scrapQty    Decimal @default(0) @map("scrap_qty") @db.Decimal(18, 4)

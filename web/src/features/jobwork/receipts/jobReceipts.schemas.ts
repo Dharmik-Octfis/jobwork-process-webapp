@@ -22,6 +22,8 @@ export const jobReceiptLineSchema = z.object({
   jobIssueLineId: z.string().nullable(),
   issuedQty: z.union([z.string(), z.number()]),
   receivedQty: z.union([z.string(), z.number()]),
+  /** This receipt closed the line's challan (challan-closure R10). */
+  closesChallan: z.boolean().default(false),
   acceptedQty: z.union([z.string(), z.number()]),
   reworkQty: z.union([z.string(), z.number()]),
   scrapQty: z.union([z.string(), z.number()]),
@@ -188,6 +190,18 @@ export const receivePrefillSchema = z.object({
       destinationName: z.string().nullable(),
     }),
   ),
+  /** Challans a posted receipt closed — nothing more is received on them until
+   * that receipt is cancelled (challan-closure R14). */
+  closedIssues: z
+    .array(
+      z.object({
+        id: z.string(),
+        challanNumber: z.string(),
+        closedByReceiptId: z.string(),
+        closedByReceiptNumber: z.string(),
+      }),
+    )
+    .default([]),
   lines: z.array(
     z.object({
       jobIssueId: z.string(),
@@ -329,6 +343,9 @@ export interface CreateJobReceiptData {
   jobOrderStepId: string;
   receiptDate?: string;
   issueIds: string[];
+  /** The ticked challans this receipt closes: everything still out on each is
+   * consumed here (challan-closure R10). Each must also be in `issueIds`. */
+  closedIssueIds?: string[];
   /** @deprecated The returned set lives in `outputs`; these describe the primary
    * alone and go with Migration B. */
   outputItemId?: string | null;

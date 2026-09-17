@@ -480,7 +480,9 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   });
 
   /* What completing will write off (landed-cost R8). One figure only makes sense
-     for a one-input step — metres, cones and pieces cannot be added together. */
+     for a one-input step — metres, cones and pieces cannot be added together.
+     🔴 Not certain loss: shrinkage belongs in cost, which closing the challan on its
+     last receipt does (challan-closure R10) — so the warning says so before it posts. */
   const completeOutstanding = completeStepTarget
     ? toNumber(completeStepTarget.totals.outstandingQty)
     : 0;
@@ -491,9 +493,11 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   const completeWriteOff =
     completeOutstanding <= 0
       ? 'Nothing is still with the processor, so nothing will be written off.'
-      : completeStepTarget && completeStepTarget.inputs.length <= 1
-        ? `${qtyWithUnit(completeOutstanding, completeUom ? (completeUom.symbol ?? completeUom.unitName) : '')} is still with the processor and will be written off as job order loss.`
-        : 'Whatever is still with the processor will be written off as job order loss.';
+      : `${
+          completeStepTarget && completeStepTarget.inputs.length <= 1
+            ? `${qtyWithUnit(completeOutstanding, completeUom ? (completeUom.symbol ?? completeUom.unitName) : '')} is still with the processor`
+            : 'Some material is still with the processor'
+        } and will be written off as job order loss. If it was normal shrinkage rather than missing, cancel this and close the challan on its last receipt instead, so it goes into the cost of the goods.`;
 
   const completeStep = useMutation({
     mutationFn: (stepId: string) => completeJobOrderStep(orgId!, id!, stepId),

@@ -253,20 +253,10 @@ export function JobOrderStepDetail({
                 remaining: row.remainingQty
                   ? qtyWithUnit(row.remainingQty, row.uomSymbol)
                   : undefined,
-                // 🔴 Where the material stands: still at the processor until the
-                // step is completed, then written off as job order loss (R8).
-                detail:
-                  toNumber(row.writtenOffQty) > 0
-                    ? {
-                        text: `${qtyWithUnit(row.writtenOffQty, row.uomSymbol)} written off · ${formatMoney(row.writtenOffValue)} loss`,
-                        tone: 'loss' as const,
-                      }
-                    : toNumber(row.stillOutQty) > 0
-                      ? {
-                          text: `${qtyWithUnit(row.stillOutQty, row.uomSymbol)} still at the processor`,
-                          tone: 'muted' as const,
-                        }
-                      : undefined,
+                // 🔴 Where the material stands — three states, not two: still at the
+                // processor, on a closed challan (consumed into cost, challan-closure
+                // R10), or written off as job order loss when the step completed (R8).
+                detail: materialStanding(row),
               }))}
               empty="Nothing issued yet."
             />
@@ -613,6 +603,28 @@ interface MovementRow {
   remaining?: string;
   /** One line under the item: where its material stands, or what it landed at. */
   detail?: { text: string; tone: 'muted' | 'loss' };
+}
+
+function materialStanding(row: {
+  uomSymbol: string | null;
+  stillOutQty: string;
+  closedQty: string;
+  writtenOffQty: string;
+  writtenOffValue: string;
+}): MovementRow['detail'] {
+  const parts = [
+    toNumber(row.stillOutQty) > 0
+      ? `${qtyWithUnit(row.stillOutQty, row.uomSymbol)} still at the processor`
+      : null,
+    toNumber(row.closedQty) > 0
+      ? `${qtyWithUnit(row.closedQty, row.uomSymbol)} on closed challans`
+      : null,
+    toNumber(row.writtenOffQty) > 0
+      ? `${qtyWithUnit(row.writtenOffQty, row.uomSymbol)} written off · ${formatMoney(row.writtenOffValue)} loss`
+      : null,
+  ].filter((part): part is string => part !== null);
+  if (parts.length === 0) return undefined;
+  return { text: parts.join(' · '), tone: toNumber(row.writtenOffQty) > 0 ? 'loss' : 'muted' };
 }
 
 /**

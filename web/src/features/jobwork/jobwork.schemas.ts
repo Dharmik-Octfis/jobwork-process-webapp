@@ -432,7 +432,9 @@ export function planWarnings(
 
 /**
  * 🔴 THE RECEIPT COST PREVIEW — the client's copy of the server's landed-cost
- * engine (`receipts/landedCost.ts`, plan R1–R7). Keep the two in step.
+ * engine (`receipts/landedCost.ts`, plan R1–R7) and of challan closure R11–R12
+ * (`usedByItem`'s floor, `allocateConsumption`'s closed-first walk). Keep the two
+ * in step.
  *
  * It only lets the gate see the figure before pressing Receive: the server works
  * the same thing out from what it actually posts, and that is the number stored.
@@ -452,6 +454,8 @@ export interface CostPreviewLine {
   outstanding: number;
   /** The batch's cost per unit at the processor. */
   unitCost: number;
+  /** On a challan this receipt closes — consumed to zero, and served first (R11–R12). */
+  closed?: boolean;
 }
 
 export interface CostPreviewReturned {
@@ -465,7 +469,10 @@ export interface UsedPreview {
   outstanding: number;
   /** The plan's figure (R3), before any cap. */
   calculated: number;
-  /** What is used when nothing is typed: the calculation, capped at what is out. */
+  /** What the closed challans still hold of this item — used at least this (R11). */
+  floor: number;
+  /** What is used when nothing is typed: the calculation raised to the floor,
+   * capped at what is out. */
   suggested: number;
   used: number;
   /** Material value of `used`, FIFO across the lines. */
@@ -476,6 +483,10 @@ export interface UsedPreview {
   overOutstanding: boolean;
   /** Typed, but nothing received draws on it — the server refuses it. */
   undrawn: boolean;
+  /** Typed below what closing consumes — the server refuses it (R11). */
+  belowFloor: boolean;
+  /** On a closed challan, but nothing received draws on it — the server refuses it (R13). */
+  closedUndrawn: boolean;
 }
 
 export interface OutputCostPreview {
@@ -558,19 +569,27 @@ export function receiptCostPreview(input: {
     if (byOutput.size > 0) needs.set(inputItemId, byOutput);
   }
 
-  // R4 + R5: what each input uses, what that is worth, and where the value goes.
+  // R12: closed challans' lines first, then oldest first — a stable sort keeps both orders.
+  const walk = [...lines].sort((a, b) => Number(Boolean(b.closed)) - Number(Boolean(a.closed)));
+
+  // R4 + R5 + R11: what each input uses, what that is worth, and where the value goes.
   const used = new Map<string, UsedPreview>();
   const material = new Map<string, number>();
   for (const [itemId, out] of outstanding) {
     const byOutput = needs.get(itemId);
     const calculated = round4([...(byOutput?.values() ?? [])].reduce((sum, n) => sum + n, 0));
-    const suggested = Math.min(calculated, out);
+    const floor = round4(
+      lines
+        .filter((line) => line.closed && line.itemId === itemId)
+        .reduce((sum, line) => sum + line.outstanding, 0),
+    );
+    const suggested = Math.min(Math.max(calculated, floor), out);
     const typedQty = typed.get(itemId);
     const qty = typedQty ?? suggested;
 
     let left = qty;
     let value = 0;
-    for (const line of lines) {
+    for (const line of walk) {
       if (line.itemId !== itemId || left <= 0) continue;
       const take = Math.min(left, line.outstanding);
       value = round4(value + take * line.unitCost);
@@ -580,12 +599,15 @@ export function receiptCostPreview(input: {
     used.set(itemId, {
       outstanding: out,
       calculated,
+      floor,
       suggested,
       used: qty,
       value,
       capped: typedQty === undefined && calculated - out > 0.001,
       overOutstanding: typedQty !== undefined && typedQty - out > 0.00005,
       undrawn: typedQty !== undefined && typedQty > 0 && calculated <= 0,
+      belowFloor: typedQty !== undefined && floor - typedQty > 0.00005,
+      closedUndrawn: floor > 0 && calculated <= 0,
     });
 
     if (!byOutput) continue;

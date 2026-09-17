@@ -363,7 +363,7 @@ An empty list now means an empty list, and the grid says so in words rather than
 | Process name, processor      | `SNAP`   | The `job_order_steps` row                                                                                                                                                                                        |
 | Step status                  | `CALC+`  | From issued vs received balances                                                                                                                                                                                 |
 | `In item qty → Out item qty` | `CALC`   | Issued from `job_issue_lines`; received from `job_receipt_lines` where `disposition = 'accepted'`                                                                                                                |
-| Still out / written off      | `CALC`   | Per input item: issued − used − written off; once the step is completed, the written-off qty and its value (job order loss)                                                                                      |
+| Still out / written off      | `CALC`   | Per input item: issued − used − written off; the qty issued on challans a receipt closed (consumed into cost); once the step is completed, the written-off qty and its value (job order loss)                    |
 | Landed cost / accepted unit  | `CALC`   | Per output: Σ over posted receipt rows of (material × accepted ÷ (accepted + rework) + charge) ÷ Σ accepted, from the stored snapshots. Hidden at ₹0 — receipts posted before landed costing stored no breakdown |
 | "2 issues · 3 receipts"      | `CALC`   | `COUNT` over the two child tables                                                                                                                                                                                |
 | ⚠ rework banner              | `CALC`   | `EXISTS` a receipt line with `disposition = 'rework'` and no closing issue                                                                                                                                       |
@@ -571,6 +571,14 @@ is made from, disables Receive. 🔴 It replaced "a receipt settles its challans
 process-loss strip: what is not used stays at the processor until the step is completed. Grouped per item rather than one total, because a bulk line that does not say
 which item it settles makes the allocation walk every open challan line oldest-first — and settle a
 panel receipt by consuming thread.
+
+**Close, per challan (2026-09-17, `JOBWORK_CHALLAN_CLOSURE_PLAN.md`):** each ticked challan in
+"Received against" carries a **Close** checkbox, never pre-ticked, with **Close all** beside the
+heading. Closing floors Used at everything still out on that challan — the grid names the plan's
+figure and the challan requiring the rest — and the challan's lines are consumed first. It posts as
+`closedIssueIds`, is stored as `job_receipt_lines.closes_challan`, and survives a draft. A challan a
+posted receipt closed shows as **Closed · JR-…** and cannot be ticked until that receipt is cancelled.
+A typed Used below the floor is marked red and refused on save with a toast.
 
 🔴 **The consumption record is written per resolved ALLOCATION, not per request row** (2026-08-07).
 `allocateConsumption` works out which challan lines a receipt closes in order to post the ledger;

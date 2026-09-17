@@ -2,7 +2,8 @@ import { Prisma } from '../../../../generated/prisma/client.ts';
 import { splitByQty } from '../../../lib/splitByQty.ts';
 
 /**
- * 🔴 THE LANDED-COST ENGINE (docs/JOBWORK_LANDED_COST_PLAN.md §3, R1–R7) — pure
+ * 🔴 THE LANDED-COST ENGINE (docs/JOBWORK_LANDED_COST_PLAN.md §3, R1–R7, and
+ * docs/JOBWORK_CHALLAN_CLOSURE_PLAN.md §3, R10–R14) — pure
  * arithmetic, no database. `jobReceipts.service.ts` feeds it the step's frozen
  * plan and what came back, and posts what it returns.
  *
@@ -124,34 +125,49 @@ export interface UsedResult {
   capped: string[];
   /** Typed, but nothing on the receipt draws on it — the caller refuses these. */
   undrawn: string[];
+  /** Typed below what closing a challan consumes — the caller refuses these (R11). */
+  belowFloor: string[];
+  /** On a closed challan, but nothing on the receipt draws on it — refused (R13). */
+  closedUndrawn: string[];
 }
 
 /**
- * R4 — how much of each input this receipt uses: the typed figure where one was
- * given, otherwise the need capped at what is still outstanding.
+ * R4 + R11 — how much of each input this receipt uses: the typed figure where one
+ * was given, otherwise the need capped at what is still outstanding.
+ *
+ * `closedFloor` is what the challans this receipt closes still hold, per item
+ * (challan-closure R11). Closing one consumes all of it, so it is a floor under
+ * both branches: `min(max(need, floor), outstanding)`. The floor never warns —
+ * it is a decision, not a surprise.
  */
 export function usedByItem(
   needs: NeedTable,
   inputItemIds: readonly string[],
   typed: ReadonlyMap<string, Prisma.Decimal>,
   outstanding: ReadonlyMap<string, Prisma.Decimal>,
+  closedFloor: ReadonlyMap<string, Prisma.Decimal> = new Map(),
 ): UsedResult {
   const used = new Map<string, Prisma.Decimal>();
   const capped: string[] = [];
   const undrawn: string[] = [];
+  const belowFloor: string[] = [];
+  const closedUndrawn: string[] = [];
   for (const itemId of new Set(inputItemIds)) {
     const need = [...(needs.get(itemId)?.values() ?? [])].reduce((sum, n) => sum.plus(n), ZERO);
+    const floor = closedFloor.get(itemId) ?? ZERO;
+    if (floor.greaterThan(0) && need.lessThanOrEqualTo(0)) closedUndrawn.push(itemId);
     const typedQty = typed.get(itemId);
     if (typedQty !== undefined) {
       used.set(itemId, typedQty);
       if (typedQty.greaterThan(0) && need.lessThanOrEqualTo(0)) undrawn.push(itemId);
+      if (typedQty.lessThan(floor)) belowFloor.push(itemId);
       continue;
     }
     const out = outstanding.get(itemId) ?? ZERO;
-    used.set(itemId, Prisma.Decimal.min(need, out));
+    used.set(itemId, Prisma.Decimal.min(Prisma.Decimal.max(need, floor), out));
     if (need.minus(out).greaterThan(CAP_NOISE)) capped.push(itemId);
   }
-  return { used, capped, undrawn };
+  return { used, capped, undrawn, belowFloor, closedUndrawn };
 }
 
 /**

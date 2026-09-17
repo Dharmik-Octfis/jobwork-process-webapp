@@ -137,6 +137,9 @@ export const stepItemTotalsSchema = z.object({
   remainingQty: z.string().nullable(),
   /** Issued, not yet used by a receipt nor written off (landed-cost §6.7). */
   stillOutQty: z.string().default('0'),
+  /** Issued on challans a receipt closed — consumed into the goods' cost, not loss
+   * (challan-closure R10). */
+  closedQty: z.string().default('0'),
   /** Written off when the step was completed or closed short — job order loss. */
   writtenOffQty: z.string().default('0'),
   writtenOffValue: z.string().default('0'),

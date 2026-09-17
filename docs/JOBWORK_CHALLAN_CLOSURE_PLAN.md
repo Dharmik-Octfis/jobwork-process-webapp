@@ -1,14 +1,39 @@
 # Challan closure — normal process loss inside landed cost
 
-**Status: planned 2026-09-16. NOTHING BUILT.** Agreed over 2026-09-15 → 16, from the question "what
-happens when the good quantity that comes back is less or more than Expected?".
+**Status: planned 2026-09-16, BUILT 2026-09-17 (phases 1–6).** Agreed over 2026-09-15 → 16, from the
+question "what happens when the good quantity that comes back is less or more than Expected?".
+
+🔴 **Migration `20260917043300_add_closes_challan` is applied to `jobwork_local` only**, together with
+the previously pending `20260916121656_drop_item_default_tolerance`. Neither is on QC's `jobwork_dev`:
+per §7, apply there only once the deployed app runs this code.
+
+**Where the build differs from the text below:**
+
+- `usedByItem` takes `closedFloor` as an optional **fifth** argument, not a fourth — every existing
+  caller and test keeps its shape. It also returns `closedUndrawn` (R13) beside `belowFloor`.
+- **R10 is also asserted** after allocation, and a posted closure of a challan that consumed nothing
+  still writes one zero-quantity line carrying `closes_challan`, so the closure is always recorded (C5).
+- **Posting a draft re-expresses typed figures as one bulk line per item a closure touches.** A draft
+  parks typed quantities on named challan lines, which are consumed exactly as named; if another receipt
+  moved the outstanding in between, they would no longer empty the closed challan.
+- **R14 refuses drafts too**, and the prefill returns `closedIssues` so the Receive screen shows
+  "Closed · JR-…" rather than dropping the challan like one that merely came out even. A draft that
+  names a challan closed since is saved without it.
+- **Below the floor is not blocked on the client**: the field is marked red and the server's refusal is
+  the toast (CLAUDE.md field-error rule). Undrawn and above-outstanding keep blocking Receive as before.
+- `ReceiptDetail`'s "Closes" row, which listed every challan received against, is now **Challans**, with
+  the closed ones badged. The step detail joins the states it applies rather than choosing one:
+  "500 m still at the processor · 300 m on closed challans".
+- Test 23's allocation proof and 26's "above the floor wins" use two challans; two extra tests pin that
+  a receipt without a closure still allocates oldest first, and that a draft posted after its challan's
+  outstanding moved still empties it.
 
 This is an **addition to** `JOBWORK_LANDED_COST_PLAN.md`, not a replacement. R1–R9 stand exactly as
 they are; this plan adds R10–R14 and one boolean column. It fixes one thing that plan got wrong: it
 books ordinary process shrinkage as **loss at completion**, when it belongs **inside the cost of the
 goods**.
 
-🔴 **Every decision is settled — §0 was answered 2026-09-16. Ready to build: start at §9 phase 1.**
+Every decision was settled — §0 was answered 2026-09-16.
 
 ---
 

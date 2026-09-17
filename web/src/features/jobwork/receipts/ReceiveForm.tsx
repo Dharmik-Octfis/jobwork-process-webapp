@@ -239,6 +239,22 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
    * user's job, not a guess the system makes by pre-selecting every open
    * challan against the processor's historical load.
    */
+  /**
+   * 🔴 The ticked challans this receipt CLOSES (challan-closure R10). Never a
+   * default (C3): a pre-ticked Close would empty challans on every partial receipt.
+   * A draft restores what it saved.
+   */
+  const [closedIds, setClosedIds] = useState<string[]>(() =>
+    draft
+      ? [
+          ...new Set(
+            draft.lines.flatMap((line) =>
+              line.closesChallan && line.jobIssueId ? [line.jobIssueId] : [],
+            ),
+          ),
+        ]
+      : [],
+  );
   const [returnedEdits, setReturnedEdits] = useState<ReturnedRow[] | null>(null);
   const [receiptDate, setReceiptDate] = useState(
     (draft?.receiptDate ?? new Date().toISOString()).slice(0, 10),
@@ -460,7 +476,22 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
   const inUnit = inUom?.symbol ?? inUom?.unitName ?? '';
 
   // Checked challans. By default, none are checked (unlike before where all were).
-  const selectedIssueIds = pickedIssueIds;
+  // A draft may name a challan another receipt has closed since; it cannot be
+  // received against, and is not on screen to untick, so it is dropped (R14).
+  const selectedIssueIds = useMemo(
+    () =>
+      pickedIssueIds.filter(
+        (id) => !(prefill?.closedIssues ?? []).some((issue) => issue.id === id),
+      ),
+    [pickedIssueIds, prefill],
+  );
+  // Unticking a challan un-closes it — closing needs the challan on the receipt.
+  const closedIssueIds = useMemo(
+    () => closedIds.filter((id) => selectedIssueIds.includes(id)),
+    [closedIds, selectedIssueIds],
+  );
+  const challanNumberOf = (id: string) =>
+    prefill?.issues.find((issue) => issue.id === id)?.challanNumber ?? 'the challan';
   /* A draft saved before the filter came back may name an unrelated processor's
      location. Ignoring it rather than carrying it forward keeps the field honest —
      held as a hidden value it is not in the dropdown, so the operator sees a blank
@@ -648,6 +679,7 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
           itemId: line.itemId!,
           outstanding: toNumber(line.issuedQty),
           unitCost: toNumber(line.unitCost),
+          closed: closedIssueIds.includes(line.jobIssueId),
         })),
       returned: effectiveReturned.map((row) => ({
         itemId: row.itemId,
@@ -661,7 +693,19 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
         ),
       ),
     });
-  }, [prefill, selectedIssueIds, isRework, effectiveReturned, usedEdits]);
+  }, [prefill, selectedIssueIds, closedIssueIds, isRework, effectiveReturned, usedEdits]);
+
+  /** Which closed challans still hold each item — named under its Used box (R11). */
+  const closingChallansByItem = useMemo(() => {
+    const byItem = new Map<string, string[]>();
+    for (const line of prefill?.lines ?? []) {
+      if (!line.itemId || !closedIssueIds.includes(line.jobIssueId)) continue;
+      const names = byItem.get(line.itemId) ?? [];
+      if (!names.includes(line.challanNumber)) names.push(line.challanNumber);
+      byItem.set(line.itemId, names);
+    }
+    return byItem;
+  }, [prefill, closedIssueIds]);
 
   /** A typed Used the server will refuse — above what is out, or drawn on by nothing. */
   const usedBlocked = [...(cost?.used.values() ?? [])].some(
@@ -817,6 +861,7 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
         jobOrderStepId: step.id,
         receiptDate: receiptDate || undefined,
         issueIds: selectedIssueIds,
+        closedIssueIds,
         locationId: effectiveLocationId,
         lines,
         outputs: effectiveReturned
@@ -1141,50 +1186,163 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                 wrongly even then: nothing was ever scrapped by ticking a box. A
                 challan now stays out until its material is accounted for, so
                 there is nothing to warn about. */}
-            <h3 style={sectionHeading}>Received against</h3>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                flexWrap: 'wrap',
+                marginBottom: 10,
+              }}
+            >
+              <h3 style={{ ...sectionHeading, margin: 0 }}>Received against</h3>
+              {/* A job finishing normally closes every challan — eight hand-ticks is
+                  how one gets missed. */}
+              {selectedIssueIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setClosedIds(
+                      closedIssueIds.length === selectedIssueIds.length ? [] : selectedIssueIds,
+                    )
+                  }
+                  style={{
+                    minHeight: 44,
+                    padding: '0 4px',
+                    border: 'none',
+                    background: 'none',
+                    color: '#0062ff',
+                    fontSize: 12.5,
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {closedIssueIds.length === selectedIssueIds.length
+                    ? 'Keep all open'
+                    : 'Close all'}
+                </button>
+              )}
+            </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-              {prefill.issues.length === 0 && (
+              {prefill.issues.length === 0 && prefill.closedIssues.length === 0 && (
                 <span style={{ fontSize: 13, color: '#64748b' }}>
                   Nothing is currently out against this step.
                 </span>
               )}
-              {prefill.issues.map((issue) => (
-                <label
+              {prefill.issues.map((issue) => {
+                const ticked = selectedIssueIds.includes(issue.id);
+                const closed = closedIssueIds.includes(issue.id);
+                const hasError =
+                  Boolean(fieldErrors.issueIds || fieldErrors.lines) ||
+                  (closed && Boolean(fieldErrors.closedIssueIds));
+                return (
+                  <div
+                    key={issue.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'stretch',
+                      // No challan ticked posts no lines — the server refuses both keys.
+                      border: `1px solid ${hasError ? '#ef4444' : closed ? '#fcd34d' : '#e2e8f0'}`,
+                      background: closed ? '#fffbeb' : '#fff',
+                      borderRadius: 4,
+                      fontSize: 13,
+                      color: '#334155',
+                    }}
+                  >
+                    <label
+                      style={{
+                        display: 'flex',
+                        gap: 8,
+                        alignItems: 'center',
+                        minHeight: 44,
+                        padding: '0 12px',
+                        boxSizing: 'border-box',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={ticked}
+                        onChange={(e) =>
+                          setPickedIssueIds(
+                            e.target.checked
+                              ? [...selectedIssueIds, issue.id]
+                              : selectedIssueIds.filter((id) => id !== issue.id),
+                          )
+                        }
+                      />
+                      {issue.challanNumber}
+                      <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                        {formatQty(issue.totalQty)} {inUnit}
+                        {issue.isRework ? ` · rework #${issue.attemptNo}` : ''}
+                      </span>
+                    </label>
+                    {/* 🔴 Per challan, never per receipt (C1) — and only on a ticked
+                        one, since closing consumes what this receipt draws on it. */}
+                    {ticked && (
+                      <label
+                        style={{
+                          display: 'flex',
+                          gap: 6,
+                          alignItems: 'center',
+                          minHeight: 44,
+                          padding: '0 12px',
+                          boxSizing: 'border-box',
+                          borderLeft: `1px solid ${closed ? '#fcd34d' : '#e2e8f0'}`,
+                          fontSize: 12.5,
+                          color: closed ? '#92400e' : '#475569',
+                          fontWeight: closed ? 600 : 400,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={closed}
+                          aria-label={`Close ${issue.challanNumber} — nothing more comes back on it`}
+                          onChange={(e) =>
+                            setClosedIds(
+                              e.target.checked
+                                ? [...closedIssueIds, issue.id]
+                                : closedIssueIds.filter((id) => id !== issue.id),
+                            )
+                          }
+                        />
+                        Close
+                      </label>
+                    )}
+                  </div>
+                );
+              })}
+              {/* Closed by a posted receipt: not receivable, and not silently gone —
+                  cancelling that receipt is how it reopens (R14). */}
+              {prefill.closedIssues.map((issue) => (
+                <div
                   key={issue.id}
                   style={{
                     display: 'flex',
                     gap: 8,
                     alignItems: 'center',
-                    padding: '8px 12px',
-                    // No challan ticked posts no lines — the server refuses both keys.
-                    border: `1px solid ${fieldErrors.issueIds || fieldErrors.lines ? '#ef4444' : '#e2e8f0'}`,
+                    minHeight: 44,
+                    padding: '0 12px',
+                    boxSizing: 'border-box',
+                    border: '1px dashed #e2e8f0',
                     borderRadius: 4,
                     fontSize: 13,
-                    color: '#334155',
-                    cursor: 'pointer',
+                    color: '#94a3b8',
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={selectedIssueIds.includes(issue.id)}
-                    onChange={(e) =>
-                      // The first tick materialises the "all open" default
-                      // into a real list, and every one after edits it.
-                      setPickedIssueIds(
-                        e.target.checked
-                          ? [...selectedIssueIds, issue.id]
-                          : selectedIssueIds.filter((id) => id !== issue.id),
-                      )
-                    }
-                  />
                   {issue.challanNumber}
-                  <span style={{ fontSize: 11, color: '#94a3b8' }}>
-                    {formatQty(issue.totalQty)} {inUnit}
-                    {issue.isRework ? ` · rework #${issue.attemptNo}` : ''}
-                  </span>
-                </label>
+                  <span style={{ fontSize: 11 }}>Closed · {issue.closedByReceiptNumber}</span>
+                </div>
               ))}
             </div>
+            {closedIssueIds.length > 0 && (
+              <p style={{ fontSize: 12, color: '#92400e', margin: '8px 0 0 0' }}>
+                Nothing more can be received on {closedIssueIds.map(challanNumberOf).join(', ')}{' '}
+                unless this receipt is cancelled.
+              </p>
+            )}
           </section>
 
           {/*
@@ -1465,7 +1623,8 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
               <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 8px 0', lineHeight: 1.5 }}>
                 Worked out from the job order&apos;s plan as quantities are typed above. Type the
                 processor&apos;s own figure to use that instead; clear it to go back to the
-                calculation. Whatever is not used stays with the processor.
+                calculation. Whatever is not used stays with the processor — unless its challan is
+                closed, which uses all of it.
               </p>
               {mixedRework && (
                 <p role="alert" style={{ fontSize: 12, color: '#b91c1c', margin: '0 0 8px 0' }}>
@@ -1502,9 +1661,13 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                     </thead>
                     <tbody>
                       {rows.map((row, lineIndex) => {
-                        const usedError = errorAt(`lines.${lineIndex}`);
                         const used = row.itemId ? cost?.used.get(row.itemId) : undefined;
+                        // Below the floor is marked here and refused with a toast on save (R11).
+                        const usedError = errorAt(`lines.${lineIndex}`) || used?.belowFloor;
                         const edited = row.itemId ? (usedEdits[row.itemId] ?? null) : null;
+                        const closingChallans = row.itemId
+                          ? (closingChallansByItem.get(row.itemId) ?? [])
+                          : [];
                         return (
                           <tr key={row.key} style={{ borderBottom: '1px solid #f4f5f7' }}>
                             <td style={td}>
@@ -1537,6 +1700,18 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                               {used && edited !== null && (
                                 <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 3 }}>
                                   Calculated {formatQty(used.suggested)} {row.unit}
+                                </div>
+                              )}
+                              {/* Without these two lines a closure's figure looks invented. */}
+                              {used && used.floor > 0 && (
+                                <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 3 }}>
+                                  <div>
+                                    ↳ plan needs {formatQty(used.calculated)} {row.unit}
+                                  </div>
+                                  <div style={{ color: '#92400e' }}>
+                                    ↳ {formatQty(used.floor)} {row.unit} required by closing{' '}
+                                    {closingChallans.join(', ')}
+                                  </div>
                                 </div>
                               )}
                               {used?.capped && (

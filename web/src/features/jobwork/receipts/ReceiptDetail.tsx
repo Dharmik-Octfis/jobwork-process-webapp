@@ -237,13 +237,19 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
   const primaryOutput = receipt.outputs.find((row) => row.isPrimary) ?? receipt.outputs[0];
   const unit = primaryOutput?.uom ? (primaryOutput.uom.symbol ?? primaryOutput.uom.unitName) : '';
 
-  /** The challans this receipt closes, deduplicated — several consumed lines
-   * usually point at the same one. */
-  const closedChallans = [
+  /** The challans this receipt is received against, deduplicated — several consumed
+   * lines usually point at the same one. */
+  const againstChallans = [
     ...new Set(
       receipt.lines.flatMap((line) => (line.jobIssue ? [line.jobIssue.challanNumber] : [])),
     ),
   ];
+  /** …and the ones it CLOSED: nothing more is received on them (challan-closure R10). */
+  const closedChallans = new Set(
+    receipt.lines.flatMap((line) =>
+      line.closesChallan && line.jobIssue ? [line.jobIssue.challanNumber] : [],
+    ),
+  );
 
   /** What it consumed, per item. The lines are per challan LINE, so several
    * usually share an item. */
@@ -480,25 +486,31 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
                 is how anybody gets from goods on the shelf back to the paperwork
                 they travelled on.
               */}
-                <td style={rowLabel}>Closes</td>
+                <td style={rowLabel}>Challans</td>
                 <td style={rowValue}>
-                  {closedChallans.length === 0 ? (
+                  {againstChallans.length === 0 ? (
                     '-'
                   ) : (
                     <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {closedChallans.map((challan) => (
+                      {againstChallans.map((challan) => (
                         <span
                           key={challan}
+                          title={
+                            closedChallans.has(challan)
+                              ? 'Closed by this receipt — cancel it to reopen'
+                              : undefined
+                          }
                           style={{
                             padding: '1px 8px',
                             borderRadius: 10,
                             fontSize: 11,
                             fontWeight: 600,
-                            background: '#eff6ff',
-                            color: '#1d4ed8',
+                            background: closedChallans.has(challan) ? '#fef3c7' : '#eff6ff',
+                            color: closedChallans.has(challan) ? '#92400e' : '#1d4ed8',
                           }}
                         >
                           {challan}
+                          {closedChallans.has(challan) ? ' · Closed' : ''}
                         </span>
                       ))}
                     </span>

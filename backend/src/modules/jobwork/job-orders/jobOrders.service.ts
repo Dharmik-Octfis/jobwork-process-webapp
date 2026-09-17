@@ -2128,13 +2128,17 @@ function buildItemTotals(
   const unitOf = (uom: { symbol: string | null; unitName: string } | null | undefined) =>
     uom ? (uom.symbol ?? uom.unitName) : null;
 
-  /** Where an input's material stands (landed-cost §6.7): still at the processor
-   * until the step is completed, then written off as job order loss. */
+  /** Where an input's material stands (landed-cost §6.7): still at the processor,
+   * on a challan a receipt closed (consumed into cost, challan-closure R10), or
+   * written off as job order loss when the step was completed. */
   const atProcessor = (flow: ItemFlow | undefined) => {
-    if (!flow) return { stillOutQty: '0', writtenOffQty: '0', writtenOffValue: '0' };
+    if (!flow) {
+      return { stillOutQty: '0', closedQty: '0', writtenOffQty: '0', writtenOffValue: '0' };
+    }
     const stillOut = flow.issuedQty.minus(flow.consumedQty).minus(flow.writtenOffQty);
     return {
       stillOutQty: stillOut.greaterThan(0) ? stillOut.toString() : '0',
+      closedQty: flow.closedQty.toString(),
       writtenOffQty: flow.writtenOffQty.toString(),
       writtenOffValue: flow.writtenOffValue.toString(),
     };

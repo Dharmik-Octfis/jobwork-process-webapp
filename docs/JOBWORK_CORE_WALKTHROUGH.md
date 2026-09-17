@@ -422,6 +422,7 @@ that came back used, consumes exactly that, and leaves the rest at the processor
 | The plan ratio (`k`)                      | `planned ÷ Σ(expected × w)` per input item — it carries the expected loss and, across a unit change, the conversion. Rework uses `k = 1`                                                                        |
 | Need                                      | `(accepted + rework) × w × k`, to 4 dp                                                                                                                                                                          |
 | Used                                      | The typed figure (refused above what is still out, or when nothing returned draws on the item), else `min(need, still out)` — a cap is a warning, never a refusal. Allocated oldest challan line first          |
+| Closing a challan (2026-09-17)            | Ticked per challan. Used is at least everything still out on the closed challans (a typed figure below that is refused), and their lines are allocated first. Stored as `job_receipt_lines.closes_challan`      |
 | Material value per row                    | Each input's consumed value split across the rows that draw on it **by need**, through `splitByQty`                                                                                                             |
 | Charge per row                            | `rate × accepted`. The rate on the receipt row, else the job order output's; `null` = ₹0                                                                                                                        |
 | Accepted vs rework                        | The row's material splits by quantity; the charge lands on accepted only                                                                                                                                        |
@@ -429,7 +430,9 @@ that came back used, consumes exactly that, and leaves the rest at the processor
 
 **What it refuses:** an item the step's plan does not list (first pass); a composite output with no
 recipe frozen onto the job order; rework and first-pass challans on one receipt; any receipt, or
-receipt cancellation, on a completed or closed-short step. The Receive screen previews the same
+receipt cancellation, on a completed or closed-short step; closing a challan whose item nothing
+returned is made from; and any receipt — draft or posted — against a challan a posted receipt closed,
+naming that receipt. Cancelling the closing receipt is how the challan reopens. The Receive screen previews the same
 arithmetic per row (`receiptCostPreview`), but the server's figure is the one that posts.
 
 ---
@@ -496,7 +499,9 @@ the label never changes on its own.
 **Writes:** `stock_ledger` (`scrap`, one row per open challan line) · `job_order_steps`
 
 Receipts consume only what the plan says the goods used, so a step ends with material still standing
-at the processor. **Mark as complete** is somebody saying none of it is coming back:
+at the processor — unless its challans were **closed** on their last receipt, which consumes the
+remainder into cost and leaves nothing here to write off (§6.5). **Mark as complete** is somebody
+saying none of what is still out is coming back:
 
 - every posted challan line's remainder — `qty − used by posted receipts − already written off` — is
   scrapped where it stands, same batch and same package, **however small**, so a completed step

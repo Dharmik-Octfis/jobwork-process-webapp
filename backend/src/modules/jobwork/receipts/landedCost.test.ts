@@ -253,3 +253,73 @@ describe('landed cost — the rules around the examples', () => {
     expect(undrawn).toEqual(['cotton']);
   });
 });
+
+/**
+ * Challan closure (docs/JOBWORK_CHALLAN_CLOSURE_PLAN.md §3–§4): closing a challan
+ * floors what is used at what it still holds (R11).
+ */
+describe('landed cost — closing a challan', () => {
+  const closing = (accepted: number, outstanding: number, floor: number, typed?: number) => {
+    const needs = needTable(
+      single(1000, 950),
+      ['cotton'],
+      [{ itemId: 'dyed', acceptedQty: d(accepted), reworkQty: d(0) }],
+      false,
+    );
+    const result = usedByItem(
+      needs,
+      ['cotton'],
+      typed === undefined ? new Map() : new Map([['cotton', d(typed)]]),
+      new Map([['cotton', d(outstanding)]]),
+      new Map([['cotton', d(floor)]]),
+    );
+    const material = materialByOutput(
+      needs,
+      new Map([['cotton', result.used.get('cotton')!.times(10).toDecimalPlaces(4)]]),
+    ).get('dyed')!;
+    const { acceptedValue } = outputValues(material, d(12), d(accepted), d(0));
+    return { ...result, perUnit: acceptedValue.dividedBy(accepted).toFixed(4) };
+  };
+
+  it('H: one receipt, closed — all 1,000 m lands in 900 m at ₹23.1111', () => {
+    const result = closing(900, 1000, 1000);
+    expect(result.used.get('cotton')!.toString()).toBe('1000');
+    expect(result.perUnit).toBe('23.1111');
+    expect(result.capped).toEqual([]);
+  });
+
+  it('I: the closing receipt of two trues up to ₹23.8421, blending to ₹23.1111', () => {
+    const first = receiveSingle(single(1000, 950), 500, 1000, 10, 12);
+    expect(first.used).toBe('526.3158');
+    const second = closing(400, 473.6842, 473.6842);
+    expect(second.used.get('cotton')!.toString()).toBe('473.6842');
+    expect(second.perUnit).toBe('23.8421');
+    const blended = d(5263.158).plus(6000).plus(d(4736.842)).plus(4800).dividedBy(900);
+    expect(blended.toFixed(4)).toBe('23.1111');
+  });
+
+  it('R11: a typed figure below the floor is reported; at or above it wins', () => {
+    expect(closing(900, 1000, 1000, 950).belowFloor).toEqual(['cotton']);
+    const above = closing(900, 1000, 300, 320);
+    expect(above.belowFloor).toEqual([]);
+    expect(above.used.get('cotton')!.toString()).toBe('320');
+  });
+
+  it('R11: without a closure the floor is zero and nothing changes', () => {
+    const result = closing(500, 1000, 0);
+    expect(result.used.get('cotton')!.toString()).toBe('526.3158');
+    expect(result.belowFloor).toEqual([]);
+  });
+
+  it('R13: a closure on an item nothing received draws on is reported', () => {
+    const needs = needTable(single(1000, 950), ['cotton'], [], false);
+    const { closedUndrawn } = usedByItem(
+      needs,
+      ['cotton'],
+      new Map(),
+      new Map([['cotton', d(100)]]),
+      new Map([['cotton', d(100)]]),
+    );
+    expect(closedUndrawn).toEqual(['cotton']);
+  });
+});

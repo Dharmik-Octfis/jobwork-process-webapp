@@ -369,6 +369,21 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
        something on them. */
     const live = new Set(rows.map((row) => row.jobIssueId));
 
+    // Challans a posted receipt closed (R14), so the screen can say "Closed by
+    // JR-…" instead of letting them vanish like a challan that merely came out even.
+    const closing = await tx.jobReceiptLine.findMany({
+      where: {
+        organizationId,
+        jobIssueId: { in: issues.map((issue) => issue.id) },
+        closesChallan: true,
+        isDeleted: false,
+        jobReceipt: { isDeleted: false, status: POSTED_DOC_STATUS },
+      },
+      distinct: ['jobIssueId'],
+      select: { jobIssueId: true, jobReceipt: { select: { id: true, receiptNumber: true } } },
+    });
+    const closedBy = new Map(closing.map((row) => [row.jobIssueId, row.jobReceipt]));
+
     return {
       step,
       issues: issues
@@ -386,6 +401,14 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
           processorName: issue.processorNameSnapshot,
           destinationLocationId: issue.destinationLocationId,
           destinationName: issue.destination?.name ?? null,
+        })),
+      closedIssues: issues
+        .filter((issue) => !live.has(issue.id) && closedBy.has(issue.id))
+        .map((issue) => ({
+          id: issue.id,
+          challanNumber: issue.challanNumber,
+          closedByReceiptId: closedBy.get(issue.id)!.id,
+          closedByReceiptNumber: closedBy.get(issue.id)!.receiptNumber,
         })),
       lines: rows,
       /**
@@ -1363,6 +1386,8 @@ function allocateConsumption(
    * pass runs again at post, and refuses then.
    */
   lenient = false,
+  /** The challans this receipt closes — served first in the bulk walk (R12). */
+  closedIssueIds: ReadonlySet<string> = new Set(),
 ): ConsumeAllocation[] {
   const outstanding = new Map(issueLines.map((line) => [line.id, line.outstanding]));
 
@@ -1400,12 +1425,18 @@ function allocateConsumption(
     }
 
     /**
-     * 🔴 Bulk: walk the open lines oldest first — WITHIN ONE ITEM.
+     * 🔴 Bulk: walk the open lines WITHIN ONE ITEM — closed challans first, then
+     * oldest first (challan-closure R12).
      *
-     * Unscoped, this settles a panel receipt by consuming thread, because the
-     * thread's lines are simply older. The item is asked for whenever the
+     * Unscoped by item, this settles a panel receipt by consuming thread, because
+     * the thread's lines are simply older. The item is asked for whenever the
      * challans carry more than one; with a single item there is nothing to
      * disambiguate and the old shape keeps working.
+     *
+     * Oldest-first alone is not enough once a challan can be closed: closing the
+     * NEWER of two challans would spend the quantity on the older one and leave
+     * the closed challan still holding stock — ticking Close would close nothing.
+     * The sort is stable, so each group keeps its oldest-first order.
      */
     const itemsOnChallans = new Set(issueLines.map((issueLine) => issueLine.itemId));
     if (!line.itemId && itemsOnChallans.size > 1) {
@@ -1416,9 +1447,11 @@ function allocateConsumption(
         { lines: 'Name the item on every line when the challans carry more than one.' },
       );
     }
-    const eligible = line.itemId
-      ? issueLines.filter((issueLine) => issueLine.itemId === line.itemId)
-      : issueLines;
+    const eligible = (
+      line.itemId ? issueLines.filter((issueLine) => issueLine.itemId === line.itemId) : issueLines
+    ).toSorted(
+      (a, b) => Number(closedIssueIds.has(b.jobIssueId)) - Number(closedIssueIds.has(a.jobIssueId)),
+    );
     if (line.itemId && eligible.length === 0) {
       throw ApiError.badRequest(
         'One of the receipt lines names an item these challans did not carry.',
@@ -1506,8 +1539,16 @@ export async function createNewJobReceipt(
   mode: ReceiptSaveMode = 'post',
   existingId?: string,
 ) {
-  const { customFields: rawCustomFields, lines, outputs: sentOutputs, issueIds, ...header } = data;
+  const {
+    customFields: rawCustomFields,
+    lines,
+    outputs: sentOutputs,
+    issueIds,
+    closedIssueIds = [],
+    ...header
+  } = data;
   const asDraft = mode === 'draft';
+  const closedIssues = new Set(closedIssueIds);
 
   // Consumes fifty, produces fifty, and creates a package per accepted taka —
   // past Prisma's 5-second default (jobwork.types.ts).
@@ -1565,6 +1606,7 @@ export async function createNewJobReceipt(
       },
       select: {
         id: true,
+        challanNumber: true,
         destinationLocationId: true,
         processorType: true,
         processorId: true,
@@ -1577,6 +1619,48 @@ export async function createNewJobReceipt(
       throw ApiError.badRequest(
         'One of the selected challans does not belong to this step, or has been cancelled.',
       );
+    }
+    // Beside the write as well as in the schema, which runs on the HTTP route alone.
+    if (closedIssueIds.some((id) => !issueIds.includes(id))) {
+      throw new ApiError(
+        400,
+        'A challan can only be closed by a receipt that is received against it.',
+        {
+          closedIssueIds: 'Tick the challan before closing it.',
+        },
+      );
+    }
+    const challanNumberOf = (issueId: string) =>
+      issues.find((issue) => issue.id === issueId)?.challanNumber ?? 'a challan';
+
+    /**
+     * 🔴 R14 — a challan closed by a POSTED receipt takes no more receipts. Reopening
+     * it is cancelling that receipt (plan §0): its consume reverses and its lines stop
+     * counting here, so the challan is open again with nothing else to undo. Checked
+     * on a draft too — a draft that can never post is a document parked with a fault.
+     */
+    const alreadyClosed = await tx.jobReceiptLine.findMany({
+      where: {
+        organizationId,
+        jobIssueId: { in: issueIds },
+        closesChallan: true,
+        isDeleted: false,
+        jobReceipt: { isDeleted: false, status: POSTED_DOC_STATUS },
+      },
+      distinct: ['jobIssueId'],
+      select: { jobIssueId: true, jobReceipt: { select: { receiptNumber: true } } },
+    });
+    if (alreadyClosed.length > 0) {
+      const named = alreadyClosed
+        .map(
+          (row) =>
+            `${challanNumberOf(row.jobIssueId!)} (closed by ${row.jobReceipt.receiptNumber})`,
+        )
+        .join(', ');
+      const message =
+        `Nothing more can be received on ${named}. Cancel the receipt that closed it to ` +
+        'reopen the challan.';
+      throw new ApiError(409, message, { issueIds: message });
     }
 
     /**
@@ -1706,7 +1790,8 @@ export async function createNewJobReceipt(
      * A receipt no longer settles its challans in full. It works out how much
      * material what came back used — from the ratio the step's own plan states,
      * planned input against expected output — unless the processor's figure was
-     * typed, and allocates exactly that, oldest challan line first. Whatever the
+     * typed, and allocates exactly that, oldest challan line first — after the lines
+     * of any challan it closes, which it empties (challan-closure R10–R12). Whatever the
      * plan did not account for stays at the processor until the step is completed.
      */
     const reworkChallans = issues.filter((issue) => issue.isRework).length;
@@ -1786,15 +1871,23 @@ export async function createNewJobReceipt(
     }
     const inputItemIds = [...outstandingByItem.keys()];
 
+    // R11 — closing a challan consumes everything still out on it, per item.
+    const closedFloor = new Map<string, Prisma.Decimal>();
+    for (const line of issueLines) {
+      if (!closedIssues.has(line.jobIssueId) || line.outstanding.lessThanOrEqualTo(0)) continue;
+      closedFloor.set(line.itemId, (closedFloor.get(line.itemId) ?? ZERO).plus(line.outstanding));
+    }
+
     // A typed Used figure, per item. Zero or blank means "work it out" (R4).
     const itemOfIssueLine = new Map(issueLines.map((line) => [line.id, line.itemId]));
+    const itemOfLine = (line: JobReceiptLineInput) =>
+      line.itemId ??
+      (line.jobIssueLineId ? itemOfIssueLine.get(line.jobIssueLineId) : undefined) ??
+      (inputItemIds.length === 1 ? inputItemIds[0] : undefined);
     const typedLines = lines.filter((line) => (line.issuedQty ?? 0) > 0);
     const typedByItem = new Map<string, Prisma.Decimal>();
     for (const line of typedLines) {
-      const itemId =
-        line.itemId ??
-        (line.jobIssueLineId ? itemOfIssueLine.get(line.jobIssueLineId) : undefined) ??
-        (inputItemIds.length === 1 ? inputItemIds[0] : undefined);
+      const itemId = itemOfLine(line);
       // An ambiguous line is refused by `allocateConsumption`, which names the fix.
       if (!itemId) continue;
       typedByItem.set(itemId, (typedByItem.get(itemId) ?? ZERO).plus(line.issuedQty!));
@@ -1810,7 +1903,45 @@ export async function createNewJobReceipt(
       })),
       isRework,
     );
-    const { used, undrawn } = usedByItem(needs, inputItemIds, typedByItem, outstandingByItem);
+    const { used, undrawn, belowFloor, closedUndrawn } = usedByItem(
+      needs,
+      inputItemIds,
+      typedByItem,
+      outstandingByItem,
+      closedFloor,
+    );
+
+    // R13 — beside the undrawn refusal below, which is the same condition typed.
+    if (!asDraft && closedUndrawn.length > 0) {
+      const challans = [
+        ...new Set(
+          issueLines
+            .filter(
+              (line) => closedIssues.has(line.jobIssueId) && closedUndrawn.includes(line.itemId),
+            )
+            .map((line) => challanNumberOf(line.jobIssueId)),
+        ),
+      ];
+      const message =
+        `Closing ${challans.join(', ')} would consume ${closedUndrawn.map(itemName).join(', ')}, ` +
+        'but nothing received on this receipt is made from it, so there is nothing to carry its ' +
+        'value. Leave the challan open, or record what was made from it.';
+      throw new ApiError(400, message, { closedIssueIds: message });
+    }
+
+    // R11 — a typed figure still wins, but not below what the closure consumes.
+    if (!asDraft && belowFloor.length > 0) {
+      const itemId = belowFloor[0]!;
+      const typedQty = typedByItem.get(itemId)!;
+      const lineIndex = lines.findIndex((line) => itemOfLine(line) === itemId);
+      const message =
+        `${typedQty.toString()} of ${itemName(itemId)} is typed as used, but closing the ` +
+        `challan consumes the ${closedFloor.get(itemId)!.toString()} still out on it. Type at ` +
+        'least that, or leave the challan open.';
+      throw new ApiError(400, message, {
+        [lineIndex >= 0 ? `lines.${lineIndex}` : 'lines']: message,
+      });
+    }
 
     if (!asDraft && undrawn.length > 0) {
       throw new ApiError(
@@ -1834,27 +1965,83 @@ export async function createNewJobReceipt(
       throw ApiError.badRequest('Say how much of the issued material this receipt accounts for.');
     }
 
+    /**
+     * 🔴 A typed figure for an item a closure touches is re-expressed as one bulk
+     * line, so it goes through R12's closed-first walk. A draft being posted sends
+     * its typed quantities back on the challan LINES it parked them on, and those
+     * named lines are consumed exactly as named — if the outstanding moved since
+     * the draft was saved, they would no longer empty the closed challan.
+     */
+    const closingItems = new Set(closedFloor.keys());
+    const typedForAllocation: JobReceiptLineInput[] = asDraft
+      ? typedLines
+      : [
+          ...typedLines.filter((line) => !closingItems.has(itemOfLine(line) ?? '')),
+          ...[...closingItems]
+            .filter((itemId) => typedByItem.has(itemId))
+            .map((itemId) => ({
+              itemId,
+              issuedQty: Number(typedByItem.get(itemId)),
+              receivedQty: 0,
+            })),
+        ];
+
     const allocations = allocateConsumption(
       issueLines,
-      [...typedLines, ...calculatedLines],
+      [...typedForAllocation, ...calculatedLines],
       asDraft,
+      closedIssues,
     );
 
-    // A draft keeps every ticked challan even with nothing typed against it yet —
-    // `postJobReceiptDraft` finds its challans from these lines (§6.5).
-    if (asDraft) {
-      const covered = new Set(allocations.map((row) => row.jobIssueLineId));
-      for (const line of issueLines) {
-        if (covered.has(line.id)) continue;
-        allocations.push({
-          jobIssueId: line.jobIssueId,
-          jobIssueLineId: line.id,
-          batchId: line.batchId,
-          batchUnitId: line.batchUnitId,
-          itemId: line.itemId,
-          qty: ZERO,
-        });
+    /**
+     * R10 — every line of a closed challan is consumed to zero. R11 and R12 make
+     * this true by construction; it stays as the net, because a closure that
+     * leaves stock behind is a receipt whose cost is silently short.
+     */
+    if (!asDraft) {
+      const allocatedByLine = new Map<string, Prisma.Decimal>();
+      for (const row of allocations) {
+        allocatedByLine.set(
+          row.jobIssueLineId,
+          (allocatedByLine.get(row.jobIssueLineId) ?? ZERO).plus(row.qty),
+        );
       }
+      const leftOpen = issueLines.find(
+        (line) =>
+          closedIssues.has(line.jobIssueId) &&
+          line.outstanding.minus(allocatedByLine.get(line.id) ?? ZERO).greaterThan(0),
+      );
+      if (leftOpen) {
+        const message =
+          `Closing ${challanNumberOf(leftOpen.jobIssueId)} consumes everything still out on it, ` +
+          `but this receipt leaves ${leftOpen.outstanding
+            .minus(allocatedByLine.get(leftOpen.id) ?? ZERO)
+            .toString()} of ${itemName(leftOpen.itemId)} there.`;
+        throw new ApiError(400, message, { closedIssueIds: message });
+      }
+    }
+
+    // A draft keeps every ticked challan even with nothing typed against it yet —
+    // `postJobReceiptDraft` finds its challans from these lines (§6.5). A posted
+    // receipt keeps one row per closed challan that consumed nothing, so the
+    // closure is still recorded (R10).
+    const covered = new Set(allocations.map((row) => row.jobIssueLineId));
+    const closedCovered = new Set(allocations.map((row) => row.jobIssueId));
+    for (const line of issueLines) {
+      if (covered.has(line.id)) continue;
+      if (!asDraft && (!closedIssues.has(line.jobIssueId) || closedCovered.has(line.jobIssueId))) {
+        continue;
+      }
+      covered.add(line.id);
+      closedCovered.add(line.jobIssueId);
+      allocations.push({
+        jobIssueId: line.jobIssueId,
+        jobIssueLineId: line.id,
+        batchId: line.batchId,
+        batchUnitId: line.batchUnitId,
+        itemId: line.itemId,
+        qty: ZERO,
+      });
     }
 
     /**
@@ -2491,6 +2678,8 @@ export async function createNewJobReceipt(
           jobIssueId: allocation.jobIssueId,
           jobIssueLineId: allocation.jobIssueLineId,
           issuedQty: allocation.qty,
+          // A draft keeps the tick too, so a parked receipt remembers it.
+          closesChallan: closedIssues.has(allocation.jobIssueId),
           customFields: lineCustomFields,
           createdBy: userId ?? null,
           updatedBy: userId ?? null,
@@ -2630,6 +2819,13 @@ export async function postJobReceiptDraft(organizationId: string, id: string, us
       jobOrderStepId: draft.jobOrderStepId,
       receiptDate: draft.receiptDate,
       issueIds,
+      closedIssueIds: [
+        ...new Set(
+          draft.lines.flatMap((line) =>
+            line.closesChallan && line.jobIssueId ? [line.jobIssueId] : [],
+          ),
+        ),
+      ],
       locationId: draft.locationId,
       remarks: draft.remarks,
       customFields: draft.customFields as Record<string, unknown>,
@@ -2927,10 +3123,11 @@ export async function cancelJobReceipt(
       },
     });
 
-    /* Nothing to reopen: a receipt never closed a challan. What a cancellation
-       gives back is the OUTSTANDING quantity, and that is derived from this
-       receipt's own lines — which `closedQtyByIssueLine` stops counting the
-       moment the status here becomes `cancelled`. */
+    /* Nothing else to reopen. What a cancellation gives back is the OUTSTANDING
+       quantity, derived from this receipt's own lines — which `closedQtyByIssueLine`
+       stops counting the moment the status here becomes `cancelled`. A challan this
+       receipt CLOSED reopens the same way: R14 reads posted receipts only
+       (challan-closure plan §0). */
     await recomputeStep(tx, organizationId, receipt.jobOrderStepId);
     return updated;
   });

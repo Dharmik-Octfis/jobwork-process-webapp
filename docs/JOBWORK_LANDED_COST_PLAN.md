@@ -107,6 +107,9 @@ These are the rules the code comments should cite as `landed-cost R1…R9`.
     warning.
   - Either way it is allocated FIFO across the selected challans' lines of that item by the existing
     `allocateConsumption`.
+  - **Since 2026-09-17, a closed challan floors it** (R11, `JOBWORK_CHALLAN_CLOSURE_PLAN.md`): a receipt
+    that closes a challan uses at least everything still out on it, and that challan's lines are
+    allocated first (R12).
 - **R5 — Material value.** `consumedValue_i` = what the consume rows posted (batch cost per unit at the
   processor location, running balance — unchanged). Split across the rows that draw on item `i` **in
   proportion to their need**, through `splitByQty` so no paisa goes missing — the same split whether the
@@ -122,6 +125,10 @@ These are the rules the code comments should cite as `landed-cost R1…R9`.
   processor. Customer-owned stock is zero-valued by `postMovement`, as everywhere.
 - **R9 — A completed step is closed.** No issue, receipt, receipt cancellation or issue cancellation
   against it. Completion is refused while the step has draft issues or receipts. There is no reopen.
+- **R10–R14 — Closing a challan** (built 2026-09-17, `JOBWORK_CHALLAN_CLOSURE_PLAN.md`). A receipt may
+  close any challan it is received against; closing consumes everything still out on it into this
+  receipt's goods, so ordinary shrinkage lands in cost and R8 is left writing off only material that is
+  genuinely missing. Reopening is cancelling the closing receipt.
 
 **Validation of a step's shape** (job order create, and the rewritten tail of an update; locked steps are
 not re-validated):
@@ -614,8 +621,10 @@ work, not a hole in this one.
 
 **Behaviour**
 
-- **The cost is only as good as the plan.** Left equal to planned, Expected says "no loss", and real
-  shrinkage lands as job order loss at completion instead of inside landed cost. §3's warning is the only guard.
+- **The cost is only as good as the plan — unless the challan is closed.** Left equal to planned,
+  Expected says "no loss", and shrinkage the receipts did not use lands as job order loss at completion.
+  Since 2026-09-17, closing the challan on its last receipt puts that remainder into the goods' cost
+  instead (R10–R14); a step completed without closing still writes it off.
 - **Waste with a sale value** (offcuts sold as scrap) is not modelled.
 - **No reopening a completed step.** It would reverse the write-off rows.
 - **Planned input quantities are still typed**, not derived from recipe × expected output.
