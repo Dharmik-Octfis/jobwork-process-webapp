@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { openApiRegistry } from '../../../config/openapi.ts';
-import { RATE_BASES } from '../processes/processes.types.ts';
 import { PROCESSOR_TYPES } from '../jobwork.types.ts';
 import { OWNERSHIPS } from '../../inventory/stock-ledger/stockLedger.service.ts';
 
@@ -72,9 +71,8 @@ export const stepInputRowSchema = z.object({
    * batch-tracked items get the picker, and planning without naming batches stays
    * perfectly valid. */
   plannedBatches: z.array(plannedBatchRowSchema).optional(),
-  /** Over-issue allowance for THIS item. Null falls through to the step's —
-   * which is why it is nullable and not defaulted: 0 means no tolerance at all
-   * and must be distinguishable from "not set" (§2.5). */
+  /** Over-issue allowance for THIS item. Left out, the row is unchecked; 0 means no
+   * tolerance at all and must stay distinguishable from "not set". */
   tolerancePct: z.coerce.number().min(0).max(100).nullable().optional(),
 });
 
@@ -94,6 +92,9 @@ export const stepOutputRowSchema = z.object({
   uomId: nullableUuid,
   expectedQty: z.coerce.number().min(0).nullable().optional(),
   isPrimary: z.boolean().optional(),
+  /** Charge per ACCEPTED unit of this output (landed-cost plan D1–D2). Null = not
+   * agreed yet; 0 = done free. */
+  rate: z.coerce.number().min(0).nullable().optional(),
 });
 
 export type StepOutputRow = z.infer<typeof stepOutputRowSchema>;
@@ -132,8 +133,7 @@ export const jobOrderStepSchema = z.object({
   processorId: nullableUuid,
   workCentreLocationId: nullableUuid,
 
-  rate: z.coerce.number().min(0).nullable().optional(),
-  rateBasis: z.enum(RATE_BASES).nullable().optional(),
+  // No step rate: the charge is per output row (landed-cost plan D1).
 
   /**
    * 🔴 What the step consumes and what it produces (§5.7). These replaced four
@@ -148,7 +148,6 @@ export const jobOrderStepSchema = z.object({
   outputs: z.array(stepOutputRowSchema).optional(),
 
   expectedYield: z.coerce.number().positive().nullable().optional(),
-  tolerancePct: z.coerce.number().min(0).max(100).nullable().optional(),
   plannedInputQty: z.coerce.number().min(0).nullable().optional(),
 
   remarks: z.string().trim().max(2000).nullable().optional(),

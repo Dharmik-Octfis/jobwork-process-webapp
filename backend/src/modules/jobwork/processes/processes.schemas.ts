@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { openApiRegistry } from '../../../config/openapi.ts';
-import { RATE_BASES } from './processes.types.ts';
 
 /**
  * Request shapes for the Processes module.
@@ -30,15 +29,8 @@ export const createProcessSchema = openApiRegistry.register(
     /** The output is a DIFFERENT item from the input (§5.1) — cloth in, shirt out. */
     itemChanges: z.boolean().optional(),
 
-    rateBasis: z.enum(RATE_BASES).optional(),
-
-    /**
-     * Percent. Nullable because "no default" is a real answer and is NOT the same
-     * as 0, which means "no tolerance at all". Capped at 100 — a tolerance above
-     * that would let a step receive more than twice what it issued without a
-     * warning, which is a data-entry error every time.
-     */
-    defaultTolerancePct: z.coerce.number().min(0).max(100).nullable().optional(),
+    // No rate basis: the charge is rate × accepted on each output row (landed-cost
+    // plan D1–D2). No tolerance either: it is typed per job order input row.
   }),
 );
 

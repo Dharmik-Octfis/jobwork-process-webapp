@@ -83,6 +83,7 @@ const TENANT_TABLES = [
   'route_step_outputs',
   'job_order_step_inputs',
   'job_order_step_outputs',
+  'job_order_step_output_components',
   'job_receipt_outputs',
   'job_receipt_output_batches',
   // Planned batch allocation, added in 20260817110021_add_job_order_step_input_batches.

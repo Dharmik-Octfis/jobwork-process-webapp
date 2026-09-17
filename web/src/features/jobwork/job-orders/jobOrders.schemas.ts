@@ -27,10 +27,7 @@ export const jobOrderStepSchema = z.object({
   processorId: z.string().nullable(),
   processorNameSnapshot: z.string().nullable(),
   workCentreLocationId: z.string().nullable(),
-  rate: decimalString,
-  rateBasis: z.string().nullable(),
   expectedYield: decimalString,
-  tolerancePct: decimalString,
   plannedInputQty: decimalString,
   status: z.string(),
   remarks: z.string().nullable(),
@@ -85,14 +82,16 @@ export type JobOrder = z.infer<typeof jobOrderSchema>;
 
 export const jobOrderWithStepsSchema = z.object({
   id: z.string(),
-  steps: z.array(
-    z.object({
-      id: z.string(),
-      seq: z.number(),
-      processNameSnapshot: z.string(),
-      processorNameSnapshot: z.string().nullable(),
-    })
-  ).default([]),
+  steps: z
+    .array(
+      z.object({
+        id: z.string(),
+        seq: z.number(),
+        processNameSnapshot: z.string(),
+        processorNameSnapshot: z.string().nullable(),
+      }),
+    )
+    .default([]),
 });
 
 export type JobOrderWithSteps = z.infer<typeof jobOrderWithStepsSchema>;
@@ -110,6 +109,10 @@ export const stepTotalsSchema = z.object({
   scrapQty: z.string(),
   returnedQty: z.string(),
   outstandingQty: z.string(),
+  /** Scrapped at the processor when the step was completed or closed short —
+   * job order loss (landed-cost R8). Cross-item, like the figures above. */
+  writtenOffQty: z.string().default('0'),
+  writtenOffValue: z.string().default('0'),
   issueCount: z.number(),
   receiptCount: z.number(),
 });
@@ -132,6 +135,14 @@ export const stepItemTotalsSchema = z.object({
   plannedQty: z.string().nullable(),
   issuedQty: z.string(),
   remainingQty: z.string().nullable(),
+  /** Issued, not yet used by a receipt nor written off (landed-cost §6.7). */
+  stillOutQty: z.string().default('0'),
+  /** Issued on challans a receipt closed — consumed into the goods' cost, not loss
+   * (challan-closure R10). */
+  closedQty: z.string().default('0'),
+  /** Written off when the step was completed or closed short — job order loss. */
+  writtenOffQty: z.string().default('0'),
+  writtenOffValue: z.string().default('0'),
 });
 
 export const stepOutputTotalsSchema = z.object({
@@ -143,6 +154,9 @@ export const stepOutputTotalsSchema = z.object({
   expectedQty: z.string().nullable(),
   receivedQty: z.string(),
   remainingQty: z.string().nullable(),
+  acceptedQty: z.string().default('0'),
+  /** Running landed cost per accepted unit, from the receipts' stored breakdowns. */
+  landedCostPerUnit: z.string().nullable().default(null),
 });
 
 export type StepItemTotals = z.infer<typeof stepItemTotalsSchema>;
@@ -286,8 +300,6 @@ export interface JobOrderStepData {
   processorType?: string;
   processorId?: string | null;
   workCentreLocationId?: string | null;
-  rate?: number | null;
-  rateBasis?: string | null;
   /**
    * 🔴 The two lists (§5.7).
    *
@@ -298,7 +310,6 @@ export interface JobOrderStepData {
   inputs?: StepItemRow[];
   outputs?: StepItemRow[];
   expectedYield?: number | null;
-  tolerancePct?: number | null;
   plannedInputQty?: number | null;
   remarks?: string | null;
 }

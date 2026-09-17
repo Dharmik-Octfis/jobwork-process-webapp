@@ -1,21 +1,22 @@
 import { blurOnWheel } from '../../components/ui/blurOnWheel';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { fetchAvailableBatches } from './batches/batches.api';
 import { AddBatchesModal } from './issues/AddBatchesModal';
 import { selectionKey } from './issues/batchSelection';
+import { InfoTip } from '../../components/ui/InfoTip';
 import { ItemComboBox } from '../../components/ui/ItemComboBox';
 import { Select } from '../../components/ui/Select';
 import { useUoms } from '../inventory/uom/uom.api';
+import { compositeItemsApi } from '../inventory/composite-items/compositeItems.api';
 import { itemsApi } from '../items/items.api';
 import type { Item } from '../items/items.schemas';
 import { fetchVendors } from '../purchases/vendors/vendors.api';
 import { fetchCustomers } from '../sales/customers/customers.api';
 import { fetchLocations } from '../configuration/locations/locations.api';
 import { ProcessSelect } from './processes/ProcessSelect';
-import { RATE_BASIS_OPTIONS } from './processes/processes.schemas';
 import { useTrackingLabel, useBatchUnitLabel } from '../../hooks/useTrackingLabel';
 import {
   PROCESSOR_TYPE_OPTIONS,
@@ -25,8 +26,10 @@ import {
   feedsSteps,
   formatQty,
   overPlanWarning,
+  planWarnings,
   primaryOutputIndex,
   producedByStep,
+  type RecipeLookup,
   type StepGridRow,
   type StepItemRow,
 } from './jobwork.schemas';
@@ -116,6 +119,9 @@ interface Props<T extends StepGridRow> {
    * started steps after it.
    */
   lockedCount?: number;
+  /** Positions of completed or closed-short steps. A locked step's processor stays
+   * editable — it only defaults the next challan — unless the step takes no more. */
+  finishedSteps?: ReadonlySet<number>;
   /**
    * 🔴 True wherever this grid is rendered inside a `Modal` — today, the append
    * dialog. The item picker's menu is otherwise clipped by the dialog's scrolling
@@ -134,6 +140,8 @@ const cellInput: React.CSSProperties = {
   minHeight: 30,
 };
 
+const cellInputError: React.CSSProperties = { ...cellInput, borderColor: '#ef4444' };
+
 /** A value the server owns. Same box as `cellInput` so the row does not jump, but
  * flat and grey so it reads as a stated fact rather than an empty control. Not
  * focusable on purpose — there is nothing here to change. */
@@ -149,7 +157,6 @@ const cellReadOnly: React.CSSProperties = {
 /** One field's caption. A `<span>`, not a `<label>`: most of these controls are
  * `Select`, which renders a button with no id to point `htmlFor` at — the control
  * carries its own `ariaLabel` instead. The native inputs do get real labels. */
-
 
 const iconButton: React.CSSProperties = {
   display: 'flex',
@@ -208,20 +215,18 @@ interface ItemListProps {
   /** 🔴 True wherever this grid sits inside a `Modal` — see `ItemComboBox`. */
   portalMenus?: boolean;
   showQty?: boolean;
+  /** Job orders only: the quantity is required before the step's first challan
+   * posts (landed-cost V4). Captioned as required, never blocks the save — a
+   * half-planned order must still save. A route's quantity is only a default. */
+  qtyRequired?: boolean;
   /** The per-item over-issue box. Job orders only — separate from `showQty`
    * because a route carries a default quantity but no tolerance. */
   showTolerance?: boolean;
-  /**
-   * 🔴 The STEP's tolerance, shown greyed inside each blank row's box.
-   *
-   * Blank on a row does not mean "no tolerance" — it means "use the step's"
-   * (`jobIssues.service.ts` resolves `row.tolerancePct ?? step.tolerancePct`), and
-   * an empty box reads as exactly the opposite. A placeholder rather than a value
-   * written into the row: a copy freezes at the moment it is made, so changing the
-   * step afterwards would strand stale numbers that nothing could distinguish from
-   * ones somebody typed deliberately.
-   */
-  stepTolerancePct?: number | null;
+  /** Outputs only: the charge per accepted unit box (landed-cost plan D1). */
+  showRate?: boolean;
+  /** A one-line remark under the list's header — today, that a step with several
+   * inputs may only produce composites (V1). */
+  note?: string | null;
   /**
    * …and the same trick on the quantity box: what the server will store if this
    * row is left blank, or `null` when it will store nothing and the box is really
@@ -293,8 +298,10 @@ function ItemList({
   uomOptions,
   portalMenus,
   showQty,
+  qtyRequired,
   showTolerance,
-  stepTolerancePct,
+  showRate,
+  note,
   qtyPlaceholderFor,
   disabled,
   stepIndex,
@@ -375,11 +382,7 @@ function ItemList({
               cursor: disabled || mirrorRows.length === 0 ? 'default' : 'pointer',
               whiteSpace: 'nowrap',
             }}
-            title={
-              mirrorRows.length === 0
-                ? 'List what the step consumes first, then this copies it here.'
-                : 'Copy every item from CONSUMES into PRODUCES. Each row stays editable; unticking clears them.'
-            }
+            title={mirrorRows.length === 0 ? 'Add consumed items first' : 'Copy consumed items'}
           >
             <input
               type="checkbox"
@@ -394,14 +397,79 @@ function ItemList({
       </div>
 
       <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {note && (
+          <p style={{ fontSize: 11, color: '#475569', margin: 0, lineHeight: 1.5 }}>{note}</p>
+        )}
         {/* 🔴 An empty list means an empty list. Nothing is added behind your
             back — what these rows say is exactly what is written. */}
         {rows.length === 0 && (
           <p style={{ fontSize: 11, color: '#94a3b8', margin: 0, lineHeight: 1.5 }}>{emptyHint}</p>
         )}
 
+        {/* Same flex bases and wrap as the rows below, so each caption breaks onto
+            the same line as its box on a narrow screen. The boxes keep their own
+            screen-reader labels, hence aria-hidden on the caption TEXT — not on the
+            row, which would hide the info button while Tab still reaches it. */}
+        {rows.length > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              gap: 6,
+              flexWrap: 'wrap',
+              fontSize: 11,
+              fontWeight: 600,
+              color: '#64748b',
+            }}
+          >
+            <span aria-hidden="true" style={{ flex: '2 1 150px', minWidth: 0 }}>
+              Item
+            </span>
+            <span aria-hidden="true" style={{ flex: '0 0 62px' }}>
+              Unit
+            </span>
+            {showQty && (
+              <span
+                style={{
+                  flex: '0 0 84px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  ...(qtyRequired ? { color: '#ef4444' } : {}),
+                }}
+              >
+                <span aria-hidden="true">
+                  {isInput ? 'Planned' : 'Expected'}
+                  {qtyRequired && '*'}
+                </span>
+                {qtyRequired && (
+                  <InfoTip label={isInput ? 'About planned quantity' : 'About expected quantity'}>
+                    {isInput
+                      ? 'Quantity you plan to send to the processor. Landed cost is calculated from it.'
+                      : 'Good quantity you expect to receive back. Landed cost is calculated from it.'}
+                  </InfoTip>
+                )}
+              </span>
+            )}
+            {showTolerance && isInput && (
+              <span aria-hidden="true" style={{ flex: '0 0 76px' }}>
+                Tolerance (%)
+              </span>
+            )}
+            {showRate && !isInput && (
+              <span aria-hidden="true" style={{ flex: '0 0 84px' }}>
+                Rate
+              </span>
+            )}
+            <span aria-hidden="true" style={{ flex: '0 0 26px' }} />
+          </div>
+        )}
+
         {rows.map((row, rowIndex) => {
-          const rowError = errors?.[`steps.${stepIndex}.${side}.${rowIndex}.itemId`];
+          const rowKey = `steps.${stepIndex}.${side}.${rowIndex}`;
+          const fieldError = (field: string) => errors?.[`${rowKey}.${field}`];
+          const rowError = Object.entries(errors ?? {}).find(
+            ([key]) => key === rowKey || key.startsWith(`${rowKey}.`),
+          )?.[1];
           const unit = itemUnit(row.itemId);
           const badge = badgeFor(row, rowIndex);
           // Advisory, so it never blocks the button and never colours the box the
@@ -413,7 +481,9 @@ function ItemList({
           const qtyId = `step-${stepIndex}-${side}-${rowIndex}-qty`;
           return (
             <div key={rowIndex} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {/* Wraps on a phone: an output row carries item, unit, expected, rate
+                  and remove, which is wider than 390px. */}
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                 {/* 🔴 A SEARCHING PICKER, not a dropdown of every item in the org.
                     A plain `Select` had to be handed the whole catalogue up front,
                     which is one long request before the form is usable and an
@@ -439,7 +509,7 @@ function ItemList({
                       });
                     }}
                     placeholder="Select an item…"
-                    hasError={Boolean(rowError)}
+                    hasError={Boolean(fieldError('itemId'))}
                     disabled={disabled}
                     portal={portalMenus}
                     name={`step-${stepIndex}-${side}-${rowIndex}-item`}
@@ -463,6 +533,7 @@ function ItemList({
                       onChange={(value) => update(rowIndex, { uomId: value || null })}
                       options={uomOptions}
                       disabled={disabled}
+                      hasError={Boolean(fieldError('uomId'))}
                       ariaLabel={`Step ${stepNumber} ${isInput ? 'input' : 'output'} ${rowIndex + 1} unit`}
                       minWidth={0}
                       portal={portalMenus}
@@ -490,30 +561,33 @@ function ItemList({
                         update(rowIndex, isInput ? { plannedQty: value } : { expectedQty: value });
                       }}
                       disabled={disabled}
+                      aria-required={qtyRequired || undefined}
                       /* 🔴 Grey, never written into the row. It says what the
                          server will store if this is left blank, so an empty box
                          stops reading as "expect nothing". No placeholder means
                          the server stores nothing either and the box is genuinely
                          asking — see `derivedExpectedQty`. */
                       placeholder={
-                        derivedQty !== null ? formatQty(derivedQty) : isInput ? 'qty' : 'expected'
+                        derivedQty !== null
+                          ? formatQty(derivedQty)
+                          : isInput && !showTolerance
+                            ? 'qty'
+                            : '100'
                       }
-                      title={
-                        isInput
-                          ? 'How much of this item the step consumes'
-                          : derivedQty !== null
-                            ? `How much of this item is expected back. Left blank it plans ${formatQty(derivedQty)} — the quantity that goes in.`
-                            : 'How much of this item is expected back. It returns in a different unit from what goes in, so nothing can be assumed — state it, or the next step has no quantity to plan from.'
+                      title={isInput ? 'Quantity consumed' : 'Expected quantity'}
+                      style={
+                        fieldError(isInput ? 'plannedQty' : 'expectedQty')
+                          ? cellInputError
+                          : cellInput
                       }
-                      style={cellInput}
                     />
                   </div>
                 )}
 
-                {/* Blank means "use the step's" — fabric at 3% beside thread at
-                    25%, because small quantities vary more. */}
+                {/* Per item — fabric at 3% beside thread at 25%, because small
+                    quantities vary more. Typed here; blank means unchecked. */}
                 {showTolerance && isInput && (
-                  <div style={{ flex: '0 0 66px' }}>
+                  <div style={{ flex: '0 0 76px' }}>
                     <label htmlFor={`${qtyId}-tol`} style={srOnly}>
                       {`Step ${stepNumber} tolerance percent for row ${rowIndex + 1}`}
                     </label>
@@ -531,16 +605,36 @@ function ItemList({
                         })
                       }
                       disabled={disabled}
-                      /* The step's own figure, greyed. Blank here means "use the
-                         step's", and an empty box reads as "no tolerance" — the
-                         opposite of what it does. */
-                      placeholder={stepTolerancePct != null ? String(stepTolerancePct) : 'tol %'}
-                      title={
-                        stepTolerancePct != null
-                          ? `Over-issue allowance for this item. Left blank it uses the step’s ${stepTolerancePct}%.`
-                          : 'Over-issue allowance for this item. Blank uses the step’s, and the step has none set.'
+                      placeholder="tol %"
+                      title="Over-issue allowance %"
+                      style={fieldError('tolerancePct') ? cellInputError : cellInput}
+                    />
+                  </div>
+                )}
+
+                {/* The charge per ACCEPTED unit of this output (landed-cost plan
+                    D1–D2): blank is "not agreed yet", 0 is "done free". */}
+                {showRate && !isInput && (
+                  <div style={{ flex: '0 0 84px' }}>
+                    <label htmlFor={`${qtyId}-rate`} style={srOnly}>
+                      {`Step ${stepNumber} rate per ${unit?.label ?? 'unit'} for output ${rowIndex + 1}`}
+                    </label>
+                    <input
+                      id={`${qtyId}-rate`}
+                      type="number"
+                      onWheel={blurOnWheel}
+                      step="0.01"
+                      min="0"
+                      value={row.rate ?? ''}
+                      onChange={(e) =>
+                        update(rowIndex, {
+                          rate: e.target.value === '' ? null : Number(e.target.value),
+                        })
                       }
-                      style={cellInput}
+                      disabled={disabled}
+                      placeholder="10"
+                      title={`Rate per ${unit?.label ?? 'unit'}`}
+                      style={fieldError('rate') ? cellInputError : cellInput}
                     />
                   </div>
                 )}
@@ -577,7 +671,8 @@ function ItemList({
                     {badge.text}
                   </span>
                 )}
-                {rowError && <span style={{ fontSize: 11, color: '#e54d4d' }}>{rowError}</span>}
+                {/* No error sentence here — the field goes red and the toast carries
+                    the message (CLAUDE.md → Frontend). */}
                 {/* Amber, not red, and it sits beside the badge rather than
                     replacing it: the row is saveable exactly as it stands. */}
                 {!rowError && warning && (
@@ -600,8 +695,8 @@ function ItemList({
                     disabled={disabled || !(row.plannedQty && row.plannedQty > 0)}
                     title={
                       row.plannedQty && row.plannedQty > 0
-                        ? `Note which ${trackingLabel.plural.toLowerCase()} this is planned to come out of. Nothing is reserved.`
-                        : `Enter a quantity first — ${trackingLabel.plural.toLowerCase()} are planned against it.`
+                        ? `Plan ${trackingLabel.plural.toLowerCase()}`
+                        : 'Enter a quantity first'
                     }
                     style={{
                       padding: 0,
@@ -699,6 +794,7 @@ export function StepsGrid<T extends StepGridRow>({
   priorProducers,
   priorSpare,
   lockedCount = 0,
+  finishedSteps,
   portalMenus,
 }: Props<T>) {
   const { orgId } = useParams<{ orgId: string }>();
@@ -730,6 +826,39 @@ export function StepsGrid<T extends StepGridRow>({
     ...Object.entries(pickedItems),
   ]);
   const uomById = new Map(uoms.map((u) => [u.id, u]));
+
+  /**
+   * The live recipe of every composite the grid produces — the plan warnings read
+   * what each output is made from (landed-cost plan §3). One cached request per
+   * composite, on the composite pages' own key so an edit there refreshes it here.
+   * Job orders only: a route holds no quantities to warn about.
+   */
+  const compositeOutputIds = [
+    ...new Set(
+      steps
+        .flatMap((step) => (step.outputs ?? []).map((row) => row.itemId))
+        .filter((id) => id && itemById.get(id)?.itemStructure === 'composite'),
+    ),
+  ];
+  const recipeQueries = useQueries({
+    queries: compositeOutputIds.map((id) => ({
+      queryKey: ['compositeComponents', orgId, id],
+      queryFn: () => compositeItemsApi.getComponents(orgId!, id),
+      enabled: Boolean(orgId) && Boolean(showPlannedQty),
+    })),
+  });
+  const recipeByItem = new Map(
+    compositeOutputIds.map((id, i) => [id, recipeQueries[i]?.data] as const),
+  );
+  const recipeOf: RecipeLookup = (itemId) => {
+    const item = itemById.get(itemId);
+    if (!item) return undefined;
+    if (item.itemStructure !== 'composite') return null;
+    return recipeByItem.get(itemId)?.map((row) => ({
+      componentItemId: row.componentItemId,
+      qtyPerUnit: Number(row.qtyPerUnit),
+    }));
+  };
 
   /**
    * An item's stocking unit — the id a row carries and the label it prints.
@@ -848,22 +977,19 @@ export function StepsGrid<T extends StepGridRow>({
     <div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {steps.map((step, index) => {
-          /**
-           * A server error on either list is keyed to the row it landed on —
-           * over-planned quantity (§6.4), a repeated item, two primary outputs.
-           * Anything on this step turns the whole block red, so the step is
-           * findable before the row is.
-           */
-          const chainError = Object.entries(errors ?? {}).find(
-            ([key]) =>
-              key.startsWith(`steps.${index}.inputs`) || key.startsWith(`steps.${index}.outputs`),
-          )?.[1];
-          const field = (id: string) => `step-${index}-${id}`;
           // Position in the order, not in this array — they differ when appending.
           const stepNo = index + 1 + seqOffset;
           // Frozen: work has already gone out at or after this position (§6.6).
           const locked = index < lockedCount;
           const readOnly = disabled || locked;
+          // The server applies the same rule (`updateJobOrderById`).
+          const processorEditable =
+            !disabled &&
+            (!locked || (step.processorType !== 'internal' && !finishedSteps?.has(index)));
+          // Job orders only; one map per step, read by every input row below (§3).
+          const stepWarnings = showPlannedQty
+            ? planWarnings(step.inputs ?? [], step.outputs ?? [], recipeOf)
+            : new Map<string, string>();
 
           /**
            * A step that lists no inputs of its own takes what the step above
@@ -881,9 +1007,10 @@ export function StepsGrid<T extends StepGridRow>({
             <div
               key={index}
               style={{
-                border: `1px solid ${chainError ? '#fecaca' : '#eef0f3'}`,
+                // Errors colour the field they belong to, never the whole step.
+                border: '1px solid #eef0f3',
                 borderRadius: 6,
-                background: chainError ? '#fef2f2' : '#fff',
+                background: '#fff',
               }}
             >
               <div
@@ -893,7 +1020,7 @@ export function StepsGrid<T extends StepGridRow>({
                   justifyContent: 'space-between',
                   gap: 12,
                   padding: '8px 14px',
-                  background: chainError ? '#fef2f2' : '#f9f9fb',
+                  background: '#f9f9fb',
                   borderBottom: '1px solid #eef0f3',
                   borderTopLeftRadius: 6,
                   borderTopRightRadius: 6,
@@ -905,7 +1032,9 @@ export function StepsGrid<T extends StepGridRow>({
                       with no explanation, reads as a bug in the form. */}
                   {locked && (
                     <span style={{ ...chipStyle, background: '#f1f5f9', color: '#475569' }}>
-                      Already sent out — locked
+                      {processorEditable
+                        ? 'Already sent out — only the processor can change'
+                        : 'Already sent out — locked'}
                     </span>
                   )}
                 </span>
@@ -963,7 +1092,10 @@ export function StepsGrid<T extends StepGridRow>({
                 }}
               >
                 {/* 1. Process */}
-                <div className="form-field-grid" style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}>
+                <div
+                  className="form-field-grid"
+                  style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
+                >
                   <span style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>Process*</span>
                   <div style={{ width: '100%' }}>
                     <ProcessSelect
@@ -983,12 +1115,6 @@ export function StepsGrid<T extends StepGridRow>({
                                   },
                                 ]
                               : step.outputs,
-                          rateBasis: step.rateBasis ?? process.rateBasis,
-                          tolerancePct:
-                            step.tolerancePct ??
-                            (process.defaultTolerancePct === null
-                              ? null
-                              : Number(process.defaultTolerancePct)),
                         })
                       }
                       disabled={readOnly}
@@ -999,34 +1125,11 @@ export function StepsGrid<T extends StepGridRow>({
                   </div>
                 </div>
 
-                {/* 2. Tolerance */}
-                <div className="form-field-grid" style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}>
-                  <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }} htmlFor={field('tolerance')}>
-                    Tolerance % — all items
-                  </label>
-                  <div style={{ width: '100%' }}>
-                    <input
-                      id={field('tolerance')}
-                      type="number"
-                      onWheel={blurOnWheel}
-                      step="0.001"
-                      min="0"
-                      max="100"
-                      value={step.tolerancePct ?? ''}
-                      onChange={(e) =>
-                        update(index, {
-                          tolerancePct: e.target.value === '' ? null : Number(e.target.value),
-                        })
-                      }
-                      disabled={readOnly}
-                      style={{ ...cellInput, width: '100%' }}
-                      title="How much over the plan may be issued. Any item can override it on its own row."
-                    />
-                  </div>
-                </div>
-
                 {/* 3. Done by */}
-                <div className="form-field-grid" style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}>
+                <div
+                  className="form-field-grid"
+                  style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
+                >
                   <span style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>Done by</span>
                   <div style={{ width: '100%' }}>
                     <Select
@@ -1049,7 +1152,10 @@ export function StepsGrid<T extends StepGridRow>({
                 </div>
 
                 {/* 4. Processor */}
-                <div className="form-field-grid" style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}>
+                <div
+                  className="form-field-grid"
+                  style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
+                >
                   <span style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
                     {step.processorType === 'internal' ? 'Work centre' : 'Processor'}
                   </span>
@@ -1063,6 +1169,7 @@ export function StepsGrid<T extends StepGridRow>({
                           ...workCentres.map((l) => ({ value: l.id, label: l.name })),
                         ]}
                         disabled={true}
+                        hasError={Boolean(errors?.[`steps.${index}.workCentreLocationId`])}
                         ariaLabel={`Step ${stepNo} work centre`}
                         fullWidth
                         portal={portalMenus}
@@ -1088,7 +1195,8 @@ export function StepsGrid<T extends StepGridRow>({
                                   label: v.companyName || v.contactName,
                                 }))),
                         ]}
-                        disabled={readOnly}
+                        disabled={!processorEditable}
+                        hasError={Boolean(errors?.[`steps.${index}.processorId`])}
                         ariaLabel={`Step ${stepNo} processor`}
                         fullWidth
                         portal={portalMenus}
@@ -1097,42 +1205,7 @@ export function StepsGrid<T extends StepGridRow>({
                   </div>
                 </div>
 
-                {/* 5. Rate */}
-                <div className="form-field-grid" style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}>
-                  <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }} htmlFor={field('rate')}>
-                    Rate
-                  </label>
-                  <div style={{ width: '100%' }}>
-                    <input
-                      id={field('rate')}
-                      type="number"
-                      onWheel={blurOnWheel}
-                      step="0.01"
-                      min="0"
-                      value={step.rate ?? ''}
-                      onChange={(e) =>
-                        update(index, { rate: e.target.value === '' ? null : Number(e.target.value) })
-                      }
-                      disabled={readOnly}
-                      style={{ ...cellInput, width: '100%' }}
-                    />
-                  </div>
-                </div>
-
-                <div className="form-field-grid" style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}>
-                  <span style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>Rate basis</span>
-                  <div style={{ width: '100%' }}>
-                    <Select
-                      value={step.rateBasis ?? ''}
-                      onChange={(value) => update(index, { rateBasis: value || null })}
-                      options={[{ value: '', label: 'From the process' }, ...RATE_BASIS_OPTIONS]}
-                      disabled={readOnly}
-                      ariaLabel={`Step ${stepNo} rate basis`}
-                      fullWidth
-                      portal={portalMenus}
-                    />
-                  </div>
-                </div>
+                {/* No step rate: each output row carries its own (landed-cost D1). */}
               </div>
 
               {/*
@@ -1170,8 +1243,8 @@ export function StepsGrid<T extends StepGridRow>({
                   uomOptions={uomOptions}
                   portalMenus={portalMenus}
                   showQty={showPlannedQty || showInputQty}
+                  qtyRequired={showPlannedQty}
                   showTolerance={showPlannedQty}
-                  stepTolerancePct={step.tolerancePct ?? null}
                   disabled={readOnly}
                   stepIndex={index}
                   stepNumber={stepNo}
@@ -1192,7 +1265,9 @@ export function StepsGrid<T extends StepGridRow>({
                      against and a note here could only be guesswork. */
                   warningFor={
                     showPlannedQty
-                      ? (row) => overPlanWarning(steps, index, row, priorSpare)
+                      ? (row) =>
+                          stepWarnings.get(row.itemId) ??
+                          overPlanWarning(steps, index, row, priorSpare)
                       : undefined
                   }
                   badgeFor={(row) => {
@@ -1222,6 +1297,13 @@ export function StepsGrid<T extends StepGridRow>({
                   portalMenus={portalMenus}
                   mirrorSource={step.inputs ?? []}
                   showQty={showPlannedQty}
+                  qtyRequired={showPlannedQty}
+                  showRate
+                  note={
+                    (step.inputs ?? []).filter((row) => row.itemId).length > 1
+                      ? 'Several items go in, so each item listed here must be a composite whose recipe says what it is made from — unless it is one of the items going in.'
+                      : null
+                  }
                   emptyHint="Nothing listed — this step will produce nothing."
                   /* Job orders only. A route holds no output quantities at all,
                      so there is nothing for it to preview. */

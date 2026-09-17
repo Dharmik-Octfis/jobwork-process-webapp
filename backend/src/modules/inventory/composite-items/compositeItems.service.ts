@@ -1,4 +1,4 @@
-import { runAsTenant } from '../../../db/prisma.ts';
+import { runAsTenant, type TenantClient } from '../../../db/prisma.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
 import { getMigrationDate } from '../../../lib/migrationDate.ts';
 import type {
@@ -39,6 +39,51 @@ export function toComponentResponse(row: Record<string, unknown>) {
     updatedBy: row.updatedBy,
     isDeleted: row.isDeleted,
   };
+}
+
+/**
+ * 🔴 A composite may contain composites (landed-cost plan §6.1, D4) — Shirt is made
+ * from Red Cotton, which is made from Cotton — but never itself, at any depth.
+ *
+ * ONE recursive query over the live recipe graph below the proposed components,
+ * never a walk of one query per level. `UNION` drops repeated rows, so the walk
+ * ends even if the graph is somehow already cyclic.
+ *
+ * The message carries no `details`: both composite pages route a `details` object
+ * into custom-field errors and would show the user nothing.
+ */
+async function assertNoRecipeCycle(
+  tx: TenantClient,
+  organizationId: string,
+  compositeItemId: string,
+  componentItemIds: readonly string[],
+) {
+  const ids = [...new Set(componentItemIds)].filter((id) => id && id !== compositeItemId);
+  if (ids.length === 0) return;
+
+  const loops = await tx.$queryRaw<{ name: string }[]>`
+    WITH RECURSIVE below (root_id, item_id) AS (
+      SELECT c.composite_item_id, c.component_item_id
+      FROM composite_item_components c
+      WHERE c.organization_id = ${organizationId}::uuid AND NOT c.is_deleted
+        AND c.composite_item_id IN (${Prisma.join(ids)})
+      UNION
+      SELECT b.root_id, c.component_item_id
+      FROM composite_item_components c
+      JOIN below b ON c.composite_item_id = b.item_id
+      WHERE c.organization_id = ${organizationId}::uuid AND NOT c.is_deleted
+    )
+    SELECT DISTINCT i.name
+    FROM below b
+    JOIN items i ON i.id = b.root_id
+    WHERE b.item_id = ${compositeItemId}::uuid`;
+
+  if (loops.length > 0) {
+    throw ApiError.badRequest(
+      `${loops.map((row) => row.name).join(', ')} already contains this item, directly or through ` +
+        'another composite, so it cannot also be one of its components.',
+    );
+  }
 }
 
 export class CompositeItemsService {
@@ -176,9 +221,9 @@ export class CompositeItemsService {
           const cItem = await tx.item.findFirst({
             where: { id: comp.componentItemId, organizationId, isDeleted: false },
           });
+          // A composite component is allowed, and no cycle check is needed: the item
+          // was created a moment ago, so no recipe can contain it yet.
           if (!cItem) throw ApiError.badRequest(`Component ${comp.componentItemId} not found.`);
-          if (cItem.itemStructure === 'composite')
-            throw ApiError.badRequest(`Component ${cItem.name} cannot be a Composite Item.`);
 
           await tx.compositeItemComponent.create({
             data: {
@@ -318,6 +363,14 @@ export class CompositeItemsService {
       } = data;
 
       if (_components && Array.isArray(_components)) {
+        // Before any write below, so a refused recipe leaves the old one untouched.
+        await assertNoRecipeCycle(
+          tx,
+          organizationId,
+          existing.id,
+          _components.map((c) => c.componentItemId),
+        );
+
         // Fetch existing components to compare
         const existingComponents = await tx.compositeItemComponent.findMany({
           where: { compositeItemId: id, organizationId, isDeleted: false },
@@ -367,8 +420,6 @@ export class CompositeItemsService {
               where: { id: comp.componentItemId, organizationId, isDeleted: false },
             });
             if (!cItem) throw ApiError.badRequest(`Component ${comp.componentItemId} not found.`);
-            if (cItem.itemStructure === 'composite')
-              throw ApiError.badRequest(`Component ${cItem.name} cannot be a Composite Item.`);
 
             await tx.compositeItemComponent.create({
               data: {
@@ -535,7 +586,9 @@ export class CompositeItemsService {
       const parent = await tx.item.findFirst({
         where: { id: compositeItemId, organizationId, isDeleted: false },
       });
-      if (!parent || parent.itemType !== 'Composite Item') {
+      // `itemStructure`, like every other check here: `itemType` is goods | service
+      // and has never held 'Composite Item', so this 404'd for every composite.
+      if (!parent || parent.itemStructure !== 'composite') {
         throw ApiError.notFound('Composite Item not found');
       }
 
@@ -547,6 +600,7 @@ export class CompositeItemsService {
       if (compositeItemId === rawData.componentItemId) {
         throw ApiError.badRequest('An item cannot be a component of itself.');
       }
+      await assertNoRecipeCycle(tx, organizationId, compositeItemId, [rawData.componentItemId]);
 
       const existingComponent = await tx.compositeItemComponent.findFirst({
         where: {
@@ -623,6 +677,7 @@ export class CompositeItemsService {
           where: { id: componentItemId, organizationId, isDeleted: false },
         });
         if (!comp) throw ApiError.notFound('Component item not found');
+        await assertNoRecipeCycle(tx, organizationId, compositeItemId, [componentItemId]);
       }
 
       return withUniqueViolation('This item is already a component of this composite item.', () =>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { DateInput } from '../../../components/ui/DateInput';
 import { Select } from '../../../components/ui/Select';
@@ -22,7 +22,7 @@ import {
   fetchStockLocations,
   type AvailableBatch,
 } from '../batches/batches.api';
-import { formatQty, toNumber } from '../jobwork.schemas';
+import { formatQty, planGaps, planWarnings, toNumber } from '../jobwork.schemas';
 import { invalidateStockQueries } from '../stockCache';
 import type { JobOrder, OverviewStep } from '../job-orders/jobOrders.schemas';
 import { createJobIssue, updateJobIssue } from './jobIssues.api';
@@ -1062,7 +1062,48 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
     setAddBatchesFor(id);
   };
 
+  /**
+   * 🔴 THE PLAN MUST BE COMPLETE BEFORE MATERIAL LEAVES (landed-cost plan D11) — the
+   * server's V4 check, asked here first so Issue is off rather than refused. A
+   * draft sends nothing, so it can still be parked.
+   */
+  const planRowsIn = step.inputs.map((row) => ({
+    itemId: row.itemId,
+    uomId: row.uomId,
+    plannedQty:
+      row.plannedQty === null || row.plannedQty === undefined ? null : toNumber(row.plannedQty),
+  }));
+  const planRowsOut = step.outputs.map((row) => ({
+    itemId: row.itemId,
+    uomId: row.uomId,
+    expectedQty:
+      row.expectedQty === null || row.expectedQty === undefined ? null : toNumber(row.expectedQty),
+  }));
+  const gaps = planGaps(planRowsIn, planRowsOut);
+  const planItemName = (itemId: string) =>
+    [...step.inputs, ...step.outputs].find((row) => row.itemId === itemId)?.item?.name ?? 'an item';
+  const planProblems = [
+    ...(gaps.noOutputs ? ['it lists nothing it produces'] : []),
+    ...(gaps.noPlanned.length
+      ? [`no planned quantity for ${gaps.noPlanned.map(planItemName).join(', ')}`]
+      : []),
+    ...(gaps.noExpected.length
+      ? [`no expected quantity for ${gaps.noExpected.map(planItemName).join(', ')}`]
+      : []),
+  ];
+  // Off the saved recipe snapshot: a composite output carries its rows, a plain one none.
+  const planNotes = planWarnings(planRowsIn, planRowsOut, (itemId) => {
+    const out = step.outputs.find((row) => row.itemId === itemId);
+    return out && out.components.length > 0
+      ? out.components.map((row) => ({
+          componentItemId: row.componentItemId,
+          qtyPerUnit: toNumber(row.qtyPerUnit),
+        }))
+      : null;
+  });
+
   const canSave =
+    planProblems.length === 0 &&
     lines.length > 0 &&
     Boolean(effectiveSourceId) &&
     overDrawn.size === 0 &&
@@ -1097,6 +1138,52 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
             : `${inputItems.length} items`}
         </p>
       </div>
+      {/* The plan gate (D11): Issue stays off until the job order's plan is complete. */}
+      {planProblems.length > 0 && (
+        <div
+          style={{
+            fontSize: 13,
+            color: '#b91c1c',
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            borderRadius: 4,
+            padding: '8px 12px',
+            margin: '0 0 16px 0',
+            lineHeight: 1.5,
+          }}
+          role="alert"
+        >
+          Step {step.seq} cannot send material yet: {planProblems.join('; ')}. Every receipt is
+          costed from the plan, so it has to be complete first — this can still be saved as a draft.{' '}
+          <Link to={`/organizations/${orgId}/jobwork/job-orders/${jobOrder.id}/edit`}>
+            Complete the plan on the job order
+          </Link>
+        </div>
+      )}
+      {planProblems.length === 0 && planNotes.size > 0 && (
+        <div
+          style={{
+            fontSize: 13,
+            color: '#92400e',
+            background: '#fffbeb',
+            border: '1px solid #fde68a',
+            borderRadius: 4,
+            padding: '8px 12px',
+            margin: '0 0 16px 0',
+            lineHeight: 1.5,
+          }}
+          role="status"
+        >
+          <strong style={{ display: 'block', marginBottom: 4 }}>Plan notes</strong>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            {[...planNotes].map(([itemId, note]) => (
+              <li key={itemId}>
+                {planItemName(itemId)}: {note}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {error && (
         <p
           style={{
@@ -1466,7 +1553,8 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
                     <tr
                       key={input.itemId}
                       style={{
-                        borderBottom: index === inputItems.length - 1 ? 'none' : '1px solid #f1f5f9',
+                        borderBottom:
+                          index === inputItems.length - 1 ? 'none' : '1px solid #f1f5f9',
                         background: index % 2 === 0 ? '#ffffff' : '#f8fafc',
                       }}
                     >

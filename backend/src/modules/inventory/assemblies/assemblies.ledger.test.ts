@@ -509,3 +509,22 @@ describe('assembly — the item balance a user actually reads', { timeout: 60_00
     expect(before.qty.minus(after.qty).toString()).toBe('20');
   });
 });
+
+describe('assembly — a composite as a component', { timeout: 60_000 }, () => {
+  it('consumes a composite component from its batches like any other item', async () => {
+    // Red Cotton is itself a composite; the shirt is made from it (landed-cost plan D4).
+    const redCottonId = await makeItem('Red Cotton', { structure: 'composite' });
+    const redCotton = await seed(redCottonId, 100, 22.5); // ₹2,250
+
+    const assembly = await assembliesService.createAssembly(
+      orgId,
+      userId,
+      payload([{ itemId: redCottonId, qtyRequired: 15 }]),
+    );
+
+    expect((await balanceOf(redCotton.id)).qty.toString()).toBe('85');
+    const composite = await balanceOf(assembly.compositeBatchId!);
+    expect(composite.qty.toString()).toBe('10');
+    expect(composite.value.toString()).toBe('337.5');
+  });
+});

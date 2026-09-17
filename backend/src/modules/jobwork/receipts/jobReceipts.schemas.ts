@@ -295,6 +295,10 @@ export const jobReceiptOutputSchema = z
      */
     valueShare: z.coerce.number().min(0).nullable().optional(),
 
+    /** What this row is billed at, per ACCEPTED unit (landed-cost plan D1–D2).
+     * Omitted, the step output's agreed rate applies. */
+    rate: z.coerce.number().min(0).nullable().optional(),
+
     /**
      * 🔴 The label the accepted goods will carry from here on. What the processor
      * returns is a physically NEW thing with no number of its own, so unless
@@ -398,70 +402,88 @@ export type JobReceiptOutputInput = z.infer<typeof jobReceiptOutputSchema>;
 
 export const createJobReceiptSchema = openApiRegistry.register(
   'CreateJobReceiptRequest',
-  z.object({
-    jobOrderStepId: z.string().uuid({ message: 'A receipt must belong to a job order step.' }),
-    receiptDate: z.coerce.date().optional(),
+  z
+    .object({
+      jobOrderStepId: z.string().uuid({ message: 'A receipt must belong to a job order step.' }),
+      receiptDate: z.coerce.date().optional(),
 
-    /** One receipt may close several challans — a processor often returns two
-     * consignments together (§6.1). */
-    issueIds: z.array(z.string().uuid()),
+      /** One receipt may close several challans — a processor often returns two
+       * consignments together (§6.1). */
+      issueIds: z.array(z.string().uuid()),
 
-    /** Defaults to the step's receive item. Editable: what comes back is
-     * sometimes not what was planned, and forcing a job order edit to record that
-     * is how people stop recording it. */
-    outputItemId: z.string().uuid().nullable().optional(),
-    outputUomId: z.string().uuid().nullable().optional(),
+      /**
+       * 🔴 The ticked challans this receipt CLOSES — nothing more comes back on
+       * them, so everything still out on each is consumed here and lands in the
+       * goods' cost (challan-closure R10). Per challan, never per receipt: the last
+       * lot may finish one challan and not another. Each must also be in
+       * `issueIds`. Omitted means none.
+       */
+      closedIssueIds: z.array(z.string().uuid()).optional(),
 
-    /** Where the goods landed — ours again, so a godown. */
-    locationId: z.string().uuid({ message: 'Say where the goods were received.' }),
+      /** Defaults to the step's receive item. Editable: what comes back is
+       * sometimes not what was planned, and forcing a job order edit to record that
+       * is how people stop recording it. */
+      outputItemId: z.string().uuid().nullable().optional(),
+      outputUomId: z.string().uuid().nullable().optional(),
 
-    /** The CONSUMPTION side: how much of each challan line this receipt accounts
-     * for. In unit-wise mode each line is one taka and carries the disposition
-     * that built the primary output's packages. */
-    lines: z.array(jobReceiptLineSchema),
+      /** Where the goods landed — ours again, so a godown. */
+      locationId: z.string().uuid({ message: 'Say where the goods were received.' }),
 
-    /**
-     * 🔴 The RETURN side, one row per item (§5.7). Left empty, one output is
-     * derived from the lines and the header's output item — exactly what
-     * Sprints 1–4 did, which is what keeps the old Receive dialog working.
-     */
-    outputs: z.array(jobReceiptOutputSchema).optional(),
+      /** The CONSUMPTION side: how much of each challan line this receipt accounts
+       * for. In unit-wise mode each line is one taka and carries the disposition
+       * that built the primary output's packages. */
+      lines: z.array(jobReceiptLineSchema),
 
-    /** The single-output form's copy of the same two fields — with no `outputs`
-     * grid to carry them, the derived output takes them from the header. Ignored
-     * whenever `outputs` is supplied, since each row then names its own. */
-    batchReference: z.string().trim().max(100).nullable().optional(),
-    reworkBatchReference: z.string().trim().max(100).nullable().optional(),
+      /**
+       * 🔴 The RETURN side, one row per item (§5.7). Left empty, one output is
+       * derived from the lines and the header's output item — exactly what
+       * Sprints 1–4 did, which is what keeps the old Receive dialog working.
+       */
+      outputs: z.array(jobReceiptOutputSchema).optional(),
 
-    remarks: z.string().trim().max(2000).nullable().optional(),
-    customFields: z.record(z.string(), z.unknown()).optional(),
+      /** The single-output form's copy of the same two fields — with no `outputs`
+       * grid to carry them, the derived output takes them from the header. Ignored
+       * whenever `outputs` is supplied, since each row then names its own. */
+      batchReference: z.string().trim().max(100).nullable().optional(),
+      reworkBatchReference: z.string().trim().max(100).nullable().optional(),
 
-    /**
-     * 🔴 A MODE, NOT A STATUS — the same reasoning as on the issue side. It says
-     * which button was pressed; the service turns it into `draft` or `posted` and
-     * nothing else, so no payload can name `cancelled`.
-     *
-     * Absent means post, so every existing client keeps behaving as it did.
-     */
-    saveAsDraft: z.boolean().optional(),
-  }).superRefine((data, ctx) => {
-    if (!data.saveAsDraft) {
-      if (data.issueIds.length === 0) {
+      remarks: z.string().trim().max(2000).nullable().optional(),
+      customFields: z.record(z.string(), z.unknown()).optional(),
+
+      /**
+       * 🔴 A MODE, NOT A STATUS — the same reasoning as on the issue side. It says
+       * which button was pressed; the service turns it into `draft` or `posted` and
+       * nothing else, so no payload can name `cancelled`.
+       *
+       * Absent means post, so every existing client keeps behaving as it did.
+       */
+      saveAsDraft: z.boolean().optional(),
+    })
+    .superRefine((data, ctx) => {
+      if ((data.closedIssueIds ?? []).some((id) => !data.issueIds.includes(id))) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: 'Pick at least one challan to receive against.',
-          path: ['issueIds'],
+          message: 'A challan can only be closed by a receipt that is received against it.',
+          path: ['closedIssueIds'],
         });
       }
-      if (data.lines.length === 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'A receipt needs at least one line.',
-          path: ['lines'],
-        });
+      if (!data.saveAsDraft) {
+        if (data.issueIds.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Pick at least one challan to receive against.',
+            path: ['issueIds'],
+          });
+        }
+        if (data.lines.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'A receipt needs at least one line.',
+            path: ['lines'],
+          });
+        }
       }
-    }
-  }),
+    }),
 );
 
 export type CreateJobReceiptInput = z.infer<typeof createJobReceiptSchema>;

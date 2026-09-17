@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate,useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { X } from 'lucide-react';
 import { createProcess } from './processes.api';
@@ -7,7 +7,8 @@ import type { CreateProcessData } from './processes.schemas';
 import { ProcessForm } from './ProcessForm';
 
 export function CreateProcess() {
-  const navigate = useNavigate();  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { orgId } = useParams<{ orgId: string }>();
 
   const listPath = `/organizations/${orgId}/settings/jobwork/processes`;
@@ -28,9 +29,16 @@ export function CreateProcess() {
 
   return (
     <div
-      style={{ background: '#fff', minHeight: '100%', display: 'flex', flexDirection: 'column' }}
+      style={{
+        background: '#fff',
+        minHeight: '100%',
+        flexShrink: 0,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
     >
-      <header className="detail-page-header"
+      <header
+        className="detail-page-header"
         style={{
           display: 'flex',
           alignItems: 'center',

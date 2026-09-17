@@ -78,7 +78,14 @@ async function seedStock(itemId: string, qty: number, value: number, locationId 
  * A whole job order with one dyeing step, issued and ready to receive against.
  * Each test gets its own so a receipt in one cannot close a challan in another.
  */
-async function aStepReadyToReceive(qty: number, value: number) {
+async function aStepReadyToReceive(
+  qty: number,
+  value: number,
+  // ₹10 per accepted metre — the charge lives on the output row (R6).
+  outputs: { itemId: string; isPrimary?: boolean; expectedQty?: number; rate?: number }[] = [
+    { itemId: dyedId, isPrimary: true, rate: 10 },
+  ],
+) {
   const inputBatch = await seedStock(greyId, qty, value);
   const jobOrder = await createNewJobOrder(orgId, {
     steps: [
@@ -86,10 +93,8 @@ async function aStepReadyToReceive(qty: number, value: number) {
         processId,
         processorType: 'vendor',
         processorId: dyerId,
-        rate: 10,
-        rateBasis: 'per_issued_unit',
         inputs: [{ itemId: greyId }],
-        outputs: [{ itemId: dyedId, isPrimary: true }],
+        outputs,
         plannedInputQty: qty,
       },
     ],
@@ -175,7 +180,7 @@ beforeAll(async () => {
     ).id;
   });
 
-  processId = (await createNewProcess(orgId, { name: 'Dyeing', rateBasis: 'per_issued_unit' })).id;
+  processId = (await createNewProcess(orgId, { name: 'Dyeing' })).id;
 });
 
 afterAll(async () => {
@@ -291,7 +296,8 @@ describe('receipt — several batches from one delivery', { timeout: 60_000 }, (
       total
         .reduce((sum, balance) => sum.plus(balance.value), total[0]!.value.minus(total[0]!.value))
         .toString(),
-    ).toBe('60000');
+      // The charge is on ACCEPTED metres only (R6): 50,000 + 900 × ₹10.
+    ).toBe('59000');
   });
 
   it('still posts a receipt that names no batches at all (the pre-2026-08-21 shape)', async () => {
@@ -546,7 +552,10 @@ describe('receipt — continuing a batch across deliveries', { timeout: 60_000 }
 describe('receipt — what a batch allocation may not do', { timeout: 60_000 }, () => {
   /** A receipt whose only job is to produce one named batch to point at. */
   async function anExistingBatchOf(itemId: string, reference: string) {
-    const { step, issue } = await aStepReadyToReceive(200, 10000);
+    // The step has to plan the item it returns — a receipt refuses anything else.
+    const { step, issue } = await aStepReadyToReceive(200, 10000, [
+      { itemId, isPrimary: true, rate: 10 },
+    ]);
     const receipt = await createNewJobReceipt(orgId, {
       jobOrderStepId: step.id,
       issueIds: [issue.id],
@@ -701,7 +710,10 @@ describe('receipt — cancellation', { timeout: 60_000 }, () => {
    * already issued onward, leaving that step holding stock no document explains.
    */
   it('refuses when a BY-PRODUCT’s batch has already been issued onward', async () => {
-    const { step, issue } = await aStepReadyToReceive(1000, 50000);
+    const { step, issue } = await aStepReadyToReceive(1000, 50000, [
+      { itemId: dyedId, isPrimary: true, expectedQty: 900, rate: 10 },
+      { itemId: otherItemId, expectedQty: 100 },
+    ]);
     const receipt = await createNewJobReceipt(orgId, {
       jobOrderStepId: step.id,
       issueIds: [issue.id],
@@ -719,7 +731,6 @@ describe('receipt — cancellation', { timeout: 60_000 }, () => {
           itemId: otherItemId,
           receivedQty: 100,
           acceptedQty: 100,
-          valueShare: 0,
           batchReference: 'BYPRODUCT',
         },
       ],
@@ -1059,8 +1070,6 @@ describe('receipt — a second allocation on the same batch', { timeout: 60_000 
           processId,
           processorType: 'vendor',
           processorId: dyerId,
-          rate: 10,
-          rateBasis: 'per_issued_unit',
           inputs: [{ itemId: greyId }],
           outputs: [{ itemId: dyedId, isPrimary: true }],
           plannedInputQty: 1000,

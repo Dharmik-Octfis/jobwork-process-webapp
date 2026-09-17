@@ -47,7 +47,6 @@ interface Props {
   fieldErrors?: Record<string, string>;
 }
 
-
 const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '8px 12px',
@@ -106,6 +105,7 @@ function toOutputRows(rows: StepItemRowRead[] = []): StepItemRow[] {
     uomId: row.uomId,
     expectedQty: num(row.expectedQty),
     isPrimary: Boolean(row.isPrimary),
+    rate: num(row.rate),
   }));
 }
 
@@ -120,12 +120,9 @@ function toFormSteps(order?: Partial<JobOrder>, isClone = false): JobOrderStepDa
     processorType: step.processorType,
     processorId: step.processorId,
     workCentreLocationId: step.workCentreLocationId,
-    rate: num(step.rate),
-    rateBasis: step.rateBasis,
     inputs: toInputRows(step.inputs),
     outputs: toOutputRows(step.outputs),
     expectedYield: num(step.expectedYield),
-    tolerancePct: num(step.tolerancePct),
     plannedInputQty: num(step.plannedInputQty),
     remarks: step.remarks,
   }));
@@ -139,12 +136,9 @@ function toGridSteps(route: Route): JobOrderStepData[] {
     processorType: step.processorType,
     processorId: step.processorId,
     workCentreLocationId: step.workCentreLocationId,
-    rate: num(step.rate),
-    rateBasis: step.rateBasis,
     inputs: toInputRows(step.inputs),
     outputs: toOutputRows(step.outputs),
     expectedYield: num(step.expectedYield),
-    tolerancePct: num(step.tolerancePct),
     plannedInputQty: null,
     remarks: step.remarks,
   }));
@@ -234,6 +228,14 @@ export function JobOrderForm({
         (count, step, index) => (step.status !== 'pending' ? index + 1 : count),
         0,
       );
+  // Finished steps take no more challans, so even their processor stays locked.
+  const finishedSteps = new Set(
+    isClone
+      ? []
+      : (initialData?.steps ?? []).flatMap((step, index) =>
+          step.status === 'completed' || step.status === 'short_closed' ? [index] : [],
+        ),
+  );
 
   const { data: routesPage } = useQuery({
     queryKey: ['routes', orgId, 'job-order-form'],
@@ -415,7 +417,10 @@ export function JobOrderForm({
                 className="form-field-grid"
                 style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
               >
-                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }} htmlFor="jo-number">
+                <label
+                  style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}
+                  htmlFor="jo-number"
+                >
                   Job Order Number
                 </label>
                 {isEdit ? (
@@ -473,7 +478,10 @@ export function JobOrderForm({
                 className="form-field-grid"
                 style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
               >
-                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }} htmlFor="jo-date">
+                <label
+                  style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}
+                  htmlFor="jo-date"
+                >
                   Date
                 </label>
                 <div style={{ width: '100%' }}>
@@ -490,7 +498,10 @@ export function JobOrderForm({
                 className="form-field-grid"
                 style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
               >
-                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }} htmlFor="jo-target">
+                <label
+                  style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}
+                  htmlFor="jo-target"
+                >
                   Target date
                 </label>
                 <div style={{ width: '100%' }}>
@@ -526,7 +537,9 @@ export function JobOrderForm({
                 className="form-field-grid"
                 style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
               >
-                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>Material belongs to</label>
+                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
+                  Material belongs to
+                </label>
                 <div style={{ width: '100%' }}>
                   <Select
                     value={ownership}
@@ -543,10 +556,12 @@ export function JobOrderForm({
 
               {ownership === 'customer' && (
                 <div
-                className="form-field-grid"
-                style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
-              >
-                  <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>Customer*</label>
+                  className="form-field-grid"
+                  style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
+                >
+                  <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>
+                    Customer*
+                  </label>
                   <div style={{ width: '100%' }}>
                     <Select
                       value={ownerPartyId ?? ''}
@@ -567,9 +582,17 @@ export function JobOrderForm({
 
               <div
                 className="form-field-grid"
-                style={{ gridTemplateColumns: '160px 1fr', alignItems: 'flex-start', gap: '16px', marginTop: 8 }}
+                style={{
+                  gridTemplateColumns: '160px 1fr',
+                  alignItems: 'flex-start',
+                  gap: '16px',
+                  marginTop: 8,
+                }}
               >
-                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500, marginTop: 8 }} htmlFor="jo-remarks">
+                <label
+                  style={{ fontSize: 13, color: '#4b5563', fontWeight: 500, marginTop: 8 }}
+                  htmlFor="jo-remarks"
+                >
                   Remarks
                 </label>
                 <div style={{ width: '100%' }}>
@@ -601,6 +624,7 @@ export function JobOrderForm({
              never be planned into another's order (§5.3). */
               ownership={ownership}
               lockedCount={lockedCount}
+              finishedSteps={finishedSteps}
             />
           </section>
 
