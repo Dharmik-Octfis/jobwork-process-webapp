@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { X } from 'lucide-react';
-import { toast } from 'react-hot-toast';
 import { Spinner } from '../../../components/ui/Spinner';
 import { fetchJobOrderById, updateJobOrder } from './jobOrders.api';
 import type { UpdateJobOrderData } from './jobOrders.schemas';
@@ -57,11 +56,8 @@ export function EditJobOrder() {
     },
     onError: (error: AxiosError<{ message?: string; details?: Record<string, string> }>) => {
       const details = error.response?.data?.details ?? {};
+      // Highlight only — the global mutation handler shows the one toast (app/queryClient.ts).
       setFieldErrors(details);
-      // The field's own words say more than the envelope's generic message.
-      toast.error(
-        Object.values(details)[0] ?? error.response?.data?.message ?? 'Failed to update job order',
-      );
     },
   });
 

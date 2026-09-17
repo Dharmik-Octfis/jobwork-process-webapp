@@ -1,6 +1,26 @@
 import { QueryClient, MutationCache } from '@tanstack/react-query';
+import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import { toApiErrorMessage } from '../api/client';
+
+/**
+ * The one error toast a failed mutation gets. A screen's own `onError` highlights
+ * fields and must not toast again — two toasts for one failure is the bug this
+ * prevents. Opt out with `meta: { suppressToast: true }` when a screen shows the
+ * error somewhere else instead.
+ */
+function mutationErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    // "Please check the highlighted fields" names no field — lead with the first one's reason.
+    const details = (error.response?.data as { details?: Record<string, unknown> } | undefined)
+      ?.details;
+    const first = Object.values(details ?? {}).find(
+      (value): value is string => typeof value === 'string' && value.trim() !== '',
+    );
+    if (first) return first;
+  }
+  return toApiErrorMessage(error);
+}
 
 /** App-wide React Query client (server-state cache; architecture §3.16). */
 export const queryClient = new QueryClient({
@@ -26,8 +46,8 @@ export const queryClient = new QueryClient({
     onError: (error, _variables, _context, mutation) => {
       // Allow specific mutations to opt out of global toasts via meta
       if (mutation.meta?.suppressToast) return;
-      const errorMessage = toApiErrorMessage(error);
-      toast.error(errorMessage, { id: errorMessage });
+      const message = mutationErrorMessage(error);
+      toast.error(message, { id: message });
     },
   }),
 });

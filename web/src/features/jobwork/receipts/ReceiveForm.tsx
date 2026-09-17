@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
-import { toast } from 'react-hot-toast';
 import { DateInput } from '../../../components/ui/DateInput';
 import { Select } from '../../../components/ui/Select';
 import { SplitButton } from '../../../components/ui/SplitButton';
@@ -924,11 +923,8 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
     onMutate: () => setFieldErrors({}),
     onError: (err: AxiosError<{ message?: string; details?: Record<string, string> }>) => {
       const details = err.response?.data?.details ?? {};
+      // Highlight only — the global mutation handler shows the one toast (app/queryClient.ts).
       setFieldErrors(details);
-      // "Please check the highlighted fields" names no field — lead with the first one's reason.
-      toast.error(
-        Object.values(details)[0] ?? err.response?.data?.message ?? 'Could not post this receipt',
-      );
     },
   });
 
