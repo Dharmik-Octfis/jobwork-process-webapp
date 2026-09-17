@@ -49,7 +49,7 @@ export async function getFifoCostLotTracking(
           u.unit_name AS "uomName",
           l.location_id AS "locationId",
           loc.name AS "locationName",
-          CASE 
+          CASE
             WHEN l.source_doc_type = 'item_opening_stock' THEN COALESCE((
               SELECT migration_date FROM organizations WHERE id = ${organizationId}::uuid
             ), '1970-01-01'::timestamptz)
@@ -112,7 +112,7 @@ export async function getFifoCostLotTracking(
     if (locationName) {
       q = Prisma.sql`${q} AND "locationName" ILIKE ${'%' + locationName + '%'}`;
     }
-    
+
     if (toDate) {
       q = Prisma.sql`${q} AND real_date <= ${new Date(toDate)}::timestamptz`;
     }
@@ -246,14 +246,14 @@ export async function getFifoCostLotTracking(
       partyId: string | null;
       partyType: 'vendor' | 'customer' | null;
     };
-    
+
     type ItemLedger = {
       itemName: string;
       itemId: string;
       inEvents: LedgerEvent[];
       outEvents: LedgerEvent[];
     };
-    
+
     const items = new Map<string, ItemLedger>();
 
     for (const entry of rawEntries) {
@@ -284,7 +284,7 @@ export async function getFifoCostLotTracking(
       if (docLabel === 'job_receipt') docLabel = 'Job Receipt';
       if (docLabel === 'job_issue') docLabel = 'Job Issue';
       if (docLabel === 'purchase_order') docLabel = 'Purchase Order';
-      if (docLabel === 'item_opening_stock') docLabel = 'Opening Balance'; 
+      if (docLabel === 'item_opening_stock') docLabel = 'Opening Balance';
       if (docLabel === 'inventory_adjustment') docLabel = 'Inventory Adjustment By Quantity';
       if (docLabel === 'assembly') docLabel = 'Assemblies';
 
@@ -299,7 +299,12 @@ export async function getFifoCostLotTracking(
       const partyType = partyId ? info?.partyType || defaultPartyType : null;
 
       if (qIn > 0) {
-        const existingIn = item.inEvents.find((e) => e.docId === entry.sourceDocId && e.docType === entry.sourceDocType && Math.abs(e.cost - (vIn/qIn)) < 0.001);
+        const existingIn = item.inEvents.find(
+          (e) =>
+            e.docId === entry.sourceDocId &&
+            e.docType === entry.sourceDocType &&
+            Math.abs(e.cost - vIn / qIn) < 0.001,
+        );
         if (existingIn) {
           existingIn.qty += qIn;
           existingIn.total += vIn;
@@ -323,7 +328,9 @@ export async function getFifoCostLotTracking(
       }
 
       if (qOut > 0) {
-        const existingOut = item.outEvents.find((e) => e.docId === entry.sourceDocId && e.docType === entry.sourceDocType);
+        const existingOut = item.outEvents.find(
+          (e) => e.docId === entry.sourceDocId && e.docType === entry.sourceDocType,
+        );
         if (existingOut) {
           existingOut.qty += qOut;
         } else {
@@ -346,7 +353,9 @@ export async function getFifoCostLotTracking(
     }
 
     const rows: FifoCostLotTrackingRow[] = [];
-    const sortedItems = Array.from(items.values()).sort((a, b) => a.itemName.localeCompare(b.itemName));
+    const sortedItems = Array.from(items.values()).sort((a, b) =>
+      a.itemName.localeCompare(b.itemName),
+    );
 
     let currentItemName = '';
 
@@ -366,7 +375,7 @@ export async function getFifoCostLotTracking(
         isFirstItemRow = true;
         currentItemName = item.itemName;
       }
-      
+
       // Pre-calculate remaining quantities for each IN lot
       let totalOutForItem = item.outEvents.reduce((sum, e) => sum + e.qty, 0);
       const originalInQty = new Map<LedgerEvent, number>();
@@ -377,7 +386,7 @@ export async function getFifoCostLotTracking(
         inQtyRemainingMap.set(inEv, inEv.qty - consumed);
         totalOutForItem -= consumed;
       }
-      
+
       const filterFromDate = fromDate ? new Date(fromDate).getTime() : 0;
       const filterToDate = toDate ? new Date(toDate).getTime() : Infinity;
 
@@ -400,7 +409,7 @@ export async function getFifoCostLotTracking(
         }
 
         let shouldPrintPair = false;
-        
+
         if (isProductOut) {
           if (outEv) {
             const outTime = outEv.date.getTime();
@@ -426,17 +435,20 @@ export async function getFifoCostLotTracking(
         }
 
         if (shouldPrintPair) {
-          const ageStr = inEv && differenceInDays(new Date(), inEv.date) > 0 ? `${differenceInDays(new Date(), inEv.date)} Days` : '';
-          const origQty = inEv ? (originalInQty.get(inEv) || inEv.qty) : 0;
-          const remaining = inEv ? (inQtyRemainingMap.get(inEv) || 0) : 0;
+          const ageStr =
+            inEv && differenceInDays(new Date(), inEv.date) > 0
+              ? `${differenceInDays(new Date(), inEv.date)} Days`
+              : '';
+          const origQty = inEv ? originalInQty.get(inEv) || inEv.qty : 0;
+          const remaining = inEv ? inQtyRemainingMap.get(inEv) || 0 : 0;
 
           // If we print an untouched lot in Product In mode, outEv might be defined but not matching (or outEv is null).
           // Actually, if matchQty == 0, we should treat outEv as null for printing purposes.
-          const printOutEv = (outEv && (isProductOut || matchQty > 0)) ? outEv : null;
+          const printOutEv = outEv && (isProductOut || matchQty > 0) ? outEv : null;
 
           rows.push({
             itemName: isFirstItemRow ? item.itemName : '',
-            
+
             inDate: inEv ? format(inEv.date, 'dd-MM-yyyy') : null,
             inTransaction: inEv ? inEv.transaction : '',
             inReceivedFrom: inEv ? inEv.partyName : '',

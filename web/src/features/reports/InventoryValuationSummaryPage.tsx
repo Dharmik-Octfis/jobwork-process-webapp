@@ -18,7 +18,7 @@ import { ItemComboBox } from '../../components/ui/ItemComboBox';
 import type { Item } from '../items/items.schemas';
 import { CategorySelectDropdown } from '../items/components/CategorySelectDropdown';
 import { useQuery } from '@tanstack/react-query';
-import { fetchLocations } from '../configuration/locations/locations.api';
+import { fetchLocations, isOwnLocation } from '../configuration/locations/locations.api';
 import { LocalComboBox } from '../../components/ui/LocalComboBox';
 import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import type { FilterDataType } from '../../components/ui/AdvancedFilter/filterUtils';
@@ -75,7 +75,7 @@ export function InventoryValuationSummaryPage() {
   const { data: customFields = [] } = useActiveCustomFields(orgId, 'item');
 
   const locationOptions = useMemo(
-    () => locations.map((loc) => ({ label: loc.name, value: loc.id })),
+    () => locations.filter(isOwnLocation).map((loc) => ({ label: loc.name, value: loc.id })),
     [locations]
   );
 
