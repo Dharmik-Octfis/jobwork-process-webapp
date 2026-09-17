@@ -1141,7 +1141,10 @@ export function StepsGrid<T extends StepGridRow>({
                       onChange={(value) =>
                         update(index, {
                           processorType: value,
-                          processorId: value === 'internal' ? null : step.processorId,
+                          // A vendor id is not a customer id — keeping it across a type
+                          // change saves a processor the server rejects as unknown.
+                          processorId:
+                            value === (step.processorType ?? 'vendor') ? step.processorId : null,
                           workCentreLocationId:
                             value === 'internal' ? step.workCentreLocationId : null,
                         })
