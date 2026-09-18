@@ -19,6 +19,7 @@ const emptyToNullDate = z.preprocess(
 export const billItemSchema = z.object({
   id: emptyToUndefinedUuid,
   itemId: z.string().uuid(),
+  jobReceiptId: emptyToUndefinedUuid,
   quantity: z.coerce.number().min(0.01),
   rate: z.coerce.number().min(0),
   discountPercentage: z.coerce.number().optional().nullable(),

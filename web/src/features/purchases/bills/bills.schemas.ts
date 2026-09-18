@@ -11,6 +11,7 @@ export const billItemSchema = z.object({
   discountAmount: z.number().or(z.string()).nullable().optional(),
   amount: z.number().or(z.string()).optional(),
   itemTotal: z.number().or(z.string()).nullable().optional(),
+  jobReceiptId: z.string().optional(),
   customFields: z.record(z.string(), z.any()).nullable().optional(),
   // Frontend virtual fields for display
   description: z.string().nullable().optional(),

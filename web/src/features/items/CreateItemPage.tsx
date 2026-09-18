@@ -469,7 +469,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                 className="form-field-grid"
                 style={{ gridTemplateColumns: '140px 1fr', alignItems: 'center', gap: '16px' }}
               >
-                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>Unit</label>
+                <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>Unit*</label>
                 <div>
                   <div
                     style={{
@@ -517,6 +517,13 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                             stockingUomId: val || null,
                             unit: picked?.unitName ?? '',
                           }));
+                          if (errors.unit) {
+                            setErrors((prev) => {
+                              const newErrors = { ...prev };
+                              delete newErrors.unit;
+                              return newErrors;
+                            });
+                          }
                         }}
                         options={[
                           ...uoms.map((u) => ({ value: u.id, label: u.unitName })),
