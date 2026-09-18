@@ -106,6 +106,7 @@ function toOutputRows(rows: StepItemRowRead[] = []): StepItemRow[] {
     expectedQty: num(row.expectedQty),
     isPrimary: Boolean(row.isPrimary),
     rate: num(row.rate),
+    sharePct: num(row.sharePct),
   }));
 }
 

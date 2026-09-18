@@ -29,6 +29,7 @@ import {
   planWarnings,
   primaryOutputIndex,
   producedByStep,
+  shareSplitRows,
   type RecipeLookup,
   type StepGridRow,
   type StepItemRow,
@@ -227,6 +228,9 @@ interface ItemListProps {
   showTolerance?: boolean;
   /** Outputs only: the charge per accepted unit box (landed-cost plan D1). */
   showRate?: boolean;
+  /** Outputs, job orders only: which rows take a share of the input (R1b). Empty
+   * means the step is not split by share and the column is not shown. */
+  shareRows?: ReadonlySet<number>;
   /** A one-line remark under the list's header — today, that a step with several
    * inputs may only produce composites (V1). */
   note?: string | null;
@@ -304,6 +308,7 @@ function ItemList({
   qtyRequired,
   showTolerance,
   showRate,
+  shareRows,
   note,
   qtyPlaceholderFor,
   disabled,
@@ -319,6 +324,11 @@ function ItemList({
 }: ItemListProps) {
   const trackingLabel = useTrackingLabel();
   const isInput = side === 'inputs';
+  const showShare = !isInput && (shareRows?.size ?? 0) > 0;
+  const shareTotal = showShare
+    ? rows.reduce((sum, row, i) => sum + (shareRows!.has(i) ? (row.sharePct ?? 0) : 0), 0)
+    : 0;
+  const shareBlank = showShare && rows.some((row, i) => shareRows!.has(i) && row.sharePct == null);
   const update = (rowIndex: number, patch: Partial<StepItemRow>) =>
     onChange(rows.map((row, i) => (i === rowIndex ? { ...row, ...patch } : row)));
 
@@ -461,6 +471,24 @@ function ItemList({
             {showRate && !isInput && (
               <span aria-hidden="true" style={{ flex: '0 0 84px' }}>
                 Rate
+              </span>
+            )}
+            {showShare && (
+              <span
+                style={{
+                  flex: '0 0 76px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  color: '#ef4444',
+                }}
+              >
+                <span aria-hidden="true">Share (%)*</span>
+                <InfoTip label="About share">
+                  How much of the consumed item goes into each item produced. Material cost is split
+                  by these shares, so enter what each one really uses. Example: 100 m in, 91% for a
+                  91 m roll and 9% for a thick item made from 9 m. They must total 100%.
+                </InfoTip>
               </span>
             )}
             <span aria-hidden="true" style={{ flex: '0 0 26px' }} />
@@ -642,6 +670,44 @@ function ItemList({
                   </div>
                 )}
 
+                {/* R1b — never defaulted: a blank stays blank until somebody says
+                    what this output takes. The leftover row takes none (R1a), so it
+                    gets a spacer that keeps the columns lined up. */}
+                {showShare &&
+                  (shareRows!.has(rowIndex) ? (
+                    <div style={{ flex: '0 0 76px' }}>
+                      <label htmlFor={`${qtyId}-share`} style={srOnly}>
+                        {`Step ${stepNumber} share percent for output ${rowIndex + 1}`}
+                      </label>
+                      <input
+                        id={`${qtyId}-share`}
+                        type="number"
+                        onWheel={blurOnWheel}
+                        step="0.01"
+                        min="0"
+                        max="100"
+                        value={row.sharePct ?? ''}
+                        onChange={(e) =>
+                          update(rowIndex, {
+                            sharePct: e.target.value === '' ? null : Number(e.target.value),
+                          })
+                        }
+                        disabled={disabled}
+                        aria-required
+                        placeholder="%"
+                        title="Share of material"
+                        style={fieldError('sharePct') ? cellInputError : cellInput}
+                      />
+                    </div>
+                  ) : (
+                    <div
+                      style={{ flex: '0 0 76px', ...cellReadOnly, justifyContent: 'center' }}
+                      title="Comes back unused — takes no share"
+                    >
+                      –
+                    </div>
+                  ))}
+
                 {/* 🔴 No "Main" radio. One output absorbs the step's cost
                     (§9.2.1) and it is the FIRST row — the server's own fallback
                     (`flagPrimaryOutput`), mirrored client-side by
@@ -728,6 +794,20 @@ function ItemList({
             </div>
           );
         })}
+
+        {/* The running total, so the 100% rule is seen while typing — not first
+            met as a refusal on the Issue screen. */}
+        {showShare && (
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              color: !shareBlank && Math.abs(shareTotal - 100) <= 0.01 ? '#15803d' : '#b45309',
+            }}
+          >
+            {`Share total ${formatQty(shareTotal)}% of 100%`}
+          </span>
+        )}
 
         {/* Gone, not greyed, once the step is locked or the form is read-only. A
             disabled button still painted blue with a pointer cursor reads as
@@ -1306,6 +1386,7 @@ export function StepsGrid<T extends StepGridRow>({
                   showQty={showPlannedQty}
                   qtyRequired={showPlannedQty}
                   showRate
+                  shareRows={showPlannedQty ? shareSplitRows(step) : undefined}
                   note={
                     (step.inputs ?? []).filter((row) => row.itemId).length > 1
                       ? 'Several items go in, so each item listed here must be a composite whose recipe says what it is made from — unless it is one of the items going in.'

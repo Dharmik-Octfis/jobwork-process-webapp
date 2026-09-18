@@ -165,6 +165,9 @@ export interface StepItemRow {
   expectedQty?: number | null;
   /** Outputs — charge per accepted unit, on routes and job orders (D1). */
   rate?: number | null;
+  /** Outputs, job orders only — share of the input's material, in % (R1b). Only
+   * asked on a step `shareSplitRows` picks out; never defaulted. */
+  sharePct?: number | null;
   /** Outputs only — the one that absorbs the step's cost (§9.2.1). No longer
    * asked for on the grid; see `primaryOutputIndex`. */
   isPrimary?: boolean;
@@ -330,7 +333,30 @@ export interface PlanOutputRow {
   itemId: string;
   uomId?: string | null;
   expectedQty?: number | null;
+  sharePct?: number | null;
 }
+
+/**
+ * 🔴 R1b — WHICH OUTPUTS SPLIT THE INPUT BY SHARE. The client's copy of the server's
+ * `shareSplitOutputs` (`receipts/landedCost.ts`); keep the two in step.
+ *
+ * One input, and two or more outputs that are not that input coming back. The
+ * leftover pass-through (R1a) takes no share. Returns the output indexes.
+ */
+export function shareSplitIndexes(
+  inputs: readonly { itemId: string }[],
+  outputs: readonly { itemId: string }[],
+): Set<number> {
+  const inputIds = new Set(inputs.filter((row) => row.itemId).map((row) => row.itemId));
+  if (inputIds.size !== 1) return new Set();
+  const products = outputs.flatMap((row, index) =>
+    row.itemId && !inputIds.has(row.itemId) ? [index] : [],
+  );
+  return products.length >= 2 ? new Set(products) : new Set();
+}
+
+export const shareSplitRows = (step: StepGridRow) =>
+  shareSplitIndexes(step.inputs ?? [], step.outputs ?? []);
 /** A composite's recipe; `null` for a plain item; `undefined` while not yet known. */
 export type RecipeLookup = (
   itemId: string,
@@ -341,9 +367,25 @@ export type RecipeLookup = (
  * in `jobIssues.service.ts` (landed-cost plan D11). Item ids, so each screen names
  * them its own way. Keep the two in step.
  */
-export function planGaps(inputs: readonly PlanInputRow[], outputs: readonly PlanOutputRow[]) {
+export function planGaps(
+  inputs: readonly PlanInputRow[],
+  outputs: readonly PlanOutputRow[],
+  /** The step already sent material out — a step planned before shares existed
+   * keeps its old split rather than being frozen mid-run (`missingShares`). */
+  sentBefore = false,
+) {
   const listedOutputs = outputs.filter((row) => row.itemId);
+  const split = [...shareSplitIndexes(inputs, outputs)].map((index) => outputs[index]!);
+  const blankShares = split.filter((row) => row.sharePct == null);
+  const legacy = sentBefore && split.length > 0 && blankShares.length === split.length;
+  const shareTotal = split.reduce((sum, row) => sum + (row.sharePct ?? 0), 0);
   return {
+    noShare: legacy ? [] : blankShares.map((row) => row.itemId),
+    /** The total, when every share is filled and they do not make 100%. */
+    shareTotalOff:
+      !legacy && split.length > 0 && blankShares.length === 0 && Math.abs(shareTotal - 100) > 0.01
+        ? roundQty(shareTotal)
+        : null,
     noOutputs: listedOutputs.length === 0,
     noPlanned: inputs
       .filter((row) => row.itemId && !(row.plannedQty && row.plannedQty > 0))
@@ -355,13 +397,14 @@ export function planGaps(inputs: readonly PlanInputRow[], outputs: readonly Plan
 }
 
 /**
- * 🔴 THE PLAN WARNINGS (landed-cost plan §3) — said, never enforced, keyed by the
- * INPUT item they concern.
+ * 🔴 THE PLAN WARNINGS (landed-cost plan §3) — said, not enforced here, keyed by the
+ * INPUT item they concern. Only the last is also a server refusal.
  *
  *   · less planned in than the expected output needs — fabric does stretch;
  *   · Expected equal to Planned on a plain same-unit step — no loss is planned, so
  *     shrinkage lands as job order loss instead of inside the landed cost;
- *   · an input nothing produced is made from — written off at completion.
+ *   · an input nothing produced is made from — the server refuses the save (V5);
+ *     said here first so the row is flagged before Save is pressed.
  *
  * What an output draws from an input is R1: itself when it passes straight through,
  * its recipe quantity when it is a composite, 1 when it is a plain output of a
@@ -402,11 +445,14 @@ export function planWarnings(
     if (draws.length === 0) {
       warnings.set(
         input.itemId,
-        'Nothing listed as produced is made from this, so none of it is consumed — whatever is sent is written off when the step is completed.',
+        'Nothing listed as produced is made from this — remove it, or the step will not save.',
       );
       continue;
     }
 
+    // A share-split step (R1b) states its split in %, and its outputs may be in any
+    // unit — quantities are not comparable there, so nothing is said about them.
+    if (shareSplitIndexes(ins, outs).size > 0) continue;
     const planned = input.plannedQty;
     if (!planned || draws.some((row) => !row.out.expectedQty)) continue;
     const comparable = draws.every(
@@ -445,6 +491,7 @@ export interface CostPreviewPlan {
     itemId: string;
     expectedQty: number | null;
     components: readonly { componentItemId: string; qtyPerUnit: number }[];
+    sharePct?: number | null;
   }[];
 }
 
@@ -452,8 +499,10 @@ export interface CostPreviewPlan {
 export interface CostPreviewLine {
   itemId: string;
   outstanding: number;
-  /** The batch's cost per unit at the processor. */
+  /** The line's average cost per unit at the processor — used only when `layers` is absent. */
   unitCost: number;
+  /** The line's FIFO cost layers at the processor, oldest first — what the server consumes. */
+  layers?: readonly { qty: number; unitCost: number }[];
   /** On a challan this receipt closes — consumed to zero, and served first (R11–R12). */
   closed?: boolean;
 }
@@ -523,10 +572,27 @@ function drawPerUnit(
   const inputIds = new Set(plan.inputs.map((row) => row.itemId));
   if (inputIds.has(outputItemId)) return outputItemId === inputItemId ? 1 : 0;
   const planned = plan.outputs.find((row) => row.itemId === outputItemId);
+  // R1b: share ÷ expected, so each output draws its share of the plan in any unit.
+  const split = [...shareSplitIndexes(plan.inputs, plan.outputs)];
+  if (planned && split.length > 0 && split.every((i) => plan.outputs[i]!.sharePct != null)) {
+    if (!inputIds.has(inputItemId) || !planned.expectedQty || planned.expectedQty <= 0) return 0;
+    return planned.sharePct! / planned.expectedQty;
+  }
   if (planned && planned.components.length > 0) {
     return planned.components.find((row) => row.componentItemId === inputItemId)?.qtyPerUnit ?? 0;
   }
   return inputIds.size === 1 && inputIds.has(inputItemId) ? 1 : 0;
+}
+
+/** R1a — a pass-through returned beside something else made from the same input is
+ * leftover, and comes back 1:1. Its expected quantity, or null. */
+function leftoverExpected(plan: CostPreviewPlan, inputItemId: string): number | null {
+  const passThrough = plan.outputs.find((row) => row.itemId === inputItemId);
+  if (!passThrough?.expectedQty || passThrough.expectedQty <= 0) return null;
+  const drawnElsewhere = plan.outputs.some(
+    (row) => row.itemId !== inputItemId && drawPerUnit(plan, row.itemId, inputItemId, false) > 0,
+  );
+  return drawnElsewhere ? passThrough.expectedQty : null;
 }
 
 export function receiptCostPreview(input: {
@@ -544,18 +610,29 @@ export function receiptCostPreview(input: {
     outstanding.set(line.itemId, round4((outstanding.get(line.itemId) ?? 0) + line.outstanding));
   }
 
-  // R2 + R3: need = (accepted + rework) × w × planned ÷ Σ(expected × w).
+  // R2 + R3: need = (accepted + rework) × w × planned ÷ Σ(expected × w) — except a
+  // leftover pass-through, which needs exactly what came back (R1a).
   const needs = new Map<string, Map<string, number>>();
   for (const inputItemId of outstanding.keys()) {
     let ratio = 1;
+    let leftover: number | null = null;
     if (!rework) {
-      const planned = plan.inputs.find((row) => row.itemId === inputItemId)?.plannedQty ?? 0;
-      const denominator = plan.outputs.reduce(
-        (sum, row) =>
-          sum + (row.expectedQty ?? 0) * drawPerUnit(plan, row.itemId, inputItemId, false),
-        0,
-      );
-      if (planned <= 0 || denominator <= 0) continue;
+      let planned = plan.inputs.find((row) => row.itemId === inputItemId)?.plannedQty ?? 0;
+      if (planned <= 0) continue;
+      const weighted = (row: CostPreviewPlan['outputs'][number]) =>
+        (row.expectedQty ?? 0) * drawPerUnit(plan, row.itemId, inputItemId, false);
+      const all = plan.outputs.reduce((sum, row) => sum + weighted(row), 0);
+      const others = plan.outputs
+        .filter((row) => row.itemId !== inputItemId)
+        .reduce((sum, row) => sum + weighted(row), 0);
+      leftover = leftoverExpected(plan, inputItemId);
+      if (leftover !== null && planned - leftover <= 0) leftover = null;
+      let denominator = all;
+      if (leftover !== null) {
+        planned -= leftover;
+        denominator = others;
+      }
+      if (denominator <= 0) continue;
       ratio = planned / denominator;
     }
     const byOutput = new Map<string, number>();
@@ -563,7 +640,9 @@ export function receiptCostPreview(input: {
       const draw = drawPerUnit(plan, row.itemId, inputItemId, rework);
       const units = row.acceptedQty + row.reworkQty;
       if (draw <= 0 || units <= 0) continue;
-      const need = round4(units * draw * ratio);
+      const need = round4(
+        units * draw * (leftover !== null && row.itemId === inputItemId ? 1 : ratio),
+      );
       if (need > 0) byOutput.set(row.itemId, need);
     }
     if (byOutput.size > 0) needs.set(inputItemId, byOutput);
@@ -591,9 +670,16 @@ export function receiptCostPreview(input: {
     let value = 0;
     for (const line of walk) {
       if (line.itemId !== itemId || left <= 0) continue;
-      const take = Math.min(left, line.outstanding);
-      value = round4(value + take * line.unitCost);
+      let take = Math.min(left, line.outstanding);
       left = round4(left - take);
+      // FIFO within the line, exactly as the server posts it.
+      for (const layer of line.layers ?? []) {
+        if (take <= 0) break;
+        const fromLayer = Math.min(take, layer.qty);
+        value = round4(value + fromLayer * layer.unitCost);
+        take = round4(take - fromLayer);
+      }
+      if (take > 0) value = round4(value + take * line.unitCost);
     }
 
     used.set(itemId, {
@@ -839,6 +925,8 @@ export const stepItemRowSchema = z.object({
   expectedQty: decimalString.optional(),
   /** Outputs only — charge per accepted unit. */
   rate: decimalString.optional(),
+  /** Outputs only — share of the input's material, in % (R1b). */
+  sharePct: decimalString.optional(),
   fromStock: z.boolean().optional(),
   isPrimary: z.boolean().optional(),
   item: itemRefSchema.nullable().optional(),

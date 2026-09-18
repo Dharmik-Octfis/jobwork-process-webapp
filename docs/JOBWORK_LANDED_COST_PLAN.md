@@ -97,6 +97,27 @@ These are the rules the code comments should cite as `landed-cost R1…R9`.
   It holds the expected loss, and across a unit change it also holds the conversion:
   1,000 m planned for 950 m expected gives `k = 1.0526`; 1,000 m for 1,200 PCS gives `k = 0.8333 m per PCS`.
   Rework receipts use `k = 1` — a rework pass has no plan of its own, and completion writes off the rest.
+- **R1a — Leftover comes back 1:1 (2026-09-18).** A pass-through output (the input item itself)
+  returned **beside** another output made from the same input is leftover: it needs exactly what came
+  back, and the other outputs' ratio is worked on what is left —
+  `k_i = (planned_i − expected_leftover) ÷ Σ others (expected × w)`. 200 m for 100 shirts at 1.5 m plus
+  40 m back gives the shirts `k = 160 ÷ 150`, and the 40 m back uses 40 m, not 42.1. Its rate is the
+  user's to set like any row's — nothing refuses one; left blank it charges ₹0 (R6). A pass-through **on its own** — washing,
+  fabric back — is the work itself and keeps R2. Applies to receipts posted from that date; a step with
+  earlier receipts costs its later ones this way, and the difference lands in completion's write-off.
+- **R1b — One input, several outputs: split by share (2026-09-18).** On a step with **one** input and
+  **two or more** outputs that are not that input coming back, each output carries `share_pct` — the
+  share of the input's material it takes — and `w(o, i) = share_o ÷ expected_o`. Then
+  `Σ expected × w = Σ shares` and `need(o) = received_o ÷ expected_o × share_o × planned ÷ Σ shares`.
+  Splitting by quantity assumed every unit out used the input evenly: 100 m into a 91 m roll and 1 m of
+  a thick item made from 9 m charged the roll 98.9 m and the thick item 1.09 m. At 91 % / 9 % they get
+  91 m and 9 m. A share is a fraction of the input, never a quantity, so the outputs may be in **any
+  units** — which is why V3 went. With a leftover (R1a) beside them, the shares split
+  `planned − leftover`. **Never defaulted, and checked at job order save** (`assertShares`): a blank
+  share, or shares that do not total 100 % (± 0.01), refuse the save on the share box — never read as
+  "the first output takes it all". V4 repeats the check at issue as a net. A step that sent material
+  before the column existed has no shares and cannot be re-planned, so it keeps the quantity split; `shareSplitOutputs` in `landedCost.ts` decides which rows
+  take a share, and the client mirrors it (`shareSplitIndexes`).
 - **R3 — Need.** For each produced row `o` and each input `i` it draws on:
   `need(o, i) = (accepted_o + rework_o) × w(o, i) × k_i`, to 4 dp.
 - **R4 — Used, per input item.**
@@ -110,8 +131,9 @@ These are the rules the code comments should cite as `landed-cost R1…R9`.
   - **Since 2026-09-17, a closed challan floors it** (R11, `JOBWORK_CHALLAN_CLOSURE_PLAN.md`): a receipt
     that closes a challan uses at least everything still out on it, and that challan's lines are
     allocated first (R12).
-- **R5 — Material value.** `consumedValue_i` = what the consume rows posted (batch cost per unit at the
-  processor location, running balance — unchanged). Split across the rows that draw on item `i` **in
+- **R5 — Material value.** `consumedValue_i` = what the consume rows posted. Since 2026-09-18 that is
+  **FIFO over the challan line's own processor layers** (`docs/FIFO_COSTING_PLAN.md` §3.4) — the godown
+  cost the challan carried out, oldest first — no longer the batch's running cost there. Split across the rows that draw on item `i` **in
   proportion to their need**, through `splitByQty` so no paisa goes missing — the same split whether the
   used figure was typed or calculated. Legitimate: one item, one unit.
 - **R6 — Charge.** `charge_o = (rate_o ?? 0) × accepted_o`. `NULL` rate = not agreed = ₹0; `0` = free.
@@ -121,8 +143,8 @@ These are the rules the code comments should cite as `landed-cost R1…R9`.
 - **R8 — Completion write-off.** On Complete step (and on Close short, per step): for every line of every
   posted challan of the step, `outstanding = qty − closed by posted receipts − already written off`;
   post a `scrap` for **all of it, however small**, at the challan's destination, same batch and package,
-  valued at that batch's running cost per unit there — so a completed step leaves exactly nothing at the
-  processor. Customer-owned stock is zero-valued by `postMovement`, as everywhere.
+  valued at the cost of that challan line's remaining FIFO layers (since 2026-09-18) — so a completed
+  step leaves exactly nothing at the processor. Customer-owned stock is zero-valued by `postMovement`, as everywhere.
 - **R9 — A completed step is closed.** No issue, receipt, receipt cancellation or issue cancellation
   against it. Completion is refused while the step has draft issues or receipts. There is no reopen.
 - **R10–R14 — Closing a challan** (built 2026-09-17, `JOBWORK_CHALLAN_CLOSURE_PLAN.md`). A receipt may
@@ -136,17 +158,27 @@ not re-validated):
 - V1: more than one distinct input item → every output item is `item_structure = 'composite'`.
 - V2: every component of an output composite is one of the step's input items; a composite with an empty
   recipe is refused.
-- Exempt from V1 and V2: an output that is itself one of the step's input items — washing fabric with
-  detergent, fabric in and fabric out. It passes through and draws on itself at `w = 1`, so R1 needs the
-  same exemption. (Found 2026-09-15 while building phase 5.)
-- V3: one input, and an output in a different unit from it → that output is the step's **only** output
-  (D12). `Σ expected × w` cannot add pieces to metres.
+- Exempt from V1 and V2: an output that is itself one of the step's input items — leftover fabric
+  returned beside the shirts, fabric in and fabric out. It passes through and draws on itself at `w = 1`,
+  so R1 needs the same exemption. (Found 2026-09-15 while building phase 5.)
+- ~~V3: one input, and an output in a different unit from it → that output is the step's **only**
+  output (D12).~~ **Removed 2026-09-18** — such a step now splits by share (R1b), which never adds
+  pieces to metres.
+- V5: every input is drawn on by at least one output under R1 — a pass-through draws itself, a composite
+  its recipe, a plain output of a single-input step that input. An input nothing draws on was never
+  consumed by a receipt and only ever written off at completion, so it is refused at save (2026-09-18;
+  it was the third warning below). Washing with detergent is modelled as a composite ("Washed Fabric" =
+  fabric + detergent), which also puts the detergent into the fabric's cost instead of into loss. A
+  step with no outputs yet is a draft and is left to V4.
 
 **Validation of the plan (D11)** — at **issue post**, not at job order save, because a half-planned order
 must still save, and a step cannot be re-planned once a challan exists:
 
 - V4: every input row of the step has `planned_qty > 0` and every output row `expected_qty > 0`.
-  Refused per row, naming the step and item. Drafts and rework challans are exempt.
+  Refused per row, naming the step and item. Drafts and rework challans are exempt. On a share-split
+  step (R1b) every output also needs a `share_pct`, and the shares must total 100 % (± 0.01) — already
+  enforced at save, so this is the net for a row changed outside the form. Exempt: a step that already
+  sent material with no shares at all, which only a step planned before R1b can have.
 
 **Warnings, never refusals** — shown on the steps grid, and on the Issue screen before posting:
 
@@ -154,7 +186,8 @@ must still save, and a step cannot be re-planned once a challan exists:
   need): fabric does stretch, so it saves.
 - Expected left **equal to planned** on a same-unit step: "no loss is expected, so any shrinkage will be
   job order loss rather than part of landed cost".
-- An input no output draws on: it will never be consumed and will be written off at completion.
+- An input no output draws on — now also refused at save (V5); the grid says it first so the row is
+  flagged before Save is pressed.
 
 **Tolerance (D10)** is not part of the cost engine. It keeps its one job — the over-issue ceiling
 `planned × (1 + tolerance %)` in `assertWithinTolerance` (`jobIssues.service.ts:241`) — and only its
@@ -456,8 +489,8 @@ consume it; with §6.6, a completion racing a receipt would write off material t
     and shows the calculated figure beside it; clearing it returns to the calculation.
   - Add a Rate column per returned row, prefilled from the step, editable.
   - A cost preview per row — `material + charge = total → ₹/unit` — with the R4 cap warning. The receipt
-    prefill returns, per open challan line, the outstanding qty and the batch's cost per unit at the
-    processor.
+    prefill returns, per open challan line, the outstanding qty and — since FIFO, 2026-09-18 — the
+    line's cost `layers` at the processor, oldest first, which the preview walks exactly as the post does.
   - The preview is a client mirror of R1–R7 in `jobwork.schemas.ts`, replacing the dead `stepCharge`
     (`:52`), with the same "keep the two in step" note. The server figure is authoritative.
 - **`ReceiptDetail.tsx`** — show the stored breakdown per row; drop `rateBasis`.
@@ -629,8 +662,8 @@ work, not a hole in this one.
 - **No reopening a completed step.** It would reverse the write-off rows.
 - **Planned input quantities are still typed**, not derived from recipe × expected output.
 - **Loss is not charged back** to the processor. A debit note is its own document.
-- **A backdated receipt is valued at today's batch cost**, not the cost on its date. Only matters when the
-  batch was topped up in between.
+- **A backdated document is costed from the layers as they stand when it is posted**, not as they stood
+  on its date — FIFO D2, no re-costing (`FIFO_COSTING_PLAN.md` §4).
 
 **Controls and display**
 

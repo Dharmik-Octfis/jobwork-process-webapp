@@ -14,6 +14,9 @@
 # A genuine in-progress merge points at a commit that is NOT yet reachable from HEAD, so it is
 # never touched here: git refuses to start a merge with an already-merged branch ("Already up to
 # date"), which is what makes ancestry a sound staleness test.
+#
+# The late re-write happens when no hook runs, so on Windows scripts/watch-stale-merge-head.ps1
+# (installed by scripts/install-merge-head-watcher.ps1) catches it as it happens.
 set -e
 
 git_dir=$(git rev-parse --git-dir 2>/dev/null) || exit 0

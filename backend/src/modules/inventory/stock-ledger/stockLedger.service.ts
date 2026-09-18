@@ -1,8 +1,20 @@
-import { Prisma } from '../../../../generated/prisma/client.ts';
+import { Prisma, type StockLedgerEntry } from '../../../../generated/prisma/client.ts';
 import type { TenantClient } from '../../../db/prisma.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
 import { allocateNumber } from '../../../lib/numberSequence.ts';
 import { searchWhere } from '../../../lib/pagination.ts';
+import {
+  createLayers,
+  drawLayers,
+  recordDraws,
+  restoreDraws,
+  type LayerDraw,
+  type LayerScope,
+} from './costLayers.ts';
+
+export type { LayerScope } from './costLayers.ts';
+
+const ZERO = new Prisma.Decimal(0);
 
 /**
  * 🔴 THE ONLY WRITER OF `stock_ledger`, AND THE ONLY CREATOR OF BATCHES.
@@ -100,8 +112,19 @@ export interface PostMovementInput {
   /** Exactly one of these is positive; the other stays 0. */
   qtyIn?: Prisma.Decimal | number | string;
   qtyOut?: Prisma.Decimal | number | string;
+  /** What an inward row cost — a bill line, an opening figure, a produced batch. */
   valueIn?: Prisma.Decimal | number | string;
+  /**
+   * 🔴 NEVER passed for own stock (FIFO, docs/FIFO_COSTING_PLAN.md §3.2). What stock
+   * is worth when it leaves is decided here, from the cost layers `costScope`
+   * allows — a caller that prices it itself is refused. Customer-owned and
+   * physical-only rows carry zero value either way.
+   */
   valueOut?: Prisma.Decimal | number | string;
+  /** Outward rows: which cost layers to draw on. Plain FIFO when omitted. */
+  costScope?: LayerScope;
+  /** Inward rows: the `job_issue_lines.id` the new layer belongs to (§3.4). */
+  layerLineId?: string | null;
   /** The document that caused the movement, e.g. `job_issue`. */
   sourceDocType: string;
   sourceDocId?: string | null;
@@ -251,6 +274,31 @@ export async function postMovement(
   input: PostMovementInput,
   batches?: ResolvedBatches,
 ) {
+  return (await postCosted(tx, input, batches)).entry;
+}
+
+/** The row being undone, as `reverseMovement` read it. */
+interface ReversedRow {
+  id: string;
+  qtyIn: Prisma.Decimal;
+  qtyOut: Prisma.Decimal;
+  valueOut: Prisma.Decimal;
+  postedAt: Date;
+}
+
+/** Paths only this file may take — a transfer's destination, and a reversal. */
+interface CostingInternals {
+  /** The source row's draws: the destination gets one layer per draw. */
+  transferDraws?: readonly LayerDraw[];
+  reverses?: ReversedRow;
+}
+
+async function postCosted(
+  tx: TenantClient,
+  input: PostMovementInput,
+  batches?: ResolvedBatches,
+  internals: CostingInternals = {},
+): Promise<{ entry: StockLedgerEntry; draws: LayerDraw[] }> {
   const qtyIn = toDecimal(input.qtyIn);
   const qtyOut = toDecimal(input.qtyOut);
   let valueIn = toDecimal(input.valueIn);
@@ -337,30 +385,216 @@ export async function postMovement(
     valueOut = new Prisma.Decimal(0);
   }
 
-  return tx.stockLedgerEntry.create({
-    data: {
-      organizationId: input.organizationId,
+  const postedAt = input.postedAt ?? new Date();
+  const write = (values: { valueIn: Prisma.Decimal; valueOut: Prisma.Decimal }) =>
+    tx.stockLedgerEntry.create({
+      data: {
+        organizationId: input.organizationId,
+        itemId: batch.itemId,
+        batchId: batch.id,
+        batchUnitId,
+        locationId: input.locationId,
+        ownership: batch.ownership,
+        ownerPartyId: batch.ownerPartyId,
+        uomId: batch.uomId,
+        qtyIn,
+        qtyOut,
+        ...values,
+        movementType: input.movementType,
+        stockEffect,
+        sourceDocType: input.sourceDocType,
+        sourceDocId: input.sourceDocId ?? null,
+        sourceDocLineId: input.sourceDocLineId ?? null,
+        remarks: input.remarks ?? null,
+        postedAt,
+        createdBy: input.userId ?? null,
+      },
+    });
+
+  /**
+   * 🔴 FIFO (docs/FIFO_COSTING_PLAN.md). Own stock on the accounting axis is
+   * costed through layers; customer-owned (zero value, §5.3) and physical-only
+   * rows create and consume none — the same two exclusions valuation makes.
+   */
+  const costed = batch.ownership === 'own' && stockEffect !== 'physical';
+  if (!costed) return { entry: await write({ valueIn, valueOut }), draws: [] };
+
+  const key = {
+    organizationId: input.organizationId,
+    itemId: batch.itemId,
+    locationId: input.locationId,
+  };
+
+  if (!qtyOut.isZero()) {
+    if (!valueOut.isZero()) {
+      throw new Error(
+        'postMovement: own stock leaving is costed by FIFO — pass a costScope, not a valueOut.',
+      );
+    }
+    const scope: LayerScope = internals.reverses
+      ? { kind: 'entry', entryId: internals.reverses.id, batchId: batch.id }
+      : (input.costScope ?? { kind: 'fifo' });
+    const { draws, value } = await drawLayers(tx, key, qtyOut, scope);
+    const entry = await write({ valueIn: ZERO, valueOut: value });
+    await recordDraws(tx, input.organizationId, entry.id, draws);
+    return { entry, draws };
+  }
+
+  if (internals.transferDraws) {
+    const moved = internals.transferDraws.reduce((sum, draw) => sum.plus(draw.qty), ZERO);
+    if (!moved.equals(qtyIn) || !valueIn.isZero()) {
+      throw new Error('postTransfer: the destination row must take exactly what the source drew.');
+    }
+    const value = internals.transferDraws.reduce((sum, draw) => sum.plus(draw.value), ZERO);
+    const entry = await write({ valueIn: value, valueOut: ZERO });
+    // One layer per draw, each KEEPING its origin's date: age travels with the goods.
+    await createLayers(
+      tx,
+      input.organizationId,
+      internals.transferDraws.map((draw) => ({
+        itemId: batch.itemId,
+        locationId: input.locationId,
+        batchId: batch.id,
+        inLedgerEntryId: entry.id,
+        originLayerId: draw.layerId,
+        sourceDocLineId: input.layerLineId ?? null,
+        inDate: draw.inDate,
+        qty: draw.qty,
+        value: draw.value,
+      })),
+    );
+    return { entry, draws: [] };
+  }
+
+  if (internals.reverses) {
+    const original = internals.reverses;
+    const restored = await restoreDraws(tx, input.organizationId, original.id);
+    if (restored) {
+      return { entry: await write({ valueIn: restored.value, valueOut: ZERO }), draws: [] };
+    }
+    /* Posted before FIFO existed: no draws to give back, so the stock returns as a
+       legacy layer at what it was taken out at — and at the BATCH's age, the same
+       date the cut-over gives legacy layers. Dated when it left, stock that arrived
+       in June would queue behind a September bill, and re-issuing it would cost the
+       September layer first. */
+    const firstIn = await tx.stockLedgerEntry.aggregate({
+      where: {
+        organizationId: input.organizationId,
+        batchId: batch.id,
+        qtyIn: { gt: 0 },
+        movementType: { not: 'reversal' },
+      },
+      _min: { postedAt: true },
+    });
+    const entry = await write({ valueIn: original.valueOut, valueOut: ZERO });
+    await createLayers(tx, input.organizationId, [
+      {
+        itemId: batch.itemId,
+        locationId: input.locationId,
+        batchId: batch.id,
+        inLedgerEntryId: entry.id,
+        isLegacy: true,
+        inDate: firstIn._min.postedAt ?? original.postedAt,
+        qty: qtyIn,
+        value: original.valueOut,
+      },
+    ]);
+    return { entry, draws: [] };
+  }
+
+  const entry = await write({ valueIn, valueOut: ZERO });
+  await createLayers(tx, input.organizationId, [
+    {
       itemId: batch.itemId,
-      batchId: batch.id,
-      batchUnitId,
       locationId: input.locationId,
-      ownership: batch.ownership,
-      ownerPartyId: batch.ownerPartyId,
-      uomId: batch.uomId,
-      qtyIn,
-      qtyOut,
-      valueIn,
-      valueOut,
-      movementType: input.movementType,
-      stockEffect,
-      sourceDocType: input.sourceDocType,
-      sourceDocId: input.sourceDocId ?? null,
-      sourceDocLineId: input.sourceDocLineId ?? null,
-      remarks: input.remarks ?? null,
-      postedAt: input.postedAt ?? new Date(),
-      createdBy: input.userId ?? null,
+      batchId: batch.id,
+      inLedgerEntryId: entry.id,
+      sourceDocLineId: input.layerLineId ?? null,
+      inDate: postedAt,
+      qty: qtyIn,
+      value: valueIn,
+    },
+  ]);
+  return { entry, draws: [] };
+}
+
+/**
+ * 🔴 MOVE STOCK BETWEEN TWO PLACES OF OURS — a challan to a processor, a godown
+ * transfer. One call, two rows, because the destination's cost IS the source's
+ * draw: the out row consumes FIFO where the goods leave, and the in row lands one
+ * layer per draw at the destination, same unit cost, same `inDate` (§3.2).
+ *
+ * `inbound.layerLineId` tags the new layers with the challan line that carried
+ * them, which is what keeps one job's material out of another's receipt.
+ */
+export async function postTransfer(
+  tx: TenantClient,
+  outbound: PostMovementInput,
+  inbound: Omit<PostMovementInput, 'valueIn' | 'valueOut' | 'costScope'>,
+  batches?: ResolvedBatches,
+) {
+  if (outbound.batchId !== inbound.batchId) {
+    throw new Error('postTransfer: both sides of a transfer move the same batch.');
+  }
+  const out = await postCosted(tx, outbound, batches);
+  const into = await postCosted(tx, inbound, batches, { transferDraws: out.draws });
+  return { out: out.entry, in: into.entry };
+}
+
+/**
+ * 🔴 UNDO ONE LEDGER ROW — the only way a posted movement is corrected.
+ *
+ * Everything that identifies the movement is copied off the row itself, so a
+ * reversal is an exact undo rather than a fresh derivation that can drift — the
+ * package included (a reversal that lost its `batch_unit_id` would leave every
+ * roll where it was with an untagged surplus beside it).
+ *
+ * Cost follows the same rule: an outward row's draws go back to the very layers
+ * they came from; an inward row takes back exactly the layers it created, which
+ * is refused, naming the consumer, once anything has drawn on them (D3).
+ */
+export async function reverseMovement(
+  tx: TenantClient,
+  organizationId: string,
+  entryId: string,
+  meta: {
+    sourceDocType: string;
+    sourceDocId?: string | null;
+    sourceDocLineId?: string | null;
+    remarks?: string | null;
+    postedAt?: Date;
+    userId?: string | null;
+  },
+  batches?: ResolvedBatches,
+) {
+  const row = await tx.stockLedgerEntry.findFirst({
+    where: { id: entryId, organizationId },
+    select: {
+      id: true,
+      batchId: true,
+      batchUnitId: true,
+      locationId: true,
+      stockEffect: true,
+      qtyIn: true,
+      qtyOut: true,
+      valueOut: true,
+      postedAt: true,
     },
   });
+  if (!row) throw ApiError.notFound('Stock movement not found.');
+
+  const input: PostMovementInput = {
+    organizationId,
+    batchId: row.batchId,
+    batchUnitId: row.batchUnitId,
+    locationId: row.locationId,
+    movementType: 'reversal',
+    stockEffect: row.stockEffect as StockEffect,
+    qtyIn: row.qtyOut,
+    qtyOut: row.qtyIn,
+    ...meta,
+  };
+  return (await postCosted(tx, input, batches, { reverses: row })).entry;
 }
 
 /**

@@ -5,6 +5,8 @@ import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../li
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import { ApiError } from '../../../lib/apiError.ts';
 import { assertOnOrAfterMigration } from '../../../lib/migrationDate.ts';
+import { splitByQty } from '../../../lib/splitByQty.ts';
+import { consumersOfEntries } from '../../inventory/stock-ledger/costLayers.ts';
 import { validateCustomFields } from '../../settings/customization/custom-fields/customFields.engine.ts';
 import { loadActiveDefinitions } from '../../settings/customization/custom-fields/custom-fields.service.ts';
 import {
@@ -39,6 +41,37 @@ function runAsDocument<T>(orgId: string, fn: (tx: TenantClient) => Promise<T>): 
 }
 
 type BillBatchPayload = NonNullable<BillItemPayload['batches']>[number];
+
+/**
+ * 🔴 WHAT A BILL LINE COST US — `qty × rate` less the line's discount, never below
+ * zero, and recomputed here rather than trusting the client's `amount` (FIFO plan
+ * §5.1). This is the value its cost layers carry; `qty × rate` alone overstated
+ * every discounted purchase in stock and in everything costed from it.
+ *
+ * Reads `discount` as well as `discountAmount` because "Open Bill" re-posts the
+ * stored line rows, whose column is named `discount`.
+ */
+function lineNetValue(line: {
+  quantity?: unknown;
+  rate?: unknown;
+  discountAmount?: unknown;
+  discount?: unknown;
+}): Prisma.Decimal {
+  const num = (value: unknown) => new Prisma.Decimal(Number(value ?? 0) || 0);
+  const gross = num(line.quantity).times(num(line.rate));
+  const discount = num(line.discountAmount ?? line.discount);
+  return Prisma.Decimal.max(gross.minus(discount), new Prisma.Decimal(0)).toDecimalPlaces(4);
+}
+
+/** One batch's share of its line's net value, by quantity. */
+function batchValue(payload: BillItemPayload, batchQty: unknown): Prisma.Decimal {
+  const lineQty = Number(payload.quantity ?? 0);
+  if (!(lineQty > 0)) return new Prisma.Decimal(0);
+  return lineNetValue(payload)
+    .times(Number(batchQty ?? 0) || 0)
+    .dividedBy(lineQty)
+    .toDecimalPlaces(4);
+}
 
 /**
  * Where an Open bill's stock lands. Checked at the posting, not folded into "is
@@ -119,10 +152,10 @@ async function storedBatchesByLine(
  * over its own rows rather than a number stored on it and kept in step by hand —
  * plus one final untagged row for whatever was not tagged.
  *
- * Value rides along proportionally at the line's rate, so the batch's total value
- * is identical whether or not it was broken into packages. That is what keeps
- * this change out of valuation entirely: a package carries no value of its own,
- * it inherits its batch's weighted average.
+ * `value` is this batch's share of the line's NET amount (`batchValue`), split
+ * across the packages and the untagged remainder by quantity — through
+ * `splitByQty`, so the parts add up to the batch's share to the paisa and a
+ * package carries no value of its own.
  */
 async function receiveBillBatch(
   tx: TenantClient,
@@ -133,11 +166,8 @@ async function receiveBillBatch(
     billId: string;
     lineId: string;
     locationId: string | null;
-    rate: number;
-    /* The DOCUMENT's date, never the clock. `posted_at` is when the goods arrived,
-       so a bill dated 15-Apr and entered in September must age and report from
-       April — see the column's own comment in `inventory.prisma`. */
-    billDate: Date;
+    /** What this batch cost, net of the line's discount — see `batchValue`. */
+    value: Prisma.Decimal;
     batch: BillBatchPayload;
     /**
      * 🔴 WHETHER THE STOCK MOVES — the whole of what a draft changes, and the
@@ -150,19 +180,8 @@ async function receiveBillBatch(
      */
     post: boolean;
   },
-): Promise<{ unitIds: string[] }> {
-  const {
-    organizationId,
-    userId,
-    itemId,
-    billId,
-    lineId,
-    locationId,
-    rate,
-    billDate,
-    batch,
-    post,
-  } = args;
+): Promise<{ unitIds: string[]; postings: BillPosting[] }> {
+  const { organizationId, userId, itemId, billId, lineId, locationId, value, batch, post } = args;
   const quantity = Number(batch.quantity);
 
   let batchId = batch.batchId;
@@ -294,59 +313,151 @@ async function receiveBillBatch(
   }
 
   const unitIds = postableUnits.map((unit) => unit.id);
-  if (!post) return { unitIds };
+  if (!post) return { unitIds, postings: [] };
 
   /**
-   * 🔴 PAST HERE THE STOCK ACTUALLY MOVES. Only an Open bill gets this far, so a
-   * draft holds no stock, appears in no picker and changes no balance — while its
+   * 🔴 PAST HERE THE STOCK WOULD MOVE. Only an Open bill gets this far, so a draft
+   * holds no stock, appears in no picker and changes no balance — while its
    * document rows above say exactly what it will receive when it is posted.
+   *
+   * What comes back is what the bill WANTS on the books, not rows already
+   * written: `createBill` posts it as it is, `updateBill` reconciles it against
+   * what the bill already holds and posts only the difference.
    */
   const receivingAt = requireReceivingLocation(locationId);
 
-  for (const unit of postableUnits) {
-    await postMovement(
-      tx,
-      {
-        organizationId,
-        batchId,
-        batchUnitId: unit.id,
-        locationId: receivingAt,
-        movementType: 'receipt',
-        qtyIn: unit.qty,
-        valueIn: unit.qty.times(rate || 0),
-        sourceDocType: 'bill',
-        sourceDocId: billId,
-        sourceDocLineId: lineId,
-        postedAt: billDate,
-        userId: userId || undefined,
-      },
-      resolved,
-    );
-  }
+  const hasLoose = untagged > QTY_EPSILON;
+  const shares = splitByQty(value, [
+    ...postableUnits.map((unit) => unit.qty),
+    ...(hasLoose ? [new Prisma.Decimal(untagged)] : []),
+  ]);
 
+  const postings: BillPosting[] = postableUnits.map((unit, index) => ({
+    batchId,
+    batchUnitId: unit.id,
+    locationId: receivingAt,
+    lineId,
+    qty: unit.qty,
+    value: shares[index] ?? new Prisma.Decimal(0),
+    batch: resolved,
+  }));
   // A zero-quantity movement is one `postMovement` refuses by design — one
   // direction per row.
-  if (untagged > QTY_EPSILON) {
+  if (hasLoose) {
+    postings.push({
+      batchId,
+      batchUnitId: null,
+      locationId: receivingAt,
+      lineId,
+      qty: new Prisma.Decimal(untagged),
+      value: shares[shares.length - 1] ?? new Prisma.Decimal(0),
+      batch: resolved,
+    });
+  }
+
+  return { unitIds, postings };
+}
+
+/**
+ * The row an untracked line (`inventoryTracking = 'none'`) wants on the books.
+ *
+ * 🔴 It REUSES the batch this bill already created for the item. The user never
+ * sees that batch, so the form cannot send it back; minting a fresh one on every
+ * save made an edit look like "remove the old stock, add new stock" — refused the
+ * moment any of the old stock had been used, even when nothing about it changed.
+ */
+async function untrackedPosting(
+  tx: TenantClient,
+  args: {
+    organizationId: string;
+    billId: string;
+    itemId: string;
+    lineId: string;
+    locationId: string | null;
+    payload: BillItemPayload;
+    userId: string | null;
+  },
+): Promise<BillPosting> {
+  const locationId = requireReceivingLocation(args.locationId);
+  const existing = await tx.batch.findFirst({
+    where: {
+      organizationId: args.organizationId,
+      itemId: args.itemId,
+      sourceDocType: 'bill',
+      sourceDocId: args.billId,
+      isDeleted: false,
+    },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  });
+  const batch = existing
+    ? undefined
+    : await createBatch(tx, {
+        organizationId: args.organizationId,
+        itemId: args.itemId,
+        sourceDocType: 'bill',
+        sourceDocId: args.billId,
+        userId: args.userId || undefined,
+      });
+  return {
+    batchId: existing?.id ?? batch!.id,
+    batchUnitId: null,
+    locationId,
+    lineId: args.lineId,
+    qty: new Prisma.Decimal(Number(args.payload.quantity ?? 0) || 0),
+    value: lineNetValue(args.payload),
+    batch: batch ? asResolvedBatch(batch) : undefined,
+  };
+}
+
+/** One inward row a bill wants on the books — see `receiveBillBatch`. */
+interface BillPosting {
+  batchId: string;
+  batchUnitId: string | null;
+  locationId: string;
+  lineId: string;
+  qty: Prisma.Decimal;
+  value: Prisma.Decimal;
+  /** Set when this save created the batch, so the post need not read it back. */
+  batch?: ResolvedBatches;
+}
+
+/**
+ * Post a bill's wanted rows as they are — a bill with nothing on the books yet.
+ *
+ * Dated at the DOCUMENT's date, never the clock: `posted_at` is when the goods
+ * arrived, so a bill dated 15-Apr entered in September ages and reports from April.
+ */
+async function postBillReceipts(
+  tx: TenantClient,
+  args: {
+    organizationId: string;
+    billId: string;
+    billDate: Date;
+    userId: string | null;
+    postings: readonly BillPosting[];
+  },
+) {
+  for (const posting of args.postings) {
     await postMovement(
       tx,
       {
-        organizationId,
-        batchId,
-        locationId: receivingAt,
+        organizationId: args.organizationId,
+        batchId: posting.batchId,
+        batchUnitId: posting.batchUnitId,
+        locationId: posting.locationId,
         movementType: 'receipt',
-        qtyIn: untagged,
-        valueIn: untagged * (rate || 0),
+        qtyIn: posting.qty,
+        valueIn: posting.value,
         sourceDocType: 'bill',
-        sourceDocId: billId,
-        sourceDocLineId: lineId,
-        postedAt: billDate,
-        userId: userId || undefined,
+        sourceDocId: args.billId,
+        sourceDocLineId: posting.lineId,
+        postedAt: args.billDate,
+        userId: args.userId || undefined,
       },
-      resolved,
+      posting.batch,
     );
   }
-
-  return { unitIds };
 }
 
 /**
@@ -372,14 +483,22 @@ async function reverseBillPostings(
     organizationId: string;
     billId: string;
     billNumber: string;
+    /**
+     * 🔴 The date the stock being withdrawn was posted at — the bill's date BEFORE
+     * this edit, never the clock (FIFO plan §5.1). An edit replaces the old
+     * posting; dated today, an as-of report between the bill date and the edit
+     * showed the stock twice once the new posting landed on the bill date too.
+     */
+    postedAt: Date;
     userId: string | null;
   },
 ) {
-  const { organizationId, billId, billNumber, userId } = args;
+  const { organizationId, billId, billNumber, postedAt, userId } = args;
 
   const posted = await tx.stockLedgerEntry.findMany({
     where: { organizationId, sourceDocType: 'bill', sourceDocId: billId },
     select: {
+      id: true,
       batchId: true,
       /**
        * 🔴 THE COLUMN THIS PATH MOST EASILY FORGETS, AND THE WORST ONE TO MISS —
@@ -392,8 +511,6 @@ async function reverseBillPostings(
       locationId: true,
       qtyIn: true,
       qtyOut: true,
-      valueIn: true,
-      valueOut: true,
     },
   });
   if (posted.length === 0) return;
@@ -446,7 +563,8 @@ async function reverseBillPostings(
       batchUnitId: string | null;
       locationId: string;
       qty: Prisma.Decimal;
-      value: Prisma.Decimal;
+      /** This position's inward rows — the layers its withdrawal takes first. */
+      inEntryIds: string[];
     }
   >();
   for (const row of posted) {
@@ -456,19 +574,21 @@ async function reverseBillPostings(
       batchUnitId: row.batchUnitId,
       locationId: row.locationId,
       qty: new Prisma.Decimal(0),
-      value: new Prisma.Decimal(0),
+      inEntryIds: [],
     };
     net.qty = net.qty.plus(row.qtyIn).minus(row.qtyOut);
-    net.value = net.value.plus(row.valueIn).minus(row.valueOut);
+    if (row.qtyIn.greaterThan(0)) net.inEntryIds.push(row.id);
     netByKey.set(key, net);
   }
 
   const batches = await resolveBatchesForPosting(tx, organizationId, batchIds);
-  const now = new Date();
   for (const net of netByKey.values()) {
     // Already withdrawn by an earlier edit — and `postMovement` refuses a
     // zero-quantity row regardless, one direction per row.
     if (!net.qty.greaterThan(0)) continue;
+    /* 🔴 D3 (FIFO plan): the withdrawal takes this bill's OWN cost layers back,
+       and is refused — naming the document — once any of them has been costed to
+       something else, even when that document physically took another batch. */
     await postMovement(
       tx,
       {
@@ -478,7 +598,14 @@ async function reverseBillPostings(
         locationId: net.locationId,
         movementType: 'reversal',
         qtyOut: net.qty,
-        valueOut: net.value.greaterThan(0) ? net.value : 0,
+        costScope: {
+          kind: 'withdraw',
+          sourceDocType: 'bill',
+          sourceDocId: billId,
+          preferEntryIds: net.inEntryIds,
+          batchId: net.batchId,
+          strict: true,
+        },
         sourceDocType: 'bill',
         sourceDocId: billId,
         /* No `sourceDocLineId`: the line that posted the original row is being
@@ -486,12 +613,255 @@ async function reverseBillPostings(
            It also keeps reversals out of `getBillById`, which reads the form's
            quantities back by live line id. */
         remarks: `Reversed: bill ${billNumber} was edited.`,
-        postedAt: now,
+        postedAt,
         userId,
       },
       batches,
     );
   }
+}
+
+/** Below this, two values of one position are the same rate — rounding, not an edit. */
+const VALUE_TOLERANCE = new Prisma.Decimal('0.01');
+
+/**
+ * 🔴 EDIT AN OPEN BILL BY THE DIFFERENCE — never withdraw-everything-and-repost.
+ *
+ * Withdrawing the whole bill on every save meant that once ANY of its stock had
+ * been used — issued, assembled, or merely costed by FIFO — every edit was
+ * refused, a changed due date included. Now each position (batch, package,
+ * location) is compared with what the bill already holds there:
+ *
+ *   · unchanged           — nothing is posted, however much of it has been used;
+ *   · quantity up / new   — only the extra is received;
+ *   · quantity down / gone — only the difference is taken back, and only while
+ *     that much is still unused (physically here, and its cost not yet drawn);
+ *   · rate, discount or bill date changed — the position is taken back whole and
+ *     received again, so it is allowed only while NOTHING of it has been used.
+ *     What a used position's changed rate should do is an open decision
+ *     (FIFO_COSTING_PLAN.md §8), so it is refused, by name, for now.
+ *
+ * Withdrawals are dated at the bill's OLD date (they undo that posting) and run
+ * before any receipt, packages before the untagged remainder — the order
+ * `postMovement`'s package invariant needs.
+ */
+async function reconcileBillPostings(
+  tx: TenantClient,
+  args: {
+    organizationId: string;
+    billId: string;
+    billNumber: string;
+    oldDate: Date;
+    newDate: Date;
+    userId: string | null;
+    postings: readonly BillPosting[];
+  },
+) {
+  const { organizationId, billId, billNumber, oldDate, newDate, userId } = args;
+  const zero = new Prisma.Decimal(0);
+  const keyOf = (batchId: string, unitId: string | null, locationId: string) =>
+    `${batchId}|${unitId ?? ''}|${locationId}`;
+
+  type Position = {
+    batchId: string;
+    batchUnitId: string | null;
+    locationId: string;
+    heldQty: Prisma.Decimal;
+    heldValue: Prisma.Decimal;
+    inEntryIds: string[];
+    wantQty: Prisma.Decimal;
+    wantValue: Prisma.Decimal;
+    lineId: string | null;
+    batch?: ResolvedBatches;
+  };
+  const positions = new Map<string, Position>();
+  const positionAt = (batchId: string, unitId: string | null, locationId: string) => {
+    const key = keyOf(batchId, unitId, locationId);
+    const found = positions.get(key);
+    if (found) return found;
+    const created: Position = {
+      batchId,
+      batchUnitId: unitId,
+      locationId,
+      heldQty: zero,
+      heldValue: zero,
+      inEntryIds: [],
+      wantQty: zero,
+      wantValue: zero,
+      lineId: null,
+    };
+    positions.set(key, created);
+    return created;
+  };
+
+  const held = await tx.stockLedgerEntry.findMany({
+    where: { organizationId, sourceDocType: 'bill', sourceDocId: billId },
+    select: {
+      id: true,
+      batchId: true,
+      batchUnitId: true,
+      locationId: true,
+      qtyIn: true,
+      qtyOut: true,
+      valueIn: true,
+      valueOut: true,
+    },
+  });
+  for (const row of held) {
+    const position = positionAt(row.batchId, row.batchUnitId, row.locationId);
+    position.heldQty = position.heldQty.plus(row.qtyIn).minus(row.qtyOut);
+    position.heldValue = position.heldValue.plus(row.valueIn).minus(row.valueOut);
+    if (row.qtyIn.greaterThan(0)) position.inEntryIds.push(row.id);
+  }
+  for (const posting of args.postings) {
+    const position = positionAt(posting.batchId, posting.batchUnitId, posting.locationId);
+    position.wantQty = position.wantQty.plus(posting.qty);
+    position.wantValue = position.wantValue.plus(posting.value);
+    position.lineId ??= posting.lineId;
+    position.batch ??= posting.batch;
+  }
+
+  const dateChanged = oldDate.getTime() !== newDate.getTime();
+  const withdrawals: { position: Position; qty: Prisma.Decimal }[] = [];
+  const receipts: { position: Position; qty: Prisma.Decimal; value: Prisma.Decimal }[] = [];
+  const retaken: { position: Position; reason: 'rate' | 'date' }[] = [];
+
+  for (const position of positions.values()) {
+    const { heldQty, heldValue, wantQty, wantValue } = position;
+    if (!heldQty.greaterThan(0)) {
+      if (wantQty.greaterThan(0)) receipts.push({ position, qty: wantQty, value: wantValue });
+      continue;
+    }
+    const sameRate =
+      wantQty.isZero() ||
+      wantValue
+        .minus(heldValue.times(wantQty).dividedBy(heldQty))
+        .abs()
+        .lessThanOrEqualTo(VALUE_TOLERANCE);
+    if (wantQty.greaterThan(0) && (!sameRate || dateChanged)) {
+      retaken.push({ position, reason: sameRate ? 'date' : 'rate' });
+      withdrawals.push({ position, qty: heldQty });
+      receipts.push({ position, qty: wantQty, value: wantValue });
+    } else if (wantQty.greaterThan(heldQty)) {
+      receipts.push({ position, qty: wantQty.minus(heldQty), value: wantValue.minus(heldValue) });
+    } else if (wantQty.lessThan(heldQty)) {
+      withdrawals.push({ position, qty: heldQty.minus(wantQty) });
+    }
+  }
+  if (withdrawals.length === 0 && receipts.length === 0) return;
+
+  const labelOf = async (batchId: string) =>
+    (await tx.batch.findFirst({
+      where: { id: batchId, organizationId },
+      select: { supplierBatchRef: true, item: { select: { name: true } } },
+    })) ?? null;
+
+  // A rate or date change re-receives the position, so none of it may be used yet.
+  for (const { position, reason } of retaken) {
+    const users = await consumersOfEntries(tx, organizationId, position.inEntryIds, {
+      sourceDocType: 'bill',
+      sourceDocId: billId,
+    });
+    if (users.length === 0) continue;
+    const batch = await labelOf(position.batchId);
+    const what = batch?.item.name ?? 'this item';
+    const used = users.join(', ');
+    throw new ApiError(
+      409,
+      reason === 'rate'
+        ? `The rate or discount on ${what} cannot change: stock from this bill has already been ` +
+            `used by ${used}. Quantities that are still unused, and fields that do not touch ` +
+            'stock, can still be edited.'
+        : `The bill date cannot change: stock of ${what} from this bill has already been used by ` +
+            `${used}.`,
+      reason === 'rate'
+        ? { lineItems: 'Rate cannot change once stock is used.' }
+        : { billDate: 'Date cannot change once stock is used.' },
+    );
+  }
+
+  // Physically still here? One grouped read for every position being taken back.
+  if (withdrawals.length > 0) {
+    const grouped = await tx.stockLedgerEntry.groupBy({
+      by: ['batchId', 'batchUnitId', 'locationId'],
+      where: {
+        organizationId,
+        batchId: { in: [...new Set(withdrawals.map((w) => w.position.batchId))] },
+      },
+      _sum: { qtyIn: true, qtyOut: true },
+    });
+    const onHand = new Map(
+      grouped.map((row) => [
+        keyOf(row.batchId, row.batchUnitId, row.locationId),
+        (row._sum.qtyIn ?? zero).minus(row._sum.qtyOut ?? zero),
+      ]),
+    );
+    for (const { position, qty } of withdrawals) {
+      const here =
+        onHand.get(keyOf(position.batchId, position.batchUnitId, position.locationId)) ?? zero;
+      if (qty.greaterThan(here)) {
+        const batch = await labelOf(position.batchId);
+        const label = batch?.supplierBatchRef || batch?.item.name || 'This batch';
+        throw new ApiError(
+          409,
+          `${label} has only ${here.toString()} left where this bill received it — the rest has ` +
+            `already been used — so this bill cannot take back ${qty.toString()}. ` +
+            'Reverse the document that used it first, or keep the quantity.',
+          { lineItems: `${label}: only ${here.toString()} is still unused.` },
+        );
+      }
+    }
+  }
+
+  const batches = await resolveBatchesForPosting(tx, organizationId, [
+    ...new Set(withdrawals.map((w) => w.position.batchId)),
+  ]);
+  const packagesFirst = [...withdrawals].sort(
+    (a, b) => Number(a.position.batchUnitId === null) - Number(b.position.batchUnitId === null),
+  );
+  for (const { position, qty } of packagesFirst) {
+    await postMovement(
+      tx,
+      {
+        organizationId,
+        batchId: position.batchId,
+        batchUnitId: position.batchUnitId,
+        locationId: position.locationId,
+        movementType: 'reversal',
+        qtyOut: qty,
+        costScope: {
+          kind: 'withdraw',
+          sourceDocType: 'bill',
+          sourceDocId: billId,
+          preferEntryIds: position.inEntryIds,
+          batchId: position.batchId,
+          strict: true,
+        },
+        sourceDocType: 'bill',
+        sourceDocId: billId,
+        remarks: `Reversed: bill ${billNumber} was edited.`,
+        postedAt: oldDate,
+        userId,
+      },
+      batches,
+    );
+  }
+
+  await postBillReceipts(tx, {
+    organizationId,
+    billId,
+    billDate: newDate,
+    userId,
+    postings: receipts.map(({ position, qty, value }) => ({
+      batchId: position.batchId,
+      batchUnitId: position.batchUnitId,
+      locationId: position.locationId,
+      lineId: position.lineId!,
+      qty,
+      value: Prisma.Decimal.max(value, zero),
+      batch: position.batch,
+    })),
+  });
 }
 
 /**
@@ -899,6 +1269,7 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
         select: { id: true, name: true, inventoryTracking: true, trackInventory: true },
       });
       const itemsById = new Map(items.map((i) => [i.id, i]));
+      const postings: BillPosting[] = [];
 
       for (let i = 0; i < lineItems.length; i++) {
         const payload = lineItems[i];
@@ -909,50 +1280,45 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
 
         if (item?.trackInventory && item.inventoryTracking !== 'none') {
           for (const b of batchesToReceive(item, payload, posting)) {
-            await receiveBillBatch(tx, {
+            const received = await receiveBillBatch(tx, {
               organizationId: orgId,
               userId: userId || null,
               itemId: item.id,
               billId: createdBill.id,
               lineId: lineRecord.id,
               locationId: createdBill.locationId,
-              rate: Number(payload.rate || 0),
-              billDate: createdBill.billDate,
+              value: batchValue(payload, b.quantity),
               batch: b,
               post: posting,
             });
+            postings.push(...received.postings);
           }
           /* An item tracked at neither batch nor package level has no detail to
              remember: its quantity is the line's own column, and the anonymous
              batch below exists only to give the ledger something to hang on. So
              this branch stays posting-only, and a draft writes nothing for it. */
         } else if (posting && item?.trackInventory && item.inventoryTracking === 'none') {
-          const batch = await createBatch(tx, {
-            organizationId: orgId,
-            itemId: item.id,
-            sourceDocType: 'bill',
-            sourceDocId: createdBill.id,
-            userId: userId || undefined,
-          });
-          await postMovement(
-            tx,
-            {
+          postings.push(
+            await untrackedPosting(tx, {
               organizationId: orgId,
-              batchId: batch.id,
-              locationId: requireReceivingLocation(createdBill.locationId),
-              movementType: 'receipt',
-              qtyIn: payload.quantity,
-              valueIn: (payload.rate || 0) * payload.quantity,
-              sourceDocType: 'bill',
-              sourceDocId: createdBill.id,
-              sourceDocLineId: lineRecord.id,
-              postedAt: createdBill.billDate,
-              userId: userId || undefined,
-            },
-            asResolvedBatch(batch),
+              billId: createdBill.id,
+              itemId: item.id,
+              lineId: lineRecord.id,
+              locationId: createdBill.locationId,
+              payload,
+              userId: userId || null,
+            }),
           );
         }
       }
+
+      await postBillReceipts(tx, {
+        organizationId: orgId,
+        billId: createdBill.id,
+        billDate: createdBill.billDate,
+        userId: userId || null,
+        postings,
+      });
     }
 
     return createdBill;
@@ -1168,21 +1534,18 @@ export async function updateBill(
     });
 
     /**
-     * 🔴 REVERSE, THEN RE-POST — never post a second time on top of the first.
+     * 🔴 THE NET ON THE BOOKS IS ALWAYS EXACTLY WHAT THE PAYLOAD SAYS — never a
+     * second posting on top of the first, and never a withdraw-everything-and-
+     * repost either (2026-09-18): an Open bill is reconciled position by position
+     * (`reconcileBillPostings`), so an edit that leaves used stock untouched is not
+     * refused because of it.
      *
-     * This was a flat "post once, ever" guard. It did stop an Open → Draft → Open
-     * cycle doubling the stock, but it also made a posted bill's stock
-     * permanently uncorrectable: deleting a taka on the form returned 200,
-     * replaced the line rows and left all three takas receivable. Withdrawing the
-     * old postings first keeps the anti-doubling guarantee — the net on the books
-     * is always exactly what the payload says — and makes the edit mean something.
+     * A draft holds no stock, so a bill that is not Open reverses whatever it still
+     * nets on the books. Open → Draft is refused above, so in practice that only
+     * reaches the old drafts sent back before the refusal, which already net to
+     * zero. Being idempotent, the reversal is a no-op there.
      *
-     * A draft holds no stock, so a bill that is not Open also reverses whatever
-     * it still nets on the books. Open → Draft is refused above, so in practice
-     * that only reaches the old drafts sent back before the refusal, which
-     * already net to zero. Being idempotent, the reversal is a no-op there.
-     *
-     * 🔴 SO THE ONE CASE THAT MUST NOT REVERSE is a payload with no `lineItems`
+     * 🔴 SO THE ONE CASE THAT MUST NOT TOUCH STOCK is a payload with no `lineItems`
      * that leaves the bill OPEN — a note, an attachment, a payment term. There
      * `writtenLines` falls back to the rows already on the bill, which carry no
      * `batches`, so reversing would withdraw the stock and re-post it from a
@@ -1198,21 +1561,23 @@ export async function updateBill(
      * draft from its stored rows is the same rewrite, fed from the database.
      */
     const mustWrite = rewritingLines || openingFromDocument;
-    const mustReverse = alreadyPosted > 0 && (mustWrite || effectiveStatus !== 'open');
-    /* 🔴 An Open bill whose lines are saved ALWAYS posts what they say. This used to
-       require `alreadyPosted > 0`, which is exactly what an Open bill with an empty
-       ledger lacks — so the bills the status-only "Open Bill" left unposted could
-       never be repaired by editing them. No location is refused inside the posting
-       (`requireReceivingLocation`) rather than silently skipping it. */
+    /* Only a bill that is not Open takes everything back — in practice the old
+       drafts sent back before Open → Draft was refused, which already net to zero.
+       An Open bill is reconciled by the difference instead (`reconcileBillPostings`). */
+    const mustReverse = alreadyPosted > 0 && effectiveStatus !== 'open';
+    /* 🔴 An Open bill whose lines are saved ALWAYS ends up holding what they say. This
+       used to require `alreadyPosted > 0`, which is exactly what an Open bill with an
+       empty ledger lacks — so the bills the status-only "Open Bill" left unposted
+       could never be repaired by editing them. No location is refused inside the
+       posting (`requireReceivingLocation`) rather than silently skipping it. */
     const mustPost = effectiveStatus === 'open' && (goingOpen || rewritingLines);
 
-    // Reversal FIRST and on its own: it withdraws what the OLD payload posted, so
-    // it must not see the batches and packages the new one is about to create.
     if (mustReverse) {
       await reverseBillPostings(tx, {
         organizationId: orgId,
         billId: id,
         billNumber: existing.billNumber,
+        postedAt: existing.billDate,
         userId: userId || null,
       });
     }
@@ -1229,6 +1594,7 @@ export async function updateBill(
          why it is collected HERE and not read off the payload: a taka the user
          has just added carries no id until `createBatchUnits` gives it one. */
       const usedUnitIds = new Set<string>();
+      const postings: BillPosting[] = [];
 
       for (const line of writtenLines) {
         const payload = line.payload;
@@ -1237,48 +1603,49 @@ export async function updateBill(
 
         if (item?.trackInventory && item.inventoryTracking !== 'none') {
           for (const b of batchesToReceive(item, payload, mustPost)) {
-            const { unitIds } = await receiveBillBatch(tx, {
+            const received = await receiveBillBatch(tx, {
               organizationId: orgId,
               userId: userId || null,
               itemId: item.id,
               billId: id,
               lineId: lineRecord.id,
               locationId: effectiveLocationId,
-              rate: Number(payload.rate || 0),
-              billDate: effectiveBillDate,
+              value: batchValue(payload, b.quantity),
               batch: b,
               post: mustPost,
             });
-            for (const unitId of unitIds) usedUnitIds.add(unitId);
+            for (const unitId of received.unitIds) usedUnitIds.add(unitId);
+            postings.push(...received.postings);
           }
           // Posting-only, for the same reason as on create: an item tracked at
           // neither level has no detail to remember.
         } else if (mustPost && item?.trackInventory && item.inventoryTracking === 'none') {
-          const batch = await createBatch(tx, {
-            organizationId: orgId,
-            itemId: item.id,
-            sourceDocType: 'bill',
-            sourceDocId: id,
-            userId: userId || undefined,
-          });
-          await postMovement(
-            tx,
-            {
+          postings.push(
+            await untrackedPosting(tx, {
               organizationId: orgId,
-              batchId: batch.id,
-              locationId: requireReceivingLocation(effectiveLocationId),
-              movementType: 'receipt',
-              qtyIn: Number(payload.quantity),
-              valueIn: Number(payload.rate || 0) * Number(payload.quantity),
-              sourceDocType: 'bill',
-              sourceDocId: id,
-              sourceDocLineId: lineRecord.id,
-              postedAt: effectiveBillDate,
-              userId: userId || undefined,
-            },
-            asResolvedBatch(batch),
+              billId: id,
+              itemId: item.id,
+              lineId: lineRecord.id,
+              locationId: effectiveLocationId,
+              payload,
+              userId: userId || null,
+            }),
           );
         }
+      }
+
+      // Before retiring packages: a package being taken back must still be live
+      // for `postMovement` to post against it.
+      if (mustPost) {
+        await reconcileBillPostings(tx, {
+          organizationId: orgId,
+          billId: id,
+          billNumber: existing.billNumber,
+          oldDate: existing.billDate,
+          newDate: effectiveBillDate,
+          userId: userId || null,
+          postings,
+        });
       }
 
       /* 🔴 LAST, once every package this save uses is known. A taka the user
@@ -1322,6 +1689,7 @@ export async function deleteBill(orgId: string, id: string, userId: string | nul
       organizationId: orgId,
       billId: id,
       billNumber: existing.billNumber,
+      postedAt: existing.billDate,
       userId,
     });
 

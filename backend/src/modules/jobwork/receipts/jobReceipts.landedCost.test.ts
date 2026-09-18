@@ -598,20 +598,36 @@ describe('receipt — what the engine refuses', { timeout: 120_000 }, () => {
 
 describe('receipt — the plan it is costed by', { timeout: 120_000 }, () => {
   it('16: splits by the recipe frozen on the job order, not a later edit to it', async () => {
+    // Two inputs, so the recipes decide the split — one input with two outputs would
+    // be split by share instead (R1b). The dye is stocked at ₹0 to keep the figures.
     const cotton = await makeItem('Cotton');
+    const dye = await makeItem('Dye');
     const red = await makeItem('Red', { composite: true });
     const green = await makeItem('Green', { composite: true });
-    await recipe(red, [[cotton, 1]]);
-    await recipe(green, [[cotton, 1]]);
+    await recipe(red, [
+      [cotton, 1],
+      [dye, 0.1],
+    ]);
+    await recipe(green, [
+      [cotton, 1],
+      [dye, 0.1],
+    ]);
     const batch = await seedStock(cotton, 200, 10);
+    const dyeBatch = await seedStock(dye, 20, 0);
     const { stepId } = await planStep(
-      [{ itemId: cotton, plannedQty: 200 }],
+      [
+        { itemId: cotton, plannedQty: 200 },
+        { itemId: dye, plannedQty: 20 },
+      ],
       [
         { itemId: red, expectedQty: 100 },
         { itemId: green, expectedQty: 100 },
       ],
     );
-    const challan = await issue(stepId, [{ itemId: cotton, batchId: batch.id, qty: 200 }]);
+    const challan = await issue(stepId, [
+      { itemId: cotton, batchId: batch.id, qty: 200 },
+      { itemId: dye, batchId: dyeBatch.id, qty: 20 },
+    ]);
 
     // Green now takes three metres a piece — on the item, after the order froze it.
     // Read live, it would carry 750 of the 1,000 and Red only 250.
@@ -625,7 +641,7 @@ describe('receipt — the plan it is costed by', { timeout: 120_000 }, () => {
     const receipt = await receive(
       stepId,
       [challan.id],
-      [cotton],
+      [cotton, dye],
       [
         { itemId: red, accepted: 50 },
         { itemId: green, accepted: 50 },

@@ -117,7 +117,7 @@ afterAll(async () => {
 });
 
 /** A fresh own-stock batch with `qty` already received into the godown. */
-async function batchWithStock(qty: number, valuePerUnit = 0) {
+async function batchWithStock(qty: number, valuePerUnit = 0, locationId?: string) {
   return runAsTenant(orgId, async (tx) => {
     const batch = await newBatch(tx, {
       organizationId: orgId,
@@ -127,7 +127,7 @@ async function batchWithStock(qty: number, valuePerUnit = 0) {
     await postMovement(tx, {
       organizationId: orgId,
       batchId: batch.id,
-      locationId: godownId,
+      locationId: locationId ?? godownId,
       movementType: 'receipt',
       qtyIn: qty,
       valueIn: qty * valuePerUnit,
@@ -244,22 +244,30 @@ describe('stock ledger — posting and balances', () => {
 
 describe('stock ledger — value is derived, never stored', () => {
   it('value accumulates and drains with quantity', async () => {
-    const batch = await batchWithStock(100, 12.5); // 1,250.00 in
+    // A place of its own: cost is FIFO per item per LOCATION, so on the shared
+    // godown the 40 would be costed at whatever an earlier test left there first.
+    const shelf = await runAsTenant(orgId, (tx) =>
+      tx.location.create({
+        data: { organizationId: orgId, name: `Shelf ${unique()}`, type: 'godown' },
+        select: { id: true },
+      }),
+    );
+    const batch = await batchWithStock(100, 12.5, shelf.id); // 1,250.00 in
 
     await runAsTenant(orgId, (tx) =>
       postMovement(tx, {
         organizationId: orgId,
         batchId: batch.id,
-        locationId: godownId,
+        locationId: shelf.id,
         movementType: 'consume',
         qtyOut: 40,
-        valueOut: 500,
+        // No `valueOut`: FIFO prices it — 40 of the one 12.5 layer is 500.
         sourceDocType: 'test',
       }),
     );
 
     const balance = await runAsTenant(orgId, (tx) =>
-      getBalance(tx, { organizationId: orgId, batchId: batch.id }),
+      getBalance(tx, { organizationId: orgId, itemId, locationId: shelf.id }),
     );
 
     expect(balance.qty.toString()).toBe('60');

@@ -10,8 +10,9 @@
 ///   1. Batch value is DERIVED from the ledger, never stored on the batch. That is
 ///      why there is no `value` column below — `valueIn`/`valueOut` on the ledger
 ///      make value the same SUM shape as quantity.
-///   2. Valuation is SPECIFIC-BATCH, implied by batch tracking being mandatory
-///      internally.
+///   2. Valuation is FIFO per item per location (2026-09-18, replacing
+///      specific-batch). A batch is traceability only; cost lives in
+///      `stock_cost_layers` and is decided when stock leaves a place.
 ///
 /// 🔴 A BATCH IS ALWAYS CREATED, whatever `Item.batchTracking` says. That column
 /// controls only how much of it the USER sees; the ledger always has exactly one
@@ -371,6 +372,11 @@ model StockLedgerEntry {
   uom           UnitOfMeasurement? @relation("StockLedgerUom", fields: [uomId], references: [id])
   createdByUser User?              @relation("StockLedgerCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
 
+  /// FIFO cost (docs/FIFO_COSTING_PLAN.md): the layers an inward row created, and
+  /// the layers an outward row drew on.
+  costLayers  StockCostLayer[]
+  layerDraws  StockLayerDraw[]
+
   /// The balance query's index, per §5.6. A materialised balance view comes only
   /// when a real query proves it necessary — do not pre-optimise a correctness
   /// guarantee away.
@@ -391,4 +397,88 @@ model StockLedgerEntry {
   @@index([organizationId, sourceDocType, sourceDocId])
   @@index([organizationId, sourceDocLineId])
   @@map("stock_ledger")
+}
+
+/// 🔴 FIFO COST LAYERS (docs/FIFO_COSTING_PLAN.md). One queue per item per
+/// LOCATION (D1): every costed inward row adds a layer, every costed outward row
+/// consumes the oldest ones. Only `stockLedger.service.ts` / `costLayers.ts`
+/// write here — a layer is bookkeeping derived from the ledger, not a document.
+///
+/// Invariant, per (organization, item, location), own stock on the accounting
+/// axis: `SUM(remaining_qty) = SUM(qty_in − qty_out)` and
+/// `SUM(remaining_value) = SUM(value_in − value_out)` — `checkLayerInvariant`.
+///
+/// Customer-owned and physical-only rows create and consume no layers. Like
+/// `stock_ledger`: no soft delete, no `custom_fields`, no `updated_by`.
+model StockCostLayer {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  itemId         String @map("item_id") @db.Uuid
+  locationId     String @map("location_id") @db.Uuid
+
+  /// The inward ledger row that created it. NOT unique: a transfer creates one
+  /// layer per draw at the destination, all under one `transfer_in` row. Null
+  /// only on cut-over layers built from balances (D4), which have no single row.
+  inLedgerEntryId String? @map("in_ledger_entry_id") @db.Uuid
+  /// A transfer copy points at the layer it came from.
+  originLayerId   String? @map("origin_layer_id") @db.Uuid
+  /// The `job_issue_lines.id` a processor layer belongs to (§3.4). A layer that
+  /// carries one is only ever consumed by that challan line's receipt or
+  /// write-off; plain FIFO never touches it.
+  sourceDocLineId String? @map("source_doc_line_id") @db.Uuid
+  /// Informational, never used to pick a layer — except `is_legacy` ones below.
+  batchId         String  @map("batch_id") @db.Uuid
+  /// Built by the cut-over (D4), or restored for a row posted before it. Such a
+  /// layer has no job tag, so jobwork scopes accept it by batch instead.
+  isLegacy        Boolean @default(false) @map("is_legacy")
+
+  /// FIFO order. A transfer copy KEEPS its origin's date — age travels with the goods.
+  inDate DateTime @map("in_date") @db.Timestamptz(6)
+  /// Tie-break: creation order.
+  inSeq  BigInt   @default(autoincrement()) @map("in_seq")
+
+  qty            Decimal @db.Decimal(18, 4)
+  value          Decimal @db.Decimal(18, 4)
+  remainingQty   Decimal @map("remaining_qty") @db.Decimal(18, 4)
+  remainingValue Decimal @map("remaining_value") @db.Decimal(18, 4)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inLedgerEntry StockLedgerEntry? @relation(fields: [inLedgerEntryId], references: [id], onDelete: Cascade)
+  originLayer  StockCostLayer?   @relation("StockCostLayerOrigin", fields: [originLayerId], references: [id], onDelete: SetNull)
+  copies       StockCostLayer[]  @relation("StockCostLayerOrigin")
+  draws        StockLayerDraw[]
+
+  /// The FIFO queue. Kept FULL, never partial on `remaining_qty > 0`: Prisma
+  /// cannot express a `WHERE` on an index, so a partial one reads as permanent
+  /// drift to `db:check-drift` (same call as `stock_ledger`'s indexes).
+  @@index([organizationId, itemId, locationId, inDate, inSeq])
+  @@index([inLedgerEntryId])
+  @@index([organizationId, sourceDocLineId])
+  @@map("stock_cost_layers")
+}
+
+/// What one outward ledger row took from one layer. Restoring these, exactly, is
+/// how a cancellation puts cost back where it came from.
+model StockLayerDraw {
+  id               String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String @map("organization_id") @db.Uuid
+  layerId          String @map("layer_id") @db.Uuid
+  outLedgerEntryId String @map("out_ledger_entry_id") @db.Uuid
+
+  qty   Decimal @db.Decimal(18, 4)
+  value Decimal @db.Decimal(18, 4)
+
+  /// Set when the outward row is reversed and this draw given back to its layer.
+  reversedAt DateTime? @map("reversed_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  layer          StockCostLayer   @relation(fields: [layerId], references: [id], onDelete: Cascade)
+  outLedgerEntry StockLedgerEntry @relation(fields: [outLedgerEntryId], references: [id], onDelete: Cascade)
+
+  @@index([layerId])
+  @@index([outLedgerEntryId])
+  @@map("stock_layer_draws")
 }

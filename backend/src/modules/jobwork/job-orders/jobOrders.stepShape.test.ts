@@ -9,7 +9,7 @@ import { createNewJobOrder, updateJobOrderById } from './jobOrders.service.ts';
 
 /**
  * 🔴 What a job order step may look like, and what it freezes (landed-cost plan
- * §3 V1–V3, §5.2, §6.3; §8 tests 10, 11, 16).
+ * §3 V1, V2, V5 and R1b, §5.2, §6.3; §8 tests 10, 11, 16).
  *
  * Every row is created by this file and hard-deleted afterwards (CLAUDE.md).
  */
@@ -23,7 +23,10 @@ let godownId: string;
 let dyerId: string;
 let processId: string;
 
-async function makeItem(name: string, opts: { composite?: boolean; pieces?: boolean } = {}) {
+async function makeItem(
+  name: string,
+  opts: { composite?: boolean; pieces?: boolean; noUnit?: boolean } = {},
+) {
   return runAsTenant(orgId, async (tx) => {
     const item = await tx.item.create({
       data: {
@@ -31,7 +34,7 @@ async function makeItem(name: string, opts: { composite?: boolean; pieces?: bool
         name,
         sku: `SHAPE-${name}-${unique()}`,
         unit: opts.pieces ? 'Piece' : 'Metre',
-        stockingUomId: opts.pieces ? pieceId : metreId,
+        stockingUomId: opts.noUnit ? null : opts.pieces ? pieceId : metreId,
         itemStructure: opts.composite ? 'composite' : 'single',
         inventoryTracking: 'batch',
         trackInventory: true,
@@ -78,7 +81,13 @@ async function seedStock(itemId: string, qty: number) {
   });
 }
 
-type Row = { itemId: string; plannedQty?: number; expectedQty?: number; rate?: number };
+type Row = {
+  itemId: string;
+  plannedQty?: number;
+  expectedQty?: number;
+  rate?: number;
+  sharePct?: number;
+};
 
 const step = (inputs: Row[], outputs: Row[]) => ({
   processId,
@@ -98,6 +107,7 @@ const outputsOf = (stepId: string) =>
       select: {
         itemId: true,
         rate: true,
+        sharePct: true,
         expectedQty: true,
         components: {
           where: { isDeleted: false },
@@ -260,26 +270,142 @@ describe('job order step — shape rules', { timeout: 60_000 }, () => {
     );
   });
 
-  it('V3: refuses a second output beside one in a different unit from the single input', async () => {
+  it('R1b: saves one input with outputs in different units, and keeps their shares', async () => {
     const fabric = await makeItem('Fabric');
     const panels = await makeItem('Panels', { pieces: true });
     const offcuts = await makeItem('Offcuts');
 
-    await expect(
-      order(step([{ itemId: fabric }], [{ itemId: panels }, { itemId: offcuts }])),
-    ).rejects.toMatchObject(refusedAt('steps.0.outputs.0.itemId'));
+    // V3 used to refuse this; a share never adds pieces to metres.
+    const jo = await order(
+      step(
+        [{ itemId: fabric }],
+        [
+          { itemId: panels, sharePct: 95 },
+          { itemId: offcuts, sharePct: 5 },
+        ],
+      ),
+    );
+    expect((await outputsOf(jo.steps[0]!.id)).map((o) => o.sharePct?.toString())).toEqual([
+      '95',
+      '5',
+    ]);
 
-    // The same unit change with nothing beside it is fine (D9).
-    const jo = await order(step([{ itemId: fabric }], [{ itemId: panels }]));
-    expect(jo.steps).toHaveLength(1);
+    // An item with no stocking unit is no longer a problem either.
+    const loose = await makeItem('Loose', { noUnit: true });
+    const unitless = await order(
+      step(
+        [{ itemId: loose }],
+        [
+          { itemId: panels, sharePct: 95 },
+          { itemId: offcuts, sharePct: 5 },
+        ],
+      ),
+    );
+    expect(unitless.steps).toHaveLength(1);
+  });
+
+  it('R1b: refuses a blank share, and shares that do not make 100%, at save', async () => {
+    const fabric = await makeItem('Fabric');
+    const roll = await makeItem('Roll');
+    const thick = await makeItem('Thick');
+
+    // Blank is not "the first takes it all" — it is a question nobody answered.
+    await expect(
+      order(step([{ itemId: fabric }], [{ itemId: roll, sharePct: 91 }, { itemId: thick }])),
+    ).rejects.toMatchObject(refusedAt('steps.0.outputs.1.sharePct'));
+
+    await expect(
+      order(
+        step(
+          [{ itemId: fabric }],
+          [
+            { itemId: roll, sharePct: 91 },
+            { itemId: thick, sharePct: 5 },
+          ],
+        ),
+      ),
+    ).rejects.toMatchObject(refusedAt('steps.0.outputs.0.sharePct'));
+  });
+
+  it('R1b: clears a share where the step is not split by share', async () => {
+    const fabric = await makeItem('Fabric');
+    const dyed = await makeItem('Dyed');
+
+    // One product and the leftover — the leftover comes back 1:1 (R1a), nothing to split.
+    const jo = await order(
+      step(
+        [{ itemId: fabric }],
+        [
+          { itemId: dyed, sharePct: 60 },
+          { itemId: fabric, sharePct: 40 },
+        ],
+      ),
+    );
+    expect((await outputsOf(jo.steps[0]!.id)).map((o) => o.sharePct)).toEqual([null, null]);
   });
 
   it('exempts an output that is itself one of the inputs', async () => {
     const fabric = await makeItem('Fabric');
-    const detergent = await makeItem('Detergent');
+    const thread = await makeItem('Thread');
+    const shirt = await makeItem('Shirt', { composite: true, pieces: true });
+    await recipe(shirt, [
+      [fabric, 1.5],
+      [thread, 0.1],
+    ]);
 
-    const jo = await order(step([{ itemId: fabric }, { itemId: detergent }], [{ itemId: fabric }]));
+    // Leftover fabric comes back beside the shirts — no recipe, and not a composite.
+    const jo = await order(
+      step([{ itemId: fabric }, { itemId: thread }], [{ itemId: shirt }, { itemId: fabric }]),
+    );
     expect(jo.steps).toHaveLength(1);
+  });
+
+  it('R1a: saves any rate on leftover returned beside what is made from it', async () => {
+    const fabric = await makeItem('Fabric');
+    const thread = await makeItem('Thread');
+    const shirt = await makeItem('Shirt', { composite: true, pieces: true });
+    await recipe(shirt, [
+      [fabric, 1.5],
+      [thread, 0.1],
+    ]);
+
+    // The rate is the user's call, not a rule — a blank is charged as ₹0.
+    const jo = await order(
+      step(
+        [{ itemId: fabric }, { itemId: thread }],
+        [
+          { itemId: shirt, rate: 20 },
+          { itemId: fabric, rate: 2 },
+        ],
+      ),
+    );
+    const [, leftover] = await outputsOf(jo.steps[0]!.id);
+    expect(leftover!.rate?.toString()).toBe('2');
+  });
+
+  it('V5: refuses an input that nothing the step produces is made from', async () => {
+    const fabric = await makeItem('Fabric');
+    const thread = await makeItem('Thread');
+    const lace = await makeItem('Lace');
+    const detergent = await makeItem('Detergent');
+    const shirt = await makeItem('Shirt', { composite: true, pieces: true });
+    await recipe(shirt, [
+      [fabric, 1.5],
+      [thread, 0.1],
+    ]);
+
+    await expect(
+      order(step([{ itemId: fabric }, { itemId: thread }, { itemId: lace }], [{ itemId: shirt }])),
+    ).rejects.toMatchObject(refusedAt('steps.0.inputs.2.itemId'));
+
+    // A pass-through draws only itself, so the detergent beside it is drawn by nothing.
+    await expect(
+      order(step([{ itemId: fabric }, { itemId: detergent }], [{ itemId: fabric }])),
+    ).rejects.toMatchObject(refusedAt('steps.0.inputs.1.itemId'));
+
+    // No outputs yet is a draft, not a V5 failure.
+    const draft = await order(step([{ itemId: fabric }, { itemId: lace }], []));
+    expect(draft.steps).toHaveLength(1);
   });
 });
 
@@ -295,7 +421,13 @@ describe('job order step — Expected default', { timeout: 60_000 }, () => {
     ).toEqual(['100']);
 
     const two = await order(
-      step([{ itemId: fabric, plannedQty: 100 }], [{ itemId: dyed }, { itemId: dyedTwo }]),
+      step(
+        [{ itemId: fabric, plannedQty: 100 }],
+        [
+          { itemId: dyed, sharePct: 50 },
+          { itemId: dyedTwo, sharePct: 50 },
+        ],
+      ),
     );
     expect(
       (await outputsOf(two.steps[0]!.id)).map((o) => o.expectedQty?.toString() ?? null),
