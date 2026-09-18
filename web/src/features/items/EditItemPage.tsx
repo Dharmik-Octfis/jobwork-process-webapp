@@ -420,11 +420,11 @@ export function EditItemPage() {
                 />
               </div>
 
-              <div
-                className="form-field-grid"
-                style={{ gridTemplateColumns: '140px 1fr', alignItems: 'center', gap: '12px' }}
-              >
-                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>Unit</label>
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
+                  alignItems: 'center',
+                  gap: '12px',
+                 }}>
+                <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>Unit*</label>
                 <div>
                   <div
                     style={{
@@ -462,6 +462,13 @@ export function EditItemPage() {
                             stockingUomId: val || null,
                             unit: picked?.unitName ?? '',
                           }));
+                          if (errors.unit) {
+                            setErrors((prev) => {
+                              const newErrors = { ...prev };
+                              delete newErrors.unit;
+                              return newErrors;
+                            });
+                          }
                         }}
                         options={[
                           ...uoms.map((u) => ({ value: u.id, label: u.unitName })),

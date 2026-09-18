@@ -68,7 +68,7 @@ export const itemFormSchema = z.object({
   category: z.string().optional().nullable(),
   hsnCode: z.string().optional().nullable(),
   itemStructure: z.enum(['single', 'variants', 'composite']).default('single'),
-  unit: z.string().optional().default(''),
+  unit: z.string().min(1, 'Unit is required'),
   /**
    * 🔴 The unit the STOCK LEDGER moves this item in. One item, one stocking unit
    * (jobwork domain §5.1): every batch, challan line and balance is denominated in
