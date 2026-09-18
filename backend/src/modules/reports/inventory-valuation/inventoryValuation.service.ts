@@ -121,6 +121,111 @@ export async function getInventoryValuationSummary(
       inventoryAssetValue: Number(row.inventoryAssetValue),
     }));
 
+    const itemIds = mappedRows.map(r => r.itemId);
+    if (itemIds.length > 0) {
+      let entriesQ = Prisma.sql`
+        WITH doc_nets AS (
+          SELECT 
+            l.item_id AS "itemId",
+            l.source_doc_type AS "sourceDocType",
+            l.source_doc_id AS "sourceDocId",
+            SUM(l.qty_in - l.qty_out) AS net_qty,
+            SUM(l.value_in - l.value_out) AS net_value,
+            (
+              SELECT sl.posted_at 
+              FROM stock_ledger sl 
+              WHERE sl.source_doc_id = l.source_doc_id AND sl.item_id = l.item_id
+              ORDER BY sl.created_at DESC 
+              LIMIT 1
+            ) AS real_date,
+            MIN(l.created_at) AS min_created_at
+          FROM stock_ledger l
+          WHERE l.organization_id = ${organizationId}::uuid
+            AND l.item_id IN (${Prisma.join(itemIds)})
+            AND l.ownership = 'own'
+            AND l.stock_effect IN ('both', 'accounting')
+            AND l.source_doc_type != 'job_receipt'
+            ${locationId ? Prisma.sql`AND l.location_id = ${locationId}::uuid` : Prisma.empty}
+            AND EXISTS (
+              SELECT 1 FROM locations loc 
+              WHERE loc.id = l.location_id 
+              AND (loc.type IS NULL OR loc.type NOT IN ('processor', 'in_transit', 'customer_site'))
+            )
+          GROUP BY l.source_doc_type, l.source_doc_id, l.item_id, l.batch_id
+        )
+        SELECT 
+          "itemId",
+          real_date AS "date",
+          GREATEST(net_qty, 0) AS "qtyIn",
+          GREATEST(-net_qty, 0) AS "qtyOut",
+          GREATEST(net_value, 0) AS "valueIn"
+        FROM doc_nets
+        WHERE (net_qty != 0 OR net_value != 0)
+      `;
+      if (asOfDate) {
+        entriesQ = Prisma.sql`${entriesQ} AND real_date <= ${new Date(asOfDate)}::timestamptz`;
+      }
+      entriesQ = Prisma.sql`${entriesQ} ORDER BY real_date ASC, min_created_at ASC`;
+
+      const ledgerEntries = await tx.$queryRaw<{
+        itemId: string;
+        date: Date;
+        qtyIn: number | string;
+        qtyOut: number | string;
+        valueIn: number | string;
+      }[]>`${entriesQ}`;
+
+      const groupedByItem = new Map<string, typeof ledgerEntries>();
+      for (const entry of ledgerEntries) {
+        let arr = groupedByItem.get(entry.itemId);
+        if (!arr) {
+          arr = [];
+          groupedByItem.set(entry.itemId, arr);
+        }
+        arr.push(entry);
+      }
+
+      for (const row of mappedRows) {
+        const entries = groupedByItem.get(row.itemId);
+        if (!entries || entries.length === 0) {
+          row.inventoryAssetValue = 0;
+          continue;
+        }
+
+        const fifoQueue: { qty: number; unitCost: number }[] = [];
+        let currentValue = 0;
+
+        for (const entry of entries) {
+          const qIn = Number(entry.qtyIn);
+          const qOut = Number(entry.qtyOut);
+          const vIn = Number(entry.valueIn);
+          
+          if (qIn > 0) {
+            fifoQueue.push({ qty: qIn, unitCost: qIn > 0 ? vIn / qIn : 0 });
+            currentValue += vIn;
+          } else if (qOut > 0) {
+            let outQtyRemaining = qOut;
+            let totalOutCost = 0;
+            
+            while (outQtyRemaining > 0 && fifoQueue.length > 0) {
+              const oldest = fifoQueue[0]!;
+              if (oldest.qty <= outQtyRemaining) {
+                totalOutCost += oldest.qty * oldest.unitCost;
+                outQtyRemaining -= oldest.qty;
+                fifoQueue.shift();
+              } else {
+                totalOutCost += outQtyRemaining * oldest.unitCost;
+                oldest.qty -= outQtyRemaining;
+                outQtyRemaining = 0;
+              }
+            }
+            currentValue -= totalOutCost;
+          }
+        }
+        row.inventoryAssetValue = currentValue;
+      }
+    }
+
     const totalQty = mappedRows.reduce((sum, row) => sum + row.stockOnHand, 0);
     const totalValue = mappedRows.reduce((sum, row) => sum + row.inventoryAssetValue, 0);
 
@@ -159,63 +264,13 @@ export async function getItemLedger(
       throw new Error('Item not found');
     }
 
-    // Opening Stock
-    let openingQty = 0;
-    let openingValue = 0;
-
-    let openingQ = Prisma.sql`
-      WITH doc_nets AS (
-        SELECT 
-          l.source_doc_type,
-          l.source_doc_id,
-          SUM(l.qty_in - l.qty_out) AS net_qty,
-          SUM(l.value_in - l.value_out) AS net_value,
-          (
-            SELECT sl.posted_at 
-            FROM stock_ledger sl 
-            WHERE sl.source_doc_id = l.source_doc_id AND sl.item_id = l.item_id
-            ORDER BY sl.created_at DESC 
-            LIMIT 1
-          ) AS real_date
-        FROM stock_ledger l
-        WHERE l.organization_id = ${organizationId}::uuid
-          AND l.item_id = ${itemId}::uuid
-          AND l.ownership = 'own'
-          AND l.stock_effect IN ('both', 'accounting')
-          AND l.source_doc_type != 'job_receipt'
-          AND EXISTS (
-            SELECT 1 FROM locations loc 
-            WHERE loc.id = l.location_id 
-            AND (loc.type IS NULL OR loc.type NOT IN ('processor', 'in_transit', 'customer_site'))
-          )
-        GROUP BY l.source_doc_type, l.source_doc_id, l.item_id, l.batch_id
-      )
-      SELECT 
-        COALESCE(SUM(net_qty), 0) AS "qty",
-        COALESCE(SUM(net_value), 0) AS "value"
-      FROM doc_nets
-      WHERE 1=1
-    `;
-
-    if (fromDate) {
-      openingQ = Prisma.sql`${openingQ} AND (real_date < ${new Date(fromDate)}::timestamptz OR source_doc_type = 'item_opening_stock')`;
-    } else {
-      openingQ = Prisma.sql`${openingQ} AND source_doc_type = 'item_opening_stock'`;
-    }
-    
-    const openingRes = await tx.$queryRaw<{ qty: number | string | bigint; value: number | string | bigint }[]>`${openingQ}`;
-    const firstRow = openingRes[0];
-    if (firstRow) {
-      openingQty = Number(firstRow.qty ?? 0);
-      openingValue = Number(firstRow.value ?? 0);
-    }
-
-    let entriesQ = Prisma.sql`
+    let allEntriesQ = Prisma.sql`
       WITH doc_nets AS (
         SELECT 
           l.source_doc_type AS "sourceDocType",
           l.source_doc_id AS "sourceDocId",
           l.batch_id AS "batchId",
+          l.location_id AS "locationId",
           SUM(l.qty_in - l.qty_out) AS net_qty,
           SUM(l.value_in - l.value_out) AS net_value,
           (
@@ -231,14 +286,13 @@ export async function getItemLedger(
           AND l.item_id = ${itemId}::uuid
           AND l.ownership = 'own'
           AND l.stock_effect IN ('both', 'accounting')
-          AND l.source_doc_type != 'item_opening_stock'
           AND l.source_doc_type != 'job_receipt'
           AND EXISTS (
             SELECT 1 FROM locations loc 
             WHERE loc.id = l.location_id 
             AND (loc.type IS NULL OR loc.type NOT IN ('processor', 'in_transit', 'customer_site'))
           )
-        GROUP BY l.source_doc_type, l.source_doc_id, l.item_id, l.batch_id
+        GROUP BY l.source_doc_type, l.source_doc_id, l.item_id, l.batch_id, l.location_id
       )
       SELECT 
         real_date AS "date",
@@ -247,19 +301,17 @@ export async function getItemLedger(
         GREATEST(net_value, 0) AS "valueIn",
         GREATEST(-net_value, 0) AS "valueOut",
         "sourceDocType",
-        "sourceDocId"
+        "sourceDocId",
+        "locationId"
       FROM doc_nets
       WHERE (net_qty != 0 OR net_value != 0)
     `;
 
-    if (fromDate) {
-      entriesQ = Prisma.sql`${entriesQ} AND real_date >= ${new Date(fromDate)}::timestamptz`;
-    }
     if (toDate) {
-      entriesQ = Prisma.sql`${entriesQ} AND real_date <= ${new Date(toDate)}::timestamptz`;
+      allEntriesQ = Prisma.sql`${allEntriesQ} AND real_date <= ${new Date(toDate)}::timestamptz`;
     }
 
-    entriesQ = Prisma.sql`${entriesQ} ORDER BY real_date ASC, min_created_at ASC`;
+    allEntriesQ = Prisma.sql`${allEntriesQ} ORDER BY real_date ASC, min_created_at ASC`;
 
     const rawEntries = await tx.$queryRaw<{
       date: Date;
@@ -269,14 +321,15 @@ export async function getItemLedger(
       valueOut: number | string;
       sourceDocType: string;
       sourceDocId: string;
-    }[]>`${entriesQ}`;
+      locationId: string;
+    }[]>`${allEntriesQ}`;
 
     // Merge consecutive entries from the same document that have the same unit cost
     const mergedEntries: typeof rawEntries = [];
     for (const entry of rawEntries) {
       if (mergedEntries.length > 0) {
         const last = mergedEntries[mergedEntries.length - 1];
-        if (last && last.sourceDocId && last.sourceDocId === entry.sourceDocId) {
+        if (last && last.sourceDocId && last.sourceDocId === entry.sourceDocId && last.locationId === entry.locationId) {
           const lastQty = Number(last.qtyIn) - Number(last.qtyOut);
           const lastVal = Number(last.valueIn) - Number(last.valueOut);
           const lastUc = lastQty !== 0 ? Math.abs(lastVal / lastQty) : null;
@@ -332,63 +385,134 @@ export async function getItemLedger(
     }
 
     const rows: ItemLedgerResponse['rows'] = [];
-
-    rows.push({
-      date: null,
-      transactionDetails: '*** Opening Stock ***',
-      quantity: 0,
-      unitCost: null,
-      totalCost: 0,
-      stockOnHand: openingQty,
-      inventoryAssetValue: openingValue,
-      isOpeningStock: true
-    });
-
-    let currentQty = openingQty;
-    let currentValue = openingValue;
+    const fifoQueues = new Map<string, { qty: number; unitCost: number }[]>();
+    
+    let currentQty = 0;
+    let currentValue = 0;
     let previousSourceDocId: string | null = null;
+    let hasAddedOpeningRow = false;
+    
+    const fromDateTime = fromDate ? new Date(fromDate).getTime() : 0;
 
     for (const entry of mergedEntries) {
+      const isBeforeFromDate = fromDate && entry.date.getTime() < fromDateTime;
+      const isOpeningStockEntry = entry.sourceDocType === 'item_opening_stock';
+
+      if (!isBeforeFromDate && !isOpeningStockEntry && !hasAddedOpeningRow) {
+        rows.push({
+          date: null,
+          transactionDetails: '*** Opening Stock ***',
+          quantity: 0,
+          unitCost: null,
+          totalCost: 0,
+          stockOnHand: currentQty,
+          inventoryAssetValue: currentValue,
+          isOpeningStock: true
+        });
+        hasAddedOpeningRow = true;
+      }
+
       const qIn = Number(entry.qtyIn);
       const qOut = Number(entry.qtyOut);
       const vIn = Number(entry.valueIn);
-      const vOut = Number(entry.valueOut);
       
       const qtyChange = qIn - qOut;
-      const valChange = vIn - vOut;
-
-      currentQty += qtyChange;
-      currentValue += valChange;
-
       let docLabel = entry.sourceDocType;
       if (docLabel === 'bill') docLabel = 'Bill';
       if (docLabel === 'invoice') docLabel = 'Invoice';
       if (docLabel === 'job_receipt') docLabel = 'Job Receipt';
       if (docLabel === 'job_issue') docLabel = 'Job Issue';
       if (docLabel === 'purchase_order') docLabel = 'Purchase Order';
-      if (docLabel === 'item_opening_stock') docLabel = 'Opening Stock Entry';
       const transactionDetails = `${docLabel}`;
-      
-      let unitCost = null;
-      if (qtyChange !== 0) {
-        unitCost = Math.abs(valChange / qtyChange);
+
+      if (qtyChange >= 0) {
+        const valChange = qtyChange > 0 ? vIn : 0;
+        const queue = fifoQueues.get(entry.locationId) || [];
+        if (qtyChange > 0) {
+          queue.push({ qty: qtyChange, unitCost: valChange / qtyChange });
+          fifoQueues.set(entry.locationId, queue);
+        }
+        currentQty += qtyChange;
+        currentValue += valChange;
+
+        if (!isBeforeFromDate && !isOpeningStockEntry) {
+          const isSameAsPrevious = entry.sourceDocId && entry.sourceDocId === previousSourceDocId;
+          previousSourceDocId = entry.sourceDocId || null;
+
+          rows.push({
+            date: isSameAsPrevious ? null : entry.date.toISOString(),
+            transactionDetails: isSameAsPrevious ? '' : transactionDetails,
+            quantity: qtyChange,
+            unitCost: qtyChange !== 0 ? Math.abs(valChange / qtyChange) : null,
+            totalCost: valChange,
+            stockOnHand: currentQty,
+            inventoryAssetValue: currentValue,
+            sourceDocType: isSameAsPrevious ? null : entry.sourceDocType,
+            sourceDocId: isSameAsPrevious ? null : entry.sourceDocId,
+            sourceDocNumber: isSameAsPrevious ? null : (entry.sourceDocId ? docNumbers.get(entry.sourceDocId) || null : null)
+          });
+        }
+      } else {
+        let outQtyRemaining = -qtyChange;
+        const consumptions: { qty: number; unitCost: number; val: number }[] = [];
+        const queue = fifoQueues.get(entry.locationId) || [];
+        
+        while (outQtyRemaining > 0 && queue.length > 0) {
+          const oldest = queue[0]!;
+          if (oldest.qty <= outQtyRemaining) {
+            const cost = oldest.qty * oldest.unitCost;
+            consumptions.push({ qty: -oldest.qty, unitCost: oldest.unitCost, val: -cost });
+            outQtyRemaining -= oldest.qty;
+            queue.shift();
+          } else {
+            const cost = outQtyRemaining * oldest.unitCost;
+            consumptions.push({ qty: -outQtyRemaining, unitCost: oldest.unitCost, val: -cost });
+            oldest.qty -= outQtyRemaining;
+            outQtyRemaining = 0;
+          }
+        }
+        fifoQueues.set(entry.locationId, queue);
+
+        if (outQtyRemaining > 0) {
+           consumptions.push({ qty: -outQtyRemaining, unitCost: 0, val: 0 });
+        }
+
+        for (const c of consumptions) {
+          currentQty += c.qty;
+          currentValue += c.val;
+
+          if (!isBeforeFromDate && !isOpeningStockEntry) {
+            const isSameAsPrevious = entry.sourceDocId && entry.sourceDocId === previousSourceDocId;
+            previousSourceDocId = entry.sourceDocId || null;
+
+            rows.push({
+              date: isSameAsPrevious ? null : entry.date.toISOString(),
+              transactionDetails: isSameAsPrevious ? '' : transactionDetails,
+              quantity: c.qty,
+              unitCost: c.unitCost !== 0 ? Math.abs(c.unitCost) : null,
+              totalCost: c.val,
+              stockOnHand: currentQty,
+              inventoryAssetValue: currentValue,
+              sourceDocType: isSameAsPrevious ? null : entry.sourceDocType,
+              sourceDocId: isSameAsPrevious ? null : entry.sourceDocId,
+              sourceDocNumber: isSameAsPrevious ? null : (entry.sourceDocId ? docNumbers.get(entry.sourceDocId) || null : null)
+            });
+          }
+        }
       }
+    }
 
-      const isSameAsPrevious = entry.sourceDocId && entry.sourceDocId === previousSourceDocId;
-      previousSourceDocId = entry.sourceDocId || null;
-
-      rows.push({
-        date: isSameAsPrevious ? null : entry.date.toISOString(),
-        transactionDetails: isSameAsPrevious ? '' : transactionDetails,
-        quantity: qtyChange,
-        unitCost,
-        totalCost: valChange,
-        stockOnHand: currentQty,
-        inventoryAssetValue: currentValue,
-        sourceDocType: isSameAsPrevious ? null : entry.sourceDocType,
-        sourceDocId: isSameAsPrevious ? null : entry.sourceDocId,
-        sourceDocNumber: isSameAsPrevious ? null : (entry.sourceDocId ? docNumbers.get(entry.sourceDocId) || null : null)
-      });
+    if (!hasAddedOpeningRow) {
+       rows.push({
+          date: null,
+          transactionDetails: '*** Opening Stock ***',
+          quantity: 0,
+          unitCost: null,
+          totalCost: 0,
+          stockOnHand: currentQty,
+          inventoryAssetValue: currentValue,
+          isOpeningStock: true
+       });
     }
 
     rows.push({
