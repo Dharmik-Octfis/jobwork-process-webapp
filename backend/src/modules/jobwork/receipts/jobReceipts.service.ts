@@ -1823,6 +1823,7 @@ export async function createNewJobReceipt(
             uomId: true,
             expectedQty: true,
             rate: true,
+            sharePct: true,
             item: { select: { name: true, itemStructure: true } },
             components: {
               where: { isDeleted: false },

@@ -99,7 +99,13 @@ async function seedStock(itemId: string, qty: number, valuePerUnit: number, owne
   });
 }
 
-type PlanRow = { itemId: string; plannedQty?: number; expectedQty?: number; rate?: number };
+type PlanRow = {
+  itemId: string;
+  plannedQty?: number;
+  expectedQty?: number;
+  rate?: number;
+  sharePct?: number;
+};
 
 async function planStep(inputs: PlanRow[], outputs: PlanRow[], owner?: string) {
   const jo = await createNewJobOrder(orgId, {
@@ -417,8 +423,8 @@ describe('closing a challan — cost', { timeout: 120_000 }, () => {
     const { stepId } = await planStep(
       [{ itemId: cotton, plannedQty: 1000 }],
       [
-        { itemId: red, expectedQty: 500, rate: 3 },
-        { itemId: green, expectedQty: 450, rate: 4 },
+        { itemId: red, expectedQty: 500, rate: 3, sharePct: 55 },
+        { itemId: green, expectedQty: 450, rate: 4, sharePct: 45 },
       ],
     );
     const challan = await issue(stepId, [{ itemId: cotton, batchId: batch.id, qty: 1000 }]);

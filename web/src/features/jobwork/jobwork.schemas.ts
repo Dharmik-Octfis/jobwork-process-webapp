@@ -165,6 +165,9 @@ export interface StepItemRow {
   expectedQty?: number | null;
   /** Outputs — charge per accepted unit, on routes and job orders (D1). */
   rate?: number | null;
+  /** Outputs, job orders only — share of the input's material, in % (R1b). Only
+   * asked on a step `shareSplitRows` picks out; never defaulted. */
+  sharePct?: number | null;
   /** Outputs only — the one that absorbs the step's cost (§9.2.1). No longer
    * asked for on the grid; see `primaryOutputIndex`. */
   isPrimary?: boolean;
@@ -330,7 +333,30 @@ export interface PlanOutputRow {
   itemId: string;
   uomId?: string | null;
   expectedQty?: number | null;
+  sharePct?: number | null;
 }
+
+/**
+ * 🔴 R1b — WHICH OUTPUTS SPLIT THE INPUT BY SHARE. The client's copy of the server's
+ * `shareSplitOutputs` (`receipts/landedCost.ts`); keep the two in step.
+ *
+ * One input, and two or more outputs that are not that input coming back. The
+ * leftover pass-through (R1a) takes no share. Returns the output indexes.
+ */
+export function shareSplitIndexes(
+  inputs: readonly { itemId: string }[],
+  outputs: readonly { itemId: string }[],
+): Set<number> {
+  const inputIds = new Set(inputs.filter((row) => row.itemId).map((row) => row.itemId));
+  if (inputIds.size !== 1) return new Set();
+  const products = outputs.flatMap((row, index) =>
+    row.itemId && !inputIds.has(row.itemId) ? [index] : [],
+  );
+  return products.length >= 2 ? new Set(products) : new Set();
+}
+
+export const shareSplitRows = (step: StepGridRow) =>
+  shareSplitIndexes(step.inputs ?? [], step.outputs ?? []);
 /** A composite's recipe; `null` for a plain item; `undefined` while not yet known. */
 export type RecipeLookup = (
   itemId: string,
@@ -341,9 +367,25 @@ export type RecipeLookup = (
  * in `jobIssues.service.ts` (landed-cost plan D11). Item ids, so each screen names
  * them its own way. Keep the two in step.
  */
-export function planGaps(inputs: readonly PlanInputRow[], outputs: readonly PlanOutputRow[]) {
+export function planGaps(
+  inputs: readonly PlanInputRow[],
+  outputs: readonly PlanOutputRow[],
+  /** The step already sent material out — a step planned before shares existed
+   * keeps its old split rather than being frozen mid-run (`missingShares`). */
+  sentBefore = false,
+) {
   const listedOutputs = outputs.filter((row) => row.itemId);
+  const split = [...shareSplitIndexes(inputs, outputs)].map((index) => outputs[index]!);
+  const blankShares = split.filter((row) => row.sharePct == null);
+  const legacy = sentBefore && split.length > 0 && blankShares.length === split.length;
+  const shareTotal = split.reduce((sum, row) => sum + (row.sharePct ?? 0), 0);
   return {
+    noShare: legacy ? [] : blankShares.map((row) => row.itemId),
+    /** The total, when every share is filled and they do not make 100%. */
+    shareTotalOff:
+      !legacy && split.length > 0 && blankShares.length === 0 && Math.abs(shareTotal - 100) > 0.01
+        ? roundQty(shareTotal)
+        : null,
     noOutputs: listedOutputs.length === 0,
     noPlanned: inputs
       .filter((row) => row.itemId && !(row.plannedQty && row.plannedQty > 0))
@@ -408,6 +450,9 @@ export function planWarnings(
       continue;
     }
 
+    // A share-split step (R1b) states its split in %, and its outputs may be in any
+    // unit — quantities are not comparable there, so nothing is said about them.
+    if (shareSplitIndexes(ins, outs).size > 0) continue;
     const planned = input.plannedQty;
     if (!planned || draws.some((row) => !row.out.expectedQty)) continue;
     const comparable = draws.every(
@@ -446,6 +491,7 @@ export interface CostPreviewPlan {
     itemId: string;
     expectedQty: number | null;
     components: readonly { componentItemId: string; qtyPerUnit: number }[];
+    sharePct?: number | null;
   }[];
 }
 
@@ -524,6 +570,12 @@ function drawPerUnit(
   const inputIds = new Set(plan.inputs.map((row) => row.itemId));
   if (inputIds.has(outputItemId)) return outputItemId === inputItemId ? 1 : 0;
   const planned = plan.outputs.find((row) => row.itemId === outputItemId);
+  // R1b: share ÷ expected, so each output draws its share of the plan in any unit.
+  const split = [...shareSplitIndexes(plan.inputs, plan.outputs)];
+  if (planned && split.length > 0 && split.every((i) => plan.outputs[i]!.sharePct != null)) {
+    if (!inputIds.has(inputItemId) || !planned.expectedQty || planned.expectedQty <= 0) return 0;
+    return planned.sharePct! / planned.expectedQty;
+  }
   if (planned && planned.components.length > 0) {
     return planned.components.find((row) => row.componentItemId === inputItemId)?.qtyPerUnit ?? 0;
   }
@@ -864,6 +916,8 @@ export const stepItemRowSchema = z.object({
   expectedQty: decimalString.optional(),
   /** Outputs only — charge per accepted unit. */
   rate: decimalString.optional(),
+  /** Outputs only — share of the input's material, in % (R1b). */
+  sharePct: decimalString.optional(),
   fromStock: z.boolean().optional(),
   isPrimary: z.boolean().optional(),
   item: itemRefSchema.nullable().optional(),

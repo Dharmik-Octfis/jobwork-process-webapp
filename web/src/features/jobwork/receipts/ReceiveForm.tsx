@@ -670,6 +670,8 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
             componentItemId: component.componentItemId,
             qtyPerUnit: toNumber(component.qtyPerUnit),
           })),
+          sharePct:
+            row.sharePct === null || row.sharePct === undefined ? null : toNumber(row.sharePct),
         })),
       },
       rework: isRework,

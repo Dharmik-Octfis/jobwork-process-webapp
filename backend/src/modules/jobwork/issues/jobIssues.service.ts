@@ -26,6 +26,7 @@ import {
   type ProcessorType,
 } from '../jobwork.types.ts';
 import { chainNotReady, recomputeStep } from '../job-orders/jobOrders.status.ts';
+import { shareSplitOutputs } from '../receipts/landedCost.ts';
 import type { CreateJobIssueInput } from './jobIssues.schemas.ts';
 
 /**
@@ -222,6 +223,48 @@ const ZERO = new Prisma.Decimal(0);
 /** The tolerance every quantity comparison in this codebase uses — the columns'
  * own precision, so 3 x 33.3333 is not rejected for being a billionth off. */
 const QTY_EPSILON = new Prisma.Decimal('0.00005');
+
+/**
+ * 🔴 R1b's half of V4 — a share-split step states every output's share, and the
+ * shares make 100%. Never defaulted: a blank share is a question the planner has not
+ * answered, and guessing "the first output takes it all" is exactly the silent
+ * answer this exists to stop.
+ *
+ * One exception, and it is not a default: a step that already sent material out
+ * before shares existed has none and can no longer be re-planned. It keeps costing
+ * the old way (`sharesApply` is false) rather than being frozen mid-run.
+ */
+async function missingShares(
+  tx: TenantClient,
+  organizationId: string,
+  stepId: string,
+  inputItemIds: readonly string[],
+  outputs: readonly { itemId: string; sharePct: Prisma.Decimal | null; item: { name: string } }[],
+): Promise<string[]> {
+  const split = shareSplitOutputs(inputItemIds, outputs);
+  if (split.length === 0) return [];
+  const blank = split.filter((row) => row.sharePct === null);
+  if (blank.length === split.length) {
+    const sentBefore = await tx.jobIssue.count({
+      where: {
+        organizationId,
+        jobOrderStepId: stepId,
+        isDeleted: false,
+        isRework: false,
+        status: POSTED_DOC_STATUS,
+      },
+    });
+    if (sentBefore > 0) return [];
+  }
+  if (blank.length > 0) {
+    return [`no share % for ${blank.map((row) => row.item.name).join(', ')}`];
+  }
+  const total = split.reduce((sum, row) => sum.plus(row.sharePct!), new Prisma.Decimal(0));
+  if (total.minus(100).abs().greaterThan('0.01')) {
+    return [`the output shares add up to ${total.toString()}%, not 100%`];
+  }
+  return [];
+}
 
 /**
  * 🔴 Guard 3 — the tolerance ceiling, one item at a time.
@@ -1003,13 +1046,25 @@ export async function createNewJobIssue(
       const plannedRows = await tx.jobOrderStepInput.findMany({
         where: { organizationId, jobOrderStepId: step.id, isDeleted: false },
         orderBy: { seq: 'asc' },
-        select: { plannedQty: true, item: { select: { name: true } } },
+        select: { itemId: true, plannedQty: true, item: { select: { name: true } } },
       });
       const expectedRows = await tx.jobOrderStepOutput.findMany({
         where: { organizationId, jobOrderStepId: step.id, isDeleted: false },
         orderBy: { seq: 'asc' },
-        select: { expectedQty: true, item: { select: { name: true } } },
+        select: {
+          itemId: true,
+          expectedQty: true,
+          sharePct: true,
+          item: { select: { name: true } },
+        },
       });
+      const shareGaps = await missingShares(
+        tx,
+        organizationId,
+        step.id,
+        plannedRows.map((row) => row.itemId),
+        expectedRows,
+      );
       const noPlanned = plannedRows
         .filter((row) => !row.plannedQty || row.plannedQty.lessThanOrEqualTo(0))
         .map((row) => row.item.name);
@@ -1020,6 +1075,7 @@ export async function createNewJobIssue(
         ...(expectedRows.length === 0 ? ['it lists nothing it produces'] : []),
         ...(noPlanned.length ? [`no planned quantity for ${noPlanned.join(', ')}`] : []),
         ...(noExpected.length ? [`no expected quantity for ${noExpected.join(', ')}`] : []),
+        ...shareGaps,
       ];
       if (gaps.length > 0) {
         const message =

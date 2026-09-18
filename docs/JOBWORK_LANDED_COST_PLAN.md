@@ -105,6 +105,19 @@ These are the rules the code comments should cite as `landed-cost R1…R9`.
   user's to set like any row's — nothing refuses one; left blank it charges ₹0 (R6). A pass-through **on its own** — washing,
   fabric back — is the work itself and keeps R2. Applies to receipts posted from that date; a step with
   earlier receipts costs its later ones this way, and the difference lands in completion's write-off.
+- **R1b — One input, several outputs: split by share (2026-09-18).** On a step with **one** input and
+  **two or more** outputs that are not that input coming back, each output carries `share_pct` — the
+  share of the input's material it takes — and `w(o, i) = share_o ÷ expected_o`. Then
+  `Σ expected × w = Σ shares` and `need(o) = received_o ÷ expected_o × share_o × planned ÷ Σ shares`.
+  Splitting by quantity assumed every unit out used the input evenly: 100 m into a 91 m roll and 1 m of
+  a thick item made from 9 m charged the roll 98.9 m and the thick item 1.09 m. At 91 % / 9 % they get
+  91 m and 9 m. A share is a fraction of the input, never a quantity, so the outputs may be in **any
+  units** — which is why V3 went. With a leftover (R1a) beside them, the shares split
+  `planned − leftover`. **Never defaulted, and checked at job order save** (`assertShares`): a blank
+  share, or shares that do not total 100 % (± 0.01), refuse the save on the share box — never read as
+  "the first output takes it all". V4 repeats the check at issue as a net. A step that sent material
+  before the column existed has no shares and cannot be re-planned, so it keeps the quantity split; `shareSplitOutputs` in `landedCost.ts` decides which rows
+  take a share, and the client mirrors it (`shareSplitIndexes`).
 - **R3 — Need.** For each produced row `o` and each input `i` it draws on:
   `need(o, i) = (accepted_o + rework_o) × w(o, i) × k_i`, to 4 dp.
 - **R4 — Used, per input item.**
@@ -147,9 +160,9 @@ not re-validated):
 - Exempt from V1 and V2: an output that is itself one of the step's input items — leftover fabric
   returned beside the shirts, fabric in and fabric out. It passes through and draws on itself at `w = 1`,
   so R1 needs the same exemption. (Found 2026-09-15 while building phase 5.)
-- V3: one input, and an output in a different unit from it → that output is the step's **only** output
-  (D12). `Σ expected × w` cannot add pieces to metres. An item with no stocking unit counts as a
-  different unit (2026-09-18) — it cannot be shown to match.
+- ~~V3: one input, and an output in a different unit from it → that output is the step's **only**
+  output (D12).~~ **Removed 2026-09-18** — such a step now splits by share (R1b), which never adds
+  pieces to metres.
 - V5: every input is drawn on by at least one output under R1 — a pass-through draws itself, a composite
   its recipe, a plain output of a single-input step that input. An input nothing draws on was never
   consumed by a receipt and only ever written off at completion, so it is refused at save (2026-09-18;
@@ -161,7 +174,10 @@ not re-validated):
 must still save, and a step cannot be re-planned once a challan exists:
 
 - V4: every input row of the step has `planned_qty > 0` and every output row `expected_qty > 0`.
-  Refused per row, naming the step and item. Drafts and rework challans are exempt.
+  Refused per row, naming the step and item. Drafts and rework challans are exempt. On a share-split
+  step (R1b) every output also needs a `share_pct`, and the shares must total 100 % (± 0.01) — already
+  enforced at save, so this is the net for a row changed outside the form. Exempt: a step that already
+  sent material with no shares at all, which only a step planned before R1b can have.
 
 **Warnings, never refusals** — shown on the steps grid, and on the Issue screen before posting:
 

@@ -212,14 +212,15 @@ nothing to the ledger.
 | `rate`            | typed                | Charge per **accepted** unit of this output, copied from the route output. `null` = none agreed, `0` = free                                                                                                 |
 | `components`      | **snapshot**         | A composite output's recipe, frozen into `job_order_step_output_components` at save — what receipts draw by. Editing the item's recipe afterwards changes no running order                                  |
 
-🔴 **What a step may look like, checked at save (V1–V3, V5).** A step consuming more than one item may
+🔴 **What a step may look like, checked at save (V1, V2, V5).** A step consuming more than one item may
 only produce **composites**, whose recipe says what each output is made from, and every component must
 be one of the step's inputs. An output that is itself one of the inputs — leftover fabric returned
-beside the shirts — passes straight through and is exempt. A single-input step whose output changes
-unit (or whose item has no stocking unit) has that output only. And every input must be used by
-something the step produces: an item in no recipe is refused rather than quietly written off at
-completion. Those are what let every output carry its own cost without comparing pieces with
-kilograms (§6.5).
+beside the shirts — passes straight through and is exempt. Every input must be used by something the
+step produces: an item in no recipe is refused rather than quietly written off at completion. A
+single-input step with **two or more** outputs gives each a **Share (%)** of the input's material (R1b),
+in any units, totalling 100 % — checked when the job order is saved — so a thick item made from 9 m of the 100 m is
+charged 9 m, not a metre's worth. Those are what let every output carry its own cost without comparing
+pieces with kilograms (§6.5).
 
 ---
 

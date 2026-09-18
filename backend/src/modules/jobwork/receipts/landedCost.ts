@@ -30,6 +30,41 @@ export interface CostPlanOutput {
   expectedQty: Prisma.Decimal | null;
   /** The recipe frozen onto the step (§5.2); empty for a plain item. */
   components: readonly { componentItemId: string; qtyPerUnit: Prisma.Decimal }[];
+  /** Share of the input's material, in % (R1b). Null where shares do not apply. */
+  sharePct?: Prisma.Decimal | null;
+}
+
+/**
+ * 🔴 R1b — WHICH OUTPUTS SPLIT THE INPUT BY SHARE (2026-09-18).
+ *
+ * On a step with ONE input and two or more outputs made from it, "one unit out draws
+ * one unit in" is only true when every output uses the input evenly. 91 m of plain
+ * cloth and 1 m of a nine-layer item both come off 100 m, and splitting by quantity
+ * charged the plain cloth 98.9 m. So each output states its share of the material,
+ * and — because a share is a fraction of the input rather than a quantity — outputs
+ * in different units can sit on one step (V3 went with this).
+ *
+ * The leftover pass-through (R1a) is not one of them: it comes back 1:1, and the
+ * shares split what is left. Returns the outputs that take a share, or none.
+ */
+export function shareSplitOutputs<T extends { itemId: string }>(
+  inputItemIds: readonly string[],
+  outputs: readonly T[],
+): T[] {
+  const inputs = new Set(inputItemIds);
+  if (inputs.size !== 1) return [];
+  const products = outputs.filter((row) => !inputs.has(row.itemId));
+  return products.length >= 2 ? products : [];
+}
+
+/** R1b applies to this plan: the split exists and every output in it has a share.
+ * A step planned before shares existed has none, and keeps splitting by quantity. */
+function sharesApply(plan: CostPlan): boolean {
+  const split = shareSplitOutputs(
+    plan.inputs.map((row) => row.itemId),
+    plan.outputs,
+  );
+  return split.length > 0 && split.every((row) => row.sharePct != null);
 }
 
 export interface CostPlan {
@@ -51,6 +86,8 @@ export type NeedTable = Map<string, Map<string, Prisma.Decimal>>;
  *
  *   · rework: the output item itself, 1 for 1;
  *   · an output that is one of the inputs passes straight through (V1/V2 exempt);
+ *   · a share-split step (R1b): share ÷ expected, so Σ expected × w is Σ shares and
+ *     each output draws its share of the plan whatever its unit;
  *   · a composite: its recipe quantity;
  *   · a plain output of a single-input step: 1, whatever the units — the plan
  *     ratio carries any conversion (D9).
@@ -65,6 +102,10 @@ export function drawPerUnit(
   const inputIds = new Set(plan.inputs.map((row) => row.itemId));
   if (inputIds.has(outputItemId)) return outputItemId === inputItemId ? ONE : ZERO;
   const planned = plan.outputs.find((row) => row.itemId === outputItemId);
+  if (planned && sharesApply(plan)) {
+    if (!inputIds.has(inputItemId) || !planned.expectedQty?.greaterThan(0)) return ZERO;
+    return planned.sharePct!.dividedBy(planned.expectedQty);
+  }
   if (planned && planned.components.length > 0) {
     return (
       planned.components.find((row) => row.componentItemId === inputItemId)?.qtyPerUnit ?? ZERO

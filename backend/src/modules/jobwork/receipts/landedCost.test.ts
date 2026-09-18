@@ -295,6 +295,92 @@ describe('landed cost — the rules around the examples', () => {
     expect(needs.get('fabric')?.get('fabric')?.toString()).toBe('100');
   });
 
+  it('R1b: splits one input by share, not by quantity', () => {
+    // 100 m in: a 91 m roll, and 1 m of a thick item that takes 9 m to make.
+    const plan: CostPlan = {
+      inputs: [{ itemId: 'fabric', plannedQty: d(100) }],
+      outputs: [
+        { itemId: 'roll', expectedQty: d(91), components: [], sharePct: d(91) },
+        { itemId: 'thick', expectedQty: d(1), components: [], sharePct: d(9) },
+      ],
+    };
+    const needs = needTable(
+      plan,
+      ['fabric'],
+      [
+        { itemId: 'roll', acceptedQty: d(91), reworkQty: d(0) },
+        { itemId: 'thick', acceptedQty: d(1), reworkQty: d(0) },
+      ],
+      false,
+    );
+    // By quantity this was 98.9 and 1.09.
+    expect(needs.get('fabric')?.get('roll')?.toString()).toBe('91');
+    expect(needs.get('fabric')?.get('thick')?.toString()).toBe('9');
+  });
+
+  it('R1b: splits across units, partial receipts included', () => {
+    const plan: CostPlan = {
+      inputs: [{ itemId: 'fabric', plannedQty: d(100) }],
+      outputs: [
+        { itemId: 'panels', expectedQty: d(500), components: [], sharePct: d(95) },
+        { itemId: 'waste', expectedQty: d(8), components: [], sharePct: d(5) },
+      ],
+    };
+    const needs = needTable(
+      plan,
+      ['fabric'],
+      [
+        { itemId: 'panels', acceptedQty: d(250), reworkQty: d(0) },
+        { itemId: 'waste', acceptedQty: d(8), reworkQty: d(0) },
+      ],
+      false,
+    );
+    expect(needs.get('fabric')?.get('panels')?.toString()).toBe('47.5');
+    expect(needs.get('fabric')?.get('waste')?.toString()).toBe('5');
+  });
+
+  it('R1b: shares split what the leftover leaves', () => {
+    const plan: CostPlan = {
+      inputs: [{ itemId: 'fabric', plannedQty: d(100) }],
+      outputs: [
+        { itemId: 'roll', expectedQty: d(80), components: [], sharePct: d(90) },
+        { itemId: 'thick', expectedQty: d(1), components: [], sharePct: d(10) },
+        { itemId: 'fabric', expectedQty: d(10), components: [] },
+      ],
+    };
+    const needs = needTable(
+      plan,
+      ['fabric'],
+      [
+        { itemId: 'roll', acceptedQty: d(80), reworkQty: d(0) },
+        { itemId: 'thick', acceptedQty: d(1), reworkQty: d(0) },
+        { itemId: 'fabric', acceptedQty: d(10), reworkQty: d(0) },
+      ],
+      false,
+    );
+    // 10 back 1:1; the other 90 m split 90 : 10.
+    expect(needs.get('fabric')?.get('fabric')?.toString()).toBe('10');
+    expect(needs.get('fabric')?.get('roll')?.toString()).toBe('81');
+    expect(needs.get('fabric')?.get('thick')?.toString()).toBe('9');
+  });
+
+  it('R1b: a step planned before shares existed keeps splitting by quantity', () => {
+    const plan: CostPlan = {
+      inputs: [{ itemId: 'fabric', plannedQty: d(100) }],
+      outputs: [
+        { itemId: 'roll', expectedQty: d(91), components: [], sharePct: null },
+        { itemId: 'thick', expectedQty: d(9), components: [], sharePct: null },
+      ],
+    };
+    const needs = needTable(
+      plan,
+      ['fabric'],
+      [{ itemId: 'roll', acceptedQty: d(91), reworkQty: d(0) }],
+      false,
+    );
+    expect(needs.get('fabric')?.get('roll')?.toString()).toBe('91');
+  });
+
   it('reports a typed input nothing on the receipt draws on', () => {
     const plan = single(1000, 950);
     const needs = needTable(plan, ['cotton'], [], false);

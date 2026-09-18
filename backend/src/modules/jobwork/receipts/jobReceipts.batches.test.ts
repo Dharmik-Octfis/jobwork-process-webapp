@@ -82,9 +82,13 @@ async function aStepReadyToReceive(
   qty: number,
   value: number,
   // ₹10 per accepted metre — the charge lives on the output row (R6).
-  outputs: { itemId: string; isPrimary?: boolean; expectedQty?: number; rate?: number }[] = [
-    { itemId: dyedId, isPrimary: true, rate: 10 },
-  ],
+  outputs: {
+    itemId: string;
+    isPrimary?: boolean;
+    expectedQty?: number;
+    rate?: number;
+    sharePct?: number;
+  }[] = [{ itemId: dyedId, isPrimary: true, rate: 10 }],
 ) {
   const inputBatch = await seedStock(greyId, qty, value);
   const jobOrder = await createNewJobOrder(orgId, {
@@ -711,8 +715,8 @@ describe('receipt — cancellation', { timeout: 60_000 }, () => {
    */
   it('refuses when a BY-PRODUCT’s batch has already been issued onward', async () => {
     const { step, issue } = await aStepReadyToReceive(1000, 50000, [
-      { itemId: dyedId, isPrimary: true, expectedQty: 900, rate: 10 },
-      { itemId: otherItemId, expectedQty: 100 },
+      { itemId: dyedId, isPrimary: true, expectedQty: 900, rate: 10, sharePct: 90 },
+      { itemId: otherItemId, expectedQty: 100, sharePct: 10 },
     ]);
     const receipt = await createNewJobReceipt(orgId, {
       jobOrderStepId: step.id,
