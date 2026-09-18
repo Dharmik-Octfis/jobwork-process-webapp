@@ -578,6 +578,32 @@ function billListWhere(organizationId: string, opts: ListQuery): Prisma.BillWher
   };
 }
 
+export async function getOpenJobReceiptsForVendor(organizationId: string, vendorId: string) {
+  return runAsTenant(organizationId, async (tx) => {
+    return tx.jobReceipt.findMany({
+      where: {
+        organizationId,
+        processorId: vendorId,
+        status: 'posted',
+        isDeleted: false,
+        billItems: { none: {} }, // Only unbilled receipts
+      },
+      include: {
+        jobOrder: { select: { jobOrderNumber: true } },
+        location: { select: { name: true } },
+        outputs: {
+          where: { isDeleted: false },
+          include: {
+            item: { select: { name: true, sku: true } },
+            outputBatch: { select: { batchNumber: true } },
+          },
+        },
+      },
+      orderBy: { receiptDate: 'asc' },
+    });
+  });
+}
+
 export async function getBillsList(organizationId: string, opts: ListQuery) {
   const { page, perPage } = opts;
   return runAsTenant(organizationId, async (tx) => {
@@ -835,6 +861,7 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
             discountPercentage: item.discountPercentage,
             discount: item.discountAmount,
             itemTotal: item.amount,
+            jobReceiptId: item.jobReceiptId,
             customFields: (item.customFields ?? {}) as Prisma.InputJsonObject,
             createdBy: userId,
             updatedBy: userId,
@@ -1076,6 +1103,7 @@ export async function updateBill(
             discountPercentage: item.discountPercentage ?? null,
             discount: item.discountAmount ?? null,
             itemTotal: item.amount,
+            jobReceiptId: item.jobReceiptId,
             customFields: (item.customFields ?? {}) as Prisma.InputJsonObject,
             createdBy: userId,
             updatedBy: userId,
