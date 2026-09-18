@@ -131,8 +131,9 @@ These are the rules the code comments should cite as `landed-cost R1…R9`.
   - **Since 2026-09-17, a closed challan floors it** (R11, `JOBWORK_CHALLAN_CLOSURE_PLAN.md`): a receipt
     that closes a challan uses at least everything still out on it, and that challan's lines are
     allocated first (R12).
-- **R5 — Material value.** `consumedValue_i` = what the consume rows posted (batch cost per unit at the
-  processor location, running balance — unchanged). Split across the rows that draw on item `i` **in
+- **R5 — Material value.** `consumedValue_i` = what the consume rows posted. Since 2026-09-18 that is
+  **FIFO over the challan line's own processor layers** (`docs/FIFO_COSTING_PLAN.md` §3.4) — the godown
+  cost the challan carried out, oldest first — no longer the batch's running cost there. Split across the rows that draw on item `i` **in
   proportion to their need**, through `splitByQty` so no paisa goes missing — the same split whether the
   used figure was typed or calculated. Legitimate: one item, one unit.
 - **R6 — Charge.** `charge_o = (rate_o ?? 0) × accepted_o`. `NULL` rate = not agreed = ₹0; `0` = free.
@@ -142,8 +143,8 @@ These are the rules the code comments should cite as `landed-cost R1…R9`.
 - **R8 — Completion write-off.** On Complete step (and on Close short, per step): for every line of every
   posted challan of the step, `outstanding = qty − closed by posted receipts − already written off`;
   post a `scrap` for **all of it, however small**, at the challan's destination, same batch and package,
-  valued at that batch's running cost per unit there — so a completed step leaves exactly nothing at the
-  processor. Customer-owned stock is zero-valued by `postMovement`, as everywhere.
+  valued at the cost of that challan line's remaining FIFO layers (since 2026-09-18) — so a completed
+  step leaves exactly nothing at the processor. Customer-owned stock is zero-valued by `postMovement`, as everywhere.
 - **R9 — A completed step is closed.** No issue, receipt, receipt cancellation or issue cancellation
   against it. Completion is refused while the step has draft issues or receipts. There is no reopen.
 - **R10–R14 — Closing a challan** (built 2026-09-17, `JOBWORK_CHALLAN_CLOSURE_PLAN.md`). A receipt may
@@ -488,8 +489,8 @@ consume it; with §6.6, a completion racing a receipt would write off material t
     and shows the calculated figure beside it; clearing it returns to the calculation.
   - Add a Rate column per returned row, prefilled from the step, editable.
   - A cost preview per row — `material + charge = total → ₹/unit` — with the R4 cap warning. The receipt
-    prefill returns, per open challan line, the outstanding qty and the batch's cost per unit at the
-    processor.
+    prefill returns, per open challan line, the outstanding qty and — since FIFO, 2026-09-18 — the
+    line's cost `layers` at the processor, oldest first, which the preview walks exactly as the post does.
   - The preview is a client mirror of R1–R7 in `jobwork.schemas.ts`, replacing the dead `stepCharge`
     (`:52`), with the same "keep the two in step" note. The server figure is authoritative.
 - **`ReceiptDetail.tsx`** — show the stored breakdown per row; drop `rateBasis`.
@@ -661,8 +662,8 @@ work, not a hole in this one.
 - **No reopening a completed step.** It would reverse the write-off rows.
 - **Planned input quantities are still typed**, not derived from recipe × expected output.
 - **Loss is not charged back** to the processor. A debit note is its own document.
-- **A backdated receipt is valued at today's batch cost**, not the cost on its date. Only matters when the
-  batch was topped up in between.
+- **A backdated document is costed from the layers as they stand when it is posted**, not as they stood
+  on its date — FIFO D2, no re-costing (`FIFO_COSTING_PLAN.md` §4).
 
 **Controls and display**
 

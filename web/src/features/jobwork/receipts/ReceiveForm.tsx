@@ -681,6 +681,10 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
           itemId: line.itemId!,
           outstanding: toNumber(line.issuedQty),
           unitCost: toNumber(line.unitCost),
+          layers: line.layers.map((layer) => ({
+            qty: toNumber(layer.qty),
+            unitCost: toNumber(layer.unitCost),
+          })),
           closed: closedIssueIds.includes(line.jobIssueId),
         })),
       returned: effectiveReturned.map((row) => ({

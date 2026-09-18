@@ -10,9 +10,9 @@ import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import {
   getAvailableBatches,
   getAvailableBatchUnits,
-  getBalancesByBatch,
-  postMovement,
+  postTransfer,
   resolveBatchesForPosting,
+  reverseMovement,
   UNALLOCATED_BATCH_STATE,
   type Ownership,
 } from '../../inventory/stock-ledger/stockLedger.service.ts';
@@ -1311,32 +1311,6 @@ export async function createNewJobIssue(
           resolvedLines.map((line) => line.batchId),
         );
 
-    /**
-     * 🔴 Every line's opening balance in ONE read per source location — one, under
-     * the one-location rule — where this was a `getBalance` per line (2026-09-01).
-     *
-     * Grouped by location rather than assuming the header's, because a line
-     * carries its own `sourceLocationId` on purpose: the ledger posts from that
-     * pair, and a copy that cannot disagree is the point of keeping it.
-     */
-    const balanceKey = (batchId: string, locationId: string) => `${batchId}@${locationId}`;
-    const batchIdsByLocation = new Map<string, string[]>();
-    for (const line of resolvedLines) {
-      batchIdsByLocation.set(line.sourceLocationId, [
-        ...(batchIdsByLocation.get(line.sourceLocationId) ?? []),
-        line.batchId,
-      ]);
-    }
-    const balances = new Map<string, { qty: Prisma.Decimal; value: Prisma.Decimal }>();
-    if (!asDraft) {
-      for (const [locationId, batchIds] of batchIdsByLocation) {
-        const atLocation = await getBalancesByBatch(tx, { organizationId, locationId, batchIds });
-        for (const [batchId, balance] of atLocation) {
-          balances.set(balanceKey(batchId, locationId), balance);
-        }
-      }
-    }
-
     for (const line of resolvedLines) {
       const created = await tx.jobIssueLine.create({
         data: {
@@ -1374,61 +1348,39 @@ export async function createNewJobIssue(
        * processor. The value travels with the quantity so the goods carry their
        * cost to where they physically are — a per-location valuation that only
        * moved quantity would report our material at the dyer's as worthless.
+       *
+       * FIFO (docs/FIFO_COSTING_PLAN.md): the cost is the source godown's OLDEST
+       * layers, whichever batch was physically picked, and the processor receives
+       * those layers tagged with this line — so only this challan's receipts and
+       * write-off can ever consume them (§3.4).
        */
-      // 🔴 Valued at the godown it is leaving, not the header's. Cost per unit is
-      // a per-location figure — the same batch can sit in two racks at different
-      // values once transfers have moved parts of it around.
-      const key = balanceKey(line.batchId, line.sourceLocationId);
-      const batchValue = balances.get(key) ?? { qty: ZERO, value: ZERO };
-      const unitValue = batchValue.qty.greaterThan(0)
-        ? batchValue.value.dividedBy(batchValue.qty)
-        : new Prisma.Decimal(0);
-      const lineValue = unitValue.times(line.qty).toDecimalPlaces(4);
-
-      const out = await postMovement(
+      const common = {
+        organizationId,
+        batchId: line.batchId,
+        batchUnitId: line.batchUnitId,
+        sourceDocType: SOURCE_DOC_TYPES.jobIssue,
+        sourceDocId: issue.id,
+        sourceDocLineId: created.id,
+        postedAt: issueDate,
+        userId,
+      };
+      await postTransfer(
         tx,
         {
-          organizationId,
-          batchId: line.batchId,
-          batchUnitId: line.batchUnitId,
+          ...common,
           locationId: line.sourceLocationId,
           movementType: 'transfer_out',
           qtyOut: line.qty,
-          valueOut: lineValue,
-          sourceDocType: SOURCE_DOC_TYPES.jobIssue,
-          sourceDocId: issue.id,
-          sourceDocLineId: created.id,
-          postedAt: issueDate,
-          userId,
+          // A rework challan carries the failed pieces' own cost, not the accepted
+          // ones' — see `batchFirst`.
+          costScope: isRework ? { kind: 'batchFirst', batchId: line.batchId } : { kind: 'fifo' },
         },
-        issuedBatches,
-      );
-
-      /* 🔴 What a SECOND line on this batch at this godown would have re-read —
-         two lines may legitimately draw on one batch, which is why the overdraw
-         guard above sums per (batch, location). Only the `transfer_out` moves
-         this balance; the `transfer_in` below lands somewhere else. Taken from
-         the row written, because `postMovement` zeroes value on customer-owned
-         stock (§5.3). */
-      balances.set(key, {
-        qty: batchValue.qty.minus(out.qtyOut),
-        value: batchValue.value.minus(out.valueOut),
-      });
-      await postMovement(
-        tx,
         {
-          organizationId,
-          batchId: line.batchId,
-          batchUnitId: line.batchUnitId,
+          ...common,
           locationId: destinationLocationId,
           movementType: 'transfer_in',
           qtyIn: line.qty,
-          valueIn: lineValue,
-          sourceDocType: SOURCE_DOC_TYPES.jobIssue,
-          sourceDocId: issue.id,
-          sourceDocLineId: created.id,
-          postedAt: issueDate,
-          userId,
+          layerLineId: created.id,
         },
         issuedBatches,
       );
@@ -1686,27 +1638,10 @@ export async function cancelJobIssue(
       // Ordered so the reversals are written in the order the originals were.
       // The per-line reads left this to the planner.
       orderBy: { createdAt: 'asc' },
-      select: {
-        sourceDocLineId: true,
-        /**
-         * 🔴 THE COLUMN THIS PATH MOST EASILY FORGETS, AND THE WORST TO MISS.
-         *
-         * Every reversal below copies its identity off the row it undoes. Leave
-         * this out and the reversals post as UNTAGGED: the batch's balance comes
-         * back perfectly correct, so nothing on any screen looks wrong, while
-         * every roll this challan sent stays at the processor forever with an
-         * untagged surplus beside it at the godown. No error, no warning, and no
-         * way to notice until somebody asks where a roll went.
-         *
-         * `jobIssues.batchUnits.test.ts` fails the moment this is dropped.
-         */
-        batchUnitId: true,
-        locationId: true,
-        qtyIn: true,
-        qtyOut: true,
-        valueIn: true,
-        valueOut: true,
-      },
+      // Everything else a reversal needs — the package above all — is copied off
+      // the row by `reverseMovement`, so it cannot be forgotten here.
+      // `jobIssues.batchUnits.test.ts` fails the moment a reversal loses it.
+      select: { id: true, sourceDocLineId: true },
     });
     const postedByLine = new Map<string, typeof postedRows>();
     for (const row of postedRows) {
@@ -1721,22 +1656,15 @@ export async function cancelJobIssue(
 
     const now = new Date();
     for (const line of issue.lines) {
+      /* The source row's draws go back to the godown layers they came from; the
+         processor layers this line created are withdrawn — untouched by now,
+         since cancelling is refused above once anything was received. */
       for (const row of postedByLine.get(line.id) ?? []) {
-        await postMovement(
+        await reverseMovement(
           tx,
+          organizationId,
+          row.id,
           {
-            organizationId,
-            batchId: line.batchId,
-            // Off the ROW being replayed, not off the line. They agree today, and
-            // taking it from the row is what keeps a reversal an exact undo of
-            // what was posted rather than a fresh derivation that can drift.
-            batchUnitId: row.batchUnitId,
-            locationId: row.locationId,
-            movementType: 'reversal',
-            qtyIn: row.qtyOut,
-            qtyOut: row.qtyIn,
-            valueIn: row.valueOut,
-            valueOut: row.valueIn,
             sourceDocType: SOURCE_DOC_TYPES.jobIssue,
             sourceDocId: issue.id,
             sourceDocLineId: line.id,

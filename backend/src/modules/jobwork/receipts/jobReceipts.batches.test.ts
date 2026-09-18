@@ -1054,17 +1054,17 @@ describe('receipt — the batch picker', { timeout: 60_000 }, () => {
 
 /**
  * 🔴 TWO ALLOCATIONS, ONE BATCH — the case that decides how the consume loop may
- * be written (2026-09-01).
+ * be written.
  *
- * `createJobReceipt` used to ask `getBalance` per allocation: a round trip per row
- * on the transaction's single connection. It now reads every balance in one query
- * and decrements its copy as each consume is posted. Those two are the same thing
- * ONLY because the decrement is there — reading once and pricing every allocation
- * against that one answer is the obvious version of the change, and this is the
- * test that says why it is wrong.
+ * Since FIFO costing (docs/FIFO_COSTING_PLAN.md §3.4) each allocation is costed
+ * from ITS OWN challan line's processor layers, which the engine updates as it
+ * goes — so a second allocation on the same batch can never be priced against a
+ * fullness the first already took. And a line whose layers are gone is REFUSED,
+ * never costed at zero: until FIFO this test accepted a receipt that consumed
+ * 1000 from the 500 on hand, leaving the ledger at −500 with ₹0 on the shortfall.
  */
 describe('receipt — a second allocation on the same batch', { timeout: 60_000 }, () => {
-  it('prices it against what the first one left, not against the opening balance', async () => {
+  const twoChallans = async () => {
     // 1000 m at 10/m, sent to the dyer on TWO challans of 500 — the SAME batch on
     // both, which is what makes one receipt allocate against it twice.
     const inputBatch = await seedStock(greyId, 1000, 10000);
@@ -1091,57 +1091,76 @@ describe('receipt — a second allocation on the same batch', { timeout: 60_000 
       sourceLocationId: godownId,
       lines: [{ itemId: greyId, batchId: inputBatch.id, qty: 500 }],
     });
-    const dyerLocationId = first.destinationLocationId;
+    return { inputBatch, step, first, second };
+  };
 
-    /* Half of what is at the dyer's is written off before the receipt — a loss at
-       the processor. The batch now holds 500 there while the two challans still
-       have 1000 outstanding between them, and that gap is what separates the two
-       implementations: priced against ONE up-front read both allocations bill at
-       10/m and take 10,000 out of a batch that had 5,000 left. */
+  const receive = (stepId: string, issueIds: string[], qty: number) =>
+    createNewJobReceipt(orgId, {
+      jobOrderStepId: stepId,
+      issueIds,
+      locationId: godownId,
+      lines: [{ itemId: greyId, issuedQty: qty, receivedQty: 0 }],
+      outputs: [
+        {
+          itemId: dyedId,
+          isPrimary: true,
+          receivedQty: qty,
+          acceptedQty: qty,
+          batches: [{ batchReference: `TWO-ALLOC-${unique()}`, qty }],
+        },
+      ],
+    });
+
+  it('costs each allocation from its own challan line', async () => {
+    const { inputBatch, step, first, second } = await twoChallans();
+    const receipt = await receive(step.id, [first.id, second.id], 1000);
+
+    const consumes = await runAsTenant(orgId, (tx) =>
+      tx.stockLedgerEntry.findMany({
+        where: { organizationId: orgId, sourceDocId: receipt.id, movementType: 'consume' },
+        select: { qtyOut: true, valueOut: true },
+      }),
+    );
+    expect(consumes.map((row) => Number(row.qtyOut))).toEqual([500, 500]);
+    expect(consumes.map((row) => Number(row.valueOut))).toEqual([5000, 5000]);
+
+    const after = await balanceOf(inputBatch.id, first.destinationLocationId);
+    expect(Number(after.qty)).toBe(0);
+    expect(Number(after.value)).toBe(0);
+  });
+
+  it('refuses a line whose layers a loss emptied, instead of costing it at zero', async () => {
+    const { inputBatch, step, first, second } = await twoChallans();
+    const firstLineId = first.lines[0]!.id;
+
+    // A loss on the FIRST challan at the dyer's, out of band — the only way this
+    // test can empty one line's layers without a document that would also close it.
     await runAsDocument(orgId, (tx) =>
       postMovement(tx, {
         organizationId: orgId,
         batchId: inputBatch.id,
-        locationId: dyerLocationId,
+        locationId: first.destinationLocationId,
         movementType: 'adjustment',
         qtyOut: 500,
-        valueOut: 5000,
+        costScope: { kind: 'job', issueLineIds: [firstLineId], batchId: inputBatch.id },
         sourceDocType: SOURCE_DOC_TYPES.jobOrderMaterialIn,
         sourceDocId: inputBatch.id,
       }),
     );
 
-    const receipt = await createNewJobReceipt(orgId, {
-      jobOrderStepId: step.id,
-      issueIds: [first.id, second.id],
-      locationId: godownId,
-      lines: [{ itemId: greyId, issuedQty: 1000, receivedQty: 0 }],
-      outputs: [
-        {
-          itemId: dyedId,
-          isPrimary: true,
-          receivedQty: 1000,
-          acceptedQty: 1000,
-          batches: [{ batchReference: `TWO-ALLOC-${unique()}`, qty: 1000 }],
-        },
-      ],
+    await expect(receive(step.id, [first.id, second.id], 1000)).rejects.toMatchObject({
+      status: 409,
     });
 
+    // What is really there still comes back — the bulk walk takes the line that
+    // holds stock first (oldest layer first), so 500 is receivable in full.
+    const receipt = await receive(step.id, [first.id, second.id], 500);
     const consumes = await runAsTenant(orgId, (tx) =>
       tx.stockLedgerEntry.findMany({
         where: { organizationId: orgId, sourceDocId: receipt.id, movementType: 'consume' },
-        orderBy: { createdAt: 'asc' },
-        select: { qtyOut: true, valueOut: true },
+        select: { valueOut: true },
       }),
     );
-
-    expect(consumes.map((row) => Number(row.qtyOut))).toEqual([500, 500]);
-    // The first allocation takes everything the batch was worth; the second finds
-    // it empty. Priced against one up-front read this second figure is 5000.
-    expect(consumes.map((row) => Number(row.valueOut))).toEqual([5000, 0]);
-
-    // …so the batch is never left owing value it did not have.
-    const after = await balanceOf(inputBatch.id, dyerLocationId);
-    expect(Number(after.value)).toBe(0);
+    expect(consumes.map((row) => Number(row.valueOut))).toEqual([5000]);
   });
 });

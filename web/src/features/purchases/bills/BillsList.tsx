@@ -1,4 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'react-hot-toast';
+import { toApiErrorMessage } from '../../../api/client';
 import { fetchBills, fetchBillCount, deleteBill } from './bills.api';
 import { fetchPaymentTerms, type PaymentTerm } from './payment-terms.api';
 import { Plus, SlidersHorizontal, FileText } from 'lucide-react';
@@ -86,6 +88,11 @@ export function BillsList() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
       setPoToDelete(null);
+    },
+    // A bill whose stock was used is refused, naming the document — say so.
+    onError: (error) => {
+      setPoToDelete(null);
+      toast.error(toApiErrorMessage(error));
     },
   });
 

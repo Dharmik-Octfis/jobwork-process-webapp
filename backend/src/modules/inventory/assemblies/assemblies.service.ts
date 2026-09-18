@@ -13,9 +13,9 @@ import {
   createBatchUnits,
   getAvailableBatches,
   getAvailableBatchUnits,
-  getBalancesByBatch,
   postMovement,
   resolveBatchesForPosting,
+  reverseMovement,
 } from '../stock-ledger/stockLedger.service.js';
 import { Prisma } from '../../../../generated/prisma/client.ts';
 
@@ -549,19 +549,9 @@ export const assembliesService = {
       }
 
       /**
-       * 7. CONSUME each allocation, priced at its batch's cost per unit AT THIS
-       * LOCATION.
-       *
-       * One balance query for every batch, with the running total kept in memory:
-       * two allocations can name the same batch, and the second has to see what
-       * the first took out or both price against a fullness that is already gone.
+       * 7. CONSUME each allocation, costed FIFO over the component's layers AT
+       * THIS LOCATION — whichever batch was physically picked (FIFO plan §3.3).
        */
-      const balances = await getBalancesByBatch(tx, {
-        organizationId: orgId,
-        locationId: data.locationId,
-        batchIds: allocations.map((row) => row.batchId),
-      });
-
       const resolvedLines: (ComponentAllocation & {
         unitValue: Prisma.Decimal;
         value: Prisma.Decimal;
@@ -569,12 +559,6 @@ export const assembliesService = {
       let componentValue = decimal(0);
 
       for (const allocation of allocations) {
-        const balance = balances.get(allocation.batchId) ?? { qty: decimal(0), value: decimal(0) };
-        const unitValue = balance.qty.greaterThan(0)
-          ? balance.value.dividedBy(balance.qty)
-          : decimal(0);
-        const value = unitValue.times(allocation.qty).toDecimalPlaces(4);
-
         const posted = await postMovement(
           tx,
           {
@@ -586,7 +570,6 @@ export const assembliesService = {
             locationId: data.locationId,
             movementType: 'consume',
             qtyOut: allocation.qty,
-            valueOut: value,
             sourceDocType: ASSEMBLY_DOC_TYPE,
             postedAt: assemblyDate,
             userId,
@@ -594,15 +577,12 @@ export const assembliesService = {
           componentBatches,
         );
 
-        /* Taken from the row WRITTEN, never from `value` — `postMovement` zeroes
-           value on customer-owned stock, and re-deriving it is how this copy and
-           the ledger drift apart. */
-        balances.set(allocation.batchId, {
-          qty: balance.qty.minus(posted.qtyOut),
-          value: balance.value.minus(posted.valueOut),
-        });
+        /* Taken from the row WRITTEN — `postMovement` decides the value, and zeroes
+           it on customer-owned stock. */
         componentValue = componentValue.plus(posted.valueOut);
-
+        const unitValue = posted.qtyOut.greaterThan(0)
+          ? posted.valueOut.dividedBy(posted.qtyOut)
+          : decimal(0);
         resolvedLines.push({ ...allocation, unitValue, value: posted.valueOut });
       }
 
@@ -928,19 +908,9 @@ export const assembliesService = {
           movementType: { not: 'reversal' },
         },
         orderBy: { createdAt: 'asc' },
-        select: {
-          batchId: true,
-          /** 🔴 Copied off the row being replayed. A package level under the
-           * components would otherwise reverse as untagged: batch balances would
-           * come back correct while every roll stayed consumed, with no error and
-           * nothing on screen to notice. */
-          batchUnitId: true,
-          locationId: true,
-          qtyIn: true,
-          qtyOut: true,
-          valueIn: true,
-          valueOut: true,
-        },
+        // The package and the rest of the row's identity are copied off it by
+        // `reverseMovement`, so a reversal cannot come back untagged.
+        select: { id: true, batchId: true },
       });
 
       // A document touches the same few batches repeatedly — read once for the
@@ -951,22 +921,16 @@ export const assembliesService = {
         posted.map((row) => row.batchId),
       );
 
+      /* The exact opposite of what was posted: consumes give their draws back to
+         the layers they came from, the produce withdraws its own layers — refused,
+         naming the document, if anything has been costed against them (D3). */
       const now = new Date();
       for (const row of posted) {
-        await postMovement(
+        await reverseMovement(
           tx,
+          orgId,
+          row.id,
           {
-            organizationId: orgId,
-            batchId: row.batchId,
-            batchUnitId: row.batchUnitId,
-            locationId: row.locationId,
-            movementType: 'reversal',
-            // The exact opposite of what was posted. Value is NOT recomputed: a
-            // fresh valuation would leave a residue behind.
-            qtyIn: row.qtyOut,
-            qtyOut: row.qtyIn,
-            valueIn: row.valueOut,
-            valueOut: row.valueIn,
             sourceDocType: ASSEMBLY_DOC_TYPE,
             sourceDocId: id,
             remarks: 'Cancelled.',

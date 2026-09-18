@@ -1528,10 +1528,19 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       itemChanges: true,
     });
 
-    await stockUp(threadId, 20);
-    await stockUp(buttonId, 900);
+    /* 🔴 Its own godown. Cost is FIFO per item per location, so on the shared
+       Main Godown the panels would be costed at whatever an earlier test left
+       there first — which is FIFO working, not the ₹1,000 this test is about. */
+    const store = await runAsTenant(orgId, (tx) =>
+      tx.location.create({
+        data: { organizationId: orgId, name: `Conserve Store ${unique()}`, type: 'godown' },
+        select: { id: true },
+      }),
+    );
+    await seedStock(threadId, 20, { locationId: store.id });
+    await seedStock(buttonId, 900, { locationId: store.id });
 
-    await stockUp(shirtId, 100, 1000);
+    await seedStock(shirtId, 100, { value: 1000, locationId: store.id });
     const jobOrder = await createNewJobOrder(orgId, {
       steps: [
         {
@@ -1566,7 +1575,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
 
     const issue = await createNewJobIssue(orgId, {
       jobOrderStepId: step.id,
-      sourceLocationId: godownId,
+      sourceLocationId: store.id,
       lines: [
         { itemId: shirtId, batchId: panelBatch.id, qty: 100 },
         { itemId: threadId, batchId: threadBatch.id, qty: 5 },

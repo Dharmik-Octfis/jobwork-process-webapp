@@ -499,8 +499,10 @@ export interface CostPreviewPlan {
 export interface CostPreviewLine {
   itemId: string;
   outstanding: number;
-  /** The batch's cost per unit at the processor. */
+  /** The line's average cost per unit at the processor — used only when `layers` is absent. */
   unitCost: number;
+  /** The line's FIFO cost layers at the processor, oldest first — what the server consumes. */
+  layers?: readonly { qty: number; unitCost: number }[];
   /** On a challan this receipt closes — consumed to zero, and served first (R11–R12). */
   closed?: boolean;
 }
@@ -668,9 +670,16 @@ export function receiptCostPreview(input: {
     let value = 0;
     for (const line of walk) {
       if (line.itemId !== itemId || left <= 0) continue;
-      const take = Math.min(left, line.outstanding);
-      value = round4(value + take * line.unitCost);
+      let take = Math.min(left, line.outstanding);
       left = round4(left - take);
+      // FIFO within the line, exactly as the server posts it.
+      for (const layer of line.layers ?? []) {
+        if (take <= 0) break;
+        const fromLayer = Math.min(take, layer.qty);
+        value = round4(value + fromLayer * layer.unitCost);
+        take = round4(take - fromLayer);
+      }
+      if (take > 0) value = round4(value + take * line.unitCost);
     }
 
     used.set(itemId, {

@@ -56,6 +56,12 @@ const TENANT_TABLES = [
   'processes',
   'batches',
   'stock_ledger',
+  // FIFO cost layers and the draws on them, added in 20260918150000_fifo_cost_layers.
+  // Both carry their own `organization_id` (direct form). A layer holds what our
+  // stock at each place cost — never rendered as a table, so only this list
+  // would notice its policy going missing.
+  'stock_cost_layers',
+  'stock_layer_draws',
   // The optional level below a batch — a taka/roll/bale — added in
   // 20260901120700_add_batch_units. It carries its own `organization_id`
   // (denormalised from the parent batch) precisely so it can hold its own

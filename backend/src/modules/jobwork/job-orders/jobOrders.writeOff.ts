@@ -26,8 +26,8 @@ export interface WrittenOff {
  * Receipts consume only what the plan says the returned goods used, so a step
  * ends with material still standing at the processor. Completing the step is the
  * moment somebody says none of it is coming back: every posted challan line's
- * remainder is scrapped where it stands — same batch, same package — at that
- * batch's running cost there, and its value is job order loss. It is never loaded
+ * remainder is scrapped where it stands — same batch, same package — at the cost
+ * of that line's remaining FIFO layers, and its value is job order loss. It is never loaded
  * back onto output batches, which may already have moved on (D8).
  *
  * All of it, however small, so a completed step leaves exactly nothing behind.
@@ -82,14 +82,14 @@ export async function writeOffStep(
     batchIds.add(line.batchId);
     batchIdsByLocation.set(line.locationId, batchIds);
   }
-  const balances = new Map<string, { qty: Prisma.Decimal; value: Prisma.Decimal }>();
+  const balances = new Map<string, Prisma.Decimal>();
   for (const [locationId, batchIds] of batchIdsByLocation) {
     const read = await getBalancesByBatch(tx, {
       organizationId,
       locationId,
       batchIds: [...batchIds],
     });
-    for (const [batchId, balance] of read) balances.set(`${locationId}:${batchId}`, balance);
+    for (const [batchId, balance] of read) balances.set(`${locationId}:${batchId}`, balance.qty);
   }
   const batches = await resolveBatchesForPosting(tx, organizationId, [
     ...new Set(open.map((line) => line.batchId)),
@@ -98,23 +98,24 @@ export async function writeOffStep(
   const written: WrittenOff[] = [];
   for (const line of open) {
     const key = `${line.locationId}:${line.batchId}`;
-    const balance = balances.get(key) ?? { qty: ZERO, value: ZERO };
+    const balance = balances.get(key) ?? ZERO;
     /*
      * 🔴 Refused rather than posted into a negative balance. The challans say this
      * much is still out and the ledger says it is not there — writing it off anyway
      * would bury that disagreement under a loss figure nobody could reconcile.
      */
-    if (line.outstanding.minus(balance.qty).greaterThan(SHORTFALL_NOISE)) {
+    if (line.outstanding.minus(balance).greaterThan(SHORTFALL_NOISE)) {
       throw ApiError.conflict(
         `Challan ${line.challanNumber} says ${line.outstanding.toString()} is still with the ` +
-          `processor, but the stock ledger holds only ${balance.qty.toString()} of that batch there. ` +
+          `processor, but the stock ledger holds only ${balance.toString()} of that batch there. ` +
           'The step cannot be written off until the two agree.',
       );
     }
-    const qty = Prisma.Decimal.min(line.outstanding, balance.qty);
+    const qty = Prisma.Decimal.min(line.outstanding, balance);
     if (qty.lessThanOrEqualTo(0)) continue;
-    const unitValue = balance.qty.greaterThan(0) ? balance.value.dividedBy(balance.qty) : ZERO;
 
+    // FIFO over this challan line's own processor layers (§3.4) — what the line
+    // still has out is exactly what they still hold.
     const posted = await postMovement(
       tx,
       {
@@ -124,7 +125,7 @@ export async function writeOffStep(
         locationId: line.locationId,
         movementType: 'scrap',
         qtyOut: qty,
-        valueOut: unitValue.times(qty).toDecimalPlaces(4),
+        costScope: { kind: 'job', issueLineIds: [line.id], batchId: line.batchId },
         sourceDocType: SOURCE_DOC_TYPES.jobOrderStep,
         sourceDocId: stepId,
         sourceDocLineId: line.id,
@@ -133,11 +134,8 @@ export async function writeOffStep(
       },
       batches,
     );
+    balances.set(key, balance.minus(posted.qtyOut));
     // From the row actually written — `postMovement` zeroes customer-owned value.
-    balances.set(key, {
-      qty: balance.qty.minus(posted.qtyOut),
-      value: balance.value.minus(posted.valueOut),
-    });
     written.push({ itemId: line.itemId, qty: posted.qtyOut, value: posted.valueOut });
   }
   return written;
