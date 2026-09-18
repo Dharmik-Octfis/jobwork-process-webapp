@@ -983,6 +983,7 @@ model JobReceipt {
   lines         JobReceiptLine[]
   outputs       JobReceiptOutput[]
   outputBatches JobReceiptOutputBatch[]
+  billItems     BillItem[]
 
   @@unique([organizationId, receiptNumber])
   @@index([organizationId, jobOrderStepId])

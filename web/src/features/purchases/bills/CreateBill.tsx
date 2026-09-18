@@ -5,6 +5,7 @@ import { useLocation, useNavigate, useParams, useSearchParams } from 'react-rout
 import { AxiosError } from 'axios';
 import {
   Plus,
+  Search,
   Trash2,
   Mail,
   Phone,
@@ -30,6 +31,7 @@ import {
   updateBill,
   fetchLocations,
   uploadBillAttachments,
+  fetchOpenJobReceipts,
   type BillAttachment,
 } from './bills.api';
 import { fetchPurchaseOrderById } from '../purchase-orders/purchase-orders.api';
@@ -44,6 +46,7 @@ import { CreateVendorModal } from '../vendors/CreateVendorModal';
 import { PaymentTermModal } from '../../sales/customers/PaymentTermModal';
 import { CreateItemModal } from '../../items/CreateItemModal';
 import { AddBillBatchesModal } from './AddBillBatchesModal';
+import { AddJobReceiptsModal } from './AddJobReceiptsModal';
 import { WarehouseLocationsPopover } from './components/WarehouseLocationsPopover';
 import { LineItemStockDisplay } from './components/LineItemStockDisplay';
 import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
@@ -129,6 +132,7 @@ export function CreateBill() {
   const [isMultiSelectItemModalOpen, setIsMultiSelectItemModalOpen] = useState(false);
   const [multiSelectTargetIndex, setMultiSelectTargetIndex] = useState<number | null>(null);
   const [batchModalIndex, setBatchModalIndex] = useState<number | null>(null);
+  const [isJobReceiptModalOpen, setIsJobReceiptModalOpen] = useState(false);
 
   // Stock Popover State
   const [stockPopoverAnchor, setStockPopoverAnchor] = useState<{
@@ -186,6 +190,7 @@ export function CreateBill() {
     handleSubmit,
     watch,
     setValue,
+    getValues,
     reset,
     trigger,
     formState: { errors },
@@ -207,6 +212,13 @@ export function CreateBill() {
       subTotal: 0,
       totalAmount: 0,
     },
+  });
+
+  const watchVendorId = watch('vendorId');
+  const { data: openJobReceipts = [] } = useQuery({
+    queryKey: ['openJobReceipts', orgId, watchVendorId],
+    queryFn: () => fetchOpenJobReceipts(orgId!, watchVendorId!),
+    enabled: Boolean(orgId && watchVendorId),
   });
 
   useEffect(() => {
@@ -1338,6 +1350,9 @@ export function CreateBill() {
                 borderBottomRightRadius: '8px',
                 position: 'relative',
                 zIndex: 1,
+                display: 'flex',
+                gap: '12px',
+                alignItems: 'center',
               }}
             >
               <button
@@ -1371,6 +1386,28 @@ export function CreateBill() {
               >
                 <Plus size={15} /> Add another line
               </button>
+
+              {openJobReceipts.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsJobReceiptModalOpen(true)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 16px',
+                    background: 'white',
+                    color: '#2563eb',
+                    border: '1px solid #bfdbfe',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontWeight: 500,
+                    fontSize: '13px',
+                  }}
+                >
+                  <Search size={15} /> Include {openJobReceipts.length} Open Job Receives
+                </button>
+              )}
             </div>
           </div>
 
@@ -1851,6 +1888,47 @@ export function CreateBill() {
         locations={locations}
         stockRows={stockPopoverAnchor?.stockRows || []}
         selectedLocationId={watchLocationId || watchDeliveryLocationId || undefined}
+      />
+
+      <AddJobReceiptsModal
+        isOpen={isJobReceiptModalOpen}
+        onClose={() => setIsJobReceiptModalOpen(false)}
+        jobReceipts={openJobReceipts}
+        onAdd={(selectedReceipts) => {
+          const currentItems = getValues('lineItems');
+          let startIndex = currentItems.findIndex((item) => !item.itemId);
+          
+          if (startIndex === -1) {
+            startIndex = currentItems.length;
+          }
+
+          const newItems = [...currentItems];
+
+          selectedReceipts.forEach((receipt) => {
+            receipt.outputs.forEach((output) => {
+              // If the targeted row is empty, overwrite it, else push new
+              const itemData = {
+                itemId: output.itemId,
+                item: output.item,
+                quantity: Number(output.acceptedQty),
+                rate: Number(output.rate) || 0,
+                amount: Number(output.processCharge) || 0,
+                itemTotal: Number(output.processCharge) || 0,
+                jobReceiptId: receipt.id,
+                description: `Processing charge for Job Order ${receipt.jobOrder.jobOrderNumber} / Receive ${receipt.receiptNumber}\nItem: ${output.item?.name || 'Unknown'}${output.outputBatch?.batchNumber ? `\nBatch: ${output.outputBatch.batchNumber}` : ''}`,
+              };
+
+              if (startIndex < newItems.length && !newItems[startIndex].itemId) {
+                newItems[startIndex] = { ...newItems[startIndex], ...itemData };
+              } else {
+                newItems.push({ ...itemData } as BillItem);
+              }
+              startIndex++;
+            });
+          });
+
+          setValue('lineItems', newItems, { shouldValidate: true });
+        }}
       />
     </div>
   );

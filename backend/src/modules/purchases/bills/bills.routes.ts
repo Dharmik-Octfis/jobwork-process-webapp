@@ -40,6 +40,7 @@ billsRouter.post(
 );
 billsRouter.get('/attachments/signed-url', requirePermission('bill:read'), ctrl.getSignedUrl);
 billsRouter.get('/:id', requirePermission('bill:read'), ctrl.getBill);
+billsRouter.get('/open-job-receipts/:vendorId', requirePermission('bill:read'), ctrl.getOpenJobReceipts);
 billsRouter.get('/:id/activities', requirePermission('bill:read'), ctrl.getBillActivitiesRoute);
 billsRouter.get('/:id/comments', requirePermission('bill:read'), ctrl.getBillCommentsRoute);
 billsRouter.post('/:id/comments', requirePermission('bill:update'), ctrl.createBillCommentRoute);
