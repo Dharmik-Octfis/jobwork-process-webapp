@@ -236,17 +236,8 @@ export function CreateBill() {
           discountValue: discountVal || ('' as unknown as number),
           discountType: item.discountType || (item.discountPercentage ? 'percentage' : 'fixed'),
           amount: item.amount || 0,
-          /**
-           * 🔴 THE BATCH AND TAKA BREAKDOWN RIDES ALONG ON EDIT. This mapper built
-           * a fresh object and left it behind, so reopening a bill showed "+ Add
-           * Takas" on a line that already had three — and saving then re-posted it
-           * with none. The server has always sent it; nothing here read it.
-           *
-           * 🔴 NEVER ON A CLONE. These rows carry the ORIGINAL bill's `batchId`
-           * and `batchUnitId`, so copying them would make the new bill top up the
-           * old one's packages instead of receiving its own. A clone starts with
-           * the batch dialog empty, exactly as it does today.
-           */
+          jobReceiptId: item.jobReceiptId,
+          description: (item.customFields as Record<string, unknown>)?.description as string || '',
           batches: isClone ? undefined : item.batches,
         };
       });
@@ -524,6 +515,10 @@ export function CreateBill() {
         itemTotal: itemTotal,
         discountAmount: discountAmount,
         discountPercentage: discType === 'percentage' ? discountVal : null,
+        customFields: {
+          ...(item.customFields || {}),
+          ...(item.description ? { description: item.description } : {}),
+        },
       };
     });
 
@@ -1910,8 +1905,8 @@ export function CreateBill() {
               const itemData = {
                 itemId: output.itemId,
                 item: output.item,
-                quantity: Number(output.acceptedQty),
-                rate: Number(output.rate) || 0,
+                quantity: Number(output.acceptedQty) || 1,
+                rate: Number(output.rate) || (Number(output.acceptedQty) ? Number(output.processCharge) / Number(output.acceptedQty) : Number(output.processCharge)),
                 amount: Number(output.processCharge) || 0,
                 itemTotal: Number(output.processCharge) || 0,
                 jobReceiptId: receipt.id,

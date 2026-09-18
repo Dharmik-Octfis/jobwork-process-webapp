@@ -907,6 +907,10 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
         if (!lineRecord) continue;
         const item = itemsById.get(payload.itemId);
 
+        // Lines billed from a Job Receipt do not affect inventory.
+        // The Job Receipt already received the physical stock.
+        if (payload.jobReceiptId) continue;
+
         if (item?.trackInventory && item.inventoryTracking !== 'none') {
           for (const b of batchesToReceive(item, payload, posting)) {
             await receiveBillBatch(tx, {
@@ -1234,6 +1238,10 @@ export async function updateBill(
         const payload = line.payload;
         const lineRecord = { id: line.lineId };
         const item = itemsById.get(payload.itemId);
+
+        // Lines billed from a Job Receipt do not affect inventory.
+        // The Job Receipt already received the physical stock.
+        if (payload.jobReceiptId) continue;
 
         if (item?.trackInventory && item.inventoryTracking !== 'none') {
           for (const b of batchesToReceive(item, payload, mustPost)) {
