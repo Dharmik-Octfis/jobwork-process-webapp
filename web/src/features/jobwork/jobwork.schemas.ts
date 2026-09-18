@@ -355,13 +355,14 @@ export function planGaps(inputs: readonly PlanInputRow[], outputs: readonly Plan
 }
 
 /**
- * 🔴 THE PLAN WARNINGS (landed-cost plan §3) — said, never enforced, keyed by the
- * INPUT item they concern.
+ * 🔴 THE PLAN WARNINGS (landed-cost plan §3) — said, not enforced here, keyed by the
+ * INPUT item they concern. Only the last is also a server refusal.
  *
  *   · less planned in than the expected output needs — fabric does stretch;
  *   · Expected equal to Planned on a plain same-unit step — no loss is planned, so
  *     shrinkage lands as job order loss instead of inside the landed cost;
- *   · an input nothing produced is made from — written off at completion.
+ *   · an input nothing produced is made from — the server refuses the save (V5);
+ *     said here first so the row is flagged before Save is pressed.
  *
  * What an output draws from an input is R1: itself when it passes straight through,
  * its recipe quantity when it is a composite, 1 when it is a plain output of a
@@ -402,7 +403,7 @@ export function planWarnings(
     if (draws.length === 0) {
       warnings.set(
         input.itemId,
-        'Nothing listed as produced is made from this, so none of it is consumed — whatever is sent is written off when the step is completed.',
+        'Nothing listed as produced is made from this — remove it, or the step will not save.',
       );
       continue;
     }
@@ -529,6 +530,17 @@ function drawPerUnit(
   return inputIds.size === 1 && inputIds.has(inputItemId) ? 1 : 0;
 }
 
+/** R1a — a pass-through returned beside something else made from the same input is
+ * leftover, and comes back 1:1. Its expected quantity, or null. */
+function leftoverExpected(plan: CostPreviewPlan, inputItemId: string): number | null {
+  const passThrough = plan.outputs.find((row) => row.itemId === inputItemId);
+  if (!passThrough?.expectedQty || passThrough.expectedQty <= 0) return null;
+  const drawnElsewhere = plan.outputs.some(
+    (row) => row.itemId !== inputItemId && drawPerUnit(plan, row.itemId, inputItemId, false) > 0,
+  );
+  return drawnElsewhere ? passThrough.expectedQty : null;
+}
+
 export function receiptCostPreview(input: {
   plan: CostPreviewPlan;
   rework: boolean;
@@ -544,18 +556,29 @@ export function receiptCostPreview(input: {
     outstanding.set(line.itemId, round4((outstanding.get(line.itemId) ?? 0) + line.outstanding));
   }
 
-  // R2 + R3: need = (accepted + rework) × w × planned ÷ Σ(expected × w).
+  // R2 + R3: need = (accepted + rework) × w × planned ÷ Σ(expected × w) — except a
+  // leftover pass-through, which needs exactly what came back (R1a).
   const needs = new Map<string, Map<string, number>>();
   for (const inputItemId of outstanding.keys()) {
     let ratio = 1;
+    let leftover: number | null = null;
     if (!rework) {
-      const planned = plan.inputs.find((row) => row.itemId === inputItemId)?.plannedQty ?? 0;
-      const denominator = plan.outputs.reduce(
-        (sum, row) =>
-          sum + (row.expectedQty ?? 0) * drawPerUnit(plan, row.itemId, inputItemId, false),
-        0,
-      );
-      if (planned <= 0 || denominator <= 0) continue;
+      let planned = plan.inputs.find((row) => row.itemId === inputItemId)?.plannedQty ?? 0;
+      if (planned <= 0) continue;
+      const weighted = (row: CostPreviewPlan['outputs'][number]) =>
+        (row.expectedQty ?? 0) * drawPerUnit(plan, row.itemId, inputItemId, false);
+      const all = plan.outputs.reduce((sum, row) => sum + weighted(row), 0);
+      const others = plan.outputs
+        .filter((row) => row.itemId !== inputItemId)
+        .reduce((sum, row) => sum + weighted(row), 0);
+      leftover = leftoverExpected(plan, inputItemId);
+      if (leftover !== null && planned - leftover <= 0) leftover = null;
+      let denominator = all;
+      if (leftover !== null) {
+        planned -= leftover;
+        denominator = others;
+      }
+      if (denominator <= 0) continue;
       ratio = planned / denominator;
     }
     const byOutput = new Map<string, number>();
@@ -563,7 +586,9 @@ export function receiptCostPreview(input: {
       const draw = drawPerUnit(plan, row.itemId, inputItemId, rework);
       const units = row.acceptedQty + row.reworkQty;
       if (draw <= 0 || units <= 0) continue;
-      const need = round4(units * draw * ratio);
+      const need = round4(
+        units * draw * (leftover !== null && row.itemId === inputItemId ? 1 : ratio),
+      );
       if (need > 0) byOutput.set(row.itemId, need);
     }
     if (byOutput.size > 0) needs.set(inputItemId, byOutput);

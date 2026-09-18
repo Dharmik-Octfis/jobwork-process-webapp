@@ -246,6 +246,55 @@ describe('landed cost — the rules around the examples', () => {
     expect(drawPerUnit(plan, 'fabric', 'detergent', false).toString()).toBe('0');
   });
 
+  it('R1a: brings leftover back 1:1 and puts the loss on what was made', () => {
+    // 200 m planned: 100 shirts at 1.5 m, and 40 m expected back untouched.
+    const plan: CostPlan = {
+      inputs: [
+        { itemId: 'fabric', plannedQty: d(200) },
+        { itemId: 'thread', plannedQty: d(10) },
+      ],
+      outputs: [
+        {
+          itemId: 'shirt',
+          expectedQty: d(100),
+          components: [
+            { componentItemId: 'fabric', qtyPerUnit: d(1.5) },
+            { componentItemId: 'thread', qtyPerUnit: d(0.1) },
+          ],
+        },
+        { itemId: 'fabric', expectedQty: d(40), components: [] },
+      ],
+    };
+    const needs = needTable(
+      plan,
+      ['fabric', 'thread'],
+      [
+        { itemId: 'shirt', acceptedQty: d(50), reworkQty: d(0) },
+        { itemId: 'fabric', acceptedQty: d(40), reworkQty: d(0) },
+      ],
+      false,
+    );
+    // Leftover draws exactly itself; the shirts carry (200 − 40) ÷ 150 of it.
+    expect(needs.get('fabric')?.get('fabric')?.toString()).toBe('40');
+    expect(needs.get('fabric')?.get('shirt')?.toString()).toBe('80');
+    expect(needs.get('thread')?.get('shirt')?.toString()).toBe('5');
+  });
+
+  it('R1a: leaves a pass-through on its own to the plan ratio', () => {
+    // Washing: fabric in, fabric back — its shrinkage is the step's own.
+    const plan: CostPlan = {
+      inputs: [{ itemId: 'fabric', plannedQty: d(100) }],
+      outputs: [{ itemId: 'fabric', expectedQty: d(95), components: [] }],
+    };
+    const needs = needTable(
+      plan,
+      ['fabric'],
+      [{ itemId: 'fabric', acceptedQty: d(95), reworkQty: d(0) }],
+      false,
+    );
+    expect(needs.get('fabric')?.get('fabric')?.toString()).toBe('100');
+  });
+
   it('reports a typed input nothing on the receipt draws on', () => {
     const plan = single(1000, 950);
     const needs = needTable(plan, ['cotton'], [], false);

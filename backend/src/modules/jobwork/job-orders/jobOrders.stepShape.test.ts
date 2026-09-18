@@ -9,7 +9,7 @@ import { createNewJobOrder, updateJobOrderById } from './jobOrders.service.ts';
 
 /**
  * 🔴 What a job order step may look like, and what it freezes (landed-cost plan
- * §3 V1–V3, §5.2, §6.3; §8 tests 10, 11, 16).
+ * §3 V1–V3 and V5, §5.2, §6.3; §8 tests 10, 11, 16).
  *
  * Every row is created by this file and hard-deleted afterwards (CLAUDE.md).
  */
@@ -23,7 +23,10 @@ let godownId: string;
 let dyerId: string;
 let processId: string;
 
-async function makeItem(name: string, opts: { composite?: boolean; pieces?: boolean } = {}) {
+async function makeItem(
+  name: string,
+  opts: { composite?: boolean; pieces?: boolean; noUnit?: boolean } = {},
+) {
   return runAsTenant(orgId, async (tx) => {
     const item = await tx.item.create({
       data: {
@@ -31,7 +34,7 @@ async function makeItem(name: string, opts: { composite?: boolean; pieces?: bool
         name,
         sku: `SHAPE-${name}-${unique()}`,
         unit: opts.pieces ? 'Piece' : 'Metre',
-        stockingUomId: opts.pieces ? pieceId : metreId,
+        stockingUomId: opts.noUnit ? null : opts.pieces ? pieceId : metreId,
         itemStructure: opts.composite ? 'composite' : 'single',
         inventoryTracking: 'batch',
         trackInventory: true,
@@ -274,12 +277,78 @@ describe('job order step — shape rules', { timeout: 60_000 }, () => {
     expect(jo.steps).toHaveLength(1);
   });
 
+  it('V3: treats an item with no stocking unit as a different unit', async () => {
+    const loose = await makeItem('Loose', { noUnit: true });
+    const dyed = await makeItem('Dyed');
+    const offcuts = await makeItem('Offcuts');
+
+    await expect(
+      order(step([{ itemId: loose }], [{ itemId: dyed }, { itemId: offcuts }])),
+    ).rejects.toMatchObject(refusedAt('steps.0.outputs.0.itemId'));
+  });
+
   it('exempts an output that is itself one of the inputs', async () => {
     const fabric = await makeItem('Fabric');
-    const detergent = await makeItem('Detergent');
+    const thread = await makeItem('Thread');
+    const shirt = await makeItem('Shirt', { composite: true, pieces: true });
+    await recipe(shirt, [
+      [fabric, 1.5],
+      [thread, 0.1],
+    ]);
 
-    const jo = await order(step([{ itemId: fabric }, { itemId: detergent }], [{ itemId: fabric }]));
+    // Leftover fabric comes back beside the shirts — no recipe, and not a composite.
+    const jo = await order(
+      step([{ itemId: fabric }, { itemId: thread }], [{ itemId: shirt }, { itemId: fabric }]),
+    );
     expect(jo.steps).toHaveLength(1);
+  });
+
+  it('R1a: saves any rate on leftover returned beside what is made from it', async () => {
+    const fabric = await makeItem('Fabric');
+    const thread = await makeItem('Thread');
+    const shirt = await makeItem('Shirt', { composite: true, pieces: true });
+    await recipe(shirt, [
+      [fabric, 1.5],
+      [thread, 0.1],
+    ]);
+
+    // The rate is the user's call, not a rule — a blank is charged as ₹0.
+    const jo = await order(
+      step(
+        [{ itemId: fabric }, { itemId: thread }],
+        [
+          { itemId: shirt, rate: 20 },
+          { itemId: fabric, rate: 2 },
+        ],
+      ),
+    );
+    const [, leftover] = await outputsOf(jo.steps[0]!.id);
+    expect(leftover!.rate?.toString()).toBe('2');
+  });
+
+  it('V5: refuses an input that nothing the step produces is made from', async () => {
+    const fabric = await makeItem('Fabric');
+    const thread = await makeItem('Thread');
+    const lace = await makeItem('Lace');
+    const detergent = await makeItem('Detergent');
+    const shirt = await makeItem('Shirt', { composite: true, pieces: true });
+    await recipe(shirt, [
+      [fabric, 1.5],
+      [thread, 0.1],
+    ]);
+
+    await expect(
+      order(step([{ itemId: fabric }, { itemId: thread }, { itemId: lace }], [{ itemId: shirt }])),
+    ).rejects.toMatchObject(refusedAt('steps.0.inputs.2.itemId'));
+
+    // A pass-through draws only itself, so the detergent beside it is drawn by nothing.
+    await expect(
+      order(step([{ itemId: fabric }, { itemId: detergent }], [{ itemId: fabric }])),
+    ).rejects.toMatchObject(refusedAt('steps.0.inputs.1.itemId'));
+
+    // No outputs yet is a draft, not a V5 failure.
+    const draft = await order(step([{ itemId: fabric }, { itemId: lace }], []));
+    expect(draft.steps).toHaveLength(1);
   });
 });
 

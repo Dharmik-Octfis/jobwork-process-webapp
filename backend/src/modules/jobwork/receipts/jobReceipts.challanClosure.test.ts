@@ -503,6 +503,12 @@ describe('closing a challan — reopening and refusals', { timeout: 120_000 }, (
     const buttons = await makeItem('Buttons', { pieces: true });
     const redCotton = await makeItem('Red Cotton', { composite: true });
     await recipe(redCotton, [[cotton, 1]]);
+    // Only the shirts draw on buttons (V5), and this receipt brings back none of them.
+    const shirt = await makeItem('Shirt', { composite: true, pieces: true });
+    await recipe(shirt, [
+      [cotton, 1],
+      [buttons, 5],
+    ]);
     const cottonBatch = await seedStock(cotton, 100, 10);
     const buttonBatch = await seedStock(buttons, 50, 1);
     const { stepId } = await planStep(
@@ -510,7 +516,10 @@ describe('closing a challan — reopening and refusals', { timeout: 120_000 }, (
         { itemId: cotton, plannedQty: 100 },
         { itemId: buttons, plannedQty: 50 },
       ],
-      [{ itemId: redCotton, expectedQty: 95, rate: 5 }],
+      [
+        { itemId: redCotton, expectedQty: 85, rate: 5 },
+        { itemId: shirt, expectedQty: 10, rate: 5 },
+      ],
     );
     const fabricChallan = await issue(stepId, [
       { itemId: cotton, batchId: cottonBatch.id, qty: 100 },

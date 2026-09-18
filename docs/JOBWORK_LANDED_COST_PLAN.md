@@ -97,6 +97,14 @@ These are the rules the code comments should cite as `landed-cost R1…R9`.
   It holds the expected loss, and across a unit change it also holds the conversion:
   1,000 m planned for 950 m expected gives `k = 1.0526`; 1,000 m for 1,200 PCS gives `k = 0.8333 m per PCS`.
   Rework receipts use `k = 1` — a rework pass has no plan of its own, and completion writes off the rest.
+- **R1a — Leftover comes back 1:1 (2026-09-18).** A pass-through output (the input item itself)
+  returned **beside** another output made from the same input is leftover: it needs exactly what came
+  back, and the other outputs' ratio is worked on what is left —
+  `k_i = (planned_i − expected_leftover) ÷ Σ others (expected × w)`. 200 m for 100 shirts at 1.5 m plus
+  40 m back gives the shirts `k = 160 ÷ 150`, and the 40 m back uses 40 m, not 42.1. Its rate is the
+  user's to set like any row's — nothing refuses one; left blank it charges ₹0 (R6). A pass-through **on its own** — washing,
+  fabric back — is the work itself and keeps R2. Applies to receipts posted from that date; a step with
+  earlier receipts costs its later ones this way, and the difference lands in completion's write-off.
 - **R3 — Need.** For each produced row `o` and each input `i` it draws on:
   `need(o, i) = (accepted_o + rework_o) × w(o, i) × k_i`, to 4 dp.
 - **R4 — Used, per input item.**
@@ -136,11 +144,18 @@ not re-validated):
 - V1: more than one distinct input item → every output item is `item_structure = 'composite'`.
 - V2: every component of an output composite is one of the step's input items; a composite with an empty
   recipe is refused.
-- Exempt from V1 and V2: an output that is itself one of the step's input items — washing fabric with
-  detergent, fabric in and fabric out. It passes through and draws on itself at `w = 1`, so R1 needs the
-  same exemption. (Found 2026-09-15 while building phase 5.)
+- Exempt from V1 and V2: an output that is itself one of the step's input items — leftover fabric
+  returned beside the shirts, fabric in and fabric out. It passes through and draws on itself at `w = 1`,
+  so R1 needs the same exemption. (Found 2026-09-15 while building phase 5.)
 - V3: one input, and an output in a different unit from it → that output is the step's **only** output
-  (D12). `Σ expected × w` cannot add pieces to metres.
+  (D12). `Σ expected × w` cannot add pieces to metres. An item with no stocking unit counts as a
+  different unit (2026-09-18) — it cannot be shown to match.
+- V5: every input is drawn on by at least one output under R1 — a pass-through draws itself, a composite
+  its recipe, a plain output of a single-input step that input. An input nothing draws on was never
+  consumed by a receipt and only ever written off at completion, so it is refused at save (2026-09-18;
+  it was the third warning below). Washing with detergent is modelled as a composite ("Washed Fabric" =
+  fabric + detergent), which also puts the detergent into the fabric's cost instead of into loss. A
+  step with no outputs yet is a draft and is left to V4.
 
 **Validation of the plan (D11)** — at **issue post**, not at job order save, because a half-planned order
 must still save, and a step cannot be re-planned once a challan exists:
@@ -154,7 +169,8 @@ must still save, and a step cannot be re-planned once a challan exists:
   need): fabric does stretch, so it saves.
 - Expected left **equal to planned** on a same-unit step: "no loss is expected, so any shrinkage will be
   job order loss rather than part of landed cost".
-- An input no output draws on: it will never be consumed and will be written off at completion.
+- An input no output draws on — now also refused at save (V5); the grid says it first so the row is
+  flagged before Save is pressed.
 
 **Tolerance (D10)** is not part of the cost engine. It keeps its one job — the over-issue ceiling
 `planned × (1 + tolerance %)` in `assertWithinTolerance` (`jobIssues.service.ts:241`) — and only its

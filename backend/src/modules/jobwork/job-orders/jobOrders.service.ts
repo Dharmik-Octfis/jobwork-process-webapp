@@ -817,10 +817,16 @@ function priorFrom(steps: readonly ExistingStep[], startSeq: number): PriorSteps
  *       composite with no recipe is refused.
  *   V3  one input, and an output in a different unit → that output is the step's
  *       only one: a plan cannot relate metres to pieces and to anything else (D12).
+ *       An item with no stocking unit counts as a different unit — it cannot be
+ *       shown to match, and `Σ expected × w` would add whatever it is to metres.
+ *   V5  every input is drawn on by some output (R1). One nothing draws on is never
+ *       consumed by a receipt and was only ever written off at completion — lace
+ *       beside a shirt whose recipe has none (2026-09-18, was a warning).
  *
- * An output that is itself one of the inputs passes straight through — washing
- * fabric with detergent — and is exempt from V1 and V2. A step that lists no inputs
- * yet is a draft being typed, with nothing to check V1 or V2 against.
+ * An output that is itself one of the inputs passes straight through — leftover
+ * fabric returned beside the shirts — and is exempt from V1 and V2. A step that
+ * lists no inputs yet is a draft being typed, with nothing to check V1 or V2
+ * against; one that lists no outputs is left to V4 at issue.
  *
  * Only steps being written are checked: a locked step already has documents and
  * cannot be re-planned, so it is never passed in here.
@@ -879,14 +885,47 @@ function assertStepShape(
   if (inputIds.size === 1 && step.resolvedOutputs.length > 1) {
     const inputUom = step.resolvedInputs[0]!.uomId;
     const changed = step.resolvedOutputs.findIndex(
-      (row) => inputUom !== null && row.uomId !== null && row.uomId !== inputUom,
+      (row) => inputUom === null || row.uomId === null || row.uomId !== inputUom,
     );
     if (changed >= 0) {
+      const output = step.resolvedOutputs[changed]!;
+      const unitless =
+        inputUom === null
+          ? step.resolvedInputs[0]!.itemId
+          : output.uomId === null
+            ? output.itemId
+            : null;
       refuse(
         changed,
-        `${nameOf(step.resolvedOutputs[changed]!.itemId)} comes back in a different unit from ` +
-          'what goes in, so it has to be this step’s only output.',
+        unitless
+          ? `${nameOf(unitless)} has no stocking unit, so this step can have only one output. ` +
+              'Set the item’s unit first.'
+          : `${nameOf(output.itemId)} comes back in a different unit from what goes in, so it ` +
+              'has to be this step’s only output.',
       );
+    }
+  }
+
+  if (inputIds.size > 0 && step.resolvedOutputs.length > 0) {
+    // Mirrors R1 (`drawPerUnit`): a pass-through draws itself, a composite its
+    // recipe, a plain output of a single-input step that one input.
+    const drawn = new Set<string>();
+    for (const output of step.resolvedOutputs) {
+      if (inputIds.has(output.itemId)) drawn.add(output.itemId);
+      else if (itemById.get(output.itemId)?.itemStructure === 'composite') {
+        for (const row of recipeByComposite.get(output.itemId) ?? []) {
+          drawn.add(row.componentItemId);
+        }
+      } else if (inputIds.size === 1) drawn.add(step.resolvedInputs[0]!.itemId);
+    }
+    const unused = step.resolvedInputs.findIndex((row) => !drawn.has(row.itemId));
+    if (unused >= 0) {
+      const message =
+        `Nothing this step produces is made from ${nameOf(step.resolvedInputs[unused]!.itemId)}. ` +
+        'Remove it, or add it to the recipe of what the step produces.';
+      throw new ApiError(400, `Step ${stepIndex + 1}: ${message}`, {
+        [`steps.${stepIndex}.inputs.${unused}.itemId`]: message,
+      });
     }
   }
 }

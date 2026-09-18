@@ -74,8 +74,33 @@ export function drawPerUnit(
 }
 
 /**
+ * 🔴 R1a — LEFTOVER COMES BACK 1:1 (2026-09-18).
+ *
+ * A pass-through output returned BESIDE something else made from the same input is
+ * unused material: fabric sent for shirts, 40 m of it back untouched. Spreading the
+ * plan's loss over it valued 40 m returned as 42.1 m used, and that loss belongs to
+ * the shirts. So it draws exactly what comes back, and the plan ratio for the other
+ * outputs is worked out on what is left: `(planned − leftover expected) ÷ Σ others`.
+ *
+ * A pass-through on its own — washing fabric, fabric back — is not leftover: the
+ * step's shrinkage is its own and stays in the ratio. Returns the leftover's
+ * expected quantity, or null when the input has none.
+ */
+function leftoverExpected(plan: CostPlan, inputItemId: string): Prisma.Decimal | null {
+  const passThrough = plan.outputs.find((row) => row.itemId === inputItemId);
+  if (!passThrough?.expectedQty || passThrough.expectedQty.lessThanOrEqualTo(0)) return null;
+  const drawnElsewhere = plan.outputs.some(
+    (row) =>
+      row.itemId !== inputItemId &&
+      drawPerUnit(plan, row.itemId, inputItemId, false).greaterThan(0),
+  );
+  return drawnElsewhere ? passThrough.expectedQty : null;
+}
+
+/**
  * R2 + R3 — what each returned row needs of each input:
- * `(accepted + rework) × w × planned ÷ Σ(expected × w)`, to 4 dp.
+ * `(accepted + rework) × w × planned ÷ Σ(expected × w)`, to 4 dp — except a
+ * leftover pass-through, which needs exactly what came back (R1a).
  *
  * 🔴 The plan ratio is never rounded on its own. Rounding k to six places first
  * leaves 0.0002 m of dust per receipt, which completion then books as loss.
@@ -91,16 +116,28 @@ export function needTable(
   for (const inputItemId of new Set(inputItemIds)) {
     let planned: Prisma.Decimal | null = null;
     let denominator: Prisma.Decimal | null = null;
+    let leftover: Prisma.Decimal | null = null;
     if (!rework) {
       planned = plan.inputs.find((row) => row.itemId === inputItemId)?.plannedQty ?? null;
-      denominator = plan.outputs.reduce(
-        (sum, row) =>
-          sum.plus(
-            (row.expectedQty ?? ZERO).times(drawPerUnit(plan, row.itemId, inputItemId, false)),
-          ),
-        ZERO,
-      );
-      if (!planned || planned.lessThanOrEqualTo(0) || denominator.lessThanOrEqualTo(0)) continue;
+      if (!planned || planned.lessThanOrEqualTo(0)) continue;
+      const weighted = (row: CostPlanOutput) =>
+        (row.expectedQty ?? ZERO).times(drawPerUnit(plan, row.itemId, inputItemId, false));
+      const all = plan.outputs.reduce((sum, row) => sum.plus(weighted(row)), ZERO);
+      const others = plan.outputs
+        .filter((row) => row.itemId !== inputItemId)
+        .reduce((sum, row) => sum.plus(weighted(row)), ZERO);
+
+      leftover = leftoverExpected(plan, inputItemId);
+      // A leftover that leaves nothing for the rest is an incoherent plan; cost it
+      // the plain way rather than divide by nothing.
+      if (leftover && planned.minus(leftover).lessThanOrEqualTo(0)) leftover = null;
+      if (leftover) {
+        planned = planned.minus(leftover);
+        denominator = others;
+      } else {
+        denominator = all;
+      }
+      if (denominator.lessThanOrEqualTo(0)) continue;
     }
 
     const byOutput = new Map<string, Prisma.Decimal>();
@@ -108,9 +145,10 @@ export function needTable(
       const draw = drawPerUnit(plan, row.itemId, inputItemId, rework);
       const units = row.acceptedQty.plus(row.reworkQty);
       if (draw.lessThanOrEqualTo(0) || units.lessThanOrEqualTo(0)) continue;
-      const need = rework
-        ? units.times(draw)
-        : units.times(draw).times(planned!).dividedBy(denominator!);
+      const need =
+        rework || (leftover && row.itemId === inputItemId)
+          ? units.times(draw)
+          : units.times(draw).times(planned!).dividedBy(denominator!);
       const rounded = need.toDecimalPlaces(QTY_DP);
       if (rounded.greaterThan(0)) byOutput.set(row.itemId, rounded);
     }

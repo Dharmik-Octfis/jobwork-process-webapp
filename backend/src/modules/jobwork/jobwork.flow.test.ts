@@ -854,6 +854,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   let shirtsId: string;
   let rejectsId: string;
   let offcutsId: string;
+  let threadedId: string;
+  let sewnId: string;
+  let linedId: string;
 
   beforeAll(async () => {
     await runAsTenant(orgId, async (tx) => {
@@ -900,6 +903,37 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
           qtyPerUnit: 1,
         })),
       });
+
+      // …and composites that DO draw on the thread and buttons, for the steps that
+      // consume them: an input nothing produced is made from is refused (V5).
+      threadedId = await make('Threaded Shirts', 'Piece', pieceId, 'composite');
+      sewnId = await make('Sewn Shirts', 'Piece', pieceId, 'composite');
+      linedId = await make('Lined Panels', 'Piece', pieceId, 'composite');
+      const recipe = (compositeItemId: string, rows: [string, number][]) =>
+        rows.map(([componentItemId, qtyPerUnit], seq) => ({
+          organizationId: orgId,
+          compositeItemId,
+          componentItemId,
+          qtyPerUnit,
+          seq,
+        }));
+      await tx.compositeItemComponent.createMany({
+        data: [
+          ...recipe(threadedId, [
+            [shirtId, 1],
+            [threadId, 0.05],
+          ]),
+          ...recipe(sewnId, [
+            [shirtId, 1],
+            [threadId, 0.05],
+            [buttonId, 3],
+          ]),
+          ...recipe(linedId, [
+            [dyedId, 1],
+            [shirtId, 1],
+          ]),
+        ],
+      });
     });
   });
 
@@ -921,10 +955,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
             { itemId: threadId, plannedQty: 12 },
             { itemId: buttonId, plannedQty: 8700 },
           ],
-          outputs: [
-            { itemId: shirtsId, isPrimary: true, expectedQty: 2880 },
-            { itemId: rejectsId },
-          ],
+          outputs: [{ itemId: sewnId, isPrimary: true, expectedQty: 2880 }, { itemId: rejectsId }],
         },
       ],
     });
@@ -944,7 +975,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     // godown. That is a label, never a rejection (§6.4).
     expect(step.inputs.every((row) => row.fromStock)).toBe(true);
 
-    expect(step.outputs.map((row) => row.itemId)).toEqual([shirtsId, rejectsId]);
+    expect(step.outputs.map((row) => row.itemId)).toEqual([sewnId, rejectsId]);
     // 🔴 Exactly one primary — the output that absorbs the step's whole cost
     // (§9.2.1). The rejects are a by-product and take an explicit value later.
     expect(step.outputs.filter((row) => row.isPrimary)).toHaveLength(1);
@@ -958,7 +989,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     // four scalar columns that mirrored them went with Migration B (2026-08-12).
     expect(step.inputs[0]!.itemId).toBe(shirtId);
     expect(step.inputs[0]!.uomId).toBe(pieceId);
-    expect(step.outputs.find((row) => row.isPrimary)!.itemId).toBe(shirtsId);
+    expect(step.outputs.find((row) => row.isPrimary)!.itemId).toBe(sewnId);
     expect(Number(step.plannedInputQty)).toBe(2910);
   });
 
@@ -979,7 +1010,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
           ],
           // 🔴 A quantity sent on an OUTPUT is dropped, not stored. What comes
           // back is a per-run answer; only the consumed side has a default.
-          outputs: [{ itemId: shirtsId, isPrimary: true, plannedQty: 2880 }],
+          outputs: [{ itemId: threadedId, isPrimary: true, plannedQty: 2880 }],
         },
       ],
     });
@@ -1057,7 +1088,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
           processId: stitching.id,
           processorId: cutterId,
           inputs: [{ itemId: shirtId }, { itemId: threadId }],
-          outputs: [{ itemId: shirtsId, isPrimary: true }],
+          outputs: [{ itemId: threadedId, isPrimary: true }],
         },
       ],
     });
@@ -1273,7 +1304,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
             { itemId: threadId, plannedQty: 5 },
             { itemId: buttonId, plannedQty: 300 },
           ],
-          outputs: [{ itemId: shirtsId, isPrimary: true }],
+          outputs: [{ itemId: sewnId, isPrimary: true }],
         },
       ],
     });
@@ -1348,7 +1379,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
             { itemId: shirtId, plannedQty: 100, tolerancePct: 0 },
             { itemId: threadId, plannedQty: 5, tolerancePct: 0 },
           ],
-          outputs: [{ itemId: shirtsId, isPrimary: true }],
+          outputs: [{ itemId: threadedId, isPrimary: true }],
         },
       ],
     });
@@ -1458,7 +1489,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
           ],
           // Pieces from metres, so nothing defaults it — and the plan check (V4)
           // would otherwise refuse before the batch rule this test is about.
-          outputs: [{ itemId: shirtsId, isPrimary: true, expectedQty: 50 }],
+          outputs: [{ itemId: linedId, isPrimary: true, expectedQty: 50 }],
         },
       ],
     });
@@ -1513,7 +1544,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
           ],
           outputs: [
             // ₹3 per stitched shirt accepted; rejects are not paid for.
-            { itemId: shirtsId, isPrimary: true, expectedQty: 95, rate: 3 },
+            { itemId: sewnId, isPrimary: true, expectedQty: 95, rate: 3 },
             { itemId: rejectsId, expectedQty: 5 },
           ],
         },
@@ -1549,9 +1580,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
      * that the bulk allocation would settle the panel line by eating the thread,
      * which is simply older.
      *
-     * Both outputs' recipes draw on the panels alone, so the thread and buttons
-     * are not consumed by any receipt: they stay at the processor until the step
-     * is completed, which is where consumables are accounted for.
+     * The shirts' recipe draws on all three, the rejects' on the panels alone —
+     * so thread and buttons are consumed by the shirts only (V5: every input is
+     * drawn on by something).
      */
     const receipt = await createNewJobReceipt(orgId, {
       jobOrderStepId: step.id,
@@ -1564,7 +1595,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       ],
       outputs: [
         {
-          itemId: shirtsId,
+          itemId: sewnId,
           isPrimary: true,
           receivedQty: 92,
           acceptedQty: 92,
@@ -1597,15 +1628,16 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     const shirtBatch = await runAsTenant(orgId, (tx) =>
       tx.batch.findFirstOrThrow({ where: { id: outputs[0]!.outputBatchId! } }),
     );
-    expect(shirtBatch.itemId).toBe(shirtsId);
+    expect(shirtBatch.itemId).toBe(sewnId);
     expect(shirtBatch.parentBatchIds).toContain(panelBatch.id);
-    expect(shirtBatch.parentBatchIds).not.toContain(threadBatch.id);
-    expect(shirtBatch.parentBatchIds).not.toContain(buttonBatch.id);
+    expect(shirtBatch.parentBatchIds).toContain(threadBatch.id);
+    expect(shirtBatch.parentBatchIds).toContain(buttonBatch.id);
 
     /**
      * 🔴 VALUE IS CONSERVED (R5–R7).
      *
-     *   material = the ₹1,000 of panels, split by need: 92 and 8 of them
+     *   material = the ₹1,000 of panels (thread and buttons were stocked at ₹0),
+     *              split by need: 92 and 8 of them
      *   shirts   = 920 + 92 accepted × ₹3
      *   rejects  = 80, with no rate agreed
      *
@@ -1623,7 +1655,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
 
     // The header's six totals are the PRIMARY output's, in its own unit — which
     // row that is comes off `isPrimary`, not from a header column any more.
-    expect(receipt.outputs.find((row) => row.isPrimary)!.itemId).toBe(shirtsId);
+    expect(receipt.outputs.find((row) => row.isPrimary)!.itemId).toBe(sewnId);
     expect(Number(receipt.totalReceivedQty)).toBe(92);
     expect(Number(receipt.totalIssuedQty)).toBe(100);
 
@@ -1659,7 +1691,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
             { itemId: shirtId, plannedQty: 100 },
             { itemId: threadId, plannedQty: 5 },
           ],
-          outputs: [{ itemId: shirtsId, isPrimary: true }],
+          outputs: [{ itemId: threadedId, isPrimary: true }],
         },
       ],
     });
