@@ -121,6 +121,8 @@ export function CreateBill() {
   const [searchParams] = useSearchParams();
   const cloneFrom = searchParams.get('cloneFrom');
   const fromPo = searchParams.get('fromPo');
+  const jobReceiptId = searchParams.get('jobReceiptId');
+  const initialVendorId = searchParams.get('vendorId');
   const queryClient = useQueryClient();
   const trackingLabel = useTrackingLabel();
 
@@ -135,6 +137,7 @@ export function CreateBill() {
   const [multiSelectTargetIndex, setMultiSelectTargetIndex] = useState<number | null>(null);
   const [batchModalIndex, setBatchModalIndex] = useState<number | null>(null);
   const [isJobReceiptModalOpen, setIsJobReceiptModalOpen] = useState(false);
+  const [hasAutoFilledJobReceipt, setHasAutoFilledJobReceipt] = useState(false);
 
   // Stock Popover State
   const [stockPopoverAnchor, setStockPopoverAnchor] = useState<{
@@ -198,6 +201,7 @@ export function CreateBill() {
     formState: { errors },
   } = useForm<CreateBillData>({
     defaultValues: {
+      vendorId: initialVendorId || '',
       status: 'Draft',
       billDate: new Date().toISOString().split('T')[0],
       deliveryType: 'Location',
@@ -222,6 +226,51 @@ export function CreateBill() {
     queryFn: () => fetchOpenJobReceipts(orgId!, watchVendorId!),
     enabled: Boolean(orgId && watchVendorId),
   });
+
+  useEffect(() => {
+    if (jobReceiptId && openJobReceipts.length > 0 && !hasAutoFilledJobReceipt) {
+      const receipt = openJobReceipts.find(r => r.id === jobReceiptId);
+      if (receipt) {
+        const currentItems = getValues('lineItems') ?? [];
+        let startIndex = currentItems.findIndex((item) => !item.itemId);
+
+        if (startIndex === -1) {
+          startIndex = currentItems.length;
+        }
+
+        const newItems = [...currentItems];
+
+        receipt.outputs.forEach((output) => {
+          const totalCost = (Number(output.materialValue) || 0) + (Number(output.processCharge) || 0);
+          const qty = Number(output.acceptedQty) || 1;
+          const itemData = {
+            itemId: output.itemId,
+            item: output.item,
+            quantity: qty,
+            rate: totalCost / qty,
+            amount: totalCost,
+            itemTotal: totalCost,
+            jobReceiptId: receipt.id,
+            description: `Processing charge for Job Order ${receipt.jobOrder.jobOrderNumber} / Receive ${receipt.receiptNumber}`,
+            batches: output.outputBatchId ? [{
+              batchId: output.outputBatchId,
+              quantity: qty,
+            }] : undefined,
+          };
+
+          if (startIndex < newItems.length && !newItems[startIndex].itemId) {
+            newItems[startIndex] = { ...newItems[startIndex], ...itemData };
+          } else {
+            newItems.push({ ...itemData } as BillItem);
+          }
+          startIndex++;
+        });
+
+        setValue('lineItems', newItems, { shouldValidate: true });
+        setHasAutoFilledJobReceipt(true);
+      }
+    }
+  }, [jobReceiptId, openJobReceipts, hasAutoFilledJobReceipt, getValues, setValue]);
 
   useEffect(() => {
     if (existingPo) {

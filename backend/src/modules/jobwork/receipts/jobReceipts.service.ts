@@ -144,6 +144,7 @@ const RECEIPT_INCLUDE = {
       },
     },
   },
+  _count: { select: { billItems: { where: { isDeleted: false } } } },
 } satisfies Prisma.JobReceiptInclude;
 
 export async function getJobReceiptsList(organizationId: string, opts: ListQuery) {

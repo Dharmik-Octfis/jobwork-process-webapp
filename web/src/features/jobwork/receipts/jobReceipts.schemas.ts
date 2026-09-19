@@ -151,6 +151,7 @@ export const jobReceiptSchema = z.object({
     .object({ id: z.string(), supplierBatchRef: z.string().nullable() })
     .nullable()
     .optional(),
+  _count: z.object({ billItems: z.number() }).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   customFields: z.record(z.string(), z.unknown()).optional(),
