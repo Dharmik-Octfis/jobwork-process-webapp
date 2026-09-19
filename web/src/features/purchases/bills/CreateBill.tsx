@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { useForm, useFieldArray, useWatch, Controller } from 'react-hook-form';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AxiosError } from 'axios';
+import { toast } from 'react-hot-toast';
+import { toApiErrorMessage } from '../../../api/client';
 import {
   Plus,
   Search,
@@ -488,12 +490,10 @@ export function CreateBill() {
 
       navigate(`/organizations/${orgId}/purchases/bills?id=${isEdit && id ? id : data?.id}`);
     },
+    // The server's refusal says exactly why ("…already been used by challan JI-…"),
+    // and until this toast it only reached the console.
     onError: (error: AxiosError<{ message?: string }>) => {
-      console.error(
-        error.response?.data?.message ||
-          error.message ||
-          `Failed to ${isEdit ? 'update' : 'create'} Bill`,
-      );
+      toast.error(toApiErrorMessage(error));
     },
   });
 
@@ -1890,9 +1890,9 @@ export function CreateBill() {
         onClose={() => setIsJobReceiptModalOpen(false)}
         jobReceipts={openJobReceipts}
         onAdd={(selectedReceipts) => {
-          const currentItems = getValues('lineItems');
+          const currentItems = getValues('lineItems') ?? [];
           let startIndex = currentItems.findIndex((item) => !item.itemId);
-          
+
           if (startIndex === -1) {
             startIndex = currentItems.length;
           }

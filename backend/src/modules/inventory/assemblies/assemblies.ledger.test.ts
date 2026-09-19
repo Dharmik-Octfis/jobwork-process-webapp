@@ -420,6 +420,15 @@ describe('assembly — cancellation', { timeout: 60_000 }, () => {
     const threadId = await freshThread();
     const fabric = await seed(fabricId, 100, 50);
     const thread = await seed(threadId, 40, 10);
+    const layersOf = (itemIds: string[]) =>
+      runAsTenant(orgId, (tx) =>
+        tx.stockCostLayer.findMany({
+          where: { organizationId: orgId, itemId: { in: itemIds } },
+          orderBy: { inSeq: 'asc' },
+          select: { id: true, remainingQty: true, remainingValue: true },
+        }),
+      );
+    const layersBefore = await layersOf([fabricId, threadId]);
 
     const assembly = await assembliesService.createAssembly(
       orgId,
@@ -431,6 +440,18 @@ describe('assembly — cancellation', { timeout: 60_000 }, () => {
     );
 
     await assembliesService.deleteAssembly(orgId, assembly.id, userId);
+
+    // FIFO: the consumed draws go back to the very layers they came from, to the
+    // paisa, and the composite's own layer is withdrawn.
+    const show = (rows: Awaited<ReturnType<typeof layersOf>>) =>
+      rows.map((row) => [row.id, row.remainingQty.toString(), row.remainingValue.toString()]);
+    expect(show(await layersOf([fabricId, threadId]))).toEqual(show(layersBefore));
+    const composite = await runAsTenant(orgId, (tx) =>
+      tx.stockCostLayer.findMany({
+        where: { organizationId: orgId, batchId: assembly.compositeBatchId! },
+      }),
+    );
+    expect(composite.every((layer) => layer.remainingQty.isZero())).toBe(true);
 
     // 🔴 Every row reversed. Before this, cancelling destroyed the components and
     // left the composite on the books — the exact damage the ledger exists to

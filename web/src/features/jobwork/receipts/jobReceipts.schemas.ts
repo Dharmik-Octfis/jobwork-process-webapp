@@ -218,8 +218,11 @@ export const receivePrefillSchema = z.object({
       batchReference: z.string().nullable(),
       /** What is still out on this line. */
       issuedQty: z.string(),
-      /** The batch's cost per unit at the processor — the preview's material price. */
+      /** The line's average cost per unit at the processor. */
       unitCost: z.string().default('0'),
+      /** The line's FIFO layers at the processor, oldest first — the preview walks
+       * these, so it prices exactly what the receipt will post. */
+      layers: z.array(z.object({ qty: z.string(), unitCost: z.string() })).default([]),
     }),
   ),
   /**

@@ -610,6 +610,11 @@ model JobOrderStepOutput {
   /// NULL = not agreed yet, charged as ₹0; 0 = done free.
   rate Decimal? @db.Decimal(18, 4)
 
+  /// Share of the input's material this output takes, in % — only on a step with
+  /// ONE input and two or more outputs made from it (landed-cost plan R1b). NULL on
+  /// every other step, and on steps planned before shares existed (2026-09-18).
+  sharePct Decimal? @map("share_pct") @db.Decimal(9, 4)
+
   customFields Json     @default("{}") @map("custom_fields")
   isDeleted    Boolean  @default(false) @map("is_deleted")
   createdBy    String?  @map("created_by") @db.Uuid

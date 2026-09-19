@@ -14,15 +14,16 @@ import {
   asResolvedBatch,
   createBatch,
   createBatchUnits,
-  getBalancesByBatch,
   getBalancesByBatchAndLocation,
   postMovement,
   resolveBatchesForPosting,
   resolveExistingBatchUnits,
+  reverseMovement,
   UNALLOCATED_BATCH_STATE,
   type Ownership,
   type ResolvedBatches,
 } from '../../inventory/stock-ledger/stockLedger.service.ts';
+import { fifoLineOrder, openLayersByIssueLine } from '../../inventory/stock-ledger/costLayers.ts';
 import {
   assertItemsBelongToOrg,
   assertReceivableLocation,
@@ -311,56 +312,58 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
     );
 
     /**
-     * What a unit of each line's batch is worth where it stands — the price the
-     * Receive screen's cost preview values material at (landed-cost §6.7). One
-     * grouped read per place the challans went, which is a single place on every
-     * ordinary step; never a read per line.
+     * 🔴 What each line still holds at the processor, as the FIFO layers a receipt
+     * will consume (docs/FIFO_COSTING_PLAN.md §5.2) — the Receive screen's cost
+     * preview walks exactly these, so what it shows is what posts. One query for
+     * every line, never a read per line.
      */
-    const unitCostByLine = new Map<string, Prisma.Decimal>();
-    const linesByDestination = new Map<string, { id: string; batchId: string }[]>();
-    for (const issue of issues) {
-      const atDestination = linesByDestination.get(issue.destinationLocationId) ?? [];
-      atDestination.push(...issue.lines.map((line) => ({ id: line.id, batchId: line.batchId })));
-      linesByDestination.set(issue.destinationLocationId, atDestination);
-    }
-    for (const [locationId, atDestination] of linesByDestination) {
-      const balances = await getBalancesByBatch(tx, {
-        organizationId,
-        locationId,
-        batchIds: [...new Set(atDestination.map((line) => line.batchId))],
-      });
-      for (const line of atDestination) {
-        const balance = balances.get(line.batchId);
-        unitCostByLine.set(
-          line.id,
-          balance && balance.qty.greaterThan(0) ? balance.value.dividedBy(balance.qty) : ZERO,
-        );
-      }
-    }
+    const layersByLine = await openLayersByIssueLine(
+      tx,
+      organizationId,
+      issues.flatMap((issue) =>
+        issue.lines.map((line) => ({
+          id: line.id,
+          batchId: line.batchId,
+          locationId: issue.destinationLocationId,
+        })),
+      ),
+    );
 
     const rows = [];
-    for (const issue of issues) {
-      for (const line of issue.lines) {
-        const outstanding = line.qty.minus(closedByLine.get(line.id) ?? ZERO);
-        if (outstanding.lessThanOrEqualTo(0)) continue;
+    for (const { issue, line } of fifoLineOrder(
+      issues.flatMap((issue) => issue.lines.map((line) => ({ issue, line }))),
+      (entry) => layersByLine.get(entry.line.id),
+    )) {
+      const outstanding = line.qty.minus(closedByLine.get(line.id) ?? ZERO);
+      if (outstanding.lessThanOrEqualTo(0)) continue;
+      const layers = layersByLine.get(line.id) ?? [];
+      const layerQty = layers.reduce((sum, layer) => sum.plus(layer.qty), ZERO);
+      const layerValue = layers.reduce((sum, layer) => sum.plus(layer.value), ZERO);
 
-        rows.push({
-          jobIssueId: issue.id,
-          challanNumber: issue.challanNumber,
-          jobIssueLineId: line.id,
-          // 🔴 The item is on the LINE now (§5.7) — the consumed grid groups by
-          // it, because one challan carries fabric, thread and buttons and their
-          // quantities can never be added together.
-          itemId: line.itemId,
-          itemName: line.item?.name ?? null,
-          uomSymbol: line.uom?.symbol ?? line.uom?.unitName ?? null,
-          batchId: line.batchId,
-          // The label, not the internal number (2026-08-14).
-          batchReference: line.batch.supplierBatchRef,
-          issuedQty: outstanding.toString(),
-          unitCost: (unitCostByLine.get(line.id) ?? ZERO).toDecimalPlaces(6).toString(),
-        });
-      }
+      rows.push({
+        jobIssueId: issue.id,
+        challanNumber: issue.challanNumber,
+        jobIssueLineId: line.id,
+        // 🔴 The item is on the LINE now (§5.7) — the consumed grid groups by
+        // it, because one challan carries fabric, thread and buttons and their
+        // quantities can never be added together.
+        itemId: line.itemId,
+        itemName: line.item?.name ?? null,
+        uomSymbol: line.uom?.symbol ?? line.uom?.unitName ?? null,
+        batchId: line.batchId,
+        // The label, not the internal number (2026-08-14).
+        batchReference: line.batch.supplierBatchRef,
+        issuedQty: outstanding.toString(),
+        /** The line's average — kept for display; the preview prices by `layers`. */
+        unitCost: (layerQty.greaterThan(0) ? layerValue.dividedBy(layerQty) : ZERO)
+          .toDecimalPlaces(6)
+          .toString(),
+        /** Oldest first, the order a receipt consumes them in. */
+        layers: layers.map((layer) => ({
+          qty: layer.qty.toString(),
+          unitCost: layer.value.dividedBy(layer.qty).toDecimalPlaces(6).toString(),
+        })),
+      });
     }
 
     /* Challans with nothing left to account for, dropped here rather than by a
@@ -1311,6 +1314,7 @@ async function openIssueLines(
       batchUnitId: true,
       qty: true,
       itemId: true,
+      jobIssue: { select: { destinationLocationId: true } },
     },
   });
   const closedByLine = await closedQtyByIssueLine(
@@ -1318,10 +1322,24 @@ async function openIssueLines(
     organizationId,
     issueLines.map((line) => line.id),
   );
-  return issueLines.map(({ qty, ...line }) => ({
-    ...line,
-    outstanding: qty.minus(closedByLine.get(line.id) ?? ZERO),
-  }));
+  // 🔴 Oldest STOCK first, not oldest line (FIFO plan §5.1): a bulk receipt walks
+  // these in order, and each line's cost is its own layers — so this order is
+  // what makes a bulk receipt cost the oldest material the challans carried.
+  const layersByLine = await openLayersByIssueLine(
+    tx,
+    organizationId,
+    issueLines.map((line) => ({
+      id: line.id,
+      batchId: line.batchId,
+      locationId: line.jobIssue.destinationLocationId,
+    })),
+  );
+  return fifoLineOrder(issueLines, (line) => layersByLine.get(line.id)).map(
+    ({ qty, jobIssue: _jobIssue, ...line }) => ({
+      ...line,
+      outstanding: qty.minus(closedByLine.get(line.id) ?? ZERO),
+    }),
+  );
 }
 
 /**
@@ -1823,6 +1841,7 @@ export async function createNewJobReceipt(
             uomId: true,
             expectedQty: true,
             rate: true,
+            sharePct: true,
             item: { select: { name: true, itemStructure: true } },
             components: {
               where: { isDeleted: false },
@@ -2180,31 +2199,9 @@ export async function createNewJobReceipt(
      * location. The value that leaves here is what the output batch inherits, which
      * is how cost follows material through the chain without anyone storing it.
      */
-    /**
-     * 🔴 ONE balance query for every allocation, then the running balance is kept
-     * IN MEMORY as each consume is posted (2026-09-01). This was a `getBalance`
-     * per allocation: a round trip per row, on the one connection this
-     * transaction holds.
-     *
-     * The decrement below is NOT bookkeeping, it is the semantics. Two allocations
-     * can name the same batch — the same batch issued on two challans of one step
-     * — and the second one's unit value has to see what the first one took out.
-     * Pricing both against a single up-front read is the tempting version of this
-     * change and it is wrong: it values material the first allocation already
-     * consumed, and prices a batch as though it were full when the first
-     * allocation drained it to nothing.
-     */
     const consumedBatchIds = [...new Set(allocations.map((allocation) => allocation.batchId))];
-    // Both reads feed `postMovement` alone, so a draft — which never posts —
-    // skips them and the loop below with them.
-    const balances = asDraft
-      ? new Map<string, { qty: Prisma.Decimal; value: Prisma.Decimal }>()
-      : await getBalancesByBatch(tx, {
-          organizationId,
-          locationId: processorLocationId ?? undefined,
-          batchIds: consumedBatchIds,
-        });
-    // The same hoist for the batch rows each post copies its item and owner off.
+    // Feeds `postMovement` alone, so a draft — which never posts — skips it and
+    // the loop below with it.
     const consumedBatches = asDraft
       ? new Map()
       : await resolveBatchesForPosting(tx, organizationId, consumedBatchIds);
@@ -2214,11 +2211,15 @@ export async function createNewJobReceipt(
     const parentBatchIds = new Set<string>();
     for (const allocation of asDraft ? [] : allocations) {
       if (allocation.qty.lessThanOrEqualTo(0)) continue;
-      const balance = balances.get(allocation.batchId) ?? { qty: ZERO, value: ZERO };
-      const unitValue = balance.qty.greaterThan(0) ? balance.value.dividedBy(balance.qty) : ZERO;
-      const lineValue = unitValue.times(allocation.qty).toDecimalPlaces(4);
       parentBatchIds.add(allocation.batchId);
 
+      /**
+       * 🔴 FIFO WITHIN THE CHALLAN LINE IT CAME BACK AGAINST (§3.4). The line's
+       * processor layers carry the godown cost the challan took out, so one job
+       * can never consume another job's material at the same processor — and a
+       * line's remaining layers always equal what the line still has out, which
+       * is what cancel and the completion write-off rely on.
+       */
       const posted = await postMovement(
         tx,
         {
@@ -2229,7 +2230,11 @@ export async function createNewJobReceipt(
           locationId: processorLocationId!,
           movementType: 'consume',
           qtyOut: allocation.qty,
-          valueOut: lineValue,
+          costScope: {
+            kind: 'job',
+            issueLineIds: [allocation.jobIssueLineId],
+            batchId: allocation.batchId,
+          },
           sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
           sourceDocId: receipt.id,
           postedAt: receiptDate,
@@ -2238,13 +2243,7 @@ export async function createNewJobReceipt(
         consumedBatches,
       );
 
-      /* Taken from the row actually WRITTEN, never from `lineValue`.
-         `postMovement` zeroes value on customer-owned stock (§5.3), so re-deriving
-         what it stored is how this copy and the ledger drift apart. */
-      balances.set(allocation.batchId, {
-        qty: balance.qty.minus(posted.qtyOut),
-        value: balance.value.minus(posted.valueOut),
-      });
+      // From the row actually WRITTEN — `postMovement` zeroes customer-owned value.
       consumedValueByItem.set(
         allocation.itemId,
         (consumedValueByItem.get(allocation.itemId) ?? ZERO).plus(posted.valueOut),
@@ -3015,27 +3014,10 @@ export async function cancelJobReceipt(
         sourceDocId: id,
         movementType: { not: 'reversal' },
       },
-      select: {
-        batchId: true,
-        /**
-         * 🔴 THE COLUMN THIS PATH MOST EASILY FORGETS, AND THE WORST ONE TO MISS.
-         *
-         * Every reversal below copies its identity off the row it undoes. Leave
-         * this out and the reversals post as UNTAGGED: the batch's balance comes
-         * back perfectly correct, so nothing on any screen looks wrong, while
-         * every package this receipt created keeps its quantity forever and an
-         * untagged negative appears beside it. There is no error, no warning, and
-         * no way to notice until someone asks where a roll went.
-         *
-         * `jobReceipts.batchUnits.test.ts` fails the moment this is dropped.
-         */
-        batchUnitId: true,
-        locationId: true,
-        qtyIn: true,
-        qtyOut: true,
-        valueIn: true,
-        valueOut: true,
-      },
+      orderBy: { createdAt: 'asc' },
+      // The package and everything else a reversal copies is read off the row by
+      // `reverseMovement` — `jobReceipts.batchUnits.test.ts` guards it.
+      select: { id: true, batchId: true },
     });
 
     // Every row this receipt posted is reversed, and a receipt touches the same
@@ -3047,20 +3029,16 @@ export async function cancelJobReceipt(
       posted.map((row) => row.batchId),
     );
 
+    /* Consumes give their draws back to the challan lines' processor layers;
+       produces withdraw the layers they created, which is refused — naming the
+       document — if anything has already been costed against them (D3). */
     const now = new Date();
     for (const row of posted) {
-      await postMovement(
+      await reverseMovement(
         tx,
+        organizationId,
+        row.id,
         {
-          organizationId,
-          batchId: row.batchId,
-          batchUnitId: row.batchUnitId,
-          locationId: row.locationId,
-          movementType: 'reversal',
-          qtyIn: row.qtyOut,
-          qtyOut: row.qtyIn,
-          valueIn: row.valueOut,
-          valueOut: row.valueIn,
           sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
           sourceDocId: id,
           remarks: `Cancelled: ${reason.trim()}`,

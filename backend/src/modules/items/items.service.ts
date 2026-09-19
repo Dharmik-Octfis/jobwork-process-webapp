@@ -154,6 +154,9 @@ interface OpeningPosition {
   qty: Prisma.Decimal;
   value: Prisma.Decimal;
   postedAt: Date;
+  /** The `opening` rows that built this position — the cost layers a reduction
+   * takes back first (FIFO). Empty on a position this save is creating. */
+  inEntryIds: string[];
 }
 
 /** The identity of a position, as a map key. */
@@ -255,9 +258,11 @@ export class ItemsService {
         qty: new Prisma.Decimal(0),
         value: new Prisma.Decimal(0),
         postedAt: row.postedAt,
+        inEntryIds: [],
       };
       current.qty = current.qty.plus(row.qtyIn ?? 0).minus(row.qtyOut ?? 0);
       current.value = current.value.plus(row.valueIn ?? 0).minus(row.valueOut ?? 0);
+      if (row.qtyIn.greaterThan(0)) current.inEntryIds.push(row.id);
       positions.set(key, current);
     }
     return positions;
@@ -403,9 +408,17 @@ export class ItemsService {
         locationId: position.locationId,
         movementType: 'reversal',
         qtyOut: remove,
-        // Proportional, not the whole value — a partial reduction that wrote off the
-        // full value would leave the remainder costing nothing.
-        valueOut: remove.times(existingUnitValue),
+        /* 🔴 FIFO (D3): take back what OPENING STOCK put here — this position's own
+           layers first, then the item's other opening layers at this location
+           (all dated the anchor, so interchangeable), never a bill's or a
+           receipt's. Refused, naming the document, once they are costed away. */
+        costScope: {
+          kind: 'withdraw',
+          sourceDocType: OPENING_STOCK_SOURCE_DOC_TYPE,
+          sourceDocId: itemId,
+          preferEntryIds: position.inEntryIds,
+          batchId: position.batchId,
+        },
         sourceDocType: 'item_opening_stock',
         sourceDocId: itemId,
         postedAt,
@@ -1611,6 +1624,7 @@ export class ItemsService {
               qty: new Prisma.Decimal(0),
               value: new Prisma.Decimal(0),
               postedAt: here[0]!.postedAt,
+              inEntryIds: [],
             } satisfies OpeningPosition);
           claimed.add(key(batchId, null, locRow.locationId));
           await this.settleOpening(

@@ -49,8 +49,6 @@ export const availableBatchSchema = z.object({
   ownership: z.string(),
   ownerPartyId: z.string().nullable(),
   availableQty: z.string(),
-  accumulatedValue: z.string(),
-  costPerUnit: z.string().nullable(),
   inventoryTracking: z.string(),
 
   /**

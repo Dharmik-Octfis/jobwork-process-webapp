@@ -26,6 +26,7 @@ import {
 import { POSTED_DOC_STATUS, runAsDocument, type ProcessorType } from '../jobwork.types.ts';
 import { lockJobOrderSteps, lockStep } from '../jobwork.posting.ts';
 import { writeOffStep } from './jobOrders.writeOff.ts';
+import { shareSplitOutputs } from '../receipts/landedCost.ts';
 import {
   getAllChainNotReady,
   getAllStepTotals,
@@ -251,6 +252,8 @@ interface ResolvedOutput {
   isPrimary: boolean;
   /** Charge per ACCEPTED unit (landed-cost plan D1–D2). */
   rate: number | null;
+  /** Share of the input's material, in % (R1b). Cleared where shares do not apply. */
+  sharePct: number | null;
   /** The composite's recipe, frozen onto the step (§5.2). Empty for a plain item. */
   components: RecipeRow[];
 }
@@ -344,6 +347,7 @@ function flagPrimaryOutput(rows: readonly StepOutputRow[], stepIndex: number): R
     expectedQty: row.expectedQty ?? null,
     isPrimary: flagged.length === 1 ? Boolean(row.isPrimary) : index === 0,
     rate: row.rate ?? null,
+    sharePct: row.sharePct ?? null,
     // Filled in `buildSteps`, once one query has read every composite's recipe.
     components: [],
   }));
@@ -808,19 +812,24 @@ function priorFrom(steps: readonly ExistingStep[], startSeq: number): PriorSteps
 }
 
 /**
- * 🔴 WHAT A STEP MAY LOOK LIKE (landed-cost plan §3, V1–V3) — so that every output
- * can later be costed by what it is made from.
+ * 🔴 WHAT A STEP MAY LOOK LIKE (landed-cost plan §3, V1, V2, V5) — so that every
+ * output can later be costed by what it is made from.
  *
  *   V1  more than one input item → every output is a composite, whose recipe says
  *       what it is made from. There is no "made from" column (D3).
  *   V2  every component of an output composite is one of the step's inputs, and a
  *       composite with no recipe is refused.
- *   V3  one input, and an output in a different unit → that output is the step's
- *       only one: a plan cannot relate metres to pieces and to anything else (D12).
+ *   V3  GONE (2026-09-18). One input with several outputs in different units used
+ *       to be refused because `Σ expected × w` cannot add pieces to metres. Such a
+ *       step now splits by share (R1b), which never adds them.
+ *   V5  every input is drawn on by some output (R1). One nothing draws on is never
+ *       consumed by a receipt and was only ever written off at completion — lace
+ *       beside a shirt whose recipe has none (2026-09-18, was a warning).
  *
- * An output that is itself one of the inputs passes straight through — washing
- * fabric with detergent — and is exempt from V1 and V2. A step that lists no inputs
- * yet is a draft being typed, with nothing to check V1 or V2 against.
+ * An output that is itself one of the inputs passes straight through — leftover
+ * fabric returned beside the shirts — and is exempt from V1 and V2. A step that
+ * lists no inputs yet is a draft being typed, with nothing to check V1 or V2
+ * against; one that lists no outputs is left to V4 at issue.
  *
  * Only steps being written are checked: a locked step already has documents and
  * cannot be re-planned, so it is never passed in here.
@@ -876,18 +885,64 @@ function assertStepShape(
     }
   }
 
-  if (inputIds.size === 1 && step.resolvedOutputs.length > 1) {
-    const inputUom = step.resolvedInputs[0]!.uomId;
-    const changed = step.resolvedOutputs.findIndex(
-      (row) => inputUom !== null && row.uomId !== null && row.uomId !== inputUom,
-    );
-    if (changed >= 0) {
-      refuse(
-        changed,
-        `${nameOf(step.resolvedOutputs[changed]!.itemId)} comes back in a different unit from ` +
-          'what goes in, so it has to be this step’s only output.',
-      );
+  if (inputIds.size > 0 && step.resolvedOutputs.length > 0) {
+    // Mirrors R1 (`drawPerUnit`): a pass-through draws itself, a composite its
+    // recipe, a plain output of a single-input step that one input.
+    const drawn = new Set<string>();
+    for (const output of step.resolvedOutputs) {
+      if (inputIds.has(output.itemId)) drawn.add(output.itemId);
+      else if (itemById.get(output.itemId)?.itemStructure === 'composite') {
+        for (const row of recipeByComposite.get(output.itemId) ?? []) {
+          drawn.add(row.componentItemId);
+        }
+      } else if (inputIds.size === 1) drawn.add(step.resolvedInputs[0]!.itemId);
     }
+    const unused = step.resolvedInputs.findIndex((row) => !drawn.has(row.itemId));
+    if (unused >= 0) {
+      const message =
+        `Nothing this step produces is made from ${nameOf(step.resolvedInputs[unused]!.itemId)}. ` +
+        'Remove it, or add it to the recipe of what the step produces.';
+      throw new ApiError(400, `Step ${stepIndex + 1}: ${message}`, {
+        [`steps.${stepIndex}.inputs.${unused}.itemId`]: message,
+      });
+    }
+  }
+}
+
+/**
+ * 🔴 R1b AT SAVE — every share-split output states its share, and they make 100%.
+ *
+ * Checked when the job order is saved rather than at the first challan like the
+ * quantities (V4): the planner is the one who knows the split, and a blank must
+ * never be read as "the first output takes it all". Only steps being written come
+ * through here, so a locked step planned before shares existed is not re-checked.
+ */
+function assertShares(
+  outputs: readonly ResolvedOutput[],
+  split: ReadonlySet<ResolvedOutput>,
+  stepIndex: number,
+  itemById: ReadonlyMap<string, { name: string }>,
+) {
+  if (split.size === 0) return;
+  const rows = [...outputs.entries()].filter(([, row]) => split.has(row));
+  const blank = rows.find(([, row]) => row.sharePct === null);
+  if (blank) {
+    const [rowIndex, row] = blank;
+    const message = `Enter the share % for ${itemById.get(row.itemId)?.name ?? 'this item'}.`;
+    throw new ApiError(400, `Step ${stepIndex + 1}: ${message}`, {
+      [`steps.${stepIndex}.outputs.${rowIndex}.sharePct`]: message,
+    });
+  }
+  const total = roundQty(rows.reduce((sum, [, row]) => sum + row.sharePct!, 0));
+  if (Math.abs(total - 100) > 0.01) {
+    const message = `The shares add up to ${total}%. They must total 100%.`;
+    throw new ApiError(
+      400,
+      `Step ${stepIndex + 1}: ${message}`,
+      Object.fromEntries(
+        rows.map(([rowIndex]) => [`steps.${stepIndex}.outputs.${rowIndex}.sharePct`, message]),
+      ),
+    );
   }
 }
 
@@ -1013,6 +1068,16 @@ async function buildSteps(
 
   for (const [index, step] of withUnits.entries()) {
     assertStepShape(step, index + indexOffset, itemById, recipeByComposite, componentNameById);
+    // A share means nothing off a share-split step (R1b) — two inputs, one product,
+    // the leftover row — so none is kept there to be misread later.
+    const split = new Set(
+      shareSplitOutputs(
+        step.resolvedInputs.map((row) => row.itemId),
+        step.resolvedOutputs,
+      ),
+    );
+    for (const row of step.resolvedOutputs) if (!split.has(row)) row.sharePct = null;
+    assertShares(step.resolvedOutputs, split, index + indexOffset, itemById);
   }
 
   classifyStepInputs(withUnits, prior.producedItemIds);
@@ -1445,6 +1510,7 @@ async function writeSteps(
             expectedQty: output.expectedQty,
             isPrimary: output.isPrimary,
             rate: output.rate,
+            sharePct: output.sharePct,
             createdBy: userId ?? null,
             updatedBy: userId ?? null,
             // The recipe, frozen with the step (§5.2): a later edit to the composite

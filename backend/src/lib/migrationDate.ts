@@ -163,5 +163,18 @@ export async function restampOpeningStock(
     where: { organizationId: args.organizationId, sourceDocType: OPENING_DOC_TYPE },
     data: { postedAt: args.date },
   });
+  // The FIFO age of opening stock is the same statement, so its layers move too —
+  // otherwise opening stock would queue by a date the books no longer claim. The
+  // cut-over's legacy layers have no row, so they are found by their batch.
+  await tx.$executeRaw`
+    UPDATE stock_cost_layers l SET in_date = ${args.date}::timestamptz
+    WHERE l.organization_id = ${args.organizationId}::uuid
+      AND (
+        EXISTS (SELECT 1 FROM stock_ledger e
+                 WHERE e.id = l.in_ledger_entry_id AND e.source_doc_type = ${OPENING_DOC_TYPE})
+        OR (l.is_legacy AND l.in_ledger_entry_id IS NULL
+            AND EXISTS (SELECT 1 FROM batches b
+                         WHERE b.id = l.batch_id AND b.source_doc_type = ${OPENING_DOC_TYPE}))
+      )`;
   return count;
 }
