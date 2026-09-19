@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 
 interface JobReceiptOutput {
   id: string;
-  item: { id: string; name: string; sku: string | null };
+  item: { id: string; name: string; sku: string | null; trackInventory?: boolean; inventoryTracking?: string | null };
   acceptedQty: number;
   rate: number;
   processCharge: number;

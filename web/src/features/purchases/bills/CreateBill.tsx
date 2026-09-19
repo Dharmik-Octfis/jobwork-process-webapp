@@ -641,7 +641,25 @@ export function CreateBill() {
                 <SearchableSelect
                   options={vendors.map((v) => ({ label: v.contactName, value: v.id }))}
                   value={watch('vendorId') || undefined}
-                  onChange={(val) => setValue('vendorId', val, { shouldValidate: true })}
+                  onChange={(val) => {
+                    setValue('vendorId', val, { shouldValidate: true });
+                    const currentItems = getValues('lineItems') || [];
+                    const hasJobReceipts = currentItems.some((item) => item.jobReceiptId);
+                    if (hasJobReceipts) {
+                      const filteredItems = currentItems.filter((item) => !item.jobReceiptId);
+                      if (filteredItems.length === 0) {
+                        filteredItems.push({
+                          itemId: '',
+                          quantity: '' as unknown as number,
+                          rate: '' as unknown as number,
+                          discountValue: '' as unknown as number,
+                          discountType: 'percentage',
+                          amount: 0,
+                        } as BillItem);
+                      }
+                      setValue('lineItems', filteredItems, { shouldValidate: true });
+                    }
+                  }}
                   placeholder="Select a Vendor"
                   renderOption={(option, isSelected) => {
                     const vendor = vendors.find((v) => v.id === option.value);

@@ -964,7 +964,15 @@ export async function getOpenJobReceiptsForVendor(organizationId: string, vendor
         outputs: {
           where: { isDeleted: false },
           include: {
-            item: { select: { id: true, name: true, sku: true } },
+            item: {
+              select: {
+                id: true,
+                name: true,
+                sku: true,
+                trackInventory: true,
+                inventoryTracking: true,
+              },
+            },
             outputBatch: { select: { batchNumber: true } },
           },
         },
