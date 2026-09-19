@@ -321,10 +321,16 @@ async function refuseShortfall(
 
   if (scope.kind === 'withdraw' || scope.kind === 'entry') {
     const consumers = await consumersOfScope(tx, key, scope);
-    const named = consumers.length ? consumers.join(', ') : 'another document';
+    if (consumers.length === 0) {
+      throw ApiError.conflict(
+        `Stock of ${itemName} this document put into ${place} is no longer there, so it ` +
+          'cannot be reversed. Reverse the document that used it first.',
+      );
+    }
+    const named = consumers.join(', ');
     throw ApiError.conflict(
-      `Stock of ${itemName} this document put into ${place} has already been costed to ` +
-        `${named}, so its quantity can no longer be changed. Reverse ${named} first.`,
+      `Stock of ${itemName} this document put into ${place} has already been used by ` +
+        `${named}, so it can no longer be changed or reversed. Reverse ${named} first.`,
     );
   }
 
@@ -356,10 +362,41 @@ async function consumersOfScope(
       AND l.location_id = ${key.locationId}::uuid
       AND ${condition}
     LIMIT 5`;
+  if (rows.length > 0) {
+    return describeDocuments(
+      tx,
+      key.organizationId,
+      rows.map((row) => ({ type: row.sourceDocType, id: row.sourceDocId })),
+    );
+  }
+
+  /* Stock that moved before FIFO left no draws to name its consumer by, so ask the
+     ledger instead: which OTHER documents still hold this batch out of this place
+     (net of their own reversals, so a cancelled challan is never blamed). */
+  const self =
+    scope.kind === 'withdraw'
+      ? { type: scope.sourceDocType, id: scope.sourceDocId }
+      : await tx.stockLedgerEntry
+          .findFirst({
+            where: { id: scope.entryId, organizationId: key.organizationId },
+            select: { sourceDocType: true, sourceDocId: true },
+          })
+          .then((row) => ({ type: row?.sourceDocType ?? '', id: row?.sourceDocId ?? null }));
+  const moved = await tx.$queryRaw<{ sourceDocType: string; sourceDocId: string | null }[]>`
+    SELECT o.source_doc_type AS "sourceDocType", o.source_doc_id AS "sourceDocId"
+    FROM stock_ledger o
+    WHERE o.organization_id = ${key.organizationId}::uuid
+      AND o.batch_id = ${scope.batchId}::uuid
+      AND o.location_id = ${key.locationId}::uuid
+      AND NOT (o.source_doc_type = ${self.type}
+               AND o.source_doc_id IS NOT DISTINCT FROM ${self.id}::uuid)
+    GROUP BY o.source_doc_type, o.source_doc_id
+    HAVING SUM(o.qty_out - o.qty_in) > 0
+    LIMIT 5`;
   return describeDocuments(
     tx,
     key.organizationId,
-    rows.map((row) => ({ type: row.sourceDocType, id: row.sourceDocId })),
+    moved.map((row) => ({ type: row.sourceDocType, id: row.sourceDocId })),
   );
 }
 

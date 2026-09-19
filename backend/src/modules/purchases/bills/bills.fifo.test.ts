@@ -237,7 +237,7 @@ describe('bill → FIFO layers', { timeout: 60_000 }, () => {
     // 6. And taking back more than is still unused (50 of the 80 is left uncosted).
     const tooFar = edit(10, 10);
     await expect(tooFar).rejects.toMatchObject({ status: 409 });
-    await expect(tooFar).rejects.toThrow('has already been costed to');
+    await expect(tooFar).rejects.toThrow('has already been used by');
   });
 
   it('lets an unused bill change its rate, revaluing it', async () => {

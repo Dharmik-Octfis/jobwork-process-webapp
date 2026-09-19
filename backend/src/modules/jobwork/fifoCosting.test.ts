@@ -357,6 +357,60 @@ describe('FIFO — a challan posted before FIFO (JI-00116)', { timeout: 120_000 
   });
 });
 
+describe(
+  'FIFO — cancelling a pre-FIFO challan whose goods moved on (JI-00094)',
+  { timeout: 120_000 },
+  () => {
+    it('refuses, naming the challan that took the goods onward', async () => {
+      const fabric = await makeItem('Moved Fabric');
+      const dyed = await makeItem('Moved Dyed');
+      const batch = await stockIn(fabric, 60, 6000, SEP_06);
+      const stepId = await planStep(fabric, dyed, 60);
+      const old = await issue(stepId, [{ itemId: fabric, batchId: batch.id, qty: 60 }]);
+
+      // Rewind to the pre-FIFO state: no layers, then the cut-over.
+      await runAsTenant(orgId, async (tx) => {
+        await tx.stockLayerDraw.deleteMany({
+          where: { organizationId: orgId, layer: { itemId: fabric } },
+        });
+        await tx.stockCostLayer.deleteMany({ where: { organizationId: orgId, itemId: fabric } });
+        await createLayers(tx, orgId, (await planLegacyLayers(tx, orgId)).layers);
+      });
+
+      /* Another challan sends all 60 onward from the dyer — the JI-00096 shape. The
+       onward row is posted by hand because an issue FROM a processor location is
+       not something this fixture's job orders can plan; what matters is the
+       document it names. */
+      const nextItem = await makeItem('Next Step Input');
+      const nextBatch = await stockIn(nextItem, 5, 50, SEP_06);
+      const onwardChallan = await issue(await planStep(nextItem, dyed, 5), [
+        { itemId: nextItem, batchId: nextBatch.id, qty: 5 },
+      ]);
+      const onward = await runAsTenant(orgId, (tx) =>
+        tx.jobIssue.findFirstOrThrow({
+          where: { id: onwardChallan.id },
+          select: { id: true, challanNumber: true },
+        }),
+      );
+      await runAsDocument(orgId, (tx) =>
+        postMovement(tx, {
+          organizationId: orgId,
+          batchId: batch.id,
+          locationId: old.processorLocationId,
+          movementType: 'transfer_out',
+          qtyOut: 60,
+          sourceDocType: 'job_issue',
+          sourceDocId: onward.id,
+        }),
+      );
+
+      const cancel = cancelJobIssue(orgId, old.id, 'test');
+      await expect(cancel).rejects.toMatchObject({ status: 409 });
+      await expect(cancel).rejects.toThrow(`used by challan ${onward.challanNumber}`);
+    });
+  },
+);
+
 describe('FIFO — processor layers', { timeout: 120_000 }, () => {
   it('a transfer keeps its age: the older layer at the processor is consumed first', async () => {
     const fabric = await makeItem('Aged Fabric');
