@@ -1902,15 +1902,21 @@ export function CreateBill() {
           selectedReceipts.forEach((receipt) => {
             receipt.outputs.forEach((output) => {
               // If the targeted row is empty, overwrite it, else push new
+              const totalCost = (Number(output.materialValue) || 0) + (Number(output.processCharge) || 0);
+              const qty = Number(output.acceptedQty) || 1;
               const itemData = {
                 itemId: output.itemId,
                 item: output.item,
-                quantity: Number(output.acceptedQty) || 1,
-                rate: Number(output.rate) || (Number(output.acceptedQty) ? Number(output.processCharge) / Number(output.acceptedQty) : Number(output.processCharge)),
-                amount: Number(output.processCharge) || 0,
-                itemTotal: Number(output.processCharge) || 0,
+                quantity: qty,
+                rate: totalCost / qty,
+                amount: totalCost,
+                itemTotal: totalCost,
                 jobReceiptId: receipt.id,
-                description: `Processing charge for Job Order ${receipt.jobOrder.jobOrderNumber} / Receive ${receipt.receiptNumber}\nItem: ${output.item?.name || 'Unknown'}${output.outputBatch?.batchNumber ? `\nBatch: ${output.outputBatch.batchNumber}` : ''}`,
+                description: `Processing charge for Job Order ${receipt.jobOrder.jobOrderNumber} / Receive ${receipt.receiptNumber}`,
+                batches: output.outputBatchId ? [{
+                  batchId: output.outputBatchId,
+                  quantity: qty,
+                }] : undefined,
               };
 
               if (startIndex < newItems.length && !newItems[startIndex].itemId) {

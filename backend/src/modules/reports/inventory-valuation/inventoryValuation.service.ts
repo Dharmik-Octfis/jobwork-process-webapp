@@ -222,6 +222,40 @@ export async function getItemLedger(
       HAVING SUM(l.qty_in - l.qty_out) <> 0 OR SUM(l.value_in - l.value_out) <> 0
       ORDER BY l.posted_at ASC, MIN(l.created_at) ASC`;
 
+    const outDocIds = [
+      ...new Set(
+        entries
+          .filter((e) => Number(e.qty) < 0 && e.sourceDocId)
+          .map((e) => e.sourceDocId!),
+      ),
+    ];
+
+    const draws = outDocIds.length > 0 ? await tx.$queryRaw<
+      {
+        outDocId: string;
+        qty: Prisma.Decimal;
+        value: Prisma.Decimal;
+        inDocType: string | null;
+        inDocId: string | null;
+      }[]
+    >`
+      SELECT
+        o.source_doc_id AS "outDocId",
+        SUM(d.qty) AS "qty",
+        SUM(d.value) AS "value",
+        i.source_doc_type AS "inDocType",
+        i.source_doc_id AS "inDocId"
+      FROM stock_layer_draws d
+      JOIN stock_ledger o ON o.id = d.out_ledger_entry_id
+      JOIN stock_cost_layers l ON l.id = d.layer_id
+      LEFT JOIN stock_ledger i ON i.id = l.in_ledger_entry_id
+      WHERE o.organization_id = ${organizationId}::uuid
+        AND o.item_id = ${itemId}::uuid
+        AND o.source_doc_id = ANY(${outDocIds}::uuid[])
+        AND d.reversed_at IS NULL
+      GROUP BY o.source_doc_id, i.source_doc_type, i.source_doc_id
+    ` : [];
+
     const idsOf = (type: string) => [
       ...new Set(
         entries.filter((e) => e.sourceDocType === type && e.sourceDocId).map((e) => e.sourceDocId!),
@@ -260,6 +294,32 @@ export async function getItemLedger(
       });
       docs.forEach((d) => docNumbers.set(d.id, d.assemblyNumber));
     }
+    const poIds = [
+      ...new Set(
+        draws.filter((d) => d.inDocType === 'purchase_order' && d.inDocId).map((d) => d.inDocId!),
+      ),
+    ];
+    if (poIds.length > 0) {
+      const docs = await tx.purchaseOrder.findMany({
+        where: { organizationId, id: { in: poIds } },
+        select: { id: true, poNumber: true },
+      });
+      docs.forEach((d) => docNumbers.set(d.id, d.poNumber));
+    }
+
+    const drawsByOutDocId = new Map<string, { label: string; qty: number; value: number }[]>();
+    for (const draw of draws) {
+      const type = draw.inDocType;
+      const id = draw.inDocId;
+      const labelType = type === 'item_opening_stock' ? 'Opening Stock' : (type ? (DOC_LABELS[type] ?? type) : 'Opening Stock');
+      let label = labelType;
+      if (id && docNumbers.has(id)) {
+        label = `${labelType} # ${docNumbers.get(id)}`;
+      }
+      const arr = drawsByOutDocId.get(draw.outDocId) || [];
+      arr.push({ label, qty: Number(draw.qty), value: Number(draw.value) });
+      drawsByOutDocId.set(draw.outDocId, arr);
+    }
 
     const rows: ItemLedgerResponse['rows'] = [];
     let currentQty = 0;
@@ -291,32 +351,68 @@ export async function getItemLedger(
 
       const qty = Number(entry.qty);
       const value = Number(entry.value);
-      currentQty += qty;
-      currentValue += value;
 
-      if (isBeforeFromDate || isOpeningStockEntry) continue;
+      if (isBeforeFromDate || isOpeningStockEntry) {
+        currentQty += qty;
+        currentValue += value;
+        continue;
+      }
 
       const isSameAsPrevious =
         Boolean(entry.sourceDocId) && entry.sourceDocId === previousSourceDocId;
       previousSourceDocId = entry.sourceDocId;
-      rows.push({
-        date: isSameAsPrevious ? null : entry.date.toISOString(),
-        transactionDetails: isSameAsPrevious
-          ? ''
-          : (DOC_LABELS[entry.sourceDocType] ?? entry.sourceDocType),
-        quantity: qty,
-        unitCost: qty !== 0 ? Math.abs(value / qty) : null,
-        totalCost: value,
-        stockOnHand: currentQty,
-        inventoryAssetValue: currentValue,
-        sourceDocType: isSameAsPrevious ? null : entry.sourceDocType,
-        sourceDocId: isSameAsPrevious ? null : entry.sourceDocId,
-        sourceDocNumber: isSameAsPrevious
-          ? null
-          : entry.sourceDocId
-            ? docNumbers.get(entry.sourceDocId) || null
-            : null,
-      });
+
+      const entryDraws = (qty < 0 && entry.sourceDocId) ? drawsByOutDocId.get(entry.sourceDocId) : null;
+
+      if (entryDraws && entryDraws.length > 0) {
+        let first = true;
+        for (const draw of entryDraws) {
+          const drawQty = -draw.qty; // draw qty is positive, we want outflow to be negative
+          const drawValue = -draw.value;
+          currentQty += drawQty;
+          currentValue += drawValue;
+
+          rows.push({
+            date: (!isSameAsPrevious && first) ? entry.date.toISOString() : null,
+            transactionDetails: (!isSameAsPrevious && first)
+              ? (DOC_LABELS[entry.sourceDocType] ?? entry.sourceDocType)
+              : '',
+            quantity: drawQty,
+            unitCost: drawQty !== 0 ? Math.abs(drawValue / drawQty) : null,
+            totalCost: drawValue,
+            stockOnHand: currentQty,
+            inventoryAssetValue: currentValue,
+            sourceDocType: (!isSameAsPrevious && first) ? entry.sourceDocType : null,
+            sourceDocId: (!isSameAsPrevious && first) ? entry.sourceDocId : null,
+            sourceDocNumber: (!isSameAsPrevious && first)
+              ? (entry.sourceDocId ? docNumbers.get(entry.sourceDocId) || null : null)
+              : null,
+          });
+          first = false;
+        }
+      } else {
+        currentQty += qty;
+        currentValue += value;
+
+        rows.push({
+          date: isSameAsPrevious ? null : entry.date.toISOString(),
+          transactionDetails: isSameAsPrevious
+            ? ''
+            : (DOC_LABELS[entry.sourceDocType] ?? entry.sourceDocType),
+          quantity: qty,
+          unitCost: qty !== 0 ? Math.abs(value / qty) : null,
+          totalCost: value,
+          stockOnHand: currentQty,
+          inventoryAssetValue: currentValue,
+          sourceDocType: isSameAsPrevious ? null : entry.sourceDocType,
+          sourceDocId: isSameAsPrevious ? null : entry.sourceDocId,
+          sourceDocNumber: isSameAsPrevious
+            ? null
+            : entry.sourceDocId
+              ? docNumbers.get(entry.sourceDocId) || null
+              : null,
+        });
+      }
     }
 
     if (!hasAddedOpeningRow) rows.push(openingRow());

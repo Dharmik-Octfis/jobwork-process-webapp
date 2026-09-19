@@ -115,16 +115,29 @@ export interface FifoCostLotTrackingRow {
 }
 
 export const reportsApi = {
-  getInventoryValuation: async (orgId: string, params: InventoryValuationQuery = {}): Promise<PaginatedInventoryValuationResponse> => {
+  getInventoryValuation: async (
+    orgId: string,
+    params: InventoryValuationQuery = {},
+  ): Promise<PaginatedInventoryValuationResponse> => {
     const response = await apiClient.get(endpoints.reports.inventoryValuation(orgId), { params });
     // Assume unwrapped response by client interceptor
     return response.data as PaginatedInventoryValuationResponse;
   },
-  getItemLedger: async (orgId: string, itemId: string, params: ItemLedgerQuery = {}): Promise<ItemLedgerResponse> => {
-    const response = await apiClient.get(`${endpoints.reports.inventoryValuation(orgId)}/${itemId}`, { params });
+  getItemLedger: async (
+    orgId: string,
+    itemId: string,
+    params: ItemLedgerQuery = {},
+  ): Promise<ItemLedgerResponse> => {
+    const response = await apiClient.get(
+      `${endpoints.reports.inventoryValuation(orgId)}/${itemId}`,
+      { params },
+    );
     return response.data as ItemLedgerResponse;
   },
-  getFifoCostLotTracking: async (orgId: string, params: FifoCostLotTrackingQuery = {}): Promise<PaginatedFifoCostLotTrackingResponse> => {
+  getFifoCostLotTracking: async (
+    orgId: string,
+    params: FifoCostLotTrackingQuery = {},
+  ): Promise<PaginatedFifoCostLotTrackingResponse> => {
     const response = await apiClient.get(endpoints.reports.fifoCostLotTracking(orgId), { params });
     return response.data as PaginatedFifoCostLotTrackingResponse;
   },

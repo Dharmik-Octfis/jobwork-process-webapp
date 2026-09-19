@@ -950,7 +950,7 @@ function billListWhere(organizationId: string, opts: ListQuery): Prisma.BillWher
 
 export async function getOpenJobReceiptsForVendor(organizationId: string, vendorId: string) {
   return runAsTenant(organizationId, async (tx) => {
-    return tx.jobReceipt.findMany({
+    const results = await tx.jobReceipt.findMany({
       where: {
         organizationId,
         processorId: vendorId,
@@ -971,6 +971,7 @@ export async function getOpenJobReceiptsForVendor(organizationId: string, vendor
       },
       orderBy: { receiptDate: 'asc' },
     });
+    return results;
   });
 }
 

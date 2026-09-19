@@ -8,7 +8,9 @@ interface JobReceiptOutput {
   acceptedQty: number;
   rate: number;
   processCharge: number;
+  materialValue: number;
   itemId: string;
+  outputBatchId?: string | null;
   outputBatch?: { batchNumber: string };
 }
 
@@ -19,6 +21,7 @@ export interface OpenJobReceipt {
   jobOrder: { jobOrderNumber: string };
   location: { name: string };
   processChargeTotal: number;
+  consumedValue: number;
   outputs: JobReceiptOutput[];
 }
 
@@ -94,7 +97,20 @@ export const AddJobReceiptsModal: React.FC<AddJobReceiptsModalProps> = ({
   };
 
   const handleAdd = () => {
-    const selectedReceipts = jobReceipts.filter((jr) => selectedIds.has(jr.id));
+    const selectedReceipts = jobReceipts
+      .filter((jr) => selectedIds.has(jr.id))
+      .map((jr) => ({
+        ...jr,
+        outputs: jr.outputs.map((o) => ({
+          ...o,
+          itemId: o.itemId,
+          outputBatchId: o.outputBatchId,
+          acceptedQty: Number(o.acceptedQty),
+          rate: Number(o.rate || 0),
+          processCharge: Number(o.processCharge || 0),
+          materialValue: Number(o.materialValue || 0),
+        })),
+      }));
     onAdd(selectedReceipts);
     onClose();
   };
@@ -323,7 +339,7 @@ export const AddJobReceiptsModal: React.FC<AddJobReceiptsModalProps> = ({
                       {format(new Date(jr.receiptDate), 'dd MMM yyyy')}
                     </td>
                     <td style={{ padding: '6px 12px', textAlign: 'right', color: '#0f172a' }}>
-                      ₹{jr.outputs.reduce((sum, o) => sum + Number(o.processCharge || 0), 0).toFixed(2)}
+                      ₹{((Number(jr.consumedValue || 0)) + (Number(jr.processChargeTotal || 0))).toFixed(2)}
                     </td>
                   </tr>
                 ));

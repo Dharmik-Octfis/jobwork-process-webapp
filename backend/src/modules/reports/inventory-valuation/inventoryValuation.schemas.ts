@@ -68,4 +68,3 @@ export interface ItemLedgerResponse {
   };
   rows: ItemLedgerRow[];
 }
-
