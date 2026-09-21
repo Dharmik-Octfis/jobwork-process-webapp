@@ -1486,11 +1486,12 @@ are OIDC endpoints and the spec says where to find them. `/signup` is **not** an
 endpoint; it is our own page, at a path we chose. So the issuer is discovered and the path is
 composed onto it.
 
-#### The one flow that does not come back
+#### Creating an account is not being let in
 
-Every other flow here is a round trip. This one ends at accounts and stops — there is no
-callback, no code, nothing written in the jobwork DB. Creating an identity and being allowed
-into jobwork are two separate things, and this does only the first.
+Started from an app, signup now finishes that app's sign-in (below). Started by opening
+accounts directly, it ends at accounts with a link to the website — there is no app to return
+to. Either way, creating an identity and being allowed into jobwork are two separate things,
+and signup does only the first.
 
 > 🔴 **Hiding the form was not enough, and this was a real bug.** With the UI showing only an
 > SSO button, `POST /api/auth/signup` still answered **201 and created a real account**. The
@@ -1509,16 +1510,28 @@ into jobwork are two separate things, and this does only the first.
 Signing up at accounts creates an identity, nothing more. It does **not** grant jobwork
 access — that still needs an invitation (§8, step 8 branch 3).
 
-**How an invitee actually gets in, end to end.** Every hop below already existed; the only
-change was deleting the shortcut that skipped them:
+**How an invitee actually gets in, end to end** (as built 2026-09-21):
 
 ```
-invite email → /invite/accept?token=…  →  not signed in  →  /login?next=/invite/accept?token=…
-             →  "Access Jobwork"  →  accounts  →  "Create Account"  →  verify email  →  sign in
-             →  jobwork callback: provisionOrRefuse finds THIS pending invitation,
-                creates the local user with NO password
-             →  returnTo lands back on /invite/accept  →  Case A accepts it  →  membership
+invite email → /invite/accept?token=…  →  not signed in  →  /login?email=…&next=/invite/accept?token=…
+             →  interactive sign-in (never silent)  →  accounts, invited address prefilled
+             →  "Create Account" → /interaction/:uid/signup  →  6-digit code → /interaction/:uid/verify
+             →  code confirmed = SIGNED IN (interactionFinished)  →  jobwork callback:
+                provisionOrRefuse finds THIS pending invitation, creates the local user, NO password
+             →  returnTo lands back on /invite/accept  →  Case A auto-accepts  →  membership
 ```
+
+🔴 **Signup must stay inside the interaction.** Until 2026-09-21 "Create Account" went to a
+standalone `/signup` carrying only `?email=`, which dropped the interaction uid — so an invitee
+who created an account ended on "Email verified. You can sign in now." with no link back to
+jobwork. Under `/interaction/:uid/…` the `_interaction` cookie rides along and a confirmed code
+finishes the sign-in. An account with a password but an unverified email is sent through the
+same code step from the sign-in form, instead of being signed in and refused by jobwork.
+
+The code is also where the account's security now lives: the signup password and name are
+applied only when the code is redeemed, a code answers only the browser that requested it, and
+five wrong guesses delete it (`accounts/src/login/account.service.ts`). The interaction and
+jobwork's `sso_flow` cookie both last 30 minutes, to outlive the wait for the email.
 
 ### 6.3 Signing out
 
