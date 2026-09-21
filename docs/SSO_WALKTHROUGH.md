@@ -1430,27 +1430,26 @@ apps a person ever opened.
 
 ### 6.1b Someone types `accounts.octfis.com` straight into the address bar
 
-§4 starts at jobwork's login screen, but people also open the identity provider directly. A
-bare visit to `/` is answered with one redirect — to the product website, where every app's
-sign-in button lives:
+§4 starts at jobwork's login screen, but people also open the identity provider directly. Since
+2026-09-21 that opens **the login form**, the way `accounts.zoho.com` does, and after signing in
+the person lands on a small **My Account** page:
 
 ```
 GET https://accounts.octfis.com/
-  → 302 https://www.octfis.com
+  signed out → 302 /auth?client_id=accounts-portal&…  → the login form → /account
+  signed in  → 302 /account          (name, email, link to the Octfis apps, sign out)
 ```
 
-_Changed 2026-09-21 (`docs/SSO_WEBSITE_ENTRY_PLAN.md` §4.3). It used to go to
-`https://jobwork.octfis.com/api/auth/sso/login` and sign the visitor straight into jobwork; with a
-product directory in front of the estate, dropping someone into one arbitrary app was wrong._
+🔴 **Why it needs a client of its own.** A session is only ever created by finishing an
+interaction, and only `/auth` starts one — a form on the root page would check a password and
+have nowhere to put the result. So accounts registers itself, in code, as the `accounts-portal`
+client (`accounts/src/oidc/portal.ts`) and `/` starts a normal sign-in for it. Finishing the form
+sets accounts' own session; `/account` reads that session directly, so the portal never redeems
+its code. Keycloak's "account console" is built the same way.
 
-🔴 **accounts cannot serve a sign-in form at `/`, and this is why.** A session is only ever
-created by finishing an interaction, and only `/authorize` starts one. A form on the root page
-would check a password and then have nowhere to put the result. So `/` always hands the visitor
-somewhere else, and an app's button is what starts a real authorization request.
-
-The target is configuration, not code: `ROOT_REDIRECT_URL` (formerly `DEFAULT_APP_SIGNIN_URL`).
-It is required — an unset value would leave a dead root on the domain people type, which reads
-as an outage. Local dev still points it at jobwork's own sign-in URL, which remains a valid value.
+_History: `/` first redirected into jobwork's sign-in (`DEFAULT_APP_SIGNIN_URL`), then briefly to
+the website (`ROOT_REDIRECT_URL`). The website link survives on the account page as
+`PRODUCT_SITE_URL`._
 
 ### 6.2 Creating an account
 

@@ -4,6 +4,7 @@ import { env } from '../config/env.ts';
 import { prisma } from '../db/prisma.ts';
 import { createPrismaAdapter } from './adapter.ts';
 import { loadFirstPartyGrant } from './firstPartyGrant.ts';
+import { portalClient } from './portal.ts';
 import { loadClients } from './clients.ts';
 import { ensureSigningKey, loadSigningJwks } from './keys.ts';
 import { installSessionMirror } from './sessionMirror.ts';
@@ -235,7 +236,8 @@ export async function createOidcProvider(): Promise<Provider> {
   const provider = new Provider(env.oidcIssuer, {
     ...baseConfiguration(),
     jwks: { keys: jwks },
-    clients,
+    // The portal is this service's own client — see oidc/portal.ts.
+    clients: [...clients, portalClient(env.oidcIssuer)],
   });
 
   installArgon2ClientSecrets(provider);

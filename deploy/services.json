@@ -76,6 +76,6 @@
     "appConfigOut": "accounts/app-config.json",
     "localEnv": "accounts/.env",
     "build": ["build:accounts"],
-    "requiredEnv": ["DATABASE_URL", "OIDC_ISSUER", "ROOT_REDIRECT_URL"]
+    "requiredEnv": ["DATABASE_URL", "OIDC_ISSUER", "PRODUCT_SITE_URL"]
   }
 }

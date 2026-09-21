@@ -68,14 +68,22 @@ login routes do not handle it yet and fail with a generic error — a known gap.
 
 ### 2.4 Other
 
-| Method + path         | Purpose                                                                                                                                                               |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /`               | 302 to `ROOT_REDIRECT_URL` (production: `https://www.octfis.com`).                                                                                                    |
-| `GET /session/status` | `{ "signedIn": boolean }` for the website's button label. The **only** route with CORS: exact origins from `SESSION_STATUS_ORIGINS`, credentials allowed, `no-store`. |
-| `GET /health`         | Liveness, no database.                                                                                                                                                |
-| `GET /health/ready`   | Readiness, checks the database.                                                                                                                                       |
+| Method + path           | Purpose                                                                                                                                                               |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /`                 | The **My Account portal**, like accounts.zoho.com: signed in → 302 `/account`; signed out → 302 `/auth?client_id=accounts-portal…`, which opens the login form.       |
+| `GET /account/callback` | Where the portal's sign-in lands; forwards to `/account`.                                                                                                             |
+| `GET /account`          | The account page: name, email, link to the Octfis apps (`PRODUCT_SITE_URL`), Change password, Sign out. Signed out → 302 `/`.                                         |
+| `GET /session/status`   | `{ "signedIn": boolean }` for the website's button label. The **only** route with CORS: exact origins from `SESSION_STATUS_ORIGINS`, credentials allowed, `no-store`. |
+| `GET /health`           | Liveness, no database.                                                                                                                                                |
+| `GET /health/ready`     | Readiness, checks the database.                                                                                                                                       |
 
 Every response carries `X-Robots-Tag: noindex, nofollow`.
+
+**Why the portal is a client of accounts itself:** the login form can only open inside a sign-in
+started at `/auth`, so the "My Account" portal is registered **in code** (`oidc/portal.ts`, client
+id `accounts-portal`, URLs derived from the issuer) — no `oidc_clients` row, correct in every
+environment. It never redeems its code: finishing the form sets accounts' own session, which
+`/account` reads directly.
 
 ---
 
@@ -121,7 +129,7 @@ No tenants, no RLS, no `custom_fields` — every row is global.
 | `DATABASE_URL`                          | The accounts database, non-owner role. Never an app's database.            |
 | `MIGRATE_DATABASE_URL`                  | Owner role, Prisma CLI only.                                               |
 | `OIDC_ISSUER`                           | `https://accounts.octfis.com` — no trailing slash, never change.           |
-| `ROOT_REDIRECT_URL`                     | `https://www.octfis.com` (where `/` goes).                                 |
+| `PRODUCT_SITE_URL`                      | `https://www.octfis.com` — the "your Octfis apps" link on account pages.   |
 | `SESSION_STATUS_ORIGINS`                | `https://www.octfis.com` — exact origins, comma-separated, `www` included. |
 | `SIGNING_KEY_SECRET`                    | 64 hex chars; encrypts private keys. Outside the database.                 |
 | `COOKIE_SECRETS`                        | Comma-separated; first signs, rest still verify (rotate by prepending).    |

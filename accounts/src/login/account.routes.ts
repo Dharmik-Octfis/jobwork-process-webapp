@@ -139,7 +139,7 @@ export function accountRouter(): Router {
         'Email verified',
         'Your account is ready. Open the app you want to use to sign in.',
         {
-          href: env.rootRedirectUrl,
+          href: env.productSiteUrl,
           label: 'Continue to octfis.com',
         },
       ),

@@ -194,6 +194,12 @@ is not an app's sign-in URL. The zod refinements (absolute URL, https-except-loc
 ⚠️ This changes documented behaviour in `SSO_WALKTHROUGH.md` §6.1b, which said a bare visit to
 accounts signs you into jobwork. It will not any more.
 
+🔄 **Superseded 2026-09-21, same day.** Redirecting `/` to the website was deployed, then replaced
+at the user's request by a **login form + My Account page** at `accounts.octfis.com`, like
+`accounts.zoho.com`: accounts is its own `accounts-portal` client (`oidc/portal.ts`), and the
+variable became `PRODUCT_SITE_URL` (the website link on the account page). See
+`SSO_WALKTHROUGH.md` §6.1b.
+
 ### 4.4 `loadExistingGrant` — strongly recommended, not optional in practice
 
 `provider.ts` has no `loadExistingGrant` override, so consent always costs an interaction hop

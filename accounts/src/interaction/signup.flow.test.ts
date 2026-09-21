@@ -19,7 +19,7 @@ import { loadFirstPartyGrant } from '../oidc/firstPartyGrant.ts';
  */
 
 vi.mock('../config/env.ts', () => ({
-  env: { isProduction: false, rootRedirectUrl: 'https://www.octfis.example' },
+  env: { isProduction: false, productSiteUrl: 'https://www.octfis.example' },
 }));
 vi.mock('../db/prisma.ts', () => ({
   prisma: { oidcClient: { findFirst: async () => ({ name: 'Jobwork' }) }, user: {} },

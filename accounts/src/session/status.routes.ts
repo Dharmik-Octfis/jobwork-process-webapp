@@ -33,15 +33,11 @@ import { ACTIVE_USER } from '../lib/activeUser.ts';
  * The mirror is best-effort (sessionMirror.ts), so a missing row answers `false` —
  * the harmless direction.
  */
-export async function hasLiveSession(
-  provider: Provider,
-  req: Request,
-  res: Response,
-): Promise<boolean> {
+async function liveSessionRow(provider: Provider, req: Request, res: Response) {
   const session = await provider.Session.get(provider.createContext(req, res));
-  if (!session.accountId) return false;
+  if (!session.accountId) return null;
 
-  const live = await prisma.ssoSession.findFirst({
+  return prisma.ssoSession.findFirst({
     where: {
       id: session.uid,
       userId: session.accountId,
@@ -49,9 +45,21 @@ export async function hasLiveSession(
       expiresAt: { gt: new Date() },
       user: ACTIVE_USER,
     },
-    select: { id: true },
+    select: { user: { select: { id: true, email: true, firstName: true, lastName: true } } },
   });
-  return live !== null;
+}
+
+export async function hasLiveSession(
+  provider: Provider,
+  req: Request,
+  res: Response,
+): Promise<boolean> {
+  return (await liveSessionRow(provider, req, res)) !== null;
+}
+
+/** The signed-in person behind this browser, by the same rules — for the account page. */
+export async function liveAccount(provider: Provider, req: Request, res: Response) {
+  return (await liveSessionRow(provider, req, res))?.user ?? null;
 }
 
 /**

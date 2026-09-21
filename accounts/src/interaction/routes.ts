@@ -7,6 +7,7 @@ import * as service from '../login/account.service.ts';
 import { firstError, signupSchema, verifySchema } from '../login/account.routes.ts';
 import { signupPage, verifyEmailPage } from '../login/account.views.ts';
 import { bindingOf, bindThisBrowser, clearBinding } from '../login/binding.ts';
+import { PORTAL_CLIENT_ID, PORTAL_NAME } from '../oidc/portal.ts';
 import { loginPage, errorPage } from './views.ts';
 
 /**
@@ -50,9 +51,6 @@ export function interactionRouter(provider: Provider): Router {
     const { prompt, params, uid } = details;
 
     const clientId = String(params['client_id'] ?? '');
-    const client = await prisma.oidcClient.findFirst({
-      where: { id: clientId, isActive: true, isDeleted: false },
-    });
 
     if (prompt.name === 'login') {
       /**
@@ -67,7 +65,7 @@ export function interactionRouter(provider: Provider): Router {
 
       res
         .type('html')
-        .send(loginPage({ uid, clientName: client?.name ?? clientId, email: loginHint }));
+        .send(loginPage({ uid, clientName: await clientName(clientId), email: loginHint }));
       return;
     }
 
@@ -99,9 +97,7 @@ export function interactionRouter(provider: Provider): Router {
   /** The login form's target. */
   router.post('/interaction/:uid/login', form, async (req: Request, res: Response) => {
     const details = await provider.interactionDetails(req, res);
-    const clientId = String(details.params['client_id'] ?? '');
-    const client = await prisma.oidcClient.findFirst({ where: { id: clientId } });
-    const clientName = client?.name ?? clientId;
+    const appName = await clientName(String(details.params['client_id'] ?? ''));
 
     const email = String(req.body?.['email'] ?? '').trim();
     const password = String(req.body?.['password'] ?? '');
@@ -117,7 +113,7 @@ export function interactionRouter(provider: Provider): Router {
         .send(
           loginPage({
             uid: details.uid,
-            clientName,
+            clientName: appName,
             email,
             error: 'That email and password do not match.',
           }),
@@ -246,6 +242,18 @@ export function interactionRouter(provider: Provider): Router {
   });
 
   return router;
+}
+
+/**
+ * The app name shown as "to continue to …". The portal is this service's own client
+ * and has no registry row (oidc/portal.ts), so it is answered here.
+ */
+async function clientName(clientId: string): Promise<string> {
+  if (clientId === PORTAL_CLIENT_ID) return PORTAL_NAME;
+  const client = await prisma.oidcClient.findFirst({
+    where: { id: clientId, isActive: true, isDeleted: false },
+  });
+  return client?.name ?? clientId;
 }
 
 /**

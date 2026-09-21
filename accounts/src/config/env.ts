@@ -47,29 +47,19 @@ const envSchema = z.object({
     }),
 
   /**
-   * Where a bare visit to `/` goes. Production: the product website,
-   * `https://www.octfis.com` — docs/SSO_WEBSITE_ENTRY_PLAN.md §4.3.
+   * The product website — `https://www.octfis.com`, where every app's sign-in button
+   * lives. Linked from the account page and from the end of a standalone signup, so a
+   * person who opened accounts directly can find their apps.
    *
-   * 🔴 This service has no home page of its own, and cannot have one. There is no
-   * sign-in without an authorization request to return to: the session is created
-   * by `provider.interactionFinished`, which needs an interaction, which only
-   * `/authorize` can start. A standalone form here could check a password and then
-   * have nowhere to put the result.
-   *
-   * It used to be one app's sign-in entry point (`DEFAULT_APP_SIGNIN_URL`), which
-   * signed a bare visitor into jobwork. With a product directory in front of the
-   * estate, dropping someone into one arbitrary app is wrong — so it points at the
-   * website, where every app's button lives. An app's sign-in URL is still a valid
-   * value (local dev keeps using one), which is why the name says nothing about apps.
-   *
-   * Required, like OIDC_ISSUER: unset, `/` is a dead end, and a dead root on the
-   * domain people type reads as an outage.
+   * History: this was `DEFAULT_APP_SIGNIN_URL` (a bare `/` signed you into jobwork),
+   * then `ROOT_REDIRECT_URL` (`/` sent you here). Since 2026-09-21 `/` opens the login
+   * form and the account page instead (oidc/portal.ts), so this is only a link now.
    */
-  ROOT_REDIRECT_URL: z
+  PRODUCT_SITE_URL: z
     .string()
-    .url('ROOT_REDIRECT_URL must be an absolute URL')
+    .url('PRODUCT_SITE_URL must be an absolute URL')
     .refine((url) => url.startsWith('https://') || url.startsWith('http://localhost'), {
-      message: 'ROOT_REDIRECT_URL must be https, except on localhost',
+      message: 'PRODUCT_SITE_URL must be https, except on localhost',
     }),
 
   /**
@@ -158,7 +148,7 @@ export const env = {
   databaseUrl: raw.DATABASE_URL,
   databaseSslCaPath: raw.DATABASE_SSL_CA_PATH,
   oidcIssuer: raw.OIDC_ISSUER,
-  rootRedirectUrl: raw.ROOT_REDIRECT_URL,
+  productSiteUrl: raw.PRODUCT_SITE_URL,
   sessionStatusOrigins: raw.SESSION_STATUS_ORIGINS,
   signingKeySecret: raw.SIGNING_KEY_SECRET,
   cookieSecrets: raw.COOKIE_SECRETS,

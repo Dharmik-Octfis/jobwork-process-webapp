@@ -130,6 +130,26 @@ export function resetPasswordPage(options: FormOptions = {}): string {
   );
 }
 
+/** The "My Account" page at /account — who is signed in, and the ways out. */
+export function accountHomePage(options: {
+  name: string;
+  email: string;
+  productSiteUrl: string;
+  signOutHref: string;
+}): string {
+  const { name, email, productSiteUrl, signOutHref } = options;
+  return shell(
+    'My Account',
+    `
+    <h1>${escapeHtml(name || email)}</h1>
+    <p class="sub">Signed in as ${escapeHtml(email)}</p>
+    <p><a href="${escapeHtml(productSiteUrl)}">Go to your Octfis apps</a></p>
+    <p><a href="/forgot-password">Change password</a></p>
+    <p class="switch"><a href="${escapeHtml(signOutHref)}">Sign out</a></p>
+  `,
+  );
+}
+
 export function donePage(
   title: string,
   message: string,

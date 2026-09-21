@@ -10,6 +10,7 @@ import { clientOrigins } from './oidc/clients.ts';
 import { interactionRouter } from './interaction/routes.ts';
 import { accountRouter } from './login/account.routes.ts';
 import { sessionStatusRouter } from './session/status.routes.ts';
+import { portalRouter } from './portal/portal.routes.ts';
 
 /**
  * The accounts service's HTTP surface.
@@ -148,22 +149,6 @@ export async function createApp(): Promise<Express> {
   }
 
   /**
-   * The root — see the note on `ROOT_REDIRECT_URL`.
-   *
-   * 🔴 Not a landing page, because this service cannot host one: a session is only
-   * ever created by finishing an interaction, and only `/authorize` starts one. So
-   * `/` hands the visitor to the product website, where each app's sign-in button
-   * lives.
-   *
-   * 302, not 301: the target is configuration and will change. A 301 is cached by
-   * the browser more or less forever, so getting this wrong once would outlive the
-   * fix.
-   */
-  app.get('/', (_req, res) => {
-    res.redirect(302, env.rootRedirectUrl);
-  });
-
-  /**
    * Liveness only — no database. A health check that queries the database turns a
    * brief database blip into a rolling restart of every instance, which is how a
    * recoverable incident becomes an outage.
@@ -191,6 +176,12 @@ export async function createApp(): Promise<Express> {
 
   /** The website's sign-in label — before the catch-all, beside the library's `/session/end`. */
   app.use(sessionStatusRouter(provider));
+
+  /**
+   * `/` and `/account` — the "My Account" portal, like accounts.zoho.com: the login
+   * form when signed out, the account page when signed in. See oidc/portal.ts.
+   */
+  app.use(portalRouter(provider));
 
   /**
    * 🔴 Mounted LAST, at the root, and with no body parser in front of it.
