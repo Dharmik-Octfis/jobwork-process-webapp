@@ -93,7 +93,9 @@ export function useSessionWatch(): void {
      * so the message survives the route change. A full page load would discard it
      * and the user would arrive at the login screen with no idea why.
      */
-    navigate('/login', { replace: true });
+    // `signedOut` keeps `/login` on its button rather than redirecting straight to
+    // sign-in, which would leave the page before anyone could read the toast.
+    navigate('/login', { replace: true, state: { signedOut: true } });
   }, [data, clearSession, queryClient, navigate]);
 
   // Signing back in must re-arm the watch, or a second session in the same tab

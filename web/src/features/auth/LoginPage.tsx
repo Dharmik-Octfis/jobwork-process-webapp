@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
@@ -12,7 +13,7 @@ import { FormErrorBanner } from './FormErrorBanner';
 import { loginSchema } from './auth.schemas';
 import type { LoginInput } from './auth.schemas';
 import { useLogin } from './useLogin';
-import { startSsoLogin, useAuthConfig } from './useAuthConfig';
+import { startSilentSsoLogin, startSsoLogin, useAuthConfig } from './useAuthConfig';
 import { updateLocation } from './auth.api';
 
 import styles from './Auth.module.css';
@@ -22,15 +23,29 @@ interface LocationState {
   from?: {
     pathname?: string;
   };
+  /** Set by `useSessionWatch`: this tab's session was ended elsewhere. */
+  signedOut?: boolean;
 }
+
+/** Where a visitor with no particular destination lands — `OrgRedirect`. */
+const HOME_PATHS = new Set(['/', '/home']);
 
 export function LoginPage() {
   const location = useLocation();
   const [params] = useSearchParams();
+  const locationState = location.state as LocationState | null;
 
   const invitedEmail = params.get('email') ?? '';
-  const redirectTo =
-    params.get('next') ?? (location.state as LocationState | null)?.from?.pathname ?? '/';
+  const redirectTo = params.get('next') ?? locationState?.from?.pathname ?? '/';
+
+  /**
+   * Show the "Access Jobwork" button instead of redirecting straight away:
+   * - `?sso=manual` — the server's loop guard refused another silent attempt, or no
+   *   website is configured to send a signed-out visitor to;
+   * - `signedOut` — the session was ended elsewhere, and redirecting at once would
+   *   throw away the toast explaining why.
+   */
+  const manual = params.get('sso') === 'manual' || locationState?.signedOut === true;
 
   const {
     register,
@@ -49,6 +64,29 @@ export function LoginPage() {
   // Only ever read AFTER the pending and error branches below have returned, so by
   // here the answer is known and this is a real boolean rather than a guess.
   const ssoOnly = authConfig.data?.ssoEnabled === true;
+
+  /**
+   * 🔴 With SSO on, this page is a REDIRECTOR, not a screen —
+   * docs/SSO_WEBSITE_ENTRY_PLAN.md §5.5. The sign-in button now lives on the product
+   * website; this route stays because `SSO_ENABLED=false` still needs the password
+   * form, and because it is where `ProtectedRoute` sends every signed-out visitor.
+   *
+   * - No destination (`/`, `/home`): SILENT sign-in. Signed in at accounts → straight
+   *   to `/home`; not signed in → the website.
+   * - A deep link, or an invitation's `?email=`: INTERACTIVE sign-in carrying both, so
+   *   accounts shows its form if needed and the link survives (§5.3). Bouncing an
+   *   invitee to the website would throw their invitation token away.
+   *
+   * The ref stops StrictMode's double effect from starting two navigations.
+   */
+  const autoStart = ssoOnly && !manual;
+  const started = useRef(false);
+  useEffect(() => {
+    if (!autoStart || started.current) return;
+    started.current = true;
+    if (HOME_PATHS.has(redirectTo) && !invitedEmail) startSilentSsoLogin();
+    else startSsoLogin(redirectTo, invitedEmail || undefined);
+  }, [autoStart, redirectTo, invitedEmail]);
 
   const onSubmit = handleSubmit((values) => {
     loginMutation.mutate(values, {
@@ -106,6 +144,16 @@ export function LoginPage() {
         >
           Try again
         </Button>
+      </AuthShell>
+    );
+  }
+
+  if (autoStart) {
+    return (
+      <AuthShell title="Sign in" subtitle="One moment">
+        <p className={styles.switch}>
+          <Spinner size={16} label="Signing you in" /> Signing you in…
+        </p>
       </AuthShell>
     );
   }

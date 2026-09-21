@@ -51,8 +51,50 @@ function flowCookieOptions() {
   };
 }
 
-/** GET /api/auth/sso/login — start the redirect. */
+/**
+ * 🔴 The loop guard for silent sign-in — docs/SSO_WEBSITE_ENTRY_PLAN.md §5.2.
+ *
+ * The SPA starts a silent sign-in whenever it has no session. If a silent sign-in
+ * SUCCEEDS but the session still does not stick — a refresh cookie the browser drops,
+ * a misconfigured cookie domain — the SPA finds no session again and starts another,
+ * and the browser bounces between jobwork and accounts forever. That only happens
+ * against real hostnames, so it is the kind of bug found in production.
+ *
+ * So each silent attempt leaves this marker, and a second request inside its lifetime
+ * is refused a silent attempt and shown the manual "Access Jobwork" button instead.
+ * It is NOT cleared on success: success is exactly the case the loop comes from.
+ * 30 seconds is many loop iterations and short enough that a real second visit — say
+ * signing out and straight back in — costs at most one extra click.
+ */
+const SILENT_GUARD_COOKIE = 'sso_silent';
+const SILENT_GUARD_MAX_AGE_MS = 30 * 1000;
+
+/**
+ * Where a visitor goes when silent sign-in finds nobody signed in: the product
+ * website in production, or this app's own sign-in button where no website is
+ * configured. `sso=manual` makes `/login` show the button instead of trying again.
+ */
+function signedOutDestination(): string {
+  return env.sso.websiteUrl ?? `${env.appUrl}/login?sso=manual`;
+}
+
+/**
+ * GET /api/auth/sso/login — start the redirect.
+ *
+ * `?prompt=none` asks for a SILENT sign-in: accounts answers with a code if it
+ * already has a session, or with `error=login_required` if not, and never shows a
+ * screen. The SPA uses it for a visitor who opened jobwork with no destination in
+ * mind (docs/SSO_WEBSITE_ENTRY_PLAN.md §5.2); a deep link — an invitation above all —
+ * signs in interactively instead, so it can never be bounced away (§5.3).
+ */
 export async function startLogin(req: Request, res: Response): Promise<void> {
+  const silent = req.query['prompt'] === 'none';
+
+  if (silent && req.cookies?.[SILENT_GUARD_COOKIE]) {
+    res.redirect(`${env.appUrl}/login?sso=manual`);
+    return;
+  }
+
   const config = await ssoConfig();
 
   const codeVerifier = client.randomPKCECodeVerifier();
@@ -61,9 +103,16 @@ export async function startLogin(req: Request, res: Response): Promise<void> {
     nonce: client.randomNonce(),
     codeVerifier,
     returnTo: safeReturnTo(req.query['returnTo']),
+    ...(silent ? { silent: true } : {}),
   };
 
   res.cookie(FLOW_COOKIE, JSON.stringify(flow), flowCookieOptions());
+  if (silent) {
+    res.cookie(SILENT_GUARD_COOKIE, '1', {
+      ...flowCookieOptions(),
+      maxAge: SILENT_GUARD_MAX_AGE_MS,
+    });
+  }
 
   /**
    * `login_hint` — the address we believe is arriving, passed to the provider so it
@@ -89,6 +138,7 @@ export async function startLogin(req: Request, res: Response): Promise<void> {
   const authorizationUrl = client.buildAuthorizationUrl(config, {
     redirect_uri: env.sso.redirectUri!,
     ...(loginHint ? { login_hint: loginHint } : {}),
+    ...(silent ? { prompt: 'none' } : {}),
     /**
      * 🔴 No `offline_access` — §3. Asking for it would make accounts issue us a
      * refresh token we would then have to store and rotate, when the whole point is
@@ -127,6 +177,22 @@ export async function callback(req: Request, res: Response): Promise<void> {
     flow = JSON.parse(raw) as SsoFlowState;
   } catch {
     throw ApiError.badRequest('Sign-in expired. Please try again.');
+  }
+
+  /**
+   * A silent sign-in that accounts could not complete comes back with `?error=` —
+   * `login_required` (nobody signed in there), `consent_required`,
+   * `interaction_required`. For a silent attempt those are ANSWERS, not failures:
+   * nobody is signed in, so send them to the website to sign in. Handled BEFORE the
+   * exchange, which would otherwise throw on the error response and show a 500 page.
+   *
+   * Only when the state matches the flow this browser started — a forged `?error=`
+   * falls through to the exchange and fails there like any other bad callback.
+   * Interactive sign-ins are unchanged: an error there is still an error.
+   */
+  if (flow.silent && typeof req.query['error'] === 'string' && req.query['state'] === flow.state) {
+    res.redirect(signedOutDestination());
+    return;
   }
 
   const currentUrl = new URL(env.sso.redirectUri!);

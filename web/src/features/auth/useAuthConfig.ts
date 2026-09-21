@@ -68,3 +68,22 @@ export function startSsoLogin(returnTo?: string, email?: string): void {
   if (email) url.searchParams.set('email', email);
   window.location.assign(url.href);
 }
+
+/**
+ * Sign in WITHOUT a screen, or be sent to the product website —
+ * docs/SSO_WEBSITE_ENTRY_PLAN.md §5.2.
+ *
+ * `prompt=none` makes accounts answer immediately: a code if it already has a
+ * session (the user lands on `/home` having seen nothing), or `login_required`, which
+ * the callback turns into a redirect to the website, where the Sign In button lives.
+ *
+ * 🔴 Only for a visitor with no destination in mind. A deep link — an invitation above
+ * all — must use `startSsoLogin`: a silent failure bounces to the website and the
+ * link, with its invitation token, is lost for good (§5.3).
+ */
+export function startSilentSsoLogin(): void {
+  const url = new URL(`${window.location.origin}/api/auth/sso/login`);
+  url.searchParams.set('prompt', 'none');
+  url.searchParams.set('returnTo', '/home');
+  window.location.assign(url.href);
+}

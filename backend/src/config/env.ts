@@ -137,6 +137,21 @@ const envSchema = z.object({
    * IdP error page, which reads as "logout is broken".
    */
   SSO_POST_LOGOUT_REDIRECT_URI: z.string().url().optional(),
+  /**
+   * The product website's page for this app — where a visitor who is signed in
+   * NOWHERE is sent when a silent sign-in (`prompt=none`) finds no session at
+   * accounts. docs/SSO_WEBSITE_ENTRY_PLAN.md §5.2, §5.6.
+   *
+   * 🔴 Exact, `www` included: production is `https://www.octfis.com/job-work-1`. The
+   * bare domain does not serve the site, so dropping `www` sends every signed-out
+   * visitor to a 404.
+   *
+   * Deliberately NOT the same variable as SSO_POST_LOGOUT_REDIRECT_URI, even when the
+   * values match: that one must equal an accounts registry entry, this one is only
+   * where jobwork itself points. Unset (local dev, staging) → jobwork's own `/login`
+   * with its "Access Jobwork" button, so nothing dead-ends.
+   */
+  SSO_WEBSITE_URL: z.string().url().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -189,6 +204,7 @@ export const env = {
     clientSecret: raw.SSO_CLIENT_SECRET,
     redirectUri: raw.SSO_REDIRECT_URI,
     postLogoutRedirectUri: raw.SSO_POST_LOGOUT_REDIRECT_URI,
+    websiteUrl: raw.SSO_WEBSITE_URL,
   },
   corsOrigins: raw.CORS_ORIGINS.split(',')
     .map((origin) => origin.trim())

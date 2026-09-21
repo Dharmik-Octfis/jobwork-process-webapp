@@ -68,6 +68,8 @@ export interface SsoFlowState {
   nonce: string;
   codeVerifier: string;
   returnTo?: string | undefined;
+  /** Started with `prompt=none` — an IdP error is then an answer, not a failure. */
+  silent?: boolean | undefined;
 }
 
 export interface IdTokenClaims {

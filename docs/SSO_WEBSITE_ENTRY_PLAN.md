@@ -10,7 +10,7 @@
 > where an unauthenticated visitor is _sent_ — the entry and the exit, not the flow between them.
 
 _Status: **⚠️ partly built, nothing deployed.** On `feat/singleSignOn`: accounts has §4.1, §4.2 and
-§4.4; jobwork has §5.1 and §5.4. The rest is design only. The website page is owned by a different developer;
+§4.4; jobwork has §5.1–§5.5. The rest is design only. The website page is owned by a different developer;
 what they need from us is a link and one endpoint, and that contract is already handed over (§3).
 Sections below are marked with the site they belong to._
 
@@ -42,7 +42,7 @@ checking the real site:
 | §2 the same-site cookie            | —                     | the fact the whole design rests on                                                                                                                      |
 | §3 the website                     | `www.octfis.com`      | ❌ external — handed over, see §3                                                                                                                       |
 | §4 the identity provider           | `accounts.octfis.com` | ⚠️ §4.1, §4.2, §4.4 built 2026-09-21, **not deployed** (`session/status.routes.ts`, `SESSION_STATUS_ORIGINS`, `oidc/firstPartyGrant.ts`); §4.3, §4.5 ❌ |
-| §5 the app                         | `jobwork.octfis.com`  | ⚠️ §5.1 and §5.4 built 2026-09-21, **not deployed** (`/home`, `/no-access`, callback 403 → `/no-access`); §5.2, §5.3, §5.5–§5.7 ❌                      |
+| §5 the app                         | `jobwork.octfis.com`  | ⚠️ §5.1–§5.5 built 2026-09-21, **not deployed** (`/home`, `/no-access`, silent sign-in + loop guard, `SSO_WEBSITE_URL`); §5.6 values and §5.7 ❌        |
 | §6 the four flows                  | —                     | ❌ what §3–§5 add up to                                                                                                                                 |
 | §7 traps                           | —                     | 🔴 read before implementing                                                                                                                             |
 | §8 build order                     | —                     | ❌                                                                                                                                                      |
@@ -50,7 +50,7 @@ checking the real site:
 | §10 documents this will invalidate | —                     | edit these AFTER the code lands, not before                                                                                                             |
 
 _Last updated: 2026-09-21 — the real page (`www.octfis.com/job-work-1`, Zoho Sites) replaces the
-assumed `octfis.com/jobwork` throughout; build-order steps 1–3 are in code, not deployed._
+assumed `octfis.com/jobwork` throughout; build-order steps 1–4 are in code, not deployed._
 
 ---
 
@@ -350,7 +350,18 @@ Each step is independently deployable and leaves the estate working.
    envelope. ✅ Built 2026-09-21 (`redirectRefusedSignIn` in `sso.controller.ts`), not deployed.
 4. **`prompt=none` + error branch + loop guard + invite carve-out** (§5.2, §5.3, §5.5) — the change
    that alters what an unauthenticated visitor sees. One deploy, tested across real hostnames.
-   🔴 **Blocked until `www.octfis.com/job-work-1` is public** — it is where the bounce lands.
+   ✅ Built 2026-09-21, not deployed. As built:
+   - `/login` (SSO on) is a redirector: `/` or `/home` → silent (`?prompt=none&returnTo=/home`);
+     any deep link or `?email=` → interactive `startSsoLogin`, so an invitation is never bounced.
+     It shows the button only for `?sso=manual` or after `useSessionWatch` signs the tab out.
+   - `callback` answers ANY `?error=` on a silent flow whose `state` matches with a redirect to
+     `SSO_WEBSITE_URL` — or `/login?sso=manual` while that is unset, which is local dev today.
+   - Loop guard: an `sso_silent` cookie (30 s, not cleared on success) makes a second silent
+     attempt go to `/login?sso=manual` instead.
+   - Verified locally against real accounts: `prompt=none` with no session → `login_required` →
+     `/login?sso=manual`, and the guard refuses a second attempt. The signed-in success path and
+     the website bounce need the real hostnames.
+     🔴 **Blocked until `www.octfis.com/job-work-1` is public** — it is where the bounce lands.
 5. **Repoint the roots** (§4.3, §4.5, §5.6, §5.7) — config and registry. Same blocker as step 4 for
    the post-logout half.
 
