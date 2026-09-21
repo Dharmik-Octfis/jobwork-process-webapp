@@ -15,6 +15,8 @@ import { VendorActivityTimeline } from './VendorActivityTimeline';
 import { VendorComments } from './VendorComments';
 import { AdditionalAddressModal } from './AdditionalAddressModal';
 import { PrimaryContactModal } from './PrimaryContactModal';
+import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
+import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
 
 interface VendorDetailProps {
   vendorId: string;
@@ -427,7 +429,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
     );
   }
 
-  const tabs = ['Overview', 'Comments', 'Transactions'];
+  const tabs = ['Overview', 'Comments', 'Transactions', 'Approvals'];
 
   const sectionHeaderStyle = {
     fontSize: '13px',
@@ -629,6 +631,17 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 0, background: '#f8fafc' }}>
+        {/* Zoho-style Top Record Approval Banner */}
+        {orgId && vendorId && (
+          <div style={{ padding: '16px 24px 0 24px' }}>
+            <RecordApprovalBanner
+              organizationId={orgId}
+              moduleId="vendors"
+              recordId={vendorId}
+              onActionComplete={() => queryClient.invalidateQueries({ queryKey: ['vendor', orgId, vendorId] })}
+            />
+          </div>
+        )}
         <div
           style={{
             display: activeTab === 'Overview' ? 'flex' : 'none',
@@ -1464,6 +1477,10 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
           }}
         >
           No transactions found.
+        </div>
+
+        <div style={{ display: activeTab === 'Approvals' ? 'block' : 'none', padding: '24px' }}>
+          <RecordApprovalHistoryTimeline organizationId={orgId!} moduleId="vendors" recordId={vendorId} />
         </div>
       </div>
 

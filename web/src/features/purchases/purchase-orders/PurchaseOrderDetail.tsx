@@ -1,4 +1,4 @@
-﻿import { format } from 'date-fns';
+import { format } from 'date-fns';
 interface Html2PdfOptions {
   margin?: number | [number, number] | [number, number, number, number];
   filename?: string;
@@ -30,6 +30,8 @@ import { useState, useRef, useEffect } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { PurchaseOrderComments } from './PurchaseOrderComments';
 import { PurchaseOrderActivityTimeline } from './PurchaseOrderActivityTimeline';
+import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
+import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
 
 function POAttachmentLink({ orgId, attachment }: { orgId: string; attachment: POAttachment }) {
   const isDirectUrl = Boolean(attachment.data || attachment.url);
@@ -186,7 +188,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
     );
   }
 
-  const tabs = ['Overview', 'Comments', 'Activity'];
+  const tabs = ['Overview', 'Approvals', 'Comments', 'Activity'];
 
   const labelStyle = {
     fontSize: '11px',
@@ -222,10 +224,14 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
           </h2>
           <span
             style={{
-              // Lowercased: the column stores "Draft", not "draft" (the filter
-              // presets match it capitalised), so the bare compare was never true
-              // and a draft PO was painted with the issued colour.
-              background: po.status?.toLowerCase() === 'draft' ? '#94a3b8' : '#3b82f6',
+              background: (() => {
+                const s = (po.status || '').toLowerCase();
+                if (s === 'draft' || s === '') return '#94a3b8';
+                if (s === 'pending approval') return '#f59e0b';
+                if (s === 'approved' || s === 'active') return '#10b981';
+                if (s === 'rejected') return '#ef4444';
+                return '#3b82f6';
+              })(),
               color: 'white',
               fontSize: '11px',
               padding: '2px 8px',
@@ -482,6 +488,17 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 0, background: '#f8fafc' }}>
+        {/* Zoho-style Top Record Approval Banner */}
+        {orgId && poId && (
+          <div style={{ padding: '16px 24px 0 24px' }}>
+            <RecordApprovalBanner
+              organizationId={orgId}
+              moduleId="purchase_orders"
+              recordId={poId}
+              onActionComplete={() => queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId, poId] })}
+            />
+          </div>
+        )}
         <div
           style={{
             display: activeTab === 'Overview' ? 'flex' : 'none',
@@ -1671,6 +1688,9 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
           )}
         </div>
 
+        <div style={{ display: activeTab === 'Approvals' ? 'block' : 'none', padding: '24px' }}>
+          <RecordApprovalHistoryTimeline organizationId={orgId!} moduleId="purchase_orders" recordId={poId} />
+        </div>
         <div style={{ display: activeTab === 'Comments' ? 'block' : 'none', padding: '16px' }}>
           <PurchaseOrderComments orgId={orgId!} poId={poId} />
         </div>

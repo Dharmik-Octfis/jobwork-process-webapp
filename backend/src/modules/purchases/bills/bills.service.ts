@@ -17,6 +17,7 @@ import {
   type ResolvedBatches,
 } from '../../inventory/stock-ledger/stockLedger.service.ts';
 import type { TenantClient } from '../../../db/prisma.ts';
+import { approvalTriggerService } from '../../automation/approval-processes/approvalTrigger.service.ts';
 
 const DUPLICATE_NUMBER = 'A bill with this number already exists.';
 
@@ -765,7 +766,7 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
   } = data as CreateBillPayload & { notes?: string };
   // `runAsDocument`, like `updateBill`: a fifty-taka consignment now writes fifty
   // package rows, fifty document rows and fifty ledger rows in one transaction.
-  return runAsDocument(orgId, async (tx) => {
+  const createdBill = await runAsDocument(orgId, async (tx) => {
     // Drafts too: a bill's date rides through to the ledger the moment it opens,
     // so a parked one holding an invalid date is a posting waiting to happen.
     await assertOnOrAfterMigration(tx, {
@@ -930,6 +931,21 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
 
     return createdBill;
   });
+
+  // Trigger approval workflow evaluation asynchronously post-commit
+  approvalTriggerService
+    .trigger({
+      organizationId: orgId,
+      moduleId: 'bills',
+      recordId: createdBill.id,
+      recordTitle: `Bill #${createdBill.billNumber}`,
+      triggerType: 'CREATE',
+      record: createdBill as unknown as Record<string, unknown>,
+      actorUserId: userId,
+    })
+    .catch((err) => console.error('[ApprovalTrigger] Error in create bill:', err));
+
+  return createdBill;
 }
 
 export async function updateBill(
@@ -950,7 +966,7 @@ export async function updateBill(
   // `runAsDocument`, not `runAsTenant`: an edit now reverses every row this bill
   // posted before re-posting the new ones, so a fifty-taka consignment is a
   // hundred `postMovement` calls on one connection.
-  return runAsDocument(orgId, async (tx) => {
+  const updatedBill = await runAsDocument(orgId, async (tx) => {
     const existing = await tx.bill.findFirst({
       where: { id, organizationId: orgId, isDeleted: false },
       include: { lineItems: { where: { isDeleted: false } } },
@@ -1267,6 +1283,23 @@ export async function updateBill(
 
     return await tx.bill.findFirst({ where: { id } });
   });
+
+  if (updatedBill) {
+    // Trigger approval workflow evaluation asynchronously post-commit
+    approvalTriggerService
+      .trigger({
+        organizationId: orgId,
+        moduleId: 'bills',
+        recordId: updatedBill.id,
+        recordTitle: `Bill #${updatedBill.billNumber}`,
+        triggerType: 'EDIT',
+        record: updatedBill as unknown as Record<string, unknown>,
+        actorUserId: userId,
+      })
+      .catch((err) => console.error('[ApprovalTrigger] Error in update bill:', err));
+  }
+
+  return updatedBill;
 }
 
 /**

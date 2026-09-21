@@ -1,0 +1,255 @@
+// ============================================================================
+// Approval Processes & Workflow Automation Schema
+// Matches PostgreSQL migration: 20260918110000_create_approval_process_tables
+// ============================================================================
+
+model ApprovalProcess {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  name           String    @db.VarChar(150)
+  description    String?   @db.Text
+  moduleId       String    @map("module_id") @db.VarChar(100)
+  triggerType    String    @default("CREATE_OR_EDIT") @map("trigger_type") @db.VarChar(50)
+  status         String    @default("DRAFT") @db.VarChar(30)
+  priority       Int       @default(0)
+  currentVersion Int       @default(1) @map("current_version")
+  isDeleted      Boolean   @default(false) @map("is_deleted")
+  createdBy      String?   @map("created_by") @db.Uuid
+  updatedBy      String?   @map("updated_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser  User?                    @relation("ApprovalProcessCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser  User?                    @relation("ApprovalProcessUpdatedBy", fields: [updatedBy], references: [id])
+  rules          ApprovalProcessRule[]
+  versions       ApprovalProcessVersion[]
+  admins         ApprovalProcessAdmin[]
+  requests       ApprovalRequest[]
+
+  @@index([organizationId, moduleId, status, isDeleted], map: "idx_approval_processes_org_module")
+  @@index([organizationId, moduleId, priority], map: "idx_approval_processes_priority")
+  @@map("approval_processes")
+}
+
+model ApprovalProcessVersion {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  processId      String   @map("process_id") @db.Uuid
+  versionNumber  Int      @map("version_number")
+  snapshot       Json     @db.JsonB
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization  Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  process       ApprovalProcess @relation(fields: [processId], references: [id], onDelete: Cascade)
+  createdByUser User?           @relation("ApprovalProcessVersionCreatedBy", fields: [createdBy], references: [id])
+
+  @@index([processId, versionNumber], map: "idx_approval_process_versions_proc")
+  @@map("approval_process_versions")
+}
+
+model ApprovalProcessRule {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  processId       String   @map("process_id") @db.Uuid
+  name            String   @default("Rule 1") @db.VarChar(150)
+  ruleOrder       Int      @default(1) @map("rule_order")
+  criteria        Json     @default("[]") @db.JsonB
+  criteriaPattern String   @default("1") @map("criteria_pattern") @db.VarChar(255)
+  isDeleted       Boolean  @default(false) @map("is_deleted")
+  createdBy       String?  @map("created_by") @db.Uuid
+  updatedBy       String?  @map("updated_by") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  process       ApprovalProcess   @relation(fields: [processId], references: [id], onDelete: Cascade)
+  createdByUser User?             @relation("ApprovalProcessRuleCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User?             @relation("ApprovalProcessRuleUpdatedBy", fields: [updatedBy], references: [id])
+  stages        ApprovalStage[]
+  actions       ApprovalAction[]
+  requests      ApprovalRequest[]
+
+  @@index([processId, ruleOrder, isDeleted], map: "idx_approval_process_rules_proc")
+  @@map("approval_process_rules")
+}
+
+model ApprovalStage {
+  id                       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId           String   @map("organization_id") @db.Uuid
+  ruleId                   String   @map("rule_id") @db.Uuid
+  name                     String   @default("Stage 1") @db.VarChar(150)
+  stageOrder               Int      @default(1) @map("stage_order")
+  approverType             String   @default("USER") @map("approver_type") @db.VarChar(50)
+  approverConfig           Json     @default("{}") @map("approver_config") @db.JsonB
+  approvalMode             String   @default("ANYONE") @map("approval_mode") @db.VarChar(50)
+  assignTaskForApprovers   Boolean  @default(false) @map("assign_task_for_approvers")
+  recordModificationConfig Json     @default("{}") @map("record_modification_config") @db.JsonB
+  isDeleted                Boolean  @default(false) @map("is_deleted")
+  createdBy                String?  @map("created_by") @db.Uuid
+  updatedBy                String?  @map("updated_by") @db.Uuid
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  rule          ApprovalProcessRule    @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  createdByUser User?                  @relation("ApprovalStageCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User?                  @relation("ApprovalStageUpdatedBy", fields: [updatedBy], references: [id])
+  actions       ApprovalAction[]
+  requestStages ApprovalRequestStage[]
+
+  @@index([ruleId, stageOrder, isDeleted], map: "idx_approval_stages_rule")
+  @@map("approval_stages")
+}
+
+model ApprovalAction {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  ruleId         String   @map("rule_id") @db.Uuid
+  stageId        String?  @map("stage_id") @db.Uuid
+  triggerEvent   String   @default("FINAL_APPROVAL") @map("trigger_event") @db.VarChar(50)
+  actionType     String   @map("action_type") @db.VarChar(50)
+  actionConfig   Json     @default("{}") @map("action_config") @db.JsonB
+  isDeleted      Boolean  @default(false) @map("is_deleted")
+  createdBy      String?  @map("created_by") @db.Uuid
+  updatedBy      String?  @map("updated_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  rule          ApprovalProcessRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  stage         ApprovalStage?      @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  createdByUser User?               @relation("ApprovalActionCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User?               @relation("ApprovalActionUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@index([ruleId, triggerEvent, isDeleted], map: "idx_approval_actions_rule")
+  @@map("approval_actions")
+}
+
+model ApprovalProcessAdmin {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  processId      String   @map("process_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  canOverride    Boolean  @default(true) @map("can_override")
+  canReassign    Boolean  @default(true) @map("can_reassign")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  process      ApprovalProcess @relation(fields: [processId], references: [id], onDelete: Cascade)
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([processId, userId], map: "uq_approval_process_admin")
+  @@map("approval_process_admins")
+}
+
+model ApprovalRequest {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  processId        String    @map("process_id") @db.Uuid
+  processVersionId String?   @map("process_version_id") @db.Uuid
+  ruleId           String?   @map("rule_id") @db.Uuid
+  moduleId         String    @map("module_id") @db.VarChar(100)
+  recordId         String    @map("record_id") @db.Uuid
+  recordTitle      String    @default("") @map("record_title") @db.VarChar(255)
+  recordSnapshot   Json      @default("{}") @map("record_snapshot") @db.JsonB
+  status           String    @default("PENDING") @db.VarChar(50)
+  currentStageId   String?   @map("current_stage_id") @db.Uuid
+  requesterId      String?   @map("requester_id") @db.Uuid
+  submittedAt      DateTime  @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  completedAt      DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization    Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  process         ApprovalProcess          @relation(fields: [processId], references: [id], onDelete: Cascade)
+  rule            ApprovalProcessRule?     @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  requester       User?                    @relation("ApprovalRequestRequester", fields: [requesterId], references: [id], onDelete: SetNull)
+  stages          ApprovalRequestStage[]
+  history         ApprovalHistory[]
+  executedActions ApprovalExecutedAction[]
+
+  @@index([organizationId, moduleId, recordId, status], map: "idx_approval_requests_record")
+  @@index([organizationId, status, submittedAt], map: "idx_approval_requests_status")
+  @@map("approval_requests")
+}
+
+model ApprovalRequestStage {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  requestId      String   @map("request_id") @db.Uuid
+  stageId        String?  @map("stage_id") @db.Uuid
+  stageOrder     Int      @default(1) @map("stage_order")
+  name           String   @default("Stage 1") @db.VarChar(150)
+  status         String   @default("PENDING") @db.VarChar(50)
+  approvalMode   String   @default("ANYONE") @map("approval_mode") @db.VarChar(50)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  request      ApprovalRequest           @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  stage        ApprovalStage?            @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  approvers    ApprovalRequestApprover[]
+
+  @@index([requestId, stageOrder, status], map: "idx_approval_req_stages_req")
+  @@map("approval_request_stages")
+}
+
+model ApprovalRequestApprover {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  requestStageId String    @map("request_stage_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  status         String    @default("PENDING") @db.VarChar(50)
+  actionTakenAt  DateTime? @map("action_taken_at") @db.Timestamptz(6)
+  comment        String?   @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requestStage ApprovalRequestStage @relation(fields: [requestStageId], references: [id], onDelete: Cascade)
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId, status], map: "idx_approval_req_approvers_user")
+  @@map("approval_request_approvers")
+}
+
+model ApprovalHistory {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  requestId      String   @map("request_id") @db.Uuid
+  eventType      String   @map("event_type") @db.VarChar(50)
+  actorId        String?  @map("actor_id") @db.Uuid
+  previousStatus String?  @map("previous_status") @db.VarChar(50)
+  newStatus      String?  @map("new_status") @db.VarChar(50)
+  comment        String?  @db.Text
+  metadata       Json     @default("{}") @db.JsonB
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  request      ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  actor        User?           @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([requestId, createdAt], map: "idx_approval_history_req")
+  @@map("approval_history")
+}
+
+model ApprovalExecutedAction {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  requestId      String    @map("request_id") @db.Uuid
+  actionType     String    @map("action_type") @db.VarChar(50)
+  triggerEvent   String    @map("trigger_event") @db.VarChar(50)
+  status         String    @default("PENDING") @db.VarChar(50)
+  attempts       Int       @default(0)
+  errorMessage   String?   @map("error_message") @db.Text
+  executedAt     DateTime? @map("executed_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  request      ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, status], map: "idx_approval_exec_actions_req")
+  @@map("approval_executed_actions")
+}

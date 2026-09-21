@@ -180,6 +180,21 @@ model User {
   createdItemOpeningStockRows         ItemOpeningStockRow[]         @relation("ItemOpeningStockRowCreatedBy")
   updatedItemOpeningStockRows         ItemOpeningStockRow[]         @relation("ItemOpeningStockRowUpdatedBy")
 
+  // Approval Processes relations
+  createdApprovalProcesses        ApprovalProcess[]        @relation("ApprovalProcessCreatedBy")
+  updatedApprovalProcesses        ApprovalProcess[]        @relation("ApprovalProcessUpdatedBy")
+  createdApprovalProcessVersions  ApprovalProcessVersion[] @relation("ApprovalProcessVersionCreatedBy")
+  createdApprovalProcessRules     ApprovalProcessRule[]    @relation("ApprovalProcessRuleCreatedBy")
+  updatedApprovalProcessRules     ApprovalProcessRule[]    @relation("ApprovalProcessRuleUpdatedBy")
+  createdApprovalStages           ApprovalStage[]          @relation("ApprovalStageCreatedBy")
+  updatedApprovalStages           ApprovalStage[]          @relation("ApprovalStageUpdatedBy")
+  createdApprovalActions          ApprovalAction[]         @relation("ApprovalActionCreatedBy")
+  updatedApprovalActions          ApprovalAction[]         @relation("ApprovalActionUpdatedBy")
+  approvalProcessAdmins           ApprovalProcessAdmin[]
+  requestedApprovals              ApprovalRequest[]        @relation("ApprovalRequestRequester")
+  assignedApprovals               ApprovalRequestApprover[]
+  approvalHistories               ApprovalHistory[]
+
   @@map("users")
 }
 
@@ -348,6 +363,19 @@ model Organization {
   itemAssemblyActivities       ItemAssemblyActivity[]
   itemOpeningStockRows         ItemOpeningStockRow[]
   settings                     Json                          @default("{}") @map("settings")
+
+  // Approval Processes relations
+  approvalProcesses            ApprovalProcess[]
+  approvalProcessVersions      ApprovalProcessVersion[]
+  approvalProcessRules         ApprovalProcessRule[]
+  approvalStages               ApprovalStage[]
+  approvalActions              ApprovalAction[]
+  approvalProcessAdmins        ApprovalProcessAdmin[]
+  approvalRequests             ApprovalRequest[]
+  approvalRequestStages        ApprovalRequestStage[]
+  approvalRequestApprovers     ApprovalRequestApprover[]
+  approvalHistories            ApprovalHistory[]
+  approvalExecutedActions      ApprovalExecutedAction[]
 
   @@map("organizations")
 }

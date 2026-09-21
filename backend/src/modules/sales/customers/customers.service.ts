@@ -1,5 +1,6 @@
 import { runAsTenant } from '../../../db/prisma.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
+import { approvalTriggerService } from '../../automation/approval-processes/approvalTrigger.service.ts';
 
 /** Message for the (organizationId, contactNumber) unique index. */
 const DUPLICATE_NUMBER = 'Customer number already exists in this organization.';
@@ -109,7 +110,7 @@ export async function createNewCustomer(
   userId?: string,
 ) {
   const { contactPersons, addresses, customFields: rawCustomFields, ...customerData } = data;
-  return runAsTenant(organizationId, async (tx) => {
+  const result = await runAsTenant(organizationId, async (tx) => {
     const defs = await loadActiveDefinitions(tx, organizationId, 'customer');
     const customFields = validateCustomFields({
       defs,
@@ -185,6 +186,21 @@ export async function createNewCustomer(
       }),
     );
   });
+
+  // Trigger approval workflow evaluation asynchronously post-commit
+  approvalTriggerService
+    .trigger({
+      organizationId,
+      moduleId: 'customers',
+      recordId: result.id,
+      recordTitle: result.contactName || `Customer ${result.id}`,
+      triggerType: 'CREATE',
+      record: result as unknown as Record<string, unknown>,
+      actorUserId: userId,
+    })
+    .catch((err) => console.error('[ApprovalTrigger] Error in create customer:', err));
+
+  return result;
 }
 
 export async function getCustomerById(organizationId: string, id: string) {
@@ -202,7 +218,7 @@ export async function updateCustomerById(
   data: CustomerInput,
   userId?: string,
 ) {
-  return runAsTenant(organizationId, async (tx) => {
+  const result = await runAsTenant(organizationId, async (tx) => {
     const existingCustomer = await tx.customer.findFirst({
       where: { id, organizationId, isDeleted: false },
     });
@@ -298,6 +314,23 @@ export async function updateCustomerById(
       },
     });
   });
+
+  if (result) {
+    // Trigger approval workflow evaluation asynchronously post-commit
+    approvalTriggerService
+      .trigger({
+        organizationId,
+        moduleId: 'customers',
+        recordId: result.id,
+        recordTitle: result.contactName || `Customer ${result.id}`,
+        triggerType: 'EDIT',
+        record: result as unknown as Record<string, unknown>,
+        actorUserId: userId,
+      })
+      .catch((err) => console.error('[ApprovalTrigger] Error in update customer:', err));
+  }
+
+  return result;
 }
 
 export async function deleteCustomerById(organizationId: string, id: string, userId?: string) {

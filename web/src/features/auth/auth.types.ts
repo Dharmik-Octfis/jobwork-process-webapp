@@ -31,6 +31,7 @@ export interface User {
   email: string;
   avatarUrl?: string | null;
   userAgent: string;
+  isOwner?: boolean;
 }
 
 /**

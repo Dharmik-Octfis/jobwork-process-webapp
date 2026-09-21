@@ -8,6 +8,7 @@ import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../li
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
 import { assertOnOrAfterMigration } from '../../../lib/migrationDate.ts';
+import { approvalTriggerService } from '../../automation/approval-processes/approvalTrigger.service.ts';
 
 const DUPLICATE_NUMBER = 'A purchase order with this PO number already exists.';
 
@@ -107,7 +108,7 @@ export async function createPurchaseOrder(
       }
     }
 
-    return withUniqueViolation(DUPLICATE_NUMBER, () =>
+    const createdPo = await withUniqueViolation(DUPLICATE_NUMBER, () =>
       tx.purchaseOrder.create({
         data: {
           ...poData,
@@ -139,6 +140,21 @@ export async function createPurchaseOrder(
         include: { lineItems: true },
       }),
     );
+
+    // Trigger approval workflow evaluation asynchronously post-commit
+    approvalTriggerService
+      .trigger({
+        organizationId: orgId,
+        moduleId: 'purchase_orders',
+        recordId: createdPo.id,
+        recordTitle: `PO #${createdPo.poNumber}`,
+        triggerType: 'CREATE',
+        record: createdPo as unknown as Record<string, unknown>,
+        actorUserId: userId,
+      })
+      .catch((err) => console.error('[ApprovalTrigger] Error in create purchase order:', err));
+
+    return createdPo;
   });
 }
 
@@ -217,6 +233,19 @@ export async function updatePurchaseOrder(
           updatedBy: userId,
         },
       });
+
+      // Trigger approval workflow evaluation asynchronously post-commit
+      approvalTriggerService
+        .trigger({
+          organizationId: orgId,
+          moduleId: 'purchase_orders',
+          recordId: id,
+          recordTitle: `PO #${poData.poNumber || id}`,
+          triggerType: 'EDIT',
+          record: { id, ...poData },
+          actorUserId: userId,
+        })
+        .catch((err) => console.error('[ApprovalTrigger] Error in update purchase order:', err));
 
       return po;
     });

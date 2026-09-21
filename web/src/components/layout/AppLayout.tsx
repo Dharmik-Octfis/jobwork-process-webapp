@@ -33,6 +33,7 @@ import {
   Check,
   Menu,
   BarChart2,
+  CheckSquare,
 } from 'lucide-react';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useAuth } from '../../providers/auth-context';
@@ -47,6 +48,7 @@ import { LAST_ORG_KEY } from '../../routes/OrgRedirect';
 import { fetchVendors } from '../../features/purchases/vendors/vendors.api';
 import { fetchCustomers } from '../../features/sales/customers/customers.api';
 import { itemsApi } from '../../features/items/items.api';
+import { approvalsApi } from '../../features/approvals/approvals.api';
 import { fetchJobOrders } from '../../features/jobwork/job-orders/jobOrders.api';
 import { fetchJobIssues } from '../../features/jobwork/issues/jobIssues.api';
 
@@ -76,6 +78,7 @@ const ROUTE_MAP: Record<string, string> = {
   JOB_ORDERS: '/jobwork/job-orders',
   ISSUES: '/jobwork/issues',
   RECEIPTS: '/jobwork/receipts',
+  APPROVALS: '/approvals',
 };
 
 function navPath(moduleCode: string, orgId: string | undefined): string {
@@ -121,6 +124,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Send,
   PackageCheck,
   BarChart2,
+  CheckSquare,
 };
 /* eslint-enable @typescript-eslint/naming-convention */
 
@@ -427,6 +431,15 @@ export function AppLayout() {
   const activeOrg =
     organizations?.find((o) => o.organizationId === effectiveOrgId) || organizations?.[0];
 
+  // Query pending approvals for the current user to display badge count
+  const { data: myApprovalsData } = useQuery({
+    queryKey: ['my-pending-approvals-count', effectiveOrgId],
+    queryFn: () => approvalsApi.listRequests(effectiveOrgId!, { tab: 'my', limit: 1 }),
+    enabled: Boolean(effectiveOrgId),
+    refetchInterval: 30000,
+  });
+  const pendingApprovalsCount = myApprovalsData?.total || 0;
+
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
   const [prevPathname, setPrevPathname] = useState(location.pathname);
   const [prevModulesLength, setPrevModulesLength] = useState(0);
@@ -585,6 +598,71 @@ export function AppLayout() {
               isSidebarCollapsed={isSidebarCollapsed}
             />
           ))}
+
+          {effectiveOrgId && (
+            <NavLink
+              to={`/organizations/${effectiveOrgId}/approvals`}
+              className="sidebar-nav-link"
+              title={pendingApprovalsCount > 0 ? `Approvals (${pendingApprovalsCount} pending)` : 'Approvals'}
+              style={({ isActive }) => ({
+                display: 'flex',
+                flexDirection: isSidebarCollapsed ? 'column' : 'row',
+                alignItems: 'center',
+                justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
+                gap: isSidebarCollapsed ? '4px' : 'var(--space-3)',
+                padding: isSidebarCollapsed ? '8px 4px' : '6px 14px',
+                borderRadius: 'var(--radius-md)',
+                textDecoration: 'none',
+                color: isActive ? 'white' : 'rgba(255,255,255,0.7)',
+                background: isActive ? '#186337' : 'transparent',
+                fontWeight: isActive ? 600 : 500,
+                transition: 'all 0.2s ease',
+                position: 'relative',
+              })}
+            >
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <CheckSquare size={18} />
+                {isSidebarCollapsed && pendingApprovalsCount > 0 && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: -5,
+                      right: -8,
+                      background: '#ef4444',
+                      color: 'white',
+                      fontSize: '9px',
+                      fontWeight: 700,
+                      borderRadius: '8px',
+                      padding: '1px 4px',
+                      lineHeight: 1,
+                    }}
+                  >
+                    {pendingApprovalsCount > 99 ? '99+' : pendingApprovalsCount}
+                  </span>
+                )}
+              </div>
+              <span style={{ fontSize: isSidebarCollapsed ? 10 : 13, flex: 1 }}>
+                Approvals
+              </span>
+              {!isSidebarCollapsed && pendingApprovalsCount > 0 && (
+                <span
+                  style={{
+                    background: '#ef4444',
+                    color: 'white',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    borderRadius: '10px',
+                    padding: '2px 7px',
+                    minWidth: '18px',
+                    textAlign: 'center',
+                    lineHeight: 1,
+                  }}
+                >
+                  {pendingApprovalsCount > 99 ? '99+' : pendingApprovalsCount}
+                </span>
+              )}
+            </NavLink>
+          )}
         </nav>
 
         {effectiveOrgId && (

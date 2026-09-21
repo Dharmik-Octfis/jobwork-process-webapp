@@ -314,6 +314,22 @@ const EditLocation = lazyPage(
   () => import('../features/configuration/locations/EditLocation'),
   'EditLocation',
 );
+const ApprovalProcessListPage = lazyPage(
+  () => import('../features/automation/approval-processes/ApprovalProcessListPage'),
+  'ApprovalProcessListPage',
+);
+const ApprovalProcessConfigStudio = lazyPage(
+  () => import('../features/automation/approval-processes/components/ApprovalProcessConfigStudio'),
+  'ApprovalProcessConfigStudio',
+);
+const ApprovalsListPage = lazyPage(
+  () => import('../features/approvals/ApprovalsListPage'),
+  'ApprovalsListPage',
+);
+const ApprovalDetailPage = lazyPage(
+  () => import('../features/approvals/ApprovalDetailPage'),
+  'ApprovalDetailPage',
+);
 
 /**
  * Every page whose data belongs to one organization lives under
@@ -476,6 +492,8 @@ export const router = createBrowserRouter([
                     path: '/organizations/:orgId/inventory/assembly/new',
                     element: <CreateAssemblyPage />,
                   },
+                  { path: '/organizations/:orgId/approvals', element: <ApprovalsListPage /> },
+                  { path: '/organizations/:orgId/approvals/:id', element: <ApprovalDetailPage /> },
                 ],
               },
               { path: '/organizations', element: <OrganizationsList /> },
@@ -521,6 +539,11 @@ export const router = createBrowserRouter([
               { path: 'locations', element: <LocationsList /> },
               { path: 'locations/new', element: <CreateLocation /> },
               { path: 'locations/:id/edit', element: <EditLocation /> },
+              { path: 'automation/approval-processes', element: <ApprovalProcessListPage /> },
+              {
+                path: 'automation/approval-processes/:id/edit',
+                element: <ApprovalProcessConfigStudio />,
+              },
             ],
           },
           { path: '/organizations/new', element: <CreateOrganizationForm /> },

@@ -17,6 +17,8 @@ import {
   type Location,
 } from '../configuration/locations/locations.api';
 import { availableOf, declaredOpeningOf, stockOnHandOf } from './stockFigures';
+import { RecordApprovalBanner } from '../approvals/components/RecordApprovalBanner';
+import { RecordApprovalHistoryTimeline } from '../approvals/components/RecordApprovalHistoryTimeline';
 
 interface ItemDetailProps {
   itemId: string;
@@ -382,6 +384,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
           ...(isBatchTracked ? [batchTabName] : []),
           'Transactions',
           'Related Lists',
+          'Approvals',
           'History',
           ...(showComponentsTab ? ['Components'] : []),
         ].map((tab) => (
@@ -397,7 +400,19 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
 
       {/* Content */}
       <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
-        {effectiveActiveTab === 'History' ? (
+        {/* Zoho-style Top Record Approval Banner */}
+        {orgId && itemId && (
+          <RecordApprovalBanner
+            organizationId={orgId}
+            moduleId="items"
+            recordId={itemId}
+            onActionComplete={() => queryClient.invalidateQueries({ queryKey: ['item', orgId, itemId] })}
+          />
+        )}
+
+        {effectiveActiveTab === 'Approvals' ? (
+          <RecordApprovalHistoryTimeline organizationId={orgId!} moduleId="items" recordId={itemId} />
+        ) : effectiveActiveTab === 'History' ? (
           <div style={{ margin: '-24px' }}>
             <ItemActivityHistory activities={activities} isLoading={isLoadingActivities} />
           </div>

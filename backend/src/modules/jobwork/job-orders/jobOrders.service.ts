@@ -1,6 +1,7 @@
 import { Prisma } from '../../../../generated/prisma/client.ts';
 import { runAsTenant, type TenantClient } from '../../../db/prisma.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
+import { approvalTriggerService } from '../../automation/approval-processes/approvalTrigger.service.ts';
 import { assertOnOrAfterMigration } from '../../../lib/migrationDate.ts';
 import {
   allocateNumber,
@@ -1136,7 +1137,7 @@ export async function createNewJobOrder(
 
   // `runAsDocument`, not `runAsTenant`: Material In for a fifty-taka consignment
   // writes ~150 rows and blows Prisma's 5-second default (jobwork.types.ts).
-  return runAsDocument(organizationId, async (tx) => {
+  const result = await runAsDocument(organizationId, async (tx) => {
     await assertStepRefs(tx, organizationId, steps);
 
     const ownership = (header.ownership ?? 'own') as Ownership;
@@ -1229,8 +1230,23 @@ export async function createNewJobOrder(
 
     await writeSteps(tx, organizationId, created.id, stepRows, userId);
 
-    return readBack(tx, organizationId, created.id);
+    return await readBack(tx, organizationId, created.id);
   });
+
+  // Trigger approval workflow evaluation asynchronously post-commit
+  approvalTriggerService
+    .trigger({
+      organizationId,
+      moduleId: 'job_orders',
+      recordId: result.id,
+      recordTitle: `Job Order #${result.jobOrderNumber}`,
+      triggerType: 'CREATE',
+      record: result as unknown as Record<string, unknown>,
+      actorUserId: userId,
+    })
+    .catch((err) => console.error('[ApprovalTrigger] Error in create job order:', err));
+
+  return result;
 }
 
 type StepRow = Awaited<ReturnType<typeof buildSteps>>[number];
@@ -1517,7 +1533,7 @@ export async function updateJobOrderById(
 ) {
   const { customFields: rawCustomFields, steps, ...header } = data;
 
-  return runAsTenant(organizationId, async (tx) => {
+  const result = await runAsTenant(organizationId, async (tx) => {
     const existing = await tx.jobOrder.findFirst({
       where: { id, organizationId, isDeleted: false },
     });
@@ -1633,8 +1649,23 @@ export async function updateJobOrderById(
     // step completes the order, and adding one reopens it.
     await recomputeJobOrder(tx, organizationId, id);
 
-    return readBack(tx, organizationId, id);
+    return await readBack(tx, organizationId, id);
   });
+
+  // Trigger approval workflow evaluation asynchronously post-commit
+  approvalTriggerService
+    .trigger({
+      organizationId,
+      moduleId: 'job_orders',
+      recordId: result.id,
+      recordTitle: `Job Order #${result.jobOrderNumber}`,
+      triggerType: 'EDIT',
+      record: result as unknown as Record<string, unknown>,
+      actorUserId: userId,
+    })
+    .catch((err) => console.error('[ApprovalTrigger] Error in update job order:', err));
+
+  return result;
 }
 
 /**

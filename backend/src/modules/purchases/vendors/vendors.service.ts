@@ -1,5 +1,6 @@
 import { runAsTenant } from '../../../db/prisma.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
+import { approvalTriggerService } from '../../automation/approval-processes/approvalTrigger.service.ts';
 
 /** Message for the (organizationId, vendorNumber) unique index. */
 const DUPLICATE_NUMBER = 'Vendor number already exists in this organization.';
@@ -108,7 +109,7 @@ export async function countVendors(organizationId: string, opts: ListQuery): Pro
 
 export async function createNewVendor(organizationId: string, data: VendorInput, userId?: string) {
   const { contactPersons, addresses, customFields: rawCustomFields, ...vendorData } = data;
-  return runAsTenant(organizationId, async (tx) => {
+  const result = await runAsTenant(organizationId, async (tx) => {
     const defs = await loadActiveDefinitions(tx, organizationId, 'vendor');
     const customFields = validateCustomFields({
       defs,
@@ -184,6 +185,21 @@ export async function createNewVendor(organizationId: string, data: VendorInput,
       }),
     );
   });
+
+  // Trigger approval workflow evaluation asynchronously post-commit
+  approvalTriggerService
+    .trigger({
+      organizationId,
+      moduleId: 'vendors',
+      recordId: result.id,
+      recordTitle: result.contactName || `Vendor ${result.id}`,
+      triggerType: 'CREATE',
+      record: result as unknown as Record<string, unknown>,
+      actorUserId: userId,
+    })
+    .catch((err) => console.error('[ApprovalTrigger] Error in create vendor:', err));
+
+  return result;
 }
 
 export async function getVendorById(organizationId: string, id: string) {
@@ -201,7 +217,7 @@ export async function updateVendorById(
   data: VendorInput,
   userId?: string,
 ) {
-  return runAsTenant(organizationId, async (tx) => {
+  const result = await runAsTenant(organizationId, async (tx) => {
     const existingVendor = await tx.vendor.findFirst({
       where: { id, organizationId, isDeleted: false },
     });
@@ -289,6 +305,23 @@ export async function updateVendorById(
       include: { contactPersons: true, addresses: true },
     });
   });
+
+  if (result) {
+    // Trigger approval workflow evaluation asynchronously post-commit
+    approvalTriggerService
+      .trigger({
+        organizationId,
+        moduleId: 'vendors',
+        recordId: result.id,
+        recordTitle: result.contactName || `Vendor ${result.id}`,
+        triggerType: 'EDIT',
+        record: result as unknown as Record<string, unknown>,
+        actorUserId: userId,
+      })
+      .catch((err) => console.error('[ApprovalTrigger] Error in update vendor:', err));
+  }
+
+  return result;
 }
 
 export async function deleteVendorById(organizationId: string, id: string, userId?: string) {

@@ -25,6 +25,7 @@ import {
   type ResolvedBatches,
 } from '../inventory/stock-ledger/stockLedger.service.ts';
 import type { ItemOpeningStockDto } from './items.schemas.ts';
+import { approvalTriggerService } from '../automation/approval-processes/approvalTrigger.service.ts';
 
 export function toItemResponse(item: Record<string, unknown> | null | undefined) {
   if (!item) return item;
@@ -857,7 +858,22 @@ export class ItemsService {
         },
       });
 
-      return toItemResponse(item);
+      const responseItem = toItemResponse(item);
+
+      // Trigger approval workflow evaluation asynchronously post-commit
+      approvalTriggerService
+        .trigger({
+          organizationId,
+          moduleId: 'items',
+          recordId: item.id,
+          recordTitle: item.name || `Item ${item.id}`,
+          triggerType: 'CREATE',
+          record: responseItem as Record<string, unknown>,
+          actorUserId: userId,
+        })
+        .catch((err) => console.error('[ApprovalTrigger] Error in create item:', err));
+
+      return responseItem;
     });
   }
 
@@ -945,7 +961,22 @@ export class ItemsService {
         },
       });
 
-      return toItemResponse(updatedItem);
+      const responseUpdatedItem = toItemResponse(updatedItem);
+
+      // Trigger approval workflow evaluation asynchronously post-commit
+      approvalTriggerService
+        .trigger({
+          organizationId,
+          moduleId: 'items',
+          recordId: updatedItem.id,
+          recordTitle: updatedItem.name || `Item ${updatedItem.id}`,
+          triggerType: 'EDIT',
+          record: responseUpdatedItem as Record<string, unknown>,
+          actorUserId: userId,
+        })
+        .catch((err) => console.error('[ApprovalTrigger] Error in update item:', err));
+
+      return responseUpdatedItem;
     });
   }
 

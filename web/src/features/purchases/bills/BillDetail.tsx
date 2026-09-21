@@ -29,6 +29,8 @@ import { useState, useRef, useEffect, Fragment } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { BillComments } from './BillComments';
 import { BillActivityTimeline } from './BillActivityTimeline';
+import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
+import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
 import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 import { invalidateStockQueries } from '../../jobwork/stockCache';
 
@@ -176,7 +178,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
     );
   }
 
-  const tabs = ['Overview', 'Comments', 'Activity'];
+  const tabs = ['Overview', 'Approvals', 'Comments', 'Activity'];
 
   const labelStyle = {
     fontSize: '11px',
@@ -460,6 +462,17 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 0, background: '#f8fafc' }}>
+        {/* Zoho-style Top Record Approval Banner */}
+        {orgId && poId && (
+          <div style={{ padding: '16px 24px 0 24px' }}>
+            <RecordApprovalBanner
+              organizationId={orgId}
+              moduleId="bills"
+              recordId={poId}
+              onActionComplete={() => queryClient.invalidateQueries({ queryKey: ['bill', orgId, poId] })}
+            />
+          </div>
+        )}
         <div
           style={{
             display: activeTab === 'Overview' ? 'flex' : 'none',
@@ -1748,6 +1761,9 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
           )}
         </div>
 
+        <div style={{ display: activeTab === 'Approvals' ? 'block' : 'none', padding: '24px' }}>
+          <RecordApprovalHistoryTimeline organizationId={orgId!} moduleId="bills" recordId={poId} />
+        </div>
         <div style={{ display: activeTab === 'Comments' ? 'block' : 'none', padding: '16px' }}>
           <BillComments orgId={orgId!} poId={poId} />
         </div>
