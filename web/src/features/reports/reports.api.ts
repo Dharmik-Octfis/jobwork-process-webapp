@@ -37,6 +37,47 @@ export interface PaginatedInventoryValuationResponse {
   grandTotalValue: number;
 }
 
+export interface StockSummaryQuery {
+  fromDate?: string;
+  toDate?: string;
+  mode?: 'bills' | 'jobwork';
+  status?: 'all' | 'active' | 'inactive';
+  itemName?: string;
+  categoryName?: string;
+  locationId?: string;
+  sku?: string;
+  hsnCode?: string;
+  itemCustomFields?: Record<string, unknown>;
+  page?: number;
+  perPage?: number;
+}
+
+export interface StockSummaryRow {
+  itemId: string;
+  itemName: string;
+  sku: string | null;
+  hsnCode: string | null;
+  categoryName: string | null;
+  uomName: string | null;
+  customFields: Record<string, unknown>;
+  openingStock: number;
+  quantityIn: number;
+  quantityOut: number;
+  closingStock: number;
+}
+
+export interface PaginatedStockSummaryResponse {
+  results: StockSummaryRow[];
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+  grandTotalOpening: number;
+  grandTotalIn: number;
+  grandTotalOut: number;
+  grandTotalClosing: number;
+}
+
 export interface ItemLedgerQuery {
   fromDate?: string;
   toDate?: string;
@@ -114,7 +155,45 @@ export interface FifoCostLotTrackingRow {
   outPartyType: 'vendor' | 'customer' | null;
 }
 
+export interface StockMovementQuery {
+  itemId?: string;
+  fromDate?: string;
+  toDate?: string;
+  mode?: 'bills' | 'bills_and_invoices' | 'jobwork';
+  movementType?: 'all' | 'inward' | 'outward';
+  page?: number;
+  perPage?: number;
+}
+
+export interface StockMovementRow {
+  id: string;
+  transactionDate: string;
+  transactionNumber: string;
+  itemName: string;
+  transactionType: string;
+  movementType: 'Inward' | 'Outward';
+  source: string;
+  destination: string;
+  quantity: number;
+}
+
+export interface PaginatedStockMovementResponse {
+  results: StockMovementRow[];
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+  grandTotalQuantity: number;
+}
+
 export const reportsApi = {
+  getStockMovement: async (
+    orgId: string,
+    params: StockMovementQuery = {},
+  ): Promise<PaginatedStockMovementResponse> => {
+    const response = await apiClient.get(`/organizations/${orgId}/reports/stock-movement`, { params });
+    return response.data as PaginatedStockMovementResponse;
+  },
   getInventoryValuation: async (
     orgId: string,
     params: InventoryValuationQuery = {},
@@ -140,5 +219,13 @@ export const reportsApi = {
   ): Promise<PaginatedFifoCostLotTrackingResponse> => {
     const response = await apiClient.get(endpoints.reports.fifoCostLotTracking(orgId), { params });
     return response.data as PaginatedFifoCostLotTrackingResponse;
+  },
+  getStockSummary: async (
+    orgId: string,
+    params: StockSummaryQuery = {},
+  ): Promise<PaginatedStockSummaryResponse> => {
+    // Note: endpoint needs to be added in endpoints.ts, for now using a placeholder or assuming it exists
+    const response = await apiClient.get(`/organizations/${orgId}/reports/stock-summary`, { params });
+    return response.data as PaginatedStockSummaryResponse;
   },
 };

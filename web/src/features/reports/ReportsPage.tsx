@@ -56,7 +56,20 @@ export function ReportsPage() {
     return null;
   }, [orgId]);
 
+  const lastVisitedStockSummary = useMemo(() => {
+    const visitedStr = localStorage.getItem(`lastVisited_stockSummary_${orgId}`);
+    if (visitedStr) {
+      try {
+        return format(new Date(visitedStr), 'dd-MM-yyyy hh:mm a');
+      } catch {
+        // ignore
+      }
+    }
+    return null;
+  }, [orgId]);
+
   const reports = [
+    { name: 'Stock Summary Report', category: 'Inventory', lastVisited: lastVisitedStockSummary || 'Today', route: `/organizations/${orgId}/reports/stock-summary` },
     { name: 'Inventory Valuation Summary', category: 'Inventory', lastVisited: lastVisitedInv || '11-09-2026 02:24 PM', route: `/organizations/${orgId}/reports/inventory-valuation-summary` },
     { name: 'FIFO Cost Lot Tracking', category: 'Inventory', lastVisited: lastVisitedFifo || '12-09-2026 10:17 AM', route: `/organizations/${orgId}/reports/fifo-cost-lot-tracking` },
   ];
