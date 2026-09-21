@@ -38,6 +38,7 @@ import {
 } from './bills.api';
 import { fetchPurchaseOrderById } from '../purchase-orders/purchase-orders.api';
 import { fetchJobReceiptById } from '../../jobwork/receipts/jobReceipts.api';
+import type { JobReceipt } from '../../jobwork/receipts/jobReceipts.schemas';
 import type { PurchaseOrderItem } from '../purchase-orders/purchase-orders.schemas';
 import { fetchPaymentTerms } from '../../sales/customers/payment-terms.api';
 import { fetchVendors } from '../vendors/vendors.api';
@@ -301,9 +302,9 @@ export function CreateBill() {
 
   useEffect(() => {
     if (sourceJobReceipt && isFromJobReceipt) {
-      const formattedLineItems: any[] = [];
+      const formattedLineItems: BillItem[] = [];
       
-      sourceJobReceipt.outputs.forEach((output: any) => {
+      sourceJobReceipt.outputs.forEach((output: JobReceipt['outputs'][number]) => {
         const totalCost = (Number(output.materialValue) || 0) + (Number(output.processCharge) || 0);
         const qty = Number(output.acceptedQty) || 1;
         
@@ -318,16 +319,16 @@ export function CreateBill() {
           itemTotal: totalCost,
           jobReceiptId: sourceJobReceipt.id,
           description: `Processing charge for Job Order ${sourceJobReceipt.jobOrder?.jobOrderNumber || ''} / Receive ${sourceJobReceipt.receiptNumber}`,
-          batches: output.batches?.filter((b: any) => b.kind === 'accepted').length 
+          batches: output.batches?.filter((b) => b.kind === 'accepted').length 
             ? output.batches
-                .filter((b: any) => b.kind === 'accepted')
-                .map((b: any) => ({
+                .filter((b) => b.kind === 'accepted')
+                .map((b) => ({
                   batchId: b.batch.id,
                   quantity: Number(b.qty) || qty,
                 }))
-            : (output.outputBatchId || output.outputBatch?.id) 
+            : output.outputBatch?.id 
               ? [{
-                  batchId: (output.outputBatchId || output.outputBatch?.id) as string,
+                  batchId: output.outputBatch.id as string,
                   quantity: qty,
                 }]
               : undefined,
@@ -360,8 +361,8 @@ export function CreateBill() {
                   itemTotal: 0,
                 } as BillItem,
               ],
-        subTotal: formattedLineItems.reduce((acc, curr) => acc + curr.amount, 0),
-        totalAmount: formattedLineItems.reduce((acc, curr) => acc + curr.amount, 0),
+        subTotal: formattedLineItems.reduce((acc, curr) => acc + Number(curr.amount || 0), 0),
+        totalAmount: formattedLineItems.reduce((acc, curr) => acc + Number(curr.amount || 0), 0),
       };
 
       reset(resetData);
@@ -2009,10 +2010,10 @@ export function CreateBill() {
                 itemTotal: totalCost,
                 jobReceiptId: receipt.id,
                 description: `Processing charge for Job Order ${receipt.jobOrder.jobOrderNumber} / Receive ${receipt.receiptNumber}`,
-                batches: output.batches?.filter((b: any) => b.kind === 'accepted').length
+                batches: output.batches?.filter((b) => b.kind === 'accepted').length
                   ? output.batches
-                      .filter((b: any) => b.kind === 'accepted')
-                      .map((b: any) => ({
+                      .filter((b) => b.kind === 'accepted')
+                      .map((b) => ({
                         batchId: b.batch.id,
                         quantity: Number(b.qty) || qty,
                       }))
