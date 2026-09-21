@@ -219,10 +219,18 @@ describe('an invitee with no account, signing up inside the sign-in', () => {
     expect(await res.text()).toContain('That code is invalid or expired.');
   });
 
-  it('an unknown or expired interaction gets a readable page, not a 500', async () => {
+  it.each([
+    ['the login form', 'GET', '/interaction/does-not-exist'],
+    ['the login submit', 'POST', '/interaction/does-not-exist/login'],
+    ['the signup form', 'GET', '/interaction/does-not-exist/signup'],
+    ['the code submit', 'POST', '/interaction/does-not-exist/verify'],
+  ])('an expired sign-in on %s gets a readable page, not a 500', async (_label, method, path) => {
     const b = browser();
 
-    const res = await b.request('/interaction/does-not-exist/signup');
+    const res = await b.request(path, {
+      method,
+      ...(method === 'POST' ? { form: { email: INVITEE, password: 'x', otp: '123456' } } : {}),
+    });
 
     expect(res.status).toBe(400);
     expect(await res.text()).toContain('This sign-in has expired');

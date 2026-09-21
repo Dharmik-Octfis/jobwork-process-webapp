@@ -47,7 +47,8 @@ export function interactionRouter(provider: Provider): Router {
 
   /** The interaction itself: show a login form, or auto-approve consent. */
   router.get('/interaction/:uid', async (req: Request, res: Response) => {
-    const details = await provider.interactionDetails(req, res);
+    const details = await detailsOrNull(provider, req, res);
+    if (!details) return expired(res);
     const { prompt, params, uid } = details;
 
     const clientId = String(params['client_id'] ?? '');
@@ -96,7 +97,9 @@ export function interactionRouter(provider: Provider): Router {
 
   /** The login form's target. */
   router.post('/interaction/:uid/login', form, async (req: Request, res: Response) => {
-    const details = await provider.interactionDetails(req, res);
+    // A form left open past the 30 minutes is the usual way to get here expired.
+    const details = await detailsOrNull(provider, req, res);
+    if (!details) return expired(res);
     const appName = await clientName(String(details.params['client_id'] ?? ''));
 
     const email = String(req.body?.['email'] ?? '').trim();

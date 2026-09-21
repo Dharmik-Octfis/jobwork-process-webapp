@@ -45,9 +45,8 @@ Identity only — never organizations or roles.
 ### 2.2 Sign-in screens (inside a sign-in started by an app)
 
 `:uid` = the sign-in in progress. The `_interaction` cookie (scoped to `/interaction/:uid`) proves
-it is the same browser. When it is missing or the sign-in expired (30 min), the signup and verify
-routes answer "This sign-in has expired. Go back to the app and sign in again." (400); the two
-login routes do not handle it yet and fail with a generic error — a known gap.
+it is the same browser. When it is missing or the sign-in expired (30 min), every route below
+answers "This sign-in has expired. Go back to the app and sign in again." (400).
 
 | Method + path                   | Form fields                                    | Result                                                                                                                                                                                |
 | ------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
