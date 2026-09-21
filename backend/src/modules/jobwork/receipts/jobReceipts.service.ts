@@ -107,6 +107,10 @@ const RECEIPT_INCLUDE = {
   location: { select: { id: true, name: true, type: true } },
   outputBatch: { select: { id: true, supplierBatchRef: true } },
   reworkBatch: { select: { id: true, supplierBatchRef: true } },
+  billItems: {
+    where: { isDeleted: false },
+    select: { id: true, billId: true },
+  },
   /** The CONSUMPTION record — one row per challan line this receipt closes. */
   lines: {
     where: { isDeleted: false },
@@ -123,7 +127,7 @@ const RECEIPT_INCLUDE = {
     orderBy: { seq: 'asc' },
     include: {
       item: {
-        select: { id: true, name: true, sku: true, itemType: true, inventoryTracking: true },
+        select: { id: true, name: true, sku: true, itemType: true, trackInventory: true, inventoryTracking: true },
       },
       uom: { select: { id: true, unitName: true, symbol: true } },
       reason: { select: { id: true, name: true } },
